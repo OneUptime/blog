@@ -64,6 +64,8 @@ flowchart TB
     Internet <-->|"6to4 Encapsulated Traffic"| Gateway_B
 ```
 
+> **Important — the 6to4 anycast relay is deprecated.** RFC 7526 (2015) formally deprecated the 6to4 anycast prefix `192.88.99.0/24` and the relay address `192.88.99.1`, and IANA has marked the prefix as deprecated. The basic unicast 6to4 mechanism and the `2002::/16` prefix (RFC 3056) are *not* deprecated, but most public anycast relays have been shut down, so reaching the native IPv6 internet via `192.88.99.1` is unreliable today. Treat the relay-based examples below as suitable for lab/testing or for connecting two 6to4 sites directly (which does not need a relay), and prefer native IPv6 or a managed tunnel broker for production.
+
 ## Prerequisites
 
 Before implementing 6to4 tunneling, ensure you have:
@@ -892,7 +894,9 @@ ip6tables -A INPUT -i tun6to4 ! -s 2002::/16 -j LOG --log-prefix "SPOOFED-6to4: 
 ip6tables -A INPUT -i tun6to4 ! -s 2002::/16 -j DROP
 
 # 3. Enable reverse path filtering
-sysctl -w net.ipv6.conf.tun6to4.rp_filter=1
+# The kernel has no net.ipv6.conf.*.rp_filter sysctl (that knob is IPv4-only),
+# so IPv6 reverse path filtering is enforced with the netfilter rpfilter match.
+ip6tables -A INPUT -i tun6to4 -m rpfilter --invert -j DROP
 
 # 4. Disable router advertisements acceptance on tunnel
 sysctl -w net.ipv6.conf.tun6to4.accept_ra=0
@@ -918,14 +922,17 @@ echo "Security hardening applied to 6to4 tunnel"
 # IPv4 MTU (1500) - IPv4 header (20) = 1480
 ip link set tun6to4 mtu 1480
 
-# 2. Enable TCP MTU path discovery
-sysctl -w net.ipv6.conf.tun6to4.mtu_discovery=1
+# 2. Path MTU Discovery is enabled by default for IPv6 (there is no
+# net.ipv6.conf.*.mtu_discovery sysctl to toggle). The key requirement is to
+# NOT filter inbound ICMPv6 "Packet Too Big" messages so PMTUD can work.
 
 # 3. Optimize TCP buffer sizes for tunnel
+# Note: TCP has no separate net.ipv6.tcp_* variables; the net.ipv4.tcp_*
+# settings apply to TCP over both IPv4 and IPv6.
 sysctl -w net.core.rmem_max=16777216
 sysctl -w net.core.wmem_max=16777216
-sysctl -w net.ipv6.tcp_rmem="4096 87380 16777216"
-sysctl -w net.ipv6.tcp_wmem="4096 65536 16777216"
+sysctl -w net.ipv4.tcp_rmem="4096 87380 16777216"
+sysctl -w net.ipv4.tcp_wmem="4096 65536 16777216"
 
 # 4. Enable TCP window scaling
 sysctl -w net.ipv4.tcp_window_scaling=1
@@ -1160,6 +1167,7 @@ As the internet continues its transition to IPv6, understanding tunneling mechan
 
 - RFC 3056: Connection of IPv6 Domains via IPv4 Clouds
 - RFC 3068: An Anycast Prefix for 6to4 Relay Routers
+- RFC 7526: Deprecating the Anycast Prefix for 6to4 Relay Routers
 - RFC 6343: Advisory Guidelines for 6to4 Deployment
 - Linux IPv6 HOWTO: https://www.tldp.org/HOWTO/Linux+IPv6-HOWTO/
 - FreeBSD Handbook: IPv6 Chapter
