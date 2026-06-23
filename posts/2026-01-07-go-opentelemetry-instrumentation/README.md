@@ -84,6 +84,7 @@ func InitTracer(ctx context.Context, serviceName, otlpEndpoint string) (func(con
     // Create the OTLP trace exporter
     exporter, err := otlptracegrpc.New(ctx, otlptracegrpc.WithGRPCConn(conn))
     if err != nil {
+        conn.Close()
         return nil, err
     }
 
@@ -97,6 +98,8 @@ func InitTracer(ctx context.Context, serviceName, otlpEndpoint string) (func(con
         ),
     )
     if err != nil {
+        exporter.Shutdown(ctx)
+        conn.Close()
         return nil, err
     }
 
@@ -118,7 +121,13 @@ func InitTracer(ctx context.Context, serviceName, otlpEndpoint string) (func(con
     ))
 
     // Return a shutdown function for graceful cleanup
-    return tp.Shutdown, nil
+    return func(ctx context.Context) error {
+        if err := tp.Shutdown(ctx); err != nil {
+            conn.Close()
+            return err
+        }
+        return conn.Close()
+    }, nil
 }
 ```
 
@@ -632,7 +641,7 @@ func GetInventoryHandler(c echo.Context) error {
 
 ## Instrumenting gRPC
 
-gRPC is widely used in microservices architectures. OpenTelemetry provides interceptors for both gRPC clients and servers.
+gRPC is widely used in microservices architectures. OpenTelemetry provides stats handlers for both gRPC clients and servers.
 
 ### Installing gRPC Instrumentation
 
@@ -642,7 +651,7 @@ go get go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgr
 
 ### Server-Side Instrumentation
 
-Add OpenTelemetry interceptors to your gRPC server:
+Add an OpenTelemetry stats handler to your gRPC server:
 
 ```go
 package main
@@ -733,7 +742,7 @@ func main() {
     }
     defer shutdown(ctx)
 
-    // Create gRPC server with OpenTelemetry interceptors
+    // Create gRPC server with OpenTelemetry stats handler
     server := grpc.NewServer(
         grpc.StatsHandler(otelgrpc.NewServerHandler()),
     )
@@ -769,6 +778,7 @@ import (
     "go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
     "go.opentelemetry.io/otel"
     "go.opentelemetry.io/otel/attribute"
+    "go.opentelemetry.io/otel/trace"
     "google.golang.org/grpc"
     "google.golang.org/grpc/credentials/insecure"
 
@@ -805,7 +815,7 @@ func main() {
 
     // Create a parent span for the operation
     ctx, span := tracer.Start(ctx, "fetch-user-workflow",
-        attribute.String("workflow.type", "user-fetch"),
+        trace.WithAttributes(attribute.String("workflow.type", "user-fetch")),
     )
     defer span.End()
 
@@ -1084,7 +1094,7 @@ func ConsumeMessage(msg Message) error {
     // Extract context from message
     ctx := ExtractContext(context.Background(), msg.TraceContext)
 
-    // Create a consumer span linked to the producer
+    // Create a consumer span that continues the propagated trace
     ctx, span := tracer.Start(ctx, "consume-message",
         trace.WithSpanKind(trace.SpanKindConsumer),
         trace.WithAttributes(
@@ -1116,7 +1126,7 @@ import (
 
 // CreateProductionSampler returns a sampler suitable for production
 func CreateProductionSampler() sdktrace.Sampler {
-    // Sample 10% of traces, but always sample errors
+    // Sample 10% of root traces while preserving sampled parent decisions.
     return sdktrace.ParentBased(
         sdktrace.TraceIDRatioBased(0.1),
         sdktrace.WithRemoteParentSampled(sdktrace.AlwaysSample()),
@@ -1139,6 +1149,8 @@ func InitProductionTracer(ctx context.Context, serviceName, endpoint string) (fu
     // ... rest of setup ...
 }
 ```
+
+If you need to keep all error traces while sampling successful traffic, use tail sampling in the OpenTelemetry Collector so the decision can be made after spans have completed.
 
 Resource Configuration
 
@@ -1247,6 +1259,7 @@ package telemetry
 import (
     "time"
 
+    "go.opentelemetry.io/otel/sdk/resource"
     sdktrace "go.opentelemetry.io/otel/sdk/trace"
 )
 
@@ -1366,7 +1379,7 @@ span.AddEvent("user-action", trace.WithAttributes(
 
 ## Conclusion
 
-Instrumenting Go applications with OpenTelemetry provides deep visibility into your distributed systems. By leveraging auto-instrumentation for HTTP frameworks like net/http, Gin, and Echo, along with gRPC interceptors, you can quickly add observability to your applications. Manual instrumentation allows you to capture custom business logic and create meaningful traces that help debug complex issues.
+Instrumenting Go applications with OpenTelemetry provides deep visibility into your distributed systems. By leveraging auto-instrumentation for HTTP frameworks like net/http, Gin, and Echo, along with gRPC stats handlers, you can quickly add observability to your applications. Manual instrumentation allows you to capture custom business logic and create meaningful traces that help debug complex issues.
 
 Key takeaways:
 
