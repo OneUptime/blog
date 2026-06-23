@@ -96,6 +96,7 @@ metadata:
   namespace: dev                    # Binding is scoped to this namespace
 subjects:
   - kind: Group
+    apiGroup: rbac.authorization.k8s.io  # Required for User/Group subjects
     name: corp:k8s-devs             # SSO/OIDC group from your identity provider
 roleRef:
   apiGroup: rbac.authorization.k8s.io
