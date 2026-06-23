@@ -449,8 +449,12 @@ class Post(Base):
         comment="Short excerpt for previews"
     )
     
-    # Metadata stored as JSONB for flexibility
-    metadata = Column(
+    # Metadata stored as JSONB for flexibility.
+    # NOTE: "metadata" is reserved by SQLAlchemy's Declarative API, so the
+    # Python attribute is named post_metadata while the database column is
+    # explicitly named "metadata".
+    post_metadata = Column(
+        "metadata",
         JSONB,
         default=dict,
         nullable=False,
@@ -499,7 +503,7 @@ class Post(Base):
         # Index for listing published posts by date
         Index("ix_posts_published", "is_published", "published_at"),
         # GIN index for JSONB searches
-        Index("ix_posts_metadata", "metadata", postgresql_using="gin"),
+        Index("ix_posts_metadata", "post_metadata", postgresql_using="gin"),
     )
 
 
