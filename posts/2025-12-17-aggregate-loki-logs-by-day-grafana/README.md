@@ -38,14 +38,15 @@ To count all logs by day, use `count_over_time` with a 24-hour range:
 sum(count_over_time({job="myapp"}[24h]))
 ```
 
-However, this gives a rolling 24-hour count. For calendar-day aggregation, use the `$__interval` variable with appropriate time range settings.
+However, this gives a rolling 24-hour count at each evaluation timestamp. For day-sized buckets in Grafana, use the `$__interval` variable with a 1-day query interval and align the dashboard time range to day boundaries.
 
 ### Setting Up Time Bucketing
 
 In your Grafana panel:
 
 1. Set **Time range** to Last 7 days (or desired period)
-2. Set **Query options** > **Interval** to `1d`
+2. Set **Query options** > **Min interval** to `1d`
+3. Align the time range to day boundaries when you need calendar-day buckets
 
 ```logql
 sum(count_over_time({job="myapp"}[$__interval]))
@@ -83,9 +84,9 @@ When logs contain structured data:
 
 Aggregate by parsed fields:
 
-```logql
-# Count errors by service
+Count errors by service:
 
+```logql
 sum by (service) (
   count_over_time(
     {job="myapp"}
@@ -104,11 +105,12 @@ For semi-structured logs:
 2024-01-15 10:30:00 INFO [api-service] Request processed in 150ms
 ```
 
+Average duration per day:
+
 ```logql
-# Average duration per day
 avg_over_time(
   {job="myapp"}
-  | pattern "<timestamp> <level> [<service>] Request processed in <duration>ms"
+  | pattern "<date> <time> <level> [<service>] Request processed in <duration>ms"
   | unwrap duration
   [$__interval]
 )
@@ -116,8 +118,9 @@ avg_over_time(
 
 ### Sum of Extracted Values
 
+Total bytes transferred per day:
+
 ```logql
-# Total bytes transferred per day
 sum(
   sum_over_time(
     {job="nginx"}
@@ -195,11 +198,15 @@ sum(count_over_time({job=~".+"} [$__interval]))
 
 Compare this week to last week:
 
-```logql
-# This week's daily count
-sum(count_over_time({job="myapp"} [$__interval]))
+This week's daily count:
 
-# Last week (use time shift in query options)
+```logql
+sum(count_over_time({job="myapp"} [$__interval]))
+```
+
+Last week:
+
+```logql
 sum(count_over_time({job="myapp"} [$__interval] offset 7d))
 ```
 
@@ -243,8 +250,9 @@ This returns megabytes of logs per day per namespace.
 
 ### Log Ingestion Rate Trend
 
+Logs per second, averaged over each query interval:
+
 ```logql
-# Logs per second, averaged over each day
 sum(rate({job=~".+"} [$__interval]))
 ```
 
@@ -260,11 +268,11 @@ Configure table transformations:
 
 1. **Transform** > **Organize fields** - Rename columns
 2. **Transform** > **Sort by** - Sort by date descending
-3. **Transform** > **Group by** - Group by day
+3. **Transform** > **Group by** - Group by the time field if you need additional table calculations
 
 ## Handling Time Zones
 
-Grafana and Loki use UTC by default. For local time zone daily aggregation:
+Loki stores and queries log timestamps as instants in time, while Grafana controls how those timestamps are displayed and how dashboard time ranges are selected. For local time zone daily aggregation:
 
 ### Dashboard Time Zone Setting
 
@@ -273,24 +281,27 @@ Grafana and Loki use UTC by default. For local time zone daily aggregation:
 
 ### Query-Level Time Shift
 
-If your logs use a different time zone:
+Use LogQL `offset` to compare with a previous time window. The `offset` modifier shifts the range vector used by the query; it does not change the dashboard time zone.
 
 ```logql
-# Shift by hours to align with your time zone
-sum(count_over_time({job="myapp"} [$__interval] offset -5h))
+sum(count_over_time({job="myapp"} [$__interval] offset 5h))
 ```
 
 ## Complete Example: API Daily Report
 
+Total API calls per day:
+
 ```logql
-# Total API calls per day
 sum(count_over_time(
   {job="api-gateway"}
   | json
   [$__interval]
 ))
+```
 
-# Successful calls (2xx status)
+Successful calls (2xx status):
+
+```logql
 sum(count_over_time(
   {job="api-gateway"}
   | json
@@ -298,16 +309,22 @@ sum(count_over_time(
   | status_code < 300
   [$__interval]
 ))
+```
 
-# Failed calls (4xx and 5xx)
+Failed calls (4xx and 5xx):
+
+```logql
 sum(count_over_time(
   {job="api-gateway"}
   | json
   | status_code >= 400
   [$__interval]
 ))
+```
 
-# Average response time per day
+Average response time per day:
+
+```logql
 avg_over_time(
   {job="api-gateway"}
   | json
@@ -320,31 +337,43 @@ avg_over_time(
 
 ### 1. Use Specific Stream Selectors
 
-```logql
-# Good - specific selector
-sum(count_over_time({job="api", namespace="production"} [$__interval]))
+Good - specific selector:
 
-# Bad - broad selector
+```logql
+sum(count_over_time({job="api", namespace="production"} [$__interval]))
+```
+
+Bad - broad selector:
+
+```logql
 sum(count_over_time({job=~".+"} [$__interval]))
 ```
 
 ### 2. Filter Before Parsing
 
-```logql
-# Good - filter first
-sum(count_over_time({job="api"} |= "error" | json [$__interval]))
+Good - filter first:
 
-# Bad - parse everything
+```logql
+sum(count_over_time({job="api"} |= "error" | json [$__interval]))
+```
+
+Bad - parse everything:
+
+```logql
 sum(count_over_time({job="api"} | json | level = "error" [$__interval]))
 ```
 
 ### 3. Use Line Filters for Performance
 
-```logql
-# Fast - line filter
-{job="api"} |= "error"
+Fast - line filter:
 
-# Slower - label filter after parse
+```logql
+{job="api"} |= "error"
+```
+
+Slower - label filter after parse:
+
+```logql
 {job="api"} | json | level = "error"
 ```
 
@@ -353,7 +382,7 @@ sum(count_over_time({job="api"} | json | level = "error" [$__interval]))
 Aggregating Loki logs by day in Grafana involves:
 
 1. **Using `count_over_time`** with 24h ranges or `$__interval`
-2. **Setting the query interval** to `1d` in panel settings
+2. **Setting the minimum query interval** to `1d` in panel settings
 3. **Grouping by labels** with `sum by (label)`
 4. **Parsing logs** with `json` or `pattern` before aggregation
 5. **Creating recording rules** for frequently accessed aggregations
