@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Terraform, Infrastructure as Code, AWS, S3, DynamoDB, Backend
+Tags: Terraform, Infrastructure as Code, AWS, S3, Backend
 
 Description: Learn how to bootstrap your Terraform backend infrastructure using Terraform itself, solving the chicken-and-egg problem of creating remote state storage before you can use it.
 
@@ -36,7 +36,7 @@ Create a dedicated bootstrap module that creates the necessary backend infrastru
 # bootstrap/main.tf
 
 terraform {
-  required_version = ">= 1.0.0"
+  required_version = ">= 1.10.0"
   required_providers {
     aws = {
       source  = "hashicorp/aws"
@@ -111,24 +111,6 @@ resource "aws_s3_bucket_public_access_block" "terraform_state" {
   restrict_public_buckets = true
 }
 
-# DynamoDB table for state locking
-resource "aws_dynamodb_table" "terraform_locks" {
-  name         = "${var.project_name}-terraform-locks-${var.environment}"
-  billing_mode = "PAY_PER_REQUEST"
-  hash_key     = "LockID"
-
-  attribute {
-    name = "LockID"
-    type = "S"
-  }
-
-  tags = {
-    Name        = "Terraform Lock Table"
-    Environment = var.environment
-    ManagedBy   = "terraform-bootstrap"
-  }
-}
-
 # Outputs needed for backend configuration
 output "s3_bucket_name" {
   description = "S3 bucket name for Terraform state"
@@ -140,20 +122,15 @@ output "s3_bucket_arn" {
   value       = aws_s3_bucket.terraform_state.arn
 }
 
-output "dynamodb_table_name" {
-  description = "DynamoDB table name for state locking"
-  value       = aws_dynamodb_table.terraform_locks.name
-}
-
 output "backend_config" {
   description = "Backend configuration block to copy"
   value = <<-EOT
     backend "s3" {
-      bucket         = "${aws_s3_bucket.terraform_state.id}"
-      key            = "terraform.tfstate"
-      region         = "${var.aws_region}"
-      encrypt        = true
-      dynamodb_table = "${aws_dynamodb_table.terraform_locks.name}"
+      bucket       = "${aws_s3_bucket.terraform_state.id}"
+      key          = "terraform.tfstate"
+      region       = "${var.aws_region}"
+      encrypt      = true
+      use_lockfile = true
     }
   EOT
 }
@@ -180,14 +157,14 @@ Now create your main Terraform configuration with the backend block:
 # main.tf
 
 terraform {
-  required_version = ">= 1.0.0"
+  required_version = ">= 1.10.0"
 
   backend "s3" {
-    bucket         = "myproject-terraform-state-shared"
-    key            = "main/terraform.tfstate"
-    region         = "us-east-1"
-    encrypt        = true
-    dynamodb_table = "myproject-terraform-locks-shared"
+    bucket       = "myproject-terraform-state-shared"
+    key          = "main/terraform.tfstate"
+    region       = "us-east-1"
+    encrypt      = true
+    use_lockfile = true
   }
 
   required_providers {
@@ -216,11 +193,11 @@ cd bootstrap
 cat >> backend.tf << 'EOF'
 terraform {
   backend "s3" {
-    bucket         = "myproject-terraform-state-shared"
-    key            = "bootstrap/terraform.tfstate"
-    region         = "us-east-1"
-    encrypt        = true
-    dynamodb_table = "myproject-terraform-locks-shared"
+    bucket       = "myproject-terraform-state-shared"
+    key          = "bootstrap/terraform.tfstate"
+    region       = "us-east-1"
+    encrypt      = true
+    use_lockfile = true
   }
 }
 EOF
@@ -231,16 +208,15 @@ terraform init -migrate-state
 
 Terraform will ask if you want to copy the existing state to the new backend - confirm with "yes".
 
-## Advanced: Self-Referencing Backend Module
+## Advanced: Self-Referencing Backend Configuration
 
-For more sophisticated setups, you can create a module that manages its own state migration:
+For more sophisticated setups, you can create a root configuration that generates its own backend configuration for manual migration:
 
 ```hcl
 # backend-self-manage/main.tf
 
 locals {
   bucket_name = "${var.project_name}-terraform-state"
-  table_name  = "${var.project_name}-terraform-locks"
 }
 
 resource "aws_s3_bucket" "state" {
@@ -258,28 +234,17 @@ resource "aws_s3_bucket_versioning" "state" {
   }
 }
 
-resource "aws_dynamodb_table" "locks" {
-  name         = local.table_name
-  billing_mode = "PAY_PER_REQUEST"
-  hash_key     = "LockID"
-
-  attribute {
-    name = "LockID"
-    type = "S"
-  }
-}
-
 # Generate backend configuration file
 resource "local_file" "backend_config" {
   filename = "${path.module}/generated-backend.tf"
   content  = <<-EOT
     terraform {
       backend "s3" {
-        bucket         = "${local.bucket_name}"
-        key            = "backend/terraform.tfstate"
-        region         = "${var.aws_region}"
-        encrypt        = true
-        dynamodb_table = "${local.table_name}"
+        bucket       = "${local.bucket_name}"
+        key          = "backend/terraform.tfstate"
+        region       = "${var.aws_region}"
+        encrypt      = true
+        use_lockfile = true
       }
     }
   EOT
@@ -298,11 +263,11 @@ Use different state file keys for different environments:
 
 ```hcl
 backend "s3" {
-  bucket         = "company-terraform-state"
-  key            = "environments/production/terraform.tfstate"
-  region         = "us-east-1"
-  encrypt        = true
-  dynamodb_table = "company-terraform-locks"
+  bucket       = "company-terraform-state"
+  key          = "environments/production/terraform.tfstate"
+  region       = "us-east-1"
+  encrypt      = true
+  use_lockfile = true
 }
 ```
 
@@ -404,4 +369,4 @@ resource "aws_s3_bucket" "terraform_state" {
 
 ## Conclusion
 
-Setting up a Terraform backend using Terraform itself requires a two-phase approach but provides a fully automated and reproducible way to bootstrap your infrastructure. By following this pattern, you ensure your backend infrastructure is managed as code and can be easily replicated across different projects or accounts. Remember to always enable versioning and encryption on your state bucket, and use DynamoDB for state locking in team environments.
+Setting up a Terraform backend using Terraform itself requires a two-phase approach but provides a fully automated and reproducible way to bootstrap your infrastructure. By following this pattern, you ensure your backend infrastructure is managed as code and can be easily replicated across different projects or accounts. Remember to always enable versioning and encryption on your state bucket, and enable state locking in team environments.
