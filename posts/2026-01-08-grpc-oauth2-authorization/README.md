@@ -945,6 +945,11 @@ type Auth0Claims struct {
 
 // ValidateToken validates an Auth0 access token
 func (v *Auth0Validator) ValidateToken(tokenString string) (*Auth0Claims, error) {
+    expectedIssuer := fmt.Sprintf("https://%s/", v.config.Domain)
+
+    // In golang-jwt/jwt/v5, audience and issuer are validated via parser
+    // options rather than the VerifyAudience/VerifyIssuer methods that
+    // existed on the claims types in v4.
     token, err := jwt.ParseWithClaims(tokenString, &Auth0Claims{}, func(token *jwt.Token) (interface{}, error) {
         // Verify signing method
         if _, ok := token.Method.(*jwt.SigningMethodRSA); !ok {
@@ -964,7 +969,10 @@ func (v *Auth0Validator) ValidateToken(tokenString string) (*Auth0Claims, error)
         }
 
         return keys[0].Key, nil
-    })
+    },
+        jwt.WithAudience(v.config.Audience),
+        jwt.WithIssuer(expectedIssuer),
+    )
 
     if err != nil {
         return nil, err
@@ -973,17 +981,6 @@ func (v *Auth0Validator) ValidateToken(tokenString string) (*Auth0Claims, error)
     claims, ok := token.Claims.(*Auth0Claims)
     if !ok || !token.Valid {
         return nil, fmt.Errorf("invalid token")
-    }
-
-    // Verify audience
-    if !claims.VerifyAudience(v.config.Audience, true) {
-        return nil, fmt.Errorf("invalid audience")
-    }
-
-    // Verify issuer
-    expectedIssuer := fmt.Sprintf("https://%s/", v.config.Domain)
-    if !claims.VerifyIssuer(expectedIssuer, true) {
-        return nil, fmt.Errorf("invalid issuer")
     }
 
     return claims, nil
