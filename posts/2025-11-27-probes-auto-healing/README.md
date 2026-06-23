@@ -142,7 +142,7 @@ Monitor probe events; flapping indicates thresholds are too aggressive.
 
 ## 6. Alert on Probe Failures
 
-Don't rely solely on Kubernetes to handle probe failures silently. Set up alerting so your team is notified when containers restart frequently, which often indicates an underlying issue that needs investigation. Scrape `kubelet_probe_*` or `kube_pod_container_status_restarts_total` metrics from your monitoring system.
+Don't rely solely on Kubernetes to handle probe failures silently. Set up alerting so your team is notified when containers restart frequently, which often indicates an underlying issue that needs investigation. Scrape `prober_probe_total` (exposed by the kubelet at `/metrics/probes`) or `kube_pod_container_status_restarts_total` metrics from your monitoring system.
 
 The following PromQL query fires an alert when a container restarts more than 3 times in 5 minutes, which typically indicates a crashloop or persistent health issue:
 
