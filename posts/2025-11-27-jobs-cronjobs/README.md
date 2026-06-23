@@ -63,11 +63,12 @@ Need to crunch large datasets? Use `parallelism` and `completions` to fan out wo
 
 ```yaml
 spec:
+  completionMode: Indexed  # Give each Pod a fixed completion index
   completions: 10   # Total number of Pods that must succeed
   parallelism: 5    # Run up to 5 Pods at a time
 ```
 
-Each Pod gets a unique `JOB_COMPLETION_INDEX` env var (0-9 in this example), handy for sharding workloads. Your script can use this index to determine which data partition to process.
+With `completionMode: Indexed`, each Pod gets a unique `JOB_COMPLETION_INDEX` env var (0-9 in this example), handy for sharding workloads. Your script can use this index to determine which data partition to process. (Without `Indexed` mode the default is `NonIndexed`, and the index is not exposed.)
 
 ## 3. Scheduled CronJob
 
