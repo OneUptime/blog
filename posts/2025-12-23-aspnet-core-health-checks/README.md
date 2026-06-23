@@ -274,6 +274,7 @@ For visual monitoring, add the Health Checks UI package:
 
 ```bash
 dotnet add package AspNetCore.HealthChecks.UI
+dotnet add package AspNetCore.HealthChecks.UI.Client
 dotnet add package AspNetCore.HealthChecks.UI.InMemory.Storage
 ```
 
@@ -379,6 +380,11 @@ builder.Services.AddHealthChecks()
 
 Here is a production-ready health check configuration:
 
+```bash
+dotnet add package AspNetCore.HealthChecks.Uris
+dotnet add package AspNetCore.HealthChecks.System
+```
+
 ```csharp
 var builder = WebApplication.CreateBuilder(args);
 
@@ -397,8 +403,8 @@ builder.Services.AddHealthChecks()
 
     // External service checks
     .AddUrlGroup(
-        new Uri("https://api.stripe.com/v1/health"),
-        name: "stripe-api",
+        new Uri(builder.Configuration["ExternalServices:PaymentApiHealthUrl"]!),
+        name: "payment-api",
         failureStatus: HealthStatus.Degraded,
         tags: new[] { "external", "ready" })
 
