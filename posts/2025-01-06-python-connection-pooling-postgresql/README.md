@@ -70,7 +70,7 @@ class DatabasePool:
         )
 
     def get_connection(self):
-        """Get a connection from the pool (blocks if none available)"""
+        """Get a connection from the pool (raises PoolError if exhausted)"""
         return self._pool.getconn()
 
     def return_connection(self, conn):
