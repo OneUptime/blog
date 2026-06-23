@@ -147,8 +147,13 @@ openssl x509 -req -in server.csr -CA ca.crt -CAkey ca.key \
     -CAcreateserial -out server.crt -days 365 -extensions req_ext \
     -extfile server-csr.conf
 
+# Create peer certificate files for peer-transport-security
+cp server.crt peer.crt
+cp server.key peer.key
+
 # Copy certificates to etcd directory
-sudo cp ca.crt server.crt server.key /etc/etcd/pki/
+sudo mkdir -p /etc/etcd/pki
+sudo cp ca.crt server.crt server.key peer.crt peer.key /etc/etcd/pki/
 sudo chown -R etcd:etcd /etc/etcd/pki
 ```
 
@@ -528,14 +533,11 @@ Use transactions for atomic operations:
 
 ```bash
 # Conditional put - only if key doesn't exist
-etcdctl txn <<EOF
-compares:
-version("/config/api/lock") = 0
+etcdctl txn --interactive <<EOF
+version("/config/api/lock") = "0"
 
-success requests:
 put /config/api/lock "acquired"
 
-failure requests:
 get /config/api/lock
 EOF
 ```
@@ -590,7 +592,7 @@ etcdctl compact $(etcdctl endpoint status -w json | jq -r '.[0].Status.header.re
 3. **Separate disks** - Use fast SSDs for etcd data directory
 4. **Monitor disk latency** - etcd is sensitive to slow disk I/O
 5. **Compact regularly** - Prevent unbounded growth of history
-6. **Keep values small** - Default max value size is 1.5MB
+6. **Keep values small** - Default max request size is 1.5MB
 
 ---
 
