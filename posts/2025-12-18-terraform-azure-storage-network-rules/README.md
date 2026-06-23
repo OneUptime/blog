@@ -48,6 +48,10 @@ terraform {
       source  = "hashicorp/azurerm"
       version = "~> 3.85"
     }
+    random = {
+      source  = "hashicorp/random"
+      version = "~> 3.6"
+    }
   }
 }
 
@@ -68,7 +72,7 @@ variable "location" {
 
 variable "allowed_ips" {
   type        = list(string)
-  description = "List of allowed IP addresses or CIDR ranges"
+  description = "List of allowed public IPv4 addresses or CIDR ranges"
   default     = []
 }
 
@@ -92,7 +96,7 @@ resource "azurerm_storage_account" "main" {
   # Disable public blob access
   allow_nested_items_to_be_public = false
 
-  # Disable shared key access (use Azure AD only)
+  # Enable shared key access for Terraform container operations in this basic example
   shared_access_key_enabled = true
 
   # Network rules - deny all by default
@@ -169,8 +173,8 @@ resource "azurerm_storage_account" "with_vnet" {
 
     # Allow specific IPs (e.g., office IP, CI/CD runners)
     ip_rules = [
-      "203.0.113.50",      # Office IP
-      "198.51.100.0/24"    # CI/CD range
+      "16.17.18.19",      # Office IP
+      "16.17.18.0/24"     # CI/CD range
     ]
 
     # Allow specific subnets
@@ -302,6 +306,11 @@ variable "containers" {
   }
 }
 
+variable "data_factory_id" {
+  type        = string
+  description = "Exact resource ID of the Azure Data Factory instance allowed through the storage firewall"
+}
+
 # main.tf
 resource "azurerm_storage_account" "data_lake" {
   name                     = "datalake${random_string.suffix.result}"
@@ -339,9 +348,9 @@ resource "azurerm_storage_account" "data_lake" {
 
     bypass = ["AzureServices", "Logging", "Metrics"]
 
-    # Allow specific resource instances
+    # Allow a specific resource instance
     private_link_access {
-      endpoint_resource_id = "/subscriptions/${data.azurerm_subscription.current.subscription_id}/providers/Microsoft.DataFactory/factories/*"
+      endpoint_resource_id = var.data_factory_id
       endpoint_tenant_id   = data.azurerm_subscription.current.tenant_id
     }
   }
