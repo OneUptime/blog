@@ -222,7 +222,8 @@ spec:
 
   # Reference to a Secret containing the MD5 password
   # The Secret must be in the metallb-system namespace
-  password: bgp-auth-secret
+  passwordSecret:
+    name: bgp-auth-secret
 
   holdTime: 90s
   keepaliveTime: 30s
@@ -241,7 +242,7 @@ kind: Secret
 metadata:
   name: bgp-auth-secret
   namespace: metallb-system
-type: Opaque
+type: kubernetes.io/basic-auth
 data:
   # Base64 encoded password - replace with your actual password
   # echo -n 'your-secure-password' | base64
@@ -269,7 +270,7 @@ spec:
   peerAddress: 192.168.1.1
 
   # nodeSelectors restricts which nodes establish BGP sessions
-  # Only nodes matching ALL selectors will peer with this router
+  # Nodes matching any selector will peer with this router
   nodeSelectors:
     - matchLabels:
         # Only nodes labeled as network nodes will peer
@@ -397,9 +398,9 @@ spec:
   # communities applies BGP community attributes to advertised routes
   # Format can be standard (ASN:value) or well-known names
   communities:
-    # Reference to Community resources defined below
-    - production-community
-    - high-priority-community
+    # Reference to community aliases defined below
+    - production
+    - high-priority
 
   localPref: 150
   aggregationLength: 32
@@ -407,7 +408,7 @@ spec:
 
 Define the community values:
 
-Community resources define reusable community values that can be referenced by multiple advertisements.
+Community resources define reusable community aliases that can be referenced by multiple advertisements.
 
 ```yaml
 # bgp-communities.yaml
@@ -454,7 +455,7 @@ spec:
     - name: backup-path
       value: "64512:50"
 
-    # no-advertise prevents the route from being advertised to any peer
+    # no-advertise prevents the route from being advertised to any other peer
     - name: do-not-advertise
       value: "no-advertise"
 ```
@@ -519,7 +520,7 @@ spec:
   localPref: 200
 
   communities:
-    - production-community
+    - production
 
   aggregationLength: 32
 
@@ -542,7 +543,7 @@ spec:
   localPref: 100
 
   communities:
-    - backup-community
+    - backup-path
 
   aggregationLength: 32
 ```
@@ -622,7 +623,8 @@ spec:
   myASN: 64513
   peerASN: 64512
   peerAddress: 192.168.1.1
-  password: bgp-dc1-secret
+  passwordSecret:
+    name: bgp-dc1-secret
   holdTime: 90s
   keepaliveTime: 30s
   # Enable BFD for faster failure detection
@@ -639,7 +641,8 @@ spec:
   myASN: 64513
   peerASN: 64512
   peerAddress: 192.168.1.2
-  password: bgp-dc1-secret
+  passwordSecret:
+    name: bgp-dc1-secret
   holdTime: 90s
   keepaliveTime: 30s
   bfdProfile: production-bfd
@@ -655,7 +658,8 @@ spec:
   myASN: 64513
   peerASN: 64512
   peerAddress: 192.168.2.1
-  password: bgp-dc2-secret
+  passwordSecret:
+    name: bgp-dc2-secret
   holdTime: 90s
   keepaliveTime: 30s
   bfdProfile: production-bfd
@@ -671,7 +675,8 @@ spec:
   myASN: 64513
   peerASN: 64512
   peerAddress: 192.168.2.2
-  password: bgp-dc2-secret
+  passwordSecret:
+    name: bgp-dc2-secret
   holdTime: 90s
   keepaliveTime: 30s
   bfdProfile: production-bfd
@@ -714,7 +719,7 @@ spec:
     - dc1-router-primary
   localPref: 200
   communities:
-    - dc1-primary-community
+    - dc1-primary
   aggregationLength: 32
 
 ---
@@ -731,7 +736,7 @@ spec:
     - dc1-router-secondary
   localPref: 190
   communities:
-    - dc1-secondary-community
+    - dc1-secondary
   aggregationLength: 32
 
 ---
@@ -748,7 +753,7 @@ spec:
     - dc2-router-primary
   localPref: 150
   communities:
-    - dc2-primary-community
+    - dc2-primary
   aggregationLength: 32
 
 ---
@@ -765,7 +770,7 @@ spec:
     - dc2-router-secondary
   localPref: 140
   communities:
-    - dc2-secondary-community
+    - dc2-secondary
   aggregationLength: 32
 
 ---
@@ -870,7 +875,7 @@ router bgp 64512
 route-map METALLB-IN permit 10
   # Match MetalLB service IP range
   match ip address prefix-list METALLB-PREFIXES
-  # Set local preference based on community
+  # Set local preference for accepted MetalLB routes
   set local-preference 100
 
 # Prefix list for MetalLB IPs
@@ -929,31 +934,30 @@ VyOS is a popular open-source network OS:
 configure
 
 # Set BGP AS number
-set protocols bgp 64512
+set protocols bgp system-as 64512
 
 # Set router ID
-set protocols bgp 64512 parameters router-id 192.168.1.1
+set protocols bgp parameters router-id 192.168.1.1
 
 # Configure neighbor group
-set protocols bgp 64512 peer-group METALLB
-set protocols bgp 64512 peer-group METALLB remote-as 64513
-set protocols bgp 64512 peer-group METALLB password 'your-secure-password'
-set protocols bgp 64512 peer-group METALLB timers holdtime 90
-set protocols bgp 64512 peer-group METALLB timers keepalive 30
+set protocols bgp peer-group METALLB
+set protocols bgp peer-group METALLB remote-as 64513
+set protocols bgp peer-group METALLB password 'your-secure-password'
+set protocols bgp peer-group METALLB timers holdtime 90
+set protocols bgp peer-group METALLB timers keepalive 30
 
 # Add Kubernetes nodes as neighbors
-set protocols bgp 64512 neighbor 192.168.1.10 peer-group METALLB
-set protocols bgp 64512 neighbor 192.168.1.10 description 'K8s-Node-1'
-set protocols bgp 64512 neighbor 192.168.1.11 peer-group METALLB
-set protocols bgp 64512 neighbor 192.168.1.11 description 'K8s-Node-2'
-set protocols bgp 64512 neighbor 192.168.1.12 peer-group METALLB
-set protocols bgp 64512 neighbor 192.168.1.12 description 'K8s-Node-3'
+set protocols bgp neighbor 192.168.1.10 peer-group METALLB
+set protocols bgp neighbor 192.168.1.10 description 'K8s-Node-1'
+set protocols bgp neighbor 192.168.1.11 peer-group METALLB
+set protocols bgp neighbor 192.168.1.11 description 'K8s-Node-2'
+set protocols bgp neighbor 192.168.1.12 peer-group METALLB
+set protocols bgp neighbor 192.168.1.12 description 'K8s-Node-3'
 
 # Configure address family
-set protocols bgp 64512 address-family ipv4-unicast
-set protocols bgp 64512 neighbor 192.168.1.10 address-family ipv4-unicast
-set protocols bgp 64512 neighbor 192.168.1.11 address-family ipv4-unicast
-set protocols bgp 64512 neighbor 192.168.1.12 address-family ipv4-unicast
+set protocols bgp neighbor 192.168.1.10 address-family ipv4-unicast
+set protocols bgp neighbor 192.168.1.11 address-family ipv4-unicast
+set protocols bgp neighbor 192.168.1.12 address-family ipv4-unicast
 
 # Apply route-map for MetalLB routes
 set policy route-map METALLB-IN rule 10 action permit
@@ -964,6 +968,10 @@ set policy route-map METALLB-IN rule 10 set local-preference 100
 set policy prefix-list METALLB-NETS rule 10 action permit
 set policy prefix-list METALLB-NETS rule 10 prefix 10.100.0.0/24
 set policy prefix-list METALLB-NETS rule 10 le 32
+
+set protocols bgp neighbor 192.168.1.10 address-family ipv4-unicast route-map import METALLB-IN
+set protocols bgp neighbor 192.168.1.11 address-family ipv4-unicast route-map import METALLB-IN
+set protocols bgp neighbor 192.168.1.12 address-family ipv4-unicast route-map import METALLB-IN
 
 commit
 save
@@ -1064,7 +1072,7 @@ metadata:
   namespace: default
   annotations:
     # Optionally specify which pool to use
-    metallb.universe.tf/address-pool: production-pool
+    metallb.io/address-pool: production-pool
 spec:
   type: LoadBalancer
   selector:
