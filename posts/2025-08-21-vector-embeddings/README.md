@@ -72,7 +72,7 @@ embedding_kitten = np.array([0.85, 0.15, 0.28])
 embedding_truck = np.array([0.1, 0.8, 0.7])
 
 print(cosine_similarity(embedding_cat, embedding_kitten))   # ~0.998 (very similar)
-print(cosine_similarity(embedding_cat, embedding_truck))     # ~0.494 (not similar)
+print(cosine_similarity(embedding_cat, embedding_truck))     # ~0.373 (not similar)
 ```
 
 ## Using Embeddings for Semantic Search
