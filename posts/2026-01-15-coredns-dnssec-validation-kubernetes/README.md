@@ -122,14 +122,16 @@ This default configuration does NOT validate DNSSEC. External queries are forwar
 
 ## Enabling DNSSEC Validation
 
-CoreDNS supports DNSSEC validation through two approaches:
+It is important to understand what CoreDNS can and cannot do here. CoreDNS does **not** perform recursive DNSSEC validation itself — neither the `forward` plugin nor any other built-in plugin verifies RRSIG signatures of upstream answers. The way to get validation in a Kubernetes cluster is to forward external queries to an upstream resolver that validates, and pass its result (including a SERVFAIL on a bogus answer) back to your pods.
 
-1. **Using a validating upstream resolver** (simpler)
-2. **Native DNSSEC validation with the `dnssec` plugin** (more control)
+The separate `dnssec` plugin does **not** validate either — it performs on-the-fly *signing* of zones CoreDNS is authoritative for (such as `cluster.local`). The two capabilities solve different problems:
+
+1. **Validating external responses** — forward to a validating upstream resolver (simpler, and the only way to get validation)
+2. **Signing your own internal zone** — use the `dnssec` plugin with signing keys
 
 ### Approach 1: Validating Upstream Resolver
 
-The simplest method is to forward queries to a resolver that performs DNSSEC validation.
+The simplest — and the only — way to get DNSSEC validation for external names is to forward queries to a resolver that performs DNSSEC validation and returns SERVFAIL for bogus answers.
 
 #### Using Cloudflare's 1.1.1.1
 
@@ -232,9 +234,9 @@ data:
     }
 ```
 
-### Approach 2: Native DNSSEC Validation
+### Approach 2: Signing Internal Zones with the `dnssec` Plugin
 
-For full control, use CoreDNS's native DNSSEC capabilities with the `dnssec` plugin.
+CoreDNS's `dnssec` plugin does not validate upstream answers — it performs on-the-fly *signing* of the zones CoreDNS is authoritative for. In a cluster that means signing `cluster.local` so that a downstream validating resolver can verify CoreDNS's own answers. It requires signing keys; an empty `dnssec` block with no keys does nothing useful.
 
 #### Full Corefile with DNSSEC Plugin
 
@@ -259,6 +261,7 @@ data:
         }
         prometheus :9153
         dnssec {
+            key file /etc/coredns/keys/Kcluster.local.+013+12345
             cache_capacity 10000
         }
         forward . 1.1.1.1 8.8.8.8 {
@@ -274,18 +277,22 @@ data:
     }
 ```
 
+In this configuration the `dnssec` plugin signs the `cluster.local` records served by the `kubernetes` plugin, while external names are still forwarded to validating upstream resolvers (which perform the actual validation).
+
 #### DNSSEC Plugin Configuration Options
 
 ```text
 dnssec [ZONES...] {
+    key file KEY...
     cache_capacity CAPACITY
 }
 ```
 
 | Option | Description | Default |
 |--------|-------------|---------|
-| `cache_capacity` | Number of DNSSEC records to cache | 10000 |
-| `ZONES` | Zones to enable DNSSEC for | . (root) |
+| `key file` | Path(s) to the signing key pair, without the `.key`/`.private` extension | (required) |
+| `cache_capacity` | Number of signatures (RRSIGs) to cache | 10000 |
+| `ZONES` | Zones to sign | zones of the enclosing server block |
 
 ### Signing Internal Zones
 
@@ -326,7 +333,7 @@ data:
             ttl 30
         }
         dnssec {
-            key file /etc/coredns/keys/Kcluster.local
+            key file /etc/coredns/keys/Kcluster.local.+013+12345
             cache_capacity 10000
         }
         prometheus :9153
@@ -343,9 +350,6 @@ data:
         }
         ready
         prometheus :9153
-        dnssec {
-            cache_capacity 10000
-        }
         forward . 9.9.9.9 149.112.112.112 {
             max_concurrent 1000
         }
@@ -384,9 +388,6 @@ data:
             ttl 30
         }
         prometheus :9153
-        dnssec {
-            cache_capacity 10000
-        }
         forward . tls://1.1.1.1 tls://1.0.0.1 {
             tls_servername cloudflare-dns.com
             max_concurrent 1000
@@ -630,9 +631,6 @@ data:
             ttl 30
         }
         prometheus :9153
-        dnssec {
-            cache_capacity 10000
-        }
         forward . tls://9.9.9.9 tls://149.112.112.112 {
             tls_servername dns.quad9.net
             max_concurrent 1000
@@ -723,7 +721,7 @@ kubectl exec -it dns-test -- dig @10.96.0.10 cloudflare.com +dnssec
 
 ```bash
 # Check for the AD (Authenticated Data) flag
-kubectl exec -it dns-test -- dig @10.96.0.10 google.com +dnssec | grep flags
+kubectl exec -it dns-test -- dig @10.96.0.10 iana.org +dnssec | grep flags
 
 # Output should include 'ad' flag:
 # ;; flags: qr rd ra ad; QUERY: 1, ANSWER: 1, AUTHORITY: 0, ADDITIONAL: 1
@@ -742,7 +740,7 @@ kubectl exec -it dns-test -- dig @10.96.0.10 dnssec-failed.org +short
 kubectl exec -it dns-test -- dig @10.96.0.10 sigfail.verteiltesysteme.net +short
 
 # Wrong signature
-kubectl exec -it dns-test -- dig @10.96.0.10 bogus.d.]ns-oarc.net +short
+kubectl exec -it dns-test -- dig @10.96.0.10 rhybar.cz +short
 ```
 
 ## Monitoring DNSSEC
@@ -977,9 +975,6 @@ data:
             ttl 30
         }
         prometheus :9153
-        dnssec {
-            cache_capacity 10000
-        }
         forward . 1.1.1.1 8.8.8.8 {
             max_concurrent 1000
         }
@@ -1113,7 +1108,8 @@ kubectl set image deployment/coredns coredns=coredns/coredns:1.11.1 -n kube-syst
 
 | Configuration | Purpose | Recommendation |
 |---------------|---------|----------------|
-| **DNSSEC Plugin** | Native DNSSEC validation | Enable for external queries |
+| **DNSSEC Plugin** | On-the-fly signing of served zones | Optional; only to sign `cluster.local` |
+| **Validating Forwarder** | DNSSEC validation of external names | Forward to 1.1.1.1 / 9.9.9.9 / 8.8.8.8 |
 | **DoT Forward** | Encrypted upstream queries | Always enable in production |
 | **Cache Settings** | Reduce latency and load | 300s success, 30s denial |
 | **Replicas** | High availability | 2-3 for production |
@@ -1137,7 +1133,6 @@ kubectl set image deployment/coredns coredns=coredns/coredns:1.11.1 -n kube-syst
         ttl 30
     }
     prometheus :9153
-    dnssec { cache_capacity 10000 }
     forward . tls://9.9.9.9 tls://149.112.112.112 {
         tls_servername dns.quad9.net
         health_check 5s
@@ -1163,4 +1158,4 @@ kubectl set image deployment/coredns coredns=coredns/coredns:1.11.1 -n kube-syst
 
 ---
 
-DNSSEC validation in CoreDNS adds a critical layer of security to your Kubernetes cluster. By cryptographically verifying DNS responses, you protect your workloads from cache poisoning and spoofing attacks. Start with a validating upstream resolver for simplicity, then consider native DNSSEC validation for more control. Always use DNS over TLS to encrypt queries in transit.
+DNSSEC validation in CoreDNS adds a critical layer of security to your Kubernetes cluster. By forwarding to an upstream resolver that cryptographically verifies DNS responses, you protect your workloads from cache poisoning and spoofing attacks. Start with a validating upstream resolver — this is what actually performs validation — and use the `dnssec` plugin only if you also need to sign your internal `cluster.local` zone. Always use DNS over TLS to encrypt queries in transit.
