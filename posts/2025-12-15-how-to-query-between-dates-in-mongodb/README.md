@@ -23,7 +23,7 @@ MongoDB stores dates as BSON Date type, which represents milliseconds since the 
   // Specific date
   eventDate: new Date("2024-06-15T10:30:00Z"),
 
-  // ISODate helper (same as Date in shell)
+  // ISODate helper for BSON Date values in mongosh
   lastLogin: ISODate("2024-06-15T10:30:00Z")
 }
 ```
@@ -382,9 +382,9 @@ db.orders.find({
 ### Pitfall 1: String vs Date Comparison
 
 ```javascript
-// Wrong - comparing string to date
+// Wrong - comparing a string to a Date field
 db.orders.find({
-  createdAt: { $gte: "2024-01-15" }  // String comparison!
+  createdAt: { $gte: "2024-01-15" }  // Type mismatch with Date values
 })
 
 // Correct - use Date object
