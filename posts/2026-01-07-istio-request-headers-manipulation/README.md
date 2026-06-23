@@ -35,7 +35,7 @@ flowchart LR
         D --> E[Envoy Sidecar<br/>Destination]
         E --> F[Service]
         F --> G[Response]
-        G -->|"Response Headers<br/>Modified Here"| E
+        G -->|"Response Headers<br/>Modified by<br/>the routing proxy"| E
     end
 
     E --> B
@@ -58,8 +58,8 @@ sequenceDiagram
     SourceEnvoy->>DestEnvoy: Modified Request
     DestEnvoy->>Service: Forward Request
     Service->>DestEnvoy: Original Response
-    Note over DestEnvoy: Apply response<br/>header modifications
-    DestEnvoy->>SourceEnvoy: Modified Response
+    DestEnvoy->>SourceEnvoy: Original Response
+    Note over SourceEnvoy: Apply response<br/>header modifications
     SourceEnvoy->>Client: Final Response
 ```
 
@@ -448,10 +448,10 @@ spec:
 
 ### Dynamic Header Values with Envoy Variables
 
-Istio supports Envoy's built-in variables for dynamic header values:
+Istio supports Envoy's substitution formatters for dynamic header values:
 
 ```yaml
-# VirtualService using Envoy variables for dynamic header values
+# VirtualService using Envoy substitution formatters for dynamic header values
 # These variables are evaluated at request time
 apiVersion: networking.istio.io/v1beta1
 kind: VirtualService
@@ -480,14 +480,14 @@ spec:
             x-envoy-hostname: "%HOSTNAME%"
             # Add the protocol used (HTTP/1.1, HTTP/2, etc.)
             x-protocol: "%PROTOCOL%"
-            # Add upstream cluster name for debugging
-            x-upstream-cluster: "%UPSTREAM_CLUSTER%"
         response:
           add:
             # Add response processing time
             x-response-time: "%RESPONSE_DURATION%"
             # Add response flags for debugging
             x-response-flags: "%RESPONSE_FLAGS%"
+            # Add upstream cluster name for debugging after routing
+            x-upstream-cluster: "%UPSTREAM_CLUSTER%"
 ```
 
 ### Header-Based Traffic Mirroring
@@ -640,11 +640,11 @@ spec:
 
 ### Pattern 2: CORS Headers for API Gateways
 
-Configure CORS headers at the mesh level:
+Configure CORS at the mesh level:
 
 ```yaml
-# VirtualService with CORS response headers
-# Enables cross-origin requests for web applications
+# VirtualService with CORS policy
+# Enables cross-origin requests and handles matching preflight requests
 apiVersion: networking.istio.io/v1beta1
 kind: VirtualService
 metadata:
@@ -661,22 +661,30 @@ spec:
             host: api-backend
             port:
               number: 8080
-      headers:
-        response:
-          # Add CORS headers to all responses
-          add:
-            # Allow requests from specific origins
-            access-control-allow-origin: "https://app.example.com"
-            # Allow specific HTTP methods
-            access-control-allow-methods: "GET, POST, PUT, DELETE, OPTIONS"
-            # Allow specific headers in requests
-            access-control-allow-headers: "Authorization, Content-Type, X-Request-ID"
-            # Expose specific headers to the client
-            access-control-expose-headers: "X-Request-ID, X-RateLimit-Remaining"
-            # Allow credentials (cookies, auth headers)
-            access-control-allow-credentials: "true"
-            # Cache preflight response for 24 hours
-            access-control-max-age: "86400"
+      corsPolicy:
+        # Allow requests from specific origins
+        allowOrigins:
+          - exact: "https://app.example.com"
+        # Allow specific HTTP methods
+        allowMethods:
+          - GET
+          - POST
+          - PUT
+          - DELETE
+          - OPTIONS
+        # Allow specific headers in requests
+        allowHeaders:
+          - Authorization
+          - Content-Type
+          - X-Request-ID
+        # Expose specific headers to the client
+        exposeHeaders:
+          - X-Request-ID
+          - X-RateLimit-Remaining
+        # Allow credentials (cookies, auth headers)
+        allowCredentials: true
+        # Cache preflight response for 24 hours
+        maxAge: "24h"
 ```
 
 ### Pattern 3: Rate Limiting Headers
