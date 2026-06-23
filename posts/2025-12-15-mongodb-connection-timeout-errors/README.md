@@ -89,19 +89,19 @@ Incorrect connection strings cause timeouts when the driver cannot find the serv
 // Common connection string problems
 
 // Wrong: Using localhost when MongoDB is remote
-const uri = "mongodb://localhost:27017/mydb";
+let uri = "mongodb://localhost:27017/mydb";
 
-// Wrong: Missing authentication database
-const uri = "mongodb://user:pass@host:27017/mydb";
+// Wrong if the user was created in admin: missing authentication database
+uri = "mongodb://user:pass@host:27017/mydb";
 
 // Correct: Include authSource
-const uri = "mongodb://user:pass@host:27017/mydb?authSource=admin";
+uri = "mongodb://user:pass@host:27017/mydb?authSource=admin";
 
 // Wrong: Incorrect replica set name
-const uri = "mongodb://host:27017/mydb?replicaSet=wrongName";
+uri = "mongodb://host:27017/mydb?replicaSet=wrongName";
 
 // Correct: Use the actual replica set name
-const uri = "mongodb://host1:27017,host2:27017/mydb?replicaSet=rs0";
+uri = "mongodb://host1:27017,host2:27017/mydb?replicaSet=rs0";
 ```
 
 ### 3. Connection Pool Exhaustion
@@ -147,7 +147,7 @@ In replica sets, the driver must select an appropriate server.
 const client = new MongoClient(uri, {
   serverSelectionTimeoutMS: 30000,  // Default is 30000 (30s)
   connectTimeoutMS: 20000,          // Time to establish connection
-  socketTimeoutMS: 360000           // Time for operations
+  socketTimeoutMS: 360000           // Time an established socket can remain inactive
 });
 ```
 
@@ -182,10 +182,10 @@ const client = new MongoClient(uri, {
 
 ```bash
 # On Linux, check DNS cache
-systemd-resolve --statistics
+resolvectl statistics
 
 # Flush DNS cache if needed
-sudo systemd-resolve --flush-caches
+sudo resolvectl flush-caches
 ```
 
 ### 6. TLS/SSL Configuration Issues
@@ -194,7 +194,7 @@ Misconfigured TLS can cause connection hangs.
 
 ```javascript
 // Proper TLS configuration
-const client = new MongoClient(uri, {
+let client = new MongoClient(uri, {
   tls: true,
   tlsCAFile: '/path/to/ca-certificate.pem',
   tlsCertificateKeyFile: '/path/to/client-certificate.pem',
@@ -203,7 +203,7 @@ const client = new MongoClient(uri, {
 });
 
 // For self-signed certificates in development only
-const client = new MongoClient(uri, {
+client = new MongoClient(uri, {
   tls: true,
   tlsAllowInvalidCertificates: true  // NEVER in production
 });
@@ -220,13 +220,6 @@ Server-side settings can cause client timeouts.
 net:
   port: 27017
   bindIp: 0.0.0.0  # Or specific IPs
-
-# Adjust operation timeouts
-setParameter:
-  maxTimeMS: 60000
-
-# Increase connection limits
-net:
   maxIncomingConnections: 65536
 ```
 
@@ -238,7 +231,8 @@ db.serverStatus().connections
 // { current: 45, available: 51155, totalCreated: 1234 }
 
 // Check if nearing connection limit
-db.serverStatus().connections.current / db.serverStatus().connections.available
+const connections = db.serverStatus().connections;
+connections.current / (connections.current + connections.available)
 ```
 
 ## Application-Level Solutions
@@ -334,10 +328,10 @@ async function queryWithFallback(collection, query, options = {}) {
 
 ```javascript
 // Atlas connection string format
-const uri = "mongodb+srv://user:password@cluster.mongodb.net/mydb?retryWrites=true&w=majority";
+let uri = "mongodb+srv://user:password@cluster.mongodb.net/mydb?retryWrites=true&w=majority";
 
 // If SRV lookup fails, use standard format
-const uri = "mongodb://user:password@shard-00-00.mongodb.net:27017,shard-00-01.mongodb.net:27017,shard-00-02.mongodb.net:27017/mydb?ssl=true&replicaSet=atlas-xxxxx-shard-0&authSource=admin&retryWrites=true&w=majority";
+uri = "mongodb://user:password@shard-00-00.mongodb.net:27017,shard-00-01.mongodb.net:27017,shard-00-02.mongodb.net:27017/mydb?tls=true&replicaSet=atlas-xxxxx-shard-0&authSource=admin&retryWrites=true&w=majority";
 ```
 
 **Atlas checklist:**
@@ -347,11 +341,11 @@ const uri = "mongodb://user:password@shard-00-00.mongodb.net:27017,shard-00-01.m
 - Ensure correct database user (not Atlas user)
 
 ```bash
-# Test Atlas connectivity
-openssl s_client -connect cluster.mongodb.net:27017
-
 # Verify SRV records
 dig +short SRV _mongodb._tcp.cluster.mongodb.net
+
+# Test Atlas connectivity to one node hostname returned by SRV lookup
+openssl s_client -connect shard-00-00.mongodb.net:27017 -servername shard-00-00.mongodb.net
 ```
 
 ## Monitoring and Alerting
