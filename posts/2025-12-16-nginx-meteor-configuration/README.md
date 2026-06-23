@@ -41,6 +41,11 @@ Start with this minimal working configuration:
 ```nginx
 # /etc/nginx/sites-available/meteor-app
 
+map $http_upgrade $connection_upgrade {
+    default upgrade;
+    ''      close;
+}
+
 upstream meteor_backend {
     server 127.0.0.1:3000;
     keepalive 32;
@@ -69,7 +74,7 @@ server {
 
         # Headers for WebSocket support
         proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
+        proxy_set_header Connection $connection_upgrade;
 
         # Standard proxy headers
         proxy_set_header Host $host;
@@ -147,7 +152,7 @@ server {
 For production environments with multiple Meteor instances:
 
 ```nginx
-# Sticky sessions using IP hash (required for Meteor)
+# Sticky sessions using IP hash (often needed for SockJS fallback with multiple Meteor instances)
 upstream meteor_cluster {
     ip_hash;  # Ensures same client hits same server
     server 127.0.0.1:3001;
@@ -237,7 +242,7 @@ server {
 
 Meteor needs certain environment variables when running behind Nginx:
 
-```bash
+```ini
 # /etc/systemd/system/meteor.service
 [Unit]
 Description=Meteor Application
@@ -251,7 +256,7 @@ Environment=NODE_ENV=production
 Environment=ROOT_URL=https://myapp.com
 Environment=PORT=3000
 Environment=MONGO_URL=mongodb://localhost:27017/myapp
-Environment=METEOR_SETTINGS_FILE=/opt/meteor-app/settings.json
+Environment='METEOR_SETTINGS={"public":{}}'
 Environment=HTTP_FORWARDED_COUNT=1
 
 ExecStart=/usr/bin/node /opt/meteor-app/bundle/main.js
@@ -265,7 +270,7 @@ The `HTTP_FORWARDED_COUNT=1` is critical - it tells Meteor how many proxies are 
 
 ## Handling Hot Code Push
 
-Meteor's hot code push requires WebSocket reconnection handling:
+During deployments that trigger hot code push, Nginx can retry eligible requests while clients reconnect:
 
 ```nginx
 # Add reconnection headers for hot code push
@@ -280,7 +285,7 @@ location / {
     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
     proxy_set_header X-Forwarded-Proto $scheme;
 
-    # Don't close connection on backend restart
+    # Retry eligible requests during a backend restart
     proxy_next_upstream error timeout http_502 http_503 http_504;
     proxy_next_upstream_tries 3;
 
@@ -336,9 +341,9 @@ server {
 
 When WebSockets aren't working, debug systematically:
 
-```bash
+```nginx
 # Check WebSocket upgrade in Nginx logs
-# Add this to your server block:
+# Define log_format in the http context, then use access_log in your server block:
 log_format ws_debug '$remote_addr - $upstream_addr [$time_local] '
                     '"$request" $status '
                     'upgrade="$http_upgrade" '
@@ -387,7 +392,7 @@ proxy_read_timeout 300s;  # 5 minutes
 ### Issue: 502 Bad Gateway on Restart
 
 ```nginx
-# Use upstream with health check
+# Use upstream passive failure settings
 upstream meteor_backend {
     server 127.0.0.1:3000 max_fails=3 fail_timeout=30s;
     keepalive 32;
@@ -397,7 +402,7 @@ upstream meteor_backend {
 ### Issue: Session Lost Between Requests
 
 ```nginx
-# Use ip_hash for sticky sessions
+# Use ip_hash for sticky sessions when clients must stay on the same instance
 upstream meteor_cluster {
     ip_hash;
     server 127.0.0.1:3001;
@@ -478,8 +483,8 @@ server {
 |---------|--------------|
 | WebSocket | `proxy_set_header Upgrade/Connection` |
 | Long Polling | `proxy_read_timeout 86400s` |
-| Sticky Sessions | `ip_hash` in upstream |
-| Hot Code Push | `proxy_next_upstream` |
+| Sticky Sessions | `ip_hash` in upstream when clients must stay on the same instance |
+| Hot Code Push | Client reconnects; `proxy_next_upstream` can retry eligible requests during deploys |
 | Static Assets | Direct serve with long cache |
 | Mobile CORS | `Access-Control-Allow-*` headers |
 
