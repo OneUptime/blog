@@ -13,7 +13,7 @@ Real-time features like chat, notifications, live updates, and collaborative edi
 ## Basic Socket.io Setup
 
 ```bash
-npm install socket.io socket.io-client
+npm install express socket.io socket.io-client
 ```
 
 ### Server
@@ -110,6 +110,10 @@ socket.emit('message', { text: 'Hello!' });
 
 Use Socket.io middleware to authenticate connections before they're established. The middleware has access to the handshake data including auth tokens. Invalid tokens reject the connection.
 
+```bash
+npm install jsonwebtoken
+```
+
 ```javascript
 const jwt = require('jsonwebtoken');
 
@@ -126,6 +130,7 @@ io.use((socket, next) => {
     // Verify token and attach user data to socket
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
     socket.user = decoded;  // Available in all event handlers
+    socket.data.user = decoded;  // Restored by connection state recovery
     next();  // Allow connection
   } catch (error) {
     next(new Error('Invalid token'));  // Rejects connection
@@ -230,8 +235,8 @@ io.on('connection', (socket) => {
     io.to(roomId).emit('room-message', payload);
   });
 
-  // Clean up on disconnect - notify all rooms
-  socket.on('disconnect', () => {
+  // Clean up while disconnecting - rooms are still available here
+  socket.on('disconnecting', () => {
     for (const room of socket.rooms) {
       // Skip the default room (socket's own ID)
       if (room !== socket.id) {
@@ -324,7 +329,7 @@ server {
 
 ## Connection State Recovery
 
-Socket.io 4.6+ supports automatic state recovery after brief disconnections. The server remembers room memberships and pending messages, restoring state when the client reconnects.
+Socket.io 4.6+ supports automatic state recovery after brief disconnections. The server remembers the socket ID, room memberships, the `socket.data` attribute, and missed packets, restoring state when the client reconnects. The classic `@socket.io/redis-adapter` does not support connection state recovery; use the default in-memory adapter or an adapter with recovery support when enabling this feature.
 
 ```javascript
 // Server - enable connection state recovery
@@ -338,9 +343,9 @@ const io = new Server(httpServer, {
 io.on('connection', (socket) => {
   if (socket.recovered) {
     // Client reconnected within the recovery window
-    // Room memberships are automatically restored
-    console.log(`User ${socket.user?.id} reconnected`);
-    // Any messages emitted during disconnection are delivered now
+    // Room memberships and socket.data are automatically restored
+    console.log(`User ${socket.data.user?.id} reconnected`);
+    // Missed packets are delivered now
   } else {
     // Brand new connection - run normal setup
     console.log('New connection');
@@ -351,6 +356,10 @@ io.on('connection', (socket) => {
 ## Presence System
 
 Track which users are online across multiple servers. Store presence in Redis so any server can check user status. Handle users with multiple connections (multiple tabs/devices).
+
+```bash
+npm install ioredis
+```
 
 ```javascript
 // presence.js
@@ -507,6 +516,10 @@ process.on('SIGINT', gracefulShutdown);
 ```
 
 ## Monitoring and Metrics
+
+```bash
+npm install prom-client
+```
 
 ```javascript
 const prometheus = require('prom-client');
