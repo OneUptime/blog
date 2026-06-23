@@ -230,9 +230,8 @@ metadata:
 spec:
   addresses:
     - 192.168.1.100-192.168.1.150
-  # Disable auto-assign to prevent this pool from being used
-  # for services outside the production namespace
-  autoAssign: false
+  # Keep auto-assignment enabled so matching services can use this pool
+  autoAssign: true
   # serviceAllocation defines which services can use this pool
   serviceAllocation:
     # priority determines which pool is chosen when multiple match
@@ -241,7 +240,10 @@ spec:
     # namespaces restricts this pool to specific namespaces
     namespaces:
       - production
-      - prod-*
+    # namespaceSelectors can include additional namespaces by label
+    namespaceSelectors:
+      - matchLabels:
+          environment: production
 
 ---
 apiVersion: metallb.io/v1beta1
@@ -252,13 +254,19 @@ metadata:
 spec:
   addresses:
     - 192.168.2.100-192.168.2.150
-  autoAssign: false
+  autoAssign: true
   serviceAllocation:
     priority: 20
     namespaces:
       - development
-      - dev-*
       - staging
+    namespaceSelectors:
+      - matchExpressions:
+          - key: environment
+            operator: In
+            values:
+              - development
+              - staging
 
 ---
 apiVersion: metallb.io/v1beta1
@@ -296,7 +304,7 @@ spec:
   addresses:
     # Public IP range for internet-facing services
     - 203.0.113.1-203.0.113.50
-  autoAssign: false
+  autoAssign: true
   serviceAllocation:
     priority: 5
     # Match services with the 'exposure: external' label
@@ -320,7 +328,7 @@ spec:
   addresses:
     # Private IP range for internal services
     - 10.0.0.100-10.0.0.200
-  autoAssign: false
+  autoAssign: true
   serviceAllocation:
     priority: 10
     serviceSelectors:
@@ -343,7 +351,7 @@ metadata:
 spec:
   addresses:
     - 10.0.1.100-10.0.1.120
-  autoAssign: false
+  autoAssign: true
   serviceAllocation:
     priority: 15
     # Combine namespace and label selectors
@@ -452,7 +460,7 @@ spec:
   addresses:
     # Limited pool of premium IPs (perhaps with better routing)
     - 192.168.50.1-192.168.50.10
-  autoAssign: false
+  autoAssign: true
   serviceAllocation:
     # Highest priority - checked first
     priority: 1
@@ -472,7 +480,7 @@ metadata:
 spec:
   addresses:
     - 192.168.51.1-192.168.51.100
-  autoAssign: false
+  autoAssign: true
   serviceAllocation:
     # Second priority - used if premium pool doesn't match or is exhausted
     priority: 10
@@ -561,13 +569,15 @@ spec:
   addresses:
     # CIDR notation works too - /24 gives 254 usable addresses
     - 10.10.1.0/24
-  autoAssign: false
+  autoAssign: true
   serviceAllocation:
     priority: 10
     # Strict namespace isolation for tenant A
     namespaces:
       - tenant-a
-      - tenant-a-*
+    namespaceSelectors:
+      - matchLabels:
+          tenant: tenant-a
 
 ---
 apiVersion: metallb.io/v1beta1
@@ -581,12 +591,14 @@ metadata:
 spec:
   addresses:
     - 10.10.2.0/24
-  autoAssign: false
+  autoAssign: true
   serviceAllocation:
     priority: 10
     namespaces:
       - tenant-b
-      - tenant-b-*
+    namespaceSelectors:
+      - matchLabels:
+          tenant: tenant-b
 
 ---
 apiVersion: metallb.io/v1beta1
@@ -600,12 +612,14 @@ metadata:
 spec:
   addresses:
     - 10.10.3.0/24
-  autoAssign: false
+  autoAssign: true
   serviceAllocation:
     priority: 10
     namespaces:
       - tenant-c
-      - tenant-c-*
+    namespaceSelectors:
+      - matchLabels:
+          tenant: tenant-c
 
 ---
 # Shared pool for cluster services that all tenants can access
@@ -619,7 +633,7 @@ metadata:
 spec:
   addresses:
     - 10.10.0.0/24
-  autoAssign: false
+  autoAssign: true
   serviceAllocation:
     priority: 50
     namespaces:
@@ -645,7 +659,7 @@ metadata:
 spec:
   addresses:
     - 203.0.113.0/26
-  autoAssign: false
+  autoAssign: true
   serviceAllocation:
     priority: 5
     serviceSelectors:
@@ -661,7 +675,7 @@ metadata:
 spec:
   addresses:
     - 10.100.0.0/24
-  autoAssign: false
+  autoAssign: true
   serviceAllocation:
     priority: 10
     serviceSelectors:
@@ -681,7 +695,7 @@ spec:
   # Advertise with specific BGP communities for traffic engineering
   communities:
     - 65000:100
-  # Local preference affects outbound path selection
+  # Local preference affects BGP best-path selection
   localPref: 200
   # Aggregate routes to reduce BGP table size
   aggregationLength: 26
@@ -702,7 +716,7 @@ spec:
 
 ---
 # BGP Peer configuration (connects to your routers)
-apiVersion: metallb.io/v1beta1
+apiVersion: metallb.io/v1beta2
 kind: BGPPeer
 metadata:
   name: router-1
@@ -735,7 +749,7 @@ metadata:
   namespace: production
   annotations:
     # Explicitly request the premium pool
-    metallb.universe.tf/address-pool: premium-pool
+    metallb.io/address-pool: premium-pool
 spec:
   type: LoadBalancer
   ports:
@@ -753,7 +767,7 @@ metadata:
   annotations:
     # Request a specific IP address from the pool
     # The IP must be within one of the configured pools
-    metallb.universe.tf/loadBalancerIPs: 192.168.1.100
+    metallb.io/loadBalancerIPs: 192.168.1.100
 spec:
   type: LoadBalancer
   ports:
@@ -770,7 +784,7 @@ metadata:
   namespace: production
   annotations:
     # Request specific IPs for dual-stack services
-    metallb.universe.tf/loadBalancerIPs: 192.168.1.101,2001:db8::1
+    metallb.io/loadBalancerIPs: 192.168.1.101,2001:db8::1
 spec:
   type: LoadBalancer
   ipFamilyPolicy: RequireDualStack
@@ -867,7 +881,7 @@ metadata:
 spec:
   addresses:
     - 203.0.113.0/26
-  autoAssign: false
+  autoAssign: true
   serviceAllocation:
     priority: 1
     serviceSelectors:
@@ -894,7 +908,7 @@ metadata:
 spec:
   addresses:
     - 10.1.0.0/24
-  autoAssign: false
+  autoAssign: true
   serviceAllocation:
     priority: 10
     namespaces:
@@ -924,7 +938,7 @@ metadata:
 spec:
   addresses:
     - 10.2.0.0/24
-  autoAssign: false
+  autoAssign: true
   serviceAllocation:
     priority: 5
     namespaces:
@@ -955,7 +969,7 @@ metadata:
 spec:
   addresses:
     - 10.3.0.0/24
-  autoAssign: false
+  autoAssign: true
   serviceAllocation:
     priority: 20
     namespaces:
@@ -992,9 +1006,15 @@ spec:
     priority: 50
     namespaces:
       - development
-      - dev-*
-      - feature-*
-      - test-*
+    namespaceSelectors:
+      - matchExpressions:
+          - key: environment
+            operator: In
+            values:
+              - development
+              - test
+      - matchLabels:
+          namespace-type: feature
 
 ---
 # ============================================
@@ -1048,7 +1068,7 @@ kubectl get ipaddresspools -n metallb-system -o wide
 kubectl get services --all-namespaces -o jsonpath='{range .items[?(@.spec.type=="LoadBalancer")]}{.metadata.namespace}{"\t"}{.metadata.name}{"\t"}{.status.loadBalancer.ingress[0].ip}{"\n"}{end}'
 
 # View MetalLB controller logs for allocation decisions
-kubectl logs -n metallb-system -l app=metallb -c controller --tail=100
+kubectl logs -n metallb-system -l component=controller --tail=100
 
 # Check speaker logs for advertisement status
 kubectl logs -n metallb-system -l component=speaker --tail=100
@@ -1067,8 +1087,12 @@ metadata:
   namespace: monitoring
 spec:
   selector:
-    matchLabels:
-      app.kubernetes.io/name: metallb
+    matchExpressions:
+      - key: component
+        operator: In
+        values:
+          - controller
+          - speaker
   namespaceSelector:
     matchNames:
       - metallb-system
