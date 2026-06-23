@@ -28,7 +28,7 @@ MongoDB uses two different algorithms depending on conditions:
 ```mermaid
 graph TD
     A[$sample Stage] --> B{Conditions Check}
-    B -->|size < 5% of docs<br/>AND collection > 100 docs<br/>AND no $match before| C[Pseudo-Random Cursor]
+    B -->|size < 5% of docs<br/>AND collection > 100 docs<br/>AND $sample is first stage| C[Pseudo-Random Cursor]
     B -->|Otherwise| D[Random Sort]
 
     C --> E[Fast: O(N) where N = size]
@@ -66,9 +66,9 @@ db.products.aggregate([
 Be aware of these limitations:
 
 ```javascript
-// $sample may return duplicates if size > collection count
+// $sample cannot return more documents than the input contains
 db.smallCollection.aggregate([
-  { $sample: { size: 100 } }  // If collection has 50 docs, may have duplicates
+  { $sample: { size: 100 } }  // If collection has 50 docs, returns at most 50 docs
 ])
 
 // $sample after $match uses slower algorithm
@@ -108,13 +108,13 @@ const randomValue = Math.random();
 // Find documents with random value >= our random value
 const docs = await db.products.find({
   random: { $gte: randomValue }
-}).limit(5).toArray();
+}).sort({ random: 1 }).limit(5).toArray();
 
 // If not enough results, wrap around
 if (docs.length < 5) {
   const more = await db.products.find({
     random: { $lt: randomValue }
-  }).limit(5 - docs.length).toArray();
+  }).sort({ random: 1 }).limit(5 - docs.length).toArray();
 
   docs.push(...more);
 }
@@ -192,23 +192,47 @@ async function getRandomDocs(collection, count) {
 Use ObjectId's structure for random selection:
 
 ```javascript
-// Generate random ObjectId for comparison
-function randomObjectId() {
-  const timestamp = Math.floor(Date.now() / 1000);
+// Generate random ObjectId for comparison within the collection's _id time range
+function randomObjectIdBetween(minTimestamp, maxTimestamp) {
+  const timestamp = Math.floor(
+    minTimestamp + Math.random() * (maxTimestamp - minTimestamp + 1)
+  );
   const randomBytes = crypto.randomBytes(8).toString('hex');
   return new ObjectId(
     timestamp.toString(16).padStart(8, '0') + randomBytes
   );
 }
 
-// Find documents with _id greater than random
-const randomDoc = await db.products.findOne({
-  _id: { $gte: randomObjectId() }
-});
+async function getRandomByObjectId() {
+  const first = await db.products.findOne({}, {
+    sort: { _id: 1 },
+    projection: { _id: 1 }
+  });
 
-// Fallback to first document if none found
-if (!randomDoc) {
-  randomDoc = await db.products.findOne({});
+  const last = await db.products.findOne({}, {
+    sort: { _id: -1 },
+    projection: { _id: 1 }
+  });
+
+  if (!first || !last) {
+    return null;
+  }
+
+  const minTimestamp = Math.floor(first._id.getTimestamp().getTime() / 1000);
+  const maxTimestamp = Math.floor(last._id.getTimestamp().getTime() / 1000);
+
+  // Find documents with _id greater than random
+  let randomDoc = await db.products.findOne(
+    { _id: { $gte: randomObjectIdBetween(minTimestamp, maxTimestamp) } },
+    { sort: { _id: 1 } }
+  );
+
+  // Fallback to first document if none found
+  if (!randomDoc) {
+    randomDoc = await db.products.findOne({}, { sort: { _id: 1 } });
+  }
+
+  return randomDoc;
 }
 ```
 
@@ -223,7 +247,7 @@ Here's how the different methods compare:
 | Skip | Slow | Low | Good | Small collections |
 | ObjectId | Fast | Low | Varies | Simple cases |
 
-*$sample is fast when conditions are met (< 5% of collection, no preceding $match)
+*$sample is fast when conditions are met (< 5% of collection, more than 100 documents, and `$sample` is the first pipeline stage)
 
 ```javascript
 // Benchmark different methods
@@ -321,6 +345,10 @@ async function weightedRandom(count) {
   const total = totalWeight[0]?.total || 0;
   const results = [];
 
+  if (total <= 0) {
+    return results;
+  }
+
   for (let i = 0; i < count; i++) {
     const randomWeight = Math.random() * total;
 
@@ -358,6 +386,10 @@ async function getTestSample(samplePercentage, testName) {
 
   const sampleSize = Math.floor(count * samplePercentage / 100);
 
+  if (sampleSize < 1) {
+    return 0;
+  }
+
   const sample = await db.users.aggregate([
     { $match: { abTests: { $ne: testName } } },
     { $sample: { size: sampleSize } },
@@ -377,17 +409,18 @@ async function getTestSample(samplePercentage, testName) {
 ### Shuffled Pagination
 
 ```javascript
-// Consistent shuffled order using seed
+// Consistent shuffled order using a seed and precomputed random field
 async function getShuffledPage(seed, page, pageSize) {
-  // Use seed for consistent random order
+  // Use seed for consistent random order. Requires a random field in each document.
   const random = seedrandom(seed);
+  const offset = random();
 
   return db.products.aggregate([
     {
       $addFields: {
         shuffleKey: {
           $mod: [
-            { $multiply: [{ $toDouble: "$_id" }, random()] },
+            { $add: ["$random", offset] },
             1
           ]
         }
