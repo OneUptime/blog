@@ -42,6 +42,8 @@ Supported account types: Accounts in this organizational directory only
 Redirect URI: https://grafana.example.com/login/azuread
 ```
 
+Also add `https://grafana.example.com/` as a redirect URI so it matches the Grafana `root_url`.
+
 After creation, note down the Application (client) ID and Directory (tenant) ID from the Overview page.
 
 ## 2. Create a Client Secret
@@ -69,14 +71,25 @@ Add these delegated permissions:
 - email
 - profile
 - User.Read
-- GroupMember.Read.All (for group-based role mapping)
+- GroupMember.Read.All (for group overage handling and Microsoft Graph group lookup)
 ```
 
 Click "Grant admin consent" for your organization to apply these permissions.
 
-## 4. Configure Token Claims
+## 4. Configure Application Roles and Token Claims
 
-To include group information in the token, configure optional claims.
+Grafana's Microsoft Entra ID integration maps Grafana organization roles from Entra application roles. Create application roles in the app registration with values that match Grafana roles:
+
+```text
+Display Name                  | Value
+-----------------------------|-------------
+Grafana Admin                | Admin
+Grafana Editor               | Editor
+Grafana Viewer               | Viewer
+Grafana Server Admin         | GrafanaAdmin
+```
+
+To include group information in the token for group access checks and troubleshooting, configure optional claims.
 
 Navigate to Token configuration > Add groups claim.
 
@@ -86,11 +99,9 @@ Navigate to Token configuration > Add groups claim.
 Group types: Security groups
 ID token claims:
   - Group ID
-Access token claims:
-  - Group ID
 ```
 
-For large organizations with many groups, use group filtering to include only relevant groups.
+For large organizations with many groups, choose "Groups assigned to the application" to include only relevant groups.
 
 ## 5. Create Azure AD Groups for Grafana Roles
 
@@ -104,7 +115,7 @@ Grafana-Editors              | Editor
 Grafana-Viewers              | Viewer
 ```
 
-Note the Object ID of each group - you will need these for Grafana configuration.
+Assign each group to the matching application role under Enterprise applications > your Grafana application > Users and groups. Note the Object ID of each group if you also want to restrict sign-in with `allowed_groups` or troubleshoot group claims.
 
 ```bash
 # Using Azure CLI to list groups
@@ -123,7 +134,7 @@ root_url = https://grafana.example.com/
 
 [auth.azuread]
 enabled = true
-name = Azure AD
+name = Entra ID
 allow_sign_up = true
 auto_login = false
 client_id = YOUR_APPLICATION_CLIENT_ID
@@ -132,11 +143,12 @@ scopes = openid email profile
 auth_url = https://login.microsoftonline.com/YOUR_TENANT_ID/oauth2/v2.0/authorize
 token_url = https://login.microsoftonline.com/YOUR_TENANT_ID/oauth2/v2.0/token
 allowed_domains = example.com
-allowed_groups =
-role_attribute_path = contains(groups[*], 'ADMIN_GROUP_ID') && 'Admin' || contains(groups[*], 'EDITOR_GROUP_ID') && 'Editor' || 'Viewer'
+allowed_organizations = YOUR_TENANT_ID
+allowed_groups = ADMIN_GROUP_ID EDITOR_GROUP_ID VIEWER_GROUP_ID
 role_attribute_strict = true
 allow_assign_grafana_admin = true
 skip_org_role_sync = false
+use_pkce = true
 ```
 
 Replace the placeholder values:
@@ -147,22 +159,23 @@ YOUR_CLIENT_SECRET          -> Client secret value
 YOUR_TENANT_ID              -> Directory (tenant) ID from Azure
 ADMIN_GROUP_ID              -> Object ID of Grafana-Admins group
 EDITOR_GROUP_ID             -> Object ID of Grafana-Editors group
+VIEWER_GROUP_ID             -> Object ID of Grafana-Viewers group
 ```
 
-## 7. Understanding Role Attribute Path
+## 7. Understanding Role Mapping
 
-The `role_attribute_path` uses JMESPath expressions to evaluate group membership and assign roles.
+The Microsoft Entra ID provider maps the user's Grafana organization role from the most privileged application role assigned to the user in Entra ID.
 
 ```ini
-# Basic role mapping
-role_attribute_path = contains(groups[*], 'abc123-admin-group-id') && 'Admin' || contains(groups[*], 'def456-editor-group-id') && 'Editor' || 'Viewer'
+# Enforce that a valid Entra application role is present
+role_attribute_strict = true
 ```
 
 For more complex scenarios with organization-specific roles:
 
 ```ini
-# Map to org-specific roles
-role_attribute_path = contains(groups[*], 'abc123') && 'GrafanaAdmin' || contains(groups[*], 'def456') && 'Admin' || contains(groups[*], 'ghi789') && 'Editor' || 'Viewer'
+# Map Entra groups to Grafana organizations and roles
+org_mapping = ["abc123:Main Org.:Admin", "def456:Engineering:Editor", "*:Main Org.:Viewer"]
 ```
 
 ## 8. Kubernetes Deployment with Helm
@@ -177,7 +190,7 @@ grafana.ini:
     root_url: https://grafana.example.com/
   auth.azuread:
     enabled: true
-    name: Azure AD
+    name: Entra ID
     allow_sign_up: true
     auto_login: false
     client_id: ${AZURE_CLIENT_ID}
@@ -186,9 +199,12 @@ grafana.ini:
     auth_url: https://login.microsoftonline.com/${AZURE_TENANT_ID}/oauth2/v2.0/authorize
     token_url: https://login.microsoftonline.com/${AZURE_TENANT_ID}/oauth2/v2.0/token
     allowed_domains: example.com
-    role_attribute_path: contains(groups[*], '${GRAFANA_ADMIN_GROUP}') && 'Admin' || contains(groups[*], '${GRAFANA_EDITOR_GROUP}') && 'Editor' || 'Viewer'
+    allowed_organizations: ${AZURE_TENANT_ID}
+    allowed_groups: ${GRAFANA_ADMIN_GROUP} ${GRAFANA_EDITOR_GROUP} ${GRAFANA_VIEWER_GROUP}
     role_attribute_strict: true
     allow_assign_grafana_admin: true
+    skip_org_role_sync: false
+    use_pkce: true
 
 envFromSecret: grafana-azure-secrets
 ```
@@ -202,6 +218,7 @@ kubectl create secret generic grafana-azure-secrets \
   --from-literal=AZURE_TENANT_ID=your-tenant-id \
   --from-literal=GRAFANA_ADMIN_GROUP=admin-group-object-id \
   --from-literal=GRAFANA_EDITOR_GROUP=editor-group-object-id \
+  --from-literal=GRAFANA_VIEWER_GROUP=viewer-group-object-id \
   -n monitoring
 ```
 
@@ -242,6 +259,7 @@ Ensure:
 - GroupMember.Read.All permission is granted
 - Admin consent was provided
 - User is a member of the groups
+- Group claims are enabled for the ID token
 
 ### Invalid Redirect URI
 
@@ -249,12 +267,13 @@ The redirect URI must exactly match what is configured in Azure AD:
 
 ```text
 Azure AD: https://grafana.example.com/login/azuread
+Azure AD: https://grafana.example.com/
 Grafana root_url: https://grafana.example.com/
 ```
 
 ### Role Not Assigned Correctly
 
-Enable debug logging to see group evaluation:
+Enable debug logging to see the authentication flow:
 
 ```ini
 [log]
@@ -262,21 +281,21 @@ level = debug
 filters = auth.azuread:debug
 ```
 
-Check the logs for group membership arrays:
+Check that the user or group is assigned to a Grafana application role in Enterprise applications > your Grafana application > Users and groups.
 
 ```text
-logger=auth.azuread groups=[abc123 def456 ghi789]
+roles=[Admin]
 ```
 
 ### Too Many Groups
 
 Azure AD limits the number of groups in a token. For users in many groups:
 
-```yaml
-# Use group filtering in Azure AD token configuration
-# Or configure Grafana to fetch groups via API
+```ini
+# Use group filtering in Azure AD token configuration,
+# or configure Grafana to fetch groups via Microsoft Graph.
 [auth.azuread]
-use_pkce = true
+force_use_graph_api = true
 ```
 
 ## 11. Security Best Practices
@@ -293,9 +312,6 @@ role_attribute_strict = true
 
 # Use PKCE for enhanced security
 use_pkce = true
-
-# Set token expiry
-token_expiry = 8h
 ```
 
 ---
