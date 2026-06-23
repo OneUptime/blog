@@ -14,7 +14,7 @@ Redis is an in-memory data structure store that has become essential for buildin
 
 Before we begin, make sure you have:
 
-- Go 1.18 or later installed
+- A Go version supported by the current go-redis/v9 release (the official client supports the last two Go releases)
 - Redis server running locally or accessible remotely
 - Basic understanding of Go programming
 
@@ -662,7 +662,7 @@ type ProductService struct {
 }
 
 // SaveProduct implements write-through caching
-// Data is written to both cache and database simultaneously
+// Data is written to the database and then cached immediately
 func (s *ProductService) SaveProduct(ctx context.Context, product *Product) error {
     cacheKey := fmt.Sprintf("product:%d", product.ID)
 
@@ -672,21 +672,14 @@ func (s *ProductService) SaveProduct(ctx context.Context, product *Product) erro
         return fmt.Errorf("serialization error: %w", err)
     }
 
-    // Use a transaction to ensure both operations succeed
-    // In production, you might use a saga pattern for true consistency
-    pipe := s.redis.TxPipeline()
+    // Write to database first
+    // In real app: s.db.SaveProduct(product)
 
     // Write to cache with TTL
-    pipe.Set(ctx, cacheKey, data, 1*time.Hour)
-
-    // Execute the pipeline
-    _, err = pipe.Exec(ctx)
+    err = s.redis.Set(ctx, cacheKey, data, 1*time.Hour).Err()
     if err != nil {
         return fmt.Errorf("cache write failed: %w", err)
     }
-
-    // Write to database
-    // In real app: s.db.SaveProduct(product)
 
     return nil
 }
@@ -878,7 +871,7 @@ func (p *EventPublisher) PublishUserEvent(ctx context.Context, eventType, userID
     return p.Publish(ctx, "user:events", event)
 }
 
-// PublishToPattern publishes to pattern-matched channels
+// PublishOrderUpdate publishes to an order-specific channel that pattern subscribers can receive
 func (p *EventPublisher) PublishOrderUpdate(ctx context.Context, orderID string, status string) error {
     event := Event{
         Type:      "order_update",
@@ -1052,11 +1045,11 @@ func main() {
 }
 ```
 
-## Distributed Locks with Redlock
+## Distributed Locks and Redlock
 
-Distributed locks ensure that only one process can execute a critical section across multiple instances. The Redlock algorithm provides a robust implementation.
+Distributed locks ensure that only one process can execute a critical section across multiple instances. Redis supports single-instance locks with `SET NX` and expiration, while the Redlock algorithm extends the idea across multiple independent Redis instances.
 
-### Basic Distributed Lock
+### Basic Single-Instance Lock
 
 A simple distributed lock implementation using Redis.
 
@@ -1626,7 +1619,7 @@ func main() {
 
 ### Transactional Pipeline
 
-Use TxPipeline for atomic operations that must all succeed or fail together.
+Use TxPipeline for isolated Redis transactions. Commands are executed sequentially without interleaving from other clients, but Redis does not roll back commands that fail after EXEC starts.
 
 ```go
 package main
@@ -1639,10 +1632,10 @@ import (
     "github.com/redis/go-redis/v9"
 )
 
-// TransferPoints atomically transfers points between users
+// TransferPoints executes the Redis updates as one isolated transaction
 func TransferPoints(rdb *redis.Client, ctx context.Context, from, to string, points int64) error {
     // TxPipeline wraps commands in MULTI/EXEC
-    // All commands execute atomically
+    // Commands execute sequentially without interleaving from other clients
     pipe := rdb.TxPipeline()
 
     // Deduct from sender
@@ -1934,7 +1927,7 @@ The go-redis library provides a comprehensive and type-safe way to work with Red
 - **Data Structures**: Working with strings, hashes, lists, sets, and sorted sets for various use cases
 - **Caching Patterns**: Implementing cache-aside, write-through, and refresh-ahead strategies
 - **Pub/Sub**: Building real-time messaging systems with publishers and subscribers
-- **Distributed Locks**: Ensuring mutual exclusion across distributed systems with Redlock
+- **Distributed Locks**: Ensuring mutual exclusion with single-instance locks and Redlock-style coordination
 - **Pipelining**: Optimizing performance with batch operations and transactions
 
 Redis combined with Go creates a powerful foundation for building high-performance, scalable applications. Whether you are implementing caching to reduce database load, building real-time features with pub/sub, or coordinating distributed systems with locks, go-redis provides the tools you need.
