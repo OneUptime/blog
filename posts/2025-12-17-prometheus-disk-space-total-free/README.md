@@ -17,8 +17,8 @@ Node Exporter exposes several filesystem metrics:
 | Metric | Description |
 |--------|-------------|
 | `node_filesystem_size_bytes` | Total size of the filesystem |
-| `node_filesystem_free_bytes` | Free space available to non-root users |
-| `node_filesystem_avail_bytes` | Free space available (considering reserved blocks) |
+| `node_filesystem_free_bytes` | Total free space in the filesystem |
+| `node_filesystem_avail_bytes` | Free space available to non-root users |
 | `node_filesystem_files` | Total number of inodes |
 | `node_filesystem_files_free` | Free inodes |
 
@@ -192,7 +192,7 @@ Running out of inodes can be as problematic as running out of space:
 Use linear prediction to estimate when disk will be full:
 
 ```promql
-# Predict when disk will be full (in seconds)
+# Predict available bytes 24 hours from now
 # Based on last 4 hours of data
 predict_linear(
   node_filesystem_avail_bytes{mountpoint="/"}[4h],
@@ -412,15 +412,15 @@ Some filesystems might not appear in metrics:
 count by (fstype, mountpoint) (node_filesystem_size_bytes)
 ```
 
-### Issue: Stale Metrics
+### Issue: Filesystem Collection Errors
 
-Filesystems might unmount but metrics persist:
+Filesystems might fail collection when a mount is inaccessible:
 
 ```promql
-# Only show filesystems that had recent reads
+# Only show filesystems that Node Exporter can stat successfully
 node_filesystem_avail_bytes
-and on (device, instance)
-(rate(node_disk_reads_completed_total[5m]) > 0)
+and on (device, instance, mountpoint, fstype)
+(node_filesystem_device_error == 0)
 ```
 
 ### Issue: Wrong Units in Dashboards
