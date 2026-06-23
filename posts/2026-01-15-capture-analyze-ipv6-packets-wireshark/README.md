@@ -397,7 +397,7 @@ icmpv6.type == 134 and icmpv6.opt.type == 3
 icmpv6.type == 134 and icmpv6.opt.type == 25
 
 # RAs advertising specific prefix
-icmpv6.nd.ra.prefix == 2001:db8::/64
+icmpv6.type == 134 and icmpv6.opt.prefix == 2001:db8::/64
 ```
 
 ### Duplicate Address Detection (DAD)
