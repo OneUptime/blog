@@ -79,28 +79,9 @@ sudo apt install -y curl wget gnupg2 software-properties-common
 The DEB package installation is the recommended method for Ubuntu systems as it handles systemd service setup automatically.
 
 ```bash
-# Download the GPG key for the OpenTelemetry repository
-# This key is used to verify the authenticity of the packages
-sudo curl -fsSL https://apt.opentelemetry.io/opentelemetry.gpg | sudo gpg --dearmor -o /usr/share/keyrings/opentelemetry.gpg
-
-# Add the OpenTelemetry APT repository to your sources list
-# Using the signed-by option ensures only packages signed with the correct key are trusted
-echo "deb [signed-by=/usr/share/keyrings/opentelemetry.gpg] https://apt.opentelemetry.io stable main" | sudo tee /etc/apt/sources.list.d/opentelemetry.list
-
-# Update package lists to include the new repository
-sudo apt update
-
-# Install the OpenTelemetry Collector Contrib distribution
-# The contrib version includes additional community-maintained components
-sudo apt install -y otelcol-contrib
-```
-
-If the official repository is not available, you can download the DEB package directly:
-
-```bash
 # Define the version you want to install
 # Check https://github.com/open-telemetry/opentelemetry-collector-releases/releases for latest
-OTEL_VERSION="0.96.0"
+OTEL_VERSION="0.154.0"
 
 # Download the DEB package for the Contrib distribution
 wget https://github.com/open-telemetry/opentelemetry-collector-releases/releases/download/v${OTEL_VERSION}/otelcol-contrib_${OTEL_VERSION}_linux_amd64.deb
@@ -113,13 +94,15 @@ sudo dpkg -i otelcol-contrib_${OTEL_VERSION}_linux_amd64.deb
 sudo apt install -f
 ```
 
+The Contrib DEB package installs the `otelcol-contrib` binary, creates the `otelcol-contrib` system user, writes the default configuration to `/etc/otelcol-contrib/config.yaml`, and installs the `otelcol-contrib.service` systemd unit.
+
 ### Method 2: Installing via Binary
 
 For environments where you need more control over the installation or cannot use the package manager:
 
 ```bash
 # Define the version to install
-OTEL_VERSION="0.96.0"
+OTEL_VERSION="0.154.0"
 
 # Create a directory for the OpenTelemetry Collector
 sudo mkdir -p /opt/otelcol
@@ -159,7 +142,7 @@ sudo chown -R otelcol:otelcol /etc/otelcol
 The OpenTelemetry Collector uses YAML configuration files. The configuration is organized into several main sections:
 
 ```yaml
-# /etc/otelcol/config.yaml
+# /etc/otelcol-contrib/config.yaml for DEB installs, or /etc/otelcol/config.yaml for the manual service below
 # This is a complete example configuration file demonstrating all major sections
 
 # Extensions provide additional capabilities beyond data processing
@@ -442,9 +425,9 @@ processors:
 
     # Filter configuration for metrics
     metrics:
-      metric:
-        # Exclude specific metrics by name
-        - 'name == "system.cpu.time" and attributes["state"] == "idle"'
+      datapoint:
+        # Exclude specific metric data points by metric name and attributes
+        - 'metric.name == "system.cpu.time" and attributes["state"] == "idle"'
 
     # Filter configuration for logs
     logs:
@@ -645,7 +628,12 @@ service:
         service: otel-collector
     metrics:
       level: detailed
-      address: 0.0.0.0:8888
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: '0.0.0.0'
+                port: 8888
 ```
 
 ### Multi-Environment Configuration
@@ -778,9 +766,6 @@ Before restarting the service, validate your configuration:
 ```bash
 # Validate the configuration file syntax
 otelcol validate --config=/etc/otelcol/config.yaml
-
-# Test the configuration with a dry run
-otelcol --config=/etc/otelcol/config.yaml --dry-run
 ```
 
 ## Health Checks and Monitoring
@@ -796,11 +781,9 @@ extensions:
     endpoint: "0.0.0.0:13133"
     path: "/health"
     # Response body for liveness check
-    response_body: '{"status": "healthy"}'
-    # Check interval for component status
-    check_collector_pipeline:
-      enabled: true
-      interval: 5m
+    response_body:
+      healthy: '{"status": "healthy"}'
+      unhealthy: '{"status": "unhealthy"}'
 ```
 
 ### Checking Collector Health
@@ -833,7 +816,12 @@ service:
     metrics:
       level: detailed
       # Prometheus metrics endpoint
-      address: 0.0.0.0:8888
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: '0.0.0.0'
+                port: 8888
 ```
 
 ### Key Metrics to Monitor
@@ -1006,8 +994,7 @@ receivers:
           cert_file: /etc/otelcol/certs/server.crt
           key_file: /etc/otelcol/certs/server.key
           client_ca_file: /etc/otelcol/certs/ca.crt
-          # Require client certificates
-          require_client_cert: true
+          # Verify client certificates signed by this CA
 
 # Remove sensitive data
 processors:
@@ -1070,7 +1057,7 @@ exporters:
     resolver:
       dns:
         hostname: otel-collector-headless.monitoring.svc.cluster.local
-        port: 4317
+        port: "4317"
 ```
 
 ### Configuration Management
