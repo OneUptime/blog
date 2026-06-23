@@ -16,7 +16,7 @@ Before diving into evaluation criteria, it's essential to understand the fundame
 
 ### What is OpenTelemetry?
 
-OpenTelemetry (OTel) is an open-source, vendor-neutral observability framework that provides APIs, SDKs, and tools for collecting telemetry data (traces, metrics, and logs). It's a CNCF (Cloud Native Computing Foundation) incubating project backed by major cloud providers and observability vendors.
+OpenTelemetry (OTel) is an open-source, vendor-neutral observability framework that provides APIs, SDKs, and tools for collecting telemetry data (traces, metrics, and logs). It's a CNCF (Cloud Native Computing Foundation) graduated project backed by major cloud providers and observability vendors.
 
 ### What are Proprietary APM Solutions?
 
@@ -69,10 +69,10 @@ The following table compares key data collection features across OpenTelemetry a
 | Auto-instrumentation | Yes (varies by language) | Yes | Yes | Yes (OneAgent) |
 | Custom instrumentation | Full control | Limited API | Limited API | Limited API |
 | Language support | 11+ languages | 15+ languages | 10+ languages | Most major languages |
-| Trace context propagation | W3C Trace Context | Proprietary + W3C | Proprietary + W3C | Proprietary |
+| Trace context propagation | W3C Trace Context | Proprietary + W3C | Proprietary + W3C | Proprietary + W3C |
 | Metrics collection | Yes | Yes | Yes | Yes |
-| Log collection | Yes (stable) | Yes | Yes | Yes |
-| Profiling | In development | Yes | Yes | Yes |
+| Log collection | Yes (stability varies by language and component) | Yes | Yes | Yes |
+| Profiling | Alpha | Yes | Yes | Yes |
 
 ### 2. Instrumentation Comparison
 
@@ -99,7 +99,7 @@ provider = TracerProvider()
 # Configure OTLP exporter to send data to any compatible backend
 # The endpoint can be changed without modifying instrumentation code
 exporter = OTLPSpanExporter(
-    endpoint="http://otel-collector:4317",  # Can point to Jaeger, Zipkin, or any vendor
+    endpoint="http://otel-collector:4317",  # Can point to an OTel Collector or compatible OTLP endpoint
     insecure=True
 )
 
@@ -154,15 +154,12 @@ from ddtrace import tracer, patch_all
 patch_all()
 
 # Vendor-specific configuration
-# Changing vendors would require rewriting this configuration
-tracer.configure(
-    hostname='datadog-agent',
-    port=8126,
-    # Proprietary features like continuous profiling
-    profiling=True,
-    # Vendor-specific security monitoring
-    appsec_enabled=True
-)
+# Changing vendors would require rewriting this configuration.
+# Datadog commonly uses environment variables for these settings, for example:
+# DD_AGENT_HOST=datadog-agent
+# DD_TRACE_AGENT_PORT=8126
+# DD_PROFILING_ENABLED=true
+# DD_APPSEC_ENABLED=true
 
 # The decorator syntax is vendor-specific
 # This creates tight coupling between your code and the APM vendor
@@ -266,10 +263,10 @@ processors:
         action: insert
 
 exporters:
-  # Export to Jaeger for self-hosted trace visualization
+  # Export to Jaeger for self-hosted trace visualization over OTLP
   # Jaeger is a popular open-source choice for tracing
-  jaeger:
-    endpoint: jaeger-collector:14250
+  otlp/jaeger:
+    endpoint: jaeger-collector:4317
     tls:
       insecure: true
 
@@ -281,7 +278,7 @@ exporters:
 
   # Export to a commercial vendor (optional)
   # This shows how OTel can integrate with proprietary backends
-  otlphttp:
+  otlp_http/vendor:
     endpoint: https://otlp.vendor.com:443
     headers:
       api-key: ${VENDOR_API_KEY}
@@ -298,8 +295,8 @@ service:
     # Traces pipeline sends to multiple backends simultaneously
     traces:
       receivers: [otlp]
-      processors: [memory_limiter, batch, resource]
-      exporters: [jaeger, otlphttp, file]
+      processors: [memory_limiter, resource, batch]
+      exporters: [otlp/jaeger, otlp_http/vendor, file]
 
     # Metrics pipeline goes to Prometheus
     metrics:
@@ -427,8 +424,8 @@ class APMCostAnalysis:
 
         # Storage estimation for self-hosted backend
         # Traces: ~1KB per span, Metrics: ~100 bytes per data point
-        trace_storage_gb = self.monthly_spans_billions * 1000 * 1 / 1024  # Convert to GB
-        metrics_storage_gb = self.monthly_metrics_millions * 0.0001  # MB to GB
+        trace_storage_gb = self.monthly_spans_billions * 1000  # 1KB/span -> ~1000GB per billion spans
+        metrics_storage_gb = self.monthly_metrics_millions * 0.1  # 100 bytes/point -> ~0.1GB per million
         logs_storage_gb = self.monthly_logs_gb
         total_storage_gb = trace_storage_gb + metrics_storage_gb + logs_storage_gb
 
@@ -558,7 +555,8 @@ datadogClient.gauge('order.processing_time', processingTime, {
 // PORTABLE: OpenTelemetry equivalent
 // This code works with any OTel-compatible backend
 // The meter and metric definitions are vendor-neutral
-const meter = opentelemetry.metrics.getMeter('order-service');
+const { metrics } = require('@opentelemetry/api');
+const meter = metrics.getMeter('order-service');
 const processingTimeHistogram = meter.createHistogram('order.processing_time', {
   description: 'Time taken to process orders',
   unit: 'ms'
@@ -592,7 +590,7 @@ The following code demonstrates a vendor abstraction pattern that reduces lock-i
 // Vendor abstraction layer to minimize lock-in
 // This pattern allows swapping backends without changing application code
 
-import { Span, Tracer, SpanContext, SpanKind } from '@opentelemetry/api';
+import { Span, Tracer, SpanKind } from '@opentelemetry/api';
 
 // Define a vendor-neutral interface for observability operations
 // This abstraction layer protects your code from vendor-specific APIs
@@ -605,7 +603,6 @@ interface ObservabilityProvider {
 interface SpanOptions {
   kind?: SpanKind;
   attributes?: Record<string, string | number | boolean>;
-  parent?: SpanContext;
 }
 
 // OpenTelemetry implementation of the abstraction
@@ -689,9 +686,10 @@ async function handleOrder(orderId: string): Promise<void> {
     observability.logEvent('info', `Order ${orderId} processed successfully`);
 
   } catch (error) {
-    observability.logEvent('error', `Order processing failed: ${error.message}`, {
+    const err = error instanceof Error ? error : new Error(String(error));
+    observability.logEvent('error', `Order processing failed: ${err.message}`, {
       orderId,
-      error: error.stack
+      error: err.stack
     });
     throw error;
   } finally {
@@ -791,15 +789,14 @@ processors:
     limit_percentage: 80
     spike_limit_percentage: 25
 
-  # Filter processor to route specific data to the commercial backend
+  # Filter processor to keep only specific data for the commercial backend
   # Only send high-value traces to the paid service
-  filter/critical:
+  filter/drop_non_critical:
+    error_mode: ignore
     traces:
       span:
-        # Only forward spans with error status or high latency
-        - 'status.code == STATUS_CODE_ERROR'
-        - 'attributes["http.status_code"] >= 500'
-        - 'attributes["processing.time_ms"] > 5000'
+        # Drop spans that are not errors, HTTP 5xx responses, or high latency
+        - 'status.code != STATUS_CODE_ERROR and (attributes["http.status_code"] == nil or attributes["http.status_code"] < 500) and (attributes["processing.time_ms"] == nil or attributes["processing.time_ms"] <= 5000)'
 
   # Add resource attributes for context
   resource:
@@ -845,23 +842,21 @@ exporters:
     resource_to_telemetry_conversion:
       enabled: true
 
-  # Loki for logs
-  loki:
-    endpoint: http://loki:3100/loki/api/v1/push
-    labels:
-      resource:
-        service.name: "service_name"
-        service.namespace: "namespace"
+  # Loki for logs over its native OTLP endpoint
+  otlp_http/loki:
+    endpoint: http://loki:3100/otlp
+    tls:
+      insecure: true
 
   # Commercial APM for critical traces only
   # This receives filtered data to manage costs
-  otlphttp/vendor:
-    endpoint: https://otlp.vendor.com/v1/traces
+  otlp_http/vendor:
+    endpoint: https://otlp.vendor.com
     headers:
       api-key: ${VENDOR_API_KEY}
 
   # Debug exporter for troubleshooting
-  logging:
+  debug:
     verbosity: detailed
     sampling_initial: 5
     sampling_thereafter: 200
@@ -886,14 +881,14 @@ service:
     # All traces go to Tempo for complete retention
     traces/full:
       receivers: [otlp]
-      processors: [memory_limiter, resource, tail_sampling, batch]
+      processors: [memory_limiter, resource, batch]
       exporters: [otlp/tempo]
 
     # Critical traces also go to commercial vendor for AI analysis
     traces/critical:
       receivers: [otlp]
-      processors: [memory_limiter, resource, filter/critical, batch]
-      exporters: [otlphttp/vendor]
+      processors: [memory_limiter, resource, tail_sampling, filter/drop_non_critical, batch]
+      exporters: [otlp_http/vendor]
 
     # Metrics pipeline
     metrics:
@@ -905,7 +900,7 @@ service:
     logs:
       receivers: [otlp]
       processors: [memory_limiter, resource, batch]
-      exporters: [loki]
+      exporters: [otlp_http/loki]
 ```
 
 ### Benefits of Hybrid Approach
