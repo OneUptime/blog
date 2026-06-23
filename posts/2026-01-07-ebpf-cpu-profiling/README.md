@@ -91,6 +91,8 @@ BCC (BPF Compiler Collection) provides a toolkit for creating eBPF programs. The
 # Ubuntu/Debian - install the full BCC toolkit including Python bindings
 sudo apt-get update
 sudo apt-get install -y bpfcc-tools linux-headers-$(uname -r) python3-bpfcc
+# On Debian/Ubuntu, BCC tools may be installed with a -bpfcc suffix
+# (for example, profile-bpfcc and offcputime-bpfcc).
 
 # RHEL/CentOS/Fedora - use dnf for modern package management
 sudo dnf install -y bcc-tools bcc-devel kernel-devel
@@ -149,9 +151,8 @@ sudo profile -F 99 -p 1234 30 > app_profile.txt
 
 # Include user and kernel stacks with folded output for flame graphs
 # -f: Output in folded format (compatible with flame graph tools)
-# -U: Include user-space stacks
-# -K: Include kernel-space stacks
-sudo profile -F 99 -a -f -U -K 30 > folded_stacks.txt
+# By default, profile includes both user-space and kernel-space stacks
+sudo profile -F 99 -a -f 30 > folded_stacks.txt
 ```
 
 ### Understanding the Output
@@ -285,14 +286,14 @@ int do_perf_event(struct bpf_perf_event_data *ctx) {
     // BPF_F_REUSE_STACKID: reuse existing stack ID if identical
     key.user_stack_id = stack_traces.get_stackid(
         &ctx->regs,
-        BPF_F_USER_STACK
+        BPF_F_USER_STACK | BPF_F_REUSE_STACKID
     );
 
     // Capture kernel-space stack trace
-    // No flag needed for kernel stack (it's the default)
+    // BPF_F_REUSE_STACKID also applies to kernel stack IDs
     key.kernel_stack_id = stack_traces.get_stackid(
         &ctx->regs,
-        0
+        BPF_F_REUSE_STACKID
     );
 
     // Get the process/thread name
@@ -311,7 +312,7 @@ int do_perf_event(struct bpf_perf_event_data *ctx) {
 
 def signal_handler(sig, frame):
     """Handle Ctrl+C gracefully"""
-    print("\nStopping profiler...")
+    print("\nStopping profiler...", file=sys.stderr)
     sys.exit(0)
 
 def main():
@@ -319,7 +320,7 @@ def main():
     signal.signal(signal.SIGINT, signal_handler)
 
     # Load and compile the eBPF program
-    print("Loading eBPF program...")
+    print("Loading eBPF program...", file=sys.stderr)
     b = BPF(text=bpf_program)
 
     # Attach to perf events for CPU sampling
@@ -333,7 +334,7 @@ def main():
         sample_freq=99
     )
 
-    print("Profiling... Press Ctrl+C to stop.")
+    print("Profiling... Press Ctrl+C to stop.", file=sys.stderr)
 
     # Collect samples for the specified duration
     duration = 30  # seconds
@@ -342,7 +343,7 @@ def main():
     except KeyboardInterrupt:
         pass
 
-    print("\nProcessing results...")
+    print("\nProcessing results...", file=sys.stderr)
 
     # Get references to our eBPF maps
     counts = b["counts"]
@@ -605,9 +606,8 @@ sudo offcputime -f -p $(pgrep myapp) 30 > offcpu_folded.txt
 sudo offcputime -f --min-block-time 1000 30 > offcpu_significant.txt
 
 # Include kernel stacks for complete picture
-# -K: include kernel stack traces
-# -U: include user stack traces
-sudo offcputime -K -U -f 30 > offcpu_full_stacks.txt
+# By default, offcputime includes both user-space and kernel-space stacks
+sudo offcputime -f 30 > offcpu_full_stacks.txt
 ```
 
 ### Custom Off-CPU Profiler with bpftrace
@@ -1010,11 +1010,11 @@ def list_profiles(start_time=None, end_time=None, limit=20):
     # Sort by timestamp descending (newest first)
     profiles.sort(key=lambda x: x[0], reverse=True)
 
-    return profiles[:limit]
+    return profiles[:limit] if limit is not None else profiles
 
 def find_profile_at(target_time):
     """Find the profile closest to a specific time."""
-    profiles = list_profiles()
+    profiles = list_profiles(limit=None)
 
     if not profiles:
         return None
@@ -1026,20 +1026,26 @@ def find_profile_at(target_time):
 def generate_diff(profile1_path, profile2_path, output_path):
     """Generate a differential flame graph between two profiles."""
     # Use difffolded.pl to compute the difference
-    diff_cmd = f"difffolded.pl {profile1_path} {profile2_path}"
-    flamegraph_cmd = "flamegraph.pl --title 'Differential Flame Graph' --negate"
+    diff_cmd = ["difffolded.pl", profile1_path, profile2_path]
+    flamegraph_cmd = [
+        "flamegraph.pl",
+        "--title", "Differential Flame Graph",
+        "--negate",
+    ]
 
     with open(output_path, 'w') as f:
         p1 = subprocess.Popen(
-            diff_cmd.split(),
+            diff_cmd,
             stdout=subprocess.PIPE
         )
         p2 = subprocess.Popen(
-            flamegraph_cmd.split(),
+            flamegraph_cmd,
             stdin=p1.stdout,
             stdout=f
         )
+        p1.stdout.close()
         p2.wait()
+        p1.wait()
 
     return output_path
 
@@ -1202,9 +1208,12 @@ PROFILE_AGE = Gauge(
 )
 
 PROFILE_DIR = "/var/lib/cpu-profiles"
+LAST_COUNTED_PROFILE = None
 
 def parse_latest_profile():
     """Parse the most recent profile and extract metrics."""
+    global LAST_COUNTED_PROFILE
+
     profiles = sorted(Path(PROFILE_DIR).glob("cpu_*.folded"))
 
     if not profiles:
@@ -1215,7 +1224,9 @@ def parse_latest_profile():
     # Update profile age
     age = time.time() - latest.stat().st_mtime
     PROFILE_AGE.set(age)
-    PROFILE_COUNT.inc()
+    if latest != LAST_COUNTED_PROFILE:
+        PROFILE_COUNT.inc()
+        LAST_COUNTED_PROFILE = latest
 
     # Parse the profile
     stacks = {}
@@ -1296,8 +1307,9 @@ The following troubleshooting guide addresses common problems with eBPF profilin
 # Issue: "perf_event_open failed" error
 # Solution: Check permissions and perf_event_paranoid setting
 cat /proc/sys/kernel/perf_event_paranoid
-# If > 1, reduce it for profiling (requires root or capabilities):
-sudo sysctl kernel.perf_event_paranoid=1
+# If profiling as a non-root user, CPU profiling generally requires
+# kernel.perf_event_paranoid=0 or a suitable capability set:
+sudo sysctl kernel.perf_event_paranoid=0
 
 # Issue: Missing symbols in stack traces
 # Solution: Install debug symbols for your application
@@ -1360,10 +1372,10 @@ eBPF profiling requires elevated privileges. Follow these security best practice
 # Option 1: Run profiler as root (simplest but least secure)
 sudo profile -F 99 ...
 
-# Option 2: Use capabilities instead of full root
-# Grant specific capabilities to the profiler binary
-sudo setcap cap_sys_admin,cap_perfmon=ep /usr/sbin/profile
-# Note: cap_perfmon requires kernel 5.8+
+# Option 2: Use capabilities instead of full root for compiled profilers
+sudo setcap cap_sys_admin,cap_perfmon=ep /path/to/compiled-profiler
+# Note: cap_perfmon requires kernel 5.8+. Python-based BCC tools are
+# typically run with sudo or managed through a constrained service.
 
 # Option 3: Use unprivileged eBPF (limited functionality)
 # Check if unprivileged eBPF is allowed
