@@ -100,9 +100,11 @@ const {
   SimpleSpanProcessor,
   InMemorySpanExporter
 } = require('@opentelemetry/sdk-trace-base');
-const { Resource } = require('@opentelemetry/resources');
+const { resourceFromAttributes } = require('@opentelemetry/resources');
 const {
-  SemanticResourceAttributes
+  ATTR_SERVICE_NAME,
+  ATTR_SERVICE_VERSION,
+  ATTR_DEPLOYMENT_ENVIRONMENT_NAME
 } = require('@opentelemetry/semantic-conventions');
 
 // Create an in-memory exporter that stores spans in an array
@@ -112,18 +114,18 @@ const memoryExporter = new InMemorySpanExporter();
 // Configure the tracer provider with service identification
 // The resource attributes help identify which service generated the spans
 const provider = new NodeTracerProvider({
-  resource: new Resource({
-    [SemanticResourceAttributes.SERVICE_NAME]: 'test-service',
-    [SemanticResourceAttributes.SERVICE_VERSION]: '1.0.0',
+  resource: resourceFromAttributes({
+    [ATTR_SERVICE_NAME]: 'test-service',
+    [ATTR_SERVICE_VERSION]: '1.0.0',
     // Add environment attribute to distinguish test traces
-    [SemanticResourceAttributes.DEPLOYMENT_ENVIRONMENT]: 'test',
+    [ATTR_DEPLOYMENT_ENVIRONMENT_NAME]: 'test',
   }),
+  spanProcessors: [new SimpleSpanProcessor(memoryExporter)],
 });
 
 // Use SimpleSpanProcessor for synchronous span export
 // This ensures spans are immediately available for assertions
 // Note: In production, use BatchSpanProcessor for better performance
-provider.addSpanProcessor(new SimpleSpanProcessor(memoryExporter));
 
 // Register the provider globally so all instrumentation uses it
 provider.register();
@@ -169,6 +171,10 @@ function findSpansByName(name) {
   return getSpans().filter(span => span.name === name);
 }
 
+function getParentSpanId(span) {
+  return span.parentSpanContext?.spanId;
+}
+
 /**
  * Retrieves the root span (the span with no parent)
  * The root span represents the entry point of the trace
@@ -176,7 +182,12 @@ function findSpansByName(name) {
  */
 function getRootSpan() {
   const spans = getSpans();
-  return spans.find(span => !span.parentSpanId);
+  const spanIds = new Set(spans.map(span => span.spanContext().spanId));
+
+  return spans.find(span => {
+    const parentSpanId = getParentSpanId(span);
+    return !parentSpanId || !spanIds.has(parentSpanId);
+  });
 }
 
 /**
@@ -200,14 +211,13 @@ function getSpanTree() {
   let root = null;
   spans.forEach(span => {
     const node = spanMap.get(span.spanContext().spanId);
-    if (span.parentSpanId) {
+    const parentSpanId = getParentSpanId(span);
+    if (parentSpanId && spanMap.has(parentSpanId)) {
       // This span has a parent, add it to parent's children array
-      const parent = spanMap.get(span.parentSpanId);
-      if (parent) {
-        parent.children.push(node);
-      }
+      const parent = spanMap.get(parentSpanId);
+      parent.children.push(node);
     } else {
-      // No parent means this is the root span
+      // No captured parent means this is the root of the captured span tree
       root = node;
     }
   });
@@ -243,6 +253,7 @@ module.exports = {
   getSpans,
   clearSpans,
   findSpansByName,
+  getParentSpanId,
   getRootSpan,
   getSpanTree,
   waitForSpans,
@@ -295,9 +306,9 @@ spec:
       name: HTTP request completes successfully
       assertions:
         # Verify the HTTP response code is 201 (Created)
-        - attr:http.status_code = 201
+        - attr:http.response.status_code = 201
         # Ensure the request method matches what we sent
-        - attr:http.method = "POST"
+        - attr:http.request.method = "POST"
 
     # Assert on the order service span
     - selector: span[name="OrderService.createOrder"]
@@ -333,7 +344,7 @@ spec:
         # Ensure DB operations don't take too long
         - attr:tracetest.span.duration < 500ms
         # Verify the correct database is being used
-        - attr:db.name = "orders"
+        - attr:db.namespace = "orders"
 ```
 
 ### Custom Jest Assertions
@@ -350,7 +361,7 @@ const { SpanStatusCode } = require('@opentelemetry/api');
 expect.extend({
   /**
    * Asserts that a span has a specific attribute with the expected value
-   * Usage: expect(span).toHaveSpanAttribute('http.method', 'POST')
+   * Usage: expect(span).toHaveSpanAttribute('http.request.method', 'POST')
    */
   toHaveSpanAttribute(span, attributeName, expectedValue) {
     // Span attributes are stored in a Map-like structure
@@ -438,7 +449,7 @@ expect.extend({
    */
   toHaveParent(span, parentSpan) {
     const expectedParentId = parentSpan.spanContext().spanId;
-    const actualParentId = span.parentSpanId;
+    const actualParentId = span.parentSpanContext?.spanId;
     const pass = actualParentId === expectedParentId;
 
     return {
@@ -480,11 +491,10 @@ When writing integration tests, you need to ensure that traces are properly prop
 // Integration test demonstrating trace-based testing patterns
 
 const request = require('supertest');
-const { trace, context, SpanKind } = require('@opentelemetry/api');
+const { trace } = require('@opentelemetry/api');
 const app = require('../src/app');
 const {
   clearSpans,
-  getSpans,
   findSpansByName,
   waitForSpans,
   getSpanTree
@@ -546,7 +556,7 @@ describe('Order API Integration Tests', () => {
           // Assert on database span performance
           const dbSpan = findSpansByName('INSERT orders')[0];
           expect(dbSpan).toHaveDurationLessThan(100); // 100ms max
-          expect(dbSpan).toHaveSpanAttribute('db.system', 'postgresql');
+          expect(dbSpan).toHaveSpanAttribute('db.system.name', 'postgresql');
 
           // Verify the trace hierarchy is correct
           const tree = getSpanTree();
@@ -594,7 +604,7 @@ describe('Order API Integration Tests', () => {
 
           // The root span should also reflect the error
           const httpSpan = findSpansByName('POST /api/orders')[0];
-          expect(httpSpan).toHaveSpanAttribute('http.status_code', 400);
+          expect(httpSpan).toHaveSpanAttribute('http.response.status_code', 400);
 
         } finally {
           testSpan.end();
@@ -739,7 +749,7 @@ class TestOrderAPI:
             f"Expected OK status, got {order_span.status.status_code}"
 
         # Assert on database span
-        db_spans = [s for s in spans if "db" in s.attributes.get("db.system", "")]
+        db_spans = [s for s in spans if "db" in s.attributes.get("db.system.name", "")]
         assert len(db_spans) > 0, "Expected at least one database span"
 
         # Verify database operations were fast
@@ -847,6 +857,10 @@ Ensure that your distributed system calls the expected services in the correct o
 
 const { getSpans, findSpansByName } = require('./trace-test-helpers');
 
+function getParentSpanId(span) {
+  return span.parentSpanContext?.spanId;
+}
+
 /**
  * Verifies that services were called in the expected order.
  * This pattern is useful for validating orchestration logic.
@@ -941,9 +955,10 @@ function assertTraceStructure(expectedStructure) {
     const matchingSpans = spans.filter(span => {
       const nameMatches = span.name === expected.name ||
                           span.name.match(new RegExp(expected.name));
+      const spanParentId = getParentSpanId(span);
       const parentMatches = parentSpanId === null
-        ? !span.parentSpanId
-        : span.parentSpanId === parentSpanId;
+        ? !spanParentId
+        : spanParentId === parentSpanId;
       return nameMatches && parentMatches;
     });
 
@@ -975,8 +990,8 @@ function assertTraceStructure(expectedStructure) {
 const expectedOrderTraceStructure = {
   name: 'POST /api/orders',
   attributes: {
-    'http.method': 'POST',
-    'http.status_code': 201,
+    'http.request.method': 'POST',
+    'http.response.status_code': 201,
   },
   children: [
     {
@@ -1000,7 +1015,7 @@ const expectedOrderTraceStructure = {
         {
           name: 'INSERT orders',
           attributes: {
-            'db.system': 'postgresql',
+            'db.system.name': 'postgresql',
           },
         },
       ],
@@ -1025,6 +1040,10 @@ Use traces to enforce performance requirements on critical paths:
 // Patterns for validating performance characteristics from traces
 
 const { getSpans, findSpansByName } = require('./trace-test-helpers');
+
+function getParentSpanId(span) {
+  return span.parentSpanContext?.spanId;
+}
 
 /**
  * Performance thresholds for different operation types.
@@ -1133,7 +1152,7 @@ function getCriticalPath() {
     const newPath = [...currentPath, span];
 
     // Find all children of this span
-    const children = spans.filter(s => s.parentSpanId === spanId);
+    const children = spans.filter(s => getParentSpanId(s) === spanId);
 
     if (children.length === 0) {
       // This is a leaf node
@@ -1151,7 +1170,11 @@ function getCriticalPath() {
   }
 
   // Start from root span
-  const rootSpan = spans.find(s => !s.parentSpanId);
+  const spanIds = new Set(spans.map(s => s.spanContext().spanId));
+  const rootSpan = spans.find(s => {
+    const parentSpanId = getParentSpanId(s);
+    return !parentSpanId || !spanIds.has(parentSpanId);
+  });
   if (!rootSpan) return [];
 
   const allPaths = findPaths(rootSpan.spanContext().spanId);
@@ -1247,7 +1270,11 @@ Verify that errors are correctly captured and propagated through the trace:
 // Patterns for validating error handling through traces
 
 const { SpanStatusCode } = require('@opentelemetry/api');
-const { getSpans, findSpansByName, getSpanTree } = require('./trace-test-helpers');
+const { getSpans, findSpansByName } = require('./trace-test-helpers');
+
+function getParentSpanId(span) {
+  return span.parentSpanContext?.spanId;
+}
 
 /**
  * Validates that an error was properly recorded in the trace.
@@ -1336,9 +1363,10 @@ function assertErrorPropagation(errorSourceSpan) {
     path.push(currentSpan);
 
     // Find parent span
-    if (currentSpan.parentSpanId) {
+    const parentSpanId = getParentSpanId(currentSpan);
+    if (parentSpanId) {
       currentSpan = spans.find(
-        s => s.spanContext().spanId === currentSpan.parentSpanId
+        s => s.spanContext().spanId === parentSpanId
       );
     } else {
       currentSpan = null;
@@ -1595,7 +1623,7 @@ jobs:
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: context.issue.number,
-              body: `## Trace-Based Test Failures\n\n${failedTests}\n\n[View Traces](http://localhost:16686)`
+              body: `## Trace-Based Test Failures\n\n${failedTests}\n\nTrace data was uploaded as a workflow artifact.`
             });
 ```
 
@@ -2094,7 +2122,9 @@ Distributed systems have inherent latency. Account for this in your tests:
 const SPAN_COLLECTION_TIMEOUT = 5000; // 5 seconds
 
 // Use async waiting patterns instead of fixed delays
-await waitForSpans(expectedCount, SPAN_COLLECTION_TIMEOUT);
+it('waits for spans without a fixed delay', async () => {
+  await waitForSpans(expectedCount, SPAN_COLLECTION_TIMEOUT);
+});
 ```
 
 ### 3. Meaningful Span Names
@@ -2117,11 +2147,18 @@ tracer.startSpan('doWork');  // Not descriptive
 Follow OpenTelemetry semantic conventions for consistent attribute naming:
 
 ```javascript
+const {
+  ATTR_HTTP_REQUEST_METHOD,
+  ATTR_HTTP_RESPONSE_STATUS_CODE,
+  ATTR_DB_SYSTEM_NAME,
+  ATTR_DB_QUERY_TEXT
+} = require('@opentelemetry/semantic-conventions');
+
 // Use standard semantic conventions for attributes
-span.setAttribute(SemanticAttributes.HTTP_METHOD, 'POST');
-span.setAttribute(SemanticAttributes.HTTP_STATUS_CODE, 201);
-span.setAttribute(SemanticAttributes.DB_SYSTEM, 'postgresql');
-span.setAttribute(SemanticAttributes.DB_STATEMENT, 'INSERT INTO orders...');
+span.setAttribute(ATTR_HTTP_REQUEST_METHOD, 'POST');
+span.setAttribute(ATTR_HTTP_RESPONSE_STATUS_CODE, 201);
+span.setAttribute(ATTR_DB_SYSTEM_NAME, 'postgresql');
+span.setAttribute(ATTR_DB_QUERY_TEXT, 'INSERT INTO orders...');
 
 // Use namespaced custom attributes for business logic
 span.setAttribute('order.id', orderId);
