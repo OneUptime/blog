@@ -12,7 +12,7 @@ Sometimes you need Terraform to interact with external APIs - fetching configura
 
 ## Method 1: The HTTP Data Source
 
-The simplest approach uses the built-in `http` data source for GET requests:
+The simplest approach uses the HashiCorp `http` data source for GET requests:
 
 ```hcl
 # Fetch data from a REST API
@@ -144,11 +144,8 @@ def main():
             print(json.dumps(output))
 
     except urllib.error.HTTPError as e:
-        # Return error information
-        print(json.dumps({
-            "error": str(e),
-            "status": str(e.code)
-        }))
+        # Report error information to Terraform
+        print(f"API request failed: {e} (status {e.code})", file=sys.stderr)
         sys.exit(1)
 
 if __name__ == "__main__":
@@ -186,7 +183,7 @@ terraform {
   required_providers {
     restapi = {
       source  = "Mastercard/restapi"
-      version = "~> 1.18"
+      version = "~> 3.0"
     }
   }
 }
@@ -393,20 +390,22 @@ output "database_password" {
 ```hcl
 data "external" "reliable_api_call" {
   program = ["bash", "-c", <<-EOT
+    set -euo pipefail
+
     for i in {1..3}; do
       response=$(curl -s -w "\n%{http_code}" https://api.example.com/data)
       status=$(echo "$response" | tail -n1)
       body=$(echo "$response" | sed '$d')
 
       if [ "$status" = "200" ]; then
-        echo "$body"
+        jq -n --arg body "$body" '{body: $body}'
         exit 0
       fi
 
       sleep $((i * 2))
     done
 
-    echo '{"error": "API call failed after 3 retries"}'
+    echo "API call failed after 3 retries" >&2
     exit 1
   EOT
   ]
@@ -415,24 +414,54 @@ data "external" "reliable_api_call" {
 
 ### 3. Cache API Responses
 
-Use triggers to control when data is refreshed:
+Terraform data sources are read during planning, so cache inside the external program when you need to avoid repeated API calls:
 
 ```hcl
-resource "null_resource" "api_cache_trigger" {
-  triggers = {
-    # Refresh daily
-    date = formatdate("YYYY-MM-DD", timestamp())
-  }
-}
-
 data "external" "cached_api_call" {
-  depends_on = [null_resource.api_cache_trigger]
-  program    = ["python3", "${path.module}/scripts/api_call.py"]
+  program = ["python3", "${path.module}/scripts/cached_api_call.py"]
 
   query = {
-    url = "https://api.example.com/config"
+    url               = "https://api.example.com/config"
+    cache_ttl_seconds = "86400"
   }
 }
+
+locals {
+  cached_config = jsondecode(data.external.cached_api_call.result.body)
+}
+```
+
+Python script (`scripts/cached_api_call.py`):
+
+```python
+#!/usr/bin/env python3
+import hashlib
+import json
+import sys
+import time
+import urllib.request
+from pathlib import Path
+
+def main():
+    input_data = json.load(sys.stdin)
+    url = input_data["url"]
+    ttl = int(input_data.get("cache_ttl_seconds", "86400"))
+
+    cache_dir = Path(".terraform/api-cache")
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    cache_file = cache_dir / f"{hashlib.sha256(url.encode('utf-8')).hexdigest()}.json"
+
+    if cache_file.exists() and time.time() - cache_file.stat().st_mtime < ttl:
+        body = cache_file.read_text(encoding="utf-8")
+    else:
+        with urllib.request.urlopen(url) as response:
+            body = response.read().decode("utf-8")
+        cache_file.write_text(body, encoding="utf-8")
+
+    print(json.dumps({"body": body}))
+
+if __name__ == "__main__":
+    main()
 ```
 
 ---
