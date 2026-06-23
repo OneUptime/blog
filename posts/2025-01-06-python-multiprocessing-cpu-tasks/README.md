@@ -74,6 +74,7 @@ The ProcessPoolExecutor from concurrent.futures provides a cleaner, more Pythoni
 ```python
 # executor_basic.py
 from concurrent.futures import ProcessPoolExecutor, as_completed
+from multiprocessing import cpu_count
 import time
 
 def process_item(item_id: int) -> dict:
@@ -118,6 +119,7 @@ Adding timeouts prevents tasks from running indefinitely and allows you to handl
 
 ```python
 from concurrent.futures import ProcessPoolExecutor, TimeoutError, as_completed
+from multiprocessing import cpu_count
 
 def process_with_timeout(items: list, timeout: float = 30.0) -> list:
     """Process with per-task timeout to prevent indefinite hangs"""
@@ -197,7 +199,8 @@ For batch operations like image processing, you can submit multiple items to the
 
 ```python
 from fastapi import FastAPI
-from concurrent.futures import ProcessPoolExecutor, as_completed
+from concurrent.futures import ProcessPoolExecutor
+from multiprocessing import cpu_count
 import asyncio
 from typing import List
 
@@ -382,8 +385,8 @@ For large numbers of small tasks, chunking reduces the overhead of inter-process
 ```python
 # chunked_processing.py
 from concurrent.futures import ProcessPoolExecutor
+from multiprocessing import cpu_count
 from typing import List, Iterator
-import math
 
 def chunk_list(lst: list, chunk_size: int) -> Iterator[list]:
     """Split list into chunks of specified size"""
@@ -419,15 +422,16 @@ Robust error handling ensures that one failing task doesn't crash your entire ba
 
 ```python
 from concurrent.futures import ProcessPoolExecutor, as_completed
+from multiprocessing import cpu_count
 from dataclasses import dataclass
-from typing import List, Union
+from typing import List, Any
 
 @dataclass
 class ProcessResult:
     """Structured result that captures success or failure"""
     item_id: int
     success: bool
-    result: any = None  # Present on success
+    result: Any = None  # Present on success
     error: str = None   # Present on failure
 
 def safe_process(item_id: int) -> ProcessResult:
