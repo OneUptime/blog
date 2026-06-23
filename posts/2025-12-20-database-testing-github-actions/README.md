@@ -14,7 +14,7 @@ Database integration tests verify your application works correctly with real dat
 
 ```mermaid
 flowchart LR
-    A[GitHub Runner] --> B[Job Container]
+    A[GitHub Runner] --> B[Workflow Steps]
     A --> C[PostgreSQL Service]
     A --> D[Redis Service]
     B -->|localhost:5432| C
@@ -186,7 +186,7 @@ jobs:
           --health-retries 5
 
       elasticsearch:
-        image: elasticsearch:8.11.0
+        image: docker.elastic.co/elasticsearch/elasticsearch:8.11.0
         env:
           discovery.type: single-node
           xpack.security.enabled: false
