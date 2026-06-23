@@ -1071,7 +1071,9 @@ check_rrsig_expiry() {
     local min_days=${2:-7}
 
     # Get RRSIG expiration for SOA record
-    local rrsig=$(dig +dnssec "$domain" SOA +short | grep RRSIG | head -1)
+    # With +short, the RRSIG record is rendered starting with the covered
+    # type, e.g. "SOA 13 2 300 <expiry> <inception> ..." (no literal "RRSIG").
+    local rrsig=$(dig +dnssec "$domain" SOA +short | grep '^SOA' | head -1)
 
     if [[ -z "$rrsig" ]]; then
         log "WARNING: No RRSIG found for $domain"
