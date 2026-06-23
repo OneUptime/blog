@@ -156,7 +156,7 @@ Our OpenAPI specification reflects core design principles:
 ### **1. Access the Specification**
 ```bash
 # Download the complete specification
-curl -o oneuptime-openapi.json https://oneuptime.com/api/openapi.json
+curl -o oneuptime-openapi.json https://oneuptime.com/api/openapi/spec
 
 # View in Swagger UI
 npx swagger-ui-serve oneuptime-openapi.json
@@ -209,8 +209,8 @@ By embracing open standards, we're not just making our API easier to use- we're 
 
 Ready to explore what's possible with OneUptime's OpenAPI specification?
 
-1. **Download the specification**: [oneuptime.com/api/openapi.json](https://oneuptime.com/api/openapi.json)
-2. **Explore the interactive docs**: [docs.oneuptime.com/api](https://docs.oneuptime.com/api)
+1. **Download the specification**: [oneuptime.com/api/openapi/spec](https://oneuptime.com/api/openapi/spec)
+2. **Explore the interactive docs**: [oneuptime.com/reference/openapi](https://oneuptime.com/reference/openapi)
 3. **Generate your first SDK**: Use our step-by-step guide
 4. **Join our community**: Share your integrations and get support
 
@@ -218,7 +218,7 @@ The future of observability is open, standards-based, and collaborative. With On
 
 ---
 
-*Have questions about integrating with OneUptime's API? [Join our community](https://oneuptime.com/community) or [explore our documentation](https://docs.oneuptime.com) to get started.*
+*Have questions about integrating with OneUptime's API? [Contact our support team](https://oneuptime.com/support) or [explore our documentation](https://oneuptime.com/docs) to get started.*
 
 **Related Reading:**
 
