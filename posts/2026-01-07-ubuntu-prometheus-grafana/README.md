@@ -433,11 +433,12 @@ allow_sign_up = false
 enabled = false
 
 [alerting]
-# Enable alerting features
-enabled = true
+# Legacy alerting must be disabled; it cannot be enabled alongside
+# unified alerting (and is removed entirely in Grafana 11+)
+enabled = false
 
 [unified_alerting]
-# Enable unified alerting (newer system)
+# Enable unified alerting (the current alerting system)
 enabled = true
 EOF
 ```
@@ -1348,15 +1349,15 @@ sudo tee /etc/prometheus/rules/monitoring-stack.yml > /dev/null << 'EOF'
 groups:
   - name: monitoring_stack
     rules:
-      # Alert if Prometheus is not healthy
+      # Alert if Prometheus is not up (self-monitoring via the 'up' metric)
       - alert: PrometheusNotHealthy
-        expr: prometheus_health != 1
+        expr: up{job="prometheus"} == 0
         for: 1m
         labels:
           severity: critical
         annotations:
           summary: "Prometheus is not healthy"
-          description: "Prometheus health check is failing"
+          description: "Prometheus self-scrape target is down"
 
       # Alert if too many samples rejected
       - alert: PrometheusTooManySamplesRejected
