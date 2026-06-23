@@ -18,8 +18,8 @@ In this comprehensive guide, we will explore how to configure Istio Ingress Gate
 
 Before we begin, ensure you have the following:
 
-- A Kubernetes cluster (version 1.22 or later)
-- Istio installed with the default profile (version 1.17 or later)
+- A Kubernetes cluster version supported by your Istio release
+- Istio installed with the default profile (use a currently supported Istio release)
 - `kubectl` configured to communicate with your cluster
 - `istioctl` CLI tool installed
 - Basic understanding of Kubernetes Services and Deployments
@@ -258,9 +258,9 @@ kubectl apply -f virtualservice-basic.yaml
 # Verify the VirtualService is created
 kubectl get virtualservice httpbin-vs
 
-# Test the configuration (replace INGRESS_IP with your actual IP)
-export INGRESS_IP=$(kubectl get svc istio-ingressgateway -n istio-system -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
-curl -H "Host: httpbin.example.com" http://$INGRESS_IP/get
+# Test the configuration (replace INGRESS_HOST with your actual IP address or hostname)
+export INGRESS_HOST=$(kubectl get svc istio-ingressgateway -n istio-system -o jsonpath='{.status.loadBalancer.ingress[0].ip}{.status.loadBalancer.ingress[0].hostname}')
+curl -H "Host: httpbin.example.com" http://$INGRESS_HOST/get
 ```
 
 ## TLS Termination Configuration
@@ -327,7 +327,7 @@ spec:
       # Other options: MUTUAL (mTLS), PASSTHROUGH, AUTO_PASSTHROUGH
       mode: SIMPLE
       # Reference to the Kubernetes secret containing TLS credentials
-      # Format: kubernetes-secret-name (in the gateway's namespace)
+      # The secret must be in the ingress gateway workload's namespace
       credentialName: httpbin-credential
   # Optional: Redirect HTTP to HTTPS
   - port:
@@ -367,10 +367,11 @@ Apply and test the TLS configuration:
 kubectl apply -f gateway-tls.yaml
 
 # Test HTTPS access (use -k for self-signed certificates)
-curl -k -H "Host: httpbin.example.com" https://$INGRESS_IP/get
+curl -k --connect-to "httpbin.example.com:443:$INGRESS_HOST:443" \
+  https://httpbin.example.com/get
 
 # Test HTTP to HTTPS redirect
-curl -I -H "Host: httpbin.example.com" http://$INGRESS_IP/get
+curl -I -H "Host: httpbin.example.com" http://$INGRESS_HOST/get
 # Should return 301 redirect to HTTPS
 ```
 
@@ -404,7 +405,7 @@ spec:
       # Secret containing the CA certificate to validate client certificates
       # Create this secret with: kubectl create secret generic httpbin-client-ca \
       #   --from-file=ca.crt=client-ca.crt -n istio-system
-      # Note: For Istio 1.12+, use caCertificates field with a separate secret
+      caCertCredentialName: httpbin-client-ca
 ```
 
 Create the client CA secret:
@@ -429,8 +430,8 @@ kubectl create secret generic httpbin-client-ca \
 
 # Test with client certificate
 curl -k --cert client.crt --key client.key \
-  -H "Host: secure.httpbin.example.com" \
-  https://$INGRESS_IP/get
+  --connect-to "secure.httpbin.example.com:443:$INGRESS_HOST:443" \
+  https://secure.httpbin.example.com/get
 ```
 
 ## Host-Based Routing
@@ -608,19 +609,17 @@ spec:
   http:
   # Route based on the subdomain using header matching
   - match:
-    - headers:
-        # The :authority header contains the host
-        ":authority":
-          prefix: "api."
+    - authority:
+        # The authority match checks the Host/:authority value
+        prefix: "api."
     route:
     - destination:
         host: api-service
         port:
           number: 8080
   - match:
-    - headers:
-        ":authority":
-          prefix: "web."
+    - authority:
+        prefix: "web."
     route:
     - destination:
         host: web-frontend
@@ -937,11 +936,8 @@ spec:
       # Time to wait between retries
       perTryTimeout: 10s
       # Retry on these conditions
-      retryOn: connect-failure,refused-stream,unavailable,cancelled,retriable-status-codes
-      # HTTP status codes that trigger a retry
-      retriableStatusCodes:
-      - 503
-      - 504
+      # Include HTTP status codes directly in retryOn
+      retryOn: connect-failure,refused-stream,unavailable,cancelled,503,504
 ```
 
 ## Rate Limiting and Traffic Policies
