@@ -63,11 +63,11 @@ flowchart LR
 
 ### Jenkins Architecture Overview
 
-This diagram shows the distributed architecture of Jenkins with master and agent nodes:
+This diagram shows the distributed architecture of Jenkins with controller and agent nodes:
 
 ```mermaid
 flowchart TB
-    subgraph Master["Jenkins Master"]
+    subgraph Controller["Jenkins Controller"]
         A[Web UI] --> B[Job Scheduler]
         B --> C[Build Queue]
         C --> D[Plugin Manager]
@@ -103,7 +103,7 @@ Before installing Jenkins, ensure your Ubuntu system meets the following require
 
 - Ubuntu 20.04 LTS, 22.04 LTS, or 24.04 LTS
 - Minimum 2 GB RAM (4 GB recommended for production)
-- Java Development Kit (JDK) 11 or 17
+- Java Development Kit (JDK) 21 or 25 for current Jenkins releases
 - Root or sudo access
 - Stable network connection
 
@@ -134,21 +134,21 @@ sudo apt upgrade -y
 
 ### Step 2: Install Java Development Kit
 
-Jenkins requires Java to run. We'll install OpenJDK 17, which is the recommended version:
+Jenkins requires Java to run. We'll install OpenJDK 21, which is supported by current Jenkins releases:
 
 ```bash
-# Install OpenJDK 17 JDK package
+# Install OpenJDK 21 JDK package and fontconfig dependency
 # Jenkins requires Java Runtime Environment (JRE) at minimum,
 # but JDK is recommended for building Java projects
-sudo apt install openjdk-17-jdk -y
+sudo apt install fontconfig openjdk-21-jdk -y
 
 # Verify the Java installation by checking the version
-# This should display "openjdk version 17.x.x" or similar
+# This should display "openjdk version 21.x.x" or similar
 java -version
 
 # Set JAVA_HOME environment variable for system-wide Java configuration
 # This is required by many build tools and Jenkins plugins
-echo 'export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64' | sudo tee -a /etc/profile.d/java.sh
+echo 'export JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64' | sudo tee -a /etc/profile.d/java.sh
 
 # Apply the environment variable to the current session
 source /etc/profile.d/java.sh
@@ -164,12 +164,13 @@ Add the official Jenkins repository to ensure you get the latest stable version:
 ```bash
 # Download and add the Jenkins GPG key for package verification
 # This ensures packages are authentic and haven't been tampered with
-curl -fsSL https://pkg.jenkins.io/debian-stable/jenkins.io-2023.key | sudo tee \
-  /usr/share/keyrings/jenkins-keyring.asc > /dev/null
+sudo install -d -m 0755 /etc/apt/keyrings
+curl -fsSL https://pkg.jenkins.io/debian-stable/jenkins.io-2026.key | sudo tee \
+  /etc/apt/keyrings/jenkins-keyring.asc > /dev/null
 
 # Add the Jenkins apt repository to your system's software sources
 # The signed-by option ensures only packages signed with the Jenkins key are accepted
-echo deb [signed-by=/usr/share/keyrings/jenkins-keyring.asc] \
+echo deb [signed-by=/etc/apt/keyrings/jenkins-keyring.asc] \
   https://pkg.jenkins.io/debian-stable binary/ | sudo tee \
   /etc/apt/sources.list.d/jenkins.list > /dev/null
 
@@ -304,8 +305,8 @@ Set up the Java Development Kit and other build tools:
 # Navigate to: Manage Jenkins > Tools
 
 # Configure JDK Installation:
-# Name: JDK17
-# JAVA_HOME: /usr/lib/jvm/java-17-openjdk-amd64
+# Name: JDK21
+# JAVA_HOME: /usr/lib/jvm/java-21-openjdk-amd64
 
 # Install Maven for Java projects
 sudo apt install maven -y
@@ -672,9 +673,10 @@ node('linux') {
                         sh 'npm test'
                         // Collect coverage report if available
                         if (fileExists('coverage/lcov.info')) {
-                            publishCoverage adapters: [
-                                coberturaAdapter('coverage/cobertura.xml')
-                            ]
+                            recordCoverage tools: [[
+                                parser: 'LCOV',
+                                pattern: 'coverage/lcov.info'
+                            ]]
                         }
                     }
                 }
@@ -776,7 +778,8 @@ def notifyBuildResult() {
 Set up Git credentials for secure repository access:
 
 ```bash
-# Generate SSH key for Jenkins (run as jenkins user)
+# Create the SSH directory and generate an SSH key for Jenkins (run as jenkins user)
+sudo -u jenkins mkdir -p /var/lib/jenkins/.ssh
 sudo -u jenkins ssh-keygen -t ed25519 -C "jenkins@example.com" -f /var/lib/jenkins/.ssh/id_ed25519 -N ""
 
 # Display the public key to add to your Git provider (GitHub, GitLab, etc.)
@@ -788,13 +791,13 @@ Host github.com
     HostName github.com
     User git
     IdentityFile /var/lib/jenkins/.ssh/id_ed25519
-    StrictHostKeyChecking no
+    StrictHostKeyChecking accept-new
 
 Host gitlab.com
     HostName gitlab.com
     User git
     IdentityFile /var/lib/jenkins/.ssh/id_ed25519
-    StrictHostKeyChecking no
+    StrictHostKeyChecking accept-new
 EOF'
 
 # Set proper permissions on SSH directory and files
@@ -1147,7 +1150,7 @@ pipeline {
             // Run this stage in a Maven container
             agent {
                 docker {
-                    image 'maven:3.9-eclipse-temurin-17'
+                    image 'maven:3.9-eclipse-temurin-21'
                     // Mount Maven cache for faster builds
                     args '-v $HOME/.m2:/root/.m2'
                 }
@@ -1161,7 +1164,7 @@ pipeline {
         stage('Test') {
             agent {
                 docker {
-                    image 'maven:3.9-eclipse-temurin-17'
+                    image 'maven:3.9-eclipse-temurin-21'
                     args '-v $HOME/.m2:/root/.m2'
                 }
             }
@@ -1209,11 +1212,11 @@ pipeline {
         }
 
         stage('Build Docker Image') {
-            // Use Docker-in-Docker for building images
+            // Use the Docker CLI with the host Docker socket for building images
             agent {
                 docker {
-                    image 'docker:24-dind'
-                    args '--privileged -v /var/run/docker.sock:/var/run/docker.sock'
+                    image 'docker:24-cli'
+                    args '-v /var/run/docker.sock:/var/run/docker.sock'
                 }
             }
             steps {
@@ -1342,7 +1345,7 @@ Configure granular access control:
 ```
 
 ```groovy
-// Example: Matrix-based security in Jenkins Configuration as Code
+// Example: Role-based security in Jenkins Configuration as Code
 // jenkins.yaml
 
 jenkins:
@@ -1412,12 +1415,14 @@ Implement additional security measures:
 # Set "Agent -> Controller Security" to "Enabled"
 
 # 3. Disable Jenkins CLI over remoting (security risk)
-# Add to /etc/default/jenkins or systemd service file:
-JAVA_ARGS="-Djenkins.CLI.disabled=true"
+# Add to the systemd override with sudo systemctl edit jenkins:
+# [Service]
+# Environment="JAVA_OPTS=-Djava.awt.headless=true -Djenkins.CLI.disabled=true"
 
-# 4. Enable Content Security Policy headers
-# Add to JAVA_ARGS:
-JAVA_ARGS="$JAVA_ARGS -Dhudson.model.DirectoryBrowserSupport.CSP=\"default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'\""
+# 4. Configure Content Security Policy for user content if needed
+# Prefer setting a Resource Root URL in Manage Jenkins > Security.
+# If you must customize the legacy user-content CSP, add a
+# hudson.model.DirectoryBrowserSupport.CSP system property to JAVA_OPTS.
 
 # 5. Configure reverse proxy with SSL/TLS
 # Example Nginx configuration for Jenkins:
@@ -1426,6 +1431,11 @@ JAVA_ARGS="$JAVA_ARGS -Dhudson.model.DirectoryBrowserSupport.CSP=\"default-src '
 ```nginx
 # /etc/nginx/sites-available/jenkins
 # Nginx reverse proxy configuration for Jenkins with SSL
+
+map $http_upgrade $connection_upgrade {
+    default upgrade;
+    '' close;
+}
 
 server {
     listen 80;
@@ -1467,7 +1477,7 @@ server {
         # Required for Jenkins websocket agents
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
+        proxy_set_header Connection $connection_upgrade;
 
         # Increase timeouts for long-running builds
         proxy_connect_timeout 300;
@@ -1502,7 +1512,7 @@ flowchart TB
         OAuth[OAuth Provider]
     end
 
-    subgraph Jenkins["Jenkins Master"]
+    subgraph Jenkins["Jenkins Controller"]
         Auth[Authentication Manager]
         RBAC[RBAC Engine]
         Creds[Credential Store]
@@ -1653,12 +1663,12 @@ BACKUP_ITEMS=(
 echo "Starting Jenkins backup at $(date)"
 
 # Build the tar command with all items to backup
+cd "${JENKINS_HOME}" || exit 1
 tar -czvf "${BACKUP_DIR}/${BACKUP_NAME}" \
     --exclude='*/workspace/*' \
     --exclude='*/builds/*/archive/*' \
     --exclude='*/builds/*/htmlreports/*' \
     --exclude='*.log' \
-    -C "${JENKINS_HOME}" \
     ${BACKUP_ITEMS[@]}
 
 # Check if backup was successful
@@ -1773,10 +1783,14 @@ sudo journalctl -u jenkins -f
 
 # 1. Port already in use
 # Check if port 8080 is in use
-sudo netstat -tlnp | grep 8080
+sudo ss -tlnp | grep 8080
 
 # Change Jenkins port if needed
-sudo sed -i 's/HTTP_PORT=8080/HTTP_PORT=9090/' /etc/default/jenkins
+sudo systemctl edit jenkins
+# Add:
+# [Service]
+# Environment="JENKINS_PORT=9090"
+sudo systemctl daemon-reload
 sudo systemctl restart jenkins
 
 # 2. Java not found or wrong version
@@ -1784,11 +1798,20 @@ sudo systemctl restart jenkins
 java -version
 
 # Set JAVA_HOME explicitly
-echo 'JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64' | sudo tee -a /etc/default/jenkins
+sudo systemctl edit jenkins
+# Add:
+# [Service]
+# Environment="JENKINS_OPTS=--javaHome=/usr/lib/jvm/java-21-openjdk-amd64"
+sudo systemctl daemon-reload
+sudo systemctl restart jenkins
 
 # 3. Insufficient memory
-# Increase heap size in /etc/default/jenkins
-sudo sed -i 's/JAVA_ARGS="-Djava.awt.headless=true"/JAVA_ARGS="-Djava.awt.headless=true -Xmx2048m -Xms1024m"/' /etc/default/jenkins
+# Increase heap size with a systemd override
+sudo systemctl edit jenkins
+# Add:
+# [Service]
+# Environment="JAVA_OPTS=-Djava.awt.headless=true -Xmx2048m -Xms1024m"
+sudo systemctl daemon-reload
 sudo systemctl restart jenkins
 
 # 4. Permission issues
@@ -1877,7 +1900,7 @@ sudo ls -la /var/lib/jenkins/.ssh/
 sudo -u jenkins cat /var/lib/jenkins/.ssh/known_hosts
 
 # 4. Add host to known_hosts if missing
-sudo -u jenkins ssh-keyscan github.com >> /var/lib/jenkins/.ssh/known_hosts
+sudo -u jenkins sh -c 'ssh-keyscan -H github.com >> /var/lib/jenkins/.ssh/known_hosts'
 
 # 5. Test Git clone manually
 sudo -u jenkins git clone git@github.com:org/repo.git /tmp/test-clone
