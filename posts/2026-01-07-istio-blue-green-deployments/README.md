@@ -82,8 +82,9 @@ flowchart TB
 
 Before implementing blue-green deployments with Istio, ensure you have:
 
-- Kubernetes cluster (1.23+) with kubectl configured
-- Istio 1.18+ installed with the default profile
+- Kubernetes cluster with a version supported by your Istio release (for Istio 1.30, Kubernetes 1.32-1.36)
+- A currently supported Istio release installed with the default profile
+- An Istio Gateway named `my-app-gateway` for `my-app.example.com` if you use the ingress examples
 - Helm 3.x (optional, for easier management)
 - Basic understanding of Kubernetes Deployments and Services
 
@@ -95,7 +96,7 @@ To verify your Istio installation, run the following command:
 istioctl version
 
 # Expected output shows both client and control plane versions
-# Example: client version: 1.20.0, control plane version: 1.20.0
+# Example: client version: 1.30.1, control plane version: 1.30.1
 ```
 
 Enable Istio sidecar injection for your namespace:
@@ -365,7 +366,7 @@ This DestinationRule creates two subsets that Istio uses to identify pods for ea
 # destination-rule.yaml
 # DestinationRule defines subsets for version-based traffic routing
 # Each subset maps to pods with specific labels
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: my-app-destination
@@ -410,7 +411,7 @@ For production environments, configure load balancing and outlier detection to i
 # destination-rule-advanced.yaml
 # Advanced DestinationRule with load balancing and circuit breaking
 # This configuration improves reliability and performance
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: my-app-destination
@@ -420,7 +421,7 @@ spec:
     # Load balancer settings distribute traffic across healthy pods
     loadBalancer:
       # ROUND_ROBIN provides even distribution
-      # Other options: LEAST_CONN, RANDOM, PASSTHROUGH
+      # Other options: LEAST_REQUEST, RANDOM, PASSTHROUGH
       simple: ROUND_ROBIN
     # Connection pool prevents resource exhaustion
     connectionPool:
@@ -450,13 +451,13 @@ spec:
     trafficPolicy:
       # Blue subset can have its own load balancer settings
       loadBalancer:
-        simple: LEAST_CONN
+        simple: LEAST_REQUEST
   - name: green
     labels:
       version: v2
     trafficPolicy:
       loadBalancer:
-        simple: LEAST_CONN
+        simple: LEAST_REQUEST
 ```
 
 Apply the DestinationRule:
@@ -484,7 +485,7 @@ Start by routing all traffic to the blue (v1) subset:
 # virtual-service-blue.yaml
 # VirtualService routes 100% of traffic to the blue (v1) subset
 # This is the initial state before switching to green
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-app-routing
@@ -530,7 +531,7 @@ To switch traffic to the green (v2) subset, update the weights in the VirtualSer
 # virtual-service-green.yaml
 # VirtualService updated to route 100% traffic to green (v2)
 # Apply this to complete the blue-green switch
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-app-routing
@@ -568,7 +569,7 @@ For extra safety, you can temporarily split traffic between versions before full
 # virtual-service-split.yaml
 # VirtualService with traffic split between blue and green
 # Useful for initial validation before complete switch
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-app-routing
@@ -924,7 +925,7 @@ Keep a rollback VirtualService configuration ready:
 # virtual-service-rollback.yaml
 # Pre-configured VirtualService for emergency rollback to blue
 # Apply this file immediately when issues are detected
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-app-routing
@@ -1130,7 +1131,7 @@ jobs:
   # Build and push Docker image
   build:
     runs-on: ubuntu-latest
-    if: github.event.inputs.action != 'rollback' && github.event.inputs.action != 'switch-blue'
+    if: github.event_name == 'push' || github.event.inputs.action == 'deploy'
     outputs:
       image_tag: ${{ steps.meta.outputs.tags }}
       version: ${{ steps.version.outputs.version }}
@@ -1182,7 +1183,7 @@ jobs:
   deploy-green:
     runs-on: ubuntu-latest
     needs: build
-    if: github.event.inputs.action == 'deploy' || github.event.inputs.action == ''
+    if: github.event_name == 'push' || github.event.inputs.action == 'deploy'
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -1210,7 +1211,7 @@ jobs:
       - name: Verify Green Deployment
         run: |
           # Wait for all pods to be ready
-          kubectl wait --for=condition=ready pod \
+          kubectl wait --for=condition=Ready pod \
             -l app=${{ env.APP_NAME }},version=v2 \
             -n ${{ env.K8S_NAMESPACE }} \
             --timeout=3m
@@ -1589,10 +1590,10 @@ istioctl proxy-config endpoints deploy/my-app-v2 \
 # This will report any configuration problems
 istioctl analyze -n default
 
-# Test routing with specific version header
-# Useful for testing before switch
+# Test routing with the header-based VirtualService shown below
+# Useful for testing before switch after applying that configuration
 curl -H "Host: my-app.example.com" \
-    -H "x-version: v2" \
+    -H "x-test-version: green" \
     http://${INGRESS_IP}/api/health
 
 # View real-time traffic metrics
@@ -1658,7 +1659,7 @@ Test the green version with real traffic using mirroring:
 # virtual-service-mirror.yaml
 # VirtualService that mirrors traffic to green for testing
 # Real traffic goes to blue, a copy goes to green for validation
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-app-routing
@@ -1691,7 +1692,7 @@ Route specific requests to green for testing before full switch:
 # virtual-service-header-routing.yaml
 # VirtualService with header-based routing for targeted testing
 # Allows testing green version with specific header
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-app-routing
@@ -1818,7 +1819,7 @@ If traffic switch takes longer than expected:
 # Reduce the TCP connection draining time
 # Add this to your DestinationRule
 cat <<EOF | kubectl apply -f -
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: my-app-destination
@@ -1857,7 +1858,7 @@ kubectl get pods -l app=my-app,version=v1
 kubectl scale deployment my-app-v1 --replicas=3
 
 # Wait for pods to be ready
-kubectl wait --for=condition=ready pod -l app=my-app,version=v1 --timeout=3m
+kubectl wait --for=condition=Ready pod -l app=my-app,version=v1 --timeout=3m
 
 # Then apply the rollback VirtualService
 kubectl apply -f virtual-service-rollback.yaml
