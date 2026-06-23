@@ -334,17 +334,18 @@ func (uc *UserUseCase) CreateUser(ctx context.Context, req input.CreateUserReque
         return nil, ErrUserAlreadyExists
     }
 
-    // Hash the password before creating the entity
+    // Create the domain entity with validation
+    user, err := entity.NewUser(req.Email, req.Name, req.Password)
+    if err != nil {
+        return nil, err
+    }
+
+    // Hash the password before persisting the entity
     hashedPassword, err := hashPassword(req.Password)
     if err != nil {
         return nil, ErrInternalError
     }
-
-    // Create the domain entity with validation
-    user, err := entity.NewUser(req.Email, req.Name, hashedPassword)
-    if err != nil {
-        return nil, err
-    }
+    user.Password = hashedPassword
 
     // Persist the user
     if err := uc.userRepo.Save(ctx, user); err != nil {
@@ -498,7 +499,6 @@ package postgres
 import (
     "context"
     "database/sql"
-    "time"
 
     "userservice/internal/domain/entity"
     "userservice/internal/port/output"
@@ -810,6 +810,7 @@ package http
 import (
     "encoding/json"
     "net/http"
+    "strconv"
 
     "userservice/internal/domain/entity"
     "userservice/internal/port/input"
@@ -908,6 +909,25 @@ func (h *UserHandler) ListUsers(w http.ResponseWriter, r *http.Request) {
     // Parse query parameters for pagination
     limit := 10
     offset := 0
+    query := r.URL.Query()
+
+    if value := query.Get("limit"); value != "" {
+        parsedLimit, err := strconv.Atoi(value)
+        if err != nil {
+            respondWithError(w, http.StatusBadRequest, "invalid_limit", "Invalid limit value")
+            return
+        }
+        limit = parsedLimit
+    }
+
+    if value := query.Get("offset"); value != "" {
+        parsedOffset, err := strconv.Atoi(value)
+        if err != nil {
+            respondWithError(w, http.StatusBadRequest, "invalid_offset", "Invalid offset value")
+            return
+        }
+        offset = parsedOffset
+    }
 
     users, err := h.userService.ListUsers(r.Context(), limit, offset)
     if err != nil {
