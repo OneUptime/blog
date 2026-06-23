@@ -113,7 +113,7 @@ processors:
     spike_limit_mib: 800          # Allow temporary spikes up to 800MB
 
   # Resource detection adds cloud metadata automatically
-  resourcedetection:
+  resource_detection:
     detectors: [env, system, docker, ec2, gcp, azure]
     timeout: 5s
 
@@ -134,8 +134,9 @@ exporters:
       - "kafka-1:9092"
       - "kafka-2:9092"
       - "kafka-3:9092"
-    topic: "traces-realtime"
-    encoding: otlp_proto
+    traces:
+      topic: "traces-realtime"
+      encoding: otlp_proto
 
   # Debug exporter for development
   # Outputs traces to console for troubleshooting
@@ -148,7 +149,7 @@ service:
     # Optimized for batch processing and long-term storage
     traces/storage:
       receivers: [otlp]
-      processors: [memory_limiter, resourcedetection, batch/high-throughput]
+      processors: [memory_limiter, resource_detection, batch/high-throughput]
       exporters: [otlp/jaeger]
 
     # Pipeline 2: Low-latency streaming pipeline
@@ -246,7 +247,7 @@ Processor order matters significantly. Understanding how to chain processors eff
 ```mermaid
 graph LR
     subgraph "Recommended Processor Order"
-        A[memory_limiter] --> B[resourcedetection]
+        A[memory_limiter] --> B[resource_detection]
         B --> C[attributes/resource]
         C --> D[filter]
         D --> E[transform]
@@ -279,8 +280,8 @@ processors:
   # Stage 2: Resource Detection
   # Automatically enriches data with infrastructure metadata
   # Run early so subsequent processors can use this information
-  resourcedetection:
-    detectors: [env, system, docker, ec2, gcp, azure, k8s_node]
+  resource_detection:
+    detectors: [env, system, docker, ec2, gcp, azure]
     timeout: 5s
     override: false    # Don't override existing attributes
 
@@ -378,7 +379,7 @@ service:
       receivers: [otlp]
       processors:
         - memory_limiter      # 1. Protect memory
-        - resourcedetection   # 2. Enrich with metadata
+        - resource_detection  # 2. Enrich with metadata
         - resource           # 3. Modify resources
         - attributes         # 4. Modify attributes
         - filter             # 5. Remove unwanted data
@@ -404,6 +405,7 @@ receivers:
 
 processors:
   memory_limiter:
+    check_interval: 1s
     limit_mib: 4000
 
   # Filter for error traces (high priority)
@@ -431,7 +433,7 @@ processors:
         statements:
           - set(attributes["priority"], "high")
           - set(attributes["requires_attention"], true)
-          - set(attributes["processed_at"], Time())
+          - set(attributes["processed_at"], Now())
 
   # Light processing for success traces
   # Minimal processing for high-volume successful spans
@@ -519,10 +521,10 @@ connectors:
   # Count connector generates metrics from traces
   # These metrics can be used to monitor pipeline health
   count:
-    traces:
-      # Count all spans
-      spans:
-        name: trace.span.count
+    # Count all spans
+    # The metric name is the YAML map key (not a "name:" field)
+    spans:
+      trace.span.count:
         description: "Count of spans received"
         conditions:
           - 'true'    # Count all spans
@@ -531,9 +533,9 @@ connectors:
           - key: span.kind
           - key: status.code
 
-      # Count spans by specific conditions
-      spanevent:
-        name: trace.spanevent.count
+    # Count span events by specific conditions
+    spanevents:
+      trace.spanevent.count:
         description: "Count of span events"
 
 processors:
@@ -584,7 +586,7 @@ receivers:
 connectors:
   # Span metrics connector generates latency, call count, and error metrics
   # Essential for implementing SLOs based on trace data
-  spanmetrics:
+  span_metrics:
     # Histogram configuration for latency measurements
     histogram:
       explicit:
@@ -617,6 +619,7 @@ processors:
 
   # Memory limiter to protect against cardinality explosion
   memory_limiter:
+    check_interval: 1s
     limit_mib: 4000
 
 exporters:
@@ -635,11 +638,11 @@ service:
     traces:
       receivers: [otlp]
       processors: [memory_limiter, batch]
-      exporters: [otlp/traces, spanmetrics]
+      exporters: [otlp/traces, span_metrics]
 
     # Generated metrics pipeline
     metrics:
-      receivers: [spanmetrics]
+      receivers: [span_metrics]
       processors: [batch]
       exporters: [prometheus]
 ```
@@ -672,7 +675,7 @@ processors:
       - context: span
         statements:
           - set(attributes["pipeline.stage1.processed"], true)
-          - set(attributes["pipeline.stage1.timestamp"], Time())
+          - set(attributes["pipeline.stage1.timestamp"], Now())
 
   # Stage 2: Business logic transformations
   transform/stage2:
@@ -682,8 +685,8 @@ processors:
         statements:
           - set(attributes["pipeline.stage2.processed"], true)
           # Apply business-specific transformations
-          - set(attributes["business.region"], "us-east") where attributes["http.host"] =~ ".*\\.us-east\\..*"
-          - set(attributes["business.region"], "eu-west") where attributes["http.host"] =~ ".*\\.eu-west\\..*"
+          - set(attributes["business.region"], "us-east") where IsMatch(attributes["http.host"], ".*\\.us-east\\..*")
+          - set(attributes["business.region"], "eu-west") where IsMatch(attributes["http.host"], ".*\\.eu-west\\..*")
 
   # Stage 3: Final formatting and cleanup
   transform/stage3:
@@ -747,14 +750,18 @@ connectors:
     error_mode: ignore
     table:
       # Route by service type
-      - statement: route() where attributes["service.type"] == "database"
+      - context: resource
+        condition: attributes["service.type"] == "database"
         pipelines: [traces/database]
-      - statement: route() where attributes["service.type"] == "api"
+      - context: resource
+        condition: attributes["service.type"] == "api"
         pipelines: [traces/api]
-      - statement: route() where attributes["service.type"] == "frontend"
+      - context: resource
+        condition: attributes["service.type"] == "frontend"
         pipelines: [traces/frontend]
       # Route errors to dedicated pipeline
-      - statement: route() where status.code == 2
+      - context: span
+        condition: status.code == 2
         pipelines: [traces/errors]
 
 processors:
@@ -883,6 +890,7 @@ receivers:
 
 processors:
   memory_limiter:
+    check_interval: 1s
     limit_mib: 8000    # Tail sampling requires more memory
     spike_limit_mib: 2000
 
@@ -964,6 +972,7 @@ receivers:
 
 processors:
   memory_limiter:
+    check_interval: 1s
     limit_mib: 16000
     spike_limit_mib: 4000
 
@@ -1127,7 +1136,7 @@ processors:
       - context: span
         statements:
           - set(attributes["sampling.tail_sampled"], true)
-          - set(attributes["sampling.decision_time"], Time())
+          - set(attributes["sampling.decision_time"], Now())
 
   batch:
     send_batch_size: 2000
@@ -1190,6 +1199,7 @@ receivers:
 
 processors:
   memory_limiter:
+    check_interval: 1s
     limit_mib: 4000
 
 exporters:
@@ -1204,7 +1214,7 @@ exporters:
     resolver:
       dns:
         hostname: sampler-headless.monitoring.svc.cluster.local
-        port: 4317
+        port: "4317"
 
 service:
   pipelines:
@@ -1223,6 +1233,7 @@ receivers:
 
 processors:
   memory_limiter:
+    check_interval: 1s
     limit_mib: 8000
     spike_limit_mib: 2000
 
@@ -1303,12 +1314,11 @@ receivers:
 
 connectors:
   # Generate metrics from traces
-  spanmetrics:
+  span_metrics:
     histogram:
       explicit:
         buckets: [5ms, 10ms, 25ms, 50ms, 100ms, 250ms, 500ms, 1s, 2.5s, 5s]
     dimensions:
-      - name: service.name
       - name: http.method
       - name: http.status_code
     exemplars:
@@ -1316,9 +1326,8 @@ connectors:
 
   # Count spans for monitoring
   count:
-    traces:
-      spans:
-        name: otelcol.traces.span_count
+    spans:
+      otelcol.traces.span_count:
         attributes:
           - key: service.name
           - key: status.code
@@ -1331,8 +1340,8 @@ processors:
     spike_limit_mib: 2000
 
   # Resource detection
-  resourcedetection:
-    detectors: [env, system, k8s_node]
+  resource_detection:
+    detectors: [env, system]
     timeout: 5s
 
   # Kubernetes attributes enrichment
@@ -1415,14 +1424,9 @@ exporters:
     external_labels:
       cluster: production
 
-  # Logs to Loki
-  loki:
-    endpoint: "http://loki:3100/loki/api/v1/push"
-    labels:
-      attributes:
-        service.name: service
-        k8s.namespace.name: namespace
-        k8s.pod.name: pod
+  # Logs to Loki using its native OTLP ingestion endpoint
+  otlphttp/loki:
+    endpoint: "http://loki:3100/otlp"
 
   # Debug exporter (disable in production)
   debug:
@@ -1436,7 +1440,12 @@ service:
       encoding: json
     metrics:
       level: detailed
-      address: ":8888"
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: "0.0.0.0"
+                port: 8888
 
   # Extensions
   extensions: []
@@ -1447,18 +1456,18 @@ service:
       receivers: [otlp]
       processors:
         - memory_limiter
-        - resourcedetection
+        - resource_detection
         - k8sattributes
         - transform/common
         - batch/traces
-      exporters: [otlp/traces, spanmetrics, count]
+      exporters: [otlp/traces, span_metrics, count]
 
     # Metrics pipeline (includes span metrics)
     metrics:
-      receivers: [otlp, prometheus, spanmetrics, count]
+      receivers: [otlp, prometheus, span_metrics, count]
       processors:
         - memory_limiter
-        - resourcedetection
+        - resource_detection
         - k8sattributes
         - transform/common
         - batch/metrics
@@ -1469,12 +1478,12 @@ service:
       receivers: [otlp, filelog]
       processors:
         - memory_limiter
-        - resourcedetection
+        - resource_detection
         - k8sattributes
         - filter/logs
         - transform/common
         - batch/logs
-      exporters: [loki]
+      exporters: [otlphttp/loki]
 ```
 
 ### High-Availability Pipeline Pattern
@@ -1565,7 +1574,7 @@ processors:
           # Truncate long attribute values
           - truncate_all(attributes, 512)
           # Limit number of attributes
-          - limit(attributes, 50)
+          - limit(attributes, 50, [])
 
   # Smaller batch sizes for lower memory usage
   batch:
@@ -1607,6 +1616,7 @@ receivers:
 
 processors:
   memory_limiter:
+    check_interval: 1s
     limit_mib: 16000
     spike_limit_mib: 4000
 
@@ -1686,11 +1696,8 @@ service:
     metrics:
       level: detailed
       # Expose metrics on this address
-      address: ":8888"
-      # Additional labels for collector metrics
       readers:
-        - periodic:
-            interval: 10000
+        - pull:
             exporter:
               prometheus:
                 host: "0.0.0.0"
