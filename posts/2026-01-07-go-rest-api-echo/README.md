@@ -41,6 +41,7 @@ go mod init github.com/yourusername/echo-rest-api
 # Install Echo v4 and additional dependencies
 go get github.com/labstack/echo/v4
 go get github.com/labstack/echo/v4/middleware
+go get github.com/labstack/echo-jwt/v4
 go get github.com/go-playground/validator/v10
 go get github.com/golang-jwt/jwt/v5
 ```
@@ -100,7 +101,7 @@ import (
 
 func main() {
     // Create a new Echo instance
-    // Echo uses a singleton pattern for the main router
+    // Each Echo instance owns its own router and middleware stack
     e := echo.New()
 
     // Configure Echo settings
@@ -154,19 +155,12 @@ Echo provides a powerful and intuitive routing system with support for path para
 package handler
 
 import (
-    "net/http"
-    "strconv"
-
     "github.com/labstack/echo/v4"
 )
 
 // SetupRoutes configures all application routes
 // Organizing routes in a separate function improves maintainability
-func SetupRoutes(e *echo.Echo) {
-    // API versioning using route groups
-    // Groups allow you to apply common prefixes and middleware
-    v1 := e.Group("/api/v1")
-
+func SetupRoutes(v1 *echo.Group) {
     // User routes with RESTful conventions
     users := v1.Group("/users")
     users.GET("", listUsers)           // GET /api/v1/users
@@ -256,7 +250,6 @@ package handler
 
 import (
     "net/http"
-    "strconv"
 
     "github.com/labstack/echo/v4"
 )
@@ -334,6 +327,8 @@ Echo comes with a comprehensive set of built-in middleware for common web applic
 package middleware
 
 import (
+    "os"
+
     "github.com/labstack/echo/v4"
     "github.com/labstack/echo/v4/middleware"
 )
@@ -343,7 +338,10 @@ import (
 func SetupCORS(e *echo.Echo) {
     // Basic CORS configuration allowing all origins
     // Use this only for development or public APIs
-    e.Use(middleware.CORS())
+    if os.Getenv("ENV") != "production" {
+        e.Use(middleware.CORS())
+        return
+    }
 
     // Production CORS configuration with specific origins
     // Always restrict origins in production environments
@@ -485,7 +483,6 @@ package middleware
 
 import (
     "net/http"
-    "sync"
     "time"
 
     "github.com/labstack/echo/v4"
@@ -497,7 +494,7 @@ import (
 func SetupRateLimiter(e *echo.Echo) {
     // Use Echo's built-in rate limiter middleware
     // This uses an in-memory store suitable for single-instance deployments
-    e.Use(middleware.RateLimiter(middleware.NewRateLimiterMemoryStore(
+    e.Use(middleware.RateLimiter(middleware.NewRateLimiterMemoryStoreWithConfig(
         // Rate: 20 requests per second per IP
         middleware.RateLimiterMemoryStoreConfig{
             Rate:      20,
@@ -516,7 +513,7 @@ func SetupAdvancedRateLimiter(e *echo.Echo) {
             return c.Path() == "/health"
         },
         // Store is the rate limiter backend
-        Store: middleware.NewRateLimiterMemoryStore(
+        Store: middleware.NewRateLimiterMemoryStoreWithConfig(
             middleware.RateLimiterMemoryStoreConfig{
                 Rate:      10,
                 Burst:     20,
@@ -600,9 +597,13 @@ func createUser(c echo.Context) error {
 
     // Bind request data to struct
     // Echo automatically detects Content-Type and binds accordingly
-    // Supports: JSON, XML, form data, query parameters
+    // Supports: JSON, XML, and form data from the request body
     if err := c.Bind(req); err != nil {
         return echo.NewHTTPError(http.StatusBadRequest, err.Error())
+    }
+    // Bind query parameters explicitly for POST requests.
+    if err := echo.BindQueryParams(c, req); err != nil {
+        return echo.NewHTTPError(http.StatusBadRequest, "invalid query parameters")
     }
 
     // Validate the bound data
@@ -794,6 +795,10 @@ type APIError struct {
     StatusText string      `json:"status_text"`
 }
 
+func (e *APIError) Error() string {
+    return e.Message
+}
+
 // CustomHTTPErrorHandler provides consistent error responses
 // Register this to handle all errors uniformly across the API
 func CustomHTTPErrorHandler(err error, c echo.Context) {
@@ -810,7 +815,12 @@ func CustomHTTPErrorHandler(err error, c echo.Context) {
     case *echo.HTTPError:
         // Echo HTTP errors (from echo.NewHTTPError)
         code = e.Code
-        message = formatMessage(e.Message)
+        if msg, ok := e.Message.(map[string]interface{}); ok {
+            message = formatMessage(msg["error"])
+            details = msg["details"]
+        } else {
+            message = formatMessage(e.Message)
+        }
         if e.Internal != nil {
             details = e.Internal.Error()
         }
@@ -875,9 +885,10 @@ func NewNotFoundError(resource string) *echo.HTTPError {
 
 // NewValidationError creates a 400 error for validation failures
 func NewValidationError(details interface{}) *echo.HTTPError {
-    err := echo.NewHTTPError(http.StatusBadRequest, "Validation failed")
-    err.Internal = nil
-    return err
+    return echo.NewHTTPError(http.StatusBadRequest, map[string]interface{}{
+        "error":   "Validation failed",
+        "details": details,
+    })
 }
 
 // NewUnauthorizedError creates a 401 error
