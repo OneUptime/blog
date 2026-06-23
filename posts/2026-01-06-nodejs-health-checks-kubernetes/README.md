@@ -18,7 +18,7 @@ For more on graceful shutdown patterns, see our guide on [building graceful shut
 |-------|---------|----------------|
 | **Liveness** | Is the process alive? | Restart container |
 | **Readiness** | Can it handle traffic? | Remove from service |
-| **Startup** | Has it finished starting? | Wait, then use liveness |
+| **Startup** | Has it finished starting? | Delay other probes; restart if it keeps failing |
 
 ## Basic Health Check Endpoints
 
@@ -197,19 +197,21 @@ health.register('redis', async () => {
 
 // External API health check (non-critical)
 health.register('payment-api', async () => {
-  const response = await fetch('https://api.stripe.com/v1/health', {
+  const response = await fetch(process.env.PAYMENT_API_HEALTH_URL, {
     signal: AbortSignal.timeout(5000),
   });
-  return { status: response.status };
+  if (!response.ok) {
+    throw new Error(`Payment API returned ${response.status}`);
+  }
+  return { statusCode: response.status };
 }, { critical: false, timeout: 5000 }); // Non-critical - can degrade gracefully
 
 // Disk space check
-const os = require('os');
 const { statfs } = require('fs/promises');
 
 health.register('disk', async () => {
   const stats = await statfs('/');
-  const freePercent = (stats.bfree / stats.blocks) * 100;
+  const freePercent = (stats.bavail / stats.blocks) * 100;
   return {
     freePercent: Math.round(freePercent),
     healthy: freePercent > 10, // Alert if < 10% free
@@ -284,7 +286,13 @@ metadata:
   name: nodejs-app
 spec:
   replicas: 3
+  selector:
+    matchLabels:
+      app: nodejs-app
   template:
+    metadata:
+      labels:
+        app: nodejs-app
     spec:
       terminationGracePeriodSeconds: 30
       containers:
@@ -441,6 +449,6 @@ async function runCheckWithMetrics(name, check) {
 |-------|-------|---------------|
 | **Liveness** | Process alive | Restart container |
 | **Readiness** | Dependencies OK | Remove from traffic |
-| **Startup** | Initialization complete | Keep waiting |
+| **Startup** | Initialization complete | Wait until threshold, then restart container |
 
 Health checks are critical for reliable Kubernetes deployments. Keep liveness probes simple, make readiness probes comprehensive but fast, and always handle graceful shutdown to prevent dropped requests during deployments.
