@@ -108,7 +108,7 @@ The EnvoyFilter resource consists of several key components that work together t
 
 ### Basic Structure
 
-The following YAML shows the complete structure of an EnvoyFilter resource with all available fields:
+The following YAML shows a representative structure of an EnvoyFilter resource with the commonly used fields:
 
 ```yaml
 # EnvoyFilter API version - networking.istio.io/v1alpha3 is the current version
@@ -210,6 +210,8 @@ The `applyTo` field specifies which part of the Envoy configuration to modify:
 | `HTTP_ROUTE` | Individual HTTP routes | Route-specific modifications |
 | `CLUSTER` | Upstream cluster configuration | Backend connection settings |
 | `EXTENSION_CONFIG` | Extension configurations | ECDS-based dynamic configs |
+| `LISTENER_FILTER` | Listener filters | Proxy protocol, TLS inspector, and similar listener-level filters |
+| `BOOTSTRAP` | Bootstrap configuration | Deprecated; avoid for new configurations |
 
 ## Patch Operations
 
@@ -291,7 +293,7 @@ spec:
             - header:
                 key: "x-custom-header"
                 value: "custom-value"
-              append: true
+              append_action: APPEND_IF_EXISTS_OR_ADD
 ```
 
 ### ADD Operation
@@ -412,7 +414,7 @@ spec:
             inlineCode: |
               -- First filter in chain - captures raw request data
               function envoy_on_request(request_handle)
-                local start_time = os.clock()
+                local start_time = request_handle:timestamp()
                 -- Store start time for latency calculation
                 request_handle:streamInfo():dynamicMetadata():set(
                   "timing", "start_time", tostring(start_time)
@@ -629,7 +631,9 @@ spec:
 
                 -- Add upstream service identification header
                 request_handle:headers():add("x-calling-service", "frontend")
-                request_handle:headers():add("x-correlation-id", correlation_id)
+                if correlation_id ~= nil then
+                  request_handle:headers():add("x-correlation-id", correlation_id)
+                end
               end
 ```
 
@@ -804,7 +808,7 @@ spec:
                 response_handle:logInfo("Response status: " .. status)
 
                 -- Add timing header
-                headers:add("x-response-time", os.date("%Y-%m-%dT%H:%M:%S"))
+                headers:add("x-response-time", response_handle:timestampString())
               end
 ```
 
@@ -945,7 +949,7 @@ spec:
                 end
 
                 -- Add timestamp header
-                headers:add("x-request-timestamp", os.time())
+                headers:add("x-request-timestamp", request_handle:timestampString())
 
                 -- Normalize user-agent for analytics
                 local user_agent = headers:get("user-agent")
@@ -1101,7 +1105,7 @@ spec:
 
 ```yaml
 # Lua filter for conditional routing based on headers
-# Routes traffic to different upstreams based on request attributes
+# Adds routing headers that route configuration can use to select upstreams
 apiVersion: networking.istio.io/v1alpha3
 kind: EnvoyFilter
 metadata:
@@ -1153,6 +1157,7 @@ spec:
                 local headers = request_handle:headers()
                 local path = headers:get(":path")
                 local user_id = headers:get("x-user-id") or "anonymous"
+                local route_header_changed = false
 
                 -- Check for feature flag override header
                 local force_feature = headers:get("x-force-feature")
@@ -1179,14 +1184,20 @@ spec:
                     if user_hash < flag.percentage then
                       headers:add("x-feature-version", applicable_feature .. "-v2")
                       headers:add("x-route-to", "canary")
+                      route_header_changed = true
                       request_handle:logInfo(
                         "User " .. user_id .. " routed to " .. applicable_feature .. " (hash: " .. user_hash .. ")"
                       )
                     else
                       headers:add("x-feature-version", applicable_feature .. "-v1")
                       headers:add("x-route-to", "stable")
+                      route_header_changed = true
                     end
                   end
+                end
+
+                if route_header_changed then
+                  request_handle:clearRouteCache()
                 end
               end
 ```
@@ -1242,7 +1253,7 @@ spec:
               -- Simple in-memory rate limit tracking
               -- Note: This is per-Envoy instance, not distributed
               local request_counts = {}
-              local last_reset = os.time()
+              local last_reset = nil
 
               function get_rate_limit_config(path)
                 -- Find matching rate limit or use default
@@ -1254,11 +1265,9 @@ spec:
                 return rate_limits["default"]
               end
 
-              function check_rate_limit(key, config)
-                local current_time = os.time()
-
+              function check_rate_limit(current_time, key, config)
                 -- Reset counters every minute
-                if current_time - last_reset >= 60 then
+                if last_reset == nil or current_time - last_reset >= 60 then
                   request_counts = {}
                   last_reset = current_time
                 end
@@ -1298,8 +1307,9 @@ spec:
                 -- Create rate limit key combining client and path
                 local rate_limit_key = client_ip .. ":" .. path
                 local config = get_rate_limit_config(path)
+                local current_time = math.floor(request_handle:timestamp() / 1000)
 
-                local allowed, remaining = check_rate_limit(rate_limit_key, config)
+                local allowed, remaining = check_rate_limit(current_time, rate_limit_key, config)
 
                 -- Add rate limit headers
                 headers:add("x-ratelimit-limit", tostring(config.requests_per_minute))
@@ -1335,8 +1345,8 @@ spec:
 ### 1. Custom Authentication
 
 ```yaml
-# JWT validation with custom claims extraction
-# Validates JWT and extracts user information for downstream services
+# JWT claims extraction
+# Decodes JWT payload claims for downstream services; use Istio RequestAuthentication or an auth filter to verify signatures
 apiVersion: networking.istio.io/v1alpha3
 kind: EnvoyFilter
 metadata:
@@ -1363,9 +1373,10 @@ spec:
           typed_config:
             "@type": type.googleapis.com/envoy.extensions.filters.http.lua.v3.Lua
             inlineCode: |
-              -- Base64 decode function (simplified)
+              -- Base64url decode function for JWT segments (simplified)
               function base64_decode(data)
                 local b = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
+                data = data:gsub('-', '+'):gsub('_', '/')
                 data = string.gsub(data, '[^'..b..'=]', '')
                 return (data:gsub('.', function(x)
                   if x == '=' then return '' end
@@ -1424,7 +1435,7 @@ spec:
                 end
 
                 -- Decode payload (second part)
-                -- Add padding if necessary for base64
+                -- Add padding if necessary for base64url
                 local payload = parts[2]
                 local padding = 4 - (#payload % 4)
                 if padding ~= 4 then
@@ -1442,7 +1453,8 @@ spec:
                 -- Check token expiration
                 if exp then
                   local exp_time = tonumber(exp)
-                  if exp_time and exp_time < os.time() then
+                  local now = math.floor(request_handle:timestamp() / 1000)
+                  if exp_time and exp_time < now then
                     request_handle:logWarn("Token expired")
                     request_handle:respond(
                       {[":status"] = "401"},
@@ -1463,7 +1475,7 @@ spec:
                   headers:add("x-user-roles", roles)
                 end
 
-                request_handle:logInfo("JWT validated for user: " .. (user_id or "unknown"))
+                request_handle:logInfo("JWT claims extracted for user: " .. (user_id or "unknown"))
               end
 ```
 
@@ -1567,7 +1579,7 @@ spec:
                       "x-deprecation-warning",
                       "API v1 is deprecated. Please migrate to v2."
                     )
-                    headers:add("sunset", "2025-12-31")
+                    headers:add("sunset", "2026-12-31")
                   end
                 end
 
@@ -1828,7 +1840,7 @@ spec:
                   - "text/css"
                   - "text/plain"
                   - "text/xml"
-              # Disable compression for specific paths
+              # Disable compression when a response contains an ETag header
               disable_on_etag_header: true
             # Gzip compressor configuration
             compressor_library:
