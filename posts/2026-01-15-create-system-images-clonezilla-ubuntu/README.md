@@ -284,8 +284,8 @@ When Clonezilla boots, you'll see several options:
 
 # Step 8: Select compression
 # Options: -z1p (parallel gzip), -z2p (parallel bzip2),
-#          -z3 (lz4), -z4 (lz4hc), -z5p (parallel xz),
-#          -z6p (parallel lzop), -z7 (zstd), -z9p (parallel zstd)
+#          -z3 (lzop), -z5p (parallel xz), -z6p (parallel lzip),
+#          -z7 (lrzip), -z8 (lz4), -z9 (zstd), -z9p (parallel zstd)
 # Recommended: -z5p for best compression, -z3 for speed
 
 # Step 9: Choose post-action
@@ -300,10 +300,10 @@ When Clonezilla boots, you'll see several options:
 # Compression options explained:
 # -z1p : Parallel gzip - good balance of speed and compression
 # -z2p : Parallel bzip2 - better compression, slower
-# -z3  : lz4 - very fast, moderate compression
-# -z4  : lz4hc - slower than lz4, better compression
+# -z3  : lzop - very fast, moderate compression
 # -z5p : Parallel xz - excellent compression, CPU intensive
-# -z7  : zstd - modern algorithm, good speed and compression
+# -z8  : lz4 - extremely fast, lower compression ratio
+# -z9  : zstd - modern algorithm, good speed and compression
 # -z9p : Parallel zstd - best overall (speed + compression)
 
 # Additional expert options:
@@ -853,7 +853,7 @@ PROMPT 0
 LABEL auto-restore
     MENU LABEL Automatic Ubuntu Restore
     KERNEL vmlinuz-pxe
-    APPEND initrd=initrd-pxe.img boot=live union=overlay ocs_server=192.168.1.1 ocs_daession="auto" ocs_live_run="ocs-sr -g auto -e1 auto -e2 -r -j2 -p reboot restoredisk golden-image sda" ocs_live_batch="yes"
+    APPEND initrd=initrd-pxe.img boot=live union=overlay ocs_server=192.168.1.1 ocs_live_run="ocs-sr -g auto -e1 auto -e2 -r -j2 -p reboot restoredisk golden-image sda" ocs_live_batch="yes"
 EOF
 ```
 
@@ -914,8 +914,8 @@ sudo /opt/drbl/sbin/drbl-ocs -b -g auto -e1 auto -e2 -r -j2 \
 # Parameters explained:
 # -b           : Run in batch mode (no confirmation)
 # -g auto      : Reinstall GRUB automatically
-# -e1 auto     : Auto-select EFI partition
-# -e2          : Skip EFI partition cloning (use source EFI)
+# -e1 auto     : Auto-adjust the CHS value of the NTFS boot partition
+# -e2          : Use the CHS values from EDD when creating the partition table
 # -r           : Resize filesystem after restore
 # -j2          : Clone hidden data between MBR and first partition
 # -x           : Use -x for multicast
@@ -1936,10 +1936,10 @@ sudo ip link set eth0 mtu 9000
 # Mount tmpfs for faster operations
 sudo mount -t tmpfs -o size=4G tmpfs /tmp
 
-# 4. Parallel processing
-# Use -i option to specify threads
-# -i 0 = use all available CPU cores
-# -i 4096 = split files into 4GB chunks for parallel processing
+# 4. Split image volumes
+# Use -i to set the split image file volume size in MB
+# -i 4096 = split the image into 4096 MB (~4GB) volume files
+# Parallel compressors (-z1p/-z5p/-z9p) already use all CPU cores automatically
 
 # 5. Skip unused space
 # Use partclone's space-efficient mode
