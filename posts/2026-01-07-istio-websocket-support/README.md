@@ -227,8 +227,9 @@ spec:
           probes: 10
 
       http:
-        # Maximum number of HTTP/1.1 connections per host
-        # WebSocket runs over HTTP/1.1, so this setting matters
+        # Prevent automatic HTTP/2 upgrades for this destination.
+        # Envoy's HTTP/1.1 upgrade handling for WebSocket does not work
+        # with HTTP/2 upstream connections.
         h2UpgradePolicy: DO_NOT_UPGRADE
 
         # Maximum pending HTTP requests to the destination
@@ -294,7 +295,7 @@ spec:
 
 ## Load Balancing for Sticky Sessions
 
-WebSocket connections often require sticky sessions (session affinity) to ensure all messages from a client go to the same backend pod. This is especially important when your WebSocket application maintains state.
+WebSocket applications often benefit from sticky sessions (session affinity) so reconnecting clients are more likely to return to the same backend pod. This is especially important when your WebSocket application maintains state.
 
 ### Why Sticky Sessions Matter for WebSocket
 
@@ -315,11 +316,11 @@ flowchart LR
     end
 ```
 
-When a WebSocket connection is established, the client maintains a persistent connection to a specific backend pod. If load balancing decisions change mid-connection (for example, during scaling events), you need session affinity to ensure continuity.
+When a WebSocket connection is established, the client maintains a persistent connection to a specific backend pod. Load balancing does not move an already-established TCP connection to a different pod, but session affinity can help reconnecting clients land on the same backend when your application keeps per-pod state.
 
 ### Configuring Consistent Hashing
 
-Istio supports consistent hash-based load balancing, which ensures the same client always connects to the same backend:
+Istio supports consistent hash-based load balancing, which provides soft session affinity by routing the same hash key to the same backend when the endpoint set is stable:
 
 ```yaml
 # DestinationRule with consistent hash load balancing
@@ -419,10 +420,11 @@ spec:
     loadBalancer:
       consistentHash:
         useSourceIp: true
-        # Minimum size of the hash ring
-        # Larger values provide better distribution but use more memory
-        # Recommended: at least 1024 for production workloads
-        minimumRingSize: 1024
+        ringHash:
+          # Minimum size of the hash ring
+          # Larger values provide better distribution but use more memory
+          # Defaults to 1024 if omitted
+          minimumRingSize: 1024
 ```
 
 ## Complete Production Configuration
@@ -493,6 +495,10 @@ spec:
     targetPort: 8080
     protocol: TCP
     name: http-ws
+  - port: 15090
+    targetPort: 15090
+    protocol: TCP
+    name: http-envoy-prom
   selector:
     app: websocket
   # Use ClusterIP for internal service discovery
@@ -570,7 +576,7 @@ spec:
       headers:
         # Match WebSocket upgrade requests specifically
         upgrade:
-          exact: "websocket"
+          regex: "(?i)^websocket$"
     route:
     - destination:
         host: websocket-service
@@ -580,8 +586,7 @@ spec:
     # This allows connections to remain open indefinitely
     timeout: 0s
 
-  # Fallback route for WebSocket without upgrade header
-  # (handles initial connection before upgrade)
+  # Fallback route for non-upgrade HTTP requests to the same path
   - match:
     - uri:
         prefix: "/ws"
@@ -619,9 +624,10 @@ spec:
     loadBalancer:
       consistentHash:
         # Use source IP for consistent routing
-        # Ensures same client always reaches same backend
+        # Helps the same client reach the same backend while endpoints are stable
         useSourceIp: true
-        minimumRingSize: 1024
+        ringHash:
+          minimumRingSize: 1024
 
     # Connection pool configuration
     connectionPool:
@@ -636,7 +642,7 @@ spec:
           interval: 60s
           probes: 3
       http:
-        # Prevent HTTP/2 upgrade (WebSocket needs HTTP/1.1)
+        # Prevent HTTP/2 upgrade for Envoy's HTTP/1.1 WebSocket upgrade path
         h2UpgradePolicy: DO_NOT_UPGRADE
         # Allow many pending requests during connection surge
         http1MaxPendingRequests: 10000
@@ -713,7 +719,9 @@ Use these Prometheus queries to monitor your WebSocket connections:
 
 ```yaml
 # ServiceMonitor for scraping WebSocket metrics
-# Configures Prometheus to collect metrics from Istio sidecars
+# Configures Prometheus to collect metrics from Istio sidecars.
+# The selected Service must expose a port named http-envoy-prom
+# that targets the sidecar's Envoy metrics port, 15090.
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
@@ -824,7 +832,7 @@ kubectl exec -it deploy/sleep -n default -- \
 
 3. **Configure TCP keepalive** in DestinationRule to detect and clean up dead connections.
 
-4. **Set h2UpgradePolicy to DO_NOT_UPGRADE** because WebSocket requires HTTP/1.1.
+4. **Set h2UpgradePolicy to DO_NOT_UPGRADE** when using Envoy's HTTP/1.1 WebSocket upgrade path to avoid HTTP/2 upstream upgrade issues.
 
 5. **Enable mTLS** for secure communication between services in the mesh.
 
@@ -840,7 +848,7 @@ Handling WebSocket connections in Istio requires understanding how the protocol 
 
 The key takeaways are:
 - Istio supports WebSocket natively, but requires proper timeout configuration
-- Consistent hash load balancing ensures session affinity for stateful connections
+- Consistent hash load balancing provides soft session affinity for stateful connections
 - TCP keepalive settings help maintain healthy connections and detect failures
 - Monitoring and observability are essential for production deployments
 
