@@ -12,7 +12,7 @@ Description: A guide to using Istio fault injection for chaos engineering and re
 
 In modern microservices architectures, failures are inevitable. Networks become congested, services become overloaded, and dependencies fail unexpectedly. The key to building resilient systems is not preventing all failures but ensuring your application can gracefully handle them when they occur.
 
-Istio's fault injection capabilities allow you to proactively test how your services respond to failures without modifying application code. By injecting faults at the service mesh layer, you can simulate real-world failure scenarios and validate that your error handling, timeouts, retries, and circuit breakers work as expected.
+Istio's fault injection capabilities allow you to proactively test how your services respond to failures without modifying application code. By injecting faults at the service mesh layer, you can simulate real-world failure scenarios and validate that your application-level error handling, client-side timeouts, and fallback behavior work as expected.
 
 This guide covers everything you need to know about using Istio fault injection for chaos engineering and resilience testing.
 
@@ -22,8 +22,8 @@ Fault injection is a testing technique that deliberately introduces errors into 
 
 - **Simulate network delays** to test timeout configurations
 - **Inject HTTP errors** to verify error handling logic
-- **Test circuit breaker behavior** under failure conditions
-- **Validate retry mechanisms** when services are temporarily unavailable
+- **Test fallback behavior** under failure conditions
+- **Validate application-level retry mechanisms** when services are temporarily unavailable
 - **Assess user experience** during partial outages
 
 ## Fault Injection Architecture in Istio
@@ -69,13 +69,13 @@ flowchart TB
 
 Fault injection in Istio occurs at the Envoy proxy level, which means:
 - No code changes are required in your applications
-- Faults are injected transparently at the network layer
+- Faults are injected transparently at the proxy layer for HTTP, HTTP/2, and gRPC traffic
 - You can target specific routes, headers, or traffic percentages
 - Faults can be enabled or disabled dynamically
 
 ## Types of Fault Injection
 
-Istio supports two primary types of fault injection:
+Istio supports two primary types of fault injection for HTTP routes:
 
 ```mermaid
 flowchart LR
@@ -107,13 +107,14 @@ Delay injection introduces latency before forwarding requests to the destination
 - User experience during slow responses
 - Cascading failure scenarios
 
+When fault injection is enabled on an Istio HTTP route, Istio does not apply route-level timeout or retry policies on that same client-side route. Use this pattern to test application/client behavior, or test Istio retries and timeouts in separate VirtualService configurations.
+
 ### 2. Abort Injection
 
 Abort injection returns an error response without forwarding the request to the destination. This helps test:
 - Error handling logic
-- Retry mechanisms
-- Circuit breaker activation
-- Fallback behavior
+- Application-level retry mechanisms
+- Fallback behavior under upstream failures
 
 ## Prerequisites
 
@@ -128,8 +129,8 @@ istioctl version
 
 # Expected output should show both client and control plane versions
 # Example:
-# client version: 1.20.0
-# control plane version: 1.20.0
+# client version: 1.30.1
+# control plane version: 1.30.1
 ```
 
 Check that your namespace has automatic sidecar injection enabled:
@@ -146,12 +147,12 @@ kubectl label namespace default istio-injection=enabled
 
 For this tutorial, we will use a simple microservices application with three services. First, let us deploy the sample application:
 
-This Kubernetes manifest defines our sample application with a frontend, backend, and database service. The frontend calls the backend, which in turn calls the database:
+This Kubernetes manifest defines placeholder frontend, backend, and downstream database services that you can use to send traffic through the mesh. In a real application, the frontend would call the backend, which in turn would call the downstream service:
 
 ```yaml
 # sample-application.yaml
 # This manifest deploys a three-tier application for testing fault injection
-# Frontend -> Backend -> Database
+# Frontend, Backend, and downstream Database services
 ---
 apiVersion: v1
 kind: Namespace
@@ -176,7 +177,7 @@ spec:
     metadata:
       labels:
         app: frontend
-        # Version label is important for traffic management and fault injection
+        # Version label is useful for traffic management and subset routing
         version: v1
     spec:
       containers:
@@ -249,12 +250,12 @@ spec:
   ports:
   - port: 8080
     targetPort: 8080
-    # Named port is required for Istio protocol detection
+    # Named port explicitly selects HTTP for Istio protocol handling
     name: http
   selector:
     app: backend
 ---
-# Database Deployment - Simulates a database service
+# Database Deployment - Simulates a downstream service over HTTP
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -273,9 +274,11 @@ spec:
     spec:
       containers:
       - name: database
-        image: redis:alpine
+        image: python:3.9-slim
         ports:
         - containerPort: 6379
+        # Simple HTTP server so Istio HTTP fault injection can apply to this service
+        command: ["python", "-m", "http.server", "6379"]
         resources:
           requests:
             cpu: 100m
@@ -294,7 +297,7 @@ spec:
   ports:
   - port: 6379
     targetPort: 6379
-    name: tcp-redis
+    name: http-database
   selector:
     app: database
 ```
@@ -322,7 +325,7 @@ Delay injection adds latency to requests, simulating slow network conditions or 
 # delay-injection-basic.yaml
 # This VirtualService introduces a fixed delay for all traffic to the backend
 # Use this to test timeout configurations and user experience during slowdowns
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: backend-delay
@@ -367,7 +370,7 @@ In production chaos testing, you typically do not want to affect all traffic. Th
 # delay-injection-percentage.yaml
 # Delays only a percentage of requests to simulate intermittent network issues
 # This is more realistic for production chaos testing scenarios
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: backend-partial-delay
@@ -399,7 +402,7 @@ For targeted testing without affecting all users, you can inject faults only for
 # delay-injection-header.yaml
 # Injects delay only for requests with a specific header
 # Perfect for testing in production without affecting real users
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: backend-header-delay
@@ -454,7 +457,7 @@ Abort injection returns error responses without forwarding requests to the desti
 # abort-injection-basic.yaml
 # Returns HTTP 503 errors for all requests to the backend
 # Use this to test error handling and fallback mechanisms
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: backend-abort
@@ -484,7 +487,7 @@ You can test different error scenarios by using different HTTP status codes. Her
 ```yaml
 # abort-injection-404.yaml
 # Returns HTTP 404 (Not Found) to test missing resource handling
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: backend-abort-404
@@ -507,7 +510,7 @@ spec:
 ---
 # abort-injection-500.yaml
 # Returns HTTP 500 (Internal Server Error) to test server error handling
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: backend-abort-500
@@ -530,7 +533,7 @@ spec:
 ---
 # abort-injection-429.yaml
 # Returns HTTP 429 (Too Many Requests) to test rate limiting handling
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: backend-abort-429
@@ -560,7 +563,7 @@ For gRPC services, you can inject gRPC-specific status codes. This is essential 
 # abort-injection-grpc.yaml
 # Injects gRPC status codes for gRPC services
 # gRPC uses different status codes than HTTP
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: grpc-service-abort
@@ -599,7 +602,7 @@ For realistic chaos testing, inject errors for only a portion of requests:
 # abort-injection-percentage.yaml
 # Injects errors for 25% of requests, simulating intermittent failures
 # This tests how well your application handles partial outages
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: backend-partial-abort
@@ -632,7 +635,7 @@ You can combine delay and abort injection to create more complex failure scenari
 # combined-fault-injection.yaml
 # Combines both delay and abort injection for comprehensive testing
 # Some requests are delayed, some fail, and some succeed normally
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: backend-combined-faults
@@ -694,7 +697,7 @@ Inject faults only for specific API endpoints. This is useful for testing critic
 # route-specific-faults.yaml
 # Injects faults only for specific paths
 # Useful for testing critical endpoints in isolation
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: backend-route-faults
@@ -753,7 +756,7 @@ Target specific users for testing using headers or cookies:
 # user-based-faults.yaml
 # Injects faults only for specific test users
 # Perfect for testing in production without affecting real customers
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: backend-user-faults
@@ -844,7 +847,7 @@ Here are VirtualService configurations for each phase:
 ```yaml
 # chaos-phase-1-baseline.yaml
 # Phase 1: No faults - establish baseline metrics
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: backend-chaos-test
@@ -862,7 +865,7 @@ spec:
 ---
 # chaos-phase-2-minor.yaml
 # Phase 2: Minor faults - 5% delay, 1% errors
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: backend-chaos-test
@@ -888,7 +891,7 @@ spec:
 ---
 # chaos-phase-3-moderate.yaml
 # Phase 3: Moderate faults - 20% delay, 10% errors
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: backend-chaos-test
@@ -914,7 +917,7 @@ spec:
 ---
 # chaos-phase-4-severe.yaml
 # Phase 4: Severe faults - 50% delay, 25% errors
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: backend-chaos-test
@@ -940,7 +943,7 @@ spec:
 ---
 # chaos-phase-5-complete.yaml
 # Phase 5: Complete failure - 100% errors to test fallbacks
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: backend-chaos-test
@@ -1032,9 +1035,9 @@ Test resilience across service dependencies:
 
 ```yaml
 # dependency-chain-faults.yaml
-# Tests the entire dependency chain: Frontend -> Backend -> Database
+# Tests a downstream dependency in the service mesh
 # This helps identify weak points in your service mesh
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: database-faults
@@ -1045,13 +1048,13 @@ spec:
   http:
   - fault:
       delay:
-        # Database delays often cascade through the entire system
-        # This tests how upstream services handle slow database responses
+        # Downstream delays often cascade through the entire system
+        # This tests how upstream services handle slow dependency responses
         percentage:
           value: 30
         fixedDelay: 2s
       abort:
-        # Database unavailability is a critical failure scenario
+        # Downstream unavailability is a critical failure scenario
         httpStatus: 503
         percentage:
           value: 10
@@ -1062,7 +1065,7 @@ spec:
           number: 6379
 ---
 # Separate fault injection for the backend
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: backend-faults
@@ -1169,7 +1172,7 @@ jobs:
   resilience-test:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v7
 
     # Set up a local Kubernetes cluster for testing
     - name: Create k8s cluster
@@ -1181,8 +1184,8 @@ jobs:
     - name: Install Istio
       run: |
         # Download and install Istio CLI
-        curl -L https://istio.io/downloadIstio | ISTIO_VERSION=1.24.0 sh -
-        cd istio-1.24.0
+        curl -L https://istio.io/downloadIstio | ISTIO_VERSION=1.30.1 sh -
+        cd istio-1.30.1
         export PATH=$PWD/bin:$PATH
 
         # Install Istio with demo profile for testing
@@ -1231,7 +1234,7 @@ jobs:
 
     # Upload test results as artifacts
     - name: Upload Results
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v7
       with:
         name: resilience-test-results
         path: |
