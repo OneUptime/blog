@@ -1221,7 +1221,7 @@ public class ResilientEventListener {
     // Use Spring Retry for automatic retries with exponential backoff
     @Async
     @Retryable(
-        value = {RuntimeException.class},
+        retryFor = {RuntimeException.class},
         maxAttempts = 3,
         backoff = @Backoff(delay = 1000, multiplier = 2)
     )
@@ -1432,7 +1432,7 @@ import com.example.service.OrderService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.mock.mockito.SpyBean;
+import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import org.springframework.test.context.ActiveProfiles;
 
 import static org.mockito.ArgumentMatchers.any;
@@ -1446,7 +1446,7 @@ class OrderEventIntegrationTest {
     @Autowired
     private OrderService orderService;
     
-    @SpyBean
+    @MockitoSpyBean
     private InventoryEventListener inventoryListener;
 
     @Test
