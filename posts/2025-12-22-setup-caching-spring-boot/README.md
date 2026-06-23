@@ -54,11 +54,15 @@ flowchart TD
 
 ```java
 @SpringBootApplication
-@EnableCaching
 public class Application {
     public static void main(String[] args) {
         SpringApplication.run(Application.class, args);
     }
+}
+
+@Configuration
+@EnableCaching
+public class CacheConfig {
 }
 ```
 
@@ -296,7 +300,7 @@ public class RedisCacheConfig {
 
 ## Multi-Level Caching
 
-Combine local (Caffeine) and distributed (Redis) caching:
+Use `CompositeCacheManager` when you need Spring to delegate cache lookups across multiple cache managers. It returns the first cache manager that provides a cache for the requested name; it does not automatically read through Caffeine first and then Redis:
 
 ```java
 @Configuration
@@ -330,7 +334,7 @@ public class MultiLevelCacheConfig {
 }
 ```
 
-Custom multi-level cache implementation:
+For true local (Caffeine) plus distributed (Redis) multi-level caching, use a custom cache implementation:
 
 ```java
 @Component
@@ -344,6 +348,19 @@ public class TwoLevelCache implements Cache {
         this.name = name;
         this.localCache = localCache;
         this.distributedCache = distributedCache;
+    }
+
+    @Override
+    public String getName() {
+        return name;
+    }
+
+    @Override
+    public Object getNativeCache() {
+        return Map.of(
+            "local", localCache.getNativeCache(),
+            "distributed", distributedCache.getNativeCache()
+        );
     }
 
     @Override
@@ -365,6 +382,39 @@ public class TwoLevelCache implements Cache {
     }
 
     @Override
+    public <T> T get(Object key, Class<T> type) {
+        ValueWrapper value = get(key);
+        if (value == null) {
+            return null;
+        }
+
+        Object cachedValue = value.get();
+        if (cachedValue == null) {
+            return null;
+        }
+        if (type != null && !type.isInstance(cachedValue)) {
+            throw new IllegalStateException("Cached value is not of required type");
+        }
+        return type != null ? type.cast(cachedValue) : (T) cachedValue;
+    }
+
+    @Override
+    public <T> T get(Object key, Callable<T> valueLoader) {
+        ValueWrapper value = get(key);
+        if (value != null) {
+            return (T) value.get();
+        }
+
+        try {
+            T loadedValue = valueLoader.call();
+            put(key, loadedValue);
+            return loadedValue;
+        } catch (Exception ex) {
+            throw new Cache.ValueRetrievalException(key, valueLoader, ex);
+        }
+    }
+
+    @Override
     public void put(Object key, Object value) {
         localCache.put(key, value);
         distributedCache.put(key, value);
@@ -376,7 +426,11 @@ public class TwoLevelCache implements Cache {
         distributedCache.evict(key);
     }
 
-    // ... implement other methods
+    @Override
+    public void clear() {
+        localCache.clear();
+        distributedCache.clear();
+    }
 }
 ```
 
