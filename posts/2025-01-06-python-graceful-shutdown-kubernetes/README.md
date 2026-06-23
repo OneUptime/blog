@@ -439,6 +439,7 @@ FastAPI's async nature requires an async-aware shutdown manager. This example us
 # fastapi_graceful.py
 # FastAPI application with async graceful shutdown for Kubernetes
 from fastapi import FastAPI, Request, HTTPException
+from fastapi.responses import JSONResponse
 from contextlib import asynccontextmanager
 import asyncio
 import signal
@@ -577,9 +578,12 @@ app = FastAPI(lifespan=lifespan)
 @app.middleware("http")
 async def shutdown_middleware(request: Request, call_next):
     """Middleware to reject requests during shutdown and track in-flight requests"""
-    # Return 503 during shutdown
+    # Return 503 during shutdown.
+    # Note: HTTPException raised inside an @app.middleware("http") is NOT caught
+    # by FastAPI's exception handlers (it runs outside ExceptionMiddleware), so it
+    # would surface as a 500. Return a Response directly instead.
     if shutdown_manager.is_shutting_down:
-        raise HTTPException(status_code=503, detail="Service shutting down")
+        return JSONResponse(status_code=503, content={"detail": "Service shutting down"})
 
     # Track this request for graceful shutdown
     async with shutdown_manager.track_request():
