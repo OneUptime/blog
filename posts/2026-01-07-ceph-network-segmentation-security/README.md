@@ -125,9 +125,9 @@ graph LR
 
 | Network Type | VLAN ID | Subnet | Purpose | Required Ports |
 |-------------|---------|--------|---------|----------------|
-| Public | 100 | 10.0.1.0/24 | Client access, MON communication | 6789, 6800-7300 |
-| Cluster | 200 | 10.0.2.0/24 | OSD replication, recovery | 6800-7300 |
-| Management | 300 | 10.0.3.0/24 | SSH, monitoring, dashboard | 22, 8443, 3000 |
+| Public | 100 | 10.0.1.0/24 | Client access, MON communication | 3300, 6789, 6800-7568 |
+| Cluster | 200 | 10.0.2.0/24 | OSD replication, recovery | 6800-7568 |
+| Management | 300 | 10.0.3.0/24 | SSH, monitoring, dashboard | 22, 8443, 9283 |
 
 ## Step 2: Configuring Network Interfaces
 
@@ -407,7 +407,7 @@ This configuration file tells Ceph daemons which networks to use for different t
 
     # Monitor configuration
     # Monitors should be accessible on the public network
-    mon_host = 10.0.1.11:6789,10.0.1.12:6789,10.0.1.13:6789
+    mon_host = 10.0.1.11,10.0.1.12,10.0.1.13
 
     # PUBLIC NETWORK CONFIGURATION
     # This network is used for:
@@ -431,23 +431,19 @@ This configuration file tells Ceph daemons which networks to use for different t
 
     # Enable Messenger v2 protocol for enhanced security (see Step 6)
     ms_bind_msgr2 = true
-    ms_bind_msgr1 = false  # Disable legacy protocol
+    # Optional: disable legacy protocol only after confirming all clients support msgr2
+    # ms_bind_msgr1 = false
 
 [mon]
     # Monitor-specific settings
     # Monitors only need the public network
     mon_allow_pool_delete = false  # Safety setting
 
-    # Bind monitors to specific IP on public network
-    # Replace with actual monitor IPs
-    public_addr = 10.0.1.11
+    # Bind monitors to specific IPs in per-daemon sections such as [mon.node1]
 
 [osd]
     # OSD-specific settings
     # OSDs use both public and cluster networks
-
-    # OSD journal settings
-    osd_journal_size = 10240
 
     # Recovery settings - limit bandwidth to prevent network saturation
     osd_recovery_max_active = 3
@@ -459,8 +455,7 @@ This configuration file tells Ceph daemons which networks to use for different t
 
 [mgr]
     # Manager daemon settings
-    # Managers bind to the public network for dashboard access
-    mgr_modules = dashboard,prometheus
+    # Managers bind to the public network for dashboard and monitoring access
 
 [mds]
     # Metadata Server settings for CephFS
@@ -473,13 +468,17 @@ This configuration file tells Ceph daemons which networks to use for different t
 After modifying the configuration, apply it to the running cluster daemons.
 
 ```bash
-# Distribute the updated configuration to all nodes
-# This command pushes the config from the admin node to all cluster members
+# For legacy ceph-deploy clusters, distribute the updated configuration to all nodes
 sudo ceph-deploy --overwrite-conf config push node1 node2 node3
 
 # Alternatively, if using cephadm (recommended for newer deployments)
-# This applies the configuration through the orchestrator
+# This imports the configuration into the monitor config database
 sudo ceph config assimilate-conf -i /etc/ceph/ceph.conf
+
+# Network binding changes require daemon restarts; restart daemons in a controlled rolling order
+sudo ceph orch restart mon
+sudo ceph orch restart mgr
+sudo ceph orch restart osd
 
 # Verify the network configuration is applied correctly
 # Check public network setting
@@ -521,9 +520,9 @@ Implementing firewall rules is essential for restricting access to Ceph services
 graph LR
     subgraph "Ceph Services and Ports"
         MON[Monitors<br/>6789/tcp<br/>3300/tcp v2]
-        OSD[OSDs<br/>6800-7300/tcp]
-        MGR[Manager<br/>6800-7300/tcp<br/>8443/tcp Dashboard]
-        MDS[MDS<br/>6800-7300/tcp]
+        OSD[OSDs<br/>6800-7568/tcp]
+        MGR[Manager<br/>6800-7568/tcp<br/>8443/tcp Dashboard]
+        MDS[MDS<br/>6800-7568/tcp]
         RGW[RadosGW<br/>7480/tcp<br/>443/tcp SSL]
     end
 
@@ -592,8 +591,8 @@ iptables -A INPUT -i $PUBLIC_IF -p tcp -s $PUBLIC_NET --dport 6789 -j ACCEPT
 iptables -A INPUT -i $PUBLIC_IF -p tcp -s $PUBLIC_NET --dport 3300 -j ACCEPT
 
 # Allow OSD client connections on public network
-# Port range 6800-7300 is used by OSDs for client communication
-iptables -A INPUT -i $PUBLIC_IF -p tcp -s $PUBLIC_NET --dport 6800:7300 -j ACCEPT
+# Port range 6800-7568 is used by OSDs, MDS, and manager daemons
+iptables -A INPUT -i $PUBLIC_IF -p tcp -s $PUBLIC_NET --dport 6800:7568 -j ACCEPT
 
 # Allow Ceph Manager Dashboard access
 # Restrict to management network for security
@@ -612,11 +611,7 @@ iptables -A INPUT -i $PUBLIC_IF -p tcp -s $PUBLIC_NET --dport 443 -j ACCEPT
 
 # Allow all OSD traffic on cluster network
 # This includes replication, recovery, and heartbeat traffic
-iptables -A INPUT -i $CLUSTER_IF -p tcp -s $CLUSTER_NET --dport 6800:7300 -j ACCEPT
-
-# Allow OSD heartbeat traffic (uses same port range)
-# Heartbeats are critical for cluster health detection
-iptables -A INPUT -i $CLUSTER_IF -p tcp -s $CLUSTER_NET -j ACCEPT
+iptables -A INPUT -i $CLUSTER_IF -p tcp -s $CLUSTER_NET --dport 6800:7568 -j ACCEPT
 
 # ============================================
 # MANAGEMENT NETWORK RULES
@@ -684,7 +679,7 @@ firewall-cmd --permanent --zone=ceph-public --add-port=6789/tcp
 firewall-cmd --permanent --zone=ceph-public --add-port=3300/tcp
 
 # Add OSD port range for client connections
-firewall-cmd --permanent --zone=ceph-public --add-port=6800-7300/tcp
+firewall-cmd --permanent --zone=ceph-public --add-port=6800-7568/tcp
 
 # Add RadosGW ports if using object storage
 firewall-cmd --permanent --zone=ceph-public --add-port=7480/tcp
@@ -699,7 +694,7 @@ firewall-cmd --permanent --zone=ceph-public --add-source=10.0.1.0/24
 
 # Add OSD replication port range
 # All OSD-to-OSD communication uses this range
-firewall-cmd --permanent --zone=ceph-cluster --add-port=6800-7300/tcp
+firewall-cmd --permanent --zone=ceph-cluster --add-port=6800-7568/tcp
 
 # Define the source network for cluster zone
 # Only cluster network IPs can access these ports
@@ -780,7 +775,7 @@ table inet ceph_firewall {
         ip saddr $PUBLIC_NET tcp dport { 6789, 3300 } accept
 
         # OSD ports for client access - allow from public network
-        ip saddr $PUBLIC_NET tcp dport 6800-7300 accept
+        ip saddr $PUBLIC_NET tcp dport 6800-7568 accept
 
         # RadosGW ports - allow from public network
         ip saddr $PUBLIC_NET tcp dport { 443, 7480 } accept
@@ -790,7 +785,7 @@ table inet ceph_firewall {
         # ============================================
 
         # OSD replication traffic - cluster network only
-        ip saddr $CLUSTER_NET tcp dport 6800-7300 accept
+        ip saddr $CLUSTER_NET tcp dport 6800-7568 accept
 
         # ============================================
         # Management Network Rules
@@ -825,7 +820,7 @@ table inet ceph_firewall {
 
 ## Step 6: Messenger v2 Encryption Configuration
 
-Ceph Messenger v2 protocol provides encryption and improved security for all Ceph network communication. This section covers enabling and configuring encryption.
+Ceph Messenger v2 protocol supports an encrypted `secure` mode and improved security for Ceph network communication. This section covers enabling and configuring encryption.
 
 ### Messenger v2 Security Features
 
@@ -838,7 +833,7 @@ sequenceDiagram
     Note over Client,OSD: Messenger v2 Secure Connection
 
     Client->>MON: 1. Connection Request
-    MON->>Client: 2. Server Hello + Certificate
+    MON->>Client: 2. Server Hello + CephX Challenge
     Client->>MON: 3. Client Hello + Key Exchange
     MON->>Client: 4. Encrypted Channel Established
 
@@ -858,8 +853,10 @@ sequenceDiagram
 Configure Messenger v2 protocol for enhanced security across all Ceph daemons.
 
 ```bash
-# Enable Messenger v2 on all monitors
-# This sets the mon to use msgr2 protocol for all communication
+# Enable Messenger v2 on all monitors and update the monitor map
+sudo ceph mon enable-msgr2
+
+# Ensure Messenger v2 binding is enabled on monitors
 sudo ceph config set mon ms_bind_msgr2 true
 
 # Enable Messenger v2 on all OSDs
@@ -874,6 +871,11 @@ sudo ceph config set mds ms_bind_msgr2 true
 # Optionally disable legacy Messenger v1 for security
 # WARNING: Ensure all clients support msgr2 before disabling v1
 sudo ceph config set global ms_bind_msgr1 false
+
+# Restart daemons after changing Messenger bind or mode settings
+sudo ceph orch restart mon
+sudo ceph orch restart mgr
+sudo ceph orch restart osd
 ```
 
 ### Configure Encryption Mode
@@ -887,13 +889,12 @@ Set the encryption mode for different network types.
 
 # Set cluster network to require encryption
 # Options:
-#   - "force" = require encryption (recommended for security)
-#   - "secure" = prefer encryption, allow unencrypted
+#   - "secure" = encrypted transport with cryptographic integrity
 #   - "crc" = no encryption, only CRC checksums
-#   - "none" = no encryption or checksums
+# When multiple modes are listed, the first mode is preferred and the others are allowed fallbacks.
 sudo ceph config set osd ms_cluster_mode "secure crc"
 
-# For maximum security, use "force" mode
+# For maximum security, allow only "secure" mode
 # This ensures all replication traffic is encrypted
 sudo ceph config set osd ms_cluster_mode "secure"
 
@@ -925,8 +926,8 @@ sudo ceph config set mon ms_mon_service_mode "secure"
 # Check current encryption settings for all daemon types
 sudo ceph config dump | grep ms_
 
-# Verify monitors are using msgr2
-sudo ceph mon dump | grep "msgr2"
+# Verify monitors are advertising v2 addresses
+sudo ceph mon dump | grep "v2:"
 ```
 
 ### Ceph Configuration for Encryption
@@ -954,7 +955,7 @@ Add encryption settings directly to the Ceph configuration file for persistence.
     ms_service_mode = secure crc
 
     # Compression for encrypted connections (optional)
-    # Can improve performance for compressible data
+    # Enable only after assessing the security and performance tradeoff
     ms_compress_secure = true
 
 [mon]
@@ -988,7 +989,7 @@ Add encryption settings directly to the Ceph configuration file for persistence.
 Confirm that encryption is working correctly on all connections.
 
 ```bash
-# Check the status of all Ceph daemons and their encryption state
+# Check cluster health before testing encrypted connections
 sudo ceph status -f json-pretty | jq '.health'
 
 # Verify monitor is advertising msgr2 addresses
@@ -998,15 +999,11 @@ sudo ceph mon dump
 # Example output:
 # 0: [v2:10.0.1.11:3300/0,v1:10.0.1.11:6789/0] mon.node1
 
-# Check OSD connection status including encryption
-# This shows detailed peer connection information
-sudo ceph daemon osd.0 dump_ops_in_flight
-
-# Verify encryption on specific connections
-sudo ceph daemon osd.0 perf dump | grep -i encrypt
+# Verify the effective Messenger mode configuration
+sudo ceph daemon osd.0 config show | grep -E 'ms_(cluster|service|client)_mode'
 
 # Test client connection with encryption
-# Create a test file and verify it works
+# Create a test file in an existing test pool and verify it works
 echo "test" | sudo rados -p test-pool put testobj -
 sudo rados -p test-pool get testobj -
 ```
@@ -1030,15 +1027,15 @@ Restrict which addresses Ceph daemons bind to for additional security.
     # Format: v2:IP:PORT/NONCE
     mon_addr = [v2:10.0.1.11:3300/0,v1:10.0.1.11:6789/0]
 
-[osd]
-    # Bind OSDs to specific addresses on each network
+[osd.0]
+    # Bind each OSD to specific addresses on each network
     # Public network binding for client communication
-    public_addr = 10.0.1.0/24
+    public_addr = 10.0.1.21
 
     # Cluster network binding for replication
-    cluster_addr = 10.0.2.0/24
+    cluster_addr = 10.0.2.21
 
-    # Disable binding to all interfaces (0.0.0.0)
+    # Select IPv4 binding and leave IPv6 disabled unless your cluster uses IPv6
     ms_bind_ipv4 = true
     ms_bind_ipv6 = false
 ```
@@ -1054,14 +1051,8 @@ sudo ceph config set global auth_cluster_required cephx
 sudo ceph config set global auth_service_required cephx
 sudo ceph config set global auth_client_required cephx
 
-# Set strict authentication mode
-# Clients must authenticate before any operation
-sudo ceph config set mon auth_supported cephx
-
-# Configure key rotation interval (in seconds)
-# Regular key rotation limits the impact of compromised keys
-# 86400 seconds = 24 hours
-sudo ceph config set global auth_mon_ticket_ttl 86400
+# Configure the service ticket lifetime (in seconds)
+# A shorter TTL limits the lifetime of issued service tickets
 sudo ceph config set global auth_service_ticket_ttl 3600
 
 # Create capability-restricted users for different access patterns
@@ -1152,7 +1143,7 @@ check_firewall() {
             echo "[WARN] Monitor port 6789 may not have specific firewall rules"
         fi
 
-        if iptables -L INPUT -n | grep -q "6800:7300"; then
+        if iptables -L INPUT -n | grep -q "6800:7568"; then
             echo "[OK] OSD port range has firewall rules"
         else
             echo "[WARN] OSD ports may not have specific firewall rules"
