@@ -50,12 +50,11 @@ Using eksctl simplifies spot node group creation. Specifying multiple instance t
 eksctl create nodegroup \
   --cluster my-cluster \
   --name spot-workers \
-  --node-type m5.large,m5a.large,m4.large \  # Multiple types for better availability
+  --instance-types m5.large,m5a.large,m4.large \  # Multiple types for better availability
   --nodes-min 0 \     # Allow scaling to zero when not needed
   --nodes-max 20 \    # Maximum nodes in the group
   --nodes 3 \         # Initial number of nodes
-  --spot \            # Use spot instances
-  --instance-types-filters "cpu-manufacturer=intel"  # Optional filter for consistency
+  --spot              # Use spot instances (managed node groups are the default)
 ```
 
 ### Terraform Configuration
