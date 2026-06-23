@@ -110,7 +110,7 @@ nmcli general hostname
 ## Hostname Requirements
 
 Valid hostnames must:
-- Be 2-63 characters long
+- Be 1-63 characters long
 - Contain only `a-z`, `0-9`, and `-` (hyphens)
 - Start and end with alphanumeric character
 - Not have consecutive hyphens
