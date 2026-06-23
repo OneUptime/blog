@@ -8,7 +8,7 @@ Description: A comprehensive guide to setting up Amazon Aurora Serverless v2, in
 
 ---
 
-Aurora Serverless v2 automatically scales database capacity based on application demand. Unlike v1, it scales instantly and can handle production workloads with unpredictable traffic patterns while maintaining cost efficiency during idle periods.
+Aurora Serverless v2 automatically scales database capacity based on application demand. Unlike v1, it scales in fine-grained increments and can handle production workloads with unpredictable traffic patterns while maintaining cost efficiency during idle periods. Supported engine versions can also scale to 0 ACUs and automatically pause when idle.
 
 ## Understanding Aurora Serverless v2
 
@@ -22,10 +22,10 @@ flowchart TD
     C -->|Medium| E[Moderate ACU]
     C -->|High| F[Scale Up to Max ACU]
 
-    subgraph Scaling["Instant Scaling"]
+    subgraph Scaling["Fine-Grained Scaling"]
         D --> G[0.5 ACU - $0.06/hour]
         E --> H[4 ACU - $0.48/hour]
-        F --> I[128 ACU - $15.36/hour]
+        F --> I[256 ACU - $30.72/hour]
     end
 ```
 
@@ -39,7 +39,7 @@ flowchart TD
 aws rds create-db-cluster \
   --db-cluster-identifier my-serverless-cluster \
   --engine aurora-postgresql \
-  --engine-version 15.4 \
+  --engine-version 15.10 \
   --engine-mode provisioned \
   --serverless-v2-scaling-configuration MinCapacity=0.5,MaxCapacity=16 \
   --master-username admin \
@@ -123,7 +123,7 @@ Resources:
     Properties:
       DBClusterIdentifier: !Sub '${Environment}-serverless-cluster'
       Engine: aurora-postgresql
-      EngineVersion: '15.4'
+      EngineVersion: '15.10'
       DatabaseName: !Ref DatabaseName
       MasterUsername: !Sub '{{resolve:secretsmanager:${DatabaseSecret}:SecretString:username}}'
       MasterUserPassword: !Sub '{{resolve:secretsmanager:${DatabaseSecret}:SecretString:password}}'
@@ -198,10 +198,10 @@ Choose appropriate min/max capacity based on your workload:
 
 | Workload Type | Min ACU | Max ACU | Notes |
 |---------------|---------|---------|-------|
-| Development | 0.5 | 2 | Pause when idle |
+| Development | 0 | 2 | Auto-pause when idle on supported engine versions |
 | Light Production | 0.5 | 8 | Variable traffic |
 | Standard Production | 2 | 32 | Consistent traffic |
-| High Performance | 8 | 128 | Heavy workloads |
+| High Performance | 8 | 256 | Heavy workloads on recent engine versions |
 
 ### Modify Capacity After Creation
 
@@ -244,8 +244,10 @@ async function createPool() {
 
 ### Using IAM Authentication
 
+Enable IAM database authentication on the cluster before using IAM authentication tokens.
+
 ```javascript
-const { RDSClient, GetDBInstanceEndpointCommand } = require('@aws-sdk/client-rds');
+const { Pool } = require('pg');
 const { Signer } = require('@aws-sdk/rds-signer');
 
 async function getIAMToken() {
@@ -299,20 +301,21 @@ HighACUAlarm:
     AlarmActions:
       - !Ref AlertTopic
 
-# Scaling Events Alarm
-ScalingEventsAlarm:
+# Near Max Capacity Alarm
+NearMaxCapacityAlarm:
   Type: AWS::CloudWatch::Alarm
   Properties:
-    AlarmName: Aurora-Frequent-Scaling
-    MetricName: ServerlessDatabaseCapacity
+    AlarmName: Aurora-Near-Max-Capacity
+    AlarmDescription: Aurora Serverless capacity near configured maximum
+    MetricName: ACUUtilization
     Namespace: AWS/RDS
     Dimensions:
       - Name: DBClusterIdentifier
         Value: !Ref AuroraCluster
-    Statistic: SampleCount
-    Period: 3600
-    EvaluationPeriods: 1
-    Threshold: 10
+    Statistic: Average
+    Period: 300
+    EvaluationPeriods: 3
+    Threshold: 90
     ComparisonOperator: GreaterThanThreshold
     AlarmActions:
       - !Ref AlertTopic
@@ -321,7 +324,7 @@ ScalingEventsAlarm:
 ### Key Metrics to Monitor
 
 ```bash
-# Current ACU utilization
+# Current ACU capacity
 aws cloudwatch get-metric-statistics \
   --namespace AWS/RDS \
   --metric-name ServerlessDatabaseCapacity \
@@ -364,12 +367,12 @@ print(f"Estimated monthly cost: ${cost:.2f}")
 
 ### Optimize Min Capacity
 
-For non-production environments, set minimum to 0.5 ACU:
+For non-production environments, use 0 ACU with auto-pause on supported engine versions, or 0.5 ACU if the database should remain active:
 
 ```bash
 aws rds modify-db-cluster \
   --db-cluster-identifier dev-serverless-cluster \
-  --serverless-v2-scaling-configuration MinCapacity=0.5,MaxCapacity=4 \
+  --serverless-v2-scaling-configuration MinCapacity=0,MaxCapacity=4,SecondsUntilAutoPause=300 \
   --apply-immediately
 ```
 
@@ -429,7 +432,7 @@ RDSProxyTargetGroup:
     TargetGroupName: default
     DBClusterIdentifiers:
       - !Ref AuroraCluster
-    ConnectionPoolConfig:
+    ConnectionPoolConfigurationInfo:
       MaxConnectionsPercent: 100
       MaxIdleConnectionsPercent: 50
 ```
@@ -458,7 +461,7 @@ LIMIT 10;
 
 ### Connection Limits
 
-Each ACU supports approximately 1,000 connections. If you hit limits:
+Connection limits are controlled by the engine's `max_connections` setting, which Aurora Serverless v2 derives from the configured capacity range and engine defaults. If you hit limits:
 
 1. Use RDS Proxy
 2. Implement connection pooling in your application
@@ -466,4 +469,4 @@ Each ACU supports approximately 1,000 connections. If you hit limits:
 
 ---
 
-Aurora Serverless v2 provides an excellent balance between performance and cost for variable workloads. Start with conservative min/max settings, monitor your ACU usage patterns, and adjust capacity limits based on actual needs. For serverless applications like Lambda, always pair Aurora Serverless v2 with RDS Proxy for optimal connection management.
+Aurora Serverless v2 provides an excellent balance between performance and cost for variable workloads. Start with conservative min/max settings, monitor your ACU usage patterns, and adjust capacity limits based on actual needs. For high-concurrency serverless applications like Lambda, pair Aurora Serverless v2 with RDS Proxy for connection management; if you rely on auto-pause, remember that an associated RDS Proxy keeps database connections open and prevents automatic pausing.
