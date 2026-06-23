@@ -68,7 +68,7 @@ Nginx has a `resolver` directive that allows you to specify DNS servers and enab
 
 ```nginx
 http {
-    # Use Google DNS or your preferred DNS server
+    # Use a DNS resolver that can resolve your upstream hostname
     resolver 8.8.8.8 8.8.4.4 valid=30s;
     resolver_timeout 5s;
 
@@ -115,8 +115,6 @@ http {
 In your `docker-compose.yml`, ensure Nginx waits for dependencies:
 
 ```yaml
-version: '3.8'
-
 services:
   app:
     image: your-app:latest
@@ -171,7 +169,7 @@ RUN apt-get update && apt-get install -y netcat-openbsd
 COPY wait-for-services.sh /wait-for-services.sh
 RUN chmod +x /wait-for-services.sh
 
-ENTRYPOINT ["/wait-for-services.sh", "app", "3000", "--"]
+ENTRYPOINT ["/wait-for-services.sh", "app", "3000"]
 CMD ["nginx", "-g", "daemon off;"]
 ```
 
@@ -187,9 +185,11 @@ upstream backend {
 }
 ```
 
-## Solution 5: Nginx Plus Dynamic Upstreams
+Note that backup servers help after the upstream hostnames have been resolved and the configuration has loaded. They do not prevent startup failures if Nginx cannot resolve the hostnames in the `upstream` block.
 
-If you are using Nginx Plus, you can use the `resolve` parameter:
+## Solution 5: Nginx Dynamic Upstreams
+
+If you are using Nginx 1.27.3 or later, or Nginx Plus on older versions, you can use the `resolve` parameter:
 
 ```nginx
 upstream backend {
@@ -234,7 +234,7 @@ http {
     keepalive_timeout 65;
 
     # DNS resolver configuration
-    resolver 127.0.0.11 8.8.8.8 valid=30s ipv6=off;
+    resolver 127.0.0.11 valid=30s ipv6=off;
     resolver_timeout 5s;
 
     server {
@@ -297,7 +297,7 @@ Integrate with OneUptime to monitor your Nginx services and get alerts when upst
 ## Key Takeaways
 
 1. Use variables in `proxy_pass` to enable runtime DNS resolution
-2. Always configure a `resolver` directive when using hostnames
+2. Configure a `resolver` directive when using variables in `proxy_pass` or the `resolve` parameter in upstreams
 3. In Docker, use the internal DNS server at `127.0.0.11`
 4. Implement health checks and proper startup dependencies
 5. Consider using IP addresses in static environments
