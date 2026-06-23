@@ -142,7 +142,7 @@ from flask import Flask, request, jsonify
 from typing import Dict, List, Optional
 import json
 import redis
-from datetime import datetime
+from datetime import datetime, timezone
 import jsonschema
 
 app = Flask(__name__)
@@ -171,7 +171,7 @@ class ServiceCatalog:
         self.validate_service(service_data)
 
         service_name = service_data['name']
-        service_data['updatedAt'] = datetime.utcnow().isoformat()
+        service_data['updatedAt'] = datetime.now(timezone.utc).isoformat()
 
         # Check if service exists
         existing = self.get_service(service_name)
@@ -516,7 +516,7 @@ class DependencyGraph:
 
         return G
 
-    def get_critical_path(self, service_name: str) -> List[str]:
+    def get_critical_path(self, service_name: str) -> List[List[str]]:
         """Find critical path from a service to its dependencies."""
         G = self.build_graph()
 
@@ -569,12 +569,17 @@ class DependencyGraph:
         """Export graph as Mermaid diagram."""
         G = self.build_graph()
         lines = ["graph LR"]
+        node_ids = {name: f"svc_{idx}" for idx, name in enumerate(G.nodes(), 1)}
+
+        for name, node_id in node_ids.items():
+            label = str(name).replace('"', '\\"')
+            lines.append(f'    {node_id}["{label}"]')
 
         for edge in G.edges(data=True):
             src, dst, data = edge
             edge_type = data.get('type', 'unknown')
             style = "-->" if edge_type == 'hard' else "-.->"
-            lines.append(f"    {src}{style}{dst}")
+            lines.append(f"    {node_ids[src]} {style} {node_ids[dst]}")
 
         return "\n".join(lines)
 ```
