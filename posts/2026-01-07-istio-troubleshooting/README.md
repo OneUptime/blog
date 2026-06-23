@@ -30,9 +30,9 @@ Before diving into troubleshooting, it's essential to understand how Istio compo
 flowchart TB
     subgraph Control Plane
         istiod[Istiod]
-        istiod --> |Config Distribution| pilot[Pilot]
-        istiod --> |Certificate Management| citadel[Citadel]
-        istiod --> |Policy Enforcement| galley[Galley]
+        istiod --> |xDS Config Distribution| config[Traffic Configuration]
+        istiod --> |Certificate Management| ca[Istio CA]
+        istiod --> |Sidecar Injection| injector[Injector Webhook]
     end
 
     subgraph Data Plane
@@ -123,7 +123,7 @@ flowchart LR
     B -->|No| D[Configuration Valid]
     C --> E[IST0101: Referenced resource missing]
     C --> F[IST0102: Namespace not enabled]
-    C --> G[IST0103: Port name not following convention]
+    C --> G[IST0118: Port name not following convention]
     E --> H[Check resource exists]
     F --> I[Add istio-injection label]
     G --> J[Rename port correctly]
@@ -150,7 +150,7 @@ kubectl get destinationrules -n my-application
 # Solution: Add the injection label to the namespace
 kubectl label namespace my-application istio-injection=enabled
 
-# IST0103: ServicePortNameDoesntFollowConvention
+# IST0118: PortNameIsNotUnderNamingConvention
 # Port names must follow the pattern: protocol-suffix (e.g., http-web, grpc-api)
 # This is critical because Istio uses port names to determine protocol handling
 kubectl get service my-service -n my-application -o yaml | grep -A5 ports:
@@ -253,13 +253,12 @@ flowchart TB
 ### Service-to-Service Communication Failures
 
 ```bash
-# Test connectivity from inside a pod using istioctl debug container
+# Test connectivity from inside a pod using a kubectl debug container
 # This injects a debug container with network tools
 kubectl debug my-app-pod -n my-namespace --image=curlimages/curl -- curl -v http://target-service:8080
 
-# Alternatively, exec into the sidecar proxy for debugging
-# The istio-proxy container has useful debugging tools
-kubectl exec my-app-pod -n my-namespace -c istio-proxy -- curl -v http://target-service:8080
+# Alternatively, launch a temporary debug container when the application image lacks network tools
+kubectl debug my-app-pod -n my-namespace --image=curlimages/curl --target=my-app -- curl -v http://target-service:8080
 
 # Check if the service exists and has endpoints
 # Services without endpoints indicate pod selector mismatches or pod failures
@@ -320,7 +319,7 @@ curl -v -H "Host: myapp.example.com" http://GATEWAY_EXTERNAL_IP/api/health
 ```bash
 # Istio uses Kubernetes DNS for service discovery
 # Verify DNS is working from within a pod
-kubectl exec my-app-pod -n my-namespace -c istio-proxy -- nslookup target-service.my-namespace.svc.cluster.local
+kubectl debug my-app-pod -n my-namespace --image=busybox:1.36 --target=my-app -- nslookup target-service.my-namespace.svc.cluster.local
 
 # Check CoreDNS pods are running
 kubectl get pods -n kube-system -l k8s-app=kube-dns
@@ -339,13 +338,12 @@ mTLS (mutual TLS) is a core security feature of Istio. Certificate issues can ca
 ### Checking mTLS Status
 
 ```bash
-# View the mTLS status between services
-# This shows whether mTLS is enabled and working correctly
-istioctl authn tls-check my-app-pod.my-namespace target-service.my-namespace.svc.cluster.local
+# View the Istio configuration affecting a pod
+# This reports mTLS policy and DestinationRule conflicts for that workload
+istioctl experimental describe pod my-app-pod.my-namespace
 
-# Expected output for working mTLS:
-# HOST:PORT                                        STATUS     SERVER     CLIENT     AUTHN POLICY     DESTINATION RULE
-# target-service.my-namespace.svc.cluster.local    OK         STRICT     ISTIO_MUTUAL   default/        default/
+# Expected output for working mTLS includes:
+# Pilot reports that pod enforces mTLS and clients speak mTLS
 
 # Check the PeerAuthentication policy in effect
 kubectl get peerauthentication --all-namespaces
@@ -366,15 +364,15 @@ istioctl proxy-config secret my-app-pod.my-namespace
 istioctl proxy-config secret my-app-pod.my-namespace -o json | jq '.dynamicActiveSecrets[0].secret.tlsCertificate.certificateChain.inlineBytes' | base64 -d | openssl x509 -text -noout
 
 # Verify the certificate is issued by the correct CA
-# Istio's Citadel (now part of istiod) signs these certificates
-openssl s_client -connect target-service:443 -showcerts 2>/dev/null | openssl x509 -text -noout | grep -A1 Issuer
+# Istio's CA, usually provided by istiod, signs these certificates
+istioctl proxy-config secret my-app-pod.my-namespace -o json | jq '.dynamicActiveSecrets[0].secret.tlsCertificate.certificateChain.inlineBytes' | base64 -d | openssl x509 -text -noout | grep -A1 Issuer
 ```
 
 ### mTLS Troubleshooting Workflow
 
 ```mermaid
 flowchart TB
-    A[mTLS Connection Failed] --> B[Check authn tls-check]
+    A[mTLS Connection Failed] --> B[Run experimental describe pod]
     B --> C{Status OK?}
     C -->|No| D[Check PeerAuthentication]
     C -->|Yes| E[Check certificate validity]
@@ -383,7 +381,7 @@ flowchart TB
     F -->|Yes| H[Check mode: STRICT/PERMISSIVE]
     H --> I[Verify DestinationRule mtls settings]
     E --> J{Certificate expired?}
-    J -->|Yes| K[Restart istiod to rotate certs]
+    J -->|Yes| K[Restart workload to refresh certs]
     J -->|No| L[Check SAN matches identity]
     L --> M{SAN correct?}
     M -->|No| N[Check service account config]
@@ -402,7 +400,7 @@ flowchart TB
 # Solution: Either enable sidecar injection or use PERMISSIVE mode during migration
 
 # PeerAuthentication allowing both plaintext and mTLS (for migration)
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: allow-permissive
@@ -417,7 +415,7 @@ spec:
 # Solution: Disable mTLS for specific ports or services
 
 # DestinationRule to disable mTLS for external services
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: external-service
@@ -485,7 +483,7 @@ istioctl proxy-config endpoints my-app-pod.my-namespace --cluster "outbound|80|v
 # Example: Correct VirtualService with traffic splitting
 # This splits traffic 80/20 between v1 and v2 versions
 
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-service-routing
@@ -506,7 +504,7 @@ spec:
 ---
 # Corresponding DestinationRule defining the subsets
 # Each subset uses labels to select the appropriate pods
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: my-service
@@ -529,8 +527,8 @@ spec:
 # Default Envoy timeout is 15 seconds which may be too short for some services
 kubectl get virtualservice my-vs -n my-namespace -o yaml | grep -A5 timeout
 
-# Enable verbose logging to see timeout behavior
-kubectl exec my-app-pod -n my-namespace -c istio-proxy -- curl -v http://slow-service:8080
+# Enable verbose output from a debug container to see timeout behavior
+kubectl debug my-app-pod -n my-namespace --image=curlimages/curl --target=my-app -- curl -v http://slow-service:8080
 
 # Check Envoy statistics for timeout occurrences
 kubectl exec my-app-pod -n my-namespace -c istio-proxy -- pilot-agent request GET stats | grep timeout
@@ -540,7 +538,7 @@ kubectl exec my-app-pod -n my-namespace -c istio-proxy -- pilot-agent request GE
 # Configure appropriate timeouts and retries for slow services
 # This prevents premature request failures
 
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: slow-service-config
@@ -603,7 +601,7 @@ spec:
 # Large meshes can overwhelm proxies with endpoint information
 # Use Sidecar resource to limit what each proxy receives
 
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Sidecar
 metadata:
   name: limit-egress
@@ -628,7 +626,8 @@ spec:
 kubectl top pods -n istio-system -l app=istiod
 
 # View istiod metrics for configuration push latency
-kubectl exec -n istio-system deploy/istiod -- curl -s localhost:15014/metrics | grep pilot_xds_push
+kubectl port-forward -n istio-system deploy/istiod 15014:15014
+curl -s http://localhost:15014/metrics | grep pilot_xds_push
 
 # Check for frequent configuration pushes (indicates churn)
 kubectl logs -n istio-system -l app=istiod | grep "Push Status" | tail -20
@@ -643,41 +642,16 @@ kubectl get mutatingwebhookconfiguration istio-sidecar-injector -o yaml
 
 ```yaml
 # Enable access logs for detailed request tracing
-# Apply this EnvoyFilter to enable JSON access logs
+# Apply this Telemetry resource to enable access logs with the default provider
 
-apiVersion: networking.istio.io/v1alpha3
-kind: EnvoyFilter
+apiVersion: telemetry.istio.io/v1
+kind: Telemetry
 metadata:
   name: enable-access-log
   namespace: istio-system
 spec:
-  configPatches:
-  - applyTo: NETWORK_FILTER
-    match:
-      context: ANY
-      listener:
-        filterChain:
-          filter:
-            name: "envoy.filters.network.http_connection_manager"
-    patch:
-      operation: MERGE
-      value:
-        typed_config:
-          "@type": "type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager"
-          access_log:
-          - name: envoy.access_loggers.file
-            typed_config:
-              "@type": "type.googleapis.com/envoy.extensions.access_loggers.file.v3.FileAccessLog"
-              path: /dev/stdout
-              log_format:
-                json_format:
-                  start_time: "%START_TIME%"
-                  method: "%REQ(:METHOD)%"
-                  path: "%REQ(X-ENVOY-ORIGINAL-PATH?:PATH)%"
-                  response_code: "%RESPONSE_CODE%"
-                  response_flags: "%RESPONSE_FLAGS%"
-                  upstream_host: "%UPSTREAM_HOST%"
-                  duration: "%DURATION%"
+  accessLogging:
+  - {}
 ```
 
 ### Systematic Debugging Checklist
@@ -754,7 +728,7 @@ istioctl proxy-config endpoints POD.NS               # List all endpoints
 istioctl proxy-config secret POD.NS                  # List certificates
 
 # === mTLS Debugging ===
-istioctl authn tls-check POD.NS DESTINATION          # Check mTLS status
+istioctl experimental describe pod POD.NS            # Check mTLS and routing status
 
 # === Traffic Analysis ===
 istioctl experimental describe pod POD.NS            # Comprehensive pod info
