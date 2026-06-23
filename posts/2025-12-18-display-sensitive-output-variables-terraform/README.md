@@ -94,7 +94,7 @@ export DB_PASSWORD=$(terraform output -raw database_password)
 
 ## Method 3: Using terraform console
 
-The Terraform console allows you to query any value, including sensitive ones.
+The Terraform console allows you to query expressions, but sensitive values are still redacted unless you explicitly remove the sensitive marking with `nonsensitive()`.
 
 ```bash
 # Interactive console
@@ -102,9 +102,15 @@ terraform console
 
 # Inside console:
 > random_password.db_password.result
+(sensitive value)
+
+> nonsensitive(random_password.db_password.result)
 "MySecureP@ssw0rd123!"
 
 > aws_api_gateway_api_key.main.value
+(sensitive value)
+
+> nonsensitive(aws_api_gateway_api_key.main.value)
 "abc123xyz789"
 
 # Exit with Ctrl+D or exit
@@ -112,10 +118,10 @@ terraform console
 
 ```bash
 # Non-interactive query
-echo "random_password.db_password.result" | terraform console
+echo "nonsensitive(random_password.db_password.result)" | terraform console
 
-# Use in scripts
-DB_PASS=$(echo "random_password.db_password.result" | terraform console)
+# For scripts, prefer terraform output -raw to avoid Terraform expression formatting
+DB_PASS=$(terraform output -raw database_password)
 ```
 
 ## Method 4: Using nonsensitive() Function
@@ -169,10 +175,10 @@ output "db_credentials_secret_arn" {
 }
 ```
 
-### Pattern 2: Write to Encrypted File
+### Pattern 2: Write to a Restricted Local File
 
 ```hcl
-# Write sensitive data to encrypted local file
+# Write sensitive data to a local file with restricted permissions
 resource "local_sensitive_file" "credentials" {
   filename = "${path.module}/.secrets/credentials.json"
   content = jsonencode({
@@ -326,7 +332,7 @@ terraform output -json kubernetes_config | jq -r '.token'
 ## Security Best Practices
 
 1. **Avoid displaying in CI/CD logs** - Use masking and secure storage
-2. **Never commit sensitive outputs** - Add debug outputs to .gitignore
+2. **Never commit sensitive outputs** - Do not commit debug output blocks or files containing output values
 3. **Use secret managers** - Store sensitive values in AWS Secrets Manager, HashiCorp Vault, etc.
 4. **Limit access** - Restrict who can run terraform output commands
 5. **Audit access** - Log when sensitive outputs are accessed
