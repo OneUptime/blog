@@ -1363,8 +1363,10 @@ end
 # config/initializers/sidekiq.rb
 
 Sidekiq.configure_server do |config|
-  # Memory limit per worker (requires sidekiq-limit_fetch)
-  config[:max_memory] = 256  # MB
+  # Sidekiq has no built-in per-worker memory limit. The Ruby VM controls
+  # memory allocation, so enforce a soft limit yourself by monitoring RSS
+  # and requesting a graceful quiet (TSTP) when the process grows too large.
+  # (Setting MALLOC_ARENA_MAX=2 in the environment also reduces glibc bloat.)
 
   config.on(:startup) do
     # Check memory periodically
