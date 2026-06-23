@@ -784,8 +784,9 @@ func resizeStage(ctx context.Context, in <-chan Image, targetWidth int) <-chan I
             default:
                 // Simulate resize operation
                 time.Sleep(50 * time.Millisecond)
+                ratio := float64(targetWidth) / float64(img.Width)
                 img.Width = targetWidth
-                img.Height = int(float64(img.Height) * (float64(targetWidth) / float64(img.Width)))
+                img.Height = int(float64(img.Height) * ratio)
                 fmt.Printf("Resized %s to %dx%d\n", img.Filename, img.Width, img.Height)
                 out <- img
             }
