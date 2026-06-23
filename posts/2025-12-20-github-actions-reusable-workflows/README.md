@@ -141,7 +141,7 @@ jobs:
 jobs:
   ci:
     # Use a specific commit SHA for reproducibility
-    uses: my-org/shared-workflows/.github/workflows/ci-node.yml@a1b2c3d4
+    uses: my-org/shared-workflows/.github/workflows/ci-node.yml@172239021f7ba04fe7327647b213799853a9eb89
 
   ci-tagged:
     # Use a release tag
@@ -327,12 +327,12 @@ uses: my-org/shared-workflows/.github/workflows/ci.yml@main
 uses: my-org/shared-workflows/.github/workflows/ci.yml@v1.0.0
 
 # Immutable - use commit SHA
-uses: my-org/shared-workflows/.github/workflows/ci.yml@abc123def456
+uses: my-org/shared-workflows/.github/workflows/ci.yml@172239021f7ba04fe7327647b213799853a9eb89
 ```
 
 ## Nesting Reusable Workflows
 
-Reusable workflows can call other reusable workflows (up to 4 levels deep):
+Reusable workflows can call other reusable workflows (up to 10 levels total, including the top-level caller):
 
 ```yaml
 # .github/workflows/full-ci-cd.yml
