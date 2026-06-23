@@ -56,7 +56,7 @@ This finds documents where the `name` field equals exactly an empty string.
 
 ### Method 2: Script Query for Empty Strings
 
-For text fields or more complex conditions:
+For keyword fields or more complex conditions:
 
 ```bash
 curl -X GET "localhost:9200/users/_search" -H 'Content-Type: application/json' -d'
@@ -89,18 +89,7 @@ curl -X GET "localhost:9200/users/_search" -H 'Content-Type: application/json' -
       "filter": {
         "script": {
           "script": {
-            "source": """
-              def fields = ["name", "email", "phone"];
-              for (field in fields) {
-                def keywordField = field + ".keyword";
-                if (doc.containsKey(keywordField) &&
-                    doc[keywordField].size() > 0 &&
-                    doc[keywordField].value.length() == 0) {
-                  return true;
-                }
-              }
-              return false;
-            """
+            "source": "def fields = [\"name\", \"email\", \"phone\"]; for (field in fields) { def keywordField = field + \".keyword\"; if (doc.containsKey(keywordField) && doc[keywordField].size() > 0 && doc[keywordField].value.length() == 0) { return true; } } return false;"
           }
         }
       }
@@ -232,7 +221,7 @@ Response shows counts for each issue type:
 ```python
 from elasticsearch import Elasticsearch
 
-es = Elasticsearch(['http://localhost:9200'])
+es = Elasticsearch('http://localhost:9200')
 
 def audit_empty_values(index, fields):
     """Audit an index for empty and missing values."""
@@ -266,10 +255,9 @@ def audit_empty_values(index, fields):
 
     response = es.search(
         index=index,
-        body={
-            "size": 0,
-            "aggs": aggs
-        }
+        size=0,
+        aggs=aggs,
+        track_total_hits=True
     )
 
     # Format results
@@ -363,20 +351,11 @@ Prevent empty strings during indexing:
 ```bash
 curl -X PUT "localhost:9200/_ingest/pipeline/clean-empty-strings" -H 'Content-Type: application/json' -d'
 {
-  "description": "Replace empty strings with null",
+  "description": "Remove empty strings",
   "processors": [
     {
       "script": {
-        "source": """
-          def cleanField(ctx, field) {
-            if (ctx.containsKey(field) && ctx[field] instanceof String && ctx[field].trim().isEmpty()) {
-              ctx.remove(field);
-            }
-          }
-          cleanField(ctx, "name");
-          cleanField(ctx, "email");
-          cleanField(ctx, "phone");
-        """
+        "source": "def cleanField(ctx, field) { if (ctx.containsKey(field) && ctx[field] instanceof String && ctx[field].trim().isEmpty()) { ctx.remove(field); } } cleanField(ctx, \"name\"); cleanField(ctx, \"email\"); cleanField(ctx, \"phone\");"
       }
     }
   ]
@@ -401,12 +380,7 @@ curl -X GET "localhost:9200/users/_search" -H 'Content-Type: application/json' -
       "filter": {
         "script": {
           "script": {
-            "source": """
-              if (!doc.containsKey(\"name.keyword\") || doc[\"name.keyword\"].size() == 0) {
-                return false;
-              }
-              return doc[\"name.keyword\"].value.trim().length() == 0;
-            """
+            "source": "if (!doc.containsKey(\"name.keyword\") || doc[\"name.keyword\"].size() == 0) { return false; } return doc[\"name.keyword\"].value.trim().length() == 0;"
           }
         }
       }
@@ -426,15 +400,7 @@ curl -X GET "localhost:9200/users/_search" -H 'Content-Type: application/json' -
     "email_status": {
       "type": "keyword",
       "script": {
-        "source": """
-          if (!doc.containsKey(\"email.keyword\") || doc[\"email.keyword\"].size() == 0) {
-            emit(\"missing\");
-          } else if (doc[\"email.keyword\"].value.length() == 0) {
-            emit(\"empty\");
-          } else {
-            emit(\"valid\");
-          }
-        """
+        "source": "if (!doc.containsKey(\"email.keyword\") || doc[\"email.keyword\"].size() == 0) { emit(\"missing\"); } else if (doc[\"email.keyword\"].value.length() == 0) { emit(\"empty\"); } else { emit(\"valid\"); }"
       }
     }
   },
