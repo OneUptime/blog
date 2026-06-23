@@ -203,7 +203,6 @@ metadata:
 spec:
   peerIP: 10.0.0.1
   asNumber: 64513
-  keepAliveTime: 30s
   nodeSelector: all()
 ```
 
@@ -283,7 +282,7 @@ Install MetalLB with specific configuration for Calico compatibility:
 helm install metallb metallb/metallb \
   --namespace metallb-system \
   --set speaker.frr.enabled=true \
-  --set speaker.frr.image.tag=9.0.2
+  --set frrk8s.enabled=false
 ```
 
 ### Wait for MetalLB Components
@@ -384,7 +383,7 @@ kubectl apply -f metallb-bgp-advertisement.yaml
 
 ### Configure MetalLB BGP Peers
 
-Configure MetalLB to peer with the same router as Calico. Note that MetalLB and Calico use different ports by default:
+Configure MetalLB to peer with a router that is not already peered with Calico from the same node, or use a separate router VRF. BGP allows only one session between a pair of BGP speakers, so duplicate Calico and MetalLB sessions to the same router from the same node can be rejected:
 
 ```yaml
 apiVersion: metallb.io/v1beta2
@@ -395,7 +394,7 @@ metadata:
 spec:
   myASN: 64512
   peerASN: 64513
-  peerAddress: 10.0.0.1
+  peerAddress: 10.0.0.2
   peerPort: 179
   holdTime: 90s
   keepaliveTime: 30s
@@ -426,34 +425,33 @@ Apply the MetalLB BGP peer configuration:
 kubectl apply -f metallb-bgp-peers.yaml
 ```
 
-## Step 5: Avoiding BGP Port Conflicts
+## Step 5: Avoiding BGP Session Conflicts
 
-Since both Calico and MetalLB can use BGP, you need to configure them to avoid conflicts.
+Since both Calico and MetalLB can use BGP, you need to configure them to avoid duplicate BGP sessions between the same node and router.
 
-### Option A: Use Different BGP Ports
+### Option A: Peer with a Separate Router or VRF
 
-Configure MetalLB to use a non-standard port for BGP:
+Configure MetalLB to peer with a different router address or a separate router VRF from the one used by Calico:
 
 ```yaml
 apiVersion: metallb.io/v1beta2
 kind: BGPPeer
 metadata:
-  name: router-peer-alt-port
+  name: router-peer-vrf
   namespace: metallb-system
 spec:
   myASN: 64512
   peerASN: 64513
-  peerAddress: 10.0.0.1
-  peerPort: 1179
+  peerAddress: 10.0.0.2
   holdTime: 90s
   sourceAddress: 10.0.0.10
 ```
 
-Configure your router to accept connections on port 1179 from MetalLB speakers.
+Configure your router or VRF to redistribute the MetalLB routes as needed.
 
 ### Option B: Use Calico for All BGP (Recommended)
 
-A cleaner approach is to let Calico handle all BGP and use MetalLB in Layer 2 mode or integrate with Calico's BGP.
+A cleaner approach is to let Calico handle all BGP and use MetalLB only for LoadBalancer IP allocation.
 
 Disable MetalLB BGP and configure Calico to advertise service IPs. First, update Calico's BGP configuration:
 
@@ -474,20 +472,7 @@ spec:
   - cidr: 192.168.100.100/25
 ```
 
-Then configure MetalLB in Layer 2 mode only:
-
-```yaml
-apiVersion: metallb.io/v1beta1
-kind: L2Advertisement
-metadata:
-  name: l2-advertisement
-  namespace: metallb-system
-spec:
-  ipAddressPools:
-  - production-pool
-  interfaces:
-  - eth0
-```
+Then keep the MetalLB `IPAddressPool`, but do not create any `BGPAdvertisement` or `L2Advertisement` resources for that pool. Calico will advertise the assigned LoadBalancer IPs via BGP.
 
 ## Step 6: Implement Advanced Network Policies
 
@@ -530,6 +515,7 @@ spec:
     destination:
       ports:
       - 53
+      namespaceSelector: projectcalico.org/name == 'kube-system'
       selector: k8s-app == 'kube-dns'
 ```
 
@@ -615,7 +601,7 @@ spec:
     protocol: TCP
     source:
       selector: app == 'prometheus'
-      namespaceSelector: name == 'monitoring'
+      namespaceSelector: projectcalico.org/name == 'monitoring'
     destination:
       ports:
       - 9090
@@ -624,8 +610,7 @@ spec:
     protocol: TCP
     destination:
       selector: app == 'database'
-      namespaceSelector: name == 'production'
-    destination:
+      namespaceSelector: projectcalico.org/name == 'production'
       ports:
       - 5432
   - action: Allow
@@ -668,6 +653,7 @@ spec:
     source:
       nets:
       - 10.0.0.1/32
+      - 10.0.0.2/32
     destination:
       ports:
       - 179
@@ -677,6 +663,7 @@ spec:
     destination:
       nets:
       - 10.0.0.1/32
+      - 10.0.0.2/32
       ports:
       - 179
 ```
@@ -734,8 +721,8 @@ metadata:
   name: web-app
   namespace: production
   annotations:
-    metallb.universe.tf/address-pool: production-pool
-    metallb.universe.tf/loadBalancerIPs: 192.168.100.100
+    metallb.io/address-pool: production-pool
+    metallb.io/loadBalancerIPs: 192.168.100.100
 spec:
   type: LoadBalancer
   externalTrafficPolicy: Local
@@ -782,7 +769,7 @@ metadata:
   name: multi-port-service
   namespace: production
   annotations:
-    metallb.universe.tf/address-pool: production-pool
+    metallb.io/address-pool: production-pool
 spec:
   type: LoadBalancer
   selector:
@@ -922,15 +909,15 @@ metadata:
     app: metallb
   annotations:
     prometheus.io/scrape: "true"
-    prometheus.io/port: "7472"
+    prometheus.io/port: "9120"
 spec:
   selector:
-    app: metallb
-    component: speaker
+    app.kubernetes.io/name: metallb
+    app.kubernetes.io/component: speaker
   ports:
   - name: metrics
-    port: 7472
-    targetPort: 7472
+    port: 9120
+    targetPort: 9120
 ```
 
 Create a ServiceMonitor for Prometheus Operator:
@@ -992,13 +979,13 @@ spec:
 Check MetalLB speaker logs:
 
 ```bash
-kubectl logs -n metallb-system -l component=speaker -f
+kubectl logs -n metallb-system -l app.kubernetes.io/component=speaker -f
 ```
 
 Check BGP session status:
 
 ```bash
-kubectl exec -n metallb-system -it $(kubectl get pods -n metallb-system -l component=speaker -o jsonpath='{.items[0].metadata.name}') -- vtysh -c "show bgp summary"
+kubectl exec -n metallb-system -it $(kubectl get pods -n metallb-system -l app.kubernetes.io/component=speaker -o jsonpath='{.items[0].metadata.name}') -c frr -- vtysh -c "show bgp summary"
 ```
 
 Verify IP address assignments:
@@ -1043,7 +1030,7 @@ kubectl get pods -n metallb-system -o wide
 Verify network connectivity to the router:
 
 ```bash
-kubectl exec -n metallb-system -it <speaker-pod> -- nc -zv 10.0.0.1 179
+kubectl exec -n metallb-system -it <speaker-pod> -- nc -zv 10.0.0.2 179
 ```
 
 Check firewall rules allow BGP traffic (TCP port 179):
@@ -1134,16 +1121,15 @@ spec:
   myASN: 64512
   peerASN: 64513
   peerAddress: 10.0.0.1
-  password: "your-secure-bgp-password"
   passwordSecret:
     name: bgp-password
-    key: password
 ```
 
 Create the secret:
 
 ```bash
 kubectl create secret generic bgp-password \
+  --type=kubernetes.io/basic-auth \
   --from-literal=password='your-secure-bgp-password' \
   -n metallb-system
 ```
@@ -1311,7 +1297,7 @@ metadata:
   name: web-app
   namespace: production
   annotations:
-    metallb.universe.tf/address-pool: production-pool
+    metallb.io/address-pool: production-pool
 spec:
   type: LoadBalancer
   externalTrafficPolicy: Local
@@ -1338,7 +1324,7 @@ With this configuration, you have enterprise-grade networking with the flexibili
 
 ## Further Reading
 
-- [MetalLB Official Documentation](https://metallb.universe.tf/)
+- [MetalLB Official Documentation](https://metallb.io/)
 - [Calico Documentation](https://docs.tigera.io/calico/latest/about/)
 - [Kubernetes Network Policies](https://kubernetes.io/docs/concepts/services-networking/network-policies/)
 - [BGP Best Practices](https://www.rfc-editor.org/rfc/rfc7454)
