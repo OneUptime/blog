@@ -91,7 +91,7 @@ flowchart TB
 ### Key eBPF Advantages
 
 1. **Kernel-Level Processing**: Network packets are processed in the kernel, avoiding context switches to userspace
-2. **Zero Resource Overhead**: No additional containers running in your pods
+2. **Zero per-pod sidecar overhead**: No additional proxy containers running in your pods
 3. **Lower Latency**: Direct kernel path reduces per-request latency
 4. **Better Scalability**: Resources scale with cluster size, not pod count
 
@@ -143,12 +143,11 @@ Let's walk through setting up Cilium as a sidecar-free service mesh replacement.
 Before installing Cilium, ensure your cluster meets these requirements:
 
 ```bash
-# Verify your Kubernetes version (1.21+ required)
-# Cilium requires Kubernetes 1.21 or later for full service mesh features
-kubectl version --short
+# Verify your Kubernetes version against Cilium's compatibility matrix
+kubectl version
 
-# Check Linux kernel version (5.4+ recommended for full eBPF features)
-# Older kernels may not support all eBPF features like BTF
+# Check Linux kernel version (5.10+ recommended for current Cilium releases)
+# Older kernels may not support all eBPF features required by Cilium
 uname -r
 
 # Ensure no conflicting CNI is installed
@@ -166,13 +165,20 @@ Install Cilium with service mesh features enabled:
 helm repo add cilium https://helm.cilium.io/
 helm repo update
 
+# Install the Gateway API CRDs before enabling Cilium's Gateway API controller
+kubectl apply -f https://raw.githubusercontent.com/kubernetes-sigs/gateway-api/v1.4.1/config/crd/standard/gateway.networking.k8s.io_gatewayclasses.yaml
+kubectl apply -f https://raw.githubusercontent.com/kubernetes-sigs/gateway-api/v1.4.1/config/crd/standard/gateway.networking.k8s.io_gateways.yaml
+kubectl apply -f https://raw.githubusercontent.com/kubernetes-sigs/gateway-api/v1.4.1/config/crd/standard/gateway.networking.k8s.io_httproutes.yaml
+kubectl apply -f https://raw.githubusercontent.com/kubernetes-sigs/gateway-api/v1.4.1/config/crd/standard/gateway.networking.k8s.io_referencegrants.yaml
+kubectl apply -f https://raw.githubusercontent.com/kubernetes-sigs/gateway-api/v1.4.1/config/crd/standard/gateway.networking.k8s.io_grpcroutes.yaml
+
 # Install Cilium with service mesh configuration
 # Key options:
 # - kubeProxyReplacement: Replaces kube-proxy with eBPF for better performance
 # - ingressController.enabled: Native ingress without external controllers
 # - gatewayAPI.enabled: Kubernetes Gateway API support
 # - hubble.enabled: Observability platform for network traffic
-helm install cilium cilium/cilium --version 1.15.0 \
+helm install cilium cilium/cilium --version 1.19.5 \
   --namespace kube-system \
   --set kubeProxyReplacement=true \
   --set k8sServiceHost=${API_SERVER_IP} \
@@ -183,8 +189,7 @@ helm install cilium cilium/cilium --version 1.15.0 \
   --set hubble.enabled=true \
   --set hubble.relay.enabled=true \
   --set hubble.ui.enabled=true \
-  --set envoy.enabled=true \
-  --set loadBalancer.algorithm=maglev
+  --set envoy.enabled=true
 ```
 
 ### Verifying Installation
@@ -202,24 +207,23 @@ cilium status --wait
 
 # Check that eBPF programs are loaded
 # You should see multiple programs attached to cgroup, xdp, and tc hooks
-kubectl exec -n kube-system ds/cilium -- cilium bpf prog list
+kubectl exec -n kube-system ds/cilium -c cilium-agent -- bpftool prog show
 
 # Verify that kube-proxy replacement is active (if enabled)
 # The output should show BPF NodePort device information
-kubectl exec -n kube-system ds/cilium -- cilium status | grep KubeProxyReplacement
+kubectl exec -n kube-system ds/cilium -c cilium-agent -- cilium-dbg status | grep KubeProxyReplacement
 ```
 
 Expected output showing eBPF programs loaded:
 
 ```text
-# Example output from 'cilium bpf prog list'
+# Example output from 'bpftool prog show'
 # Each entry represents an eBPF program attached to a specific hook point
-ID      Type            Name                    Attached
-1234    cgroup_sock     sock4_connect           /sys/fs/cgroup
-1235    cgroup_sock     sock6_connect           /sys/fs/cgroup
-1236    sched_cls       from-container          eth0
-1237    sched_cls       to-container            eth0
-1238    xdp             xdp_entry               eth0
+1234: cgroup_sock  name sock4_connect  tag ...
+1235: cgroup_sock  name sock6_connect  tag ...
+1236: sched_cls    name from_container tag ...
+1237: sched_cls    name to_container   tag ...
+1238: xdp          name xdp_entry      tag ...
 ```
 
 ## L7 Traffic Management with eBPF
@@ -356,6 +360,22 @@ spec:
                             prefix: "/"
                           route:
                             cluster: default/productpage-v1
+                http_filters:
+                  - name: envoy.filters.http.router
+                    typed_config:
+                      "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
+
+    - "@type": type.googleapis.com/envoy.config.cluster.v3.Cluster
+      name: default/productpage-v1
+      connect_timeout: 5s
+      lb_policy: ROUND_ROBIN
+      type: EDS
+
+    - "@type": type.googleapis.com/envoy.config.cluster.v3.Cluster
+      name: default/productpage-v2
+      connect_timeout: 5s
+      lb_policy: ROUND_ROBIN
+      type: EDS
 ```
 
 ### Traffic Splitting for Canary Deployments
@@ -407,25 +427,40 @@ spec:
                                   weight: 90   # 90% of traffic
                                 - name: default/my-service-v2
                                   weight: 10   # 10% of traffic (canary)
+                http_filters:
+                  - name: envoy.filters.http.router
+                    typed_config:
+                      "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
+
+    - "@type": type.googleapis.com/envoy.config.cluster.v3.Cluster
+      name: default/my-service-v1
+      connect_timeout: 5s
+      lb_policy: ROUND_ROBIN
+      type: EDS
+
+    - "@type": type.googleapis.com/envoy.config.cluster.v3.Cluster
+      name: default/my-service-v2
+      connect_timeout: 5s
+      lb_policy: ROUND_ROBIN
+      type: EDS
 ```
 
 ## Implementing mTLS without Sidecars
 
-Mutual TLS (mTLS) is critical for zero-trust security in service mesh. Cilium provides transparent mTLS encryption without sidecars.
+Mutual TLS (mTLS) is critical for zero-trust security in service mesh. Cilium supports beta mutual authentication without sidecars, and its WireGuard or IPsec transparent encryption can be enabled separately for pod-to-pod traffic confidentiality.
 
-### Enabling Cilium mTLS
+### Enabling Cilium Encryption
 
-Configure WireGuard-based encryption (transparent mTLS alternative):
+Configure WireGuard-based transparent encryption:
 
 ```bash
 # Upgrade Cilium with encryption enabled
-# WireGuard provides kernel-level encryption that's faster than TLS
-helm upgrade cilium cilium/cilium --version 1.15.0 \
+# WireGuard provides kernel-level pod-to-pod encryption
+helm upgrade cilium cilium/cilium --version 1.19.5 \
   --namespace kube-system \
   --reuse-values \
   --set encryption.enabled=true \
-  --set encryption.type=wireguard \
-  --set encryption.wireguard.userspaceFallback=false
+  --set encryption.type=wireguard
 ```
 
 Alternatively, enable IPsec encryption:
@@ -439,10 +474,10 @@ IPSEC_KEY=$(echo $(dd if=/dev/urandom count=20 bs=1 2>/dev/null | xxd -p -c 64))
 # Create the secret containing the IPsec key
 kubectl create secret generic cilium-ipsec-keys \
   -n kube-system \
-  --from-literal=keys="3 rfc4106(gcm(aes)) $IPSEC_KEY 128"
+  --from-literal=keys="3+ rfc4106(gcm(aes)) $IPSEC_KEY 128"
 
 # Upgrade Cilium with IPsec enabled
-helm upgrade cilium cilium/cilium --version 1.15.0 \
+helm upgrade cilium cilium/cilium --version 1.19.5 \
   --namespace kube-system \
   --reuse-values \
   --set encryption.enabled=true \
@@ -456,7 +491,7 @@ Check that encryption is active between pods:
 ```bash
 # Verify WireGuard encryption status
 # Shows which nodes have established encrypted tunnels
-kubectl exec -n kube-system ds/cilium -- cilium encrypt status
+kubectl exec -n kube-system ds/cilium -c cilium-agent -- cilium-dbg encrypt status
 
 # Expected output showing encryption is active:
 # Encryption: Wireguard
@@ -467,104 +502,21 @@ kubectl exec -n kube-system ds/cilium -- cilium encrypt status
 
 # Check encrypted connections between nodes
 # The 'wg0' interface shows WireGuard tunnel statistics
-kubectl exec -n kube-system ds/cilium -- wg show
+kubectl exec -n kube-system ds/cilium -c cilium-agent -- wg show
 ```
 
-### SPIFFE/SPIRE Integration for True mTLS
+### SPIFFE/SPIRE Integration for Mutual Authentication
 
-For workload identity with certificates (true mTLS), integrate with SPIRE:
+For workload identity with certificates, enable Cilium's SPIRE-backed mutual authentication:
 
-```yaml
-# SPIRE Server deployment for certificate management
-# SPIRE provides workload identity based on SPIFFE standards
-apiVersion: apps/v1
-kind: StatefulSet
-metadata:
-  name: spire-server
-  namespace: spire
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: spire-server
-  template:
-    metadata:
-      labels:
-        app: spire-server
-    spec:
-      containers:
-        - name: spire-server
-          image: ghcr.io/spiffe/spire-server:1.8.0
-          args:
-            - "-config"
-            - "/run/spire/config/server.conf"
-          ports:
-            - containerPort: 8081  # SPIRE Server API
-          volumeMounts:
-            - name: spire-config
-              mountPath: /run/spire/config
-              readOnly: true
-      volumes:
-        - name: spire-config
-          configMap:
-            name: spire-server
----
-# ConfigMap for SPIRE Server configuration
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: spire-server
-  namespace: spire
-data:
-  server.conf: |
-    server {
-      # Bind address for the SPIRE Server
-      bind_address = "0.0.0.0"
-      bind_port = "8081"
-
-      # Trust domain for SPIFFE IDs
-      # All workload identities will be under this domain
-      trust_domain = "example.org"
-
-      # Data directory for server state
-      data_dir = "/run/spire/data"
-
-      # Log level (DEBUG, INFO, WARN, ERROR)
-      log_level = "INFO"
-
-      # CA configuration
-      ca_ttl = "24h"
-      default_x509_svid_ttl = "1h"
-    }
-
-    # Plugins configuration
-    plugins {
-      # Use Kubernetes as the node attestor
-      NodeAttestor "k8s_psat" {
-        plugin_data {
-          clusters = {
-            "kubernetes" = {
-              service_account_allow_list = ["spire:spire-agent"]
-            }
-          }
-        }
-      }
-
-      # Use in-memory keymanager for development
-      # In production, use disk or HSM-backed keymanager
-      KeyManager "memory" {
-        plugin_data {}
-      }
-
-      # Store data in SQLite for development
-      # In production, use PostgreSQL or MySQL
-      DataStore "sql" {
-        plugin_data {
-          database_type = "sqlite3"
-          connection_string = "/run/spire/data/datastore.sqlite3"
-        }
-      }
-    }
+```bash
+# Enable Cilium authentication processing and install the managed SPIRE components
+helm upgrade cilium cilium/cilium --version 1.19.5 \
+  --namespace kube-system \
+  --reuse-values \
+  --set authentication.enabled=true \
+  --set authentication.mutual.spire.enabled=true \
+  --set authentication.mutual.spire.install.enabled=true
 ```
 
 ## Observability with eBPF
@@ -576,11 +528,12 @@ Cilium's Hubble provides deep observability without the overhead of sidecar-base
 ```bash
 # Enable Hubble with full observability features
 # Hubble provides network flow visibility without any application changes
-helm upgrade cilium cilium/cilium --version 1.15.0 \
+helm upgrade cilium cilium/cilium --version 1.19.5 \
   --namespace kube-system \
   --reuse-values \
   --set hubble.enabled=true \
-  --set hubble.metrics.enabled="{dns,drop,tcp,flow,port-distribution,icmp,http}" \
+  --set hubble.metrics.enableOpenMetrics=true \
+  --set hubble.metrics.enabled="{dns,drop,tcp,flow,port-distribution,icmp,httpV2:labelsContext=source_namespace\,source_workload\,destination_namespace\,destination_workload}" \
   --set hubble.relay.enabled=true \
   --set hubble.ui.enabled=true
 ```
@@ -703,8 +656,8 @@ data:
           "type": "graph",
           "targets": [
             {
-              "expr": "sum(rate(hubble_http_requests_total[5m])) by (destination_service)",
-              "legendFormat": "{{ destination_service }}"
+              "expr": "sum(rate(hubble_http_requests_total[5m])) by (destination_namespace, destination_workload)",
+              "legendFormat": "{{ destination_namespace }}/{{ destination_workload }}"
             }
           ]
         },
@@ -713,8 +666,8 @@ data:
           "type": "graph",
           "targets": [
             {
-              "expr": "histogram_quantile(0.99, sum(rate(hubble_http_request_duration_seconds_bucket[5m])) by (le, destination_service))",
-              "legendFormat": "{{ destination_service }}"
+              "expr": "histogram_quantile(0.99, sum(rate(hubble_http_request_duration_seconds_bucket[5m])) by (le, destination_namespace, destination_workload))",
+              "legendFormat": "{{ destination_namespace }}/{{ destination_workload }}"
             }
           ]
         },
@@ -723,8 +676,8 @@ data:
           "type": "graph",
           "targets": [
             {
-              "expr": "sum(rate(hubble_http_requests_total{status=~\"5..\"}[5m])) by (destination_service) / sum(rate(hubble_http_requests_total[5m])) by (destination_service)",
-              "legendFormat": "{{ destination_service }}"
+              "expr": "sum(rate(hubble_http_requests_total{status=~\"5..\"}[5m])) by (destination_namespace, destination_workload) / sum(rate(hubble_http_requests_total[5m])) by (destination_namespace, destination_workload)",
+              "legendFormat": "{{ destination_namespace }}/{{ destination_workload }}"
             }
           ]
         },
@@ -733,7 +686,7 @@ data:
           "type": "graph",
           "targets": [
             {
-              "expr": "sum(rate(hubble_drop_total[5m])) by (reason)",
+              "expr": "sum(rate(hubble_drop_total[5m])) by (reason, protocol)",
               "legendFormat": "{{ reason }}"
             }
           ]
@@ -744,7 +697,7 @@ data:
 
 ## Performance Comparison
 
-Let's examine the real-world performance differences between sidecar-based and eBPF-based service meshes.
+Let's examine an example performance comparison between sidecar-based and eBPF-based service meshes.
 
 ### Benchmark Results
 
@@ -794,9 +747,9 @@ kubectl run fortio-client --rm -i --restart=Never \
 echo ""
 echo "=== Benchmark Results ==="
 jq -r '
-  "P50 Latency: " + (.DurationHistogram.Percentiles[] | select(.Percentile == 50) | .Value | tostring) + "ms",
-  "P90 Latency: " + (.DurationHistogram.Percentiles[] | select(.Percentile == 90) | .Value | tostring) + "ms",
-  "P99 Latency: " + (.DurationHistogram.Percentiles[] | select(.Percentile == 99) | .Value | tostring) + "ms",
+  "P50 Latency: " + ((.DurationHistogram.Percentiles[] | select(.Percentile == 50) | .Value * 1000) | tostring) + "ms",
+  "P90 Latency: " + ((.DurationHistogram.Percentiles[] | select(.Percentile == 90) | .Value * 1000) | tostring) + "ms",
+  "P99 Latency: " + ((.DurationHistogram.Percentiles[] | select(.Percentile == 99) | .Value * 1000) | tostring) + "ms",
   "Actual QPS: " + (.ActualQPS | tostring),
   "Success Rate: " + ((.RetCodes["200"] // 0) / .DurationHistogram.Count * 100 | tostring) + "%"
 ' benchmark-results.json
@@ -899,13 +852,13 @@ for node in $(kubectl get nodes -o jsonpath='{.items[*].metadata.name}'); do
     kernel=$(kubectl get node $node -o jsonpath='{.status.nodeInfo.kernelVersion}')
     echo "   Node $node: Kernel $kernel"
 
-    # Check if kernel version is 5.4+
+    # Check if kernel version is 5.10+ (or a distribution-supported equivalent)
     major=$(echo $kernel | cut -d. -f1)
     minor=$(echo $kernel | cut -d. -f2)
-    if [ "$major" -ge 5 ] && [ "$minor" -ge 4 ]; then
+    if [ "$major" -gt 5 ] || { [ "$major" -eq 5 ] && [ "$minor" -ge 10 ]; }; then
         echo "     Status: Compatible with eBPF service mesh"
     else
-        echo "     Status: WARNING - Kernel < 5.4 may have limited eBPF support"
+        echo "     Status: WARNING - Kernel < 5.10 may have limited Cilium support"
     fi
 done
 
@@ -945,7 +898,7 @@ metadata:
   namespace: kube-system
 data:
   # Enable Cilium CNI chaining mode
-  # This allows Cilium to work alongside Istio's CNI
+  # This allows Cilium to work alongside an existing CNI while you test
   cni-chaining-mode: "generic-veth"
 
   # Don't replace kube-proxy yet during parallel deployment
@@ -954,9 +907,8 @@ data:
   # Enable Hubble for observability comparison
   enable-hubble: "true"
 
-  # Custom annotations for testing
-  # Pods with this annotation will use Cilium's L7 proxy
-  proxy-visibility: "true"
+  # Enable L7 proxy support; workloads still need policies or visibility annotations
+  enable-l7-proxy: "true"
 ```
 
 ### Phase 3: Namespace Migration
@@ -978,6 +930,7 @@ echo "=== Migrating namespace: $NAMESPACE ==="
 # Step 1: Disable Istio injection for the namespace
 echo "Step 1: Disabling Istio sidecar injection..."
 kubectl label namespace $NAMESPACE istio-injection- --overwrite
+kubectl label namespace $NAMESPACE istio.io/rev- --overwrite
 
 # Step 2: Export existing Istio policies
 echo "Step 2: Exporting Istio policies..."
@@ -1088,6 +1041,22 @@ spec:
                             prefix: "/"
                           route:
                             cluster: default/reviews-v1
+                http_filters:
+                  - name: envoy.filters.http.router
+                    typed_config:
+                      "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
+
+    - "@type": type.googleapis.com/envoy.config.cluster.v3.Cluster
+      name: default/reviews-v1
+      connect_timeout: 5s
+      lb_policy: ROUND_ROBIN
+      type: EDS
+
+    - "@type": type.googleapis.com/envoy.config.cluster.v3.Cluster
+      name: default/reviews-v2
+      connect_timeout: 5s
+      lb_policy: ROUND_ROBIN
+      type: EDS
 ---
 # Converting Istio AuthorizationPolicy to CiliumNetworkPolicy
 #
@@ -1143,23 +1112,22 @@ spec:
 ### 1. Gradual Rollout
 
 ```yaml
-# Use namespace labels to control migration phases
-# This allows gradual rollout of eBPF service mesh
+# Use namespace labels to track migration phases in your automation
 apiVersion: v1
 kind: Namespace
 metadata:
   name: production
   labels:
-    # Phase 1: Keep Istio, enable Cilium observability
+    # Phase 1: Keep Istio and enable Cilium observability separately
     # istio-injection: enabled
-    # cilium.io/hubble-visibility: "true"
+    # mesh-migration.phase: observe
 
-    # Phase 2: Disable Istio, use Cilium L7
+    # Phase 2: Disable Istio and apply Cilium L7 policies
     istio-injection: disabled
-    cilium.io/l7-policy: enabled
+    mesh-migration.phase: cilium-l7
 
-    # Phase 3: Full Cilium with encryption
-    # cilium.io/encryption: "true"
+    # Phase 3: Full Cilium with encryption enabled at install/upgrade time
+    # mesh-migration.phase: encrypted
 ```
 
 ### 2. Monitoring During Migration
@@ -1263,7 +1231,7 @@ echo "=== Rollback complete for namespace: $NAMESPACE ==="
 ```markdown
 ## Pre-Migration Checklist
 
-- [ ] Kernel version 5.4+ on all nodes
+- [ ] Kernel version 5.10+ on all nodes, or a supported distribution-equivalent kernel
 - [ ] Cilium installed and healthy on all nodes
 - [ ] Hubble enabled for observability
 - [ ] Backup of all existing service mesh policies
@@ -1278,7 +1246,7 @@ echo "=== Rollback complete for namespace: $NAMESPACE ==="
 - [ ] Monitor success rates and latency continuously
 - [ ] Validate L7 policies are working correctly
 - [ ] Check encryption status between services
-- [ ] Verify mTLS/encryption is active
+- [ ] Verify mutual authentication and/or transparent encryption is active, depending on your security requirements
 
 ## Post-Migration
 
@@ -1293,8 +1261,8 @@ echo "=== Rollback complete for namespace: $NAMESPACE ==="
 
 Replacing sidecar proxies with eBPF for service mesh represents a significant advancement in cloud-native networking. By moving networking logic into the Linux kernel, eBPF-based solutions like Cilium offer:
 
-1. **Dramatically lower latency** - Up to 80% reduction in P99 latency
-2. **Zero per-pod resource overhead** - No sidecar containers consuming CPU and memory
+1. **Lower latency in benchmark environments** - P99 latency reductions depend on workload, policy, and cluster configuration
+2. **Zero per-pod sidecar overhead** - No sidecar containers consuming CPU and memory
 3. **Simplified operations** - Fewer components to manage and troubleshoot
 4. **Enhanced security** - Kernel-level enforcement of network policies
 5. **Deep observability** - Hubble provides comprehensive network visibility
