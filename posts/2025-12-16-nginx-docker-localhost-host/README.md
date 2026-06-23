@@ -58,8 +58,6 @@ server {
 ### Docker Compose Configuration
 
 ```yaml
-version: '3.8'
-
 services:
   nginx:
     image: nginx:alpine
@@ -101,8 +99,6 @@ server {
 ### Docker Compose with Host Network
 
 ```yaml
-version: '3.8'
-
 services:
   nginx:
     image: nginx:alpine
@@ -111,7 +107,7 @@ services:
       - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
 ```
 
-**Note**: Host network mode is only available on Linux. On Mac and Windows, Docker runs in a VM, so this approach will not work as expected.
+**Note**: Host network mode works on Docker Engine for Linux and on Docker Desktop 4.34 or later when host networking is enabled in Docker Desktop settings. On older Docker Desktop versions, this approach will not work as expected because Docker runs containers inside a VM.
 
 ## Solution 3: Using Docker Bridge Network Gateway
 
@@ -155,7 +151,7 @@ server {
 Create a startup script that detects the gateway dynamically:
 
 ```bash
-#!/bin/bash
+#!/bin/sh
 # entrypoint.sh
 
 # Get the host gateway IP
@@ -213,8 +209,6 @@ docker network create --subnet=192.168.100.0/24 --gateway=192.168.100.1 custom-n
 ### Docker Compose Configuration
 
 ```yaml
-version: '3.8'
-
 services:
   nginx:
     image: nginx:alpine
@@ -254,8 +248,6 @@ Here is a comprehensive example combining multiple best practices:
 ### docker-compose.yml
 
 ```yaml
-version: '3.8'
-
 services:
   nginx:
     image: nginx:alpine
@@ -396,8 +388,8 @@ docker exec nginx-proxy nginx -s reload
 | Method | OS Support | Ease of Use | Production Ready |
 |--------|------------|-------------|------------------|
 | host.docker.internal | All (with extra_hosts) | Easy | Yes |
-| Host Network Mode | Linux only | Easy | Limited |
-| Bridge Gateway IP | All | Moderate | Yes |
-| Custom Network | All | Moderate | Yes |
+| Host Network Mode | Linux, Docker Desktop 4.34+ with host networking enabled | Easy | Limited |
+| Bridge Gateway IP | Linux Docker Engine | Moderate | Yes |
+| Custom Network | Linux Docker Engine | Moderate | Yes |
 
 For most use cases, using `host.docker.internal` with the `extra_hosts` directive in Docker Compose provides the best balance of simplicity and portability. Ensure your host services bind to `0.0.0.0` rather than `127.0.0.1` to accept connections from Docker containers.
