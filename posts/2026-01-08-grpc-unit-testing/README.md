@@ -1118,6 +1118,7 @@ import (
 
     "github.com/example/myservice/pb"
     "google.golang.org/grpc"
+    "google.golang.org/grpc/credentials/insecure"
     "google.golang.org/grpc/test/bufconn"
 )
 
@@ -1153,7 +1154,7 @@ func (ts *TestServer) Dial(ctx context.Context) (*grpc.ClientConn, error) {
         grpc.WithContextDialer(func(context.Context, string) (net.Conn, error) {
             return ts.listener.Dial()
         }),
-        grpc.WithInsecure(),
+        grpc.WithTransportCredentials(insecure.NewCredentials()),
     )
 }
 
