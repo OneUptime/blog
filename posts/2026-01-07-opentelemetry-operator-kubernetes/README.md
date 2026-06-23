@@ -94,20 +94,14 @@ Before deploying the OpenTelemetry Operator, ensure you have:
 The OpenTelemetry Operator requires cert-manager for managing TLS certificates used by its webhooks. Install cert-manager if not already present:
 
 ```bash
-# Add the Jetstack Helm repository which hosts cert-manager charts
-
-helm repo add jetstack https://charts.jetstack.io
-
-# Update your local Helm chart repository cache to get the latest charts
-helm repo update
-
 # Install cert-manager with CRDs included
-# The installCRDs flag ensures Custom Resource Definitions are created automatically
+# The crds.enabled flag ensures Custom Resource Definitions are created automatically
 # We're installing into a dedicated namespace for better resource isolation
-helm install cert-manager jetstack/cert-manager \
+helm install cert-manager oci://quay.io/jetstack/charts/cert-manager \
+  --version v1.20.2 \
   --namespace cert-manager \
   --create-namespace \
-  --set installCRDs=true
+  --set crds.enabled=true
 
 # Verify cert-manager pods are running before proceeding
 # All three pods (controller, webhook, cainjector) should be in Running state
@@ -152,7 +146,6 @@ manager:
   # Use the contrib collector image which includes additional receivers/exporters
   collectorImage:
     repository: otel/opentelemetry-collector-contrib
-    tag: "0.92.0"
 
   # Resource limits for the operator manager pod
   # Adjust these based on your cluster size and workload
@@ -256,7 +249,7 @@ The Deployment mode is ideal for centralized collection with horizontal scaling:
 # This creates a centralized OpenTelemetry Collector as a Kubernetes Deployment
 # Use this mode when you need a scalable, centralized telemetry pipeline
 
-apiVersion: opentelemetry.io/v1alpha1
+apiVersion: opentelemetry.io/v1beta1
 kind: OpenTelemetryCollector
 metadata:
   name: otel-collector
@@ -280,7 +273,7 @@ spec:
       memory: 256Mi
 
   # The collector configuration follows the standard OTEL Collector config format
-  config: |
+  config:
     # Receivers define how data enters the collector
     receivers:
       # OTLP receiver accepts data over gRPC and HTTP protocols
@@ -387,8 +380,13 @@ spec:
         logs:
           level: info
         metrics:
-          # Expose collector's own metrics on this address
-          address: 0.0.0.0:8888
+          # Expose collector's own metrics on this endpoint
+          readers:
+            - pull:
+                exporter:
+                  prometheus:
+                    host: 0.0.0.0
+                    port: 8888
 ```
 
 Apply the collector configuration:
@@ -414,7 +412,7 @@ DaemonSet mode runs a collector on every node, ideal for collecting node-level m
 # DaemonSet mode ensures a collector runs on every node in the cluster
 # This is ideal for collecting node-level metrics, logs, and infrastructure data
 
-apiVersion: opentelemetry.io/v1alpha1
+apiVersion: opentelemetry.io/v1beta1
 kind: OpenTelemetryCollector
 metadata:
   name: otel-collector-agent
@@ -460,7 +458,7 @@ spec:
   tolerations:
     - operator: Exists
 
-  config: |
+  config:
     receivers:
       otlp:
         protocols:
@@ -570,7 +568,7 @@ Sidecar mode injects a collector container into application pods:
 # Sidecar mode injects a collector container into annotated pods
 # This provides per-pod telemetry collection with isolation
 
-apiVersion: opentelemetry.io/v1alpha1
+apiVersion: opentelemetry.io/v1beta1
 kind: OpenTelemetryCollector
 metadata:
   name: otel-sidecar
@@ -589,7 +587,7 @@ spec:
       cpu: 50m
       memory: 64Mi
 
-  config: |
+  config:
     receivers:
       otlp:
         protocols:
@@ -645,8 +643,8 @@ metadata:
   name: my-app
   annotations:
     # This annotation triggers sidecar injection
-    # The value must match the name of the OpenTelemetryCollector CR
-    sidecar.opentelemetry.io/inject: "otel-sidecar"
+    # The value must match the namespace and name of the OpenTelemetryCollector CR
+    sidecar.opentelemetry.io/inject: "observability/otel-sidecar"
 spec:
   containers:
     - name: my-app
@@ -655,7 +653,9 @@ spec:
         # Configure the application to send telemetry to the sidecar
         # The sidecar is accessible via localhost since it's in the same pod
         - name: OTEL_EXPORTER_OTLP_ENDPOINT
-          value: "http://localhost:4317"
+          value: "http://localhost:4318"
+        - name: OTEL_EXPORTER_OTLP_PROTOCOL
+          value: "http/protobuf"
 ```
 
 ## Step 4: Configure Auto-Instrumentation
@@ -708,7 +708,7 @@ spec:
   # This tells the injected instrumentation where to send telemetry
   exporter:
     # Endpoint of the collector - use the central collector service
-    endpoint: http://otel-collector.observability.svc:4317
+    endpoint: http://otel-collector.observability.svc:4318
 
   # Propagators determine how trace context is passed between services
   # W3C tracecontext and baggage are the standard propagators
@@ -732,7 +732,7 @@ spec:
     # Add custom attributes to identify the source of telemetry
     resourceAttributes:
       service.namespace: production
-      deployment.environment: production
+      deployment.environment.name: production
 
   # Environment variables injected into all instrumented containers
   # These configure the OpenTelemetry SDK behavior
@@ -756,9 +756,9 @@ spec:
       - name: OTEL_INSTRUMENTATION_COMMON_DEFAULT_ENABLED
         value: "true"
       # Capture HTTP request/response headers
-      - name: OTEL_INSTRUMENTATION_HTTP_CAPTURE_HEADERS_CLIENT_REQUEST
+      - name: OTEL_INSTRUMENTATION_HTTP_CLIENT_CAPTURE_REQUEST_HEADERS
         value: "content-type,x-request-id"
-      - name: OTEL_INSTRUMENTATION_HTTP_CAPTURE_HEADERS_CLIENT_RESPONSE
+      - name: OTEL_INSTRUMENTATION_HTTP_CLIENT_CAPTURE_RESPONSE_HEADERS
         value: "content-type"
       # Configure JDBC instrumentation
       - name: OTEL_INSTRUMENTATION_JDBC_ENABLED
@@ -778,11 +778,11 @@ spec:
     image: ghcr.io/open-telemetry/opentelemetry-operator/autoinstrumentation-nodejs:latest
     env:
       # Configure Node.js SDK options
-      - name: OTEL_NODEJS_ENABLED_INSTRUMENTATIONS
+      - name: OTEL_NODE_ENABLED_INSTRUMENTATIONS
         value: "http,express,mongodb,mysql,pg,redis,ioredis,grpc"
-      # Enable experimental features if needed
-      - name: OTEL_NODEJS_EXPERIMENTAL_EXPORTER_OTLP_HTTP_JSON
-        value: "true"
+      # Node.js auto-instrumentation uses OTLP/gRPC by default
+      - name: OTEL_EXPORTER_OTLP_ENDPOINT
+        value: "http://otel-collector.observability.svc:4317"
     resources:
       limits:
         cpu: 500m
@@ -816,11 +816,11 @@ spec:
     image: ghcr.io/open-telemetry/opentelemetry-operator/autoinstrumentation-dotnet:latest
     env:
       # Configure .NET CLR profiler for auto-instrumentation
-      - name: OTEL_DOTNET_AUTO_TRACES_ENABLED
+      - name: OTEL_DOTNET_AUTO_TRACES_INSTRUMENTATION_ENABLED
         value: "true"
-      - name: OTEL_DOTNET_AUTO_METRICS_ENABLED
+      - name: OTEL_DOTNET_AUTO_METRICS_INSTRUMENTATION_ENABLED
         value: "true"
-      - name: OTEL_DOTNET_AUTO_LOGS_ENABLED
+      - name: OTEL_DOTNET_AUTO_LOGS_INSTRUMENTATION_ENABLED
         value: "true"
       # Configure specific instrumentations
       - name: OTEL_DOTNET_AUTO_INSTRUMENTATION_ENABLED
@@ -833,7 +833,7 @@ spec:
         cpu: 50m
         memory: 64Mi
 
-  # Go-specific instrumentation configuration (requires eBPF)
+  # Go-specific instrumentation configuration (requires eBPF and the operator's Go feature gate)
   go:
     # Go auto-instrumentation uses eBPF and requires privileged access
     image: ghcr.io/open-telemetry/opentelemetry-go-instrumentation/autoinstrumentation-go:latest
@@ -899,7 +899,7 @@ spec:
           # The operator will inject these environment variables:
           # - JAVA_TOOL_OPTIONS: -javaagent:/otel-auto-instrumentation-java/javaagent.jar
           # - OTEL_SERVICE_NAME: java-app
-          # - OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector.observability.svc:4317
+          # - OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector.observability.svc:4318
           # - OTEL_RESOURCE_ATTRIBUTES: various attributes
           resources:
             limits:
@@ -1220,7 +1220,7 @@ kubectl port-forward svc/otel-collector 8888:8888 -n observability
 kubectl get instrumentation otel-instrumentation -n observability -o yaml | grep endpoint
 
 # Verify network connectivity from application pod to collector
-kubectl exec -it <app-pod> -- wget -qO- http://otel-collector.observability.svc:4317 || echo "Connection test"
+kubectl exec -it <app-pod> -- wget -qO- http://otel-collector.observability.svc:4318 || echo "Connection test"
 ```
 
 4. **High memory usage in Java applications**
@@ -1264,14 +1264,14 @@ metadata:
   namespace: production
 spec:
   exporter:
-    endpoint: http://otel-collector.observability.svc:4317
+    endpoint: http://otel-collector.observability.svc:4318
   sampler:
     # Lower sampling rate for high-traffic production services
     type: parentbased_traceidratio
     argument: "0.1"  # Sample only 10% of traces
   resource:
     resourceAttributes:
-      deployment.environment: production
+      deployment.environment.name: production
 ```
 
 ### 2. Configure Resource Limits Appropriately
