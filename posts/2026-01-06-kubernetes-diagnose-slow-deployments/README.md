@@ -460,9 +460,9 @@ histogram_quantile(0.99,
   sum(rate(kubelet_pod_start_duration_seconds_bucket[5m])) by (le)
 )
 
-# Container startup latency
+# Container runtime operation latency (e.g. starting a container)
 histogram_quantile(0.99,
-  sum(rate(kubelet_container_manager_latency_microseconds_bucket{operation_type="start"}[5m])) by (le)
+  sum(rate(kubelet_runtime_operations_duration_seconds_bucket{operation_type="start_container"}[5m])) by (le)
 )
 ```
 
