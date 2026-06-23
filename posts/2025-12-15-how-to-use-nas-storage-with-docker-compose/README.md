@@ -16,9 +16,9 @@ This guide covers mounting **NFS**, **SMB/CIFS**, and **local NAS shares** in Do
 
 | Protocol | Best For | Strengths | Watch-outs |
 | --- | --- | --- | --- |
-| **NFS** | Linux hosts, shared access across containers | Simple setup, low overhead, native Docker support | No built-in encryption, UID/GID mapping can be tricky |
-| **SMB/CIFS** | Windows hosts, mixed environments, AD integration | Works everywhere, credential-based auth | Higher overhead, requires `cifs-utils` on host |
-| **Local mount + bind** | Maximum performance, simple setups | No network latency, works offline | Requires NAS mounted on host first |
+| **NFS** | Linux hosts, shared access across containers | Simple setup, low overhead, native Docker support | No encryption by default, UID/GID mapping can be tricky |
+| **SMB/CIFS** | Linux Docker hosts accessing SMB shares, mixed environments, AD integration | Works with Windows and NAS shares, credential-based auth | Higher overhead, requires `cifs-utils` on Linux host |
+| **Local mount + bind** | Simple setups, maximum Docker-side control | Simple Compose configuration, works with any host-mounted file system | Requires NAS mounted on host first |
 
 ## Prerequisites
 
@@ -103,8 +103,8 @@ volumes:
       # Specify NFS as the filesystem type
       type: nfs
       # Mount options: NAS IP, NFS version, and behavior flags
-      # soft = return errors on timeout, nolock = disable file locking
-      o: addr=192.168.1.100,nfsvers=4.1,soft,nolock
+      # soft = return errors on timeout; use only when I/O errors are acceptable
+      o: addr=192.168.1.100,nfsvers=4.1,soft
       # NFS export path on your NAS (note the leading colon)
       device: ":/volume1/docker-data"
 ```
@@ -115,14 +115,15 @@ volumes:
 | --- | --- |
 | `addr=` | NAS IP address |
 | `nfsvers=4.1` | NFS version (use 4.1 or 4.2 for best compatibility) |
-| `soft` | Return errors on timeout instead of hanging (use `hard` for databases) |
-| `nolock` | Disable file locking (faster, but don't use for databases) |
+| `soft` | Return errors on timeout instead of hanging; use only when responsiveness matters more than data integrity |
+| `hard` | Retry indefinitely on timeout; required for PostgreSQL on NFS |
+| `nolock` | Disable NLM locking for NFSv2/v3 only; don't use for databases |
 | `rw` | Read-write mount (default) |
 | `noatime` | Don't update access times (better performance) |
 
 ### Production-Ready NFS Example
 
-This comprehensive example shows a multi-service stack with different NFS mount strategies for each workload type. Databases use hard mounts for data integrity, while ephemeral data uses soft mounts for better failure handling.
+This comprehensive example shows a multi-service stack with different NFS mount strategies for each workload type. Databases use hard mounts because PostgreSQL requires hard NFS mounts, while ephemeral data uses soft mounts only where I/O errors are acceptable.
 
 ```yaml
 services:
@@ -155,27 +156,25 @@ services:
 
 volumes:
   # Database volume: use 'hard' mount for data integrity
-  # 'hard' = retry indefinitely on failure (prevents data corruption)
-  # 'intr' = allow interrupt to prevent hung processes
+  # 'hard' = retry indefinitely on failure instead of returning I/O errors
   postgres-data:
     driver: local
     driver_opts:
       type: nfs
-      o: addr=192.168.1.100,nfsvers=4.1,hard,intr
+      o: addr=192.168.1.100,nfsvers=4.1,hard
       device: ":/volume1/docker/postgres"
 
   # Cache volume: 'soft' mount is fine since data is ephemeral
   # 'soft' = return error on timeout (container can handle gracefully)
-  # 'nolock' = disable NFS locking for better performance
   redis-data:
     driver: local
     driver_opts:
       type: nfs
-      o: addr=192.168.1.100,nfsvers=4.1,soft,nolock
+      o: addr=192.168.1.100,nfsvers=4.1,soft
       device: ":/volume1/docker/redis"
 
   # Upload volume: balanced settings for reliability + performance
-  # 'hard' = ensure uploads don't get corrupted
+  # 'hard' = keep retrying instead of returning I/O errors during uploads
   # 'noatime' = don't update access times (reduces write operations)
   app-uploads:
     driver: local
@@ -196,7 +195,7 @@ volumes:
 
 ## Method 2: SMB/CIFS Volumes
 
-For Windows environments or when your NAS only offers SMB shares.
+For Linux Docker hosts that need to access SMB shares, or when your NAS only offers SMB shares.
 
 ### Basic SMB Volume
 
@@ -327,8 +326,8 @@ Docker containers often run as specific users (e.g., `postgres` runs as UID 999,
 Find out what UID your container uses:
 
 ```bash
-docker run --rm postgres:16 id
-# uid=999(postgres) gid=999(postgres) groups=999(postgres)
+docker run --rm --entrypoint id postgres:16 postgres
+# uid=999(postgres) gid=999(postgres) groups=999(postgres),101(ssl-cert)
 ```
 
 Configure your NAS to allow that UID, or use NFS squashing to map all access to a UID that the container can use.
@@ -448,7 +447,7 @@ volumes:
     driver: local
     driver_opts:
       type: nfs
-      o: addr=192.168.1.100,nfsvers=4.1,hard,intr
+      o: addr=192.168.1.100,nfsvers=4.1,hard
       device: ":/volume1/docker/myapp/postgres"
 
   # Redis on NAS with soft mount
@@ -456,7 +455,7 @@ volumes:
     driver: local
     driver_opts:
       type: nfs
-      o: addr=192.168.1.100,nfsvers=4.1,soft,nolock
+      o: addr=192.168.1.100,nfsvers=4.1,soft
       device: ":/volume1/docker/myapp/redis"
 
   # Uploads shared between app and worker
@@ -472,7 +471,7 @@ volumes:
     driver: local
     driver_opts:
       type: nfs
-      o: addr=192.168.1.100,nfsvers=4.1,soft
+      o: addr=192.168.1.100,nfsvers=4.1,hard
       device: ":/volume1/docker/myapp/backups"
 ```
 
@@ -490,7 +489,7 @@ volumes:
 
 **Fix:** Use `user:` directive in compose file or configure NAS squashing.
 
-### Pitfall 3: Volume not mounting on docker-compose up
+### Pitfall 3: Volume not mounting on docker compose up
 
 **Cause:** NAS not reachable or DNS not resolved yet at boot.
 
@@ -500,7 +499,7 @@ volumes:
 
 **Cause:** Docker cached the mount, NFS handle is stale.
 
-**Fix:** Restart the containers: `docker-compose down && docker-compose up -d`
+**Fix:** Restart the containers: `docker compose down && docker compose up -d`
 
 ### Pitfall 5: Slow write performance
 
@@ -561,7 +560,7 @@ volumes:
     driver: local
     driver_opts:
       type: nfs
-      o: addr=192.168.1.100,nfsvers=4.1,soft
+      o: addr=192.168.1.100,nfsvers=4.1,hard
       device: ":/volume1/backups/postgres"
 ```
 
@@ -571,15 +570,15 @@ After configuring, verify everything works:
 
 ```bash
 # Start the stack
-docker-compose up -d
+docker compose up -d
 
 # Check volume mounts
-docker-compose exec app df -h
-docker-compose exec app mount | grep nfs
+docker compose exec app df -h
+docker compose exec app mount | grep nfs
 
 # Test write access
-docker-compose exec app touch /data/test-file
-docker-compose exec app ls -la /data/
+docker compose exec app touch /data/test-file
+docker compose exec app ls -la /data/
 
 # Check from NAS side that file appears
 ```
@@ -625,7 +624,7 @@ volumes:
     driver: local
     driver_opts:
       type: nfs
-      o: addr=YOUR_NAS_IP,nfsvers=4.1,soft
+      o: addr=YOUR_NAS_IP,nfsvers=4.1,hard
       device: ":/path/to/share"
 ```
 
