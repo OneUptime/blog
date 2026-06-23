@@ -86,13 +86,27 @@ sudo apt install -y build-essential
 
 # Install Git for version control
 sudo apt install -y git
+```
 
-# Install MongoDB (optional, if using MongoDB)
-sudo apt install -y mongodb
+Install MongoDB (optional, if using MongoDB). The legacy `mongodb` package is no longer available in Ubuntu's default repositories, so install the official `mongodb-org` package from the MongoDB APT repository:
 
-# Start and enable MongoDB service
-sudo systemctl start mongodb
-sudo systemctl enable mongodb
+```bash
+# Import the MongoDB public GPG key
+sudo apt install -y gnupg curl
+curl -fsSL https://www.mongodb.org/static/pgp/server-7.0.asc | \
+    sudo gpg -o /usr/share/keyrings/mongodb-server-7.0.gpg --dearmor
+
+# Add the MongoDB repository (replace "jammy" with your Ubuntu codename if different)
+echo "deb [ arch=amd64,arm64 signed-by=/usr/share/keyrings/mongodb-server-7.0.gpg ] https://repo.mongodb.org/apt/ubuntu jammy/mongodb-org/7.0 multiverse" | \
+    sudo tee /etc/apt/sources.list.d/mongodb-org-7.0.list
+
+# Install MongoDB
+sudo apt update
+sudo apt install -y mongodb-org
+
+# Start and enable the MongoDB service (the service is named "mongod")
+sudo systemctl start mongod
+sudo systemctl enable mongod
 ```
 
 For PostgreSQL installation (alternative to MongoDB):
@@ -2864,10 +2878,10 @@ Common MongoDB connection issues and solutions:
 
 ```bash
 # Check if MongoDB is running
-sudo systemctl status mongodb
+sudo systemctl status mongod
 
 # Start MongoDB if not running
-sudo systemctl start mongodb
+sudo systemctl start mongod
 
 # Check MongoDB logs
 sudo tail -f /var/log/mongodb/mongod.log
