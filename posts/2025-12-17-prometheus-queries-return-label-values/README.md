@@ -16,13 +16,13 @@ PromQL queries return time series with numeric values. To work with label values
 graph LR
     A[Metric + Labels] --> B{Query Type}
     B -->|PromQL Functions| C[label_replace, label_join]
-    B -->|HTTP API| D[label_values, labels]
+    B -->|HTTP API| D[/labels, /label/name/values]
     B -->|Query Result| E[Group/Aggregate by Labels]
 ```
 
 ## Using label_values() in Grafana
 
-The `label_values()` function is specific to Grafana and returns unique values for a label. It is not part of PromQL but is essential for dashboard variables.
+The `label_values()` function is Grafana's legacy classic query syntax and returns unique values for a label. It is not part of PromQL. In current Grafana versions, use the Prometheus variable query type "Label values" for new dashboard variables, and use `label_values()` only when working with classic queries.
 
 ### Basic Syntax
 
@@ -79,7 +79,8 @@ curl "http://prometheus:9090/api/v1/label/job/values"
 curl "http://prometheus:9090/api/v1/label/namespace/values?start=2024-01-01T00:00:00Z&end=2024-01-02T00:00:00Z"
 
 # Filter by metric name
-curl "http://prometheus:9090/api/v1/label/pod/values?match[]=kube_pod_info{namespace='production'}"
+curl -G "http://prometheus:9090/api/v1/label/pod/values" \
+  --data-urlencode 'match[]=kube_pod_info{namespace="production"}'
 ```
 
 ### Get Series Matching Labels
@@ -193,7 +194,7 @@ count(up) by (job)
 # Metrics that have a specific label
 http_requests_total{namespace!=""}
 
-# Metrics missing a label (label exists but empty)
+# Metrics where the label is empty or not set
 http_requests_total{version=""}
 
 # Combine with regex for partial matches
@@ -231,8 +232,8 @@ groups:
 Join metrics to transfer labels:
 
 ```promql
-# Get pod names with their node labels
-kube_pod_info
+# Add node labels to running pod phase series
+kube_pod_status_phase{phase="Running"} == 1
   * on(namespace, pod) group_left(node)
   kube_pod_info
 
@@ -247,8 +248,8 @@ http_requests_total
 ### Basic Variables
 
 ```promql
-# Namespace variable
-label_values(namespace)
+# Namespace variable (classic query syntax)
+label_values(kube_pod_info, namespace)
 
 # Pod variable filtered by namespace
 label_values(kube_pod_info{namespace="$namespace"}, pod)
@@ -280,8 +281,8 @@ query_result(
 Create custom options with metric-based filtering:
 
 ```promql
-# Environments with running pods
-label_values(kube_pod_info{phase="Running"}, label_environment)
+# Environments from pod labels
+label_values(kube_pod_labels{label_environment!=""}, label_environment)
 
 # Regions with active traffic
 label_values(
