@@ -19,7 +19,7 @@ flowchart TD
 
     B --> D["JSON-native"]
     B --> E["Distributed-first"]
-    B --> F["Real-time"]
+    B --> F["Near real-time"]
 
     C --> G["XML/JSON"]
     C --> H["Configurable"]
@@ -30,14 +30,14 @@ flowchart TD
 
 | Feature | Elasticsearch | Solr |
 |---------|--------------|------|
-| License | SSPL / Elastic License | Apache 2.0 |
+| License | Elastic License / SSPL / AGPLv3 source options | Apache 2.0 |
 | API | REST + JSON | REST + XML/JSON |
-| Configuration | Dynamic | Static (schema.xml) |
+| Configuration | Dynamic mappings | Managed schema or schema.xml |
 | Clustering | Built-in | SolrCloud (ZooKeeper) |
-| Real-time indexing | Native | Near real-time |
+| Search visibility | Near real-time | Near real-time |
 | Analytics | Aggregations | Faceting + Stats |
 | Machine Learning | X-Pack ML | Limited |
-| Community | Commercial + Open | Pure Apache |
+| Community | Commercial + open source options | Pure Apache |
 
 ## Architecture Differences
 
@@ -57,10 +57,12 @@ flowchart LR
         D <--> B
     end
 
-    E[Client] --> A
+    E[Client] --> B
+    E --> C
+    E --> D
 ```
 
-- **Masterless discovery** - Nodes find each other automatically
+- **Master election and discovery** - Master-eligible nodes discover peers and elect a master
 - **Automatic shard allocation** - No manual configuration needed
 - **Dynamic mapping** - Schema is inferred from documents
 
@@ -76,12 +78,14 @@ flowchart LR
         A --> D[Solr Node 3]
     end
 
-    E[Client] --> A
+    E[Client] --> B
+    E --> C
+    E --> D
 ```
 
 - **ZooKeeper dependency** - External coordination service required
 - **Collection/Core model** - More explicit configuration
-- **Schema-driven** - Define fields before indexing
+- **Schema-oriented** - Define fields explicitly, or use managed schema and schemaless mode
 
 ## Configuration Approach
 
@@ -115,23 +119,26 @@ PUT /products
 }
 ```
 
-### Solr: Schema Required
+### Solr: Schema-Oriented
 
 Solr traditionally requires schema definition upfront in `schema.xml`:
 
 ```xml
 <schema name="products" version="1.6">
+  <fieldType name="float" class="solr.FloatPointField" docValues="true"/>
+  <fieldType name="date" class="solr.DatePointField" docValues="true"/>
+
   <field name="id" type="string" indexed="true" stored="true" required="true"/>
   <field name="name" type="text_general" indexed="true" stored="true"/>
-  <field name="price" type="pfloat" indexed="true" stored="true"/>
+  <field name="price" type="float" indexed="true" stored="true"/>
   <field name="category" type="string" indexed="true" stored="true"/>
-  <field name="created" type="pdate" indexed="true" stored="true"/>
+  <field name="created" type="date" indexed="true" stored="true"/>
 
   <uniqueKey>id</uniqueKey>
 </schema>
 ```
 
-Modern Solr supports schemaless mode, but explicit schemas are still recommended.
+Modern Solr also supports managed schemas and schemaless mode, but explicit schemas are still recommended for production.
 
 ## Query Syntax
 
@@ -226,7 +233,7 @@ GET /solr/products/select?
   &stats.field=price
 ```
 
-Elasticsearch aggregations are generally more powerful and flexible than Solr faceting.
+Elasticsearch aggregations and Solr's JSON Facet API both support nested bucket and metric analytics; Elasticsearch aggregations are often easier to use from JSON-native applications.
 
 ## Performance Characteristics
 
@@ -236,8 +243,8 @@ Elasticsearch aggregations are generally more powerful and flexible than Solr fa
 |----------|--------------|------|
 | Bulk indexing | Very fast | Fast |
 | Single document | Fast | Moderate |
-| Near real-time search | < 1 second | Configurable |
-| Index refresh | Automatic | Manual commit |
+| Near real-time search | About 1 second by default | Configurable |
+| Index visibility | Automatic refresh | Soft or hard commit strategy |
 
 ### Search Performance
 
@@ -283,22 +290,22 @@ Requires ZooKeeper administration knowledge for production clusters.
 - **Kibana** - Visualization and dashboards
 - **Logstash** - Data ingestion pipeline
 - **Beats** - Lightweight data shippers
-- **X-Pack** - Security, ML, alerting (commercial)
+- **X-Pack** - Security, ML, alerting (free and commercial tiers vary)
 - **APM** - Application performance monitoring
 
 ### Solr Ecosystem
 
-- **Banana** - Kibana port for Solr
+- **Solr Admin UI** - Built-in administration and monitoring
 - **Apache NiFi** - Data flow automation
-- **Hadoop Integration** - HDFS storage
-- **Streaming API** - Real-time data processing
+- **Hadoop Integration** - HDFS storage via module in Solr 9
+- **Streaming Expressions** - Distributed stream processing
 
 ## Use Case Recommendations
 
 ### Choose Elasticsearch When:
 
 1. **Log analytics** - ELK stack is industry standard
-2. **Real-time search** - Automatic refresh, no commit needed
+2. **Near real-time search** - Automatic refresh, no commit needed
 3. **JSON-native APIs** - Modern application development
 4. **Observability** - Metrics, traces, and logs together
 5. **Rapid prototyping** - Dynamic mapping speeds development
@@ -309,7 +316,7 @@ Requires ZooKeeper administration knowledge for production clusters.
 1. **True open source** - Apache 2.0 license matters
 2. **Enterprise search** - Mature faceting and highlighting
 3. **eCommerce** - Strong merchandising features
-4. **Document-heavy** - PDF/Word extraction built-in
+4. **Document-heavy** - PDF/Word extraction through Solr Cell and Apache Tika
 5. **Existing Hadoop** - Deep integration
 6. **On-premises** - Full control, no license concerns
 
@@ -322,55 +329,55 @@ from pysolr import Solr
 from elasticsearch import Elasticsearch, helpers
 
 solr = Solr('http://localhost:8983/solr/products')
-es = Elasticsearch(['http://localhost:9200'])
+es = Elasticsearch('http://localhost:9200')
 
 def migrate():
-    # Fetch from Solr
-    results = solr.search('*:*', rows=1000)
+    cursor = '*'
 
-    # Transform for Elasticsearch
-    actions = [
-        {
-            '_index': 'products',
-            '_id': doc['id'],
-            '_source': {k: v for k, v in doc.items() if k != 'id'}
-        }
-        for doc in results
-    ]
+    while True:
+        results = solr.search(
+            '*:*',
+            rows=1000,
+            sort='id asc',
+            cursorMark=cursor
+        )
 
-    # Bulk index to Elasticsearch
-    helpers.bulk(es, actions)
+        actions = [
+            {
+                '_index': 'products',
+                '_id': doc['id'],
+                '_source': {k: v for k, v in doc.items() if k != 'id'}
+            }
+            for doc in results
+        ]
+
+        if actions:
+            helpers.bulk(es, actions)
+
+        next_cursor = results.raw_response['nextCursorMark']
+        if next_cursor == cursor:
+            break
+        cursor = next_cursor
 ```
 
 ### Migrating Elasticsearch to Solr
 
 ```python
-from elasticsearch import Elasticsearch
 import pysolr
+from elasticsearch import Elasticsearch, helpers
 
-es = Elasticsearch(['http://localhost:9200'])
-solr = Solr('http://localhost:8983/solr/products')
+es = Elasticsearch('http://localhost:9200')
+solr = pysolr.Solr('http://localhost:8983/solr/products')
 
 def migrate():
-    # Scroll through Elasticsearch
-    results = es.search(
+    # Iterate through Elasticsearch hits
+    for hit in helpers.scan(
+        es,
         index='products',
-        scroll='2m',
-        size=1000,
-        body={'query': {'match_all': {}}}
-    )
-
-    while results['hits']['hits']:
-        docs = [
-            {**hit['_source'], 'id': hit['_id']}
-            for hit in results['hits']['hits']
-        ]
-        solr.add(docs)
-
-        results = es.scroll(
-            scroll_id=results['_scroll_id'],
-            scroll='2m'
-        )
+        query={'query': {'match_all': {}}},
+        size=1000
+    ):
+        solr.add([{**hit['_source'], 'id': hit['_id']}])
 
     solr.commit()
 ```
@@ -379,7 +386,7 @@ def migrate():
 
 | Factor | Elasticsearch | Solr |
 |--------|--------------|------|
-| License | SSPL (self-managed) or Elastic License | Apache 2.0 |
+| License | Elastic License, SSPL, or AGPLv3 source options | Apache 2.0 |
 | Cloud offering | Elastic Cloud, AWS OpenSearch | Limited managed options |
 | Support | Elastic subscription | Lucidworks, community |
 | Operational overhead | Lower | Higher (ZooKeeper) |
