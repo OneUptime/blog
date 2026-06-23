@@ -27,12 +27,13 @@ graph TB
         subgraph "Dashboard Components"
             B --> H[REST API]
             B --> I[WebSocket]
-            B --> J[Prometheus Module]
+            B --> J[Grafana Embeds]
         end
 
         subgraph "External Integrations"
-            J --> K[Prometheus Server]
-            K --> L[Grafana]
+            C --> K[Prometheus Module]
+            K --> M[Prometheus Server]
+            M --> L[Grafana]
         end
     end
 
@@ -151,7 +152,7 @@ Once certificates are configured, enable SSL:
 
 ```bash
 # Enable SSL mode for the dashboard
-# When enabled, all HTTP requests are redirected to HTTPS
+# When enabled, the dashboard serves HTTPS on the SSL port
 ceph config set mgr mgr/dashboard/ssl true
 
 # Restart the dashboard module to apply SSL settings
@@ -168,16 +169,16 @@ Configure the dashboard to listen on specific addresses and ports:
 # Use 0.0.0.0 to listen on all interfaces, or specify a particular IP
 ceph config set mgr mgr/dashboard/server_addr 0.0.0.0
 
-# Set the SSL port (default is 8443)
-# Choose a port that doesn't conflict with other services
-ceph config set mgr mgr/dashboard/server_port 8443
-
-# Set the HTTP port for non-SSL connections (if SSL is disabled)
+# Set the HTTP port for non-SSL connections (default is 8080 when SSL is disabled)
 # This is typically used for development only
+# Choose a port that doesn't conflict with other services
+ceph config set mgr mgr/dashboard/server_port 8080
+
+# Set the SSL port (default is 8443)
 ceph config set mgr mgr/dashboard/ssl_server_port 8443
 
 # Verify the configuration
-ceph config get mgr mgr/dashboard/server_port
+ceph config get mgr mgr/dashboard/ssl_server_port
 ```
 
 ## Creating Dashboard Administrator Account
@@ -252,7 +253,7 @@ ceph dashboard ac-role-create monitoring-team
 # Add permissions to the custom role
 # 'read' scope allows viewing but not modifying resources
 ceph dashboard ac-role-add-scope-perms monitoring-team \
-  cluster read
+  manager read
 
 # Add additional scopes for comprehensive monitoring access
 ceph dashboard ac-role-add-scope-perms monitoring-team \
@@ -307,19 +308,16 @@ ceph dashboard ac-user-set-roles storage-admin pool-manager block-manager
 Configure password policies for enhanced security:
 
 ```bash
-# Enable password expiration (value in days)
-# Users must change passwords periodically
+# Enable the dashboard password policy
 ceph dashboard set-pwd-policy-enabled true
 
 # Set minimum password length
 ceph dashboard set-pwd-policy-min-length 12
 
 # Require password complexity
-# Must include uppercase, lowercase, numbers, and special characters
+# Complexity is scored by character classes and configured with a threshold
 ceph dashboard set-pwd-policy-check-complexity-enabled true
-
-# Set password expiration period (in days)
-ceph dashboard set-pwd-policy-expiration-days 90
+ceph dashboard set-pwd-policy-min-complexity 10
 
 # View current password policy settings
 ceph dashboard get-pwd-policy-enabled
@@ -392,7 +390,15 @@ The Dashboard provides comprehensive RBD management:
 ```bash
 # View RBD images through the dashboard API
 # Uses the RESTful API endpoint for RBD operations
-curl -k -u admin:YourSecurePassword123! \
+TOKEN=$(curl -sk -X POST "https://localhost:8443/api/auth" \
+  -H "Accept: application/vnd.ceph.api.v1.0+json" \
+  -H "Content-Type: application/json" \
+  -d '{"username": "admin", "password": "YourSecurePassword123!"}' | \
+  python3 -c "import sys,json; print(json.load(sys.stdin)['token'])")
+
+curl -sk \
+  -H "Accept: application/vnd.ceph.api.v1.0+json" \
+  -H "Authorization: Bearer ${TOKEN}" \
   https://localhost:8443/api/block/image
 
 # Create an RBD image using the CLI
@@ -400,8 +406,8 @@ curl -k -u admin:YourSecurePassword123! \
 rbd create mydata/myimage --size 100G
 
 # Enable RBD image features for advanced functionality
+rbd feature enable mydata/myimage exclusive-lock
 rbd feature enable mydata/myimage journaling
-rbd feature enable mydata/myimage deep-flatten
 ```
 
 ### OSD Management
@@ -425,7 +431,7 @@ ceph osd df
 
 ## Enabling Prometheus Metrics Export
 
-The Dashboard can export metrics to Prometheus for advanced monitoring:
+The Ceph Manager Prometheus module can export metrics for advanced monitoring:
 
 ```bash
 # Enable the Prometheus module
@@ -497,7 +503,9 @@ ceph dashboard set-grafana-api-url https://grafana.example.com:3000
 
 # Set the Grafana admin credentials for API access
 ceph dashboard set-grafana-api-username admin
-ceph dashboard set-grafana-api-password GrafanaPassword123
+echo 'GrafanaPassword123' > /tmp/grafana_password.txt
+ceph dashboard set-grafana-api-password -i /tmp/grafana_password.txt
+rm -f /tmp/grafana_password.txt
 
 # Enable Grafana SSL verification (set to false for self-signed certs)
 ceph dashboard set-grafana-api-ssl-verify false
@@ -517,15 +525,20 @@ git clone https://github.com/ceph/ceph.git /tmp/ceph-source
 # /tmp/ceph-source/monitoring/ceph-mixin/dashboards_out/
 
 # Import dashboards using Grafana API
-# First, create an API key in Grafana
+# First, create a service account token in Grafana
 GRAFANA_API_KEY="your-api-key"
 GRAFANA_URL="https://grafana.example.com:3000"
+
+# Wrap the dashboard JSON in Grafana's dashboard API payload format
+jq '{dashboard: ., overwrite: true}' \
+  /tmp/ceph-source/monitoring/ceph-mixin/dashboards_out/ceph-cluster.json \
+  > /tmp/ceph-cluster-import.json
 
 # Import the cluster overview dashboard
 curl -X POST \
   -H "Authorization: Bearer ${GRAFANA_API_KEY}" \
   -H "Content-Type: application/json" \
-  -d @/tmp/ceph-source/monitoring/ceph-mixin/dashboards_out/ceph-cluster.json \
+  -d @/tmp/ceph-cluster-import.json \
   "${GRAFANA_URL}/api/dashboards/db"
 ```
 
@@ -572,25 +585,13 @@ If you use Ceph Object Gateway, enable its management in the dashboard:
 
 ```bash
 # Create RGW admin credentials for dashboard access
-radosgw-admin user create \
-  --uid=dashboard \
-  --display-name="Dashboard Admin" \
-  --system
+ceph dashboard set-rgw-credentials
 
-# Get the access key and secret key from the output
-# Store them for the next step
+# If you use a custom RGW hostname, map it to the gateway name
+ceph dashboard set-rgw-hostname rgw.gateway1 rgw.example.com
 
-# Configure RGW credentials in the dashboard
-ceph dashboard set-rgw-api-access-key <access-key>
-ceph dashboard set-rgw-api-secret-key <secret-key>
-
-# Set the RGW API host and port
-ceph dashboard set-rgw-api-host rgw.example.com
-ceph dashboard set-rgw-api-port 443
-ceph dashboard set-rgw-api-scheme https
-
-# Enable SSL verification for RGW API
-ceph dashboard set-rgw-api-ssl-verify true
+# Disable SSL verification only if RGW uses a self-signed certificate
+ceph dashboard set-rgw-api-ssl-verify False
 ```
 
 ## Enabling iSCSI Management
@@ -602,12 +603,16 @@ For iSCSI gateway management through the dashboard:
 apt-get install -y ceph-iscsi
 
 # Configure iSCSI API credentials
+echo 'https://admin:password@iscsi-gw-1.example.com:5000' > /tmp/iscsi-gw-1.txt
 ceph dashboard iscsi-gateway-add \
-  https://admin:password@iscsi-gw-1.example.com:5000
+  -i /tmp/iscsi-gw-1.txt iscsi-gw-1
 
 # Add additional gateways for high availability
+echo 'https://admin:password@iscsi-gw-2.example.com:5000' > /tmp/iscsi-gw-2.txt
 ceph dashboard iscsi-gateway-add \
-  https://admin:password@iscsi-gw-2.example.com:5000
+  -i /tmp/iscsi-gw-2.txt iscsi-gw-2
+
+rm -f /tmp/iscsi-gw-1.txt /tmp/iscsi-gw-2.txt
 
 # List configured iSCSI gateways
 ceph dashboard iscsi-gateway-list
@@ -647,6 +652,10 @@ graph TB
 ```bash
 # Install HAProxy for load balancing
 apt-get install -y haproxy
+
+# Return an error from standby dashboards instead of redirecting clients
+ceph config set mgr mgr/dashboard/standby_behaviour "error"
+ceph config set mgr mgr/dashboard/standby_error_status_code 503
 ```
 
 Create the HAProxy configuration:
@@ -670,7 +679,6 @@ global
 
 defaults
     log global
-    mode http
     option httplog
     option dontlognull
     timeout connect 5000
@@ -680,20 +688,22 @@ defaults
 # Ceph Dashboard frontend
 frontend ceph_dashboard_front
     # Listen on the standard HTTPS port
-    bind *:443 ssl crt /etc/haproxy/certs/dashboard.pem
+    mode tcp
+    bind *:443
     default_backend ceph_dashboard_back
 
 # Ceph Dashboard backend with health checks
 backend ceph_dashboard_back
+    mode tcp
     balance roundrobin
-    option httpchk GET /api/health
+    option httpchk GET /
     http-check expect status 200
 
     # Dashboard servers - only the active manager responds
     # Use 'backup' keyword for standby managers
-    server ceph-mgr-1 10.0.0.11:8443 ssl verify none check
-    server ceph-mgr-2 10.0.0.12:8443 ssl verify none check backup
-    server ceph-mgr-3 10.0.0.13:8443 ssl verify none check backup
+    server ceph-mgr-1 10.0.0.11:8443 check check-ssl verify none
+    server ceph-mgr-2 10.0.0.12:8443 check check-ssl verify none backup
+    server ceph-mgr-3 10.0.0.13:8443 check check-ssl verify none backup
 EOF
 
 # Restart HAProxy to apply configuration
@@ -758,9 +768,9 @@ graph TB
 
         subgraph "Additional Measures"
             F[Password Policies]
-            G[Session Timeout]
+            G[Account Lockout]
             H[IP Whitelisting]
-            I[2FA Optional]
+            I[SSO Optional]
         end
     end
 
@@ -775,12 +785,11 @@ Implement these security best practices:
 
 ```bash
 # Enable audit logging to track user actions
-ceph config set mgr mgr/dashboard/audit_api_enabled true
-ceph config set mgr mgr/dashboard/audit_api_log_payload true
+ceph dashboard set-audit-api-enabled true
+ceph dashboard set-audit-api-log-payload true
 
-# Set session timeout (in seconds)
-# Sessions expire after 30 minutes of inactivity
-ceph dashboard set-session-expire 1800
+# Configure account lockout attempts to reduce brute-force risk
+ceph dashboard set-account-lockout-attempts 5
 
 # Restrict dashboard access by network
 # Configure firewall rules
@@ -788,7 +797,7 @@ ufw allow from 10.0.0.0/8 to any port 8443 proto tcp
 ufw deny 8443
 
 # Enable CORS restrictions for API security
-ceph dashboard set-cors-origin https://dashboard.example.com
+ceph dashboard set-cross-origin-url https://dashboard.example.com
 ```
 
 ## Conclusion
