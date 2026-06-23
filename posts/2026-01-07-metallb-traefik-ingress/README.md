@@ -36,9 +36,9 @@ flowchart TB
 
     subgraph MetalLB["MetalLB Layer"]
         VIP["Virtual IP<br/>192.168.1.240"]
-        Speaker1["Speaker Pod<br/>Node 1"]
-        Speaker2["Speaker Pod<br/>Node 2"]
-        Speaker3["Speaker Pod<br/>Node 3"]
+    Speaker1["Active Speaker Pod<br/>Node 1"]
+    Speaker2["Standby Speaker Pod<br/>Node 2"]
+    Speaker3["Standby Speaker Pod<br/>Node 3"]
     end
 
     subgraph Traefik["Traefik Layer"]
@@ -60,11 +60,7 @@ flowchart TB
     Client --> DNS
     DNS --> VIP
     VIP --> Speaker1
-    VIP --> Speaker2
-    VIP --> Speaker3
     Speaker1 --> LB
-    Speaker2 --> LB
-    Speaker3 --> LB
     LB --> TP1
     LB --> TP2
     TP1 --> MW
@@ -81,7 +77,7 @@ The traffic flow works as follows:
 
 1. **Client Request**: A client sends a request to your application's domain
 2. **DNS Resolution**: The domain resolves to the external IP provided by MetalLB
-3. **MetalLB**: Announces the external IP and routes traffic to the Traefik LoadBalancer service
+3. **MetalLB**: Announces the external IP (in Layer 2 mode, one speaker responds for a given IP at a time) so traffic reaches the node handling the Traefik LoadBalancer service
 4. **Traefik**: Receives the traffic, applies middleware (authentication, rate limiting, headers), and routes to the appropriate backend service based on IngressRoute rules
 5. **Application**: The backend pods receive the processed request
 
@@ -89,7 +85,7 @@ The traffic flow works as follows:
 
 Before starting, ensure you have the following:
 
-- A Kubernetes cluster (v1.21+) running on bare-metal or a platform without cloud load balancer support
+- A Kubernetes cluster (v1.25+) running on bare-metal or a platform without cloud load balancer support
 - `kubectl` configured to communicate with your cluster
 - `helm` v3 installed for deploying applications
 - A range of available IP addresses for MetalLB to use
@@ -194,22 +190,14 @@ Create a comprehensive values file for Traefik. This configuration enables key f
 # traefik-values.yaml
 # Comprehensive Traefik configuration for production use with MetalLB
 
-# Global arguments passed to the Traefik binary
-# These configure core Traefik behavior
-globalArguments:
+# Global Traefik settings
+global:
   # Disable anonymous usage statistics
-  - "--global.sendanonymoususage=false"
-  # Enable API and dashboard access
-  - "--api.dashboard=true"
+  sendAnonymousUsage: false
 
-# Additional command-line arguments for Traefik
-additionalArguments:
-  # Enable access logs for debugging and monitoring
-  - "--accesslog=true"
-  # Format access logs as JSON for easier parsing by log aggregators
-  - "--accesslog.format=json"
-  # Enable debug logging (set to false in production for performance)
-  - "--log.level=DEBUG"
+# Enable API and dashboard access
+api:
+  dashboard: true
 
 # Configure the deployment settings
 deployment:
@@ -220,14 +208,14 @@ deployment:
 service:
   # Enable the Traefik service
   enabled: true
-  # Use LoadBalancer type - MetalLB will assign an external IP
-  type: LoadBalancer
   # Annotations for MetalLB configuration
   annotations:
     # Request a specific IP from MetalLB's pool (optional)
     # Remove this to let MetalLB auto-assign an IP
-    metallb.universe.tf/loadBalancerIPs: "192.168.1.240"
+    metallb.io/loadBalancerIPs: "192.168.1.240"
   spec:
+    # Use LoadBalancer type - MetalLB will assign an external IP
+    type: LoadBalancer
     # Preserve the client's source IP address
     # This is important for logging, rate limiting, and security
     externalTrafficPolicy: Local
@@ -242,8 +230,11 @@ ports:
       default: true
     protocol: TCP
     # Redirect all HTTP traffic to HTTPS (uncomment for production)
-    # redirectTo:
-    #   port: websecure
+    # http:
+    #   redirections:
+    #     entryPoint:
+    #       to: websecure
+    #       scheme: https
 
   # HTTPS entry point configuration
   websecure:
@@ -253,8 +244,9 @@ ports:
       default: true
     protocol: TCP
     # TLS configuration is handled by certificate resolvers
-    tls:
-      enabled: true
+    http:
+      tls:
+        enabled: true
 
   # Traefik dashboard and metrics port
   traefik:
@@ -307,8 +299,6 @@ providers:
   # Enable Kubernetes Ingress provider for standard Ingress resources
   kubernetesIngress:
     enabled: true
-    # Allow Traefik to read Ingress from all namespaces
-    allowCrossNamespace: true
   # Enable Kubernetes CRD provider for IngressRoute resources
   kubernetesCRD:
     enabled: true
@@ -316,16 +306,17 @@ providers:
     allowCrossNamespace: true
 
 # Logs configuration
-logs:
+log:
   # General Traefik logs
-  general:
-    # Log level: DEBUG, INFO, WARN, ERROR
-    level: INFO
+  # Log level: DEBUG, INFO, WARN, ERROR
+  level: INFO
+accessLog:
   # Access logs for incoming requests
-  access:
-    enabled: true
-    # Log all requests, not just errors
-    filters: {}
+  enabled: true
+  # Format access logs as JSON for easier parsing by log aggregators
+  format: json
+  # Log all requests, not just errors
+  filters: {}
 ```
 
 Deploy Traefik using the values file we created. The installation creates the deployment, service, and required CRDs.
@@ -541,7 +532,7 @@ spec:
         - name: strip-v1-prefix
 
     # Header-based routing for A/B testing or canary deployments
-    - match: Host(`api.example.com`) && Headers(`X-Version`, `beta`)
+    - match: Host(`api.example.com`) && Header(`X-Version`, `beta`)
       kind: Rule
       # Higher priority for header-specific routes
       priority: 30
@@ -731,15 +722,12 @@ spec:
 Create the secret for basic authentication. The htpasswd command generates the proper format for Traefik.
 
 ```bash
-# Generate htpasswd-formatted credentials
+# Create the secret with htpasswd-formatted credentials
 # Use bcrypt (-B) for secure password hashing
 # Replace 'admin' and 'secure-password' with your values
-htpasswd -nbB admin 'secure-password' | base64
-
-# Create the secret with the base64-encoded credentials
 kubectl create secret generic auth-secret \
   --namespace=default \
-  --from-literal=users='admin:$2y$05$xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'
+  --from-literal=users="$(htpasswd -nbB admin 'secure-password')"
 ```
 
 Apply all middleware configurations.
@@ -802,24 +790,27 @@ First, update the Traefik Helm values to enable the Let's Encrypt certificate re
 
 # Previous configuration remains the same...
 
-# Certificate resolvers configuration for automatic TLS
-additionalArguments:
-  # Enable access logs
-  - "--accesslog=true"
-  - "--accesslog.format=json"
-  - "--log.level=INFO"
+# Built-in ACME file storage should be used with a single Traefik replica.
+# For highly available certificate management, use cert-manager or Traefik Enterprise.
+deployment:
+  replicas: 1
 
-  # Let's Encrypt ACME configuration
-  # Production server (rate limited - use after testing with staging)
-  - "--certificatesresolvers.letsencrypt.acme.email=admin@example.com"
-  - "--certificatesresolvers.letsencrypt.acme.storage=/data/acme.json"
-  - "--certificatesresolvers.letsencrypt.acme.tlschallenge=true"
+# Certificate resolvers configuration for automatic TLS
+certificatesResolvers:
+  letsencrypt:
+    acme:
+      # Production server (rate limited - use after testing with staging)
+      email: admin@example.com
+      storage: /data/acme.json
+      tlsChallenge: {}
 
   # Staging server for testing (uncomment to use, no rate limits)
-  # - "--certificatesresolvers.letsencrypt-staging.acme.email=admin@example.com"
-  # - "--certificatesresolvers.letsencrypt-staging.acme.storage=/data/acme-staging.json"
-  # - "--certificatesresolvers.letsencrypt-staging.acme.tlschallenge=true"
-  # - "--certificatesresolvers.letsencrypt-staging.acme.caserver=https://acme-staging-v02.api.letsencrypt.org/directory"
+  # letsencrypt-staging:
+  #   acme:
+  #     email: admin@example.com
+  #     storage: /data/acme-staging.json
+  #     caServer: https://acme-staging-v02.api.letsencrypt.org/directory
+  #     tlsChallenge: {}
 
 # Persistent storage for ACME certificates
 persistence:
@@ -843,8 +834,11 @@ ports:
       default: true
     protocol: TCP
     # Redirect HTTP to HTTPS
-    redirectTo:
-      port: websecure
+    http:
+      redirections:
+        entryPoint:
+          to: websecure
+          scheme: https
 
   websecure:
     port: 8443
@@ -852,16 +846,19 @@ ports:
     expose:
       default: true
     protocol: TCP
-    tls:
-      enabled: true
-      # Use the Let's Encrypt resolver by default
-      certResolver: letsencrypt
-      # Domains to include in the default certificate
-      domains:
-        - main: "example.com"
-          sans:
-            - "*.example.com"
+    http:
+      tls:
+        enabled: true
+        # Use the Let's Encrypt resolver by default
+        certResolver: letsencrypt
+        # Domains to include in the default certificate
+        domains:
+          - main: "example.com"
+            sans:
+              - "www.example.com"
 ```
+
+Traefik Proxy's built-in Let's Encrypt support stores ACME state in a local file. If you keep multiple Traefik replicas, use cert-manager to issue Kubernetes TLS secrets and reference those secrets from your IngressRoute resources instead of using Traefik's built-in ACME resolver.
 
 For HTTP-01 challenge (if TLS challenge doesn't work), update the configuration:
 
@@ -869,16 +866,15 @@ For HTTP-01 challenge (if TLS challenge doesn't work), update the configuration:
 # traefik-values-http-challenge.yaml
 # Alternative configuration using HTTP-01 challenge for Let's Encrypt
 
-additionalArguments:
-  - "--accesslog=true"
-  - "--log.level=INFO"
-
-  # HTTP-01 challenge configuration
-  # This requires port 80 to be accessible from the internet
-  - "--certificatesresolvers.letsencrypt.acme.email=admin@example.com"
-  - "--certificatesresolvers.letsencrypt.acme.storage=/data/acme.json"
-  - "--certificatesresolvers.letsencrypt.acme.httpchallenge=true"
-  - "--certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web"
+certificatesResolvers:
+  letsencrypt:
+    acme:
+      email: admin@example.com
+      storage: /data/acme.json
+      # HTTP-01 challenge configuration
+      # This requires port 80 to be accessible from the internet
+      httpChallenge:
+        entryPoint: web
 ```
 
 For DNS-01 challenge (supports wildcard certificates), you need to configure a DNS provider:
@@ -890,27 +886,23 @@ For DNS-01 challenge (supports wildcard certificates), you need to configure a D
 
 # Additional environment variables for DNS provider credentials
 env:
-  - name: CF_API_EMAIL
+  - name: CF_DNS_API_TOKEN
     valueFrom:
       secretKeyRef:
         name: cloudflare-credentials
-        key: email
-  - name: CF_API_KEY
-    valueFrom:
-      secretKeyRef:
-        name: cloudflare-credentials
-        key: apikey
+        key: api-token
 
-additionalArguments:
-  - "--accesslog=true"
-  - "--log.level=INFO"
-
-  # DNS-01 challenge with Cloudflare
-  - "--certificatesresolvers.letsencrypt.acme.email=admin@example.com"
-  - "--certificatesresolvers.letsencrypt.acme.storage=/data/acme.json"
-  - "--certificatesresolvers.letsencrypt.acme.dnschallenge=true"
-  - "--certificatesresolvers.letsencrypt.acme.dnschallenge.provider=cloudflare"
-  - "--certificatesresolvers.letsencrypt.acme.dnschallenge.resolvers=1.1.1.1:53,8.8.8.8:53"
+certificatesResolvers:
+  letsencrypt:
+    acme:
+      email: admin@example.com
+      storage: /data/acme.json
+      # DNS-01 challenge with Cloudflare
+      dnsChallenge:
+        provider: cloudflare
+        resolvers:
+          - "1.1.1.1:53"
+          - "8.8.8.8:53"
 ```
 
 Create the Cloudflare credentials secret for DNS challenge:
@@ -919,8 +911,7 @@ Create the Cloudflare credentials secret for DNS challenge:
 # Create secret for Cloudflare DNS credentials
 kubectl create secret generic cloudflare-credentials \
   --namespace traefik-system \
-  --from-literal=email=your-cloudflare-email@example.com \
-  --from-literal=apikey=your-cloudflare-api-key
+  --from-literal=api-token=your-cloudflare-api-token
 ```
 
 Upgrade Traefik with the new TLS configuration:
@@ -1061,6 +1052,15 @@ Use the TLS option in your IngressRoute:
 ```yaml
 # ingressroute-custom-tls.yaml
 apiVersion: traefik.io/v1alpha1
+kind: ServersTransport
+metadata:
+  name: skip-verify
+  namespace: default
+spec:
+  # Skip TLS verification for self-signed backend certs
+  insecureSkipVerify: true
+---
+apiVersion: traefik.io/v1alpha1
 kind: IngressRoute
 metadata:
   name: secure-app
@@ -1076,7 +1076,7 @@ spec:
           port: 443
           # Use HTTPS to communicate with the backend
           scheme: https
-          # Skip TLS verification for self-signed backend certs
+          # Use the ServersTransport defined above for self-signed backend certs
           serversTransport: skip-verify
   tls:
     certResolver: letsencrypt
@@ -1334,6 +1334,9 @@ podDisruptionBudget:
   enabled: true
   minAvailable: 2
 
+# When using Traefik Proxy's built-in ACME file storage, keep replicas at 1.
+# For HA TLS certificate management, use cert-manager-managed Kubernetes TLS secrets.
+
 # Topology spread for even distribution
 topologySpreadConstraints:
   - maxSkew: 1
@@ -1368,10 +1371,13 @@ metrics:
 # Tracing configuration (optional)
 tracing:
   serviceName: traefik
-  # Enable Jaeger tracing
-  jaeger:
-    samplingServerURL: http://jaeger-agent.tracing:5778/sampling
-    localAgentHostPort: jaeger-agent.tracing:6831
+  # Send traces to an OpenTelemetry collector or Jaeger collector with OTLP enabled
+  otlp:
+    enabled: true
+    grpc:
+      enabled: true
+      endpoint: jaeger-collector.tracing:4317
+      insecure: true
 ```
 
 ### Complete Architecture Diagram
@@ -1396,9 +1402,9 @@ flowchart TB
 
         subgraph MetalLB["MetalLB (metallb-system)"]
             Controller["Controller"]
-            S1["Speaker"]
-            S2["Speaker"]
-            S3["Speaker"]
+            S1["Active Speaker"]
+            S2["Standby Speaker"]
+            S3["Standby Speaker"]
         end
 
         subgraph Traefik["Traefik (traefik-system)"]
@@ -1443,10 +1449,8 @@ flowchart TB
 
     Users --> Router
     Router --> VIP
-    VIP --> S1 & S2 & S3
+    VIP --> S1
     S1 --> LBSvc
-    S2 --> LBSvc
-    S3 --> LBSvc
     LBSvc --> T1 & T2
     T1 & T2 --> Certs
     T1 & T2 --> MW
