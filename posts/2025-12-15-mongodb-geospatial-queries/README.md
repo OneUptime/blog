@@ -8,7 +8,7 @@ Description: Master MongoDB geospatial queries to build location-aware applicati
 
 ---
 
-MongoDB's geospatial capabilities enable powerful location-based features in your applications. From finding nearby restaurants to calculating delivery routes, geospatial queries are essential for modern applications. This guide covers everything you need to know to implement effective location-based features.
+MongoDB's geospatial capabilities enable powerful location-based features in your applications. From finding nearby restaurants to checking delivery zones, geospatial queries are essential for modern applications. This guide covers everything you need to know to implement effective location-based features.
 
 ## Understanding Geospatial Data
 
@@ -301,7 +301,7 @@ db.stores.aggregate([
                 type: 'Point',
                 coordinates: [-73.856077, 40.848447]
             },
-            distanceField: 'distance',  // Calculated distance in meters
+            distanceField: 'distance',  // Calculated distance in kilometers after multiplier
             maxDistance: 5000,
             query: { category: 'cafe' },  // Additional filter
             spherical: true,
@@ -397,7 +397,7 @@ class LocationService {
         }).skip(skip).limit(limit).toArray();
     }
 
-    // Find locations within a bounding box
+    // Find GeoJSON locations within a bounding box
     async findInBoundingBox(collectionName, bbox, options = {}) {
         const { filter = {}, limit = 100 } = options;
         const [swLng, swLat, neLng, neLat] = bbox;
@@ -406,10 +406,16 @@ class LocationService {
             ...filter,
             location: {
                 $geoWithin: {
-                    $box: [
-                        [swLng, swLat],  // Southwest corner
-                        [neLng, neLat]   // Northeast corner
-                    ]
+                    $geometry: {
+                        type: 'Polygon',
+                        coordinates: [[
+                            [swLng, swLat],
+                            [neLng, swLat],
+                            [neLng, neLat],
+                            [swLng, neLat],
+                            [swLng, swLat]
+                        ]]
+                    }
                 }
             }
         }).limit(limit).toArray();
@@ -458,8 +464,7 @@ class LocationService {
     async searchNearby(collectionName, searchText, coordinates, options = {}) {
         const { maxDistance = 5000, limit = 20 } = options;
 
-        // First, ensure text and geo indexes exist
-        // await collection.createIndex({ name: 'text', description: 'text' });
+        // First, ensure a geospatial index exists
         // await collection.createIndex({ location: '2dsphere' });
 
         return this.db.collection(collectionName).aggregate([
@@ -759,7 +764,7 @@ class DriverMatchingService {
 db.locations.createIndex({ location: '2dsphere', category: 1, rating: -1 });
 
 // Use $geoWithin instead of $near when distance order doesn't matter
-// $geoWithin can use index more efficiently
+// $geoWithin returns unsorted results and can be faster
 
 // For high-volume updates, consider using capped collections for real-time locations
 db.createCollection('driverLocations', {
