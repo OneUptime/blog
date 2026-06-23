@@ -56,9 +56,10 @@ graph TD
 
 Before implementing A/B testing with Istio, ensure you have:
 
-- A Kubernetes cluster (1.24+)
-- Istio installed (1.18+ recommended)
+- A Kubernetes cluster supported by your Istio version
+- A currently supported Istio release
 - kubectl configured to access your cluster
+- jq installed locally for the troubleshooting commands that parse JSON output
 - Basic understanding of Kubernetes and Istio concepts
 
 The following command verifies your Istio installation is ready for A/B testing configurations:
@@ -122,6 +123,8 @@ graph TB
 ## Setting Up the Sample Application
 
 Let's create a sample application with two versions to demonstrate A/B testing capabilities.
+
+The deployment examples assume you have built and pushed `product-service:1.0.0` and `product-service:2.0.0` images, or that you replace those image names with images available to your cluster.
 
 This namespace configuration enables Istio sidecar injection, which is required for traffic management features:
 
@@ -299,6 +302,9 @@ kubectl apply -f product-service-v1.yaml
 kubectl apply -f product-service-v2.yaml
 kubectl apply -f product-service.yaml
 
+# Deploy a curl-capable test client inside the mesh for routing checks
+kubectl apply -n ab-testing-demo -f https://raw.githubusercontent.com/istio/istio/release-1.30/samples/sleep/sleep.yaml
+
 # Verify both versions are running and ready to receive traffic
 kubectl get pods -n ab-testing-demo -l app=product-service
 ```
@@ -315,7 +321,7 @@ This DestinationRule defines subsets for each version, which the VirtualService 
 # destination-rule.yaml
 # DestinationRule defines traffic policies and subsets for the product-service
 # Subsets allow VirtualService to route to specific versions of the service
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: product-service-destination
@@ -350,7 +356,7 @@ This VirtualService implements header-based routing to direct users to specific 
 # virtual-service-header-routing.yaml
 # VirtualService with header-based routing for controlled A/B testing
 # Users with specific headers are routed to the appropriate version
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: product-service-ab-test
@@ -408,13 +414,16 @@ Test the header-based routing configuration:
 ```bash
 # Test routing to the variant (v2) using the x-ab-test header
 # The -H flag adds a custom header to the request
-curl -H "x-ab-test: variant" http://product-service.ab-testing-demo/api/products
+kubectl exec -n ab-testing-demo deployment/sleep -c sleep -- \
+  curl -H "x-ab-test: variant" http://product-service/api/products
 
 # Test routing to the control (v1) using the x-ab-test header
-curl -H "x-ab-test: control" http://product-service.ab-testing-demo/api/products
+kubectl exec -n ab-testing-demo deployment/sleep -c sleep -- \
+  curl -H "x-ab-test: control" http://product-service/api/products
 
 # Test default routing when no header is present (should go to v1)
-curl http://product-service.ab-testing-demo/api/products
+kubectl exec -n ab-testing-demo deployment/sleep -c sleep -- \
+  curl http://product-service/api/products
 ```
 
 ### Cookie-Based Routing
@@ -425,7 +434,7 @@ For web applications, cookie-based routing provides a seamless user experience b
 # virtual-service-cookie-routing.yaml
 # Cookie-based routing ensures users consistently see the same version
 # This is essential for accurate A/B testing to avoid user confusion
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: product-service-cookie-ab
@@ -456,7 +465,8 @@ spec:
         host: product-service
         subset: v1
 
-  # Default route for users without cookies - randomly assign and set cookie
+  # Default route for users without cookies - split traffic evenly
+  # Set the ab_variant cookie in your application or at the edge to keep users sticky
   - route:
     - destination:
         host: product-service
@@ -480,7 +490,7 @@ This configuration routes specific users to the test variant while others see th
 # virtual-service-user-segment.yaml
 # Route specific users or user segments to different versions
 # Useful for internal testing, beta users, or premium customers
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: product-service-user-segment
@@ -553,7 +563,7 @@ This configuration enables A/B testing by geographic region:
 # virtual-service-geo-routing.yaml
 # Route traffic based on geographic location for regional A/B testing
 # Useful for testing features in specific markets before global rollout
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: product-service-geo-ab
@@ -637,7 +647,7 @@ This configuration evenly splits traffic between control and variant:
 # virtual-service-50-50-split.yaml
 # Equal traffic split for unbiased A/B testing
 # Ensures statistical significance with equal sample sizes
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: product-service-50-50
@@ -672,7 +682,7 @@ This configuration starts with a small percentage and can be gradually increased
 # virtual-service-gradual-rollout.yaml
 # Start with a small percentage to limit blast radius
 # Increase percentage as confidence grows
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: product-service-gradual
@@ -738,13 +748,13 @@ echo "Stage 1: 10% traffic to v2. Monitor for 1 hour before proceeding."
 
 ### Multi-Variant Testing (A/B/n Testing)
 
-This configuration supports testing multiple variants simultaneously:
+This configuration supports testing multiple variants simultaneously. Make sure you also deploy pods labeled `version: v3` before sending traffic to the `v3` subset:
 
 ```yaml
 # virtual-service-multi-variant.yaml
 # A/B/n testing with multiple variants
 # Useful for testing several different approaches simultaneously
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: product-service-abn-test
@@ -791,7 +801,7 @@ Update the DestinationRule to include the third variant:
 ```yaml
 # destination-rule-multi-variant.yaml
 # Extended DestinationRule supporting three versions for A/B/n testing
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: product-service-destination
@@ -819,7 +829,7 @@ For production A/B testing, you often need to combine multiple strategies:
 # virtual-service-combined.yaml
 # Comprehensive A/B testing configuration combining multiple strategies
 # Priority order: internal testers > beta users > percentage split
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: product-service-combined-ab
@@ -928,13 +938,13 @@ Collecting and analyzing metrics is crucial for making data-driven decisions abo
 
 ### Enable Istio Metrics Collection
 
-This configuration ensures Istio collects detailed metrics for A/B analysis:
+Istio standard metrics already include labels such as `source_version` and `destination_version`. This configuration keeps request count and duration metrics enabled for the product service when you manage metrics with the Telemetry API:
 
 ```yaml
 # telemetry.yaml
 # Configure Istio telemetry for detailed A/B testing metrics
 # Enables per-version metrics collection and analysis
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: product-service-telemetry
@@ -953,23 +963,18 @@ spec:
     - match:
         metric: REQUEST_COUNT
         mode: CLIENT_AND_SERVER
-      tagOverrides:
-        # Add custom tags for A/B analysis
-        destination_version:
-          operation: UPSERT
-        source_version:
-          operation: UPSERT
+      disabled: false
     - match:
         metric: REQUEST_DURATION
         mode: CLIENT_AND_SERVER
-      tagOverrides:
-        destination_version:
-          operation: UPSERT
+      disabled: false
 ```
 
 ### Prometheus Recording Rules
 
 These recording rules pre-aggregate metrics for efficient A/B analysis queries:
+
+If you use Prometheus Operator, create a `PrometheusRule` like this:
 
 ```yaml
 # prometheus-rules.yaml
@@ -1164,59 +1169,37 @@ This Grafana dashboard provides comprehensive A/B testing visualization:
 }
 ```
 
-### Custom Metrics with EnvoyFilter
+### Custom Metrics with Telemetry API
 
-For application-specific A/B testing metrics, use EnvoyFilter to add custom dimensions:
+For application-specific A/B testing metrics, extend the same Telemetry resource with bounded custom dimensions. Avoid high-cardinality values such as raw user IDs:
 
 ```yaml
-# envoy-filter-custom-metrics.yaml
+# telemetry-custom-metrics.yaml
 # Add custom dimensions to Istio metrics for detailed A/B analysis
 # Captures business-relevant attributes from request headers
-apiVersion: networking.istio.io/v1alpha3
-kind: EnvoyFilter
+apiVersion: telemetry.istio.io/v1
+kind: Telemetry
 metadata:
-  name: ab-testing-custom-metrics
+  name: product-service-telemetry
   namespace: ab-testing-demo
 spec:
-  workloadSelector:
-    labels:
+  selector:
+    matchLabels:
       app: product-service
-  configPatches:
-  # Add custom attributes to metrics based on request headers
-  - applyTo: HTTP_FILTER
-    match:
-      context: SIDECAR_INBOUND
-      listener:
-        filterChain:
-          filter:
-            name: envoy.filters.network.http_connection_manager
-            subFilter:
-              name: envoy.filters.http.router
-    patch:
-      operation: INSERT_BEFORE
-      value:
-        name: envoy.filters.http.lua
-        typed_config:
-          "@type": type.googleapis.com/envoy.extensions.filters.http.lua.v3.Lua
-          inlineCode: |
-            -- Lua script to extract A/B testing attributes from headers
-            function envoy_on_request(request_handle)
-              -- Extract A/B test group from header
-              local ab_group = request_handle:headers():get("x-ab-group")
-              if ab_group then
-                request_handle:streamInfo():dynamicMetadata():set(
-                  "ab_testing", "group", ab_group
-                )
-              end
-
-              -- Extract user tier for segment analysis
-              local user_tier = request_handle:headers():get("x-user-tier")
-              if user_tier then
-                request_handle:streamInfo():dynamicMetadata():set(
-                  "ab_testing", "user_tier", user_tier
-                )
-              end
-            end
+  metrics:
+  - providers:
+    - name: prometheus
+    overrides:
+    - match:
+        metric: REQUEST_COUNT
+        mode: SERVER
+      tagOverrides:
+        ab_group:
+          operation: UPSERT
+          value: "'x-ab-group' in request.headers ? request.headers['x-ab-group'] : 'unknown'"
+        user_tier:
+          operation: UPSERT
+          value: "'x-user-tier' in request.headers ? request.headers['x-user-tier'] : 'unknown'"
 ```
 
 ### PromQL Queries for A/B Analysis
@@ -1230,25 +1213,25 @@ sum(rate(istio_requests_total{
   destination_service_name="product-service"
 }[1h])) by (destination_version)
 /
-sum(rate(istio_requests_total{
+scalar(sum(rate(istio_requests_total{
   destination_service_name="product-service"
-}[1h]))
+}[1h])))
 
 # Query 2: Success rate difference between versions
 # A positive value means v2 has higher success rate than v1
-ab_test:success_rate:by_version{destination_version="v2"}
+scalar(ab_test:success_rate:by_version{destination_version="v2"})
 -
-ab_test:success_rate:by_version{destination_version="v1"}
+scalar(ab_test:success_rate:by_version{destination_version="v1"})
 
 # Query 3: Latency improvement percentage
 # Negative value indicates v2 is faster than v1
 (
-  ab_test:latency_p95:by_version{destination_version="v2"}
+  scalar(ab_test:latency_p95:by_version{destination_version="v2"})
   -
-  ab_test:latency_p95:by_version{destination_version="v1"}
+  scalar(ab_test:latency_p95:by_version{destination_version="v1"})
 )
 /
-ab_test:latency_p95:by_version{destination_version="v1"}
+scalar(ab_test:latency_p95:by_version{destination_version="v1"})
 * 100
 
 # Query 4: Error rate comparison over time
@@ -1280,13 +1263,12 @@ This Python script helps determine if A/B test results are statistically signifi
 """
 ab_significance.py
 Calculate statistical significance of A/B test results from Prometheus metrics.
-Uses chi-squared test for conversion rates and t-test for latency comparisons.
+Uses a chi-squared test for success rates and reports latency differences.
 """
 
 import requests
 import numpy as np
 from scipy import stats
-import json
 from datetime import datetime
 
 # Prometheus configuration
@@ -1464,7 +1446,7 @@ Ensure users consistently see the same version throughout their session:
 ```yaml
 # Use consistent hashing based on user ID for sticky sessions
 # Prevents users from seeing different versions mid-session
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: product-service-consistent
@@ -1492,7 +1474,7 @@ Protect your A/B test from cascading failures:
 ```yaml
 # Circuit breaker configuration to prevent cascade failures
 # Automatically stops sending traffic to failing versions
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: product-service-circuit-breaker
@@ -1520,7 +1502,7 @@ spec:
 
 ### 4. Set Up Alerts
 
-Configure alerts for A/B test anomalies:
+Configure alerts for A/B test anomalies. If you use Prometheus Operator, create a `PrometheusRule` like this:
 
 ```yaml
 # alerting-rules.yaml
@@ -1537,8 +1519,8 @@ spec:
     # Alert if v2 error rate exceeds v1 by significant margin
     - alert: ABTestVariantHighErrorRate
       expr: |
-        (ab_test:error_rate:by_version{destination_version="v2"}
-        - ab_test:error_rate:by_version{destination_version="v1"}) > 0.02
+        (scalar(ab_test:error_rate:by_version{destination_version="v2"})
+        - scalar(ab_test:error_rate:by_version{destination_version="v1"})) > 0.02
       for: 5m
       labels:
         severity: warning
@@ -1551,8 +1533,8 @@ spec:
     # Alert if v2 latency is significantly worse
     - alert: ABTestVariantHighLatency
       expr: |
-        (ab_test:latency_p95:by_version{destination_version="v2"}
-        / ab_test:latency_p95:by_version{destination_version="v1"}) > 1.5
+        (scalar(ab_test:latency_p95:by_version{destination_version="v2"})
+        / scalar(ab_test:latency_p95:by_version{destination_version="v1"})) > 1.5
       for: 10m
       labels:
         severity: warning
@@ -1575,7 +1557,7 @@ spec:
         team: platform
       annotations:
         summary: "A/B Test traffic split drifting from target"
-        description: "v2 receiving {{ $value | humanizePercentage }} of traffic, expected ~20%"
+        description: "v2 traffic share differs from the configured 20% target by {{ $value | humanizePercentage }}"
 ```
 
 ### 5. Document Your Tests
@@ -1584,7 +1566,7 @@ Always document your A/B tests with annotations:
 
 ```yaml
 # Well-documented A/B test configuration
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: product-service-ab-documented
@@ -1664,7 +1646,7 @@ Ensure headers are being passed through the ingress gateway:
 
 ```yaml
 # Verify gateway is configured to pass through custom headers
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Gateway
 metadata:
   name: ab-testing-gateway
