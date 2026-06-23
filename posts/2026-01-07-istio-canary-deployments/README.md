@@ -638,7 +638,8 @@ spec:
           serviceAccountName: canary-analyzer
           containers:
           - name: analyzer
-            image: bitnami/kubectl:latest
+            # Use an image that includes kubectl, bash, curl, jq, and bc
+            image: your-registry/canary-analyzer:latest
             command:
             - /bin/bash
             - -c
@@ -928,17 +929,21 @@ Flagger is a progressive delivery tool that automates canary deployments with Is
 # Add Flagger Helm repository
 helm repo add flagger https://flagger.app
 
+# Install Flagger's custom resource definitions
+kubectl apply -f https://raw.githubusercontent.com/fluxcd/flagger/main/artifacts/flagger/crd.yaml
+
 # Install Flagger with Istio support
 # The meshProvider flag tells Flagger to use Istio for traffic management
 helm upgrade -i flagger flagger/flagger \
     --namespace istio-system \
+    --set crd.create=false \
     --set meshProvider=istio \
     --set metricsServer=http://prometheus.monitoring:9090
 ```
 
 ### Configure Flagger Canary Resource
 
-Create a Flagger Canary resource for automated canary management:
+Create a Flagger Canary resource for automated canary management. This Flagger example assumes a single Deployment named `myapp`; Flagger creates and manages the primary and canary workloads from that target:
 
 ```yaml
 # flagger-canary.yaml
@@ -950,7 +955,8 @@ metadata:
   name: myapp
   namespace: canary-demo
 spec:
-  # Reference to the deployment to be managed by Flagger
+  # Reference to the single Deployment managed by Flagger
+  # Flagger will create the primary and canary workloads from this target
   targetRef:
     apiVersion: apps/v1
     kind: Deployment
@@ -1046,7 +1052,7 @@ spec:
     type: prometheus
     address: http://prometheus.monitoring:9090
   query: |
-    100 - sum(
+    sum(
         rate(
             istio_requests_total{
                 reporter="destination",
@@ -1301,12 +1307,12 @@ spec:
 
 ### Prometheus Metrics for Canary Analysis
 
-Create a ServiceMonitor to scrape Istio metrics:
+If you use Prometheus Operator, make sure your application pods are scraped through Istio's metrics merge. Istio's Prometheus merge is enabled by default and exposes merged application and Envoy metrics on `:15020/stats/prometheus`. You can also create a ServiceMonitor for Istio control plane metrics:
 
 ```yaml
 # service-monitor.yaml
-# ServiceMonitor for Prometheus Operator to scrape Istio metrics
-# These metrics are essential for canary analysis
+# ServiceMonitor for Prometheus Operator to scrape Istiod control plane metrics
+# Request metrics such as istio_requests_total come from Envoy sidecars, not istiod
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
