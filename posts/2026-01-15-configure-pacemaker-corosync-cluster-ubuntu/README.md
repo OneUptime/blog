@@ -404,7 +404,7 @@ sudo pcs resource create cluster_vip ocf:heartbeat:IPaddr2 \
 
 # Explanation:
 # - cluster_vip: Resource name (you choose this)
-# - ocf:heartbeat:IPaddr2: Resource agent (provider:class:type)
+# - ocf:heartbeat:IPaddr2: Resource agent (class:provider:type)
 # - ip: The virtual IP address
 # - cidr_netmask: Network mask
 # - op monitor interval=30s: Health check every 30 seconds
@@ -487,7 +487,7 @@ sudo pcs resource promotable pgsql promoted-max=1 promoted-node-max=1
 ### Listing Available Resource Agents
 
 ```bash
-# List all available resource agent classes
+# List all available resource agents
 sudo pcs resource agents
 
 # List agents for a specific class
@@ -700,11 +700,13 @@ sudo pcs constraint location fence-node3 avoids node3=INFINITY
 ### Testing Fencing
 
 ```bash
-# Test fencing agent (dry run - does not actually fence)
+# Fence a node to verify fencing works (USE WITH CAUTION!)
+# This performs a REAL fence operation. With --off the node is
+# powered off; without it the node is rebooted (the default).
 sudo pcs stonith fence node2 --off
 
-# Actually fence a node (USE WITH CAUTION!)
-# This will power off the specified node
+# Equivalent low-level command to fence a node
+# This will also perform a real fence of the specified node
 sudo stonith_admin -F node2
 
 # Check fencing history
@@ -901,7 +903,9 @@ sudo pcs alert create id=email_alert \
 sudo pcs alert recipient add email_alert id=admin_email value=admin@example.com
 
 # Create the alert script
-sudo cat > /var/lib/pacemaker/alert_email.sh << 'EOF'
+# Use 'sudo tee' so the file is written with root privileges
+# (a plain 'sudo cat > file' redirect runs as your shell, not root)
+sudo tee /var/lib/pacemaker/alert_email.sh > /dev/null << 'EOF'
 #!/bin/bash
 # Pacemaker alert script for email notifications
 recipient="$CRM_alert_recipient"
@@ -977,10 +981,13 @@ watch -n 2 'sudo pcs status'
 
 ```bash
 # Test 4: Verify STONITH works
-# Use --off flag to test without actually fencing
+# WARNING: this performs a REAL fence. With --off the node is
+# powered off (without --off it is rebooted). Only run against a
+# node you can safely take down.
 sudo pcs stonith fence node2 --off
 
-# This should show success without actually powering off node2
+# On success the node is fenced and the operation is recorded in
+# the fencing history (sudo pcs stonith history)
 ```
 
 ### Verifying Failover Behavior
@@ -1068,7 +1075,7 @@ sudo corosync-quorumtool
 # Check 2: Check if STONITH is properly configured
 sudo pcs stonith status
 
-# Check 3: Verify fencing works
+# Check 3: Verify fencing works (this performs a REAL fence of node2)
 sudo pcs stonith fence node2 --off
 
 # Resolution: If in split-brain, stop cluster on minority partition
@@ -1082,7 +1089,7 @@ sudo pcs cluster stop  # On minority nodes only
 sudo pcs resource failcount show
 
 # Check 2: Check migration threshold
-sudo pcs resource show webserver
+sudo pcs resource config webserver
 
 # Check 3: Increase migration threshold
 sudo pcs resource update webserver meta migration-threshold=5
