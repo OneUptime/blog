@@ -296,8 +296,8 @@ var (
 // AggregateRoot provides the base functionality for all aggregates.
 // Embed this in your concrete aggregate types.
 type AggregateRoot struct {
-	id             string
-	version        int
+	id                string
+	version           int
 	uncommittedEvents []Event
 }
 
@@ -568,7 +568,9 @@ func (r *BankAccountRepository) Save(ctx context.Context, aggregate *BankAccount
 	if r.snapshotStore != nil && r.snapshotFreq > 0 {
 		if aggregate.Version()%r.snapshotFreq == 0 {
 			snapshot := aggregate.CreateSnapshot()
-			r.snapshotStore.Save(ctx, snapshot)
+			if err := r.snapshotStore.Save(ctx, snapshot); err != nil {
+				return err
+			}
 		}
 	}
 
@@ -621,7 +623,9 @@ func NewInMemorySnapshotStore() *InMemorySnapshotStore {
 func (s *InMemorySnapshotStore) Save(ctx context.Context, snapshot *Snapshot) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.snapshots[snapshot.AggregateID] = snapshot
+	copySnapshot := *snapshot
+	copySnapshot.Data = append([]byte(nil), snapshot.Data...)
+	s.snapshots[snapshot.AggregateID] = &copySnapshot
 	return nil
 }
 
@@ -633,7 +637,9 @@ func (s *InMemorySnapshotStore) Load(ctx context.Context, aggregateID string) (*
 	if !exists {
 		return nil, nil
 	}
-	return snapshot, nil
+	copySnapshot := *snapshot
+	copySnapshot.Data = append([]byte(nil), snapshot.Data...)
+	return &copySnapshot, nil
 }
 
 // BankAccountSnapshotData represents the serialized state of a bank account.
@@ -792,7 +798,11 @@ func (p *AccountSummaryProjection) GetAccount(accountID string) (*AccountSummary
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 	account, exists := p.accounts[accountID]
-	return account, exists
+	if !exists {
+		return nil, false
+	}
+	accountCopy := *account
+	return &accountCopy, true
 }
 
 // GetAllAccounts returns all account summaries.
@@ -801,7 +811,8 @@ func (p *AccountSummaryProjection) GetAllAccounts() []*AccountSummary {
 	defer p.mu.RUnlock()
 	result := make([]*AccountSummary, 0, len(p.accounts))
 	for _, account := range p.accounts {
-		result = append(result, account)
+		accountCopy := *account
+		result = append(result, &accountCopy)
 	}
 	return result
 }
@@ -1127,7 +1138,10 @@ func (m *EventMigrator) Migrate(event Event) (Event, error) {
 	}
 
 	// Create a new event with migrated data
-	baseEvent := event.(*BaseEvent)
+	baseEvent, ok := event.(*BaseEvent)
+	if !ok {
+		return nil, errors.New("unsupported event implementation")
+	}
 	return &BaseEvent{
 		ID:          baseEvent.ID,
 		AggrID:      baseEvent.AggrID,
