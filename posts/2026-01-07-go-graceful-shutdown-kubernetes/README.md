@@ -16,11 +16,11 @@ This guide covers everything you need to implement production-ready graceful shu
 
 Before diving into code, it is crucial to understand what happens when Kubernetes terminates a pod:
 
-1. **Pod marked for termination**: Kubernetes updates the pod status and removes it from Service endpoints
-2. **preStop hook execution**: If configured, the preStop hook runs first
-3. **SIGTERM sent**: Kubernetes sends SIGTERM to the main container process
-4. **Grace period countdown**: The `terminationGracePeriodSeconds` timer starts (default: 30 seconds)
-5. **SIGKILL sent**: If the process has not exited, Kubernetes sends SIGKILL
+1. **Pod marked for termination**: Kubernetes updates the pod status and starts the termination grace period
+2. **Endpoint updates**: Kubernetes marks terminating endpoints as not ready so Services and load balancers can stop sending regular traffic
+3. **preStop hook execution**: If configured, the preStop hook runs within the grace period
+4. **SIGTERM sent**: After the preStop hook completes, Kubernetes sends SIGTERM to the main container process
+5. **SIGKILL sent**: If the process has not exited before the grace period expires, Kubernetes sends SIGKILL
 
 The key insight is that your application needs to handle SIGTERM properly and complete shutdown before the grace period expires.
 
@@ -122,6 +122,32 @@ func (a *Application) SetShuttingDown() {
     a.mu.Lock()
     defer a.mu.Unlock()
     a.isShuttingDown = true
+}
+
+func (a *Application) StartServer() error {
+    mux := http.NewServeMux()
+    mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+        w.Write([]byte("OK"))
+    })
+
+    a.httpServer = &http.Server{
+        Addr:    ":8080",
+        Handler: mux,
+    }
+
+    return a.httpServer.ListenAndServe()
+}
+
+func (a *Application) Shutdown(ctx context.Context) error {
+    a.shutdownOnce.Do(func() {
+        a.SetShuttingDown()
+    })
+
+    if a.httpServer == nil {
+        return nil
+    }
+
+    return a.httpServer.Shutdown(ctx)
 }
 
 func main() {
@@ -552,6 +578,8 @@ type HealthStatus struct {
 type HealthManager struct {
     // ready indicates if the app is ready to receive traffic
     ready int32
+    // started indicates if startup initialization is complete
+    started int32
     // alive indicates if the app is running (not deadlocked)
     alive int32
     // shutdownStarted indicates shutdown has begun
@@ -570,6 +598,11 @@ func (hm *HealthManager) SetReady() {
     atomic.StoreInt32(&hm.ready, 1)
 }
 
+// SetStarted marks startup initialization as complete
+func (hm *HealthManager) SetStarted() {
+    atomic.StoreInt32(&hm.started, 1)
+}
+
 // SetNotReady marks the application as not ready (e.g., during shutdown)
 func (hm *HealthManager) SetNotReady() {
     atomic.StoreInt32(&hm.ready, 0)
@@ -584,6 +617,11 @@ func (hm *HealthManager) SetShutdownStarted() {
 // IsReady returns true if the application is ready
 func (hm *HealthManager) IsReady() bool {
     return atomic.LoadInt32(&hm.ready) == 1
+}
+
+// IsStarted returns true if startup initialization is complete
+func (hm *HealthManager) IsStarted() bool {
+    return atomic.LoadInt32(&hm.started) == 1
 }
 
 // IsAlive returns true if the application is alive
@@ -655,7 +693,7 @@ func (hm *HealthManager) StartupHandler() http.HandlerFunc {
 
         // Startup probe only cares if the app has started
         // It should return success once initialization is complete
-        if hm.IsAlive() {
+        if hm.IsStarted() {
             status.Status = "started"
             w.WriteHeader(http.StatusOK)
         } else {
@@ -674,7 +712,7 @@ Proper Kubernetes configuration is essential for graceful shutdown to work corre
 
 ### Pod Specification with PreStop Hook
 
-The preStop hook provides additional time for load balancers to update before SIGTERM is sent:
+The preStop hook can delay SIGTERM while load balancers update, but it runs within the pod's termination grace period:
 
 ```yaml
 apiVersion: apps/v1
@@ -732,7 +770,7 @@ spec:
           timeoutSeconds: 2
           failureThreshold: 30
 
-        # PreStop hook - delay before SIGTERM
+        # PreStop hook - delay before SIGTERM, within terminationGracePeriodSeconds
         lifecycle:
           preStop:
             exec:
@@ -821,6 +859,7 @@ type Application struct {
 // HealthManager manages health state
 type HealthManager struct {
     ready           int32
+    started         int32
     alive           int32
     shutdownStarted int32
 }
@@ -832,12 +871,14 @@ func NewHealthManager() *HealthManager {
 }
 
 func (hm *HealthManager) SetReady()           { atomic.StoreInt32(&hm.ready, 1) }
+func (hm *HealthManager) SetStarted()         { atomic.StoreInt32(&hm.started, 1) }
 func (hm *HealthManager) SetNotReady()        { atomic.StoreInt32(&hm.ready, 0) }
 func (hm *HealthManager) SetShutdownStarted() {
     atomic.StoreInt32(&hm.shutdownStarted, 1)
     atomic.StoreInt32(&hm.ready, 0)
 }
 func (hm *HealthManager) IsReady() bool       { return atomic.LoadInt32(&hm.ready) == 1 }
+func (hm *HealthManager) IsStarted() bool     { return atomic.LoadInt32(&hm.started) == 1 }
 func (hm *HealthManager) IsAlive() bool       { return atomic.LoadInt32(&hm.alive) == 1 }
 func (hm *HealthManager) IsShuttingDown() bool {
     return atomic.LoadInt32(&hm.shutdownStarted) == 1
@@ -966,7 +1007,7 @@ func (app *Application) handleReadiness(w http.ResponseWriter, r *http.Request) 
 }
 
 func (app *Application) handleStartup(w http.ResponseWriter, r *http.Request) {
-    if app.health.IsAlive() {
+    if app.health.IsStarted() {
         w.WriteHeader(http.StatusOK)
         json.NewEncoder(w).Encode(map[string]string{"status": "started"})
     } else {
@@ -989,7 +1030,8 @@ func (app *Application) Start() error {
     // Simulate startup initialization
     time.Sleep(1 * time.Second)
 
-    // Mark as ready
+    // Mark startup complete and ready
+    app.health.SetStarted()
     app.health.SetReady()
     log.Println("Application is ready to receive traffic")
 
@@ -1109,7 +1151,6 @@ package main
 import (
     "context"
     "net/http"
-    "net/http/httptest"
     "testing"
     "time"
 )
@@ -1255,7 +1296,7 @@ fi
 
 3. **Implement proper probe transitions**: Readiness should fail immediately on shutdown signal.
 
-4. **Add a preStop hook delay**: This gives load balancers time to update before your app stops accepting traffic.
+4. **Add a preStop hook delay when needed**: This can give load balancers time to update before SIGTERM, but it counts against `terminationGracePeriodSeconds`.
 
 5. **Track in-flight requests**: Know how many requests are still being processed during shutdown.
 
