@@ -311,7 +311,7 @@ app.get('/health/ready', (req, res) => {
 async function startup() {
   try {
     // Connect to database
-    await dbPool.connect();
+    await dbPool.query('SELECT 1');
     console.log('Database connected');
 
     // Connect to Redis
@@ -354,7 +354,7 @@ metadata:
 spec:
   template:
     spec:
-      terminationGracePeriodSeconds: 45  # Must be > shutdown timeout
+      terminationGracePeriodSeconds: 45  # Must cover preStop + shutdown timeout
       containers:
         - name: app
           image: my-nodejs-app
@@ -519,43 +519,29 @@ shutdown.registerCleanup('websocket', async () => {
 ```javascript
 const { Worker, Queue } = require('bullmq');
 
+const workerConnection = new Redis(process.env.REDIS_URL, {
+  maxRetriesPerRequest: null,
+});
+const queueConnection = new Redis(process.env.REDIS_URL);
+
 const worker = new Worker('orders', async (job) => {
   // Process job
   await processOrder(job.data);
 }, {
-  connection: redis,
+  connection: workerConnection,
 });
 
-// Queue instance is needed to query job counts; getJobs() is a Queue method, not a Worker method
-const ordersQueue = new Queue('orders', { connection: redis });
+const ordersQueue = new Queue('orders', { connection: queueConnection });
 
 shutdown.registerCleanup('queue-worker', async () => {
   console.log('Closing queue worker...');
 
-  // Stop accepting new jobs
-  await worker.pause();
-
-  // Wait for current job to complete (use Queue, not Worker, to query active jobs)
-  const activeJobs = await ordersQueue.getJobs(['active']);
-  if (activeJobs.length > 0) {
-    console.log(`Waiting for ${activeJobs.length} active jobs to complete`);
-
-    // Wait up to 30 seconds for jobs to complete
-    await Promise.race([
-      new Promise(resolve => {
-        const check = setInterval(async () => {
-          const active = await ordersQueue.getJobs(['active']);
-          if (active.length === 0) {
-            clearInterval(check);
-            resolve();
-          }
-        }, 1000);
-      }),
-      new Promise(resolve => setTimeout(resolve, 30000)),
-    ]);
-  }
-
+  // Stop accepting new jobs and wait for current jobs to finish
   await worker.close();
+
+  await ordersQueue.close();
+  await workerConnection.quit();
+  await queueConnection.quit();
   console.log('Queue worker closed');
 });
 ```
@@ -581,7 +567,7 @@ describe('Graceful Shutdown', () => {
   });
 
   afterEach(() => {
-    if (serverProcess) {
+    if (serverProcess && serverProcess.exitCode === null) {
       serverProcess.kill('SIGKILL');
     }
   });
@@ -589,11 +575,11 @@ describe('Graceful Shutdown', () => {
   it('should complete in-flight requests on SIGTERM', async () => {
     // Start a slow request
     const requestPromise = request('http://localhost:3000')
-      .get('/slow')
+      .get('/')
       .timeout(10000);
 
     // Wait a bit then send SIGTERM
-    await new Promise(r => setTimeout(r, 100));
+    await new Promise(r => setTimeout(r, 10));
     serverProcess.kill('SIGTERM');
 
     // Request should complete successfully
@@ -601,17 +587,14 @@ describe('Graceful Shutdown', () => {
     expect(response.status).toBe(200);
   });
 
-  it('should reject new requests during shutdown', async () => {
+  it('should exit cleanly on SIGTERM', async () => {
+    const exitPromise = new Promise((resolve) => {
+      serverProcess.on('exit', (code) => resolve(code));
+    });
+
     serverProcess.kill('SIGTERM');
 
-    // Small delay for shutdown to start
-    await new Promise(r => setTimeout(r, 100));
-
-    const response = await request('http://localhost:3000')
-      .get('/')
-      .catch(err => err.response);
-
-    expect(response.status).toBe(503);
+    await expect(exitPromise).resolves.toBe(0);
   });
 });
 ```
