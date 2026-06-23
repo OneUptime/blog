@@ -227,6 +227,8 @@ jobs:
       matrix: ${{ steps.set-matrix.outputs.matrix }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
 
       - name: Determine test matrix
         id: set-matrix
@@ -263,14 +265,9 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        database: [postgres, mysql, sqlite]
+        database: [postgres, mysql]
         database-version: ['13', '14', '15']
         exclude:
-          # SQLite doesn't have versions in this context
-          - database: sqlite
-            database-version: '13'
-          - database: sqlite
-            database-version: '14'
           # MySQL uses different version numbers
           - database: mysql
             database-version: '13'
@@ -283,14 +280,14 @@ jobs:
           - database: mysql
             database-version: '8.0'
           - database: mysql
-            database-version: '5.7'
-          # SQLite just needs one entry
-          - database: sqlite
-            database-version: '3'
+            database-version: '8.4'
 
     services:
       database:
         image: ${{ matrix.database }}:${{ matrix.database-version }}
+        env:
+          POSTGRES_PASSWORD: test
+          MYSQL_ROOT_PASSWORD: test
         # ... service configuration
 
     steps:
@@ -311,8 +308,9 @@ jobs:
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
         browser: [chromium, firefox, webkit]
+        viewport: [desktop]
         exclude:
-          # WebKit on Windows has limited support
+          # Skip WebKit on Windows for this project
           - os: windows-latest
             browser: webkit
         include:
@@ -336,7 +334,7 @@ jobs:
       - name: Run E2E tests
         run: npx playwright test --project=${{ matrix.browser }}
         env:
-          VIEWPORT: ${{ matrix.viewport || 'desktop' }}
+          VIEWPORT: ${{ matrix.viewport }}
 ```
 
 ### Architecture-Specific Builds
@@ -357,10 +355,10 @@ jobs:
             use-qemu: true
           - os: darwin
             arch: amd64
-            runner: macos-13
+            runner: macos-15-intel
           - os: darwin
             arch: arm64
-            runner: macos-14
+            runner: macos-15
           - os: windows
             arch: amd64
             runner: windows-latest
@@ -373,6 +371,7 @@ jobs:
         uses: docker/setup-qemu-action@v3
 
       - name: Build for ${{ matrix.os }}-${{ matrix.arch }}
+        shell: bash
         run: |
           GOOS=${{ matrix.os }} GOARCH=${{ matrix.arch }} go build -o dist/app-${{ matrix.os }}-${{ matrix.arch }}
 ```
