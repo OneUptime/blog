@@ -263,7 +263,8 @@ Google's distroless images contain only the application and runtime - no shell, 
 ```dockerfile
 # Dockerfile
 # Stage 1: Build (standard Python image with all tools)
-FROM python:3.12-slim AS builder
+# Use Python 3.11 to match the distroless Debian 12 runtime below.
+FROM python:3.11-slim-bookworm AS builder
 
 WORKDIR /app
 
@@ -276,14 +277,18 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 
 # Stage 2: Distroless runtime - no shell, no package manager
-# Only contains Python runtime and essential libraries
+# gcr.io/distroless/python3-debian12 ships Python 3.11, so the builder
+# above must also use 3.11 for the installed packages to be importable.
 FROM gcr.io/distroless/python3-debian12
 
 WORKDIR /app
 
-# Copy virtual environment from builder
+# Copy the installed packages from the builder's virtual environment.
+# Distroless ships its own interpreter at /usr/bin/python3.11, so we expose
+# the packages via PYTHONPATH instead of the venv's bin/python symlink, which
+# points to a path (/usr/local/bin) that does not exist in the distroless image.
 COPY --from=builder /opt/venv /opt/venv
-ENV PATH="/opt/venv/bin:$PATH"
+ENV PYTHONPATH="/opt/venv/lib/python3.11/site-packages"
 
 # Copy application code
 COPY --from=builder /app .
@@ -294,9 +299,9 @@ USER nonroot
 
 EXPOSE 8000
 
-# IMPORTANT: Distroless has no shell, so use exec form
-# Must use full path to Python interpreter
-CMD ["/opt/venv/bin/python", "-m", "gunicorn", "--bind", "0.0.0.0:8000", "app:app"]
+# The distroless python3 image's entrypoint IS the Python interpreter,
+# so CMD only needs to pass arguments to it (run gunicorn as a module).
+CMD ["-m", "gunicorn", "--bind", "0.0.0.0:8000", "app:app"]
 ```
 
 ---
