@@ -83,7 +83,7 @@ speaker   3         3         3       3            3           <none>          2
 
 ## Accessing Speaker Logs
 
-Speaker logs contain detailed information about IP assignment and advertisement operations.
+Speaker logs contain detailed information about advertisement operations. Use controller logs for IP assignment issues.
 
 ### Viewing Real-Time Logs
 
@@ -131,8 +131,10 @@ Alternatively, patch the DaemonSet directly:
 
 ```bash
 kubectl patch daemonset speaker -n metallb-system --type='json' \
-  -p='[{"op": "add", "path": "/spec/template/spec/containers/0/args/-", "value": "--log-level=debug"}]'
+  -p='[{"op": "replace", "path": "/spec/template/spec/containers/0/args/1", "value": "--log-level=debug"}]'
 ```
+
+If you installed MetalLB with Helm or the MetalLB Operator, prefer the supported loglevel setting for that installation method.
 
 ## Understanding Speaker Log Messages
 
@@ -141,24 +143,22 @@ kubectl patch daemonset speaker -n metallb-system --type='json' \
 Normal L2 mode logs showing successful ARP responses:
 
 ```text
-{"caller":"main.go:142","event":"startUpdate","msg":"start of service update","service":"default/nginx-lb","ts":"2026-01-07T10:15:30Z"}
-{"caller":"main.go:178","event":"serviceAnnounced","ip":"192.168.1.100","msg":"service announced","pool":"default-pool","protocol":"layer2","service":"default/nginx-lb","ts":"2026-01-07T10:15:30Z"}
-{"caller":"arp.go:102","event":"arpResponse","interface":"eth0","ip":"192.168.1.100","msg":"responded to ARP request","ts":"2026-01-07T10:15:31Z"}
+{"caller":"main.go:482","event":"serviceAnnounced","ip":"192.168.1.100","msg":"service has IP, announcing","pool":"default-pool","protocol":"layer2","service":"default/nginx-lb","ts":"2026-01-07T10:15:30Z"}
+{"caller":"arp.go:110","interface":"eth0","ip":"192.168.1.100","msg":"got ARP request for service IP, sending response","ts":"2026-01-07T10:15:31Z"}
 ```
 
 Normal BGP mode logs showing session establishment:
 
 ```text
-{"caller":"bgp.go:89","event":"sessionUp","msg":"BGP session established","peer":"192.168.1.1","ts":"2026-01-07T10:15:30Z"}
-{"caller":"bgp.go:156","event":"routeAdvertised","msg":"route advertised","prefix":"192.168.1.100/32","peer":"192.168.1.1","ts":"2026-01-07T10:15:31Z"}
+{"caller":"native.go:123","event":"sessionUp","msg":"BGP session established","peer":"192.168.1.1","ts":"2026-01-07T10:15:30Z"}
 ```
 
 ### Error Logs to Watch For
 
-IP pool exhaustion:
+IP pool exhaustion in controller logs:
 
 ```text
-{"caller":"main.go:205","error":"no available IPs in pool","level":"error","msg":"failed to allocate IP","service":"default/nginx-lb","ts":"2026-01-07T10:15:30Z"}
+{"caller":"service.go:180","error":"no available IPs in pool","level":"error","msg":"IP allocation failed","op":"allocateIPs","service":"default/nginx-lb","ts":"2026-01-07T10:15:30Z"}
 ```
 
 Network interface issues:
@@ -170,7 +170,8 @@ Network interface issues:
 BGP session failures:
 
 ```text
-{"caller":"bgp.go:112","error":"connection refused","level":"error","msg":"BGP session failed","peer":"192.168.1.1","ts":"2026-01-07T10:15:30Z"}
+{"caller":"native.go:129","event":"sessionDown","level":"warn","msg":"BGP session down","peer":"192.168.1.1","ts":"2026-01-07T10:15:30Z"}
+{"caller":"native.go:156","error":"connection refused","level":"error","msg":"failed to send BGP update","op":"sendUpdate","peer":"192.168.1.1","ts":"2026-01-07T10:15:31Z"}
 ```
 
 ## Using Kubernetes Events for Debugging
@@ -223,19 +224,19 @@ graph LR
     subgraph "Success Events"
         IPAlloc[IPAllocated]
         NodeAssign[nodeAssigned]
-        BGPUp[BGPSessionUp]
+        Clear[ClearAssignment]
     end
 
     subgraph "Warning Events"
         AllocFail[AllocationFailed]
-        NoPool[NoMatchingPool]
-        BGPDown[BGPSessionDown]
+        AdditionalFail[AdditionalAssignFailed]
+        AnnounceFail[announceFailed]
     end
 
     subgraph "Error Events"
-        PoolExhaust[PoolExhausted]
-        ConfigErr[ConfigurationError]
-        InterfaceErr[InterfaceError]
+        LoadBalancerFail[LoadBalancerFailed]
+        Deprecated[deprecatedAnnotation]
+        Internal[InternalError]
     end
 ```
 
@@ -305,7 +306,7 @@ kind: Service
 metadata:
   name: nginx-lb
   annotations:
-    metallb.universe.tf/address-pool: specific-pool
+    metallb.io/address-pool: specific-pool
 spec:
   type: LoadBalancer
   # ...
@@ -339,10 +340,11 @@ Check speaker logs for the specific IP:
 kubectl logs -n metallb-system -l component=speaker --tail=500 | grep "192.168.1.100"
 ```
 
-Or use the speaker's memberlist status (if enabled):
+Or use MetalLB's ServiceL2Status resources:
 
 ```bash
-kubectl exec -n metallb-system speaker-abc12 -- wget -qO- http://localhost:7946/debug/memberlist
+kubectl get servicel2statuses -n metallb-system \
+  -l metallb.io/service-name=nginx-lb,metallb.io/service-namespace=default
 ```
 
 ### Network Interface Issues
@@ -350,7 +352,8 @@ kubectl exec -n metallb-system speaker-abc12 -- wget -qO- http://localhost:7946/
 Verify the speaker can access the correct interface:
 
 ```bash
-kubectl exec -n metallb-system speaker-abc12 -- ip addr show
+kubectl debug -it -n metallb-system speaker-abc12 --target=speaker \
+  --image=nicolaka/netshoot -- ip addr show
 ```
 
 Check if the interface is in the allowed list (if configured):
@@ -396,8 +399,8 @@ kubectl logs -n metallb-system -l component=speaker | grep -i bgp
 Look for session establishment messages:
 
 ```text
-{"caller":"bgp.go:89","event":"sessionUp","msg":"BGP session established","peer":"192.168.1.1"}
-{"caller":"bgp.go:95","event":"sessionDown","msg":"BGP session lost","peer":"192.168.1.1","error":"connection reset"}
+{"caller":"native.go:123","event":"sessionUp","msg":"BGP session established","peer":"192.168.1.1"}
+{"caller":"native.go:129","event":"sessionDown","msg":"BGP session down","peer":"192.168.1.1"}
 ```
 
 ### Verifying BGP Configuration
@@ -419,13 +422,15 @@ kubectl get bgpadvertisements -n metallb-system -o yaml
 From the speaker pod, check connectivity to the BGP peer:
 
 ```bash
-kubectl exec -n metallb-system speaker-abc12 -- nc -zv 192.168.1.1 179
+kubectl debug -it -n metallb-system speaker-abc12 --target=speaker \
+  --image=nicolaka/netshoot -- nc -zv 192.168.1.1 179
 ```
 
 Check if the BGP port is being blocked:
 
 ```bash
-kubectl exec -n metallb-system speaker-abc12 -- timeout 5 bash -c 'cat < /dev/tcp/192.168.1.1/179'
+kubectl debug -it -n metallb-system speaker-abc12 --target=speaker \
+  --image=nicolaka/netshoot -- timeout 5 bash -c 'cat < /dev/tcp/192.168.1.1/179'
 ```
 
 ### Router-Side Verification
@@ -489,7 +494,11 @@ echo "7. Events..."
 kubectl get events -n metallb-system --sort-by='.lastTimestamp' > "$OUTPUT_DIR/events-metallb.txt"
 kubectl get events --all-namespaces --field-selector reason=IPAllocated > "$OUTPUT_DIR/events-ipallocated.txt" 2>/dev/null
 
-echo "8. Node information..."
+echo "8. Service advertisement status..."
+kubectl get servicel2statuses -n metallb-system -o yaml > "$OUTPUT_DIR/servicel2statuses.yaml" 2>/dev/null
+kubectl get servicebgpstatuses -n metallb-system -o yaml > "$OUTPUT_DIR/servicebgpstatuses.yaml" 2>/dev/null
+
+echo "9. Node information..."
 kubectl get nodes -o wide > "$OUTPUT_DIR/nodes.txt"
 
 echo "Diagnostics collected in $OUTPUT_DIR/"
@@ -563,13 +572,13 @@ Debug steps:
 Verify kube-proxy is creating correct iptables rules:
 
 ```bash
-iptables -t nat -L KUBE-SERVICES | grep <external-ip>
+iptables -t nat -L KUBE-SERVICES | grep "192.168.1.100"
 ```
 
 Check if endpoints exist:
 
 ```bash
-kubectl get endpoints nginx-lb -n default
+kubectl get endpointslices -n default -l kubernetes.io/service-name=nginx-lb
 ```
 
 Verify pods are ready and passing health checks:
@@ -593,7 +602,8 @@ kubectl logs -n metallb-system -l component=speaker | grep -i "memberlist\|parti
 Verifying all speakers can communicate:
 
 ```bash
-kubectl exec -n metallb-system speaker-abc12 -- ping -c 3 <other-speaker-pod-ip>
+kubectl debug -it -n metallb-system speaker-abc12 --target=speaker \
+  --image=nicolaka/netshoot -- ping -c 3 10.244.1.23
 ```
 
 ## Monitoring MetalLB Health
@@ -603,28 +613,33 @@ kubectl exec -n metallb-system speaker-abc12 -- ping -c 3 <other-speaker-pod-ip>
 MetalLB exposes metrics for monitoring. Key metrics to watch:
 
 ```text
-metallb_speaker_announced - Number of announced IPs
+metallb_speaker_announced - Services this node intends to announce
 metallb_bgp_session_up - BGP session state (1 = up, 0 = down)
 metallb_bgp_updates_total - BGP update messages sent
 metallb_allocator_addresses_in_use_total - IPs currently allocated
 metallb_allocator_addresses_total - Total IPs in pools
 ```
 
-Create a ServiceMonitor for Prometheus:
+When using the default FRR-K8s BGP backend, BGP metrics use the `frrk8s_` prefix, such as `frrk8s_bgp_session_up`.
+
+If you deploy MetalLB's upstream Prometheus overlay, it creates monitor Services that a ServiceMonitor can select:
 
 ```yaml
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
-  name: metallb
+  name: speaker-monitor
   namespace: metallb-system
 spec:
   selector:
     matchLabels:
-      app: metallb
+      name: speaker-monitor-service
   endpoints:
-  - port: monitoring
+  - port: metricshttps
     interval: 30s
+    scheme: https
+    tlsConfig:
+      insecureSkipVerify: true
 ```
 
 ### Alert Rules
@@ -644,7 +659,7 @@ groups:
       summary: MetalLB speaker is down
 
   - alert: MetalLBBGPSessionDown
-    expr: metallb_bgp_session_up == 0
+    expr: metallb_bgp_session_up == 0 or frrk8s_bgp_session_up == 0
     for: 2m
     labels:
       severity: warning
