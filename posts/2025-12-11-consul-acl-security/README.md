@@ -54,7 +54,7 @@ acl {
   # Default policy when no token is provided
   default_policy = "deny"
 
-  # Allow replication of ACL data
+  # Persist tokens set through the API across agent restarts
   enable_token_persistence = true
 
   # Token to use for agent operations
@@ -417,19 +417,39 @@ func main() {
 
 Configure service-to-service authorization.
 
+```hcl
+# database-intentions.hcl
+Kind = "service-intentions"
+Name = "database"
+Sources = [
+  {
+    Name   = "api"
+    Action = "allow"
+  }
+]
+```
+
 ```bash
-# Allow api to connect to database
-consul intention create \
-  -token="$CONSUL_HTTP_TOKEN" \
-  api database
+consul config write -token="$CONSUL_HTTP_TOKEN" database-intentions.hcl
+```
 
-# Deny all access to secrets-service
-consul intention create \
-  -token="$CONSUL_HTTP_TOKEN" \
-  -deny '*' secrets-service
+```hcl
+# secrets-service-intentions.hcl
+Kind = "service-intentions"
+Name = "secrets-service"
+Sources = [
+  {
+    Name   = "*"
+    Action = "deny"
+  }
+]
+```
 
-# View intentions
-consul intention list
+```bash
+consul config write -token="$CONSUL_HTTP_TOKEN" secrets-service-intentions.hcl
+
+# View service intentions
+consul config list -token="$CONSUL_HTTP_TOKEN" -kind service-intentions
 ```
 
 ## 9. Token Management
@@ -461,7 +481,7 @@ consul acl token create \
 
 ## 10. Audit ACL Operations
 
-Monitor ACL usage and changes.
+Monitor ACL usage and changes. Audit logging requires Consul Enterprise.
 
 ```hcl
 # Enable audit logging in config
