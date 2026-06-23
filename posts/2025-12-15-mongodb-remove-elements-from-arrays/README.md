@@ -99,7 +99,7 @@ db.boards.updateOne(
 );
 ```
 
-### $pull with $elemMatch for Complex Conditions
+### $pull with $and for Complex Conditions
 
 ```javascript
 // Remove items where quantity is 0 AND status is "backordered"
@@ -196,6 +196,8 @@ flowchart TD
 
 ### Implementing a Stack or Queue
 
+These examples return the removed item by reading before updating. In concurrent applications, use a transaction or another concurrency-safe design so another operation cannot change the array between the read and the `$pop`.
+
 ```javascript
 // Stack (LIFO) - push to end, pop from end
 async function stackPush(stackId, item) {
@@ -238,9 +240,9 @@ async function queueDequeue(queueId) {
 }
 ```
 
-## Using $unset with Positional Operator
+## Using $unset with Dot Notation
 
-Remove a specific element by index using `$unset` followed by `$pull`.
+Remove a specific element by index using `$unset` followed by `$pull`. Be careful with this pattern: the second step removes all `null` values from the array, not only the element at the target index.
 
 ```javascript
 // Two-step removal by index
@@ -269,7 +271,7 @@ db.lists.updateOne(
         items: {
           $concatArrays: [
             { $slice: ["$items", 2] },           // Elements before index 2
-            { $slice: ["$items", 3, 999] }       // Elements after index 2
+            { $slice: ["$items", 3, { $size: "$items" }] } // Elements after index 2
           ]
         }
       }
@@ -398,18 +400,16 @@ async function cleanExpiredNotifications() {
 
 // Remove old activity entries (keep last 100)
 async function trimActivityLog(userId) {
-  const user = await db.collection('users').findOne(
+  await db.collection('users').updateOne(
     { _id: userId },
-    { projection: { activityLog: 1 } }
+    [
+      {
+        $set: {
+          activityLog: { $slice: ["$activityLog", -100] }
+        }
+      }
+    ]
   );
-
-  if (user.activityLog.length > 100) {
-    const toRemove = user.activityLog.slice(0, -100);
-    await db.collection('users').updateOne(
-      { _id: userId },
-      { $pullAll: { activityLog: toRemove } }
-    );
-  }
 }
 ```
 
