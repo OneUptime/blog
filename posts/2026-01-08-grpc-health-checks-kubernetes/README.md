@@ -314,6 +314,7 @@ func checkDatabase() error {
 ```python
 # health_service.py
 
+import time
 import grpc
 from concurrent import futures
 from grpc_health.v1 import health_pb2, health_pb2_grpc
@@ -358,7 +359,7 @@ import signal
 import sys
 import time
 
-from grpc_health.v1 import health_pb2_grpc
+from grpc_health.v1 import health_pb2, health_pb2_grpc
 from health_service import CustomHealthServicer
 import greeter_pb2_grpc
 from greeter_server import GreeterServicer
