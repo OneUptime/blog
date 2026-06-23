@@ -83,7 +83,7 @@ Verify your kernel supports eBPF:
 # Check kernel version (4.9+ required, 5.x+ recommended for full features)
 uname -r
 
-# Verify BPF filesystem is mounted (required for loading BPF programs)
+# Verify BPF filesystem is mounted (used by many BPF tools and for pinning maps/programs)
 mount | grep bpf
 
 # If not mounted, mount the BPF filesystem
@@ -196,7 +196,7 @@ Customize the histogram output for different analysis needs:
 sudo biolatency -m
 
 # Generate a histogram every 5 seconds for trend analysis
-# The interval flag (-i) specifies the reporting period
+# The optional interval argument specifies the reporting period
 sudo biolatency -m 5
 
 # Filter by specific disk device to isolate device performance
@@ -262,30 +262,36 @@ bpf_program = """
 #include <linux/blk-mq.h>
 
 // Structure to store request start time and details
-// This is stored in a hash map keyed by request pointer
+// This is stored in a hash map keyed by device and sector
 struct request_info {
     u64 start_ts;       // Timestamp when request was issued
     u32 data_len;       // Size of the I/O request in bytes
-    char disk[32];      // Name of the disk device
+    dev_t dev;          // Encoded block device number
+};
+
+// Key used to correlate block request issue and completion tracepoints
+struct request_key {
+    dev_t dev;           // Encoded block device number
+    sector_t sector;     // Starting sector for the request
 };
 
 // Structure for the latency histogram key
-// We create separate histograms for each disk device
+// We create separate histograms for each block device
 struct hist_key {
-    char disk[32];      // Disk device name
+    dev_t dev;          // Encoded block device number
     u64 slot;           // Histogram bucket (log2 of latency)
 };
 
 // Hash map to store in-flight request information
-// Key: pointer to struct request, Value: request_info struct
-BPF_HASH(start, struct request *, struct request_info);
+// Key: device + sector, Value: request_info struct
+BPF_HASH(start, struct request_key, struct request_info);
 
-// Histogram to store latency distribution per disk
-// Key: disk name + bucket, Value: count of requests in that bucket
+// Histogram to store latency distribution per device
+// Key: device + bucket, Value: count of requests in that bucket
 BPF_HISTOGRAM(dist, struct hist_key);
 
-// Counter for total bytes read/written per disk
-BPF_HASH(bytes, char[32], u64);
+// Counter for total bytes read/written per device
+BPF_HASH(bytes, dev_t, u64);
 
 // Tracepoint: fires when a block I/O request is issued to the device
 // This is when the request leaves the I/O scheduler and goes to the driver
@@ -298,14 +304,14 @@ TRACEPOINT_PROBE(block, block_rq_issue) {
     // Get the request size from the tracepoint arguments
     info.data_len = args->bytes;
 
-    // Copy the disk name from the tracepoint arguments
-    // Using bpf_probe_read_str for safe string copy
-    bpf_probe_read_str(&info.disk, sizeof(info.disk), args->disk);
+    // Save the device number from the tracepoint arguments
+    info.dev = args->dev;
 
     // Store the request info in our hash map
-    // The key is the request pointer (unique per in-flight request)
-    struct request *req = (struct request *)args->__data_loc_cmd;
-    start.update(&req, &info);
+    struct request_key key = {};
+    key.dev = args->dev;
+    key.sector = args->sector;
+    start.update(&key, &info);
 
     return 0;
 }
@@ -313,11 +319,13 @@ TRACEPOINT_PROBE(block, block_rq_issue) {
 // Tracepoint: fires when a block I/O request completes
 // We calculate latency as the difference between now and issue time
 TRACEPOINT_PROBE(block, block_rq_complete) {
-    struct request *req = (struct request *)args->__data_loc_cmd;
+    struct request_key key = {};
+    key.dev = args->dev;
+    key.sector = args->sector;
     struct request_info *infop;
 
     // Look up the request in our hash map
-    infop = start.lookup(&req);
+    infop = start.lookup(&key);
     if (infop == 0) {
         // Request was issued before tracing started, ignore it
         return 0;
@@ -326,9 +334,9 @@ TRACEPOINT_PROBE(block, block_rq_complete) {
     // Calculate latency in microseconds
     u64 latency_us = (bpf_ktime_get_ns() - infop->start_ts) / 1000;
 
-    // Create histogram key with disk name and latency bucket
+    // Create histogram key with device and latency bucket
     struct hist_key hkey = {};
-    bpf_probe_read_str(&hkey.disk, sizeof(hkey.disk), infop->disk);
+    hkey.dev = infop->dev;
 
     // Calculate log2 bucket for the histogram
     // This gives us power-of-2 buckets: 1, 2, 4, 8, 16, 32, ...
@@ -337,41 +345,50 @@ TRACEPOINT_PROBE(block, block_rq_complete) {
     // Increment the histogram bucket
     dist.increment(hkey);
 
-    // Update bytes counter for this disk
-    u64 *bytesp = bytes.lookup(&infop->disk);
+    // Update bytes counter for this device
+    u64 *bytesp = bytes.lookup(&infop->dev);
     if (bytesp) {
         *bytesp += infop->data_len;
     } else {
         u64 data_len = infop->data_len;
-        bytes.update(&infop->disk, &data_len);
+        bytes.update(&infop->dev, &data_len);
     }
 
     // Remove the request from our tracking map
-    start.delete(&req);
+    start.delete(&key);
 
     return 0;
 }
 """
 
 def print_histogram(bpf):
-    """Print the latency histogram for each disk device."""
+    """Print the latency histogram for each block device."""
     print("\n%-8s" % strftime("%H:%M:%S"))
 
-    # Get unique disk names from the histogram
-    dist = bpf["dist"]
-    disks = set()
-    for k, v in dist.items():
-        disks.add(k.disk.decode('utf-8', 'replace').rstrip('\x00'))
+    # Map kernel dev_t values to disk names from /proc/diskstats
+    disklookup = {}
+    with open("/proc/diskstats") as stats:
+        for line in stats:
+            fields = line.split()
+            dev = (int(fields[0]) << 20) | int(fields[1])
+            disklookup[dev] = fields[2]
 
-    # Print histogram for each disk
-    for disk in sorted(disks):
+    # Get unique device numbers from the histogram
+    dist = bpf["dist"]
+    devices = set()
+    for k, v in dist.items():
+        devices.add(k.dev)
+
+    # Print histogram for each device
+    for dev in sorted(devices):
+        disk = disklookup.get(dev, f"{dev >> 20},{dev & ((1 << 20) - 1)}")
         print(f"\nDisk: {disk}")
         print("     usecs              : count     distribution")
 
-        # Collect buckets for this disk
+        # Collect buckets for this device
         buckets = {}
         for k, v in dist.items():
-            if k.disk.decode('utf-8', 'replace').rstrip('\x00') == disk:
+            if k.dev == dev:
                 buckets[k.slot] = v.value
 
         # Find the maximum count for scaling the histogram bars
@@ -450,9 +467,9 @@ bpftrace provides a high-level scripting language for quick eBPF one-liners and 
 These one-liners demonstrate common block I/O analysis patterns:
 
 ```bash
-# Count block I/O operations by disk device
+# Count block I/O operations by encoded device number
 # Uses the block_rq_issue tracepoint which fires when I/O is issued
-sudo bpftrace -e 'tracepoint:block:block_rq_issue { @[args->disk] = count(); }'
+sudo bpftrace -e 'tracepoint:block:block_rq_issue { @[args->dev] = count(); }'
 
 # Show I/O size distribution as a histogram
 # Useful for understanding your workload's I/O size patterns
@@ -470,7 +487,7 @@ tracepoint:block:block_rq_issue {
 }
 tracepoint:block:block_rq_complete /@start[args->dev, args->sector]/ {
     @usecs = hist((nsecs - @start[args->dev, args->sector]) / 1000);
-    delete(@start[args->dev, args->sector]);
+    delete(@start, (args->dev, args->sector));
 }'
 ```
 
@@ -483,7 +500,7 @@ This bpftrace script provides detailed I/O analysis with multiple metrics:
 # bio_analysis.bt - Comprehensive block I/O analysis script
 #
 # This script traces block I/O operations and provides:
-# - Latency histograms per device
+# - Latency histograms per encoded device number
 # - I/O size distributions
 # - Per-process I/O counts
 # - Read vs Write breakdown
@@ -501,7 +518,7 @@ BEGIN
 tracepoint:block:block_rq_issue
 {
     // Store issue timestamp keyed by device and sector
-    // This combination uniquely identifies an I/O request
+    // This combination correlates issue and completion events for the request
     @issue_time[args->dev, args->sector] = nsecs;
 
     // Count I/O operations by process
@@ -514,8 +531,8 @@ tracepoint:block:block_rq_issue
     // Track I/O size distribution
     @io_size_bytes = hist(args->bytes);
 
-    // Count I/O per disk device
-    @io_by_disk[args->disk] = count();
+    // Count I/O per encoded device number
+    @io_by_dev[args->dev] = count();
 }
 
 // Trace when block I/O requests complete
@@ -526,18 +543,18 @@ tracepoint:block:block_rq_complete
     // Calculate latency in microseconds
     $latency_us = (nsecs - @issue_time[args->dev, args->sector]) / 1000;
 
-    // Store latency in a histogram per disk device
-    @latency_us[args->disk] = hist($latency_us);
+    // Store latency in a histogram per encoded device number
+    @latency_us[args->dev] = hist($latency_us);
 
-    // Track maximum latency seen per disk
-    @max_latency_us[args->disk] = max($latency_us);
+    // Track maximum latency seen per encoded device number
+    @max_latency_us[args->dev] = max($latency_us);
 
     // Track total latency for average calculation
-    @total_latency[args->disk] = sum($latency_us);
-    @io_count[args->disk] = count();
+    @total_latency[args->dev] = sum($latency_us);
+    @io_count[args->dev] = count();
 
     // Clean up the issue time entry
-    delete(@issue_time[args->dev, args->sector]);
+    delete(@issue_time, (args->dev, args->sector));
 }
 
 // On exit (Ctrl+C), print a summary
@@ -551,23 +568,23 @@ END
     printf("\n--- I/O Count by Type ---\n");
     print(@io_by_type);
 
-    printf("\n--- I/O Count by Disk ---\n");
-    print(@io_by_disk);
+    printf("\n--- I/O Count by Device ---\n");
+    print(@io_by_dev);
 
     printf("\n--- I/O Size Distribution (bytes) ---\n");
     print(@io_size_bytes);
 
-    printf("\n--- Latency Histograms by Disk (usecs) ---\n");
+    printf("\n--- Latency Histograms by Device (usecs) ---\n");
     print(@latency_us);
 
-    printf("\n--- Maximum Latency by Disk (usecs) ---\n");
+    printf("\n--- Maximum Latency by Device (usecs) ---\n");
     print(@max_latency_us);
 
     // Clean up maps
     clear(@issue_time);
     clear(@io_by_process);
     clear(@io_by_type);
-    clear(@io_by_disk);
+    clear(@io_by_dev);
     clear(@io_size_bytes);
     clear(@latency_us);
     clear(@max_latency_us);
@@ -596,8 +613,8 @@ sudo bpftrace bio_analysis.bt
 # @io_by_type[R]: 15234
 # @io_by_type[WS]: 7712
 #
-# --- Latency Histograms by Disk (usecs) ---
-# @latency_us[nvme0n1]:
+# --- Latency Histograms by Device (usecs) ---
+# @latency_us[8388608]:
 # [16, 32)       8923 |@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@|
 # [32, 64)       4521 |@@@@@@@@@@@@@@@@@@@@                    |
 # [64, 128)      1234 |@@@@@@                                  |
@@ -616,7 +633,8 @@ Trace file operations at the VFS layer to see what files are being accessed:
 # vfs_open is called for every file open operation
 sudo bpftrace -e '
 kprobe:vfs_open {
-    printf("%s opened %s\n", comm, str(arg0));
+    printf("%s opened %s\n", comm,
+        str(((struct path *)arg0)->dentry->d_name.name));
 }'
 
 # Trace file reads with size information
@@ -648,7 +666,7 @@ kprobe:ext4_file_read_iter {
 }
 kretprobe:ext4_file_read_iter /@start[tid]/ {
     @read_latency_ns = hist(nsecs - @start[tid]);
-    delete(@start[tid]);
+    delete(@start, tid);
 }'
 
 # Trace ext4 sync operations (fsync/fdatasync)
@@ -660,7 +678,7 @@ kprobe:ext4_sync_file {
 }
 kretprobe:ext4_sync_file /@start[tid]/ {
     @sync_latency_us = hist((nsecs - @start[tid]) / 1000);
-    delete(@start[tid]);
+    delete(@start, tid);
 }'
 ```
 
@@ -670,9 +688,9 @@ Understanding page cache behavior is crucial for I/O performance:
 
 ```bash
 #!/usr/bin/env bpftrace
-# pagecache_analysis.bt - Analyze page cache hit/miss ratio
+# pagecache_analysis.bt - Analyze page cache lookup and miss activity
 #
-# This script traces page cache lookups and calculates hit rates
+# This script traces page cache lookups and returned misses
 # High miss rates indicate insufficient memory or working set issues
 
 BEGIN
@@ -687,8 +705,7 @@ kprobe:pagecache_get_page
     @lookups = count();
 }
 
-// If pagecache_get_page returns NULL, it's a cache miss
-// The page must be read from disk
+// If pagecache_get_page returns NULL, no cached page was found for that lookup
 kretprobe:pagecache_get_page /retval == 0/
 {
     @misses = count();
@@ -733,12 +750,11 @@ The following Python script combines multiple eBPF probes to provide a complete 
 #!/usr/bin/env python3
 # io_analyzer.py - Comprehensive I/O performance analyzer using eBPF
 #
-# This script traces I/O at multiple layers:
+# This script traces block-layer I/O and aggregates process-level statistics:
 # 1. Block layer - raw device I/O latency
-# 2. File system layer - file operation latency
-# 3. Process level - per-process I/O statistics
+# 2. Process level - per-process I/O statistics captured at request issue time
 #
-# Usage: sudo ./io_analyzer.py [-d DEVICE] [-p PID] [-i INTERVAL]
+# Usage: sudo ./io_analyzer.py [-p PID] [-i INTERVAL] [-d DURATION]
 
 from bcc import BPF
 from time import sleep, strftime
@@ -767,6 +783,11 @@ struct proc_key {
 };
 
 // Track in-flight requests
+struct io_key {
+    dev_t dev;           // Encoded block device number
+    sector_t sector;     // Starting sector for the request
+};
+
 struct req_info {
     u64 ts;              // Issue timestamp
     u32 pid;             // Process ID
@@ -776,7 +797,7 @@ struct req_info {
 };
 
 // Maps for tracking and aggregation
-BPF_HASH(inflight, u64, struct req_info);
+BPF_HASH(inflight, struct io_key, struct req_info);
 BPF_HASH(proc_stats, struct proc_key, struct proc_io_stats);
 BPF_HISTOGRAM(latency_hist);
 BPF_HISTOGRAM(size_hist);
@@ -810,8 +831,10 @@ TRACEPOINT_PROBE(block, block_rq_issue)
     bpf_get_current_comm(&info.comm, sizeof(info.comm));
     bpf_probe_read_str(&info.rwbs, sizeof(info.rwbs), args->rwbs);
 
-    // Use device + sector as unique key for the request
-    u64 key = ((u64)args->dev << 32) | (args->sector & 0xFFFFFFFF);
+    // Correlate issue and completion by device and starting sector
+    struct io_key key = {};
+    key.dev = args->dev;
+    key.sector = args->sector;
     inflight.update(&key, &info);
 
     // Update size histogram
@@ -823,7 +846,9 @@ TRACEPOINT_PROBE(block, block_rq_issue)
 // Trace block I/O completion
 TRACEPOINT_PROBE(block, block_rq_complete)
 {
-    u64 key = ((u64)args->dev << 32) | (args->sector & 0xFFFFFFFF);
+    struct io_key key = {};
+    key.dev = args->dev;
+    key.sector = args->sector;
     struct req_info *infop = inflight.lookup(&key);
 
     if (infop == 0) {
@@ -987,7 +1012,7 @@ tracepoint:block:block_rq_complete /@start[args->dev, args->sector]/ {
     if ($lat > 10) {
         printf("Slow I/O: %s pid=%d latency=%dms\n", comm, pid, $lat);
     }
-    delete(@start[args->dev, args->sector]);
+    delete(@start, (args->dev, args->sector));
 }'
 ```
 
@@ -1008,7 +1033,7 @@ kretprobe:ext4_sync_file /@start[tid]/ {
     if ($lat_ms > 100) {
         printf("Slow fsync: %s lat=%dms\n", comm, $lat_ms);
     }
-    delete(@start[tid]);
+    delete(@start, tid);
 }'
 
 # Analyze I/O patterns from MySQL/MariaDB
@@ -1089,10 +1114,10 @@ eBPF tracing has minimal overhead, but consider these guidelines:
 # BPF programs typically add <1% overhead for per-event tracing
 
 # For high-frequency events, use sampling instead of tracing everything
-# This bpftrace example samples every 1000th I/O operation
+# This bpftrace example randomly samples roughly 1 in 1000 I/O operations
 sudo bpftrace -e '
-tracepoint:block:block_rq_issue /(nsecs / 1000) % 1000 == 0/ {
-    @sampled_io[args->disk] = count();
+tracepoint:block:block_rq_issue /rand % 1000 == 0/ {
+    @sampled_io[args->dev] = count();
 }'
 ```
 
@@ -1102,7 +1127,7 @@ When running eBPF in production:
 
 1. **Test in staging first** - Verify your programs work correctly
 2. **Use timeouts** - Avoid infinite loops in BPF programs
-3. **Monitor BPF program CPU usage** - Check `/proc/[pid]/fd/` for BPF maps
+3. **Monitor tracing overhead** - Check the tracing process with tools like `top` or `pidstat`, and inspect loaded BPF objects with `bpftool prog show` and `bpftool map show`
 4. **Use rate limiting for output** - Avoid flooding logs with events
 
 ### Kernel Version Compatibility
