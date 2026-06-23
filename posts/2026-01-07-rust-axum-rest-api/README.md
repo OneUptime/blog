@@ -27,10 +27,11 @@ edition = "2021"
 [dependencies]
 # Web framework
 
-axum = { version = "0.7", features = ["macros"] }
+axum = { version = "0.8", features = ["macros"] }
+axum-extra = { version = "0.10", features = ["typed-header"] }
 tokio = { version = "1", features = ["full"] }
-tower = { version = "0.4", features = ["timeout", "limit"] }
-tower-http = { version = "0.5", features = [
+tower = { version = "0.5", features = ["timeout", "limit", "util"] }
+tower-http = { version = "0.6", features = [
     "cors",
     "trace",
     "compression-gzip",
@@ -43,11 +44,12 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 
 # Validation
-validator = { version = "0.16", features = ["derive"] }
+validator = { version = "0.20", features = ["derive"] }
 
 # Error handling
-thiserror = "1"
+thiserror = "2"
 anyhow = "1"
+jsonwebtoken = "9"
 
 # Observability
 tracing = "0.1"
@@ -101,7 +103,7 @@ mod models;
 mod routes;
 mod state;
 
-use axum::Router;
+use axum::{http::StatusCode, Router};
 use std::net::SocketAddr;
 use tokio::signal;
 use tower_http::{
@@ -175,7 +177,10 @@ fn build_router(state: AppState) -> Router {
         )
         .layer(SetRequestIdLayer::x_request_id(MakeRequestUuid))
         .layer(PropagateRequestIdLayer::x_request_id())
-        .layer(TimeoutLayer::new(std::time::Duration::from_secs(30)))
+        .layer(TimeoutLayer::with_status_code(
+            StatusCode::REQUEST_TIMEOUT,
+            std::time::Duration::from_secs(30),
+        ))
         .layer(
             CorsLayer::new()
                 .allow_origin(Any)
@@ -397,7 +402,7 @@ pub type Result<T> = std::result::Result<T, AppError>;
 // src/routes/health.rs
 // Health check endpoints for Kubernetes probes
 
-use axum::{routing::get, Json, Router};
+use axum::{http::StatusCode, routing::get, Json, Router};
 use serde::Serialize;
 
 pub fn router() -> Router<crate::state::AppState> {
@@ -429,10 +434,10 @@ async fn liveness() -> &'static str {
 /// Kubernetes readiness probe - check dependencies
 async fn readiness(
     // State(state): State<crate::state::AppState>,
-) -> Result<&'static str, &'static str> {
+) -> Result<&'static str, (StatusCode, &'static str)> {
     // Check database connection
     // if state.db.acquire().await.is_err() {
-    //     return Err("Database unavailable");
+    //     return Err((StatusCode::SERVICE_UNAVAILABLE, "Database unavailable"));
     // }
 
     Ok("OK")
@@ -455,7 +460,7 @@ pub fn router() -> Router<crate::state::AppState> {
     Router::new()
         .route("/api/users", get(users::list).post(users::create))
         .route(
-            "/api/users/:id",
+            "/api/users/{id}",
             get(users::get)
                 .put(users::update)
                 .delete(users::delete),
@@ -645,9 +650,7 @@ Create a custom extractor for validated JSON bodies.
 // Custom extractor with automatic validation
 
 use axum::{
-    async_trait,
     extract::{FromRequest, Request},
-    http::StatusCode,
     Json,
 };
 use serde::de::DeserializeOwned;
@@ -658,7 +661,6 @@ use crate::error::AppError;
 /// JSON extractor that automatically validates the payload
 pub struct ValidatedJson<T>(pub T);
 
-#[async_trait]
 impl<St, T> FromRequest<St> for ValidatedJson<T>
 where
     T: DeserializeOwned + Validate,
@@ -666,7 +668,10 @@ where
 {
     type Rejection = AppError;
 
-    async fn from_request(req: Request, state: &S) -> Result<Self, Self::Rejection> {
+    async fn from_request(
+        req: Request,
+        state: &St,
+    ) -> std::result::Result<Self, Self::Rejection> {
         // Extract JSON body
         let Json(value) = Json::<T>::from_request(req, state)
             .await
@@ -700,9 +705,8 @@ where
 // JWT authentication middleware
 
 use axum::{
-    async_trait,
     extract::FromRequestParts,
-    http::{request::Parts, StatusCode},
+    http::request::Parts,
     RequestPartsExt,
 };
 use axum_extra::{
@@ -731,14 +735,13 @@ pub struct AuthUser {
     pub email: String,
 }
 
-#[async_trait]
 impl FromRequestParts<AppState> for AuthUser {
     type Rejection = AppError;
 
     async fn from_request_parts(
         parts: &mut Parts,
         state: &AppState,
-    ) -> Result<Self, Self::Rejection> {
+    ) -> std::result::Result<Self, Self::Rejection> {
         // Extract Authorization header
         let TypedHeader(Authorization(bearer)) = parts
             .extract::<TypedHeader<Authorization<Bearer>>>()
@@ -824,10 +827,10 @@ impl RateLimiter {
 }
 
 /// Rate limiting middleware
-pub async fn rate_limit_middleware<Bd>(
+pub async fn rate_limit_middleware(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
-    request: Request<Bd>,
-    next: Next<Bd>,
+    request: Request<axum::body::Body>,
+    next: Next,
 ) -> Result<Response, StatusCode> {
     // In production, use a proper rate limiter like governor or Redis
     // This is a simplified example
@@ -924,7 +927,7 @@ async fn build_test_app() -> axum::Router {
 
 ```dockerfile
 # Multi-stage build for minimal image size
-FROM rust:1.75-slim as builder
+FROM rust:1.80-slim as builder
 
 WORKDIR /app
 COPY . .
