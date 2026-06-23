@@ -115,7 +115,7 @@ Once the operator is healthy it automatically refreshes CRDs so the cluster CRs 
    cephClusterSpec:
      cephVersion:
        image: quay.io/ceph/ceph:v18.2.2    # New Ceph Reef release with latest fixes
-     manager:
+     mgr:
        modules:
          - name: pg_autoscaler             # Automatically adjusts PG counts as cluster grows
            enabled: true
@@ -212,13 +212,16 @@ Once the operator is healthy it automatically refreshes CRDs so the cluster CRs 
   ```
 - **Pause the upgrade**:
 
-  If you notice performance degradation or need to pause for investigation, this annotation tells Rook to stop restarting additional OSDs until you are ready to continue.
+  If you notice performance degradation or need to pause for investigation, scaling the operator to zero tells Rook to stop reconciling - including any further OSD restarts - until you scale it back up.
 
   ```bash
-  # Add annotation to pause OSD rolling restarts
-  kubectl -n rook-ceph annotate cephcluster rook-ceph spec.allowMultipleOSDDaemons=false --overwrite
+  # Scale the operator to zero to pause all orchestration (including OSD restarts)
+  kubectl -n rook-ceph scale deploy rook-ceph-operator --replicas=0
+
+  # When ready to resume, scale it back to one
+  kubectl -n rook-ceph scale deploy rook-ceph-operator --replicas=1
   ```
-  This throttles OSD restarts when your disks are saturated.
+  This halts OSD restarts when your disks are saturated; resume once IO settles.
 - **Post-upgrade cleanup**: prune unused container images and delete `rook-ceph` jobs left in `Completed` state to quiet `kubectl get pods` output.
 
 Helm keeps the control plane boring. Pair it with Ceph’s self-healing data path, plus continuous telemetry in OneUptime, and Rook upgrades stop being a weekend-only ritual.
