@@ -12,12 +12,11 @@ DNS issues in Kubernetes are frustrating because they manifest as vague errors -
 
 ## How Kubernetes DNS Works
 
-This diagram illustrates the DNS resolution flow in Kubernetes. When a pod needs to resolve a name, the request flows through kubelet to CoreDNS, which either serves from cache, resolves cluster-internal names, or forwards to upstream DNS for external domains.
+This diagram illustrates the DNS resolution flow in Kubernetes. When a pod needs to resolve a name, its resolver sends the query directly to CoreDNS using the nameserver that kubelet wrote into the pod's `/etc/resolv.conf`. CoreDNS then either serves from cache, resolves cluster-internal names, or forwards to upstream DNS for external domains.
 
 ```mermaid
 flowchart LR
-    Pod[Pod] --> Kubelet[kubelet]
-    Kubelet --> DNS[CoreDNS]
+    Pod[Pod] --> DNS[CoreDNS]
     DNS --> SVC[Service IP]
     DNS --> EXT[External DNS]
 
