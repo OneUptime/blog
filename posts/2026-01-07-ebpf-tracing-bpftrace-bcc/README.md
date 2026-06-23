@@ -80,7 +80,7 @@ eBPF can attach to various points in the system:
 
 ### Installing bpftrace
 
-The following commands install bpftrace on common Linux distributions. bpftrace requires kernel headers and a kernel with eBPF support (4.9+, recommended 5.0+).
+The following commands install bpftrace on common Linux distributions. bpftrace requires a kernel with eBPF support (4.9+, recommended 5.0+) and either BTF information or kernel headers for type-aware tracing.
 
 ```bash
 # Ubuntu/Debian - Install bpftrace from official repositories
@@ -137,8 +137,8 @@ sudo bpftrace -V
 sudo bpftrace -l 'tracepoint:*' | head -20
 
 # Verify BCC tools are accessible
-# These are typically installed in /usr/share/bcc/tools/
-ls /usr/share/bcc/tools/ | head -10
+# Debian/Ubuntu package names usually add the -bpfcc suffix
+command -v execsnoop-bpfcc opensnoop-bpfcc biolatency-bpfcc
 ```
 
 ## Part 1: Mastering bpftrace
@@ -175,11 +175,11 @@ probe_type:probe_name /filter/ { action }
 
 #### Tracing System Calls
 
-This one-liner traces all system calls made by a specific process. The `@` symbol defines a map (associative array) that aggregates data.
+This one-liner counts system calls across the system, grouped by process name. The `@` symbol defines a map (associative array) that aggregates data.
 
 ```bash
 # Count system calls by process name
-# @[comm] creates a histogram keyed by process name (comm = command name)
+# @[comm] creates a map keyed by process name (comm = command name)
 # count() increments the counter for each syscall
 sudo bpftrace -e 'tracepoint:raw_syscalls:sys_enter { @[comm] = count(); }'
 ```
@@ -302,6 +302,8 @@ The following script demonstrates how to inspect function arguments in detail. T
  * The struct sock pointer contains connection details.
  */
 
+#include <linux/in.h>
+#include <linux/socket.h>
 #include <net/sock.h>
 
 // Header printed at script startup
@@ -441,19 +443,22 @@ This tool traces new process executions system-wide. Essential for security moni
 
 ```bash
 # Basic usage - trace all new processes
-# Shows timestamp, UID, PID, PPID, return code, and command line
+# Shows process name, PID, PPID, return code, and command line
 sudo execsnoop-bpfcc
 
-# Trace only failed executions (useful for debugging)
-# -x flag filters to show only exec failures
+# Include failed executions (useful for debugging)
+# -x adds failed exec() attempts to the output
 sudo execsnoop-bpfcc -x
 
-# Include timestamps and limit to specific UID
-# -T adds timestamps, -u filters by user ID
+# Include a time column and limit to specific UID
+# -T adds HH:MM:SS time, -u filters by user ID
 sudo execsnoop-bpfcc -T -u 1000
 
-# Show full argument lists (can be verbose)
+# Increase the number of parsed arguments (can be verbose)
 # Useful when debugging command-line issues
+sudo execsnoop-bpfcc --max-args 50
+
+# Quote each argument in the output
 sudo execsnoop-bpfcc -q
 ```
 
@@ -474,9 +479,9 @@ sudo opensnoop-bpfcc -p 1234
 # Useful for debugging "file not found" issues
 sudo opensnoop-bpfcc -x
 
-# Filter by filename pattern
-# -n flag matches against the filename
-sudo opensnoop-bpfcc -n "config"
+# Filter by process name
+# -n flag matches against the process name
+sudo opensnoop-bpfcc -n "nginx"
 
 # Show extended file flags
 # -e flag includes the open flags in output
@@ -516,7 +521,6 @@ The `trace` tool provides flexible tracing similar to bpftrace but with Python-s
 ```bash
 # Trace a kernel function with return value
 # 'r' prefix indicates return probe
-# %K format prints kernel stack
 sudo trace-bpfcc 'r::do_sys_openat2 "ret=%d", retval'
 
 # Trace user-space function with argument
@@ -525,11 +529,11 @@ sudo trace-bpfcc 'p:c:malloc "size=%zu", arg1'
 
 # Trace with filtering condition
 # The filter expression is evaluated before printing
-sudo trace-bpfcc 'p:c:write (arg2 > 1024) "fd=%d, size=%zu", arg1, arg2'
+sudo trace-bpfcc 'p:c:write (arg3 > 1024) "fd=%d, size=%zu", arg1, arg3'
 
 # Trace kernel function with time
 # -T adds timestamp to each line
-sudo trace-bpfcc -T 'p::tcp_v4_connect "dport=%d", arg2'
+sudo trace-bpfcc -T 'p::tcp_v4_connect "sk=%p", arg1'
 ```
 
 #### funccount - Count Function Calls
@@ -545,13 +549,13 @@ sudo funccount-bpfcc 'tcp_*'
 # Useful for understanding library usage patterns
 sudo funccount-bpfcc 'c:malloc'
 
-# Run for 5 seconds and show interval statistics
-# -i specifies interval, positional arg is total duration
-sudo funccount-bpfcc -i 1 5 'vfs_*'
+# Run for 5 seconds and show 1-second interval statistics
+# -i specifies interval, -d specifies total duration
+sudo funccount-bpfcc -i 1 -d 5 'vfs_*'
 
-# Count functions per process
-# -P flag separates counts by process ID
-sudo funccount-bpfcc -P 'vfs_read'
+# Count functions for a specific process
+# -p filters tracing to one process ID
+sudo funccount-bpfcc -p 1234 'vfs_read'
 ```
 
 ### Writing Custom BCC Programs
@@ -754,8 +758,7 @@ struct alloc_event_t {
     int stack_id;  // Reference to stack trace
 };
 
-// Ring buffer for sending events to user space
-// More efficient than perf buffers for high-frequency events
+// Perf buffer for sending events to user space
 BPF_PERF_OUTPUT(alloc_events);
 
 // Stack trace storage
@@ -1010,13 +1013,13 @@ BEGIN
     printf("Tracing file I/O operations...\n");
     printf("%-20s %-6s %-10s %-8s %-12s %s\n",
            "TIMESTAMP", "PID", "SYSCALL", "FD/RET", "SIZE/FLAGS", "PATH/INFO");
-    printf("%s\n", "=".repeat(80));
+    printf("================================================================================\n");
 }
 
 // Trace openat syscall - most common way to open files
 tracepoint:syscalls:sys_enter_openat
 {
-    @open_path[tid] = args->filename;
+    @open_path[tid] = str(args->filename);
     @open_flags[tid] = args->flags;
     @open_start[tid] = nsecs;
 }
@@ -1034,11 +1037,11 @@ tracepoint:syscalls:sys_exit_openat
            "openat",
            $fd,
            @open_flags[tid],
-           str(@open_path[tid]));
+           @open_path[tid]);
 
     // Track file descriptor to path mapping for later use
     if ($fd >= 0) {
-        @fd_path[pid, $fd] = str(@open_path[tid]);
+        @fd_path[pid, $fd] = @open_path[tid];
     }
 
     // Cleanup
@@ -1162,6 +1165,7 @@ This script demonstrates how to inspect kernel function parameters in detail:
  * from socket structures and function arguments.
  */
 
+#include <linux/in.h>
 #include <linux/socket.h>
 #include <net/sock.h>
 
@@ -1183,9 +1187,9 @@ kprobe:tcp_v4_connect
     $sport = $sk->__sk_common.skc_num;
 
     // Extract destination address from arg1 (struct sockaddr_in *)
-    // Note: For connect, destination is in the sockaddr argument
-    $daddr = $sk->__sk_common.skc_daddr;
-    $dport = $sk->__sk_common.skc_dport;
+    $uaddr = (struct sockaddr_in *)arg1;
+    $daddr = $uaddr->sin_addr.s_addr;
+    $dport = $uaddr->sin_port;
 
     // Convert port from network byte order
     $dport_host = ($dport >> 8) | (($dport & 0xff) << 8);
@@ -1427,7 +1431,7 @@ uretprobe:/lib/x86_64-linux-gnu/libc.so.6:malloc
     // Track outstanding allocations for leak detection
     // (simplified - real leak detection needs more sophisticated tracking)
     if ($ptr != 0) {
-        @outstanding[$ptr] = $size;
+        @outstanding[pid, $ptr] = $size;
         @outstanding_by_comm[comm] = sum($size);
     }
 
@@ -1445,11 +1449,11 @@ uprobe:/lib/x86_64-linux-gnu/libc.so.6:free
 /arg0 != 0/
 {
     $ptr = arg0;
-    $size = @outstanding[$ptr];
+    $size = @outstanding[pid, $ptr];
 
     if ($size > 0) {
         @outstanding_by_comm[comm] = sum(-$size);
-        delete(@outstanding[$ptr]);
+        delete(@outstanding[pid, $ptr]);
     }
 }
 
@@ -1601,8 +1605,10 @@ int trace_query_start(struct pt_regs *ctx) {
     event.pid = pid;
     event.start_ns = ts;
 
-    // USDT arg1 is the query string pointer
-    bpf_usdt_readarg(1, ctx, &event.query);
+    // The first USDT argument is the query string pointer
+    u64 query_addr = 0;
+    bpf_usdt_readarg(1, ctx, &query_addr);
+    bpf_probe_read_user_str(&event.query, sizeof(event.query), (void *)query_addr);
 
     query_text.update(&pid, &event);
 
@@ -1694,7 +1700,7 @@ flowchart TD
    ```c
    // Good: Filter in eBPF
    tracepoint:syscalls:sys_enter_read
-   /pid == $target_pid/
+   /pid == $1/
    {
        @reads = count();
    }
@@ -1725,8 +1731,8 @@ flowchart TD
 4. **Set Reasonable Limits**: Prevent runaway memory usage
 
    ```bash
-   # Limit map entries
-   sudo bpftrace --unsafe -e 'BEGIN { @map = hist(0); }'
+   # Limit map entries for this invocation
+   sudo env BPFTRACE_MAX_MAP_KEYS=1024 bpftrace -e 'tracepoint:raw_syscalls:sys_enter { @[comm] = count(); }'
    ```
 
 ### Debugging Your eBPF Programs
@@ -1766,7 +1772,7 @@ eBPF tracing with bpftrace and BCC provides unparalleled visibility into Linux s
 2. **BCC tools** provide production-ready solutions for common tracing needs
 3. **Custom BCC programs** enable sophisticated analysis for complex requirements
 4. **Performance impact** is minimal when following best practices
-5. **Safety** is guaranteed by the eBPF verifier, making it production-safe
+5. **Safety** is enforced by the eBPF verifier, but production tracing still requires careful filtering and overhead checks
 
 Whether you're debugging a performance issue, investigating a security incident, or simply trying to understand how your system works, these tools belong in every Linux administrator's and developer's toolkit.
 
