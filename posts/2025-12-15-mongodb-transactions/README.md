@@ -57,24 +57,34 @@ async function basicTransaction() {
             const accounts = client.db('bank').collection('accounts');
 
             // Debit from account A
-            await accounts.updateOne(
+            const debitResult = await accounts.updateOne(
                 { accountId: 'A', balance: { $gte: 100 } },
                 { $inc: { balance: -100 } },
                 { session }
             );
 
+            if (debitResult.modifiedCount !== 1) {
+                throw new Error('Insufficient funds or source account not found');
+            }
+
             // Credit to account B
-            await accounts.updateOne(
+            const creditResult = await accounts.updateOne(
                 { accountId: 'B' },
                 { $inc: { balance: 100 } },
                 { session }
             );
 
+            if (creditResult.modifiedCount !== 1) {
+                throw new Error('Destination account not found');
+            }
+
             await session.commitTransaction();
             console.log('Transaction committed successfully');
 
         } catch (error) {
-            await session.abortTransaction();
+            if (session.inTransaction()) {
+                await session.abortTransaction();
+            }
             console.error('Transaction aborted:', error.message);
             throw error;
         } finally {
@@ -116,17 +126,25 @@ async function transferFunds(fromAccount, toAccount, amount) {
             }
 
             // Perform transfer
-            await accounts.updateOne(
-                { accountId: fromAccount },
+            const debitResult = await accounts.updateOne(
+                { accountId: fromAccount, balance: { $gte: amount } },
                 { $inc: { balance: -amount } },
                 { session }
             );
 
-            await accounts.updateOne(
+            if (debitResult.modifiedCount !== 1) {
+                throw new Error('Insufficient funds or source account not found');
+            }
+
+            const creditResult = await accounts.updateOne(
                 { accountId: toAccount },
                 { $inc: { balance: amount } },
                 { session }
             );
+
+            if (creditResult.modifiedCount !== 1) {
+                throw new Error('Destination account not found');
+            }
 
             // Record transaction
             await transactions.insertOne({
@@ -197,6 +215,8 @@ class OrderService {
 
         try {
             const result = await session.withTransaction(async () => {
+                const orderId = new ObjectId();
+
                 // 1. Validate and reserve inventory
                 for (const item of items) {
                     const product = await this.db.collection('products').findOneAndUpdate(
@@ -208,7 +228,7 @@ class OrderService {
                             $inc: { stock: -item.quantity },
                             $push: {
                                 reservations: {
-                                    orderId: new ObjectId(),
+                                    orderId,
                                     quantity: item.quantity,
                                     timestamp: new Date()
                                 }
@@ -234,7 +254,7 @@ class OrderService {
 
                 // 3. Create order document
                 const order = {
-                    _id: new ObjectId(),
+                    _id: orderId,
                     userId,
                     items,
                     subtotal,
@@ -325,6 +345,8 @@ class OrderService {
 ### User Registration with Multiple Collections
 
 ```javascript
+const { ObjectId } = require('mongodb');
+
 class UserService {
     constructor(client) {
         this.client = client;
@@ -510,17 +532,25 @@ async function main() {
         const result = await txManager.executeTransaction(async (session) => {
             const db = client.db('test');
 
-            await db.collection('accounts').updateOne(
+            const debitResult = await db.collection('accounts').updateOne(
                 { _id: 'A' },
                 { $inc: { balance: -100 } },
                 { session }
             );
 
-            await db.collection('accounts').updateOne(
+            if (debitResult.modifiedCount !== 1) {
+                throw new Error('Source account not found');
+            }
+
+            const creditResult = await db.collection('accounts').updateOne(
                 { _id: 'B' },
                 { $inc: { balance: 100 } },
                 { session }
             );
+
+            if (creditResult.modifiedCount !== 1) {
+                throw new Error('Destination account not found');
+            }
 
             return { transferred: 100 };
         }, { maxRetries: 5 });
@@ -536,15 +566,16 @@ async function main() {
 
 ## Transaction Timeouts
 
-Handle transaction timeouts appropriately:
+Limit commit time and use an application-level timer for long-running transaction work:
 
 ```javascript
 async function transactionWithTimeout(client, operation, timeoutMs = 30000) {
     const session = client.startSession();
+    let timeoutId;
 
     // Create timeout promise
     const timeoutPromise = new Promise((_, reject) => {
-        setTimeout(() => {
+        timeoutId = setTimeout(() => {
             reject(new Error('Transaction timeout'));
         }, timeoutMs);
     });
@@ -560,6 +591,7 @@ async function transactionWithTimeout(client, operation, timeoutMs = 30000) {
             timeoutPromise
         ]);
 
+        // maxCommitTimeMS limits the commit operation, not the entire transaction.
         await session.commitTransaction();
         return result;
 
@@ -569,6 +601,7 @@ async function transactionWithTimeout(client, operation, timeoutMs = 30000) {
         }
         throw error;
     } finally {
+        clearTimeout(timeoutId);
         await session.endSession();
     }
 }
