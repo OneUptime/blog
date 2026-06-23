@@ -34,7 +34,7 @@ It means you are using the `filtered` query syntax that was deprecated in Elasti
 
 The old syntax looked like this:
 
-```json
+```console
 GET /products/_search
 {
   "query": {
@@ -78,7 +78,7 @@ flowchart LR
 
 ### Migrated Query
 
-```json
+```console
 GET /products/_search
 {
   "query": {
@@ -291,7 +291,7 @@ The `bool` query has four clause types:
 | Clause | Purpose | Affects Score |
 |--------|---------|---------------|
 | `must` | Required matches | Yes |
-| `filter` | Required matches | No (cached) |
+| `filter` | Required matches | No (considered for caching) |
 | `should` | Optional matches | Yes |
 | `must_not` | Excluded matches | No |
 
@@ -429,8 +429,6 @@ Here is a Python script to help migrate old queries:
 
 ```python
 import json
-import re
-
 def migrate_filtered_query(query):
     """Migrate deprecated filtered query to bool query."""
 
@@ -458,7 +456,7 @@ def migrate_filtered_query(query):
         if 'filter' in filtered:
             filter_clause = migrate_filtered_query(filtered['filter'])
 
-            # Handle deprecated and/or filters
+            # Handle deprecated and/or/not filters
             if isinstance(filter_clause, dict):
                 if 'and' in filter_clause:
                     bool_query['bool']['filter'] = filter_clause['and']
@@ -466,6 +464,8 @@ def migrate_filtered_query(query):
                     bool_query['bool']['filter'] = [{
                         'bool': {'should': filter_clause['or']}
                     }]
+                elif 'not' in filter_clause:
+                    bool_query['bool']['must_not'] = [filter_clause['not']]
                 else:
                     bool_query['bool']['filter'] = [filter_clause]
             else:
@@ -492,7 +492,7 @@ print(json.dumps(new_query, indent=2))
 
 ## Best Practices
 
-1. **Use filter for non-scoring clauses** - Filters are cached and faster
+1. **Use filter for non-scoring clauses** - Filters skip scoring, and frequently used filters can be cached
 2. **Combine multiple filters** - Put all filter conditions in one filter array
 3. **Test after migration** - Verify results match before and after
 4. **Update client libraries** - Older Elasticsearch clients may generate deprecated syntax
