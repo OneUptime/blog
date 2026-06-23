@@ -326,7 +326,7 @@ builder.Services.AddRateLimiter(options =>
 For multi-instance deployments, use Redis for distributed rate limiting:
 
 ```csharp
-// Install: dotnet add package RedisRateLimiting
+// Install: dotnet add package RedisRateLimiting.AspNetCore
 
 builder.Services.AddRateLimiter(options =>
 {
