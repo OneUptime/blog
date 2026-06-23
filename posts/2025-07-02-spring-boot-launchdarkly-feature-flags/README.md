@@ -922,8 +922,8 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Component;
 import org.springframework.web.servlet.HandlerInterceptor;
 
-import javax.servlet.http.HttpServletRequest;
-import javax.servlet.http.HttpServletResponse;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 import java.time.Duration;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -1351,6 +1351,7 @@ class FeatureFlagServiceTest {
 package com.example;
 
 import com.launchdarkly.sdk.LDContext;
+import com.launchdarkly.sdk.LDValue;
 import com.launchdarkly.sdk.server.LDClient;
 import com.launchdarkly.sdk.server.LDConfig;
 import com.launchdarkly.sdk.server.integrations.TestData;
@@ -1390,7 +1391,7 @@ class FeatureFlagIntegrationTest {
         testData.update(testData.flag("premium-features")
             .booleanFlag()
             .variationForUser("premium-user", true)
-            .falseForEverything());
+            .fallthroughVariation(false));
 
         // Premium user should get true
         LDContext premiumContext = LDContext.builder("premium-user").build();
@@ -1420,7 +1421,7 @@ class FeatureFlagIntegrationTest {
     void shouldEvaluateStringVariations() {
         // Set up multivariate flag
         testData.update(testData.flag("button-color")
-            .variations("red", "blue", "green")
+            .variations(LDValue.of("red"), LDValue.of("blue"), LDValue.of("green"))
             .variationForUser("user-a", 0)  // red
             .variationForUser("user-b", 1)  // blue
             .offVariation(2));              // green (default)
