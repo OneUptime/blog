@@ -14,7 +14,7 @@ Prometheus queries often require combining multiple conditions. Unlike SQL where
 
 PromQL provides two main ways to implement OR logic:
 
-1. **The `or` operator** - Combines two vector expressions
+1. **The `or` operator** - Combines two instant vector expressions
 2. **Regex label matchers** - Match multiple label values in a single selector
 
 Each approach serves different purposes. Understanding when to use which is key to writing efficient queries.
@@ -23,11 +23,11 @@ Each approach serves different purposes. Understanding when to use which is key 
 flowchart TD
     subgraph "OR Logic Methods"
         A[Need OR Logic?]
-        A --> B{Same metric?}
-        B -->|Yes| C[Use regex matcher]
+        A --> B{Same label?}
+        B -->|Multiple values| C[Use regex matcher]
         B -->|No| D{Combine different metrics?}
         D -->|Yes| E[Use 'or' operator]
-        D -->|No| F[Use union in subquery]
+        D -->|No| F[Review query shape]
     end
 
     C --> G["metric{label=~'a|b'}"]
@@ -73,7 +73,7 @@ groups:
       - alert: HighResourceUsage
         expr: |
           (
-            sum by (instance) (rate(node_cpu_seconds_total{mode!="idle"}[5m])) > 0.8
+            1 - avg by (instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) > 0.8
           ) or (
             (node_memory_MemTotal_bytes - node_memory_MemAvailable_bytes)
             / node_memory_MemTotal_bytes > 0.9
@@ -144,8 +144,8 @@ For complex queries, combine both methods:
 ```promql
 # High CPU on web servers OR high memory on database servers
 (
-  sum by (instance) (
-    rate(node_cpu_seconds_total{mode!="idle", job=~"web-.*"}[5m])
+  avg by (instance) (
+    1 - rate(node_cpu_seconds_total{mode="idle", job=~"web-.*"}[5m])
   ) > 0.8
 )
 or
@@ -201,7 +201,7 @@ sum(
   rate(http_requests_total{region=~"us-.*|eu-.*"}[5m])
 )
 
-# OR using explicit operator for different metric sources
+# OR using explicit operator when either metric source may exist
 sum(rate(http_requests_us_total[5m]))
 or
 sum(rate(http_requests_eu_total[5m]))
@@ -239,7 +239,7 @@ or
 or
 (
   # CPU usage > 80%
-  sum by (instance) (rate(node_cpu_seconds_total{mode!="idle"}[5m])) > 0.80
+  1 - avg by (instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) > 0.80
 )
 ```
 
@@ -286,9 +286,9 @@ metric_a and metric_b
 or
 (rate(errors_total{app="a"}[5m]) > 10)
 
-# Use consistent labeling or on() modifier
+# Use consistent labeling or on(<shared_label>) modifier
 (rate(requests_total{service="a"}[5m]) > 100)
-or on()
+or on(instance)
 (rate(errors_total{app="a"}[5m]) > 10)
 ```
 
