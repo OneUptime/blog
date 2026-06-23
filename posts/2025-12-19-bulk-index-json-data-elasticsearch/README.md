@@ -13,15 +13,15 @@ The Bulk API is essential for efficiently indexing large amounts of data into El
 The Bulk API uses a specific newline-delimited JSON (NDJSON) format:
 
 ```text
-{"action": {"_index": "index_name", "_id": "doc_id"}}
+{"index": {"_index": "index_name", "_id": "doc_id"}}
 {"field1": "value1", "field2": "value2"}
-{"action": {"_index": "index_name", "_id": "doc_id"}}
+{"index": {"_index": "index_name", "_id": "doc_id"}}
 {"field1": "value1", "field2": "value2"}
 ```
 
-Each operation consists of two lines:
+Most operations consist of two lines:
 1. **Action line**: Specifies the operation type and metadata
-2. **Document line**: Contains the actual document (for index/create/update)
+2. **Source line**: Contains the document or update instructions (for index/create/update)
 
 ```mermaid
 graph LR
@@ -35,7 +35,7 @@ graph LR
 
 ## Basic Bulk Index Request
 
-```json
+```http
 POST /_bulk
 {"index": {"_index": "products", "_id": "1"}}
 {"name": "Laptop", "price": 999.99, "category": "electronics"}
@@ -51,7 +51,7 @@ Note: Each line must end with a newline character, including the last line.
 
 When all documents go to the same index:
 
-```json
+```http
 POST /products/_bulk
 {"index": {"_id": "1"}}
 {"name": "Laptop", "price": 999.99}
@@ -65,7 +65,7 @@ POST /products/_bulk
 
 Let Elasticsearch generate IDs:
 
-```json
+```http
 POST /products/_bulk
 {"index": {}}
 {"name": "Laptop", "price": 999.99}
@@ -112,7 +112,7 @@ Removes documents (no document line needed):
 
 ### Mixed Operations
 
-```json
+```http
 POST /_bulk
 {"index": {"_index": "products", "_id": "1"}}
 {"name": "Laptop", "price": 999.99}
@@ -298,16 +298,19 @@ async function bulkIndexFromFile(filepath, indexName, batchSize = 1000) {
 }
 
 async function processBatch(batch) {
-  const response = await client.bulk({ body: batch });
+  const response = await client.bulk({ operations: batch });
 
   let indexed = 0;
   let failed = 0;
 
   if (response.errors) {
     for (const item of response.items) {
-      if (item.index.error) {
+      const operation = Object.keys(item)[0];
+      const result = item[operation];
+
+      if (result.error) {
         failed++;
-        console.error(`Error: ${item.index.error.reason}`);
+        console.error(`Error: ${result.error.reason}`);
       } else {
         indexed++;
       }
@@ -334,7 +337,7 @@ async function bulkWithRetry(client, batch, maxRetries = 3) {
   while (retries < maxRetries) {
     try {
       const response = await client.bulk({
-        body: batch,
+        operations: batch,
         refresh: false
       });
 
@@ -345,14 +348,20 @@ async function bulkWithRetry(client, batch, maxRetries = 3) {
       // Handle partial failures
       const failedItems = [];
       const succeededItems = [];
+      const permanentFailures = [];
 
       response.items.forEach((item, index) => {
-        if (item.index.error) {
-          const status = item.index.status;
+        const operation = Object.keys(item)[0];
+        const result = item[operation];
+
+        if (result.error) {
+          const status = result.status;
           // Retry on 429 (too many requests) or 5xx errors
           if (status === 429 || status >= 500) {
             failedItems.push(batch[index * 2]);
             failedItems.push(batch[index * 2 + 1]);
+          } else {
+            permanentFailures.push(item);
           }
         } else {
           succeededItems.push(item);
@@ -360,7 +369,11 @@ async function bulkWithRetry(client, batch, maxRetries = 3) {
       });
 
       if (failedItems.length === 0) {
-        return { success: true, items: succeededItems };
+        return {
+          success: permanentFailures.length === 0,
+          items: succeededItems,
+          failed: permanentFailures
+        };
       }
 
       batch = failedItems;
@@ -433,7 +446,7 @@ graph TD
 
 ### Index Settings for Bulk Loading
 
-```json
+```http
 // Before bulk loading - optimize for write speed
 PUT /products/_settings
 {
@@ -460,18 +473,26 @@ POST /products/_forcemerge?max_num_segments=5
 
 ### Thread Pool Configuration
 
-Monitor bulk thread pool:
+Monitor write and bulk coordination thread pools:
 
-```json
-GET /_nodes/stats/thread_pool/write
+```http
+GET /_nodes/stats/thread_pool
 
 // Response shows queue and rejections
-// Note: The "bulk" thread pool was renamed to "write" in ES 7.x
+// Note: The "bulk" thread pool was replaced by "write" in ES 6.3.
+// In ES 9.1 and later, bulk coordination uses "write_coordination".
 {
   "nodes": {
     "node_id": {
       "thread_pool": {
         "write": {
+          "threads": 8,
+          "queue": 25,
+          "active": 8,
+          "rejected": 0,
+          "completed": 12345
+        },
+        "write_coordination": {
           "threads": 8,
           "queue": 25,
           "active": 8,
@@ -563,6 +584,7 @@ def bulk_with_error_handling(es, actions, batch_size=1000):
 
 ```python
 import json
+from datetime import datetime, timezone
 from elasticsearch import Elasticsearch
 from elasticsearch.helpers import bulk
 
@@ -602,7 +624,7 @@ def transform_product(raw):
         "price": float(raw.get("price", 0)),
         "category": raw.get("category", "").lower(),
         "in_stock": raw.get("quantity", 0) > 0,
-        "indexed_at": datetime.utcnow().isoformat()
+        "indexed_at": datetime.now(timezone.utc).isoformat()
     }
 
 # Usage
