@@ -10,7 +10,7 @@ Description: Configure automatic security updates on Ubuntu using unattended-upg
 
 Keeping your Ubuntu servers secure is one of the most critical responsibilities for any system administrator or DevOps engineer. Security vulnerabilities are discovered regularly, and attackers are quick to exploit unpatched systems. Manual updates, while thorough, are time-consuming and prone to human error or delay. This is where automatic security updates come in.
 
-In this comprehensive guide, we will walk through setting up automatic security updates on Ubuntu using two powerful tools: **unattended-upgrades** for package updates and **Canonical Livepatch** for applying kernel security patches without requiring a reboot.
+In this comprehensive guide, we will walk through setting up automatic security updates on Ubuntu using two powerful tools: **unattended-upgrades** for package updates and **Canonical Livepatch** for applying critical kernel security patches without requiring an immediate reboot.
 
 ## Why Automatic Security Updates Matter
 
@@ -57,7 +57,7 @@ Ubuntu provides a convenient way to configure automatic updates using the dpkg-r
 sudo dpkg-reconfigure -plow unattended-upgrades
 ```
 
-This command creates a file at `/etc/apt/apt.conf.d/20auto-upgrades` with the following content:
+This command creates or updates a file at `/etc/apt/apt.conf.d/20auto-upgrades` with the following content:
 
 ```bash
 # Check the auto-upgrades configuration file
@@ -102,7 +102,7 @@ The `Unattended-Upgrade::Allowed-Origins` section defines which repositories are
 // Automatically upgrade packages from these origin patterns
 // The format is: "origin:archive" or "origin:codename"
 Unattended-Upgrade::Allowed-Origins {
-    // Enable security updates for the Ubuntu base system
+    // Enable the base release pocket for dependencies required by security updates
     "${distro_id}:${distro_codename}";
 
     // Enable security updates from the security repository (CRITICAL)
@@ -251,7 +251,7 @@ smtp_sasl_auth_enable = yes
 smtp_sasl_password_maps = hash:/etc/postfix/sasl_passwd
 smtp_sasl_security_options = noanonymous
 smtp_tls_CAfile = /etc/ssl/certs/ca-certificates.crt
-smtp_use_tls = yes
+smtp_tls_security_level = encrypt
 ```
 
 Create the password file:
@@ -354,7 +354,7 @@ sudo chmod +x /usr/local/bin/notify-before-reboot.sh
 
 # Add a cron job to run before the scheduled reboot time
 # This example runs at 1:30 AM, 30 minutes before the 2:00 AM reboot
-(crontab -l 2>/dev/null; echo "30 1 * * * /usr/local/bin/notify-before-reboot.sh") | crontab -
+(sudo crontab -l 2>/dev/null; echo "30 1 * * * /usr/local/bin/notify-before-reboot.sh") | sudo crontab -
 ```
 
 ## Part 5: Canonical Livepatch for Kernel Updates
@@ -366,7 +366,7 @@ Canonical Livepatch is a service that applies critical kernel patches without re
 Livepatch uses a technology called "kernel live patching" to:
 
 - Apply security fixes to the running kernel in memory
-- Eliminate the need for immediate reboots after kernel updates
+- Reduce the need for immediate reboots after critical kernel security fixes
 - Reduce planned downtime significantly
 - Provide protection against kernel-level vulnerabilities faster
 
@@ -383,28 +383,28 @@ Before enabling Livepatch, you need to obtain a token from Canonical.
 # Create an Ubuntu One account and get your token
 ```
 
-### Step 2: Enable Livepatch Using ubuntu-advantage
+### Step 2: Enable Livepatch Using Ubuntu Pro
 
-For Ubuntu 20.04 and later, use the `ubuntu-advantage` (ua) or `pro` tool.
+For Ubuntu 20.04 and later, use the Ubuntu Pro Client (`pro`) tool.
 
 ```bash
-# Check if ubuntu-advantage-tools is installed
-sudo apt install ubuntu-advantage-tools -y
+# Check if the Ubuntu Pro Client is installed
+sudo apt install ubuntu-pro-client -y
 
 # Attach your machine to Ubuntu Pro with your token
 # Replace YOUR_TOKEN with your actual Livepatch token
 sudo pro attach YOUR_TOKEN
 
-# Alternatively, for older syntax
+# Alternatively, for older syntax on systems that still provide it
 # sudo ua attach YOUR_TOKEN
 ```
 
 ### Step 3: Enable Livepatch Service
 
-Once attached to Ubuntu Pro, enable the Livepatch service.
+On Ubuntu LTS releases, Livepatch is usually enabled automatically after you attach an Ubuntu Pro subscription. If it is disabled, enable it manually.
 
 ```bash
-# Enable Livepatch service
+# Enable Livepatch service if it is not already enabled
 sudo pro enable livepatch
 
 # Verify Livepatch is running
@@ -456,12 +456,12 @@ Customize Livepatch behavior using the configuration file.
 # View current Livepatch configuration
 sudo canonical-livepatch config
 
-# Set the check interval (in seconds, minimum 60)
+# Set the check interval (in minutes, minimum 60)
 # This determines how often Livepatch checks for new patches
-sudo canonical-livepatch config check-interval=3600
+sudo canonical-livepatch config check-interval=60
 
-# Enable or disable automatic patch application
-sudo canonical-livepatch config auto-refresh=true
+# Disable automatic checks if needed
+sudo canonical-livepatch config check-interval=0
 ```
 
 ### Livepatch for Air-Gapped Environments
@@ -612,7 +612,7 @@ Configure a cron job to email status reports regularly.
 ```bash
 # Add a weekly status report to cron
 # This runs every Monday at 8:00 AM
-(crontab -l 2>/dev/null; echo "0 8 * * 1 /usr/local/bin/check-update-status.sh | mail -s 'Weekly Update Status Report - \$(hostname)' admin@example.com") | crontab -
+(sudo crontab -l 2>/dev/null; echo "0 8 * * 1 /usr/local/bin/check-update-status.sh | mail -s 'Weekly Update Status Report - \$(hostname)' admin@example.com") | sudo crontab -
 ```
 
 ## Part 7: Testing Your Configuration
@@ -831,7 +831,7 @@ Automatic security updates are a critical component of any robust security strat
 Key takeaways from this guide:
 
 1. **unattended-upgrades** provides automated package updates with fine-grained control over which packages are updated
-2. **Canonical Livepatch** eliminates the need for reboots after kernel security updates
+2. **Canonical Livepatch** reduces the need for immediate reboots after critical kernel security updates
 3. **Email notifications** keep you informed about update activity and potential issues
 4. **Package blacklisting** allows you to exclude sensitive applications from automatic updates
 5. **Monitoring and logging** are essential for security compliance and troubleshooting
