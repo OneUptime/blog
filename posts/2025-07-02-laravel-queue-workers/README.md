@@ -378,13 +378,6 @@ class SendWelcomeEmail implements ShouldQueue, ShouldBeUnique
         Mail::to($this->user->email)->send(new WelcomeEmail($this->user));
     }
 
-    // Determine if job should be queued
-    public function shouldQueue(): bool
-    {
-        // Only queue if user has verified email
-        return $this->user->hasVerifiedEmail();
-    }
-
     // Tags for monitoring and filtering
     public function tags(): array
     {
@@ -404,7 +397,7 @@ class SendWelcomeEmail implements ShouldQueue, ShouldBeUnique
         ];
     }
 
-    // Calculate retry delay based on attempt number
+    // Keep retrying the job until this time is reached
     public function retryUntil(): \DateTime
     {
         return now()->addHours(24);
@@ -903,6 +896,9 @@ RUN docker-php-ext-install pdo pdo_mysql pcntl
 # Install Redis extension
 RUN pecl install redis && docker-php-ext-enable redis
 
+# Composer is not bundled in the php:8.2-cli image, so copy it from the official image
+COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
+
 # Set working directory
 WORKDIR /var/www/html
 
@@ -1010,10 +1006,9 @@ class ProcessPayment implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
-    // Retry configuration
+    // Retry configuration (backoff is computed dynamically in backoff() below)
     public int $tries = 5;
     public int $maxExceptions = 3;
-    public array $backoff = [30, 60, 300, 900, 3600];  // Progressive backoff
 
     // Delete job if models are missing
     public bool $deleteWhenMissingModels = true;
@@ -1041,28 +1036,14 @@ class ProcessPayment implements ShouldQueue
         }
     }
 
-    // Determine if should retry based on exception
-    public function shouldRetry(\Throwable $exception): bool
-    {
-        // Don't retry for certain exceptions
-        if ($exception instanceof CardDeclinedException) {
-            return false;
-        }
-
-        if ($exception instanceof InvalidPaymentMethodException) {
-            return false;
-        }
-
-        return true;
-    }
-
-    // Calculate retry delay dynamically
-    public function retryAfter(): int
+    // Calculate retry delay dynamically (this method was named retryAfter()
+    // before Laravel 8; define either a $backoff property or this method, not both)
+    public function backoff(): int
     {
         // Exponential backoff with jitter
         $attempt = $this->attempts();
         $baseDelay = min(pow(2, $attempt) * 30, 3600);
-        $jitter = rand(0, $baseDelay / 4);
+        $jitter = rand(0, (int) ($baseDelay / 4));
         
         return $baseDelay + $jitter;
     }
@@ -1103,11 +1084,8 @@ class ProcessPayment implements ShouldQueue
 ### Managing Failed Jobs
 
 ```bash
-# List all failed jobs
+# List all failed jobs (shows ID, connection, queue, and failure time)
 php artisan queue:failed
-
-# View specific failed job
-php artisan queue:failed 5
 
 # Retry a specific failed job
 php artisan queue:retry 5
@@ -1286,8 +1264,9 @@ class SendBulkEmail implements ShouldQueue
             // Rate limit to 100 emails per minute
             new RateLimited('email-sending', 100, 60),
             
-            // Throttle exceptions - max 10 in 5 minutes
-            new ThrottlesExceptions(10, 5),
+            // Throttle exceptions - back off for 5 minutes after 10 exceptions
+            // (the second argument is seconds in Laravel 11+)
+            new ThrottlesExceptions(10, 5 * 60),
             
             // Custom middleware
             new EnsureActiveSubscription(),
