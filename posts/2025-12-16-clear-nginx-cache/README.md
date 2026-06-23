@@ -96,8 +96,9 @@ Create a reusable script for safe cache clearing:
 # clear-nginx-cache.sh
 
 CACHE_DIR="/var/cache/nginx"
-BACKUP_DIR="/var/cache/nginx-backup"
 LOG_FILE="/var/log/nginx-cache-clear.log"
+NGINX_USER="${NGINX_USER:-$(ps -eo user,comm | awk '$2 == "nginx" && $1 != "root" {print $1; exit}')}"
+NGINX_USER="${NGINX_USER:-www-data}"
 
 log() {
     echo "$(date '+%Y-%m-%d %H:%M:%S') - $1" | tee -a "$LOG_FILE"
@@ -123,7 +124,7 @@ mkdir -p "$CACHE_DIR/proxy"
 mkdir -p "$CACHE_DIR/fastcgi"
 
 # Set proper permissions
-chown -R nginx:nginx "$CACHE_DIR"
+chown -R "$NGINX_USER:$NGINX_USER" "$CACHE_DIR"
 chmod -R 755 "$CACHE_DIR"
 
 log "Cache cleared successfully"
@@ -138,9 +139,9 @@ else
 fi
 ```
 
-## Method 2: Use proxy_cache_purge Module
+## Method 2: Use the ngx_cache_purge Module
 
-The `ngx_cache_purge` module allows selective cache purging via HTTP requests:
+The third-party `ngx_cache_purge` module allows selective cache purging via HTTP requests. NGINX Plus also provides a built-in `proxy_cache_purge` directive, but its syntax is different from the third-party module shown here.
 
 ### Installation
 
@@ -197,9 +198,9 @@ curl -X PURGE http://example.com/purge/api/*
 curl -I http://example.com/api/users | grep X-Cache-Status
 ```
 
-## Method 3: Automatic Cache Invalidation
+## Method 3: Cache Bypass and Revalidation
 
-Configure Nginx to automatically invalidate cache based on backend responses:
+Configure Nginx to bypass cache for specific requests and revalidate expired cached responses:
 
 ```nginx
 server {
@@ -219,7 +220,7 @@ server {
         proxy_cache_revalidate on;
         proxy_cache_use_stale error timeout updating http_500 http_502 http_503 http_504;
 
-        # Bypass cache for POST requests
+        # Cache only GET and HEAD requests
         proxy_cache_methods GET HEAD;
 
         proxy_pass http://backend;
@@ -237,9 +238,9 @@ curl -H "Cache-Control: no-cache" http://example.com/api/data
 curl -H "Pragma: no-cache" http://example.com/api/data
 ```
 
-## Method 4: Clear Browser Cache via Headers
+## Method 4: Control Browser Cache via Headers
 
-Force browsers to fetch fresh content:
+Tell browsers how to cache future responses and revalidated content:
 
 ```nginx
 server {
@@ -254,9 +255,9 @@ server {
 
     # For dynamic content - no caching
     location /api/ {
-        add_header Cache-Control "no-store, no-cache, must-revalidate, proxy-revalidate";
-        add_header Pragma "no-cache";
-        add_header Expires "0";
+        add_header Cache-Control "no-store, no-cache, must-revalidate, proxy-revalidate" always;
+        add_header Pragma "no-cache" always;
+        add_header Expires "0" always;
         proxy_pass http://backend;
     }
 
@@ -390,11 +391,11 @@ sudo rm -rf /var/lib/docker/volumes/nginx-cache/_data/*
 ## Key Takeaways
 
 1. Know your cache directories by checking `proxy_cache_path` in your config
-2. Use the `ngx_cache_purge` module for selective purging via HTTP
+2. Use the third-party `ngx_cache_purge` module or NGINX Plus cache purge support for selective purging via HTTP
 3. Implement proper cache headers to control browser caching
 4. Monitor cache size and set up automated cleanup
 5. Use multiple cache zones for different content types
-6. Always reload Nginx after clearing cache to ensure consistency
+6. Reload Nginx after changing cache configuration or when you need to clear in-memory cache metadata
 7. Monitor cache hit rates with OneUptime to optimize your caching strategy
 
 Proper cache management ensures your users receive fresh content while maintaining optimal performance from your Nginx servers.
