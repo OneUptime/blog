@@ -304,12 +304,17 @@ db.collection.createIndex({ category: 1 });
 db.collection.createIndex({ "attributes.$**": 1 });
 ```
 
-### 2. Cannot Index Array Elements by Position
+### 2. Explicit Array Index Limitations
 
 ```javascript
-// Wildcard does not support positional array queries
+// Wildcard indexes do not store array positions, but can support
+// query paths with 8 or fewer explicit array indices
 db.collection.find({ "items.0.name": "Widget" });
-// May not use wildcard index efficiently
+// Can use the wildcard index if the indexed path is covered
+
+// Embedded array values are not indexed individually
+db.collection.find({ "items.coordinates.0.1": 10 });
+// Requires another index or a collection scan
 ```
 
 ### 3. Query Shape Matters
@@ -321,22 +326,30 @@ db.products.createIndex({ "attributes.$**": 1 });
 // Uses index - single field query
 db.products.find({ "attributes.color": "red" });
 
-// Uses index - equality on one field
+// Uses the wildcard index for one of these fields; the other field is filtered
 db.products.find({
   "attributes.color": "red",
   "attributes.size": "large"
 });
 
-// May use index less efficiently - range query
+// Uses index - range query on one field
 db.products.find({ "attributes.price": { $gt: 100 } });
 ```
 
-### 4. Cannot Be Used for Sort
+### 4. Limited Sort Support
 
 ```javascript
-// Wildcard index cannot be used for sorting
+// Wildcard index on attributes.$**
+db.products.createIndex({ "attributes.$**": 1 });
+
+// Can use the wildcard index for both the query and sort
+// if attributes.name is never an array
+db.products.find({ "attributes.name": { $gte: "A" } }).sort({ "attributes.name": 1 });
+
+// Cannot use the wildcard index for this sort because there is no
+// matching query predicate on attributes.name
 db.products.find({}).sort({ "attributes.name": 1 });
-// Will require separate index or in-memory sort
+// Will require a separate index or an in-memory sort
 ```
 
 ## Analyzing Wildcard Index Usage
@@ -398,9 +411,9 @@ for (const [name, size] of Object.entries(stats.indexSizes)) {
   console.log(`  ${name}: ${(size / 1024 / 1024).toFixed(2)} MB`);
 }
 
-// Use wildcardProjection to limit scope
+// Use wildcardProjection with "$**" to limit scope
 db.products.createIndex(
-  { "attributes.$**": 1 },
+  { "$**": 1 },
   {
     wildcardProjection: {
       "attributes.searchable": 1,
@@ -445,7 +458,8 @@ db.events.createIndex(
 db.products.createIndex({ category: 1, status: 1 });  // Known fields
 db.products.createIndex({ "attributes.$**": 1 });      // Dynamic fields
 
-// Query combines both indexes
+// Query has index support for both known and dynamic fields
+// Verify the selected plan with explain()
 db.products.find({
   category: "electronics",
   status: "active",
