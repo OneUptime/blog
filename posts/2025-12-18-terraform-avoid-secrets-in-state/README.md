@@ -6,7 +6,7 @@ Tags: Terraform, Security, Secrets Management, Infrastructure as Code, DevOps
 
 Description: Learn strategies to keep sensitive data out of Terraform state files. This guide covers secret management solutions, dynamic credentials, and architectural patterns for secure infrastructure.
 
-Terraform state files contain a complete snapshot of your infrastructure, including sensitive values like database passwords, API keys, and certificates. Since state is stored in plaintext JSON, this presents significant security risks. This guide explores strategies to minimize or eliminate secrets in your Terraform state.
+Terraform state files contain a complete snapshot of your infrastructure, including sensitive values like database passwords, API keys, and certificates. Local state is stored in plaintext JSON, and remote state must be protected by the backend, so this presents significant security risks. This guide explores strategies to minimize or eliminate secrets in your Terraform state.
 
 ## Understanding the Problem
 
@@ -39,7 +39,7 @@ graph TD
 
 ## Strategy 1: Use External Secret Managers
 
-Instead of storing secrets in Terraform, reference them from dedicated secret managers:
+Instead of hardcoding secrets in Terraform, keep them in dedicated secret managers. Be careful: if Terraform reads the secret value and passes it to a managed resource argument, that value can still be stored in state.
 
 ### AWS Secrets Manager
 
@@ -90,6 +90,8 @@ resource "aws_db_instance" "main" {
   engine         = "postgres"
   instance_class = "db.t3.medium"
   username       = data.vault_generic_secret.database.data["username"]
+
+  # This still ends up in Terraform state
   password       = data.vault_generic_secret.database.data["password"]
 }
 ```
@@ -113,13 +115,15 @@ resource "azurerm_mssql_server" "main" {
   location                     = azurerm_resource_group.main.location
   version                      = "12.0"
   administrator_login          = "sqladmin"
+
+  # This still ends up in Terraform state
   administrator_login_password = data.azurerm_key_vault_secret.db_password.value
 }
 ```
 
 ## Strategy 2: Generate Secrets Outside Terraform
 
-Generate secrets before Terraform runs and inject them via environment variables:
+Generate secrets before Terraform runs and inject them via environment variables. This keeps secrets out of source code and routine CLI output, but values assigned to resource arguments are still stored in state:
 
 ```hcl
 # Variable marked as sensitive
@@ -212,7 +216,7 @@ resource "aws_instance" "app" {
 
 ## Strategy 5: random_password with lifecycle Ignore
 
-Generate passwords that persist without being tracked in state after initial creation:
+Generate passwords only when you are prepared to protect Terraform state. The `random_password` result is stored in state, and `ignore_changes` only tells Terraform not to plan future updates for the database password argument:
 
 ```hcl
 resource "random_password" "db" {
@@ -240,6 +244,8 @@ resource "aws_secretsmanager_secret" "db_password" {
 
 resource "aws_secretsmanager_secret_version" "db_password" {
   secret_id     = aws_secretsmanager_secret.db_password.id
+
+  # The secret value is also stored in Terraform state
   secret_string = random_password.db.result
 }
 ```
@@ -258,7 +264,7 @@ terraform {
     region         = "us-east-1"
     encrypt        = true
     kms_key_id     = "alias/terraform-state-key"
-    dynamodb_table = "terraform-locks"
+    use_lockfile   = true
   }
 }
 ```
@@ -283,7 +289,7 @@ terraform {
 
 ## Strategy 7: Post-Apply Secret Rotation
 
-Rotate secrets immediately after Terraform creates resources:
+Rotate secrets immediately after Terraform creates resources. The initial generated password remains in Terraform state, but the active password is replaced outside Terraform:
 
 ```hcl
 resource "aws_db_instance" "main" {
@@ -328,13 +334,15 @@ Encrypt sensitive variable files:
 
 ```bash
 # Create encrypted variables file
-sops --encrypt --kms arn:aws:kms:us-east-1:ACCOUNT:key/KEY_ID secrets.tfvars > secrets.tfvars.enc
+sops --encrypt --kms arn:aws:kms:us-east-1:ACCOUNT:key/KEY_ID secrets.json > secrets.json.enc
 ```
 
 ```hcl
-# Decrypt at runtime using external data source
+# Decrypt at runtime using external data source.
+# Values returned by the external data source are still stored in state
+# if you pass them to managed resource arguments.
 data "external" "secrets" {
-  program = ["sops", "-d", "--output-type", "json", "${path.module}/secrets.tfvars.enc"]
+  program = ["sops", "-d", "--input-type", "json", "--output-type", "json", "${path.module}/secrets.json.enc"]
 }
 
 resource "aws_db_instance" "main" {
