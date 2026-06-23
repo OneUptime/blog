@@ -8,9 +8,9 @@ Description: Learn how to use MetalLB with FRRouting for advanced BGP routing ca
 
 ---
 
-MetalLB is the de facto standard for providing load balancer services in bare-metal Kubernetes clusters. While its native BGP implementation works well for basic scenarios, complex network environments often require advanced routing features. This is where FRRouting (FRR) mode comes in, offering enterprise-grade BGP capabilities including BFD (Bidirectional Forwarding Detection), VRF support, route policies, and more.
+MetalLB is the de facto standard for providing load balancer services in bare-metal Kubernetes clusters. While its native BGP implementation works well for basic scenarios, complex network environments often require advanced routing features. This is where FRRouting (FRR)-based mode comes in, offering enterprise-grade BGP capabilities including BFD (Bidirectional Forwarding Detection), VRF support, route policies through FRR-K8s, and more.
 
-In this comprehensive guide, we will explore how to configure MetalLB with FRR mode for advanced BGP routing scenarios.
+In this comprehensive guide, we will explore how to configure MetalLB with an FRR-based backend for advanced BGP routing scenarios.
 
 ## Table of Contents
 
@@ -28,11 +28,11 @@ In this comprehensive guide, we will explore how to configure MetalLB with FRR m
 
 ## Understanding MetalLB FRR Mode
 
-MetalLB traditionally uses its own native BGP speaker implementation. While functional, it lacks many advanced features that enterprise networks require. FRR mode replaces the native speaker with FRRouting, a production-proven routing suite used by major network operators worldwide.
+MetalLB traditionally uses its own native BGP speaker implementation. While functional, it lacks many advanced features that enterprise networks require. The current recommended FRR-based backend is FRR-K8s, which uses FRRouting through a Kubernetes-native API. The older FRR sidecar mode that configures FRR directly is still available, but it is deprecated and should be used only when you intentionally need that deployment model.
 
 ### Key Benefits of FRR Mode
 
-- **Full BGP feature set**: Access to all BGP capabilities including route reflectors, confederations, and extended communities
+- **Expanded BGP feature set**: Access to FRR-backed capabilities beyond MetalLB's native BGP implementation
 - **BFD support**: Sub-second failure detection for faster failover
 - **VRF awareness**: Network segmentation and multi-tenancy support
 - **Route policies**: Fine-grained control over route advertisement and acceptance
@@ -55,7 +55,7 @@ flowchart TB
             subgraph "MetalLB Speaker Pod"
                 SP1[Speaker Container]
                 FRR1[FRR Container]
-                SP1 --> |"Configures via\nFRR API"| FRR1
+                SP1 --> |"Generates\nFRR config"| FRR1
             end
             FRR1 --> |"BGP Sessions"| TOR1
         end
@@ -64,7 +64,7 @@ flowchart TB
             subgraph "MetalLB Speaker Pod 2"
                 SP2[Speaker Container]
                 FRR2[FRR Container]
-                SP2 --> |"Configures via\nFRR API"| FRR2
+                SP2 --> |"Generates\nFRR config"| FRR2
             end
             FRR2 --> |"BGP Sessions"| TOR2
         end
@@ -108,9 +108,9 @@ sequenceDiagram
 
 ## Prerequisites
 
-Before configuring MetalLB with FRR mode, ensure you have:
+Before configuring MetalLB with an FRR-based backend, ensure you have:
 
-- Kubernetes cluster version 1.20 or later
+- Kubernetes cluster version 1.13 or later
 - Helm 3.x installed
 - Network access between cluster nodes and BGP peers
 - BGP-capable routers or switches in your network
@@ -143,19 +143,22 @@ kubectl create namespace metallb-system
 
 ### Step 3: Configure Helm Values for FRR Mode
 
-Create a values file that enables FRR mode and configures essential settings. The speaker.frr.enabled flag is the key setting that switches from native BGP to FRR mode:
+Create a values file that enables the deprecated FRR sidecar mode and configures essential settings. Current MetalLB Helm charts default to FRR-K8s, so you must also disable `frrk8s.enabled` when you intentionally want the older FRR sidecar topology shown in this guide:
 
 ```yaml
 # metallb-values.yaml
-# This configuration enables FRR mode for advanced BGP features
+# This configuration enables the deprecated FRR sidecar mode for advanced BGP features
+
+# Enable Prometheus ServiceMonitors for controller and speaker metrics
+prometheus:
+  serviceMonitor:
+    controller:
+      enabled: true
+    speaker:
+      enabled: true
 
 # Controller configuration - manages IP allocation and pool assignments
 controller:
-  # Enable Prometheus metrics for monitoring IP pool usage
-  metrics:
-    enabled: true
-    serviceMonitor:
-      enabled: true
   # Resource limits ensure the controller doesn't consume excessive resources
   resources:
     limits:
@@ -167,13 +170,13 @@ controller:
 
 # Speaker configuration - runs on each node and handles BGP peering
 speaker:
-  # Enable FRR mode - this is the critical setting for advanced BGP features
+  # Enable the deprecated FRR sidecar mode
   frr:
     enabled: true
     # FRR image configuration - use a specific version for production stability
     image:
       repository: quay.io/frrouting/frr
-      tag: 9.1.0
+      tag: 10.5.3
     # Resource allocation for the FRR container
     resources:
       limits:
@@ -200,6 +203,10 @@ speaker:
       effect: NoSchedule
   # Log level for debugging - set to 'debug' when troubleshooting
   logLevel: info
+
+# Disable the default FRR-K8s backend when using the deprecated FRR sidecar mode
+frrk8s:
+  enabled: false
 ```
 
 ### Step 4: Install MetalLB with FRR Mode
@@ -207,7 +214,7 @@ speaker:
 Deploy MetalLB using the Helm chart with our custom values:
 
 ```bash
-# Install MetalLB with FRR mode enabled using the custom values file
+# Install MetalLB with the FRR sidecar mode enabled using the custom values file
 # The --wait flag ensures the command doesn't return until all pods are ready
 helm install metallb metallb/metallb \
   --namespace metallb-system \
@@ -224,8 +231,7 @@ Confirm that all MetalLB components are running correctly, including the FRR con
 # You should see controller and speaker pods with READY status
 kubectl get pods -n metallb-system
 
-# Check that the speaker pods have both speaker and frr containers
-# The READY column should show 2/2 for each speaker pod
+# Check that the speaker pods include the FRR sidecar containers
 kubectl get pods -n metallb-system -l app=metallb,component=speaker -o wide
 
 # Examine the FRR container logs to verify FRR is starting correctly
@@ -300,12 +306,12 @@ spec:
 
 ### BGP Peer Configuration
 
-Define the BGP peers (routers) that MetalLB will establish sessions with. In FRR mode, this configuration is translated to FRR's BGP configuration:
+Define the BGP peers (routers) that MetalLB will establish sessions with. In FRR-based modes, this configuration is translated to FRR's BGP configuration:
 
 ```yaml
 # bgppeer.yaml
 # Defines BGP peer relationships with external routers
-apiVersion: metallb.io/v1beta1
+apiVersion: metallb.io/v1beta2
 kind: BGPPeer
 metadata:
   name: tor-switch-1
@@ -446,7 +452,7 @@ Configure ECMP (Equal-Cost Multi-Path) routing to load balance traffic across mu
 # Configuration for multiple BGP peers with ECMP support
 # Note: FRR handles ECMP automatically when multiple equal-cost paths exist
 ---
-apiVersion: metallb.io/v1beta1
+apiVersion: metallb.io/v1beta2
 kind: BGPPeer
 metadata:
   name: tor-switch-primary
@@ -461,7 +467,7 @@ spec:
   # Primary path with higher local preference
   bfdProfile: production-bfd
 ---
-apiVersion: metallb.io/v1beta1
+apiVersion: metallb.io/v1beta2
 kind: BGPPeer
 metadata:
   name: tor-switch-secondary
@@ -553,7 +559,7 @@ spec:
   # transmitInterval is how often we send BFD packets (milliseconds)
   transmitInterval: 300
   # detectMultiplier is the number of missed packets before declaring failure
-  # Detection time = transmitInterval * detectMultiplier
+  # Detection time is based on the remote transmit interval multiplied by this value
   # With 300ms interval and multiplier of 3, detection takes ~900ms
   detectMultiplier: 3
   # echoMode enables BFD echo function for sub-100ms detection
@@ -562,7 +568,7 @@ spec:
   # passiveMode means we wait for the peer to initiate the BFD session
   # Set to false for active mode where we initiate
   passiveMode: false
-  # minimumTtl sets the minimum TTL for received BFD packets
+  # minimumTtl sets the minimum TTL for received BFD packets in multi-hop sessions
   # Security feature to prevent BFD spoofing from distant sources
   minimumTtl: 254
 ---
@@ -605,7 +611,7 @@ Update your BGP peer configuration to reference the BFD profile:
 ```yaml
 # bgppeer-with-bfd.yaml
 # BGP peer configuration with BFD enabled for fast failover
-apiVersion: metallb.io/v1beta1
+apiVersion: metallb.io/v1beta2
 kind: BGPPeer
 metadata:
   name: tor-switch-1-bfd
@@ -697,7 +703,7 @@ Configure VRF-aware BGP peering for network isolation:
 
 # bgppeer-vrf.yaml
 # BGP peer configuration within a specific VRF
-apiVersion: metallb.io/v1beta1
+apiVersion: metallb.io/v1beta2
 kind: BGPPeer
 metadata:
   name: production-vrf-peer
@@ -714,7 +720,7 @@ spec:
   password: "Production-BGP-Key"
   bfdProfile: production-bfd
 ---
-apiVersion: metallb.io/v1beta1
+apiVersion: metallb.io/v1beta2
 kind: BGPPeer
 metadata:
   name: development-vrf-peer
@@ -810,9 +816,9 @@ metadata:
   namespace: production
   annotations:
     # Specify which IP pool to use for this service
-    metallb.universe.tf/address-pool: production-vrf-pool
+    metallb.io/address-pool: production-vrf-pool
     # Optionally request a specific IP from the pool
-    # metallb.universe.tf/loadBalancerIPs: 10.100.100.50
+    # metallb.io/loadBalancerIPs: 10.100.100.50
 spec:
   type: LoadBalancer
   selector:
@@ -825,71 +831,41 @@ spec:
 
 ## Route Policies and Filtering
 
-FRR mode enables sophisticated route policies using prefix lists, route maps, and AS path filters.
+FRR-K8s mode enables additional FRR configuration to be merged with the configuration MetalLB generates. This section applies to FRR-K8s rather than the deprecated FRR sidecar mode configured earlier. Use an `FRRConfiguration` resource for policy-oriented FRR settings that are outside the MetalLB CRDs.
 
-### Configuring Route Policies via FRR
+### Configuring Route Policies via FRR-K8s
 
-For advanced route policies, you can inject custom FRR configuration. This requires creating a ConfigMap with FRR configuration snippets:
+For advanced policies, create an `FRRConfiguration` resource that is compatible with the BGP sessions MetalLB manages. The following example allows FRR-K8s to receive prefixes from a MetalLB peer:
 
 ```yaml
-# frr-config-override.yaml
-# Custom FRR configuration for advanced route policies
-# This ConfigMap is mounted into the FRR container
-apiVersion: v1
-kind: ConfigMap
+# frrconfiguration-receive.yaml
+# Additional FRR-K8s configuration merged with MetalLB-generated config
+apiVersion: frrk8s.metallb.io/v1beta1
+kind: FRRConfiguration
 metadata:
-  name: frr-config-override
+  name: receive-from-peer
   namespace: metallb-system
-data:
-  # Custom prefix list to filter which routes are accepted from peers
-  prefix-lists.conf: |
-    ! Prefix list to accept only specific networks from peers
-    ip prefix-list ALLOW-FROM-PEER seq 10 permit 10.0.0.0/8 le 24
-    ip prefix-list ALLOW-FROM-PEER seq 20 permit 172.16.0.0/12 le 24
-    ip prefix-list ALLOW-FROM-PEER seq 100 deny any
-
-    ! Prefix list to control which routes we advertise
-    ip prefix-list ADVERTISE-TO-PEER seq 10 permit 192.168.100.0/24 le 32
-    ip prefix-list ADVERTISE-TO-PEER seq 20 permit 192.168.101.0/24 le 32
-    ip prefix-list ADVERTISE-TO-PEER seq 100 deny any
-
-  # Route maps for complex policy decisions
-  route-maps.conf: |
-    ! Route map for incoming routes - apply filtering and set attributes
-    route-map IMPORT-POLICY permit 10
-      match ip address prefix-list ALLOW-FROM-PEER
-      set local-preference 100
-    route-map IMPORT-POLICY deny 100
-
-    ! Route map for outgoing routes - control what we advertise
-    route-map EXPORT-POLICY permit 10
-      match ip address prefix-list ADVERTISE-TO-PEER
-      set community 64512:100 additive
-    route-map EXPORT-POLICY deny 100
-
-    ! Route map for backup path - lower local preference
-    route-map BACKUP-PATH permit 10
-      match ip address prefix-list ALLOW-FROM-PEER
-      set local-preference 50
-    route-map BACKUP-PATH deny 100
-
-  # AS path access lists for filtering by AS path
-  as-path-filters.conf: |
-    ! Only accept routes originating from specific ASes
-    bgp as-path access-list TRUSTED-AS permit ^64513$
-    bgp as-path access-list TRUSTED-AS permit ^64514$
-    bgp as-path access-list TRUSTED-AS deny .*
+spec:
+  bgp:
+    routers:
+      - asn: 64512
+        neighbors:
+          - address: 10.0.0.1
+            asn: 64513
+            toReceive:
+              allowed:
+                mode: all
 ```
 
 ### Advanced BGP Peer with Route Policies
 
-Configure peers to use the custom route policies. Note that route map application is done through FRR configuration:
+Configure peers to use the custom route policies. Note that additional policy behavior is done through FRR-K8s configuration:
 
 ```yaml
 # bgppeer-with-policies.yaml
 # BGP peer configuration referencing route policies
-# The actual route-map configuration is in the FRR config override
-apiVersion: metallb.io/v1beta1
+# Additional policy behavior is configured with FRR-K8s FRRConfiguration
+apiVersion: metallb.io/v1beta2
 kind: BGPPeer
 metadata:
   name: tor-switch-with-policy
@@ -902,9 +878,8 @@ spec:
   keepaliveTime: 30s
   password: "BGP-Secret-Key-123"
   bfdProfile: production-bfd
-  # Note: For route-map application, you need to configure
-  # the FRR container directly using the ConfigMap override
-  # MetalLB CRDs don't directly support route-map references
+  # Note: MetalLB CRDs do not directly support route-map references.
+  # Use FRR-K8s FRRConfiguration for additional compatible FRR policy.
 ```
 
 ## Monitoring and Troubleshooting
@@ -970,7 +945,7 @@ kubectl logs -n metallb-system -l component=speaker -c frr --tail=100
 
 ### Prometheus Metrics
 
-MetalLB exposes Prometheus metrics for monitoring. Key metrics to watch:
+MetalLB exposes Prometheus metrics for monitoring. In the deprecated FRR sidecar mode shown in this guide, BGP and BFD metrics use the `metallb_` prefix. In the default FRR-K8s mode, equivalent BGP and BFD metrics use the `frrk8s_` prefix unless you configure metric relabeling. Key metrics to watch:
 
 ```bash
 # Example PromQL queries for MetalLB monitoring
@@ -1070,10 +1045,10 @@ spec:
   password: "Complex-Password-With-Numbers-123!"
 ```
 
-2. **Use BFD with minimum TTL**: Prevents BFD spoofing from remote sources
+2. **Use BFD with minimum TTL for multi-hop sessions**: Prevents BFD spoofing from remote sources
 
 ```yaml
-# Set minimumTtl to 254 to ensure BFD packets are from directly connected peers
+# Set minimumTtl for multi-hop BFD sessions when you need TTL-based filtering
 spec:
   minimumTtl: 254
 ```
@@ -1140,21 +1115,21 @@ kubectl get ipaddresspools,bgppeers,bgpadvertisements,bfdprofiles,communities -n
 
 ## Conclusion
 
-MetalLB with FRR mode provides enterprise-grade BGP capabilities for bare-metal Kubernetes clusters. By leveraging FRRouting's mature BGP implementation, you gain access to advanced features like BFD for fast failover, VRF for network segmentation, and sophisticated route policies for traffic engineering.
+MetalLB with an FRR-based backend provides enterprise-grade BGP capabilities for bare-metal Kubernetes clusters. By leveraging FRRouting's mature BGP implementation, you gain access to advanced features like BFD for fast failover, VRF for network segmentation, and additional FRR-K8s configuration for traffic engineering.
 
 Key takeaways from this guide:
 
-- **FRR mode** unlocks the full power of BGP with production-proven routing software
+- **FRR-based mode** unlocks production-proven routing software for advanced BGP use cases
 - **BFD integration** is essential for sub-second failure detection and high availability
 - **VRF support** enables network isolation for multi-tenant environments
-- **Route policies** provide fine-grained control over route advertisement and acceptance
+- **FRR-K8s configuration** can add fine-grained control beyond MetalLB's own CRDs
 - **Proper monitoring** using FRR's vtysh and Prometheus metrics is critical for operations
 
-With the configurations and best practices outlined in this guide, you are well-equipped to deploy MetalLB with FRR in production environments requiring advanced BGP capabilities.
+With the configurations and best practices outlined in this guide, you are well-equipped to deploy MetalLB with an FRR-based backend in production environments requiring advanced BGP capabilities.
 
 ## Additional Resources
 
-- [MetalLB Official Documentation](https://metallb.universe.tf/)
+- [MetalLB Official Documentation](https://metallb.io/)
 - [FRRouting Documentation](https://docs.frrouting.org/)
 - [BGP RFC 4271](https://www.rfc-editor.org/rfc/rfc4271)
 - [BFD RFC 5880](https://www.rfc-editor.org/rfc/rfc5880)
