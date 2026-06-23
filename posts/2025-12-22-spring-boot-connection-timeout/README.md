@@ -33,8 +33,8 @@ flowchart LR
 | Timeout Type | Description | Typical Value |
 |-------------|-------------|---------------|
 | Connection Timeout | Time to establish TCP connection | 5-10 seconds |
-| Socket Timeout | Time between data packets | 30-60 seconds |
-| Read Timeout | Total time to read response | 30-60 seconds |
+| Socket Timeout | Maximum idle time between network reads | 30-60 seconds |
+| Read/Response Timeout | Time allowed while waiting for a response | 30-60 seconds |
 | Write Timeout | Total time to send request | 30-60 seconds |
 
 ---
@@ -59,8 +59,8 @@ public class RestTemplateConfig {
     @Bean
     public RestTemplate restTemplate(RestTemplateBuilder builder) {
         return builder
-            .setConnectTimeout(Duration.ofSeconds(5))
-            .setReadTimeout(Duration.ofSeconds(30))
+            .connectTimeout(Duration.ofSeconds(5))
+            .readTimeout(Duration.ofSeconds(30))
             .build();
     }
 }
@@ -71,6 +71,7 @@ public class RestTemplateConfig {
 ```java
 package com.example.config;
 
+import org.apache.hc.client5.http.config.ConnectionConfig;
 import org.apache.hc.client5.http.config.RequestConfig;
 import org.apache.hc.client5.http.impl.classic.CloseableHttpClient;
 import org.apache.hc.client5.http.impl.classic.HttpClients;
@@ -91,10 +92,13 @@ public class HttpClientConfig {
             new PoolingHttpClientConnectionManager();
         connectionManager.setMaxTotal(100);
         connectionManager.setDefaultMaxPerRoute(20);
+        connectionManager.setDefaultConnectionConfig(ConnectionConfig.custom()
+            .setConnectTimeout(Timeout.ofSeconds(5))
+            .build());
 
         // Request configuration
         RequestConfig requestConfig = RequestConfig.custom()
-            .setConnectionRequestTimeout(Timeout.ofSeconds(5))
+            .setConnectionRequestTimeout(Timeout.ofSeconds(5)) // wait for a pooled connection
             .setResponseTimeout(Timeout.ofSeconds(30))
             .build();
 
@@ -233,7 +237,7 @@ spring:
       maximum-pool-size: 20
       leak-detection-threshold: 60000 # Log warning if connection held > 1 minute
 
-      # Database-specific settings
+      # Database-specific driver settings; supported names vary by JDBC driver
       data-source-properties:
         socketTimeout: 30000
         connectTimeout: 5000
@@ -245,12 +249,14 @@ spring:
 spring:
   jpa:
     properties:
+      jakarta:
+        persistence:
+          # Default query timeout in milliseconds
+          query:
+            timeout: 30000
       hibernate:
         jdbc:
-          # Default query timeout in seconds
           batch_size: 20
-        query:
-          timeout: 30
 ```
 
 ### Setting Query Timeout Programmatically
@@ -399,8 +405,8 @@ public class RedisConfig {
 ```yaml
 server:
   tomcat:
-    connection-timeout: 20000      # Connection timeout in milliseconds
-    keep-alive-timeout: 30000      # Keep-alive timeout
+    connection-timeout: 20s        # Time to wait for the request line
+    keep-alive-timeout: 30s        # Keep-alive timeout
     max-connections: 8192
     threads:
       max: 200
@@ -494,7 +500,7 @@ resilience4j:
         register-health-indicator: true
         sliding-window-size: 10
         failure-rate-threshold: 50
-        wait-duration-in-open-state: 10000
+        wait-duration-in-open-state: 10s
         permitted-number-of-calls-in-half-open-state: 3
 
   timelimiter:
@@ -554,7 +560,6 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.client.ResourceAccessException;
-import org.springframework.web.reactive.function.client.WebClientRequestException;
 
 import java.net.SocketTimeoutException;
 import java.time.Instant;
