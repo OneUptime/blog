@@ -25,13 +25,13 @@ flowchart TB
     crds[IPPool & Advertisement CRDs]
   end
   subgraph "worker nodes"
-    pods[Your Services]
+    services[Your Services]
     kubeproxy[kube-proxy]
   end
   controller -- watches --> crds
-  controller -- assigns IP --> pods
+  controller -- assigns IP --> services
   speaker -- announces --> Lan[LAN / Switch / Router]
-  Lan -- traffic --> pods
+  Lan -- traffic --> services
 ```
 
 ## Prerequisites
@@ -48,25 +48,35 @@ flowchart TB
 | Which subnet can MetalLB use? | e.g. `10.20.30.0/24`, reserve `.220-.239` for load balancers |
 | Who owns routing? | Simple Layer 2 VLAN? Or upstream router that can peer via BGP? |
 | Do you need IPv6? | Decide now so you can publish dual-stack pools |
-| Any services that must stay static? | Pin them with `loadBalancerIP` overrides |
+| Any services that must stay static? | Pin them with the MetalLB static IP annotation |
 
-Create a scratch file (`values-metallb.yaml`) so your IP intent is version-controlled:
+Create a scratch file (`metallb-config.yaml`) so your IP intent is version-controlled:
 
-This values file defines your IP address pool and tells MetalLB to use Layer 2 (ARP) announcements. Keep this file in Git alongside your other infrastructure manifests so network changes go through code review.
+This manifest defines your IP address pool and tells MetalLB to use Layer 2 (ARP) announcements. Keep this file in Git alongside your other infrastructure manifests so network changes go through code review.
 
 ```yaml
-ipAddressPools:
-  - name: baremetal-pool          # Logical name referenced by services and advertisements
-    addresses:
-      - 10.20.30.220-10.20.30.239 # 20 IPs reserved exclusively for load balancers
-l2Advertisements:
-  - ipAddressPools:
-      - baremetal-pool            # Advertise this pool via ARP on the local network segment
+apiVersion: metallb.io/v1beta1
+kind: IPAddressPool
+metadata:
+  name: baremetal-pool            # Logical name referenced by services and advertisements
+  namespace: metallb-system
+spec:
+  addresses:
+    - 10.20.30.220-10.20.30.239   # 20 IPs reserved exclusively for load balancers
+---
+apiVersion: metallb.io/v1beta1
+kind: L2Advertisement
+metadata:
+  name: baremetal-l2
+  namespace: metallb-system
+spec:
+  ipAddressPools:
+    - baremetal-pool              # Advertise this pool via ARP on the local network segment
 ```
 
 ## Step 2: Install MetalLB with Helm
 
-This sequence registers the MetalLB chart repository, creates an isolated namespace, and deploys the controller and speakers with your IP pool configuration. Running this in a dedicated namespace keeps MetalLB resources cleanly separated from application workloads.
+This sequence registers the MetalLB chart repository, creates an isolated namespace, and deploys the controller and speakers. Running this in a dedicated namespace keeps MetalLB resources cleanly separated from application workloads.
 
 ```bash
 # Add the official MetalLB Helm repository
@@ -79,18 +89,26 @@ helm repo update
 # Create a dedicated namespace for MetalLB components
 kubectl create namespace metallb-system
 
-# Install MetalLB with your IP pool configuration
+# Allow the speaker pods to run with the privileges required for L2/BGP networking
+kubectl label namespace metallb-system \
+  pod-security.kubernetes.io/enforce=privileged \
+  pod-security.kubernetes.io/audit=privileged \
+  pod-security.kubernetes.io/warn=privileged
+
+# Install MetalLB
 helm upgrade --install metallb metallb/metallb \
   --namespace metallb-system \
-  --version 0.14.7 \              # Pin version for reproducible deployments
-  -f values-metallb.yaml          # Apply your address pool and advertisement config
+  --version 0.14.7
+
+# Apply your address pool and advertisement config
+kubectl apply -f metallb-config.yaml
 ```
 
 What this does:
 
 - Installs the CRDs (`IPAddressPool`, `L2Advertisement`, `BGPPeer`, etc.).
 - Deploys the controller Deployment and speaker DaemonSet.
-- Seeds your Layer 2 pool plus advertisement from the values file.
+- Applies your Layer 2 pool plus advertisement from the config manifest.
 
 Verify the rollout:
 
@@ -100,45 +118,60 @@ These commands confirm that MetalLB components are running and your IP pool is p
 # Verify controller and speaker pods are running
 kubectl get pods -n metallb-system
 
-# Confirm your IP address pool was created from the values file
-kubectl get ipaddresspools.metallb.io
+# Confirm your IP address pool was created from the config manifest
+kubectl get ipaddresspools.metallb.io -n metallb-system
 
 # Verify Layer 2 advertisements are active
-kubectl get l2advertisements.metallb.io
+kubectl get l2advertisements.metallb.io -n metallb-system
 ```
 
 Everything should show `READY` within a few seconds because the controller and speakers are lightweight.
 
 ## Step 3: (Optional) Enable BGP for routed prefixes
 
-If your network team prefers real routing over ARP flooding, extend the values file:
+If your network team prefers real routing over ARP flooding, extend the config manifest:
 
 BGP mode integrates MetalLB with your datacenter routing infrastructure. Each speaker establishes a peering session with your core router and announces load balancer IPs as /32 routes, enabling proper ECMP load distribution and faster failover than Layer 2.
 
 ```yaml
-bgpPeers:
-  - name: core-router               # Friendly name for this peering relationship
-    myASN: 64513                    # Your cluster's private AS number
-    peerASN: 64512                  # Your router's AS number
-    peerAddress: 10.20.30.1         # Router's IP address for BGP peering
-    holdTime: 30s                   # Time before session is considered dead
-    keepaliveTime: 10s              # Interval between keepalive messages
-bgpAdvertisements:
-  - aggregationLength: 32           # Advertise each IP as a /32 host route
-    ipAddressPools:
-      - baremetal-pool              # Announce IPs from this pool via BGP
+apiVersion: metallb.io/v1beta2
+kind: BGPPeer
+metadata:
+  name: core-router                 # Friendly name for this peering relationship
+  namespace: metallb-system
+spec:
+  myASN: 64513                      # Your cluster's private AS number
+  peerASN: 64512                    # Your router's AS number
+  peerAddress: 10.20.30.1           # Router's IP address for BGP peering
+  holdTime: 30s                     # Time before session is considered dead
+  keepaliveTime: 10s                # Interval between keepalive messages
+---
+apiVersion: metallb.io/v1beta1
+kind: BGPAdvertisement
+metadata:
+  name: baremetal-bgp
+  namespace: metallb-system
+spec:
+  aggregationLength: 32             # Advertise each IPv4 IP as a /32 host route
+  ipAddressPools:
+    - baremetal-pool                # Announce IPs from this pool via BGP
 ```
 
-Then re-run the Helm upgrade. Speakers establish BGP sessions from every node that runs user workloads, ensuring failover if a node dies. Confirm with:
+Then apply the updated manifest. Speakers establish BGP sessions from each eligible node running the speaker, ensuring failover if a node dies. Confirm with:
 
-These commands verify that BGP peering is established and show session state details. Look for "Established" status to confirm successful connectivity with your router.
+These commands verify that the BGP resources exist and show session state details from the FRR container used by the pinned chart. Look for "Established" status to confirm successful connectivity with your router.
 
 ```bash
 # List all BGP peer configurations
-kubectl get bgppeers.metallb.io
+kubectl get bgppeers.metallb.io -n metallb-system
 
-# Show detailed session state including timers and received routes
-kubectl describe bgppeers core-router -n metallb-system
+# Pick a speaker pod and show BGP session state
+SPEAKER_POD=$(kubectl get pods -n metallb-system \
+  -l app.kubernetes.io/component=speaker \
+  -o jsonpath='{.items[0].metadata.name}')
+
+kubectl exec -n metallb-system "$SPEAKER_POD" -c frr -- \
+  vtysh -c "show bgp summary"
 ```
 
 ## Step 4: Expose a real service
@@ -209,10 +242,10 @@ curl http://10.20.30.221
 
 ## Step 5: Operational guardrails
 
-- **Pin VIPs for critical services** – Add `spec.loadBalancerIP: 10.20.30.230` to Services when DNS already points at a specific address.
+- **Pin VIPs for critical services** – Add `metallb.universe.tf/loadBalancerIPs: 10.20.30.230` to Services when DNS already points at a specific address.
 - **Leverage annotations** – `metallb.universe.tf/address-pool: baremetal-pool` lets you pick different pools per namespace (e.g., DMZ vs internal).
-- **Watch for conflicts** – Speakers log collisions if DHCP ever hands out a reserved IP. Scrape `metallb_controller_reallocate_total` to alert on it.
-- **Treat Helm values as code** – Check the values file into Git, gate changes through PRs, and keep release notes tied to chart versions.
+- **Watch for conflicts** – Keep DHCP scopes outside MetalLB pools and alert if allocator usage or service events show unexpected churn.
+- **Treat manifests as code** – Check the MetalLB config manifest into Git, gate changes through PRs, and keep release notes tied to chart versions.
 
 ## Step 6: Verify with observability
 
@@ -220,8 +253,8 @@ curl http://10.20.30.221
 | --- | --- | --- |
 | Controller health | `kubectl -n metallb-system logs deploy/metallb-controller` | No retry spam, reconciliation loops under 100ms |
 | Speaker status | `kubectl -n metallb-system logs ds/metallb-speaker -f` | One `memberlist: got local node address` per node |
-| Prometheus metrics | scrape `metallb_controller_allocations{}` | Non-zero after first Service, no rapid churn |
-| BGP sessions | `kubectl get bgppeers.metallb.io -o wide` | `Established` with expected ASN pairs |
+| Prometheus metrics | scrape `metallb_allocator_addresses_in_use_total` | Non-zero after first Service, no rapid churn |
+| BGP sessions | `metallb_bgp_session_up` or `vtysh -c "show bgp summary"` | `Established` with expected ASN pairs |
 
 Feed those metrics into your existing observability stack (OneUptime, Prometheus, etc.) so you can alert before `LoadBalancer` allocations stall.
 
@@ -229,11 +262,11 @@ Feed those metrics into your existing observability stack (OneUptime, Prometheus
 
 | Symptom | Likely cause | Fix |
 | --- | --- | --- |
-| `EXTERNAL-IP` stuck on `<pending>` | No address pool matched | Check annotations and `ipAddressPools` names |
+| `EXTERNAL-IP` stuck on `<pending>` | No address pool matched | Check annotations and `IPAddressPool` names |
 | VIP assigned but unreachable | Switch blocks ARP spoofing | Add MAC exceptions or move to BGP | 
 | Random DHCP conflicts | Pool overlaps with DHCP scope | Shrink scopes or exclude MetalLB range in DHCP server |
 | BGP session flaps | Keepalive/hold timers mismatched | Align timers with router defaults and confirm firewall rules |
 
 ## Wrap-up
 
-MetalLB brings cloud-style load balancers to hardware you already own. Installing it with Helm keeps every knob- address pools, advertisements, chart versions- in source control. Start with a tiny Layer 2 pool, prove the automation with a demo Service, and only then graduate to BGP and multiple subnets. Once it is in place, every `type: LoadBalancer` manifest your teams already ship will “just work” on bare metal.
+MetalLB brings cloud-style load balancers to hardware you already own. Installing it with Helm and keeping the MetalLB config manifest in Git keeps every knob- address pools, advertisements, chart versions- in source control. Start with a tiny Layer 2 pool, prove the automation with a demo Service, and only then graduate to BGP and multiple subnets. Once it is in place, every `type: LoadBalancer` manifest your teams already ship will “just work” on bare metal.
