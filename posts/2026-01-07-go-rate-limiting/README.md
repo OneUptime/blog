@@ -88,6 +88,19 @@ func NewTokenBucket(capacity float64, refillRate float64) *TokenBucket {
 	}
 }
 
+// refill adds tokens based on elapsed time since the last refill.
+// The caller must hold tb.mu.
+func (tb *TokenBucket) refill(now time.Time) {
+	elapsed := now.Sub(tb.lastRefill).Seconds()
+	tb.tokens += elapsed * tb.refillRate
+
+	if tb.tokens > tb.capacity {
+		tb.tokens = tb.capacity
+	}
+
+	tb.lastRefill = now
+}
+
 // Allow checks if a request should be allowed and consumes a token if so.
 // Returns true if the request is allowed, false if rate limited.
 func (tb *TokenBucket) Allow() bool {
@@ -96,15 +109,7 @@ func (tb *TokenBucket) Allow() bool {
 
 	// Calculate tokens to add based on elapsed time since last refill
 	now := time.Now()
-	elapsed := now.Sub(tb.lastRefill).Seconds()
-	tb.tokens += elapsed * tb.refillRate
-
-	// Cap tokens at bucket capacity to prevent unlimited accumulation
-	if tb.tokens > tb.capacity {
-		tb.tokens = tb.capacity
-	}
-
-	tb.lastRefill = now
+	tb.refill(now)
 
 	// Check if we have at least one token available
 	if tb.tokens >= 1 {
@@ -120,6 +125,7 @@ func (tb *TokenBucket) Allow() bool {
 func (tb *TokenBucket) TokensRemaining() float64 {
 	tb.mu.Lock()
 	defer tb.mu.Unlock()
+	tb.refill(time.Now())
 	return tb.tokens
 }
 ```
@@ -248,6 +254,25 @@ func NewSlidingWindow(limit int, windowSize time.Duration) *SlidingWindow {
 	}
 }
 
+// advanceWindow moves counters forward when time enters a new window.
+// The caller must hold sw.mu.
+func (sw *SlidingWindow) advanceWindow(now time.Time) {
+	currentWindow := now.Truncate(sw.windowSize)
+
+	if currentWindow.After(sw.windowStart) {
+		windowsPassed := int(currentWindow.Sub(sw.windowStart) / sw.windowSize)
+
+		if windowsPassed == 1 {
+			sw.previousCount = sw.currentCount
+			sw.currentCount = 0
+		} else {
+			sw.previousCount = 0
+			sw.currentCount = 0
+		}
+		sw.windowStart = currentWindow
+	}
+}
+
 // Allow checks if a request should be allowed using the sliding window algorithm.
 // The algorithm estimates the request rate by combining counts from the current
 // and previous windows, weighted by how far we are into the current window.
@@ -256,24 +281,7 @@ func (sw *SlidingWindow) Allow() bool {
 	defer sw.mu.Unlock()
 
 	now := time.Now()
-	currentWindow := now.Truncate(sw.windowSize)
-
-	// Check if we have moved to a new window
-	if currentWindow.After(sw.windowStart) {
-		// Calculate how many windows have passed
-		windowsPassed := int(currentWindow.Sub(sw.windowStart) / sw.windowSize)
-
-		if windowsPassed == 1 {
-			// Moved to next window: current becomes previous
-			sw.previousCount = sw.currentCount
-			sw.currentCount = 0
-		} else {
-			// Skipped multiple windows: reset both counts
-			sw.previousCount = 0
-			sw.currentCount = 0
-		}
-		sw.windowStart = currentWindow
-	}
+	sw.advanceWindow(now)
 
 	// Calculate the weighted count using sliding window formula
 	// Weight represents how far we are into the current window (0.0 to 1.0)
@@ -298,6 +306,7 @@ func (sw *SlidingWindow) GetCount() float64 {
 	defer sw.mu.Unlock()
 
 	now := time.Now()
+	sw.advanceWindow(now)
 	elapsedInWindow := now.Sub(sw.windowStart)
 	weight := float64(sw.windowSize-elapsedInWindow) / float64(sw.windowSize)
 
@@ -427,7 +436,7 @@ func (rtb *RedisTokenBucket) Allow(ctx context.Context, key string) (bool, error
 		end
 
 		-- Update bucket state in Redis with expiry to auto-cleanup inactive keys
-		redis.call('HMSET', key, 'tokens', tokens, 'last_refill', now)
+		redis.call('HSET', key, 'tokens', tokens, 'last_refill', now)
 		redis.call('EXPIRE', key, 3600)  -- Expire after 1 hour of inactivity
 
 		return {allowed, tokens}
@@ -509,6 +518,7 @@ func (rsw *RedisSlidingWindow) Allow(ctx context.Context, key string) (bool, err
 	// Lua script ensures atomic execution of all operations
 	script := redis.NewScript(`
 		local key = KEYS[1]
+		local sequence_key = KEYS[2]
 		local limit = tonumber(ARGV[1])
 		local window_size_ms = tonumber(ARGV[2])
 		local now = tonumber(ARGV[3])
@@ -522,8 +532,10 @@ func (rsw *RedisSlidingWindow) Allow(ctx context.Context, key string) (bool, err
 
 		if count < limit then
 			-- Add current request with timestamp as score
-			-- Using now + unique suffix prevents duplicate scores
-			redis.call('ZADD', key, now, now .. ':' .. math.random(1000000))
+			-- A Redis-side sequence creates a unique member even for same-millisecond requests
+			local sequence = redis.call('INCR', sequence_key)
+			redis.call('PEXPIRE', sequence_key, window_size_ms + 1000)
+			redis.call('ZADD', key, now, now .. ':' .. sequence)
 			-- Set TTL slightly longer than window to ensure cleanup
 			redis.call('PEXPIRE', key, window_size_ms + 1000)
 			return {1, count + 1}
@@ -533,10 +545,11 @@ func (rsw *RedisSlidingWindow) Allow(ctx context.Context, key string) (bool, err
 	`)
 
 	redisKey := fmt.Sprintf("%s:%s", rsw.keyPrefix, key)
+	sequenceKey := fmt.Sprintf("%s:%s:seq", rsw.keyPrefix, key)
 	nowMs := time.Now().UnixMilli()
 	windowSizeMs := rsw.windowSize.Milliseconds()
 
-	result, err := script.Run(ctx, rsw.client, []string{redisKey},
+	result, err := script.Run(ctx, rsw.client, []string{redisKey, sequenceKey},
 		rsw.limit, windowSizeMs, nowMs).Slice()
 	if err != nil {
 		return false, fmt.Errorf("redis script execution failed: %w", err)
@@ -586,6 +599,7 @@ package middleware
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"time"
 
@@ -608,13 +622,9 @@ type DistributedRateLimiter interface {
 type KeyExtractor func(*gin.Context) string
 
 // IPKeyExtractor returns the client IP as the rate limit key.
-// Handles X-Forwarded-For header for clients behind proxies.
+// Gin's ClientIP handles trusted proxy headers such as X-Forwarded-For.
 func IPKeyExtractor() KeyExtractor {
 	return func(c *gin.Context) string {
-		// Check X-Forwarded-For first for clients behind load balancers
-		if xff := c.GetHeader("X-Forwarded-For"); xff != "" {
-			return xff
-		}
 		return c.ClientIP()
 	}
 }
@@ -717,7 +727,6 @@ For applications using the standard library's net/http package:
 package middleware
 
 import (
-	"context"
 	"net/http"
 )
 
@@ -833,6 +842,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/redis/go-redis/v9"
+	"github.com/yourorg/rate-limiter/middleware"
+	"github.com/yourorg/rate-limiter/ratelimit"
 )
 
 func main() {
@@ -846,7 +857,7 @@ func main() {
 	// Verify Redis connection
 	ctx := context.Background()
 	if err := redisClient.Ping(ctx).Err(); err != nil {
-		log.Printf("Warning: Redis unavailable, falling back to in-memory: %v", err)
+		log.Printf("Warning: Redis unavailable; distributed limiter will fail open: %v", err)
 	}
 
 	// Create rate limiters
@@ -921,6 +932,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/yourorg/rate-limiter/ratelimit"
 )
 
 // TestTokenBucketBasic verifies basic token bucket behavior.
@@ -997,8 +1010,8 @@ func TestSlidingWindowAccuracy(t *testing.T) {
 		t.Error("11th request should be rejected")
 	}
 
-	// Wait for half the window to pass
-	time.Sleep(500 * time.Millisecond)
+	// Wait until the current window rolls over, then half of the next window.
+	time.Sleep(time.Until(time.Now().Truncate(time.Second).Add(1500 * time.Millisecond)))
 
 	// Sliding window should allow some requests based on weighted average
 	// After 0.5s, weight = 0.5, estimated = 10 * 0.5 + 0 = 5
