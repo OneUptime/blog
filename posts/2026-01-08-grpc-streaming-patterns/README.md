@@ -128,7 +128,6 @@ package server
 
 import (
     "context"
-    "fmt"
     "time"
 
     pb "github.com/example/streaming"
@@ -188,7 +187,6 @@ import (
     "time"
 
     pb "github.com/example/streaming"
-    "google.golang.org/grpc"
     "google.golang.org/grpc/codes"
     "google.golang.org/grpc/status"
 )
@@ -271,7 +269,6 @@ Server streaming allows the server to send multiple responses for a single clien
 package server
 
 import (
-    "fmt"
     "time"
 
     pb "github.com/example/streaming"
@@ -627,11 +624,11 @@ package client
 
 import (
     "context"
+    "fmt"
     "log"
     "time"
 
     pb "github.com/example/streaming"
-    "google.golang.org/grpc"
 )
 
 func UploadItems(client pb.DataServiceClient, items []*pb.Item) (*pb.UploadSummary, error) {
@@ -716,7 +713,6 @@ package server
 
 import (
     "io"
-    "log"
     "sync"
 
     pb "github.com/example/streaming"
@@ -1110,7 +1106,6 @@ import (
     "time"
 
     pb "github.com/example/streaming"
-    "google.golang.org/grpc"
 )
 
 type RecoverableStream struct {
