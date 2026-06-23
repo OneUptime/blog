@@ -70,8 +70,8 @@ Because eBPF hooks into kernel functions and system calls, it can observe:
 
 | Layer | What eBPF Sees |
 |-------|----------------|
-| **Network** | Every TCP connection, HTTP request/response, DNS query |
-| **System Calls** | File I/O, process creation, memory allocation |
+| **Network** | TCP connections, supported HTTP/gRPC requests, DNS queries |
+| **System Calls** | File I/O, process creation, memory-management syscalls such as `mmap`/`brk` |
 | **User Functions** | Function entry/exit via uprobes (if symbols available) |
 | **Language Runtimes** | Go, Node.js, Python, Java runtime internals |
 
@@ -140,7 +140,7 @@ A typical production setup looks like this:
 
 **Pattern 1: DaemonSet (Kubernetes)**
 
-This DaemonSet configuration deploys the eBPF agent on every node in your cluster. The `hostPID` and `hostNetwork` settings are required because eBPF needs to observe processes across the entire node, not just within a single pod.
+This DaemonSet configuration deploys the eBPF agent on every node in your cluster. The `hostPID` setting is required because eBPF needs to observe processes across the entire node, not just within a single pod.
 
 ```yaml
 # eBPF agent runs on every node to observe all pods
@@ -154,9 +154,11 @@ spec:
     matchLabels:
       app: ebpf-agent
   template:
+    metadata:
+      labels:
+        app: ebpf-agent
     spec:
       hostPID: true      # Required: access to host process namespace for eBPF
-      hostNetwork: true  # Required: access to host network for tracing
       containers:
       - name: agent
         securityContext:
@@ -170,6 +172,7 @@ The sidecar pattern offers more isolation but increases resource overhead. Each 
 ```yaml
 # eBPF agent as sidecar (more isolation, more overhead)
 spec:
+  shareProcessNamespace: true  # Required so the sidecar can access the app process
   containers:
   - name: my-app
     image: my-app:latest
@@ -212,7 +215,7 @@ Several tools combine eBPF with OpenTelemetry. Here's how they compare:
 |--------|---------|
 | **Focus** | Full distributed tracing with context propagation |
 | **Languages** | Go, Python, Node.js, Java, .NET |
-| **Output** | OTLP (traces) |
+| **Output** | OTLP (traces, metrics, logs depending on instrumentation and destination) |
 | **Deployment** | Kubernetes-native (operator) |
 | **License** | Apache 2.0 |
 | **Best For** | Kubernetes environments, distributed tracing |
@@ -255,7 +258,7 @@ Beyla is the simplest way to get started with eBPF-based OpenTelemetry instrumen
 
 ### Prerequisites
 
-- Linux kernel 5.8+ (for BTF support)
+- Linux kernel 5.8+ (for BTF support), or supported distributions with required eBPF backports
 - Root/privileged access
 - Target application running
 
@@ -265,9 +268,10 @@ These commands download and install the Beyla binary. Beyla is distributed as a 
 
 ```bash
 # Download the latest release from GitHub
-curl -LO https://github.com/grafana/beyla/releases/latest/download/beyla-linux-amd64.tar.gz
+BEYLA_VERSION=$(curl -s https://api.github.com/repos/grafana/beyla/releases/latest | sed -n 's/.*"tag_name": "\(.*\)".*/\1/p')
+curl -LO "https://github.com/grafana/beyla/releases/download/${BEYLA_VERSION}/beyla-linux-amd64-${BEYLA_VERSION}.tar.gz"
 # Extract the binary
-tar xzf beyla-linux-amd64.tar.gz
+tar xzf "beyla-linux-amd64-${BEYLA_VERSION}.tar.gz"
 # Move to a directory in PATH for easy access
 sudo mv beyla /usr/local/bin/
 ```
@@ -293,6 +297,9 @@ open_port: 8080  # Instrument processes listening on this port
 # OTLP export configuration - where to send telemetry data
 otel_traces_export:
   endpoint: http://localhost:4317  # OTel Collector gRPC endpoint
+  sampler:
+    name: parentbased_traceidratio
+    arg: "0.1"  # Sample 10% of traces (adjust for production)
 
 otel_metrics_export:
   endpoint: http://localhost:4317
@@ -302,11 +309,6 @@ attributes:
   kubernetes:
     enable: true  # Auto-detect K8s metadata (pod name, namespace, etc.)
 
-# Sampling configuration to control data volume
-traces:
-  sampler:
-    name: parentbased_traceidratio
-    arg: "0.1"  # Sample 10% of traces (adjust for production)
 ```
 
 ### Running Beyla
@@ -400,12 +402,13 @@ These commands install the Odigos CLI, which manages the Odigos operator in your
 
 ```bash
 # Install the Odigos CLI using Homebrew (macOS)
-brew install odigos-io/homebrew-odigos-cli/odigos
+brew install odigos-io/odigos-cli/odigos
 
 # Or download directly for Linux
-curl -LO https://github.com/odigos-io/odigos/releases/latest/download/odigos-cli-linux-amd64
-chmod +x odigos-cli-linux-amd64
-sudo mv odigos-cli-linux-amd64 /usr/local/bin/odigos
+ODIGOS_VERSION=$(curl -s https://api.github.com/repos/odigos-io/odigos/releases/latest | sed -n 's/.*"tag_name": "v\([^"]*\)".*/\1/p')
+curl -LO "https://github.com/odigos-io/odigos/releases/download/v${ODIGOS_VERSION}/cli_${ODIGOS_VERSION}_linux_amd64.tar.gz"
+tar xzf "cli_${ODIGOS_VERSION}_linux_amd64.tar.gz"
+sudo mv odigos /usr/local/bin/odigos
 ```
 
 ### Deploy to Kubernetes
@@ -420,7 +423,7 @@ odigos install
 # - odigos-system namespace
 # - Odigos operator (manages instrumentation)
 # - Instrumentor DaemonSet (injects instrumentation)
-# - OTel Collector (optional, for telemetry collection)
+# - OTel Collector components for telemetry collection
 ```
 
 ### Configure a Destination
@@ -431,10 +434,8 @@ After installation, configure where Odigos should send telemetry. You can use th
 # Add your observability backend using the web UI
 odigos ui
 
-# Or via CLI for automated setups
-odigos destination add oneuptime \
-  --endpoint https://otlp.oneuptime.com \
-  --api-key YOUR_API_KEY
+# Or via a Kubernetes manifest for automated setups
+kubectl apply -f oneuptime.yaml
 ```
 
 ### Instrument Namespaces
@@ -443,10 +444,18 @@ These commands tell Odigos which workloads to instrument. You can target entire 
 
 ```bash
 # Instrument all workloads in a namespace - broadest approach
-odigos instrument namespace my-app-namespace
+odigos sources create my-apps \
+  --workload-kind=Namespace \
+  --workload-name=my-app-namespace \
+  --workload-namespace=my-app-namespace \
+  -n odigos-system
 
 # Or specific workloads for more control
-odigos instrument deployment my-service -n my-namespace
+odigos sources create my-service \
+  --workload-kind=Deployment \
+  --workload-name=my-service \
+  --workload-namespace=my-namespace \
+  -n odigos-system
 ```
 
 ### How Odigos Works
@@ -501,7 +510,7 @@ Here's what eBPF-based tools can and cannot capture automatically:
 | **Database Queries** | Query text, duration, database type (varies by tool) |
 | **DNS Lookups** | Domain, resolution time, result |
 | **TCP Connections** | Source, destination, bytes transferred |
-| **TLS Handshakes** | Certificate info, handshake duration |
+| **TLS/HTTPS Traffic** | Capture support varies by protocol, runtime, and tool configuration |
 
 ### Partially Captured (Varies by Tool/Language)
 
@@ -568,13 +577,14 @@ func (s *OrderService) CreateOrder(ctx context.Context, req *OrderRequest) (*Ord
     // Manual span for business logic detail - eBPF can't see this granularity
     ctx, span := tracer.Start(ctx, "order.validate")
     err := s.validateOrder(ctx, req)
-    span.End()
     if err != nil {
         // Manual: Add error details eBPF can't see (exception type, message)
         span.RecordError(err)
         span.SetStatus(codes.Error, "validation failed")
+        span.End()
         return nil, err
     }
+    span.End()
 
     // eBPF captures the database call automatically (timing, query)
     // Manual: Add business context that gives meaning to the data
@@ -585,6 +595,10 @@ func (s *OrderService) CreateOrder(ctx context.Context, req *OrderRequest) (*Ord
         attribute.Int("order.items_count", len(req.Items)),     // Cardinality info
     )
     order, err := s.repo.Save(ctx, req)
+    if err != nil {
+        span.RecordError(err)
+        span.SetStatus(codes.Error, "save failed")
+    }
     span.End()
 
     return order, err
@@ -656,10 +670,10 @@ A critical question: **What's the cost of running eBPF-based auto-instrumentatio
 
 | Factor | Impact | Mitigation |
 |--------|--------|------------|
-| High request volume | More eBPF events to process | Increase sampling |
+| High request volume | More eBPF events to process | Lower the sampling ratio |
 | Many traced endpoints | More probes attached | Be selective |
 | Full payload capture | Memory/CPU for data copy | Disable or limit |
-| Low sampling rate | More data to export | Use head sampling |
+| High sampling rate | More data to export | Use head sampling |
 
 ### Reducing Overhead
 
@@ -667,14 +681,14 @@ This configuration demonstrates how to reduce eBPF overhead through sampling and
 
 ```yaml
 # Beyla example: Reduce overhead with sampling
-traces:
+otel_traces_export:
   sampler:
     name: parentbased_traceidratio
     arg: "0.01"  # 1% sampling for high-traffic production
 
 # Exclude high-volume, low-value endpoints from tracing
 routes:
-  ignored:
+  ignored_patterns:
     - /health   # Health checks - high volume, low insight
     - /ready    # Readiness probes - same
     - /metrics  # Prometheus scrapes - already have metrics
@@ -777,13 +791,13 @@ routes:
     - /api/*        # Trace API calls
     - /graphql      # Trace GraphQL
   # Exclude high-volume, low-value endpoints
-  ignored:
+  ignored_patterns:
     - /health       # Skip health checks
     - /metrics      # Skip metrics endpoint
     - /favicon.ico  # Skip static assets
 
 # Sample to control volume in production
-traces:
+otel_traces_export:
   sampler:
     name: parentbased_traceidratio
     arg: "0.1"  # 10% in production - adjust based on traffic
@@ -795,11 +809,19 @@ Start with non-production environments to validate overhead and data quality bef
 
 ```bash
 # Start with non-production to validate behavior
-odigos instrument namespace staging
+odigos sources create staging \
+  --workload-kind=Namespace \
+  --workload-name=staging \
+  --workload-namespace=staging \
+  -n odigos-system
 
 # Verify overhead and data quality (check CPU, memory, latency impact)
 # Then expand to production incrementally
-odigos instrument namespace production
+odigos sources create production \
+  --workload-kind=Namespace \
+  --workload-name=production \
+  --workload-namespace=production \
+  -n odigos-system
 ```
 
 ### Monitoring the Monitoring
@@ -825,7 +847,7 @@ prometheus:
 eBPF-based auto-instrumentation represents a paradigm shift in observability. By moving instrumentation to the kernel level, we can:
 
 - **Eliminate instrumentation toil**: No more per-service SDK integration
-- **Achieve universal coverage**: Observe any application, any language
+- **Achieve broad coverage**: Observe supported applications across many languages
 - **Reduce blind spots**: Catch the services that fell through the cracks
 - **Accelerate onboarding**: New services are observable immediately
 
