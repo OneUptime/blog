@@ -87,7 +87,8 @@ Check the DNS configuration inside the container:
 
 ```bash
 # Check what DNS servers the container uses
-# Should show 127.0.0.11 for Docker's embedded DNS
+# On the default bridge this shows the host's DNS servers; on a
+# user-defined network it shows 127.0.0.11 (Docker's embedded DNS)
 docker run --rm alpine cat /etc/resolv.conf
 
 # Test direct DNS lookup to identify where resolution fails
@@ -260,7 +261,7 @@ docker run --dns 8.8.8.8 --dns 1.1.1.1 myapp
 docker run --dns-search example.com myapp
 
 # Override DNS options - tune timeout and retry behavior
-docker run --dns-opt timeout:2 --dns-opt attempts:3 myapp
+docker run --dns-option timeout:2 --dns-option attempts:3 myapp
 
 # Override hostname - sets the container's hostname
 docker run --hostname api.local myapp
@@ -467,7 +468,7 @@ docker network inspect mynet
 # Add running container to network (connect without restart)
 docker network connect mynet existing-container
 
-# Create network with custom DNS options
+# Create a bridge network with custom driver options (here, the default host binding IP)
 docker network create --driver bridge --opt "com.docker.network.bridge.host_binding_ipv4"="0.0.0.0" mynet
 ```
 
