@@ -90,13 +90,10 @@ networking:
   podSubnet: "10.244.0.0/16,fd00:10:244::/56"
   # Service network CIDRs for both IP families
   serviceSubnet: "10.96.0.0/16,fd00:10:96::/112"
----
-apiVersion: kubeadm.k8s.io/v1beta3
-kind: InitConfiguration
-nodeRegistration:
-  kubeletExtraArgs:
-    # Enable dual-stack feature gate (default in K8s 1.23+)
-    feature-gates: "IPv6DualStack=true"
+# Dual-stack is GA since Kubernetes 1.23 and enabled automatically
+# whenever both an IPv4 and IPv6 CIDR are supplied above. The old
+# IPv6DualStack feature gate reached GA in 1.23 and was removed in 1.27,
+# so it must NOT be set on current clusters or kubelet will fail to start.
 ```
 
 ### Verify Dual-Stack Services
@@ -812,7 +809,7 @@ kubectl exec -n dns-test dns-test-pod -- nslookup -type=A google.com
 kubectl exec -n dns-test dns-test-pod -- nslookup -type=AAAA google.com
 
 # Test reverse DNS (PTR) for IPv6
-kubectl exec -n dns-test dns-test-pod -- nslookup -type=PTR 1.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.8.8.8.8.8.8.b.d.0.1.0.0.2.ip6.arpa
+kubectl exec -n dns-test dns-test-pod -- nslookup -type=PTR 1.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.8.b.d.0.1.0.0.2.ip6.arpa
 
 # Use dig for more detailed output
 kubectl exec -n dns-test dns-test-pod -- dig AAAA kubernetes.default.svc.cluster.local @10.96.0.10
@@ -934,17 +931,21 @@ spec:
             summary: "CoreDNS is down"
             description: "CoreDNS has been down for more than 2 minutes"
 
-        # Alert: AAAA query failures
-        - alert: CoreDNSIPv6ResolutionFailing
+        # Alert: DNS resolution failure rate (proxy for IPv6/AAAA problems)
+        # Note: coredns_dns_responses_total is NOT broken down by query type,
+        # so an AAAA-specific failure rate cannot be derived from stock metrics.
+        # This tracks the overall SERVFAIL rate, which is where failing
+        # AAAA lookups and unreachable IPv6 upstreams typically surface.
+        - alert: CoreDNSResolutionFailing
           expr: |
-            sum(rate(coredns_dns_responses_total{qtype="AAAA",rcode!="NOERROR"}[5m])) /
-            sum(rate(coredns_dns_responses_total{qtype="AAAA"}[5m])) > 0.1
+            sum(rate(coredns_dns_responses_total{rcode="SERVFAIL"}[5m])) /
+            sum(rate(coredns_dns_responses_total[5m])) > 0.1
           for: 5m
           labels:
             severity: warning
           annotations:
-            summary: "IPv6 DNS resolution has high failure rate"
-            description: "AAAA query failure rate is {{ $value | humanizePercentage }}"
+            summary: "CoreDNS resolution failure rate is high"
+            description: "SERVFAIL rate is {{ $value | humanizePercentage }}"
 ```
 
 ### Grafana Dashboard Queries
@@ -966,8 +967,10 @@ sum(rate(coredns_cache_hits_total[5m])) /
 # Forward request latency by upstream server
 histogram_quantile(0.95, sum(rate(coredns_forward_request_duration_seconds_bucket[5m])) by (le, to))
 
-# IPv6 upstream server health
-coredns_forward_healthcheck_broken_total{to=~".*:.*:.*"}
+# IPv6 upstream server health (failed health checks per upstream)
+# The "to" label lets us match IPv6 upstreams; coredns_forward_healthcheck_broken_total
+# has no labels and only counts when ALL upstreams are down, so it cannot be filtered.
+coredns_proxy_healthcheck_failures_total{proxy_name="forward", to=~".*:.*:.*"}
 ```
 
 ## Troubleshooting IPv6 DNS Issues
@@ -1140,7 +1143,10 @@ spec:
 
 ```yaml
 # coredns-dnssec.yaml
-# Enable DNSSEC validation for secure DNS resolution
+# Secure DNS resolution by forwarding to DNSSEC-validating upstream resolvers.
+# Note: CoreDNS itself does not validate DNSSEC. The built-in dnssec plugin only
+# SIGNS zones that CoreDNS is authoritative for; validation must be delegated to
+# upstream validating resolvers such as Quad9 (9.9.9.9 / 2620:fe::fe).
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -1163,14 +1169,12 @@ data:
 
         prometheus :9153
 
-        # dnssec: Enable DNSSEC validation
-        # Only enable if your upstream DNS supports DNSSEC
-        dnssec {
-           # Trust anchors for root zone
-           # Updated periodically - check IANA for current values
-        }
-
-        # Forward to DNSSEC-validating resolvers
+        # Forward to DNSSEC-validating resolvers.
+        # Quad9 validates DNSSEC upstream and returns SERVFAIL for records that
+        # fail validation, so the cluster benefits from DNSSEC without CoreDNS
+        # needing to validate locally.
+        # (The CoreDNS dnssec plugin is NOT used here: it signs authoritative
+        # zones rather than validating answers, and it requires a signing key.)
         forward . 9.9.9.9 149.112.112.112 2620:fe::fe 2620:fe::9 {
            max_concurrent 1000
            health_check 5s
