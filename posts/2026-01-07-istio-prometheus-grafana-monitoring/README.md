@@ -30,8 +30,8 @@ graph TB
 
     subgraph "Istio Control Plane"
         C[istiod]
-        D[Pilot]
-        E[Citadel]
+        D[xDS Configuration]
+        E[Certificate Authority]
     end
 
     subgraph "Monitoring Stack"
@@ -64,14 +64,14 @@ graph LR
     end
 
     subgraph "Control Plane Metrics"
-        E[Pilot Metrics]
-        F[Citadel Metrics]
-        G[Galley Metrics]
+        E[xDS Metrics]
+        F[Certificate Metrics]
+        G[Webhook Metrics]
     end
 
     subgraph "Service Metrics"
         H[istio_requests_total]
-        I[istio_request_duration]
+        I[istio_request_duration_milliseconds]
         J[istio_tcp_connections]
     end
 
@@ -85,7 +85,7 @@ graph LR
 Before starting, ensure you have:
 
 - A Kubernetes cluster (v1.24+)
-- Istio installed (v1.20+)
+- Istio installed (v1.20+; sample addon URLs below use Istio 1.30)
 - kubectl configured
 - Helm v3 installed (optional, but recommended)
 
@@ -101,7 +101,7 @@ The following command applies the Istio addons which include a pre-configured Pr
 # Apply the Prometheus addon from Istio samples
 
 # This includes pre-configured scrape jobs for Istio components
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.20/samples/addons/prometheus.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.30/samples/addons/prometheus.yaml
 ```
 
 Alternatively, you can use Helm for more control over the Prometheus configuration:
@@ -159,17 +159,17 @@ serverFiles:
       evaluation_interval: 15s
 
     scrape_configs:
-      # Scrape configuration for Envoy sidecar proxies
-      # This job discovers all pods with Envoy sidecars and scrapes their metrics
+      # Scrape configuration for Envoy sidecar and gateway proxies
+      # This job scrapes Istio proxy ports named *-envoy-prom
       - job_name: 'envoy-stats'
         metrics_path: /stats/prometheus
         kubernetes_sd_configs:
           - role: pod
         relabel_configs:
-          # Only scrape pods that have the Istio sidecar annotation
-          - source_labels: [__meta_kubernetes_pod_container_name]
+          # Only scrape Envoy Prometheus ports exposed by Istio proxies
+          - source_labels: [__meta_kubernetes_pod_container_port_name]
             action: keep
-            regex: 'istio-proxy'
+            regex: '.*-envoy-prom'
           # Extract the pod name for labeling
           - source_labels: [__meta_kubernetes_pod_name]
             action: replace
@@ -178,12 +178,6 @@ serverFiles:
           - source_labels: [__meta_kubernetes_namespace]
             action: replace
             target_label: namespace
-          # Set the correct port for Envoy stats
-          - source_labels: [__address__]
-            action: replace
-            regex: '([^:]+):.*'
-            replacement: '${1}:15090'
-            target_label: __address__
 
       # Scrape configuration for istiod (Pilot)
       # Collects control plane metrics for monitoring mesh health
@@ -202,19 +196,6 @@ serverFiles:
           - source_labels: [__meta_kubernetes_endpoint_port_name]
             action: keep
             regex: 'http-monitoring'
-
-      # Scrape configuration for Istio mesh metrics
-      # Aggregates service-level metrics across the mesh
-      - job_name: 'istio-mesh'
-        kubernetes_sd_configs:
-          - role: endpoints
-            namespaces:
-              names:
-                - istio-system
-        relabel_configs:
-          - source_labels: [__meta_kubernetes_service_name, __meta_kubernetes_endpoint_port_name]
-            action: keep
-            regex: 'istio-telemetry;prometheus'
 
       # Scrape configuration for Kubernetes API server
       # Useful for correlating cluster events with mesh behavior
@@ -253,7 +234,7 @@ The Istio sample addon provides a Grafana instance with pre-built dashboards:
 ```bash
 # Apply the Grafana addon from Istio samples
 # Includes pre-configured dashboards for Istio monitoring
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.20/samples/addons/grafana.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.30/samples/addons/grafana.yaml
 ```
 
 For a production setup, use Helm with custom values:
@@ -512,7 +493,8 @@ These queries track TCP connection behavior:
 
 ```promql
 # Active TCP connections
-# Calculates currently open connections by subtracting closed from opened
+# Approximates open connections by subtracting closed from opened counters
+# Counter resets can affect this value after proxy restarts
 sum by (destination_service) (
   istio_tcp_connections_opened_total{reporter="destination"}
 )
@@ -550,11 +532,11 @@ histogram_quantile(0.99,
 
 # Number of connected proxies
 # Should match the number of pods with sidecars
-sum(pilot_xds_pushes{type="cds"})
+sum(pilot_xds)
 
 # Configuration validation errors
 # Non-zero values indicate configuration issues
-sum(galley_validation_failed)
+sum(rate(galley_validation_failed[5m]))
 
 # Pilot CPU usage
 # Monitor for resource exhaustion
@@ -576,7 +558,7 @@ graph TD
     B --> E[Service Detail]
     C --> F[Workload Detail]
     D --> G[Pilot Metrics]
-    D --> H[Citadel Metrics]
+    D --> H[Certificate Metrics]
 
     E --> I[Inbound Traffic]
     E --> J[Outbound Traffic]
@@ -821,9 +803,9 @@ This JSON defines a Grafana dashboard with panels for key mesh metrics:
         }
       },
       {
-        "title": "Service Mesh Topology",
+        "title": "Service Traffic Pairs",
         "description": "Service-to-service traffic flow",
-        "type": "nodeGraph",
+        "type": "table",
         "gridPos": { "x": 12, "y": 12, "w": 12, "h": 8 },
         "targets": [
           {
@@ -983,7 +965,7 @@ data:
 
 Create alerting rules for common Istio issues:
 
-This configuration defines critical alerts for service mesh health:
+This configuration defines critical alerts for service mesh health. The following `PrometheusRule` resource requires Prometheus Operator or a distribution such as kube-prometheus-stack:
 
 ```yaml
 # istio-alerts.yaml
@@ -1082,7 +1064,7 @@ spec:
         # Alert when pilot is having issues pushing config
         - alert: IstioPilotPushErrors
           expr: |
-            sum(rate(pilot_xds_push_errors[5m])) > 0
+            sum(rate(pilot_total_xds_internal_errors[5m])) > 0
           for: 5m
           labels:
             severity: critical
@@ -1177,7 +1159,7 @@ spec:
 
 Apply the alert rules to your cluster:
 
-These commands create the PrometheusRule resource and configure alerting:
+These commands create the PrometheusRule resource and configure alerting when Prometheus Operator is installed and configured to select rules with these labels:
 
 ```bash
 # Apply the alerting rules
@@ -1188,7 +1170,7 @@ kubectl get prometheusrules -n istio-system
 
 # Check that Prometheus has picked up the rules
 # Port-forward to access Prometheus UI
-kubectl port-forward svc/prometheus -n istio-system 9090:9090
+kubectl port-forward svc/prometheus-server -n istio-system 9090:80
 # Then visit http://localhost:9090/alerts in your browser
 ```
 
@@ -1205,7 +1187,7 @@ This Telemetry resource configures metric collection behavior:
 # Custom Istio telemetry configuration
 # This allows fine-grained control over metric collection
 
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: mesh-default
@@ -1215,7 +1197,7 @@ spec:
   accessLogging:
     - providers:
         - name: envoy
-      # Disable access logs for health checks to reduce noise
+      # Log errors and selected API paths to reduce noise
       disabled: false
       filter:
         expression: response.code >= 400 || request.url_path.contains("api")
@@ -1235,57 +1217,40 @@ spec:
               operation: UPSERT
               value: "request.url_path"
 
-        # Disable histogram metrics for less critical services
+        # Disable client-side request duration histograms mesh-wide
         - match:
             metric: REQUEST_DURATION
             mode: CLIENT
           disabled: true
 ```
 
-### Adding Custom Metrics
+### Adding Custom Metric Dimensions
 
-Create custom metrics using EnvoyFilter:
+Add custom dimensions to Istio's standard metrics using the Telemetry API:
 
-This EnvoyFilter adds a custom metric for tracking request authentication status:
+This Telemetry resource adds a request operation label based on the `x-operation` request header:
 
 ```yaml
-# custom-metrics-envoyfilter.yaml
-# This EnvoyFilter adds custom metrics to Envoy proxies
-# Useful for tracking application-specific metrics
+# custom-metric-dimensions.yaml
+# This Telemetry resource adds custom dimensions to Istio metrics
+# Useful for tracking application-specific attributes with controlled cardinality
 
-apiVersion: networking.istio.io/v1alpha3
-kind: EnvoyFilter
+apiVersion: telemetry.istio.io/v1
+kind: Telemetry
 metadata:
-  name: custom-metrics
+  name: custom-metric-dimensions
   namespace: istio-system
 spec:
-  configPatches:
-    # Add a custom metric for authenticated requests
-    - applyTo: HTTP_FILTER
-      match:
-        context: SIDECAR_INBOUND
-        listener:
-          filterChain:
-            filter:
-              name: "envoy.filters.network.http_connection_manager"
-              subFilter:
-                name: "envoy.filters.http.router"
-      patch:
-        operation: INSERT_BEFORE
-        value:
-          name: envoy.filters.http.wasm
-          typed_config:
-            "@type": type.googleapis.com/udpa.type.v1.TypedStruct
-            type_url: type.googleapis.com/envoy.extensions.filters.http.wasm.v3.Wasm
-            value:
-              config:
-                # Custom WASM filter for additional metrics
-                vm_config:
-                  runtime: envoy.wasm.runtime.v8
-                  code:
-                    local:
-                      inline_string: |
-                        // Custom metrics logic here
+  metrics:
+    - providers:
+        - name: prometheus
+      overrides:
+        - match:
+            metric: REQUEST_COUNT
+          tagOverrides:
+            request_operation:
+              operation: UPSERT
+              value: 'request.headers["x-operation"]'
 ```
 
 ### Reducing Metric Cardinality
@@ -1320,17 +1285,6 @@ spec:
           - ".*upstream_rq.*"
           - ".*downstream_rq.*"
 
-  values:
-    # Configure telemetry v2 for reduced cardinality
-    telemetry:
-      v2:
-        prometheus:
-          # Remove high-cardinality labels
-          configOverride:
-            inboundSidecar:
-              disable_host_header_fallback: true
-            outboundSidecar:
-              disable_host_header_fallback: true
 ```
 
 ## Best Practices
@@ -1378,7 +1332,7 @@ graph TB
 
 1. **Use Recording Rules**: Pre-compute expensive queries
 
-This recording rule pre-calculates commonly used metrics:
+This recording rule pre-calculates commonly used metrics. Like the alerting example above, this `PrometheusRule` resource requires Prometheus Operator:
 
 ```yaml
 # recording-rules.yaml
@@ -1488,7 +1442,7 @@ kubectl exec -it <pod-name> -c istio-proxy -- \
   curl -s localhost:15090/stats/prometheus | head -20
 
 # Check Prometheus targets
-kubectl port-forward svc/prometheus -n istio-system 9090:9090
+kubectl port-forward svc/prometheus-server -n istio-system 9090:80
 # Visit http://localhost:9090/targets and look for unhealthy targets
 ```
 
@@ -1515,7 +1469,7 @@ kubectl logs -n istio-system deployment/grafana
 
 # Verify Prometheus connection from Grafana pod
 kubectl exec -it deployment/grafana -n istio-system -- \
-  curl -s http://prometheus-server:9090/api/v1/query?query=up
+  curl -s 'http://prometheus-server/api/v1/query?query=up'
 ```
 
 **Issue: Alerts not firing**
@@ -1524,15 +1478,15 @@ Debug alerting pipeline:
 
 ```bash
 # Check Prometheus alerting rules
-kubectl port-forward svc/prometheus -n istio-system 9090:9090
+kubectl port-forward svc/prometheus-server -n istio-system 9090:80
 # Visit http://localhost:9090/rules
 
 # Check Alertmanager
 kubectl port-forward svc/alertmanager -n istio-system 9093:9093
 # Visit http://localhost:9093
 
-# Verify alert rule syntax
-promtool check rules istio-alerts.yaml
+# Verify the PrometheusRule object schema
+kubectl apply --dry-run=server -f istio-alerts.yaml
 ```
 
 ## Conclusion
