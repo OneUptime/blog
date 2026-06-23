@@ -21,16 +21,16 @@ Key benefits of sqlc include:
 - **Compile-time SQL validation**: sqlc parses your SQL and catches errors before runtime
 - **Type-safe queries**: Generated code uses proper Go types for all parameters and results
 - **No runtime reflection**: Generated code is efficient with no reflection overhead
-- **Full SQL power**: Use any SQL feature your database supports
+- **Full SQL power**: Use advanced SQL features supported by sqlc and your database
 - **Easy to understand**: The generated code is readable and debuggable
 
 ## Installing sqlc
 
 There are multiple ways to install sqlc depending on your operating system and preferences.
 
-### Using Homebrew (macOS/Linux)
+### Using Homebrew (macOS)
 
-The easiest way to install sqlc on macOS or Linux is through Homebrew:
+The easiest way to install sqlc on macOS is through Homebrew:
 
 ```bash
 # Install sqlc using Homebrew
@@ -38,9 +38,18 @@ The easiest way to install sqlc on macOS or Linux is through Homebrew:
 brew install sqlc
 ```
 
+### Using Snap (Ubuntu)
+
+On Ubuntu, install sqlc with Snap:
+
+```bash
+# Install sqlc using Snap
+sudo snap install sqlc
+```
+
 ### Using Go Install
 
-If you have Go installed, you can install sqlc directly:
+If you have Go 1.21 or newer installed, you can install sqlc directly:
 
 ```bash
 # Install sqlc using go install
@@ -128,11 +137,13 @@ sql:
         out: "db/sqlc"
         # Use pgx/v5 as the database driver
         sql_package: "pgx/v5"
+        # Required when using :copyfrom queries
+        sql_driver: "github.com/jackc/pgx/v5"
         # Emit JSON tags on generated structs
         emit_json_tags: true
         # Emit interface for Querier
         emit_interface: true
-        # Emit methods with context parameter
+        # Store the DB handle on Queries instead of passing it to each method
         emit_methods_with_db_argument: false
 ```
 
@@ -151,7 +162,8 @@ sql:
       go:
         package: "db"             # Go package name
         out: "db/sqlc"            # Output directory
-        sql_package: "pgx/v5"     # Driver: pgx/v5, database/sql
+        sql_package: "pgx/v5"     # Driver: pgx/v5, pgx/v4, database/sql
+        sql_driver: "github.com/jackc/pgx/v5"  # Required for :copyfrom
         emit_json_tags: true      # Add json tags to structs
         emit_interface: true      # Generate Querier interface
         emit_empty_slices: true   # Return [] instead of nil for empty results
@@ -223,7 +235,7 @@ sqlc uses special annotations to understand how to generate Go code from your SQ
 
 ### Query Annotations
 
-sqlc supports three main annotation types:
+sqlc supports these common annotation types:
 
 - `:one` - Returns a single row (returns an error if no rows found)
 - `:many` - Returns multiple rows as a slice
@@ -408,7 +420,7 @@ After running sqlc generate, you will find these files in db/sqlc/:
 
 ```text
 db/sqlc/
-├── db.go          # Database connection wrapper and Querier interface
+├── db.go          # Database connection wrapper and DBTX interface
 ├── models.go      # Go structs matching your database tables
 ├── authors.sql.go # Generated functions for author queries
 ├── books.sql.go   # Generated functions for book queries
@@ -478,6 +490,7 @@ package db
 
 import (
     "context"
+    "github.com/jackc/pgx/v5/pgtype"
 )
 
 const createAuthor = `-- name: CreateAuthor :one
@@ -733,7 +746,6 @@ package main
 import (
     "context"
     "fmt"
-    "log"
 
     "github.com/example/bookstore/db/sqlc"
 )
@@ -816,7 +828,6 @@ import (
     "context"
     "fmt"
 
-    "github.com/jackc/pgx/v5"
     "github.com/jackc/pgx/v5/pgxpool"
     "github.com/jackc/pgx/v5/pgtype"
     "github.com/example/bookstore/db/sqlc"
@@ -889,7 +900,6 @@ import (
     "context"
     "fmt"
 
-    "github.com/jackc/pgx/v5"
     "github.com/jackc/pgx/v5/pgxpool"
     "github.com/example/bookstore/db/sqlc"
 )
@@ -1249,6 +1259,7 @@ sql:
         package: "db"
         out: "db/sqlc"
         sql_package: "pgx/v5"
+        sql_driver: "github.com/jackc/pgx/v5"
         emit_json_tags: true
         overrides:
           # Use uuid.UUID instead of pgtype.UUID
@@ -1273,7 +1284,7 @@ sql:
 
 ## Testing with sqlc
 
-Write tests for your database layer using testcontainers or an in-memory database:
+Write tests for your database layer using testcontainers or a dedicated test database:
 
 ```go
 // db_test.go
@@ -1283,6 +1294,7 @@ package main
 
 import (
     "context"
+    "fmt"
     "testing"
 
     "github.com/jackc/pgx/v5/pgxpool"
