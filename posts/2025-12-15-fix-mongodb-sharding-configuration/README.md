@@ -48,7 +48,7 @@ graph TD
 // Connect to mongos
 mongosh mongodb://mongos-host:27017
 
-// Enable sharding on the database
+// Enable sharding on the database (required before MongoDB 6.0)
 sh.enableSharding("mydb")
 
 // Verify
@@ -69,7 +69,7 @@ sh.status()
 **Solution:**
 
 ```javascript
-// Create index on shard key first (if not exists)
+// Create index on shard key first if the collection is not empty
 db.orders.createIndex({ customerId: "hashed" })
 
 // Then shard the collection
@@ -98,7 +98,7 @@ sh.shardCollection("mydb.logs", { timestamp: 1 })
 db.getSiblingDB("config").collections.findOne({ _id: "mydb.users" })
 
 // If you need to change shard key (MongoDB 5.0+)
-// First, check if resharding is supported
+// This starts a resharding operation
 db.adminCommand({ reshardCollection: "mydb.users", key: { newField: 1 } })
 
 // For older versions, you must:
@@ -134,10 +134,10 @@ rs.status()
 **Solution:**
 
 ```javascript
-// If shard is down, wait for election or force reconfiguration
-rs.stepDown()  // Force new election
+// If the primary is down, wait for election and restore network/member health
+rs.status()
 
-// If member is truly unavailable, remove it
+// If majority is lost and a member is truly unavailable, reconfigure with caution
 cfg = rs.conf()
 cfg.members = cfg.members.filter(m => m.host !== "unavailable-host:27017")
 rs.reconfig(cfg, { force: true })
@@ -169,11 +169,11 @@ sh.splitAt("mydb.orders", { customerId: "middle_value" })
 // Or split at specific point
 sh.splitFind("mydb.orders", { customerId: "specific_value" })
 
-// Clear jumbo flag after splitting
-db.getSiblingDB("config").chunks.updateOne(
-  { _id: "chunk_id" },
-  { $unset: { jumbo: "" } }
-)
+// If the chunk cannot be split, clear the jumbo flag with the admin command
+db.adminCommand({
+  clearJumboFlag: "mydb.orders",
+  find: { customerId: "specific_value" }
+})
 ```
 
 ### Error 6: "config server replica set is not initialized"
@@ -240,10 +240,11 @@ sh.shardCollection("mydb.users", { _id: "hashed" })
 sh.shardCollection("mydb.orders", { customerId: 1, _id: 1 })
 
 // GOOD: Zone-based sharding for geographic distribution
+sh.shardCollection("mydb.customers", { region: 1, _id: 1 })
 sh.addShardToZone("shard0", "US")
 sh.addShardToZone("shard1", "EU")
-sh.updateZoneKeyRange("mydb.users", { region: "US" }, { region: "USA" }, "US")
-sh.updateZoneKeyRange("mydb.users", { region: "EU" }, { region: "EUA" }, "EU")
+sh.updateZoneKeyRange("mydb.customers", { region: "US", _id: MinKey() }, { region: "US", _id: MaxKey() }, "US")
+sh.updateZoneKeyRange("mydb.customers", { region: "EU", _id: MinKey() }, { region: "EU", _id: MaxKey() }, "EU")
 ```
 
 ## Balancer Issues
@@ -257,9 +258,9 @@ sh.isBalancerRunning()
 // Get balancer status
 sh.getBalancerState()
 
-// Check balancer lock
+// Check balancer settings
 use config
-db.locks.find({ _id: "balancer" })
+db.settings.findOne({ _id: "balancer" })
 ```
 
 ### Fix Balancer Problems
@@ -273,14 +274,14 @@ sh.startBalancer()
 
 // Set balancer window
 use config
-db.settings.update(
+db.settings.updateOne(
   { _id: "balancer" },
   { $set: { activeWindow: { start: "02:00", stop: "06:00" } } },
   { upsert: true }
 )
 
-// Force chunk migration
-sh.moveChunk("mydb.orders", { customerId: "value" }, "shard2")
+// Manually move a range when needed
+sh.moveRange("mydb.orders", "shard2", { customerId: "A" }, { customerId: "M" })
 ```
 
 ### Diagnose Migration Failures
@@ -288,13 +289,12 @@ sh.moveChunk("mydb.orders", { customerId: "value" }, "shard2")
 ```javascript
 // Check migration history
 use config
-db.changelog.find({ what: "moveChunk.from" }).sort({ time: -1 }).limit(10)
+db.changelog.find({ what: { $regex: /moveChunk|moveRange/ } }).sort({ time: -1 }).limit(10)
 
-// Check for stuck migrations
-db.locks.find({ state: { $ne: 0 } })
+// Check for active migrations
+db.adminCommand({ currentOp: true, desc: /moveChunk|moveRange/ })
 
-// Clear stuck migration lock (use with caution)
-db.locks.remove({ _id: "mydb.orders" })
+// Do not delete config metadata directly; investigate logs and retry after the active operation finishes
 ```
 
 ## Config Server Recovery
@@ -338,7 +338,7 @@ sh.addShard("shard3/shard3a:27017,shard3b:27017,shard3c:27017")
 // Verify shard was added
 sh.status()
 
-// Data will automatically balance to new shard
+// The balancer will begin migrating data to the new shard
 ```
 
 ### Remove a Shard (Draining)
@@ -373,11 +373,11 @@ db.getSiblingDB("config").chunks.aggregate([
 
 // Monitor chunk migrations
 db.getSiblingDB("config").changelog.find({
-  what: { $regex: /moveChunk/ }
+  what: { $regex: /moveChunk|moveRange/ }
 }).sort({ time: -1 }).limit(20)
 
-// Check for imbalanced shards
-sh.status().shards.forEach(shard => {
+// Check configured shards
+sh.listShards().forEach(shard => {
   print(`${shard._id}: ${shard.host}`)
 })
 ```
