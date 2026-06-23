@@ -88,9 +88,12 @@ curl -X POST \
 ### Using GitHub CLI
 
 ```bash
+# The -f flag sends string values, so nested objects must use the
+# key[subkey]=value syntax (or pass a full JSON body via --input).
 gh api repos/owner/repo/dispatches \
   -f event_type=deploy \
-  -f client_payload='{"environment": "staging", "version": "1.2.3"}'
+  -f 'client_payload[environment]=staging' \
+  -f 'client_payload[version]=1.2.3'
 ```
 
 ### Using Python
@@ -471,9 +474,9 @@ jobs:
 Create a fine-grained personal access token with minimal permissions:
 
 ```yaml
-# Required permissions for dispatch
-# - Repository: Contents (read)
-# - Repository: Actions (write)
+# Required permissions for repository dispatch
+# - Repository: Contents (read and write)
+# - Repository: Metadata (read) - selected automatically with Contents
 ```
 
 ### Payload Validation
