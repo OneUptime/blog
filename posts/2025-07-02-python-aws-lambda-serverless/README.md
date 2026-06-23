@@ -133,7 +133,7 @@ lambda-project/
 # requirements.txt
 
 boto3>=1.34.0
-pydantic>=2.5.0
+pydantic[email]>=2.5.0  # [email] extra installs email-validator, required by EmailStr
 python-json-logger>=2.0.0
 ```
 
@@ -142,7 +142,7 @@ python-json-logger>=2.0.0
 -r requirements.txt
 pytest>=7.4.0
 pytest-cov>=4.1.0
-moto>=4.2.0
+moto>=5.0.0
 pytest-env>=1.1.0
 ```
 
@@ -500,14 +500,18 @@ def update_user(ctx: APIContext) -> dict:
     expression_values[":updatedAt"] = _get_timestamp()
     
     # Perform update
-    response = users_table.update_item(
-        Key={"userId": user_id},
-        UpdateExpression="SET " + ", ".join(update_parts),
-        ExpressionAttributeValues=expression_values,
-        ExpressionAttributeNames=expression_names if expression_names else None,
-        ReturnValues="ALL_NEW",
-        ConditionExpression="attribute_exists(userId)"
-    )
+    # Only include ExpressionAttributeNames when populated - boto3 rejects a None value
+    update_kwargs = {
+        "Key": {"userId": user_id},
+        "UpdateExpression": "SET " + ", ".join(update_parts),
+        "ExpressionAttributeValues": expression_values,
+        "ReturnValues": "ALL_NEW",
+        "ConditionExpression": "attribute_exists(userId)"
+    }
+    if expression_names:
+        update_kwargs["ExpressionAttributeNames"] = expression_names
+
+    response = users_table.update_item(**update_kwargs)
     
     return create_response(200, response["Attributes"])
 
@@ -812,6 +816,7 @@ Handler for SQS events - process queue messages.
 import json
 import logging
 import os
+from decimal import Decimal
 from typing import Any
 from dataclasses import dataclass
 
@@ -885,11 +890,12 @@ def parse_sqs_record(record: dict) -> SQSMessage:
     body = record.get("body", "{}")
     
     # Handle SNS-wrapped messages
+    # parse_float=Decimal because the DynamoDB resource rejects Python floats
     try:
-        parsed_body = json.loads(body)
+        parsed_body = json.loads(body, parse_float=Decimal)
         if "Message" in parsed_body and "TopicArn" in parsed_body:
             # This is an SNS notification - extract the actual message
-            body = json.loads(parsed_body["Message"])
+            body = json.loads(parsed_body["Message"], parse_float=Decimal)
         else:
             body = parsed_body
     except json.JSONDecodeError:
@@ -1847,7 +1853,7 @@ Resources:
   ComputeIntensiveFunction:
     Type: AWS::Serverless::Function
     Properties:
-      MemorySize: 3008  # Maximum for proportional CPU
+      MemorySize: 3008  # ~2 vCPUs; Lambda scales CPU up to 10240 MB (~6 vCPUs)
       Timeout: 60
 
   # Quick API handler - less memory
@@ -1862,6 +1868,7 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       MemorySize: 1024
+      AutoPublishAlias: live  # Required: provisioned concurrency applies to a version/alias
       ProvisionedConcurrencyConfig:
         ProvisionedConcurrentExecutions: 5
 ```
