@@ -76,8 +76,8 @@ graph TB
 
 Before setting up CephFS, ensure you have:
 
-- A running Kubernetes cluster (v1.20+)
-- A Ceph cluster (Nautilus 14.x or later recommended)
+- A running Kubernetes cluster supported by your chosen Rook release
+- A Ceph version supported by your chosen Rook release
 - `kubectl` configured to access your cluster
 - Helm 3.x installed
 - At least 3 nodes for high availability
@@ -90,40 +90,7 @@ Rook is the recommended way to deploy Ceph on Kubernetes. It simplifies the depl
 
 The Rook operator watches for Ceph cluster CRDs and manages the Ceph daemons.
 
-```yaml
-# rook-operator.yaml
-
-# This manifest deploys the Rook Ceph operator which manages the lifecycle
-# of Ceph clusters running on Kubernetes. The operator handles deployment,
-# configuration, and day-2 operations like scaling and upgrades.
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: rook-ceph
----
-# The CRDs define the custom resources that Rook uses to manage Ceph.
-# These must be installed before the operator can function.
-apiVersion: apiextensions.k8s.io/v1
-kind: CustomResourceDefinition
-metadata:
-  name: cephclusters.ceph.rook.io
-spec:
-  group: ceph.rook.io
-  names:
-    kind: CephCluster
-    listKind: CephClusterList
-    plural: cephclusters
-    singular: cephcluster
-  scope: Namespaced
-  versions:
-    - name: v1
-      served: true
-      storage: true
-      schema:
-        openAPIV3Schema:
-          type: object
-          x-kubernetes-preserve-unknown-fields: true
-```
+Do not hand-write the Rook CRDs yourself; the CRDs are large, version-specific, and must match the operator version. Install them through the official Helm chart or the official Rook manifests for the release you are deploying.
 
 Apply the Rook operator using Helm for a production-ready deployment:
 
@@ -148,8 +115,8 @@ Once the operator is running, create the Ceph cluster:
 ```yaml
 # ceph-cluster.yaml
 # This manifest defines the Ceph cluster configuration including monitors,
-# OSDs, and metadata servers. The cluster will automatically discover available
-# storage devices on the specified nodes.
+# managers, and OSDs. The CephFS metadata servers are created by the
+# CephFilesystem resource later in this guide.
 apiVersion: ceph.rook.io/v1
 kind: CephCluster
 metadata:
@@ -392,54 +359,7 @@ kubectl -n rook-ceph get cephfilesystem
 
 ## Step 3: Configure the Ceph CSI Driver
 
-The CSI driver enables Kubernetes to provision and manage CephFS volumes.
-
-### Create the CSI ConfigMap
-
-```yaml
-# csi-config-map.yaml
-# This ConfigMap contains the Ceph cluster connection information
-# required by the CSI driver to communicate with the Ceph cluster.
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: ceph-csi-config
-  namespace: rook-ceph
-data:
-  # JSON configuration for Ceph clusters
-  # clusterID must match the cluster ID in your StorageClass
-  config.json: |-
-    [
-      {
-        "clusterID": "rook-ceph",
-        "monitors": [
-          "rook-ceph-mon-a.rook-ceph.svc.cluster.local:6789",
-          "rook-ceph-mon-b.rook-ceph.svc.cluster.local:6789",
-          "rook-ceph-mon-c.rook-ceph.svc.cluster.local:6789"
-        ],
-        "cephFS": {
-          "subvolumeGroup": "csi"
-        }
-      }
-    ]
-```
-
-### Create CSI Encryption ConfigMap (Optional but Recommended)
-
-```yaml
-# csi-kms-config-map.yaml
-# This ConfigMap configures encryption settings for the CSI driver.
-# Even if not using encryption, this ConfigMap should exist.
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: ceph-csi-encryption-kms-config
-  namespace: rook-ceph
-data:
-  # Empty configuration when encryption is not used
-  config.json: |-
-    {}
-```
+The CSI driver enables Kubernetes to provision and manage CephFS volumes. When Ceph CSI is deployed by Rook, the Rook operator maintains the CSI ConfigMap and secrets for the cluster. You should verify those resources rather than applying a hand-written `ceph-csi-config` ConfigMap.
 
 ### Create the CephFS StorageClass
 
@@ -476,9 +396,16 @@ parameters:
   csi.storage.k8s.io/controller-expand-secret-name: rook-csi-cephfs-provisioner
   csi.storage.k8s.io/controller-expand-secret-namespace: rook-ceph
 
+  # Secret for controller publish operations
+  csi.storage.k8s.io/controller-publish-secret-name: rook-csi-cephfs-provisioner
+  csi.storage.k8s.io/controller-publish-secret-namespace: rook-ceph
+
   # Secret for node operations (mount)
   csi.storage.k8s.io/node-stage-secret-name: rook-csi-cephfs-node
   csi.storage.k8s.io/node-stage-secret-namespace: rook-ceph
+
+  # Kernel mount options are passed to mount.ceph as a comma-separated string
+  kernelMountOptions: readdir_max_bytes=1048576,norbytes
 
   # Mounter type: 'kernel' uses the kernel CephFS driver (faster)
   # 'fuse' uses FUSE (more compatible, easier to debug)
@@ -491,20 +418,16 @@ reclaimPolicy: Delete
 # Allow volume expansion after creation
 allowVolumeExpansion: true
 
-# Mount options applied to all volumes using this StorageClass
-mountOptions:
-  # Read-ahead setting for sequential read optimization
-  - "readdir_max_bytes=1048576"
-  # Async metadata operations for better performance
-  - "async_readdir"
 ```
 
 Apply the configurations:
 
 ```bash
-# Apply the CSI configuration
-kubectl apply -f csi-config-map.yaml
-kubectl apply -f csi-kms-config-map.yaml
+# Verify the Rook-managed CSI configuration and secrets
+kubectl -n rook-ceph get configmap rook-ceph-csi-config
+kubectl -n rook-ceph get secret rook-csi-cephfs-provisioner rook-csi-cephfs-node
+
+# Apply the CephFS StorageClass
 kubectl apply -f cephfs-storageclass.yaml
 
 # Verify the StorageClass was created
@@ -804,17 +727,20 @@ metadata:
   name: cephfs-team-a
 provisioner: rook-ceph.cephfs.csi.ceph.com
 parameters:
-  clusterID: rook-ceph
+  # Use the clusterID reported by the CephFilesystemSubVolumeGroup status.
+  # Retrieve it with:
+  # kubectl -n rook-ceph get cephfilesystemsubvolumegroup team-a-volumes \
+  #   -o jsonpath='{.status.info.clusterID}'
+  clusterID: <team-a-cluster-id>
   fsName: cephfs
   pool: cephfs-data0
-
-  # Use the team-a subvolume group for isolation
-  csi.storage.k8s.io/fsSubVolumeGroup: team-a
 
   csi.storage.k8s.io/provisioner-secret-name: rook-csi-cephfs-provisioner
   csi.storage.k8s.io/provisioner-secret-namespace: rook-ceph
   csi.storage.k8s.io/controller-expand-secret-name: rook-csi-cephfs-provisioner
   csi.storage.k8s.io/controller-expand-secret-namespace: rook-ceph
+  csi.storage.k8s.io/controller-publish-secret-name: rook-csi-cephfs-provisioner
+  csi.storage.k8s.io/controller-publish-secret-namespace: rook-ceph
   csi.storage.k8s.io/node-stage-secret-name: rook-csi-cephfs-node
   csi.storage.k8s.io/node-stage-secret-namespace: rook-ceph
 
@@ -899,10 +825,6 @@ data:
     # Increase max directory size before fragmentation
     ceph config set mds mds_bal_fragment_size_max 100000
 
-    # Enable client metadata caching
-    # Reduces metadata server load for repeated operations
-    ceph config set mds client_cache_size 16384
-
     # Session timeout for idle clients
     ceph config set mds session_timeout 120
 
@@ -912,16 +834,13 @@ data:
   # Client-side tuning for mount options
   mount-options.conf: |
     # Recommended mount options for CephFS
-    # These can be added to the StorageClass mountOptions
-
-    # Read-ahead buffer size (default 8MB, increase for sequential reads)
-    readahead_size=16777216
+    # These can be added to the StorageClass kernelMountOptions parameter
 
     # Maximum read-ahead (important for large files)
-    readahead_max_bytes=16777216
+    rasize=16777216
 
-    # Enable async readdir for better directory listing performance
-    async_readdir=true
+    # Use the kernel client's dcache for negative lookups and readdir when valid
+    dcache
 
     # Directory read cache size
     readdir_max_bytes=1048576
@@ -954,32 +873,19 @@ parameters:
   # Kernel mounter is faster than FUSE but requires kernel support
   mounter: kernel
 
+  # Comma-separated mount.ceph options for the kernel client
+  kernelMountOptions: rasize=16777216,readdir_max_bytes=1048576,noatime,wsize=16777216,rsize=16777216
+
   csi.storage.k8s.io/provisioner-secret-name: rook-csi-cephfs-provisioner
   csi.storage.k8s.io/provisioner-secret-namespace: rook-ceph
   csi.storage.k8s.io/controller-expand-secret-name: rook-csi-cephfs-provisioner
   csi.storage.k8s.io/controller-expand-secret-namespace: rook-ceph
+  csi.storage.k8s.io/controller-publish-secret-name: rook-csi-cephfs-provisioner
+  csi.storage.k8s.io/controller-publish-secret-namespace: rook-ceph
   csi.storage.k8s.io/node-stage-secret-name: rook-csi-cephfs-node
   csi.storage.k8s.io/node-stage-secret-namespace: rook-ceph
 reclaimPolicy: Delete
 allowVolumeExpansion: true
-
-# Mount options for performance optimization
-mountOptions:
-  # Increase read-ahead for sequential workloads
-  - "readahead_max_bytes=16777216"
-  - "readdir_max_bytes=1048576"
-
-  # Async directory operations
-  - "async_readdir"
-
-  # Disable access time updates to reduce metadata overhead
-  - "noatime"
-
-  # Write buffer size (16MB)
-  - "wsize=16777216"
-
-  # Read buffer size (16MB)
-  - "rsize=16777216"
 ```
 
 ### Workload-Specific Configurations
@@ -1002,20 +908,17 @@ parameters:
   fsName: cephfs
   pool: cephfs-data0
   mounter: kernel
+  kernelMountOptions: rasize=67108864,noatime,wsize=67108864,rsize=67108864
   csi.storage.k8s.io/provisioner-secret-name: rook-csi-cephfs-provisioner
   csi.storage.k8s.io/provisioner-secret-namespace: rook-ceph
   csi.storage.k8s.io/controller-expand-secret-name: rook-csi-cephfs-provisioner
   csi.storage.k8s.io/controller-expand-secret-namespace: rook-ceph
+  csi.storage.k8s.io/controller-publish-secret-name: rook-csi-cephfs-provisioner
+  csi.storage.k8s.io/controller-publish-secret-namespace: rook-ceph
   csi.storage.k8s.io/node-stage-secret-name: rook-csi-cephfs-node
   csi.storage.k8s.io/node-stage-secret-namespace: rook-ceph
 reclaimPolicy: Delete
 allowVolumeExpansion: true
-mountOptions:
-  # Large read-ahead for sequential access
-  - "readahead_max_bytes=67108864"
-  - "noatime"
-  - "wsize=67108864"
-  - "rsize=67108864"
 
 ---
 # Configuration for many small files (web assets, config files)
@@ -1031,22 +934,17 @@ parameters:
   fsName: cephfs
   pool: cephfs-data0
   mounter: kernel
+  kernelMountOptions: rasize=4194304,readdir_max_bytes=2097152,dcache,noatime,wsize=4194304,rsize=4194304
   csi.storage.k8s.io/provisioner-secret-name: rook-csi-cephfs-provisioner
   csi.storage.k8s.io/provisioner-secret-namespace: rook-ceph
   csi.storage.k8s.io/controller-expand-secret-name: rook-csi-cephfs-provisioner
   csi.storage.k8s.io/controller-expand-secret-namespace: rook-ceph
+  csi.storage.k8s.io/controller-publish-secret-name: rook-csi-cephfs-provisioner
+  csi.storage.k8s.io/controller-publish-secret-namespace: rook-ceph
   csi.storage.k8s.io/node-stage-secret-name: rook-csi-cephfs-node
   csi.storage.k8s.io/node-stage-secret-namespace: rook-ceph
 reclaimPolicy: Delete
 allowVolumeExpansion: true
-mountOptions:
-  # Smaller buffers for many small files
-  - "readahead_max_bytes=4194304"
-  - "readdir_max_bytes=2097152"
-  - "async_readdir"
-  - "noatime"
-  - "wsize=4194304"
-  - "rsize=4194304"
 
 ---
 # Configuration for mixed workloads (general purpose)
@@ -1062,19 +960,17 @@ parameters:
   fsName: cephfs
   pool: cephfs-data0
   mounter: kernel
+  kernelMountOptions: rasize=8388608,readdir_max_bytes=1048576,dcache,noatime
   csi.storage.k8s.io/provisioner-secret-name: rook-csi-cephfs-provisioner
   csi.storage.k8s.io/provisioner-secret-namespace: rook-ceph
   csi.storage.k8s.io/controller-expand-secret-name: rook-csi-cephfs-provisioner
   csi.storage.k8s.io/controller-expand-secret-namespace: rook-ceph
+  csi.storage.k8s.io/controller-publish-secret-name: rook-csi-cephfs-provisioner
+  csi.storage.k8s.io/controller-publish-secret-namespace: rook-ceph
   csi.storage.k8s.io/node-stage-secret-name: rook-csi-cephfs-node
   csi.storage.k8s.io/node-stage-secret-namespace: rook-ceph
 reclaimPolicy: Delete
 allowVolumeExpansion: true
-mountOptions:
-  - "readahead_max_bytes=8388608"
-  - "readdir_max_bytes=1048576"
-  - "async_readdir"
-  - "noatime"
 ```
 
 ## Monitoring and Troubleshooting
@@ -1207,7 +1103,7 @@ data:
 
     # Check Ceph health
     kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph health detail
-    ```plaintext
+    ```
 
     ## Issue: Pod can't mount CephFS volume
 
@@ -1226,7 +1122,7 @@ data:
 
     # Verify secrets exist
     kubectl -n rook-ceph get secret rook-csi-cephfs-node
-    ```plaintext
+    ```
 
     ## Issue: Slow filesystem performance
 
@@ -1245,7 +1141,7 @@ data:
 
     # Monitor OSD utilization
     kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph osd df
-    ```plaintext
+    ```
 
     ## Issue: File locking conflicts with multiple pods
 
@@ -1320,7 +1216,7 @@ spec:
     - to:
         - namespaceSelector:
             matchLabels:
-              name: rook-ceph
+              kubernetes.io/metadata.name: rook-ceph
           podSelector:
             matchLabels:
               app: rook-ceph-mon
@@ -1333,7 +1229,7 @@ spec:
     - to:
         - namespaceSelector:
             matchLabels:
-              name: rook-ceph
+              kubernetes.io/metadata.name: rook-ceph
           podSelector:
             matchLabels:
               app: rook-ceph-osd
@@ -1345,7 +1241,7 @@ spec:
     - to:
         - namespaceSelector:
             matchLabels:
-              name: rook-ceph
+              kubernetes.io/metadata.name: rook-ceph
           podSelector:
             matchLabels:
               app: rook-ceph-mds
@@ -1355,7 +1251,7 @@ spec:
           endPort: 7300
 
 ---
-# Pod Security Policy for CephFS access
+# Example pod security context for CephFS access
 apiVersion: v1
 kind: Pod
 metadata:
