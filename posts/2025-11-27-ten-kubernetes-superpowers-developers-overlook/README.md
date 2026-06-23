@@ -190,10 +190,11 @@ Also consider `suspend: true` during incident response to stop runaway batch wor
 This command injects a busybox container into the running Pod, sharing the network and process namespace with the target container for debugging.
 
 ```bash
-# Inject a debug container into the payments deployment
+# Inject a debug container into a running payments Pod
+# Ephemeral containers with --target attach to a Pod, not a Deployment
 
 # --target joins the network/process namespace of the 'api' container
-kubectl debug deploy/payments -it --image=busybox:1.36 --target=api
+kubectl debug -it pod/payments-abc123 --image=busybox:1.36 --target=api
 ```
 
 - `--target` picks which existing container’s namespaces you want to join.
@@ -225,7 +226,7 @@ kind: ClusterPolicy
 metadata:
   name: enforce-tls-ingress
 spec:
-  validationFailureAction: enforce  # Block non-compliant resources
+  validationFailureAction: Enforce  # Block non-compliant resources
   rules:
     - name: tls-required
       match:
