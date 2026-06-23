@@ -154,11 +154,13 @@ import "google/rpc/error_details.proto";
 package errors
 
 import (
+    "fmt"
     "time"
 
     "google.golang.org/genproto/googleapis/rpc/errdetails"
     "google.golang.org/grpc/codes"
     "google.golang.org/grpc/status"
+    "google.golang.org/protobuf/protoadapt"
     "google.golang.org/protobuf/types/known/durationpb"
 )
 
@@ -319,16 +321,16 @@ func CompleteError(
     code codes.Code,
     message string,
     errorInfo *errdetails.ErrorInfo,
-    details ...interface{},
+    details ...protoadapt.MessageV1,
 ) error {
     st := status.New(code, message)
 
     // Always include ErrorInfo
-    allDetails := []interface{}{errorInfo}
+    allDetails := []protoadapt.MessageV1{errorInfo}
     allDetails = append(allDetails, details...)
 
     // Convert to proto messages
-    protoDetails := make([]interface{}, 0, len(allDetails))
+    protoDetails := make([]protoadapt.MessageV1, 0, len(allDetails))
     for _, d := range allDetails {
         if d != nil {
             protoDetails = append(protoDetails, d)
@@ -351,8 +353,8 @@ package main
 
 import (
     "context"
+    "fmt"
     "regexp"
-    "time"
 
     "google.golang.org/genproto/googleapis/rpc/errdetails"
     "google.golang.org/grpc/codes"
@@ -510,11 +512,9 @@ package main
 import (
     "context"
     "log"
-    "time"
 
     "google.golang.org/genproto/googleapis/rpc/errdetails"
     "google.golang.org/grpc"
-    "google.golang.org/grpc/codes"
     "google.golang.org/grpc/credentials/insecure"
     "google.golang.org/grpc/status"
     pb "myapp/proto"
@@ -636,6 +636,7 @@ func handleDebugInfo(di *errdetails.DebugInfo) {
 ## Python Error Handling
 
 ```python
+import datetime
 import grpc
 from google.protobuf import any_pb2
 from google.rpc import error_details_pb2, status_pb2
@@ -645,7 +646,7 @@ import user_pb2
 import user_pb2_grpc
 
 
-def create_validation_error(violations: Dict[str, str]) -> grpc.RpcError:
+def create_validation_error(violations: Dict[str, str]) -> grpc.Status:
     """Create a validation error with field violations."""
     # Create BadRequest with field violations
     bad_request = error_details_pb2.BadRequest()
@@ -665,14 +666,14 @@ def create_validation_error(violations: Dict[str, str]) -> grpc.RpcError:
     detail.Pack(bad_request)
     status.details.append(detail)
 
-    return rpc_status.to_status(status).exception()
+    return rpc_status.to_status(status)
 
 
 def create_rate_limit_error(
     retry_after_seconds: float,
     quota_limit: int,
     quota_used: int
-) -> grpc.RpcError:
+) -> grpc.Status:
     """Create a rate limit error with retry info."""
     # Create RetryInfo
     retry_info = error_details_pb2.RetryInfo()
@@ -698,14 +699,14 @@ def create_rate_limit_error(
         any_detail.Pack(detail)
         status.details.append(any_detail)
 
-    return rpc_status.to_status(status).exception()
+    return rpc_status.to_status(status)
 
 
 def create_not_found_error(
     resource_type: str,
     resource_name: str,
     owner: str
-) -> grpc.RpcError:
+) -> grpc.Status:
     """Create a not found error with resource info."""
     resource_info = error_details_pb2.ResourceInfo(
         resource_type=resource_type,
@@ -723,7 +724,7 @@ def create_not_found_error(
     detail.Pack(resource_info)
     status.details.append(detail)
 
-    return rpc_status.to_status(status).exception()
+    return rpc_status.to_status(status)
 
 
 class UserServicer(user_pb2_grpc.UserServiceServicer):
@@ -755,12 +756,14 @@ class UserServicer(user_pb2_grpc.UserServiceServicer):
                 v.description = desc
 
             # Abort with details
+            detail = any_pb2.Any()
+            detail.Pack(bad_request)
             context.abort_with_status(
                 rpc_status.to_status(
                     status_pb2.Status(
                         code=grpc.StatusCode.INVALID_ARGUMENT.value[0],
                         message="Validation failed",
-                        details=[any_pb2.Any(value=bad_request.SerializeToString())],
+                        details=[detail],
                     )
                 )
             )
@@ -793,7 +796,8 @@ def handle_grpc_error(error: grpc.RpcError) -> None:
         print(f"Error: {error.code()}: {error.details()}")
         return
 
-    print(f"Status Code: {grpc.StatusCode(status.code).name}")
+    code = next((c for c in grpc.StatusCode if c.value[0] == status.code), None)
+    print(f"Status Code: {code.name if code else status.code}")
     print(f"Message: {status.message}")
 
     # Extract details
@@ -867,8 +871,11 @@ package interceptors
 
 import (
     "context"
+    "fmt"
     "log"
+    "os"
     "runtime/debug"
+    "strings"
 
     "google.golang.org/genproto/googleapis/rpc/errdetails"
     "google.golang.org/grpc"
