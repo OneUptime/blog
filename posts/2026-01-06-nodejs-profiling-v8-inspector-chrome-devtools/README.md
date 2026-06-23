@@ -102,8 +102,10 @@ function startProfiling() {
 
 function stopProfiling() {
   return new Promise((resolve, reject) => {
-    session.post('Profiler.stop', (err, { profile }) => {
+    session.post('Profiler.stop', (err, result) => {
       if (err) return reject(err);
+
+      const { profile } = result;
 
       // Save to file for later analysis
       fs.writeFileSync(
@@ -153,30 +155,32 @@ Key things to look for:
 
 ```javascript
 // This looks innocent...
-async function getUsers(ids) {
-  const users = [];
-  for (const id of ids) {
-    const user = await db.query('SELECT * FROM users WHERE id = ?', [id]);
-    users.push(user);
-  }
-  return users;
+function buildUserResponse(users) {
+  return users.map((user) => ({
+    id: user.id,
+    name: user.name,
+    // Expensive serialization repeated for every user
+    payload: JSON.stringify(user),
+  }));
 }
 ```
 
 A CPU profile would show:
 
 ```text
-getUsers        |████████████████████████████████████████| 100%
-  db.query      |████████████████████████████████████████| 95%
-    tcp.write   |████████████████████                    | 45%
-    tcp.read    |████████████████████                    | 45%
+buildUserResponse |████████████████████████████████████████| 100%
+  Array.map       |████████████████████████████████████    | 85%
+    JSON.stringify|████████████████████████████            | 70%
 ```
 
-The fix: batch queries instead of N+1:
+The fix: avoid repeated serialization in the hot path:
 
 ```javascript
-async function getUsers(ids) {
-  return db.query('SELECT * FROM users WHERE id IN (?)', [ids]);
+function buildUserResponse(users) {
+  return users.map((user) => ({
+    id: user.id,
+    name: user.name,
+  }));
 }
 ```
 
@@ -196,10 +200,9 @@ In Chrome DevTools:
 const inspector = require('inspector');
 const fs = require('fs');
 
-const session = new inspector.Session();
-
 function takeHeapSnapshot() {
   return new Promise((resolve, reject) => {
+    const session = new inspector.Session();
     session.connect();
 
     const chunks = [];
@@ -264,7 +267,7 @@ Compare snapshots 1 and 3. Objects that grew proportionally to the operation cou
 ```javascript
 // LEAK: Listeners accumulate on every request
 app.get('/stream', (req, res) => {
-  process.on('data', (data) => {
+  source.on('data', (data) => {
     res.write(data);
   });
 });
@@ -272,10 +275,10 @@ app.get('/stream', (req, res) => {
 // FIX: Clean up listeners
 app.get('/stream', (req, res) => {
   const handler = (data) => res.write(data);
-  process.on('data', handler);
+  source.on('data', handler);
 
   res.on('close', () => {
-    process.removeListener('data', handler);
+    source.removeListener('data', handler);
   });
 });
 ```
@@ -288,17 +291,19 @@ function processLargeData(data) {
   const processed = transform(data);
 
   return function getResult() {
-    // 'data' is captured even though we only use 'processed'
+    // Captures the full input object
+    logDebugMetadata(data.metadata);
     return processed;
   };
 }
 
-// FIX: Don't capture unnecessary references
+// FIX: Capture only what the closure needs
 function processLargeData(data) {
   const processed = transform(data);
-  data = null; // Allow GC
+  const metadata = data.metadata;
 
   return function getResult() {
+    logDebugMetadata(metadata);
     return processed;
   };
 }
@@ -317,8 +322,8 @@ function getCached(key, compute) {
 }
 
 // FIX: Use LRU cache with size limit
-const LRU = require('lru-cache');
-const cache = new LRU({ max: 1000 });
+const { LRUCache } = require('lru-cache');
+const cache = new LRUCache({ max: 1000 });
 
 function getCached(key, compute) {
   if (!cache.has(key)) {
@@ -338,7 +343,7 @@ The allocation timeline shows where memory is being allocated over time:
 4. Trigger operations
 5. Click **Stop**
 
-Blue bars show allocations that were garbage collected. Gray bars show allocations that survived (potential leaks if they keep accumulating).
+Blue bars show allocations that survived to the final heap snapshot. Gray bars show allocations that were garbage collected.
 
 ## Production Profiling Strategies
 
@@ -351,8 +356,8 @@ const fs = require('fs');
 let session = null;
 let profiling = false;
 
-// Start profiling on SIGUSR1
-process.on('SIGUSR1', async () => {
+// Start profiling on SIGUSR2
+process.on('SIGUSR2', async () => {
   if (profiling) return;
 
   profiling = true;
@@ -368,11 +373,17 @@ process.on('SIGUSR1', async () => {
   console.log('CPU profiling started');
 });
 
-// Stop profiling on SIGUSR2
-process.on('SIGUSR2', async () => {
+// Stop profiling on SIGHUP
+process.on('SIGHUP', async () => {
   if (!profiling) return;
 
-  session.post('Profiler.stop', (err, { profile }) => {
+  session.post('Profiler.stop', (err, result) => {
+    if (err) {
+      console.error(err);
+      return;
+    }
+
+    const { profile } = result;
     const filename = `cpu-${Date.now()}.cpuprofile`;
     fs.writeFileSync(filename, JSON.stringify(profile));
     console.log(`Profile saved to ${filename}`);
@@ -388,10 +399,10 @@ Usage:
 
 ```bash
 # Start profiling
-kill -USR1 <pid>
+kill -USR2 <pid>
 
 # Stop and save
-kill -USR2 <pid>
+kill -HUP <pid>
 ```
 
 ### Sampling Profiler for Low Overhead
@@ -399,10 +410,11 @@ kill -USR2 <pid>
 For production with minimal performance impact:
 
 ```javascript
-const v8 = require('v8');
-
-// Enable sampling profiler
-v8.setFlagsFromString('--prof');
+// Start Node with the built-in sampling profiler:
+// node --prof app.js
+//
+// Process the generated V8 log:
+// node --prof-process isolate-*.log > processed-profile.txt
 
 // Or use 0x for easy flame graphs
 // npm install -g 0x
@@ -450,7 +462,13 @@ async function profiledOperation(operationName, fn) {
     return await fn();
   } finally {
     // Save profile with trace ID in filename
-    session.post('Profiler.stop', (err, { profile }) => {
+    session.post('Profiler.stop', (err, result) => {
+      if (err) {
+        session.disconnect();
+        return;
+      }
+
+      const { profile } = result;
       const filename = `profile-${traceId}-${Date.now()}.cpuprofile`;
       require('fs').writeFileSync(filename, JSON.stringify(profile));
 
@@ -500,7 +518,7 @@ node --trace-gc --trace-gc-verbose app.js
 | Find slow functions | CPU Profile | Flame graph analysis |
 | Find memory leaks | Heap Snapshot | Three-snapshot comparison |
 | Find allocation hotspots | Allocation Timeline | Track surviving allocations |
-| Production debugging | Signal-based profiling | SIGUSR1/SIGUSR2 triggers |
+| Production debugging | Signal-based profiling | SIGUSR2/SIGHUP triggers |
 | Continuous profiling | Pyroscope/Datadog | Background sampling |
 
 Profiling is a skill that improves with practice. Start by profiling your application under normal load, establish baselines, then investigate when performance degrades. The V8 Inspector and Chrome DevTools give you everything you need to find and fix performance issues systematically.
