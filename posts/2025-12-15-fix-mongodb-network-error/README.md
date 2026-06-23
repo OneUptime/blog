@@ -257,8 +257,7 @@ app.get('/health/mongodb', async (req, res) => {
 
     res.json({
       status: 'healthy',
-      latency: `${latency}ms`,
-      connections: client.topology?.s?.pool?.totalConnectionCount || 'unknown'
+      latency: `${latency}ms`
     });
   } catch (error) {
     res.status(503).json({
@@ -320,6 +319,7 @@ const { MongoClient } = require('mongodb');
 
 // Option 2: Use client options
 const client = new MongoClient("mongodb://localhost:27017/mydb", {
+  mongodbLogComponentSeverities: { default: 'debug' },
   mongodbLogPath: 'stderr'  // Logs to stderr
 });
 ```
