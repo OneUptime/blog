@@ -12,7 +12,7 @@ Slow queries are the most common performance issue in MongoDB deployments. They 
 
 ## Understanding Slow Queries
 
-MongoDB considers a query "slow" when it exceeds the slow operation threshold (default: 100ms). Slow queries are logged and can be analyzed through the profiler.
+MongoDB considers a query "slow" when it exceeds the slow operation threshold (default: 100ms). Slow operations are written to the diagnostic log and, when profiling is enabled, can be analyzed through the profiler.
 
 ```mermaid
 graph TD
@@ -33,13 +33,13 @@ graph TD
 ## Enabling the Slow Query Log
 
 ```javascript
-// Set slow query threshold (in milliseconds)
+// Set slow query threshold for diagnostic logging (in milliseconds)
 db.setProfilingLevel(0, { slowms: 100 });
 
 // Enable profiling at different levels
 db.setProfilingLevel(0);  // Off - profiler disabled, slow ops still logged to diagnostic log
-db.setProfilingLevel(1);  // Log slow operations only
-db.setProfilingLevel(2);  // Log all operations (use cautiously)
+db.setProfilingLevel(1);  // Profile slow operations only
+db.setProfilingLevel(2);  // Profile all operations (use cautiously)
 
 // Check current profiling level
 db.getProfilingStatus();
@@ -75,7 +75,7 @@ db.system.profile.find({
 ```bash
 # Find slow queries in MongoDB log
 
-grep "COMMAND" /var/log/mongodb/mongod.log | grep -E "[0-9]{4}ms"
+grep -E '"durationMillis":[0-9]{4,}' /var/log/mongodb/mongod.log
 
 # Using mongotop to see collection activity
 mongotop 5
@@ -158,7 +158,7 @@ db.users.createIndex({ phone: 1 }, { sparse: true });
 
 ### The ESR Rule for Compound Indexes
 
-**Equality - Sort - Range** is the optimal order for compound index fields.
+**Equality - Sort - Range** is the recommended order for compound index fields in most cases.
 
 ```javascript
 // Query pattern
@@ -177,7 +177,7 @@ db.orders.createIndex({
 
 ### Covered Queries
 
-Queries that can be satisfied entirely from the index are fastest.
+Queries that can be satisfied entirely from the index can be very fast.
 
 ```javascript
 // Create index that covers the query
@@ -228,7 +228,7 @@ db.users.find().skip(100000).limit(10);
 
 // Good - use range queries
 db.users.find({
-  _id: { $gt: ObjectId("lastSeenId") }
+  _id: { $gt: lastSeenId }
 }).limit(10);
 ```
 
@@ -257,25 +257,49 @@ for (let i = 0; i < largeArray.length; i += batchSize) {
 // Put $match early to reduce documents
 // Bad
 db.orders.aggregate([
-  { $lookup: { from: "users", ... } },
+  {
+    $lookup: {
+      from: "users",
+      localField: "userId",
+      foreignField: "_id",
+      as: "user"
+    }
+  },
   { $match: { status: "active" } }  // Match after expensive lookup
 ]);
 
 // Good
 db.orders.aggregate([
   { $match: { status: "active" } },  // Match first
-  { $lookup: { from: "users", ... } }
+  {
+    $lookup: {
+      from: "users",
+      localField: "userId",
+      foreignField: "_id",
+      as: "user"
+    }
+  }
 ]);
 
-// Use $project early to reduce field processing
+// Use $project when later stages only need specific fields
 db.orders.aggregate([
   { $match: { status: "active" } },
-  { $project: { orderId: 1, amount: 1, userId: 1 } },  // Reduce fields early
-  { $lookup: { from: "users", ... } }
+  { $project: { orderId: 1, amount: 1, userId: 1 } },
+  {
+    $lookup: {
+      from: "users",
+      localField: "userId",
+      foreignField: "_id",
+      as: "user"
+    }
+  }
 ]);
 
 // Allow disk use for large aggregations
-db.orders.aggregate([...], { allowDiskUse: true });
+db.orders.aggregate([
+  { $match: { status: "active" } },
+  { $sort: { createdAt: -1 } }
+], { allowDiskUse: true });
 ```
 
 ## Monitoring and Alerting
@@ -284,18 +308,20 @@ db.orders.aggregate([...], { allowDiskUse: true });
 
 ```javascript
 // Monitor slow queries in real-time
+const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+
 const watchSlowQueries = async () => {
-  const db = client.db('admin');
+  const adminDb = db.getSiblingDB('admin');
 
   while (true) {
-    const slowOps = await db.command({
-      currentOp: 1,
-      "secs_running": { $gte: 5 }
-    });
+    const slowOps = adminDb.aggregate([
+      { $currentOp: {} },
+      { $match: { active: true, secs_running: { $gte: 5 } } }
+    ]).toArray();
 
-    if (slowOps.inprog.length > 0) {
+    if (slowOps.length > 0) {
       console.log('Slow operations detected:');
-      slowOps.inprog.forEach(op => {
+      slowOps.forEach(op => {
         console.log(`- ${op.ns}: ${op.secs_running}s - ${JSON.stringify(op.command)}`);
       });
     }
