@@ -214,7 +214,7 @@ Celery's built-in exponential backoff prevents overwhelming failing services. Ea
 @app.task(
     bind=True,
     autoretry_for=(requests.RequestException,),  # Auto-retry on these exceptions
-    retry_backoff=True,           # Enable exponential backoff (2, 4, 8, 16... seconds)
+    retry_backoff=True,           # Enable exponential backoff (1, 2, 4, 8... seconds)
     retry_backoff_max=600,        # Cap maximum wait at 10 minutes
     retry_jitter=True,            # Add randomness to prevent thundering herd
     max_retries=5                 # Give up after 5 attempts
