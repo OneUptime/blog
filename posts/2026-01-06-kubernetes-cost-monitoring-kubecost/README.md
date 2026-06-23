@@ -214,41 +214,41 @@ curl "http://localhost:9090/model/savings/abandonedWorkloads?window=7d"
 
 ### Budget Alerts
 
-Configure budget alerts to prevent cost overruns. Alerts trigger when spending approaches or exceeds thresholds.
+Configure budget alerts to prevent cost overruns. Alerts trigger when spending exceeds a defined threshold. Kubecost alerts are configured through Helm values under `global.notifications.alertConfigs`, not as Kubernetes custom resources.
 
 ```yaml
-apiVersion: kubecost.io/v1alpha1
-kind: Budget
-metadata:
-  name: production-budget
-spec:
-  namespace: production
-  amount: 5000            # Monthly budget in dollars
-  interval: month
-  alerts:
-    - type: forecast
-      threshold: 0.8      # Alert when forecasted to hit 80% of budget
-      window: 7d          # Forecast window
-    - type: actual
-      threshold: 1.0      # Alert when actually hitting 100% of budget
+# values.yaml - budget alert via Kubecost notifications
+global:
+  notifications:
+    alertConfigs:
+      enabled: true
+      alerts:
+        - type: budget          # Surface a budget overrun
+          threshold: 5000       # Budget threshold in dollars
+          window: 30d           # Budget window (e.g. monthly)
+          aggregation: namespace
+          filter: production    # Namespace to monitor
+          ownerContact:
+            - finance@example.com
 ```
 
 ### Cost Anomaly Alerts
 
-Detect unusual spending patterns that may indicate issues or misconfigurations.
+Detect unusual spending patterns that may indicate issues or misconfigurations. The `spendChange` alert type compares recent spend against a historical baseline.
 
 ```yaml
-apiVersion: kubecost.io/v1alpha1
-kind: Alert
-metadata:
-  name: cost-anomaly
-spec:
-  type: anomaly
-  window: 24h             # Look for anomalies in the last 24 hours
-  threshold: 0.3          # Alert on 30% or greater cost increase
-  aggregation: namespace
-  filter:
-    namespace: production  # Monitor production namespace
+# values.yaml - spend change (anomaly) alert
+global:
+  notifications:
+    alertConfigs:
+      enabled: true
+      alerts:
+        - type: spendChange       # Detect unusual spend vs baseline
+          relativeThreshold: 0.3  # Alert on 30% or greater increase
+          window: 1d              # Evaluation window
+          baselineWindow: 30d     # Historical baseline to compare against
+          aggregation: namespace
+          filter: production      # Namespace to monitor
 ```
 
 ### Efficiency Alerts
@@ -256,15 +256,17 @@ spec:
 Alert when resource efficiency drops below acceptable levels.
 
 ```yaml
-apiVersion: kubecost.io/v1alpha1
-kind: Alert
-metadata:
-  name: low-efficiency
-spec:
-  type: efficiency
-  threshold: 0.5          # Alert when efficiency drops below 50%
-  window: 24h
-  aggregation: deployment
+# values.yaml - efficiency alert
+global:
+  notifications:
+    alertConfigs:
+      enabled: true
+      alerts:
+        - type: efficiency           # Detect over-provisioned resources
+          efficiencyThreshold: 0.5   # Alert when efficiency drops below 50%
+          spendThreshold: 100        # Only consider workloads spending > $100
+          window: 1d
+          aggregation: namespace
 ```
 
 ## Implementing Cost Savings
@@ -369,21 +371,22 @@ curl "http://localhost:9090/model/allocation?window=lastmonth&aggregate=namespac
 
 ### Scheduled Reports
 
-Automate weekly cost reports delivered to stakeholders via email.
+Automate recurring cost reports delivered to stakeholders via email using the `recurringUpdate` alert type.
 
 ```yaml
-apiVersion: kubecost.io/v1alpha1
-kind: Report
-metadata:
-  name: weekly-cost-report
-spec:
-  schedule: "0 9 * * 1"   # Every Monday at 9 AM
-  window: 7d              # Report on last 7 days
-  aggregation: namespace
-  recipients:
-    - email: finance@example.com
-    - email: engineering-leads@example.com
-  format: pdf
+# values.yaml - weekly recurring cost report
+global:
+  notifications:
+    alertConfigs:
+      enabled: true
+      alerts:
+        - type: recurringUpdate   # Scheduled cost report
+          window: weekly          # Send weekly
+          aggregation: namespace
+          filter: '*'             # All namespaces
+          ownerContact:
+            - finance@example.com
+            - engineering-leads@example.com
 ```
 
 ## Integrating with Existing Tools
@@ -442,23 +445,24 @@ alertmanager:
 
 ### Federated Setup
 
-Aggregate costs across multiple clusters with federated Kubecost deployment.
+Aggregate costs across multiple clusters with a Federated ETL deployment. Every cluster pushes its ETL data to a shared object store (configured via the `federatedStorageConfigSecret`), and the primary cluster reads and aggregates that data.
 
 ```yaml
-# Primary cluster configuration
+# Primary cluster - aggregates ETL data from all clusters
 kubecostProductConfigs:
   clusterName: primary
-  federatedCluster:
-    primaryClusterID: primary
-    enabled: true
+federatedETL:
+  federatedCluster: true
+  primaryCluster: true
+  federatedStorageConfigSecret: kubecost-federated-store  # Secret holding object-store config
 
-# Secondary cluster configuration - reports to primary
+# Secondary cluster - pushes ETL data to the shared object store
 kubecostProductConfigs:
   clusterName: secondary
-  federatedCluster:
-    primaryClusterID: primary
-    enabled: true
-    primaryClusterURL: http://kubecost.primary.example.com  # Primary cluster endpoint
+federatedETL:
+  federatedCluster: true
+  primaryCluster: false
+  federatedStorageConfigSecret: kubecost-federated-store  # Same object-store secret
 ```
 
 ### Aggregate View
