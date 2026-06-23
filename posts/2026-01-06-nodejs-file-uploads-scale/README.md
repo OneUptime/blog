@@ -15,7 +15,7 @@ File uploads are a common source of Node.js performance problems. Loading entire
 ```javascript
 // BAD: Loads entire file into memory
 const multer = require('multer');
-const upload = multer(); // memory storage
+const upload = multer({ storage: multer.memoryStorage() }); // memory storage
 
 app.post('/upload', upload.single('file'), (req, res) => {
   // req.file.buffer contains entire file in memory
@@ -90,15 +90,19 @@ app.post('/upload', (req, res) => {
     });
   });
 
-  bb.on('finish', () => {
-    if (uploadedFile) {
+  bb.on('close', () => {
+    if (uploadedFile && !res.headersSent) {
       res.json(uploadedFile);
+    } else if (!res.headersSent) {
+      res.status(400).json({ error: 'No file uploaded' });
     }
   });
 
   bb.on('error', (err) => {
     console.error('Busboy error:', err);
-    res.status(500).json({ error: 'Upload failed' });
+    if (!res.headersSent) {
+      res.status(500).json({ error: 'Upload failed' });
+    }
   });
 
   req.pipe(bb);
@@ -108,7 +112,7 @@ app.post('/upload', (req, res) => {
 ### Streaming to S3
 
 ```javascript
-const { S3Client, PutObjectCommand } = require('@aws-sdk/client-s3');
+const { S3Client } = require('@aws-sdk/client-s3');
 const { Upload } = require('@aws-sdk/lib-storage');
 const { PassThrough } = require('stream');
 
@@ -234,6 +238,8 @@ const multer = require('multer');
 
 const s3 = new S3Client({ region: process.env.AWS_REGION });
 const upload = multer({ storage: multer.memoryStorage() });
+
+app.use(express.json());
 
 // Store upload state (use Redis in production)
 const uploads = new Map();
@@ -444,7 +450,7 @@ app.post('/upload/video', (req, res) => {
     await upload.done();
 
     // Queue for processing
-    const job = await videoQueue.add({
+    const job = await videoQueue.add('transcode', {
       sourceKey: key,
       filename: info.filename,
     });
@@ -468,7 +474,7 @@ app.get('/upload/status/:jobId', async (req, res) => {
   }
 
   const state = await job.getState();
-  const progress = job.progress();
+  const progress = job.progress;
 
   res.json({
     state,
@@ -502,6 +508,8 @@ function hashFile(filePath) {
 ### Validate File Type by Magic Bytes
 
 ```javascript
+const { Transform } = require('stream');
+
 // file-type is an ES module (v19+); use dynamic import() in a CommonJS context
 // or switch your project to ESM with "type": "module" in package.json
 // Example using dynamic import:
@@ -511,34 +519,81 @@ app.post('/upload', (req, res) => {
   const bb = busboy({ headers: req.headers });
   const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'application/pdf'];
 
-  bb.on('file', async (name, file, info) => {
-    // Buffer first 4100 bytes to detect file type
+  bb.on('file', (name, file, info) => {
+    // Buffer up to the first 4100 bytes to detect file type
     const chunks = [];
     let bytesRead = 0;
-    let detectedType = null;
+    let validated = false;
 
-    for await (const chunk of file) {
-      if (bytesRead < 4100) {
-        chunks.push(chunk.slice(0, 4100 - bytesRead));
-        bytesRead += chunk.length;
-
-        if (bytesRead >= 4100 && !detectedType) {
-          const buffer = Buffer.concat(chunks);
-          const { fileTypeFromBuffer } = await import('file-type'); // ESM-only package
-          detectedType = await fileTypeFromBuffer(buffer);
-
-          if (!detectedType || !allowedTypes.includes(detectedType.mime)) {
-            file.resume(); // Drain stream
-            return res.status(400).json({
-              error: 'Invalid file type',
-              detected: detectedType?.mime,
-            });
-          }
-        }
+    async function validateBufferedBytes() {
+      if (validated) {
+        return;
       }
 
-      // Process chunk (write to disk/S3)
+      const buffer = Buffer.concat(chunks, bytesRead);
+      const { fileTypeFromBuffer } = await import('file-type'); // ESM-only package
+      const detectedType = await fileTypeFromBuffer(buffer);
+
+      if (!detectedType || !allowedTypes.includes(detectedType.mime)) {
+        const error = new Error('Invalid file type');
+        error.statusCode = 400;
+        error.detected = detectedType?.mime;
+        throw error;
+      }
+
+      validated = true;
     }
+
+    const validator = new Transform({
+      async transform(chunk, encoding, callback) {
+        try {
+          if (!validated && bytesRead < 4100) {
+            chunks.push(chunk);
+            bytesRead += chunk.length;
+
+            if (bytesRead < 4100) {
+              return callback();
+            }
+
+            await validateBufferedBytes();
+            for (const bufferedChunk of chunks) {
+              this.push(bufferedChunk);
+            }
+            chunks.length = 0;
+          } else {
+            this.push(chunk);
+          }
+
+          callback();
+        } catch (error) {
+          callback(error);
+        }
+      },
+
+      async flush(callback) {
+        try {
+          await validateBufferedBytes();
+          for (const bufferedChunk of chunks) {
+            this.push(bufferedChunk);
+          }
+          callback();
+        } catch (error) {
+          callback(error);
+        }
+      },
+    });
+
+    validator.on('error', (error) => {
+      file.resume(); // Drain stream
+      res.status(error.statusCode || 500).json({
+        error: error.statusCode === 400 ? 'Invalid file type' : 'Upload failed',
+        detected: error.detected,
+      });
+    });
+
+    file.pipe(validator);
+
+    // Process validator stream (write to disk/S3)
   });
 
   req.pipe(bb);
@@ -614,13 +669,13 @@ app.get('/upload/progress/:id', (req, res) => {
 
 ```javascript
 const path = require('path');
+const crypto = require('crypto');
 
 // Validation middleware
 function validateUpload(options = {}) {
   const {
     maxSize = 10 * 1024 * 1024,
     allowedTypes = [],
-    allowedExtensions = [],
   } = options;
 
   return (req, res, next) => {
@@ -632,6 +687,9 @@ function validateUpload(options = {}) {
 
     // Check content type
     const contentType = req.headers['content-type'];
+    if (allowedTypes.length && !contentType) {
+      return res.status(400).json({ error: 'Missing content type' });
+    }
     if (allowedTypes.length && !allowedTypes.some(t => contentType.includes(t))) {
       return res.status(400).json({ error: 'Invalid content type' });
     }
