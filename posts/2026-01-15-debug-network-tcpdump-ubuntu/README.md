@@ -781,9 +781,9 @@ echo ""
 echo "Total packets captured:"
 tcpdump -r /tmp/perf_capture.pcap 2>/dev/null | wc -l
 
-# Retransmissions (duplicate ACKs)
+# Connection resets (often a sign of trouble)
 echo ""
-echo "Potential retransmissions (RST packets):"
+echo "Connection resets (RST packets):"
 tcpdump -nn -r /tmp/perf_capture.pcap 'tcp[tcpflags] & tcp-rst != 0' 2>/dev/null | wc -l
 
 # Large packets
