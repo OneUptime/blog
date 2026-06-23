@@ -119,9 +119,9 @@ curl -X GET "https://localhost:9200/orders/_search" \
   }'
 ```
 
-### Composite with Sorting
+### Composite with Key Sorting
 
-Sort by a metric within the aggregation:
+Sort by the composite key while calculating metrics in each bucket:
 
 ```bash
 curl -X GET "https://localhost:9200/orders/_search" \
@@ -130,7 +130,7 @@ curl -X GET "https://localhost:9200/orders/_search" \
   -d '{
     "size": 0,
     "aggs": {
-      "customers_by_revenue": {
+      "customers_with_revenue": {
         "composite": {
           "size": 10,
           "sources": [
@@ -139,7 +139,7 @@ curl -X GET "https://localhost:9200/orders/_search" \
         },
         "aggs": {
           "total_revenue": { "sum": { "field": "amount" } },
-          "order_count": { "value_count": { "field": "_id" } }
+          "order_count": { "value_count": { "field": "amount" } }
         }
       }
     }
@@ -253,7 +253,7 @@ curl -X GET "https://localhost:9200/orders/_search" \
         },
         "aggs": {
           "revenue": { "sum": { "field": "amount" } },
-          "order_count": { "value_count": { "field": "_id" } },
+          "order_count": { "value_count": { "field": "amount" } },
           "avg_order_value": {
             "bucket_script": {
               "buckets_path": {
@@ -445,13 +445,14 @@ class PaginatedAggregation:
         sort_by: str,
         order: str = "desc",
         size: int = 10,
+        max_buckets: int = 1000,
         metrics: Optional[Dict] = None
     ) -> List[Dict]:
-        """Get sorted aggregation with multiple metrics."""
+        """Get sorted aggregation with multiple metrics within a bounded bucket set."""
 
         default_metrics = {
             "total": {"sum": {"field": "amount"}},
-            "count": {"value_count": {"field": "_id"}},
+            "count": {"value_count": {"field": "amount"}},
             "average": {"avg": {"field": "amount"}}
         }
 
@@ -463,10 +464,17 @@ class PaginatedAggregation:
                 "sorted_groups": {
                     "terms": {
                         "field": group_field,
-                        "size": size,
-                        "order": {sort_by: order}
+                        "size": max_buckets
                     },
-                    "aggs": metrics
+                    "aggs": {
+                        **metrics,
+                        "sort_and_limit": {
+                            "bucket_sort": {
+                                "sort": [{sort_by: {"order": order}}],
+                                "size": size
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -540,7 +548,7 @@ curl -X GET "https://localhost:9200/orders/_search" \
         },
         "aggs": {
           "daily_revenue": { "sum": { "field": "amount" } },
-          "order_count": { "value_count": { "field": "_id" } }
+          "order_count": { "value_count": { "field": "amount" } }
         }
       }
     }
