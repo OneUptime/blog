@@ -106,6 +106,8 @@ services:
       - postgres_data:/var/lib/postgresql/data
     environment:
       POSTGRES_PASSWORD_FILE: /run/secrets/db_password
+    secrets:
+      - db_password
     
   redis:
     image: redis:7-alpine
@@ -114,6 +116,10 @@ services:
 
 volumes:
   postgres_data:
+
+secrets:
+  db_password:
+    file: ./db_password.txt
 ```
 
 With Docker Compose, you get:
@@ -122,7 +128,7 @@ With Docker Compose, you get:
 - **Automatic restarts** when services crash
 - **Health checks** to ensure services are actually working
 - **Resource limits** to prevent runaway processes
-- **Easy updates** with zero-downtime deployments
+- **Easy updates** with minimal downtime when paired with a reverse proxy or rolling deployment pattern
 - **Consistent environments** across development and production
 
 This is simpler to understand, debug, and maintain than any Kubernetes cluster. And for most workloads, it's just as capable.
