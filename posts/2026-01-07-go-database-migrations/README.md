@@ -36,7 +36,7 @@ Key features include:
 - **Up and down migrations**: Support for both applying and reverting changes
 - **Multiple database support**: Works with PostgreSQL, MySQL, SQLite, CockroachDB, and more
 - **Multiple source drivers**: Read migrations from filesystem, GitHub, AWS S3, and others
-- **Atomic migrations**: Transactions ensure migrations either complete fully or not at all
+- **Dirty-state tracking**: Failed migrations are marked dirty so you can repair the database before continuing
 - **CLI and library**: Use from command line or embed in your Go application
 
 ---
@@ -301,7 +301,7 @@ migrate -path ./migrations -database "postgres://user:pass@localhost:5432/dbname
 migrate -path ./migrations -database "postgres://user:pass@localhost:5432/dbname?sslmode=disable" down 1
 
 # Revert all migrations (use with caution!)
-migrate -path ./migrations -database "postgres://user:pass@localhost:5432/dbname?sslmode=disable" down
+migrate -path ./migrations -database "postgres://user:pass@localhost:5432/dbname?sslmode=disable" down -all
 
 # Go to a specific version
 migrate -path ./migrations -database "postgres://user:pass@localhost:5432/dbname?sslmode=disable" goto 3
@@ -372,7 +372,7 @@ migrate-down-n:
 # Revert all migrations (dangerous!)
 .PHONY: migrate-reset
 migrate-reset:
-	migrate -path $(MIGRATIONS_PATH) -database "$(DATABASE_URL)" down
+	migrate -path $(MIGRATIONS_PATH) -database "$(DATABASE_URL)" down -all
 
 # Show current migration version
 .PHONY: migrate-version
@@ -454,7 +454,7 @@ func RunMigrations(databaseURL, migrationsPath string) error {
 
 ### Embedding Migrations in Binary
 
-Using Go's embed package, you can include migration files directly in your compiled binary. This eliminates deployment dependencies on external files.
+Using Go's embed package, you can include migration files directly in your compiled binary. This eliminates deployment dependencies on external files. In this example, the SQL files live in `internal/database/migrations` because `//go:embed` patterns are relative to the Go package directory.
 
 ```go
 // internal/database/embedded_migrations.go
@@ -966,7 +966,7 @@ on:
 
 env:
   GO_VERSION: '1.22'
-  MIGRATE_VERSION: 'v4.17.0'
+  MIGRATE_VERSION: 'v4.19.1'
 
 jobs:
   # Run tests including migration tests
@@ -1019,7 +1019,7 @@ jobs:
           DATABASE_URL: postgres://test:test@localhost:5432/test_db?sslmode=disable
         run: |
           # Test that all migrations can be rolled back
-          migrate -path ./migrations -database "$DATABASE_URL" down
+          migrate -path ./migrations -database "$DATABASE_URL" down -all
           # And reapplied
           migrate -path ./migrations -database "$DATABASE_URL" up
 
@@ -1187,7 +1187,7 @@ jobs:
 
       - name: Install migrate CLI
         run: |
-          curl -L https://github.com/golang-migrate/migrate/releases/download/v4.17.0/migrate.linux-amd64.tar.gz | tar xvz
+          curl -L https://github.com/golang-migrate/migrate/releases/download/v4.19.1/migrate.linux-amd64.tar.gz | tar xvz
           sudo mv migrate /usr/local/bin/migrate
 
       - name: Get current version
@@ -1289,10 +1289,10 @@ DROP TABLE IF EXISTS users;
 
 ### 3. Use Transactions Carefully
 
-PostgreSQL supports transactional DDL, but be aware of locking implications.
+PostgreSQL supports transactional DDL, but be aware of locking implications. golang-migrate sends migration contents to the database driver, so wrap related statements in explicit `BEGIN` and `COMMIT` when you need the whole migration to succeed or fail as one unit.
 
 ```sql
--- For PostgreSQL, migrations run in transactions by default
+-- For PostgreSQL, wrap related statements in BEGIN/COMMIT when needed
 -- For large tables, consider breaking into smaller changes
 
 -- Instead of one large migration:
@@ -1316,7 +1316,8 @@ For tables with millions of rows, use techniques to minimize locking.
 ```sql
 -- migrations/000010_add_index_concurrently.up.sql
 -- Create index concurrently to avoid locking the table
--- Note: This cannot run inside a transaction
+-- Note: This cannot run inside an explicit transaction block.
+-- Keep this migration as a single statement and do not enable x-multi-statement.
 
 CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_posts_created_at
 ON posts(created_at);
@@ -1329,7 +1330,7 @@ DROP INDEX CONCURRENTLY IF EXISTS idx_posts_created_at;
 
 ### 5. Version Your Schema Alongside Code
 
-Keep migrations in the same repository as your application code.
+Keep migrations in the same repository as your application code. If you embed them, place the SQL files under the same Go package directory or one of its subdirectories.
 
 ```go
 // internal/database/version.go
@@ -1474,7 +1475,7 @@ A dirty state occurs when a migration fails midway. Here is how to recover.
 migrate -path ./migrations -database "$DATABASE_URL" version
 # Output: 5 (dirty)
 
-# Option 1: Fix the issue and force to the failed version
+# Option 1: Fix the issue and force to the last known-good version
 # Then retry the migration
 migrate -path ./migrations -database "$DATABASE_URL" force 4
 migrate -path ./migrations -database "$DATABASE_URL" up
@@ -1485,19 +1486,18 @@ psql "$DATABASE_URL" -c "-- Fix the partial migration manually"
 migrate -path ./migrations -database "$DATABASE_URL" force 5
 ```
 
-### Migration File Checksum Mismatch
+### Migration File Changed After Applying
 
-This happens when migration files are modified after being applied.
+golang-migrate does not store migration checksums in its default `schema_migrations` table, but changing applied migration files is still unsafe because new environments will run different SQL than existing environments.
 
 ```bash
 # Never modify applied migrations!
 # Instead, create a new migration to fix the issue
 
-# If you must fix a checksum error in development:
-# 1. Drop the schema_migrations table (development only!)
-psql "$DATABASE_URL" -c "DROP TABLE schema_migrations;"
+# If you changed applied migrations in development only:
+# 1. Drop and recreate the development database
 
-# 2. Rerun all migrations
+# 2. Rerun all migrations from the current files
 migrate -path ./migrations -database "$DATABASE_URL" up
 ```
 
