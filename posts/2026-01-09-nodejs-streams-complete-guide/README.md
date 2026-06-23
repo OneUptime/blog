@@ -92,7 +92,7 @@ flowchart TB
     R -->|"Source of data"| Examples1["fs.createReadStream\nhttp.IncomingMessage\nprocess.stdin"]
     W -->|"Destination for data"| Examples2["fs.createWriteStream\nhttp.ServerResponse\nprocess.stdout"]
     D -->|"Both read & write"| Examples3["net.Socket\nWebSocket"]
-    T -->|"Modify data"| Examples4["zlib.createGzip\ncrypto.createCipher"]
+    T -->|"Modify data"| Examples4["zlib.createGzip\ncrypto.createCipheriv"]
 ```
 
 ### 1. Readable Streams
@@ -202,7 +202,7 @@ Transform streams modify data as it passes through. They're duplex streams where
 
 **Common examples:**
 - `zlib.createGzip()` - compression
-- `crypto.createCipher()` - encryption
+- `crypto.createCipheriv()` - encryption
 
 ```typescript
 import { Transform, TransformCallback } from 'stream';
@@ -973,11 +973,14 @@ server.listen(3000, () => {
 ### Example 5: Encryption/Decryption Pipeline
 
 ```typescript
-import { createCipheriv, createDecipheriv, randomBytes, CipherGCMTypes } from 'crypto';
+import { createCipheriv, createDecipheriv, randomBytes } from 'crypto';
 import { createReadStream, createWriteStream } from 'fs';
 import { pipeline } from 'stream/promises';
 
-const algorithm: CipherGCMTypes = 'aes-256-gcm';
+// CBC is used here because it streams cleanly. Authenticated modes like
+// aes-256-gcm also work, but require capturing cipher.getAuthTag() after
+// encryption and calling decipher.setAuthTag() before decryption.
+const algorithm = 'aes-256-cbc';
 
 interface EncryptionKeys {
   key: Buffer;
@@ -1090,7 +1093,7 @@ createArchive(['./file1.txt', './file2.txt', './file3.txt'], './archive.gz');
 
 ### 1. Choose the Right highWaterMark
 
-The `highWaterMark` option controls the buffer size. Default is 16KB for object mode, 64KB for binary.
+The `highWaterMark` option controls the buffer size. For file streams created with `fs.createReadStream`, the default is 64KB (generic byte streams default to 16KB). In object mode, it counts objects instead of bytes, with a default of 16 objects.
 
 ```typescript
 import { createReadStream, ReadStream } from 'fs';
