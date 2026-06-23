@@ -538,8 +538,12 @@ def traced_task(name: str = None):
     def decorator(func):
         @wraps(func)
         def wrapper(*args, **kwargs):
+            # With bind=True, Celery passes the task instance as the first
+            # argument; its .request holds the message headers and metadata.
+            task_instance = args[0]
+
             # Extract trace context from task headers
-            headers = wrapper.request.headers or {}
+            headers = task_instance.request.headers or {}
             trace_context = headers.get('trace_context', {})
 
             if isinstance(trace_context, str):
@@ -555,8 +559,8 @@ def traced_task(name: str = None):
                 kind=SpanKind.CONSUMER
             ) as span:
                 span.set_attribute("celery.task_name", task_name)
-                span.set_attribute("celery.task_id", wrapper.request.id)
-                span.set_attribute("celery.queue", wrapper.request.delivery_info.get('routing_key', 'unknown'))
+                span.set_attribute("celery.task_id", task_instance.request.id)
+                span.set_attribute("celery.queue", task_instance.request.delivery_info.get('routing_key', 'unknown'))
 
                 try:
                     result = func(*args, **kwargs)
