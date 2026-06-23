@@ -8,19 +8,22 @@ Description: A comprehensive guide to diagnosing and resolving MongoDB Operation
 
 ---
 
-OperationFailure is MongoDB's way of telling you that a command or operation could not complete. Unlike connection errors, these indicate that MongoDB received your request but could not fulfill it. Understanding the error codes and messages is key to quick resolution.
+OperationFailure is PyMongo's way of telling you that a command or operation could not complete. In the MongoDB Node.js driver, the corresponding server-side failures are typically reported as `MongoServerError`. Unlike connection errors, these indicate that MongoDB received your request but could not fulfill it. Understanding the error codes and messages is key to quick resolution.
 
 ## Understanding OperationFailure
 
 The OperationFailure exception contains several useful fields:
 
 ```python
+from pymongo.errors import OperationFailure
+
 try:
     result = db.collection.find_one({"_id": 1})
 except OperationFailure as e:
+    details = e.details or {}
     print(f"Code: {e.code}")
-    print(f"Message: {e.details['errmsg']}")
-    print(f"Code Name: {e.details.get('codeName')}")
+    print(f"Message: {details.get('errmsg', str(e))}")
+    print(f"Code Name: {details.get('codeName')}")
 ```
 
 ```mermaid
@@ -30,11 +33,11 @@ flowchart TD
     B -->|Failure| D[OperationFailure Exception]
 
     D --> E{Error Category}
-    E -->|Authentication| F[Code 18, 13]
+    E -->|Authentication| F[Code 18]
     E -->|Authorization| G[Code 13]
-    E -->|Query Error| H[Code 2, 51, 96]
+    E -->|Query Error| H[Code 2, 263]
     E -->|Write Error| I[Code 11000, 121]
-    E -->|Resource| J[Code 50, 262]
+    E -->|Resource| J[Code 50, 146, 292]
 
     F --> K[Check Credentials]
     G --> L[Check Permissions]
@@ -222,11 +225,11 @@ db.runCommand({
 });
 ```
 
-### Error Code 50: ExceededTimeLimit
+### Error Code 50: MaxTimeMSExpired
 
 **Error Message:** `operation exceeded time limit`
 
-The operation took longer than maxTimeMS allows.
+The operation took longer than `maxTimeMS` allows. You may also see code 262 (`ExceededTimeLimit`) for timeout-related failures outside the `maxTimeMS` path.
 
 ```javascript
 // Error: operation exceeded time limit
@@ -251,7 +254,7 @@ const results = await db.largeCollection.aggregate([
   { $project: { name: 1, status: 1 } }
 ], { maxTimeMS: 30000 }).toArray();
 
-// Option 4: Set server-side default timeout (cluster parameter)
+// Option 4: Set server-side default timeout in MongoDB 8.0+
 db.adminCommand({
   setClusterParameter: {
     defaultMaxTimeMS: { readOperations: 30000 }
@@ -293,32 +296,32 @@ db.collection.find({ "nested.field": { $exists: "yes" } });
 db.collection.find({ "nested.field": { $exists: true } });
 ```
 
-### Error Code 96: OperationNotSupportedInTransaction
+### Error Code 263: OperationNotSupportedInTransaction
 
 **Error Message:** `operation not supported in transaction`
 
 Certain operations are not allowed within transactions.
 
 ```javascript
-// Error: Cannot create collection in transaction
+// Error: Cannot run listCollections in a transaction
 const session = client.startSession();
 session.startTransaction();
-await db.createCollection("newCollection", { session });  // Fails
+await db.listCollections({}, { session }).toArray();  // Fails
 ```
 
 **Solution:**
 
 ```javascript
-// Create collections outside transactions
-await db.createCollection("orders");
+// Run metadata operations outside transactions
+const collections = await db.listCollections({ name: "orders" }).toArray();
 
 // Then use transaction for data operations
 const session = client.startSession();
 try {
   session.startTransaction();
 
-  await db.orders.insertOne({ item: "product", qty: 1 }, { session });
-  await db.inventory.updateOne(
+  await db.collection("orders").insertOne({ item: "product", qty: 1 }, { session });
+  await db.collection("inventory").updateOne(
     { item: "product" },
     { $inc: { qty: -1 } },
     { session }
@@ -333,11 +336,11 @@ try {
 }
 ```
 
-### Error Code 262: ExceededMemoryLimit
+### Error Code 146 or 292: Memory Limit Errors
 
 **Error Message:** `Sort exceeded memory limit`
 
-Sort or aggregation operations exceed the memory limit (100MB by default).
+Sort or aggregation operations exceed the memory limit (100MB by default) when disk use is not allowed. MongoDB may report this as code 146 (`ExceededMemoryLimit`) or code 292 (`QueryExceededMemoryLimitNoDiskUseAllowed`), depending on the operation and server version.
 
 ```javascript
 // Error: Sort exceeded memory limit of 104857600 bytes
@@ -362,7 +365,8 @@ const results = await db.collection.aggregate([
   { $sort: { createdAt: -1 } }
 ]).toArray();
 
-// Option 4: Use cursor for large result sets
+// Option 4: Use an index-backed cursor for large result sets
+db.collection.createIndex({ field: 1 });
 const cursor = db.collection.find().sort({ field: 1 }).batchSize(1000);
 while (await cursor.hasNext()) {
   const doc = await cursor.next();
@@ -392,7 +396,8 @@ class MongoErrorHandler {
         return this.handleTimeout(error);
       case 121:
         return this.handleValidationFailed(error);
-      case 262:
+      case 146:
+      case 292:
         return this.handleMemoryLimit(error);
       default:
         return this.handleUnknown(error);
@@ -450,6 +455,6 @@ OperationFailure errors in MongoDB cover a wide range of issues:
 - **Duplicate Key (11000)**: Use upsert or handle conflicts
 - **Validation (121)**: Ensure documents match schema rules
 - **Timeout (50)**: Optimize queries or increase limits
-- **Memory (262)**: Add indexes or enable disk use
+- **Memory (146 or 292)**: Add indexes or enable disk use
 
 Understanding error codes helps you write more resilient applications that handle failures gracefully and provide meaningful feedback to users.
