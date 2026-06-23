@@ -936,18 +936,32 @@ sudo ip link set vlan20-host up
 ping 192.168.20.100
 ```
 
-Make this persistent with Netplan.
+Netplan has no macvlan device type, so create the shim with a systemd service that runs the same `ip` commands at boot.
 
-```yaml
-# /etc/netplan/02-docker-macvlan.yaml
-network:
-  version: 2
-  ethernets:
-    vlan20-host:
-      match:
-        macaddress: "auto-generated"
-      addresses:
-        - 192.168.20.2/24
+```ini
+# /etc/systemd/system/docker-macvlan-shim.service
+[Unit]
+Description=Macvlan shim for host-to-container communication on VLAN 20
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/sbin/ip link add vlan20-host link eth0.20 type macvlan mode bridge
+ExecStart=/sbin/ip addr add 192.168.20.2/24 dev vlan20-host
+ExecStart=/sbin/ip link set vlan20-host up
+ExecStop=/sbin/ip link delete vlan20-host
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Enable it so the shim is recreated on every boot.
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable --now docker-macvlan-shim.service
 ```
 
 ## Troubleshooting
