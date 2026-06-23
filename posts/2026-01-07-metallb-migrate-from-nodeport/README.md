@@ -57,7 +57,7 @@ graph TB
 
 **Limitations of NodePort:**
 - Requires clients to know node IP addresses
-- No automatic failover if a node goes down
+- No automatic client failover if clients are configured to use a single node IP
 - Uses high port numbers (30000-32767)
 - Manual load balancing configuration required
 - Client IP preservation is difficult
@@ -118,16 +118,17 @@ graph TB
 
 Before starting the migration, ensure you have the following:
 
-- A running Kubernetes cluster (version 1.13 or later)
+- A supported Kubernetes cluster; check the MetalLB release notes for the Kubernetes versions supported by the MetalLB release you install
 - kubectl configured with cluster admin access
 - Existing NodePort services that need to be migrated
 - A pool of IP addresses available for MetalLB
+- If kube-proxy runs in IPVS mode, strict ARP enabled
 - Network access to install MetalLB components
 
 Verify your cluster is ready by checking the Kubernetes version:
 
 ```bash
-kubectl version --short
+kubectl version
 ```
 
 List all existing NodePort services:
@@ -172,7 +173,7 @@ Install MetalLB using the official manifests. This creates the metallb-system na
 Apply the MetalLB native manifests:
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/metallb/metallb/v0.14.5/config/manifests/metallb-native.yaml
+kubectl apply -f https://raw.githubusercontent.com/metallb/metallb/v0.16.1/config/manifests/metallb-native.yaml
 ```
 
 Wait for all MetalLB pods to be ready:
@@ -258,14 +259,14 @@ flowchart TD
     BlueGreen --> BG1[Create new LoadBalancer service]
     BG1 --> BG2[Test with new IP]
     BG2 --> BG3[Update DNS/clients]
-    BG3 --> BG4[Remove old NodePort]
+    BG3 --> BG4[Remove old NodePort service]
 
     InPlace --> IP1[Backup service config]
     IP1 --> IP2[Update service type]
     IP2 --> IP3[Verify functionality]
 
     Canary --> C1[Create LoadBalancer service]
-    C1 --> C2[Split traffic percentage]
+    C1 --> C2[Split traffic with DNS, ingress, or clients]
     C2 --> C3[Gradually increase LB traffic]
     C3 --> C4[Complete migration]
 
@@ -337,7 +338,7 @@ metadata:
     app: my-app
     migration: in-progress
   annotations:
-    metallb.universe.tf/loadBalancerIPs: "10.0.0.100"
+    metallb.io/loadBalancerIPs: "10.0.0.100"
 spec:
   type: LoadBalancer
   selector:
@@ -473,12 +474,11 @@ After confirming all traffic has migrated and the LoadBalancer service is stable
 kubectl delete service my-app -n production
 ```
 
-Rename the LoadBalancer service to the original name (optional but recommended for consistency):
+If you need the LoadBalancer service to use the original name, create a clean Service manifest with `metadata.name: my-app`, apply it after deleting the old NodePort service, verify the new service, and then remove the temporary service:
 
 ```bash
-kubectl get service my-app-lb -n production -o yaml | \
-  sed 's/name: my-app-lb/name: my-app/' | \
-  kubectl apply -f -
+kubectl apply -f my-app-final-loadbalancer.yaml
+kubectl get service my-app -n production
 
 kubectl delete service my-app-lb -n production
 ```
@@ -515,12 +515,12 @@ Note: The newer annotation method is preferred for MetalLB-specific IP assignmen
 
 ```bash
 kubectl annotate service simple-app -n default \
-  metallb.universe.tf/loadBalancerIPs="10.0.0.101"
+  metallb.io/loadBalancerIPs="10.0.0.101"
 ```
 
-### 6.3 Remove the NodePort
+### 6.3 Check the NodePort
 
-After converting to LoadBalancer, the NodePort is automatically removed when no longer needed. However, Kubernetes may still allocate a NodePort. To verify:
+After converting to LoadBalancer, Kubernetes still allocates NodePorts by default. This is expected unless you explicitly set `spec.allocateLoadBalancerNodePorts: false` on a compatible load balancer implementation and remove any existing `nodePort` entries yourself. To verify:
 
 ```bash
 kubectl get service simple-app -n default -o yaml | grep nodePort
@@ -541,7 +541,7 @@ metadata:
   name: legacy-app
   namespace: production
   annotations:
-    metallb.universe.tf/loadBalancerIPs: "10.0.0.102"
+    metallb.io/loadBalancerIPs: "10.0.0.102"
 spec:
   type: LoadBalancer
   selector:
@@ -565,7 +565,7 @@ metadata:
   name: client-aware-app
   namespace: production
   annotations:
-    metallb.universe.tf/loadBalancerIPs: "10.0.0.103"
+    metallb.io/loadBalancerIPs: "10.0.0.103"
 spec:
   type: LoadBalancer
   selector:
@@ -604,8 +604,8 @@ metadata:
   name: web-frontend
   namespace: production
   annotations:
-    metallb.universe.tf/loadBalancerIPs: "10.0.0.104"
-    metallb.universe.tf/allow-shared-ip: "shared-web"
+    metallb.io/loadBalancerIPs: "10.0.0.104"
+    metallb.io/allow-shared-ip: "shared-web"
 spec:
   type: LoadBalancer
   selector:
@@ -621,8 +621,8 @@ metadata:
   name: web-backend-api
   namespace: production
   annotations:
-    metallb.universe.tf/loadBalancerIPs: "10.0.0.104"
-    metallb.universe.tf/allow-shared-ip: "shared-web"
+    metallb.io/loadBalancerIPs: "10.0.0.104"
+    metallb.io/allow-shared-ip: "shared-web"
 spec:
   type: LoadBalancer
   selector:
@@ -697,7 +697,7 @@ for SERVICE in $SERVICES; do
 
         # Add MetalLB annotation
         kubectl annotate service "$SERVICE" -n "$NAMESPACE" \
-            metallb.universe.tf/loadBalancerIPs="$CURRENT_IP" \
+            metallb.io/loadBalancerIPs="$CURRENT_IP" \
             --overwrite
 
         # Patch service type
@@ -715,7 +715,7 @@ done
 echo ""
 echo "=== Migration Summary ==="
 if [ "$DRY_RUN" = "false" ]; then
-    kubectl get services -n "$NAMESPACE" -l type=LoadBalancer
+    kubectl get services -n "$NAMESPACE" -o wide | grep LoadBalancer
 else
     echo "Dry run complete. Run with 'false' as third argument to execute."
 fi
@@ -835,7 +835,7 @@ Or manually revert:
 ```bash
 # Remove MetalLB annotation
 kubectl annotate service my-app -n production \
-    metallb.universe.tf/loadBalancerIPs-
+    metallb.io/loadBalancerIPs-
 
 # Change type back to NodePort
 kubectl patch service my-app -n production \
@@ -892,26 +892,90 @@ After migration, update your monitoring configuration to track MetalLB-specific 
 
 ### 11.1 Prometheus ServiceMonitor
 
-Create a ServiceMonitor for MetalLB metrics:
+If you use Prometheus Operator with the plain MetalLB manifest, create Services for the metrics endpoints and ServiceMonitor resources that select those Services:
 
 ```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: controller-monitor-service
+  namespace: metallb-system
+  labels:
+    name: controller-monitor-service
+    component: controller
+spec:
+  clusterIP: None
+  selector:
+    component: controller
+  ports:
+  - name: metricshttps
+    port: 9120
+    targetPort: 9120
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: speaker-monitor-service
+  namespace: metallb-system
+  labels:
+    name: speaker-monitor-service
+    component: speaker
+spec:
+  clusterIP: None
+  selector:
+    component: speaker
+  ports:
+  - name: metricshttps
+    port: 9120
+    targetPort: 9120
+---
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
-  name: metallb
-  namespace: monitoring
+  name: controller-monitor
+  namespace: metallb-system
   labels:
-    app: metallb
+    component: controller
 spec:
   namespaceSelector:
     matchNames:
     - metallb-system
   selector:
     matchLabels:
-      app.kubernetes.io/name: metallb
+      name: controller-monitor-service
   endpoints:
-  - port: monitoring
+  - bearerTokenFile: /var/run/secrets/kubernetes.io/serviceaccount/token
+    honorLabels: true
+    port: metricshttps
     interval: 30s
+    scheme: https
+    tlsConfig:
+      insecureSkipVerify: true
+  jobLabel: component
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: speaker-monitor
+  namespace: metallb-system
+  labels:
+    component: speaker
+spec:
+  namespaceSelector:
+    matchNames:
+    - metallb-system
+  selector:
+    matchLabels:
+      name: speaker-monitor-service
+  endpoints:
+  - bearerTokenFile: /var/run/secrets/kubernetes.io/serviceaccount/token
+    honorLabels: true
+    port: metricshttps
+    interval: 30s
+    scheme: https
+    tlsConfig:
+      insecureSkipVerify: true
+  jobLabel: component
 ```
 
 ### 11.2 Grafana Dashboard
@@ -930,7 +994,7 @@ spec:
   - name: metallb
     rules:
     - alert: MetalLBSpeakerDown
-      expr: up{job="metallb-speaker"} == 0
+      expr: up{job="speaker"} == 0
       for: 5m
       labels:
         severity: critical
@@ -1021,7 +1085,7 @@ Update deployment pipelines to use LoadBalancer service type:
 service:
   type: LoadBalancer
   annotations:
-    metallb.universe.tf/loadBalancerIPs: "${SERVICE_IP}"
+    metallb.io/loadBalancerIPs: "${SERVICE_IP}"
   port: 80
   targetPort: 8080
 ```
