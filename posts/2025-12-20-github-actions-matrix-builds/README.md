@@ -99,14 +99,17 @@ Sometimes you need specific combinations or want to skip certain ones. Use `incl
 jobs:
   test:
     runs-on: ${{ matrix.os }}
+    continue-on-error: ${{ matrix.experimental }}
     strategy:
       matrix:
         os: [ubuntu-latest, windows-latest]
         node-version: [18, 20, 22]
+        experimental: [false]
         exclude:
           # Skip Node 18 on Windows (not supported in our app)
           - os: windows-latest
             node-version: 18
+            experimental: false
         include:
           # Add specific test for legacy Node 16 on Ubuntu only
           - os: ubuntu-latest
@@ -123,10 +126,9 @@ jobs:
 
       - run: npm ci
       - run: npm test
-        continue-on-error: ${{ matrix.experimental == true }}
 ```
 
-The `include` directive adds new combinations, and you can attach custom properties like `experimental` to control behavior.
+The `include` directive can add or augment combinations, and you can attach custom properties like `experimental` to control behavior.
 
 ## Fail-Fast vs Complete Matrix
 
@@ -168,14 +170,14 @@ jobs:
       - id: set-matrix
         run: |
           # Read versions from a JSON file or compute dynamically
-          MATRIX=$(cat .github/test-matrix.json)
-          echo "matrix=$MATRIX" >> $GITHUB_OUTPUT
+          MATRIX=$(jq -c . .github/test-matrix.json)
+          echo "matrix=$MATRIX" >> "$GITHUB_OUTPUT"
 
   test:
     needs: setup
     runs-on: ubuntu-latest
     strategy:
-      matrix: ${{ fromJson(needs.setup.outputs.matrix) }}
+      matrix: ${{ fromJSON(needs.setup.outputs.matrix) }}
     steps:
       - uses: actions/checkout@v4
       - name: Test ${{ matrix.name }}
@@ -298,7 +300,7 @@ jobs:
 
 ## Monitoring Matrix Build Results
 
-Track matrix build performance over time. Send results to your observability platform:
+Track matrix build results over time. Send results to your observability platform:
 
 ```yaml
       - name: Report metrics
@@ -310,7 +312,7 @@ Track matrix build performance over time. Send results to your observability pla
               "node_version": "${{ matrix.node-version }}",
               "os": "${{ matrix.os }}",
               "status": "${{ job.status }}",
-              "duration": "${{ github.event.workflow_run.run_started_at }}"
+              "run_id": "${{ github.run_id }}"
             }'
 ```
 
