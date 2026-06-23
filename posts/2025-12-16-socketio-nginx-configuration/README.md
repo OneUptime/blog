@@ -199,7 +199,7 @@ flowchart TB
     style Note1 fill:#8b0000,color:#fff
 ```
 
-Socket.io requires clients to connect to the same backend instance for the duration of their session. This is critical when:
+Socket.io requires clients to connect to the same backend instance for the duration of their session when HTTP long-polling is enabled. This is critical when:
 
 - Using multiple backend servers
 - HTTP polling (before WebSocket upgrade)
@@ -234,7 +234,7 @@ upstream socketio_nodes {
 
 ### Solution 3: Redis Adapter (Backend Solution)
 
-Configure Socket.io to use Redis for session sharing:
+Configure Socket.io to use Redis for broadcasting events between servers:
 
 ```javascript
 // Node.js Socket.io server
@@ -252,6 +252,8 @@ Promise.all([pubClient.connect(), subClient.connect()]).then(() => {
 });
 ```
 
+The Redis adapter does not remove the need for sticky sessions when HTTP long-polling is enabled. It forwards packets between Socket.io servers; the load balancer must still route all requests for a given Socket.io session to the same backend, or you must disable long-polling and use WebSocket-only transport.
+
 ```mermaid
 flowchart TB
     subgraph Solution["With Redis Adapter"]
@@ -260,11 +262,11 @@ flowchart TB
         N1 --> B2[Backend 2]
         N1 --> B3[Backend 3]
 
-        B1 --> R[Redis<br/>Shared State]
+        B1 --> R[Redis<br/>Pub/Sub]
         B2 --> R
         B3 --> R
 
-        Note1["All backends share state<br/>via Redis"]
+        Note1["Backends forward broadcasts<br/>via Redis"]
     end
 
     style R fill:#2d5a2d,color:#fff
@@ -498,10 +500,15 @@ else
     echo "   Polling: FAILED (HTTP $POLL_RESPONSE)"
 fi
 
-# Test WebSocket upgrade headers
+# Test WebSocket upgrade handshake
 echo ""
 echo "2. Testing WebSocket upgrade..."
-WS_RESPONSE=$(curl -s -I -H "Upgrade: websocket" -H "Connection: Upgrade" "$URL/socket.io/?EIO=4&transport=websocket" | head -1)
+WS_RESPONSE=$(curl -s --http1.1 --max-time 5 -i -N \
+    -H "Connection: Upgrade" \
+    -H "Upgrade: websocket" \
+    -H "Sec-WebSocket-Version: 13" \
+    -H "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==" \
+    "$URL/socket.io/?EIO=4&transport=websocket" | head -1)
 echo "   Response: $WS_RESPONSE"
 
 # Check Nginx configuration
@@ -598,7 +605,7 @@ Configuring Nginx for Socket.io requires:
 2. **Extended timeouts** - Long-lived connections need longer timeouts than default
 3. **Sticky sessions** - Multiple backends require session affinity
 4. **Disabled buffering** - Real-time communication should not be buffered
-5. **Proper upstream configuration** - Use `ip_hash` or Redis adapter for scaling
+5. **Proper upstream configuration** - Use `ip_hash` or another sticky-session method when polling is enabled, and use the Redis adapter to broadcast across nodes
 
 The essential configuration is:
 
