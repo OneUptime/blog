@@ -142,6 +142,22 @@ device 9 osd.9 class ssd
 device 10 osd.10 class hdd
 device 11 osd.11 class ssd
 
+# Bucket types
+# Lower numbers are closer to OSDs (leaves)
+# Higher numbers are closer to root
+type 0 osd
+type 1 host
+type 2 chassis
+type 3 rack
+type 4 row
+type 5 pdu
+type 6 pod
+type 7 room
+type 8 datacenter
+type 9 zone
+type 10 region
+type 11 root
+
 # Host buckets
 # Each host contains the OSDs physically installed in that server
 host server1 {
@@ -791,7 +807,7 @@ ceph osd crush tunables optimal
 # - optimal: Best for current version
 
 # Set individual tunables
-ceph osd crush tunables straw_calc_version 1
+ceph osd crush set-tunable straw_calc_version 1
 ```
 
 ### Troubleshooting CRUSH Issues
@@ -854,8 +870,8 @@ rule production_replicated {
     step emit
 }
 
-# Production erasure coding rule
-# 4+2 encoding across 6 racks for high durability
+# Production erasure coding placement rule
+# Use with a 4+2 erasure-code profile to place shards across racks
 rule production_erasure {
     id 101
     type erasure
@@ -921,5 +937,5 @@ CRUSH maps give you fine-grained control over data placement, enabling you to me
 ## Related Resources
 
 - [Ceph CRUSH Map Documentation](https://docs.ceph.com/en/latest/rados/operations/crush-map/)
-- [CRUSH Algorithm Paper](https://ceph.com/wp-content/uploads/2016/08/weil-crush-sc06.pdf)
+- [CRUSH Algorithm Paper](https://ceph.com/assets/pdfs/weil-crush-sc06.pdf)
 - [Ceph Device Classes](https://docs.ceph.com/en/latest/rados/operations/crush-map/#device-classes)
