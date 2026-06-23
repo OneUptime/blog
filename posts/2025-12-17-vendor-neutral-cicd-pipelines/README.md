@@ -8,7 +8,7 @@ Description: Build portable CI/CD pipelines by putting your logic in bash script
 
 > Your build logic belongs in scripts you control, not YAML dialects owned by vendors who can rug-pull you tomorrow.
 
-**Timely example:** On December 16, 2025, GitHub [announced](https://github.blog/changelog/2025-12-16-coming-soon-simpler-pricing-and-a-better-experience-for-github-actions/) they will start charging $0.002/minute for self-hosted runners in March 2026. A feature that was free for years now has a price. If your CI logic is trapped in GitHub Actions syntax, you pay or you rewrite. If your logic lives in bash scripts, you evaluate alternatives and migrate in a day.
+**Timely example:** On December 16, 2025, GitHub [announced](https://github.blog/changelog/2025-12-16-coming-soon-simpler-pricing-and-a-better-experience-for-github-actions/) they will start charging a $0.002/minute GitHub Actions cloud platform fee for eligible self-hosted runner usage on March 1, 2026. Public repositories remain free, but a feature that was free for many private and internal repository workflows now has a price. If your CI logic is trapped in GitHub Actions syntax, you pay or you rewrite. If your logic lives in bash scripts, you evaluate alternatives and migrate in a day.
 
 Every CI/CD platform sells convenience. GitHub Actions has slick marketplace actions. GitLab CI has includes and extends. CircleCI has orbs. Jenkins has a plugin for everything. The pitch is always the same: use our abstractions, ship faster.
 
@@ -20,7 +20,7 @@ There is a better way: treat your CI/CD platform as a dumb executor and keep you
 
 It happens more often than vendors admit:
 
-- **GitHub's self-hosted runner tax (December 2025)** – Just yesterday, [GitHub announced](https://github.blog/changelog/2025-12-16-coming-soon-simpler-pricing-and-a-better-experience-for-github-actions/) that starting March 2026, self-hosted runners will cost $0.002 per minute. Teams who built entire infrastructures around "free" self-hosted runners now face unexpected bills. The feature that was free for years suddenly has a price tag.
+- **GitHub's self-hosted runner tax (December 2025)** – Just yesterday, [GitHub announced](https://github.blog/changelog/2025-12-16-coming-soon-simpler-pricing-and-a-better-experience-for-github-actions/) that starting March 1, 2026, eligible self-hosted runner usage will include a $0.002 per minute GitHub Actions cloud platform charge. Public repositories remain free, but teams who built private or internal repository infrastructures around "free" self-hosted runners now face unexpected bills. The feature that was free for years suddenly has a price tag.
 - **Pricing shocks** – Travis CI went from free for open source to paid overnight. Teams scrambled to migrate years of `.travis.yml` logic.
 - **Feature deprecation** – CircleCI deprecated their 1.0 configuration format. Pipelines broke. Engineers spent weeks rewriting.
 - **Acquisition chaos** – When platforms get acquired, roadmaps shift. Your carefully crafted integrations become orphaned.
@@ -176,13 +176,12 @@ echo "Running tests..."
 # The -- passes additional flags to the underlying test runner
 npm test -- --coverage
 
-# Extract overall coverage percentage from the coverage report
-# Uses grep with Perl regex to parse the coverage summary JSON
-COVERAGE=$(grep -oP 'All files[^|]*\|\s*\K[\d.]+' coverage/coverage-summary.json 2>/dev/null || echo "0")
+# Extract overall line coverage percentage from Jest's JSON summary
+COVERAGE=$(node -e "const s=require('./coverage/coverage-summary.json'); console.log(s.total?.lines?.pct ?? 0)" 2>/dev/null || echo "0")
 THRESHOLD=80  # Minimum acceptable coverage percentage
 
-# Compare coverage against threshold using bc for floating point math
-if (( $(echo "$COVERAGE < $THRESHOLD" | bc -l) )); then
+# Compare coverage against threshold using Node.js for floating point math
+if node -e "process.exit(Number(process.argv[1]) < Number(process.argv[2]) ? 0 : 1)" "$COVERAGE" "$THRESHOLD"; then
     echo "WARNING: Coverage ${COVERAGE}% is below threshold ${THRESHOLD}%"
     # Note: This warns but doesn't fail - adjust based on your needs
 fi
@@ -264,7 +263,7 @@ Third-party actions and orbs are convenient until:
 - They stop working with new platform versions
 - The maintainer disappears
 
-Your bash scripts have no external dependencies beyond standard Unix tools that have been stable for decades.
+Your bash scripts avoid CI marketplace dependencies and can rely on the tools your project already needs plus standard Unix utilities that have been stable for decades.
 
 ### 6. Composable Complexity
 
@@ -307,10 +306,10 @@ steps:
 
 ```yaml
 # GitLab CI - same concept, different syntax
-variables:
-  DEPLOY_TOKEN: $DEPLOY_TOKEN  # GitLab CI/CD variables
-script:
-  - ./scripts/ci/deploy.sh  # Script uses the same $DEPLOY_TOKEN
+# Define DEPLOY_TOKEN as a masked GitLab CI/CD variable in the project settings
+deploy:
+  script:
+    - ./scripts/ci/deploy.sh  # Script uses the same $DEPLOY_TOKEN
 ```
 
 Your deploy script reads `$DEPLOY_TOKEN` and works on both platforms.
@@ -393,8 +392,8 @@ deploy:
   stage: deploy
   script:
     - ./scripts/ci/deploy.sh  # Deployment logic unchanged
-  only:
-    - main  # Only deploy from main branch
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main"'  # Only deploy from main branch
 ```
 
 That is it. The same scripts that ran on GitHub Actions now run on GitLab. Migration took an hour, not a week.
