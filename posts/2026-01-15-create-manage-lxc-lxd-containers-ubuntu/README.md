@@ -408,7 +408,7 @@ lxc export mycontainer /backup/mycontainer.tar.gz --instance-only=false
 lxc import /backup/mycontainer.tar.gz
 
 # Import with new name
-lxc import /backup/mycontainer.tar.gz --name restored-container
+lxc import /backup/mycontainer.tar.gz restored-container
 ```
 
 ## Troubleshooting
