@@ -30,7 +30,7 @@ graph TB
     end
 
     subgraph "Kernel Space (eBPF Program)"
-        H[aya-bpf Library] --> I[Program Logic]
+        H[aya_ebpf Library] --> I[Program Logic]
         I --> J[Map Access]
         I --> K[Helper Functions]
     end
@@ -55,18 +55,16 @@ Aya requires specific tooling to compile eBPF programs that target the BPF virtu
 
 ### Installing Prerequisites
 
-First, install the Rust toolchain with the nightly compiler and the BPF target. The nightly compiler is required because eBPF support uses unstable features:
+First, install the Rust toolchain with the stable and nightly compilers. The nightly toolchain with `rust-src` is required by the eBPF build step:
 
 ```bash
 # Install Rust with rustup if not already installed
 
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 
-# Install the nightly toolchain - required for eBPF compilation
-rustup install nightly
-
-# Add the BPF target for compiling kernel-space code
-rustup target add bpf --toolchain nightly
+# Install the stable and nightly toolchains
+rustup install stable
+rustup toolchain install nightly --component rust-src
 
 # Install bpf-linker - links eBPF object files
 cargo install bpf-linker
@@ -80,18 +78,12 @@ cargo install cargo-generate
 Your system needs certain packages for eBPF development. The following installs required tools for Debian/Ubuntu systems:
 
 ```bash
-# Install LLVM and Clang - needed for BPF compilation
+# Install LLVM and Clang - useful for inspecting and working with BPF objects
 sudo apt-get update
 sudo apt-get install -y llvm clang
 
-# Install Linux headers - provides kernel data structures
-sudo apt-get install -y linux-headers-$(uname -r)
-
-# Install libbpf development files
-sudo apt-get install -y libbpf-dev
-
-# Install pkg-config for library discovery
-sudo apt-get install -y pkg-config
+# Install bpftool - used by Aya tooling to generate kernel type bindings
+sudo apt-get install -y bpftool
 ```
 
 ### Creating a New Aya Project
@@ -255,7 +247,8 @@ fn try_packet_counter(ctx: &XdpContext) -> Result<u32, ()> {
 
     // Update the packet counter for this protocol.
     // Use get_ptr_mut to get a mutable reference to the value.
-    // This is an atomic operation from the eBPF program's perspective.
+    // For high-frequency counters, prefer a per-CPU map or atomic add helper
+    // to avoid lost updates when multiple CPUs update the same entry.
     if let Some(count) = unsafe { PACKET_COUNT.get_ptr_mut(&protocol) } {
         // Increment existing counter
         unsafe { *count += 1 };
@@ -354,7 +347,7 @@ async fn main() -> Result<()> {
     // include_bytes_aligned! embeds the .o file at compile time.
     // The eBPF object file is generated during the build process.
     let mut ebpf = Ebpf::load(include_bytes_aligned!(
-        "../../target/bpfel-unknown-none/release/my-project"
+        concat!(env!("OUT_DIR"), "/my-project")
     ))?;
 
     // Initialize eBPF logging to forward kernel log messages.
@@ -376,7 +369,7 @@ async fn main() -> Result<()> {
     program.load().context("Failed to load XDP program")?;
 
     // Attach the program to the network interface.
-    // XdpFlags::default() uses the best available mode (native if supported).
+    // XdpFlags::default() leaves the mode unspecified and lets the kernel choose.
     // Other options include SKB_MODE for generic/slower processing.
     program
         .attach(&args.interface, XdpFlags::default())
@@ -609,11 +602,10 @@ User-space code for consuming ring buffer events asynchronously:
 
 use anyhow::{Context, Result};
 use aya::{Ebpf, include_bytes_aligned, maps::RingBuf, programs::{Xdp, XdpFlags}};
-use bytes::BytesMut;
 use log::info;
 use my_project_common::PacketEvent;
 use std::net::Ipv4Addr;
-use tokio::signal;
+use tokio::{io::unix::AsyncFd, signal};
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -621,7 +613,7 @@ async fn main() -> Result<()> {
 
     // Load and attach eBPF program
     let mut ebpf = Ebpf::load(include_bytes_aligned!(
-        "../../target/bpfel-unknown-none/release/my-project"
+        concat!(env!("OUT_DIR"), "/my-project")
     ))?;
 
     let program: &mut Xdp = ebpf
@@ -631,13 +623,14 @@ async fn main() -> Result<()> {
     program.attach("eth0", XdpFlags::default())?;
 
     // Get the ring buffer map
-    let mut ring_buf = RingBuf::try_from(ebpf.map_mut("EVENTS")?)?;
+    let ring_buf = RingBuf::try_from(
+        ebpf.take_map("EVENTS").context("EVENTS map not found")?,
+    )?;
 
     info!("Monitoring packets with ring buffer...");
 
-    // Create an async ring buffer for event-driven processing.
-    // This uses epoll/io_uring internally for efficient waiting.
-    let mut async_ring_buf = aya::maps::ring_buf::RingBufAsync::try_from(ring_buf)?;
+    // Use AsyncFd to wait for ring buffer readiness without busy-polling.
+    let mut async_ring_buf = AsyncFd::new(ring_buf)?;
 
     loop {
         tokio::select! {
@@ -646,30 +639,36 @@ async fn main() -> Result<()> {
                 break;
             }
             // Wait for and process events from the ring buffer.
-            // next() returns when data is available or on error.
-            result = async_ring_buf.next() => {
-                if let Some(data) = result {
+            result = async_ring_buf.readable_mut() => {
+                let mut guard = result?;
+                let ring_buf = guard.get_inner_mut();
+
+                while let Some(data) = ring_buf.next() {
                     // Parse the event from raw bytes.
                     // The data layout matches our PacketEvent struct.
-                    if data.len() >= std::mem::size_of::<PacketEvent>() {
-                        let event: PacketEvent = unsafe {
-                            std::ptr::read(data.as_ptr() as *const PacketEvent)
-                        };
-
-                        // Convert IP addresses from network byte order
-                        let src = Ipv4Addr::from(u32::from_be(event.src_ip));
-                        let dst = Ipv4Addr::from(u32::from_be(event.dst_ip));
-
-                        println!(
-                            "[{:.3}s] {} -> {} proto={} size={}",
-                            event.timestamp_ns as f64 / 1_000_000_000.0,
-                            src,
-                            dst,
-                            event.protocol,
-                            event.size
-                        );
+                    if data.len() < std::mem::size_of::<PacketEvent>() {
+                        continue;
                     }
+
+                    let event: PacketEvent = unsafe {
+                        std::ptr::read_unaligned(data.as_ptr() as *const PacketEvent)
+                    };
+
+                    // Convert IP addresses from network byte order
+                    let src = Ipv4Addr::from(u32::from_be(event.src_ip));
+                    let dst = Ipv4Addr::from(u32::from_be(event.dst_ip));
+
+                    println!(
+                        "[{:.3}s] {} -> {} proto={} size={}",
+                        event.timestamp_ns as f64 / 1_000_000_000.0,
+                        src,
+                        dst,
+                        event.protocol,
+                        event.size
+                    );
                 }
+
+                guard.clear_ready();
             }
         }
     }
@@ -690,9 +689,9 @@ Kprobes allow you to attach eBPF programs to almost any kernel function. This is
 #![no_main]
 
 use aya_ebpf::{
-    helpers::{bpf_get_current_pid_tgid, bpf_probe_read_kernel},
+    helpers::bpf_get_current_pid_tgid,
     macros::{kprobe, map},
-    maps::{HashMap, RingBuf},
+    maps::RingBuf,
     programs::ProbeContext,
 };
 use aya_log_ebpf::info;
@@ -732,7 +731,7 @@ fn try_trace_tcp_connect(ctx: &ProbeContext) -> Result<u32, i64> {
     // Read the first argument (struct sock *sk).
     // PT_REGS_PARM1 accesses the first function parameter.
     // The actual macro/method depends on architecture.
-    let sock: *const core::ffi::c_void = ctx.arg(0).ok_or(1i64)?;
+    let _sock: *const core::ffi::c_void = ctx.arg(0).ok_or(1i64)?;
 
     // Read destination address from sock structure.
     // Offsets are kernel-version dependent - using BTF is preferred.
@@ -782,7 +781,7 @@ async fn main() -> Result<()> {
     env_logger::init();
 
     let mut ebpf = Ebpf::load(include_bytes_aligned!(
-        "../../target/bpfel-unknown-none/release/my-project"
+        concat!(env!("OUT_DIR"), "/my-project")
     ))?;
 
     // Initialize logging
@@ -861,8 +860,7 @@ fn try_trace_exec(ctx: &TracePointContext) -> Result<u32, c_long> {
 
     // Get the command name of the current process.
     // Returns up to 16 characters (TASK_COMM_LEN).
-    let mut comm = [0u8; 16];
-    bpf_get_current_comm(&mut comm)?;
+    let comm = bpf_get_current_comm()?;
 
     // Submit event to ring buffer
     if let Some(mut entry) = EXEC_EVENTS.reserve::<ExecEvent>(0) {
@@ -899,7 +897,7 @@ async fn main() -> Result<()> {
     env_logger::init();
 
     let mut ebpf = Ebpf::load(include_bytes_aligned!(
-        "../../target/bpfel-unknown-none/release/my-project"
+        concat!(env!("OUT_DIR"), "/my-project")
     ))?;
 
     // Get and load the tracepoint program
@@ -928,16 +926,15 @@ Aya integrates seamlessly with async Rust. Here is a comprehensive example showi
 // File: my-project/src/main.rs
 // Advanced async pattern with multiple data sources
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use aya::{
     Ebpf,
     include_bytes_aligned,
-    maps::{HashMap, RingBuf},
+    maps::HashMap,
     programs::{Xdp, XdpFlags},
 };
-use futures::stream::StreamExt;
 use log::{error, info};
-use std::{sync::Arc, time::Duration};
+use std::time::Duration;
 use tokio::{
     signal,
     sync::{broadcast, mpsc},
@@ -965,7 +962,7 @@ async fn main() -> Result<()> {
 
     // Load eBPF program
     let mut ebpf = Ebpf::load(include_bytes_aligned!(
-        "../../target/bpfel-unknown-none/release/my-project"
+        concat!(env!("OUT_DIR"), "/my-project")
     ))?;
 
     // Attach XDP program
@@ -984,7 +981,7 @@ async fn main() -> Result<()> {
     // This task reads from eBPF maps at regular intervals
     let shutdown_rx1 = shutdown_tx.subscribe();
     let packet_count = HashMap::<_, u8, u64>::try_from(
-        ebpf.map("PACKET_COUNT")?
+        ebpf.take_map("PACKET_COUNT").context("PACKET_COUNT map not found")?
     )?;
     let stats_tx_clone = stats_tx.clone();
 
@@ -1024,7 +1021,7 @@ async fn main() -> Result<()> {
 
 // Async task for collecting stats from eBPF maps
 async fn collect_stats_task(
-    packet_count: HashMap<&aya::maps::MapData, u8, u64>,
+    packet_count: HashMap<aya::maps::MapData, u8, u64>,
     stats_tx: mpsc::Sender<Stats>,
     mut shutdown_rx: broadcast::Receiver<()>,
 ) -> Result<()> {
@@ -1093,21 +1090,14 @@ async fn display_stats_task(
 
 ## Building and Running
 
-The build process requires compiling for two different targets. Here is the complete workflow:
+The Aya template uses a build script to compile the eBPF program and embed the resulting object in the user-space binary. Here is the complete workflow:
 
 ```bash
 # Navigate to project root
 cd my-ebpf-project
 
-# Build the eBPF program first (requires nightly and bpf target)
-# This compiles the kernel-space code to BPF bytecode
-cargo +nightly build \
-    --package my-project-ebpf \
-    --target bpfel-unknown-none \
-    --release
-
-# Build the user-space application
-# This compiles the host application that loads and manages the eBPF program
+# Build the user-space application.
+# The template's build script compiles and embeds the eBPF object.
 cargo build --package my-project --release
 
 # Run with elevated privileges (required for loading eBPF)
@@ -1120,17 +1110,10 @@ For development, you can use a Makefile or cargo-xtask:
 ```makefile
 # Makefile for eBPF project
 
-.PHONY: build-ebpf build run clean
-
-# Build the eBPF program
-build-ebpf:
-	cargo +nightly build \
-		--package my-project-ebpf \
-		--target bpfel-unknown-none \
-		--release
+.PHONY: build run clean
 
 # Build everything
-build: build-ebpf
+build:
 	cargo build --package my-project --release
 
 # Run with sudo
@@ -1180,7 +1163,7 @@ fn load_ebpf_program(interface: &str) -> Result<Ebpf> {
 
     // Load the eBPF bytecode with context
     let mut ebpf = Ebpf::load(include_bytes_aligned!(
-        "../../target/bpfel-unknown-none/release/my-project"
+        concat!(env!("OUT_DIR"), "/my-project")
     )).context("Failed to load eBPF bytecode - check compilation")?;
 
     // Get and configure the program
