@@ -84,7 +84,7 @@ go get go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc
 
 # Install profiling libraries
 go get github.com/grafana/pyroscope-go
-go get github.com/google/pprof
+go get github.com/grafana/otel-profiling-go
 ```
 
 ## Implementing CPU Profiling
@@ -97,8 +97,8 @@ The following code sets up a CPU profiler that integrates with OpenTelemetry tra
 package profiling
 
 import (
+    "bytes"
     "context"
-    "fmt"
     "runtime/pprof"
     "sync"
     "time"
@@ -613,11 +613,11 @@ func (tp *TracedProfiler) ProfiledHandler(handler func(context.Context)) func(co
 }
 ```
 
-## Exporting Profiles to OpenTelemetry Collector
+## Exporting Profiles to a Backend
 
-To integrate with the OpenTelemetry ecosystem, we need to export profiles in a format that the collector can process. While the OpenTelemetry profiling signal is still evolving, we can use the OTLP protocol with custom handling.
+To integrate with the OpenTelemetry ecosystem, export profiles through OTLP when your profiler and backend support the OpenTelemetry profiles signal. If you are collecting Go `pprof` data directly, you can also send those profiles to a backend such as Pyroscope using its HTTP ingestion API.
 
-The following code implements a profile exporter that sends profiles to an OpenTelemetry-compatible backend:
+The following code implements a profile exporter that sends Go `pprof` profiles to Pyroscope's legacy HTTP ingestion endpoint:
 
 ```go
 package profiling
@@ -637,7 +637,7 @@ import (
 )
 
 // ProfileExporter sends collected profiles to a backend service.
-// It handles batching, compression, and retry logic for reliable delivery.
+// It handles batching and compression for reliable delivery.
 type ProfileExporter struct {
     // endpoint is the URL where profiles are sent
     endpoint string
@@ -679,6 +679,8 @@ type ProfileData struct {
 }
 
 // NewProfileExporter creates a new exporter configured for the given endpoint.
+// For Pyroscope's legacy HTTP API, use an endpoint such as
+// http://localhost:4040/ingest.
 func NewProfileExporter(endpoint string) *ProfileExporter {
     return &ProfileExporter{
         endpoint:      endpoint,
@@ -782,8 +784,25 @@ func (pe *ProfileExporter) sendProfile(ctx context.Context, profile ProfileData)
         return fmt.Errorf("request creation failed: %w", err)
     }
 
+    // Pyroscope's /ingest endpoint expects profile metadata as query parameters.
+    // The pprof format can contain multiple sample types, so the application
+    // name is provided as a prefix and Pyroscope derives the profile type.
+    appName := "unknown{}"
+    if serviceName, ok := profile.Labels["service.name"]; ok && serviceName != "" {
+        appName = fmt.Sprintf("%s{}", serviceName)
+    }
+    until := profile.Timestamp
+    from := until.Add(-10 * time.Second)
+
+    query := req.URL.Query()
+    query.Set("name", appName)
+    query.Set("from", fmt.Sprintf("%d", from.Unix()))
+    query.Set("until", fmt.Sprintf("%d", until.Unix()))
+    query.Set("format", "pprof")
+    req.URL.RawQuery = query.Encode()
+
     // Set headers for profile ingestion
-    req.Header.Set("Content-Type", "application/x-protobuf")
+    req.Header.Set("Content-Type", "application/octet-stream")
     req.Header.Set("Content-Encoding", "gzip")
     req.Header.Set("X-Profile-Type", profile.Type)
     req.Header.Set("X-Profile-Timestamp", profile.Timestamp.Format(time.RFC3339Nano))
@@ -816,7 +835,7 @@ func (pe *ProfileExporter) Stop() {
 
 ## OpenTelemetry Collector Configuration
 
-To receive and process profiles, configure your OpenTelemetry Collector with the appropriate receivers and exporters.
+To receive and process OTLP profiles, configure an OpenTelemetry Collector version and distribution that supports the profiles signal. Profiles support is still maturing, so check whether your Collector build requires the `service.profilesSupport` feature gate.
 
 The following configuration shows how to set up an OpenTelemetry Collector to receive profiles and forward them to a profiling backend like Pyroscope:
 
@@ -826,21 +845,13 @@ The following configuration shows how to set up an OpenTelemetry Collector to re
 # and forward them to a profiling backend
 
 receivers:
-  # OTLP receiver for traces, metrics, and logs
+  # OTLP receiver for traces, metrics, logs, and profiles
   otlp:
     protocols:
       grpc:
         endpoint: 0.0.0.0:4317
       http:
         endpoint: 0.0.0.0:4318
-
-  # Custom receiver for profile data
-  # Note: Native profiling support in OTel Collector is evolving
-  # This uses an HTTP receiver as a placeholder
-  httpcheck:
-    targets:
-      - endpoint: http://localhost:4040/profiles
-        method: POST
 
 processors:
   # Batch processor for efficient data transmission
@@ -861,24 +872,22 @@ processors:
         value: production
         action: upsert
       - key: service.version
-        from_attribute: VERSION
-        action: insert
+        value: "${env:VERSION}"
+        action: upsert
 
 exporters:
   # OTLP exporter for traces and metrics
-  otlp:
+  otlp/tempo:
     endpoint: "tempo:4317"
     tls:
-      insecure: false
-      cert_file: /etc/ssl/certs/collector.crt
-      key_file: /etc/ssl/private/collector.key
+      insecure: true
 
-  # Pyroscope exporter for profiles
-  # This sends profile data to Pyroscope for visualization
-  otlphttp:
-    endpoint: "http://pyroscope:4040"
-    headers:
-      Authorization: "Bearer ${PYROSCOPE_API_KEY}"
+  # OTLP exporter for profiles.
+  # Pyroscope accepts OTLP profiles over gRPC on port 4040.
+  otlp/pyroscope:
+    endpoint: "pyroscope:4040"
+    tls:
+      insecure: true
 
 extensions:
   # Health check for container orchestration
@@ -896,20 +905,26 @@ service:
     traces:
       receivers: [otlp]
       processors: [memory_limiter, batch, resource]
-      exporters: [otlp]
+      exporters: [otlp/tempo]
 
     # Metrics pipeline
     metrics:
       receivers: [otlp]
       processors: [memory_limiter, batch, resource]
-      exporters: [otlp]
+      exporters: [otlp/tempo]
+
+    # Profiles pipeline
+    profiles:
+      receivers: [otlp]
+      processors: [memory_limiter, batch, resource]
+      exporters: [otlp/pyroscope]
 ```
 
 ## Complete Integration Example
 
-Now let's put everything together in a complete example that demonstrates continuous profiling with full OpenTelemetry integration.
+Now let's put everything together in a complete example that demonstrates continuous profiling with OpenTelemetry tracing integration.
 
-The following code shows a complete HTTP server with integrated continuous profiling, tracing, and metrics:
+The following code shows a complete HTTP server with integrated continuous profiling and tracing:
 
 ```go
 package main
@@ -1395,7 +1410,6 @@ import (
     "fmt"
     "io"
     "regexp"
-    "strings"
 )
 
 // ProfileSanitizer removes sensitive information from profiles.
