@@ -611,7 +611,7 @@ alert_syslog =
 -- Unified2 output (for Barnyard2)
 unified2 =
 {
-    -- Limit file size (bytes)
+    -- Limit file size (MB)
     limit = 128,
 
     -- Include extra data
@@ -1193,10 +1193,10 @@ metadata:service http, policy security-ips drop;
 ### Content Matching Options
 
 ```text
-# Basic content match (case-insensitive by default in Snort 3)
+# Basic content match (case-sensitive by default)
 content:"GET";
 
-# Case-sensitive match
+# Case-insensitive match
 content:"GET"; nocase;
 
 # Negated content (alert if NOT present)
@@ -1232,19 +1232,16 @@ pcre:"/SELECT\s+.*\s+FROM/i";
 # m = multiline (^ and $ match line boundaries)
 # x = extended mode (whitespace ignored)
 # A = anchor at start
-# E = anchor at end
-# G = global match
+# E = $ matches only at end of buffer
+# G = invert greediness
+# O = override the configured pcre_match_limit
 # R = relative (after previous content match)
-# U = match in URI
-# H = match in header
-# P = match in body
-# B = match in raw body
-# I = match in raw header
-# C = match in cookie
-# D = match in raw cookie
-# M = match in method
-# S = match in stat_code
-# K = match in stat_msg
+
+# NOTE: Unlike Snort 2, Snort 3 removed the HTTP buffer modifiers
+# (U, P, H, M, C, K, S, D, I, B). Instead, set a sticky buffer first
+# and then apply pcre to it, e.g.:
+#   http_uri; pcre:"/admin/i";
+#   http_header; pcre:"/X-Forwarded-For/i";
 ```
 
 ### Flow Options
@@ -1275,10 +1272,15 @@ flow:only_stream;
 # Limit alerts (1 per 60 seconds per source)
 detection_filter:track by_src, count 1, seconds 60;
 
-# Threshold in rule
-threshold:type limit, track by_src, count 5, seconds 60;
-threshold:type threshold, track by_dst, count 10, seconds 60;
-threshold:type both, track by_src, count 1, seconds 3600;
+# detection_filter only generates an event once the rate is exceeded
+# (e.g. alert only after 5 hits from the same source within 60 seconds)
+detection_filter:track by_src, count 5, seconds 60;
+
+# NOTE: The Snort 2 in-rule "threshold:" keyword is obsolete in Snort 3.
+# Use detection_filter inside a rule (above), and event_filter in the
+# configuration to limit/threshold how queued events get logged, e.g.:
+#   event_filter = { { gid = 1, sid = 1234, type = 'limit',
+#                       track = 'by_src', count = 1, seconds = 60 } }
 ```
 
 ### Byte Matching Options
