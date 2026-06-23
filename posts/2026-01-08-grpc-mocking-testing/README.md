@@ -81,21 +81,21 @@ myservice/
 ### Generating Mocks with mockgen
 
 ```bash
-# Generate mock client
-mockgen -source=pb/user_grpc.pb.go \
-    -destination=mocks/mock_user_client.go \
+# Generate mock client (reflect mode: select a specific interface
+# via the import-path + comma-separated symbol arguments)
+mockgen -destination=mocks/mock_user_client.go \
     -package=mocks \
-    UserServiceClient
+    github.com/example/myservice/pb UserServiceClient
 
 # Generate mock server
-mockgen -source=pb/user_grpc.pb.go \
-    -destination=mocks/mock_user_server.go \
+mockgen -destination=mocks/mock_user_server.go \
     -package=mocks \
-    UserServiceServer
+    github.com/example/myservice/pb UserServiceServer
 
-# Using go generate directive
+# Using go generate directive (source mode: generates mocks for every
+# interface declared in the source file)
 # Add this to a file (e.g., generate.go):
-//go:generate mockgen -source=pb/user_grpc.pb.go -destination=mocks/mock_user_client.go -package=mocks
+//go:generate mockgen -source=pb/user_grpc.pb.go -destination=mocks/mock_user.go -package=mocks
 ```
 
 ## Creating a Mock gRPC Server
@@ -108,13 +108,13 @@ package mocks
 
 import (
     "context"
-    "io"
     "net"
     "sync"
 
     "github.com/example/myservice/pb"
     "google.golang.org/grpc"
     "google.golang.org/grpc/codes"
+    "google.golang.org/grpc/credentials/insecure"
     "google.golang.org/grpc/status"
     "google.golang.org/grpc/test/bufconn"
 )
@@ -178,7 +178,7 @@ func (m *MockUserServer) Dial(ctx context.Context) (*grpc.ClientConn, error) {
         grpc.WithContextDialer(func(context.Context, string) (net.Conn, error) {
             return m.listener.Dial()
         }),
-        grpc.WithInsecure(),
+        grpc.WithTransportCredentials(insecure.NewCredentials()),
     )
 }
 
@@ -550,6 +550,7 @@ package mocks
 
 import (
     "context"
+    "io"
     "sync"
 
     "github.com/example/myservice/pb"
@@ -655,6 +656,7 @@ package mocks
 
 import (
     "context"
+    "fmt"
     "sync"
 
     "github.com/example/myservice/pb"
