@@ -28,6 +28,9 @@ Create a mapping that supports multiple search strategies:
 curl -X PUT "localhost:9200/contacts" -H 'Content-Type: application/json' -d'
 {
   "settings": {
+    "index": {
+      "max_ngram_diff": 7
+    },
     "analysis": {
       "analyzer": {
         "email_analyzer": {
@@ -89,7 +92,8 @@ curl -X PUT "localhost:9200/contacts" -H 'Content-Type: application/json' -d'
           },
           "raw": { "type": "keyword" }
         }
-      }
+      },
+      "phone_raw": { "type": "keyword" }
     }
   }
 }'
@@ -239,7 +243,7 @@ def search_email_fuzzy(email_query):
         }
     }
 
-    return es.search(index="contacts", body=query)
+    return es.search(index="contacts", **query)
 ```
 
 ## Fuzzy Phone Number Matching
@@ -308,7 +312,7 @@ curl -X GET "localhost:9200/contacts/_search" -H 'Content-Type: application/json
       "should": [
         {
           "wildcard": {
-            "phone": {
+            "phone.keyword": {
               "value": "*4567",
               "boost": 2
             }
@@ -384,7 +388,7 @@ def search_contact(query):
         should_clauses.extend([
             {
                 "term": {
-                    "phone": {
+                    "phone.keyword": {
                         "value": normalized,
                         "boost": 10
                     }
@@ -421,18 +425,16 @@ def search_contact(query):
 
     response = es.search(
         index="contacts",
-        body={
-            "query": {
-                "bool": {
-                    "should": should_clauses,
-                    "minimum_should_match": 1
-                }
-            },
-            "highlight": {
-                "fields": {
-                    "email": {},
-                    "phone": {}
-                }
+        query={
+            "bool": {
+                "should": should_clauses,
+                "minimum_should_match": 1
+            }
+        },
+        highlight={
+            "fields": {
+                "email": {},
+                "phone": {}
             }
         }
     )
@@ -452,6 +454,25 @@ For international numbers, store and search with consideration for country codes
 ```bash
 curl -X PUT "localhost:9200/international_contacts" -H 'Content-Type: application/json' -d'
 {
+  "settings": {
+    "analysis": {
+      "analyzer": {
+        "phone_analyzer": {
+          "type": "custom",
+          "tokenizer": "standard",
+          "char_filter": ["phone_char_filter"],
+          "filter": ["lowercase"]
+        }
+      },
+      "char_filter": {
+        "phone_char_filter": {
+          "type": "pattern_replace",
+          "pattern": "[^0-9]",
+          "replacement": ""
+        }
+      }
+    }
+  },
   "mappings": {
     "properties": {
       "phone": {
