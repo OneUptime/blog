@@ -37,6 +37,9 @@ go get github.com/gorilla/websocket
 
 # Install Redis client for scaling section
 go get github.com/redis/go-redis/v9
+
+# Install UUID package for the complete server
+go get github.com/google/uuid
 ```
 
 ## Basic WebSocket Server Setup
@@ -125,7 +128,6 @@ package main
 import (
     "context"
     "log"
-    "net/http"
     "sync"
     "time"
 
@@ -430,9 +432,17 @@ func (rm *RoomManager) LeaveRoom(roomName string, client *Client) {
     // Clean up empty rooms
     if clientCount == 0 {
         rm.mu.Lock()
-        delete(rm.rooms, roomName)
+        room.mu.Lock()
+        deleted := false
+        if current, ok := rm.rooms[roomName]; ok && current == room && len(room.clients) == 0 {
+            delete(rm.rooms, roomName)
+            deleted = true
+        }
+        room.mu.Unlock()
         rm.mu.Unlock()
-        log.Printf("Room deleted (empty): %s", roomName)
+        if deleted {
+            log.Printf("Room deleted (empty): %s", roomName)
+        }
     }
 }
 
@@ -542,8 +552,11 @@ We have already implemented basic ping-pong in the write pump. Here is an enhanc
 package main
 
 import (
+    "sync"
     "sync/atomic"
     "time"
+
+    "github.com/gorilla/websocket"
 )
 
 // ConnectionStats tracks connection health metrics
@@ -560,7 +573,8 @@ type ConnectionStats struct {
 // ClientWithStats extends Client with health monitoring
 type ClientWithStats struct {
     *Client
-    stats ConnectionStats
+    statsMu sync.RWMutex
+    stats   ConnectionStats
 }
 
 // NewClientWithStats creates a client with stats tracking
@@ -612,7 +626,11 @@ func (c *ClientWithStats) writePumpWithStats() {
 
         case <-ticker.C:
             c.conn.SetWriteDeadline(time.Now().Add(writeWait))
+
+            c.statsMu.Lock()
             c.stats.LastPingAt = time.Now()
+            c.statsMu.Unlock()
+
             atomic.AddInt64(&c.stats.PingsSent, 1)
 
             if err := c.conn.WriteMessage(websocket.PingMessage, nil); err != nil {
@@ -633,7 +651,10 @@ func (c *ClientWithStats) readPumpWithStats() {
     c.conn.SetReadDeadline(time.Now().Add(pongWait))
 
     c.conn.SetPongHandler(func(appData string) error {
+        c.statsMu.Lock()
         c.stats.LastPongAt = time.Now()
+        c.statsMu.Unlock()
+
         atomic.AddInt64(&c.stats.PongsReceived, 1)
         c.conn.SetReadDeadline(time.Now().Add(pongWait))
         return nil
@@ -651,10 +672,16 @@ func (c *ClientWithStats) readPumpWithStats() {
 
 // GetStats returns a copy of the current stats
 func (c *ClientWithStats) GetStats() ConnectionStats {
+    c.statsMu.RLock()
+    connected := c.stats.Connected
+    lastPingAt := c.stats.LastPingAt
+    lastPongAt := c.stats.LastPongAt
+    c.statsMu.RUnlock()
+
     return ConnectionStats{
-        Connected:        c.stats.Connected,
-        LastPingAt:       c.stats.LastPingAt,
-        LastPongAt:       c.stats.LastPongAt,
+        Connected:        connected,
+        LastPingAt:       lastPingAt,
+        LastPongAt:       lastPongAt,
         MessagesSent:     atomic.LoadInt64(&c.stats.MessagesSent),
         MessagesReceived: atomic.LoadInt64(&c.stats.MessagesReceived),
         PingsSent:        atomic.LoadInt64(&c.stats.PingsSent),
@@ -664,10 +691,15 @@ func (c *ClientWithStats) GetStats() ConnectionStats {
 
 // Latency calculates the round-trip time based on last ping-pong
 func (c *ClientWithStats) Latency() time.Duration {
-    if c.stats.LastPongAt.IsZero() || c.stats.LastPingAt.IsZero() {
+    c.statsMu.RLock()
+    lastPingAt := c.stats.LastPingAt
+    lastPongAt := c.stats.LastPongAt
+    c.statsMu.RUnlock()
+
+    if lastPongAt.IsZero() || lastPingAt.IsZero() {
         return 0
     }
-    return c.stats.LastPongAt.Sub(c.stats.LastPingAt)
+    return lastPongAt.Sub(lastPingAt)
 }
 ```
 
@@ -703,6 +735,7 @@ type RedisHub struct {
     redisClient *redis.Client
     channel     string
     instanceID  string
+    roomManager *RoomManager
 }
 
 // BroadcastMessage represents a message in Redis pub/sub
@@ -714,7 +747,7 @@ type BroadcastMessage struct {
 }
 
 // NewRedisHub creates a hub with Redis pub/sub support
-func NewRedisHub(config RedisConfig, channel string) (*RedisHub, error) {
+func NewRedisHub(config RedisConfig, channel string, roomManager *RoomManager) (*RedisHub, error) {
     client := redis.NewClient(&redis.Options{
         Addr:     config.Addr,
         Password: config.Password,
@@ -738,6 +771,7 @@ func NewRedisHub(config RedisConfig, channel string) (*RedisHub, error) {
         redisClient: client,
         channel:     channel,
         instanceID:  instanceID,
+        roomManager: roomManager,
     }
 
     log.Printf("Redis hub initialized: instance=%s channel=%s", instanceID, channel)
@@ -746,14 +780,43 @@ func NewRedisHub(config RedisConfig, channel string) (*RedisHub, error) {
 
 // Run starts the hub and Redis subscription
 func (rh *RedisHub) Run() {
-    // Start the base hub
-    go rh.Hub.Run()
-
     // Start Redis subscription
     go rh.subscribeRedis()
 
-    // Process local broadcasts and publish to Redis
-    rh.processBroadcasts()
+    for {
+        select {
+        case <-rh.Hub.ctx.Done():
+            rh.Hub.mu.Lock()
+            for _, client := range rh.Hub.clients {
+                close(client.send)
+            }
+            rh.Hub.clients = make(map[string]*Client)
+            rh.Hub.mu.Unlock()
+            return
+
+        case client := <-rh.Hub.register:
+            rh.Hub.mu.Lock()
+            rh.Hub.clients[client.id] = client
+            rh.Hub.mu.Unlock()
+            log.Printf("Client registered: %s", client.id)
+
+        case client := <-rh.Hub.unregister:
+            rh.Hub.mu.Lock()
+            if _, ok := rh.Hub.clients[client.id]; ok {
+                delete(rh.Hub.clients, client.id)
+                close(client.send)
+            }
+            rh.Hub.mu.Unlock()
+            log.Printf("Client unregistered: %s", client.id)
+
+        case message := <-rh.Hub.broadcast:
+            // Broadcast to local clients
+            rh.broadcastLocal(message)
+
+            // Publish to Redis for other instances
+            rh.publishToRedis(message, "")
+        }
+    }
 }
 
 // subscribeRedis listens for messages from other instances
@@ -769,7 +832,11 @@ func (rh *RedisHub) subscribeRedis() {
         case <-ctx.Done():
             return
 
-        case msg := <-ch:
+        case msg, ok := <-ch:
+            if !ok {
+                return
+            }
+
             var bm BroadcastMessage
             if err := json.Unmarshal([]byte(msg.Payload), &bm); err != nil {
                 log.Printf("Invalid Redis message: %v", err)
@@ -781,25 +848,11 @@ func (rh *RedisHub) subscribeRedis() {
                 continue
             }
 
-            // Broadcast to local clients
-            rh.broadcastLocal(bm.Data)
-        }
-    }
-}
-
-// processBroadcasts handles local broadcasts and publishes to Redis
-func (rh *RedisHub) processBroadcasts() {
-    for {
-        select {
-        case <-rh.Hub.ctx.Done():
-            return
-
-        case message := <-rh.Hub.broadcast:
-            // Broadcast to local clients
-            rh.broadcastLocal(message)
-
-            // Publish to Redis for other instances
-            rh.publishToRedis(message, "")
+            if bm.Room != "" {
+                rh.roomManager.BroadcastToRoom(bm.Room, bm.Data, "")
+            } else {
+                rh.broadcastLocal(bm.Data)
+            }
         }
     }
 }
@@ -841,8 +894,9 @@ func (rh *RedisHub) publishToRedis(data []byte, room string) {
     }
 }
 
-// BroadcastToRoom publishes a message to a specific room across all instances
-func (rh *RedisHub) BroadcastToRoom(room string, data []byte) {
+// BroadcastToRoom sends a message to a specific room across all instances
+func (rh *RedisHub) BroadcastToRoom(room string, data []byte, excludeClient string) {
+    rh.roomManager.BroadcastToRoom(room, data, excludeClient)
     rh.publishToRedis(data, room)
 }
 
@@ -891,16 +945,17 @@ type Server struct {
 
 // NewServer creates a new WebSocket server
 func NewServer(redisAddr string) (*Server, error) {
+    roomManager := NewRoomManager()
     hub, err := NewRedisHub(RedisConfig{
         Addr: redisAddr,
-    }, "websocket:broadcast")
+    }, "websocket:broadcast", roomManager)
     if err != nil {
         return nil, err
     }
 
     return &Server{
         hub:         hub,
-        roomManager: NewRoomManager(),
+        roomManager: roomManager,
     }, nil
 }
 
@@ -962,7 +1017,7 @@ func (s *Server) readPump(client *Client) {
             s.roomManager.LeaveRoom(msg.Room, client)
         case "message":
             if msg.Room != "" {
-                s.roomManager.BroadcastToRoom(msg.Room, data, client.id)
+                s.hub.BroadcastToRoom(msg.Room, data, client.id)
             } else {
                 s.hub.Hub.broadcast <- data
             }
