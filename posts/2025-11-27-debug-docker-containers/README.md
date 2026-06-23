@@ -82,15 +82,19 @@ Enable read-only filesystem in production to discourage edits (`docker run --rea
 When the base image lacks shell tools (distroless), spin up a helper container sharing the same namespaces. This technique lets you debug minimal images without modifying them.
 
 ```bash
-# Launch a debug container that shares the target's network and process namespaces
+# Launch a debug container that shares the target's network and process namespaces:
+#   --network container:api_web_1   Share network namespace (same localhost, ports)
+#   --pid container:api_web_1       Share PID namespace (see target's processes)
+#   -v .../overlay2:/overlay2:ro    Read-only access to image layers
+#   alpine:3.20                     Small image with a busybox shell and core tools
 docker run --rm -it \
-  --network container:api_web_1 \    # Share network namespace (same localhost, ports)
-  --pid container:api_web_1 \        # Share PID namespace (see target's processes)
-  -v /var/lib/docker/overlay2:/overlay2:ro \  # Read-only access to image layers
-  alpine:3.20 sh                     # Alpine includes useful debug tools
+  --network container:api_web_1 \
+  --pid container:api_web_1 \
+  -v /var/lib/docker/overlay2:/overlay2:ro \
+  alpine:3.20 sh
 ```
 
-Or use `docker debug` (BuildKit) / `docker run --privileged --pid=container:<id>` to examine processes without modifying the running container.
+Or use `docker debug` (Docker Desktop) / `docker run --privileged --pid=container:<id>` to examine processes without modifying the running container.
 
 ## 6. Dive into Layers
 
