@@ -12,21 +12,22 @@ Understanding how EC2 instances assume IAM roles is fundamental to AWS security.
 
 ## How EC2 AssumeRole Works
 
-When an EC2 instance needs AWS credentials, it does not store static access keys. Instead, it assumes an IAM role through the instance metadata service. This process involves several AWS components working together.
+When an EC2 instance needs AWS credentials, it does not store static access keys. Instead, AWS delivers temporary credentials for the instance's attached IAM role through the instance metadata service. This process involves several AWS components working together.
 
 ```mermaid
 sequenceDiagram
     participant EC2 as EC2 Instance
+    participant EC2S as Amazon EC2 Service
     participant IMDS as Instance Metadata Service
     participant STS as AWS STS
     participant IAM as IAM Role
     participant S3 as AWS Service (e.g., S3)
 
-    EC2->>IMDS: Request credentials
-    IMDS->>STS: AssumeRole request
+    EC2S->>STS: AssumeRole for attached role
     STS->>IAM: Validate trust policy
     IAM-->>STS: Role validated
-    STS-->>IMDS: Temporary credentials
+    STS-->>EC2S: Temporary credentials
+    EC2->>IMDS: Request credentials
     IMDS-->>EC2: Access Key, Secret Key, Token
     EC2->>S3: API call with temp credentials
 ```
@@ -35,7 +36,7 @@ sequenceDiagram
 
 ### 1. IAM Role
 
-The role defines what permissions the EC2 instance will have:
+The role's trust policy defines who can assume the role. Permissions are added separately with IAM policies:
 
 ```hcl
 resource "aws_iam_role" "ec2_role" {
@@ -120,7 +121,7 @@ resource "aws_instance" "app_server" {
 
 ## Complete Terraform Configuration
 
-Here is a complete working example:
+Here is a complete role and instance profile example:
 
 ```hcl
 # IAM Role with trust policy for EC2
@@ -357,14 +358,14 @@ aws iam get-role --role-name application-ec2-role \
 
 ### Check CloudTrail for Errors
 
-Look for `AssumeRole` events in CloudTrail to diagnose failures.
+For cross-account role switching, look for `AssumeRole` events in CloudTrail to diagnose failures. For the instance's own role, check CloudTrail entries for the AWS API calls made with the assumed-role credentials.
 
 ## Best Practices
 
 1. **Use least privilege** - Grant only necessary permissions
 2. **Enforce IMDSv2** - Prevent SSRF attacks
-3. **Use external IDs** - For cross-account roles to prevent confused deputy
-4. **Enable CloudTrail** - Audit all AssumeRole calls
+3. **Use external IDs** - For third-party cross-account roles to prevent confused deputy
+4. **Enable CloudTrail** - Audit API calls made with assumed-role credentials
 5. **Rotate credentials** - Temporary credentials expire automatically
 6. **Tag resources** - Track which roles are used where
 
