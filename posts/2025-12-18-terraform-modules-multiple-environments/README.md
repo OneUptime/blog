@@ -207,6 +207,54 @@ resource "aws_nat_gateway" "main" {
   tags = merge(local.common_tags, {
     Name = "${var.environment}-nat-${count.index + 1}"
   })
+
+  depends_on = [aws_internet_gateway.main]
+}
+
+resource "aws_route_table" "public" {
+  vpc_id = aws_vpc.main.id
+
+  route {
+    cidr_block = "0.0.0.0/0"
+    gateway_id = aws_internet_gateway.main.id
+  }
+
+  tags = merge(local.common_tags, {
+    Name = "${var.environment}-public-rt"
+  })
+}
+
+resource "aws_route_table_association" "public" {
+  count = local.subnet_count
+
+  subnet_id      = aws_subnet.public[count.index].id
+  route_table_id = aws_route_table.public.id
+}
+
+resource "aws_route_table" "private" {
+  count = local.subnet_count
+
+  vpc_id = aws_vpc.main.id
+
+  dynamic "route" {
+    for_each = var.enable_nat_gateway ? [1] : []
+
+    content {
+      cidr_block     = "0.0.0.0/0"
+      nat_gateway_id = aws_nat_gateway.main[var.single_nat_gateway ? 0 : count.index].id
+    }
+  }
+
+  tags = merge(local.common_tags, {
+    Name = "${var.environment}-private-${var.availability_zones[count.index]}-rt"
+  })
+}
+
+resource "aws_route_table_association" "private" {
+  count = local.subnet_count
+
+  subnet_id      = aws_subnet.private[count.index].id
+  route_table_id = aws_route_table.private[count.index].id
 }
 
 # modules/vpc/outputs.tf
@@ -254,6 +302,11 @@ variable "engine_version" {
   default = "15"
 }
 
+variable "db_username" {
+  type    = string
+  default = "postgres_admin"
+}
+
 variable "multi_az" {
   type    = bool
   default = false
@@ -298,17 +351,21 @@ resource "aws_security_group" "db" {
   description = "Security group for ${var.environment} database"
   vpc_id      = var.vpc_id
 
-  ingress {
-    from_port       = 5432
-    to_port         = 5432
-    protocol        = "tcp"
-    security_groups = var.allowed_security_group_ids
-  }
-
   tags = {
     Name        = "${var.environment}-db-sg"
     Environment = var.environment
   }
+}
+
+resource "aws_vpc_security_group_ingress_rule" "db" {
+  for_each = toset(var.allowed_security_group_ids)
+
+  security_group_id            = aws_security_group.db.id
+  referenced_security_group_id = each.value
+  from_port                    = 5432
+  to_port                      = 5432
+  ip_protocol                  = "tcp"
+  description                  = "Allow PostgreSQL from application security groups"
 }
 
 resource "aws_db_instance" "main" {
@@ -317,6 +374,7 @@ resource "aws_db_instance" "main" {
   engine         = "postgres"
   engine_version = var.engine_version
   instance_class = var.instance_class
+  username       = var.db_username
 
   allocated_storage     = var.allocated_storage
   max_allocated_storage = var.allocated_storage * 2
@@ -331,8 +389,10 @@ resource "aws_db_instance" "main" {
   backup_window           = "03:00-04:00"
   maintenance_window      = "Mon:04:00-Mon:05:00"
 
-  deletion_protection = var.deletion_protection
-  skip_final_snapshot = var.environment != "production"
+  manage_master_user_password = true
+  deletion_protection         = var.deletion_protection
+  skip_final_snapshot         = var.environment != "production"
+  final_snapshot_identifier   = var.environment == "production" ? "${var.environment}-postgres-final-snapshot" : null
 
   tags = {
     Name        = "${var.environment}-postgres"
@@ -639,7 +699,7 @@ remote_state {
     key            = "${path_relative_to_include()}/terraform.tfstate"
     region         = "us-east-1"
     encrypt        = true
-    dynamodb_table = "terraform-locks"
+    use_lockfile   = true
   }
 }
 
@@ -797,6 +857,7 @@ terraform {
     bucket = "company-terraform-state"
     key    = "production/terraform.tfstate"  # Environment-specific key
     region = "us-east-1"
+    use_lockfile = true
   }
 }
 ```
