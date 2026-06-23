@@ -264,7 +264,7 @@ class FullStackIntegrationTest {
         .withExposedPorts(6379);
 
     @Container
-    static KafkaContainer kafka = new KafkaContainer(
+    static ConfluentKafkaContainer kafka = new ConfluentKafkaContainer(
         DockerImageName.parse("confluentinc/cp-kafka:7.4.0"));
 
     @DynamicPropertySource
