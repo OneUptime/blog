@@ -97,7 +97,7 @@ If you haven't already installed K3s, here's how to set it up on your nodes.
 For edge and IoT deployments, you may want to disable some default components. The following command installs K3s without the default load balancer (ServiceLB/Klipper), as MetalLB will replace it:
 
 ```bash
-curl -sfL https://get.k3s.io | INSTALL_K3S_EXEC="--disable servicelb" sh -
+curl -sfL https://get.k3s.io | INSTALL_K3S_EXEC="--disable=servicelb" sh -
 ```
 
 ### Getting the Join Token
@@ -166,7 +166,7 @@ MetalLB can be installed using manifests or Helm. We'll cover both methods.
 This applies the official MetalLB manifests to your cluster:
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/metallb/metallb/v0.14.5/config/manifests/metallb-native.yaml
+kubectl apply -f https://raw.githubusercontent.com/metallb/metallb/v0.16.1/config/manifests/metallb-native.yaml
 ```
 
 ### Method 2: Installation Using Helm
@@ -190,8 +190,8 @@ Wait for the MetalLB pods to be ready:
 
 ```bash
 kubectl wait --namespace metallb-system \
-  --for=condition=ready pod \
-  --selector=app=metallb \
+  --for=condition=Ready pod \
+  --all \
   --timeout=120s
 ```
 
@@ -528,7 +528,7 @@ spec:
 
 ### Requesting Specific IPs
 
-For services that need a predictable IP address (common in IoT scenarios), use the loadBalancerIP field:
+For services that need a predictable IP address (common in IoT scenarios), use the MetalLB loadBalancerIPs annotation:
 
 ```yaml
 apiVersion: v1
@@ -536,10 +536,10 @@ kind: Service
 metadata:
   name: mqtt-broker
   annotations:
-    metallb.universe.tf/address-pool: edge-pool
+    metallb.io/address-pool: edge-pool
+    metallb.io/loadBalancerIPs: 192.168.1.105
 spec:
   type: LoadBalancer
-  loadBalancerIP: 192.168.1.105
   selector:
     app: mqtt-broker
   ports:
@@ -561,10 +561,10 @@ kind: Service
 metadata:
   name: web-service
   annotations:
-    metallb.universe.tf/allow-shared-ip: "shared-ip-key"
+    metallb.io/allow-shared-ip: "shared-ip-key"
+    metallb.io/loadBalancerIPs: 192.168.1.100
 spec:
   type: LoadBalancer
-  loadBalancerIP: 192.168.1.100
   selector:
     app: web
   ports:
@@ -576,10 +576,10 @@ kind: Service
 metadata:
   name: api-service
   annotations:
-    metallb.universe.tf/allow-shared-ip: "shared-ip-key"
+    metallb.io/allow-shared-ip: "shared-ip-key"
+    metallb.io/loadBalancerIPs: 192.168.1.100
 spec:
   type: LoadBalancer
-  loadBalancerIP: 192.168.1.100
   selector:
     app: api
   ports:
@@ -663,50 +663,50 @@ If using Helm, enable metrics in your values file:
 ```yaml
 prometheus:
   scrapeAnnotations: true
-  metricsPort: 7472
-
-controller:
-  metrics:
+  metricsPort: 9120
+  namespace: monitoring
+  serviceAccount: prometheus-k8s
+  serviceMonitor:
     enabled: true
-    serviceMonitor:
-      enabled: true
-
-speaker:
-  metrics:
-    enabled: true
-    serviceMonitor:
-      enabled: true
 ```
 
-### Manual ServiceMonitor Configuration
+### Manual PodMonitor Configuration
 
-If you're not using Helm but have Prometheus Operator installed, create ServiceMonitors manually:
+If you're not using Helm but have Prometheus Operator installed, create PodMonitors manually:
 
 ```yaml
 apiVersion: monitoring.coreos.com/v1
-kind: ServiceMonitor
+kind: PodMonitor
 metadata:
   name: metallb-controller
   namespace: metallb-system
 spec:
   selector:
     matchLabels:
-      app.kubernetes.io/component: controller
-  endpoints:
-  - port: monitoring
+      app: metallb
+      component: controller
+  podMetricsEndpoints:
+  - port: metricshttps
+    scheme: https
+    tlsConfig:
+      insecureSkipVerify: true
     interval: 30s
 ---
 apiVersion: monitoring.coreos.com/v1
-kind: ServiceMonitor
+kind: PodMonitor
 metadata:
   name: metallb-speaker
   namespace: metallb-system
 spec:
   selector:
     matchLabels:
-      app.kubernetes.io/component: speaker
-  endpoints:
-  - port: monitoring
+      app: metallb
+      component: speaker
+  podMetricsEndpoints:
+  - port: metricshttps
+    scheme: https
+    tlsConfig:
+      insecureSkipVerify: true
     interval: 30s
 ```
 
@@ -714,11 +714,11 @@ spec:
 
 Here are important MetalLB metrics to track:
 
-- `metallb_bgp_session_up` - BGP session status (1 = up, 0 = down)
-- `metallb_bgp_announced_prefixes_total` - Number of prefixes announced via BGP
+- `metallb_bgp_session_up` or `frrk8s_bgp_session_up` - BGP session status (1 = up, 0 = down)
+- `metallb_bgp_announced_prefixes_total` or `frrk8s_bgp_announced_prefixes_total` - Number of prefixes announced via BGP
 - `metallb_allocator_addresses_in_use_total` - Number of IPs currently allocated
 - `metallb_allocator_addresses_total` - Total number of IPs available in pools
-- `metallb_layer2_announcements_total` - Number of L2 announcements made
+- `metallb_k8s_client_config_stale_bool` - Whether MetalLB is running with a stale configuration
 
 ## Step 10: Troubleshooting
 
@@ -743,7 +743,7 @@ kubectl get ipaddresspools -n metallb-system
 View MetalLB controller logs:
 
 ```bash
-kubectl logs -n metallb-system -l app.kubernetes.io/component=controller
+kubectl logs -n metallb-system -l app=metallb,component=controller
 ```
 
 ### Layer 2 Issues
@@ -751,7 +751,7 @@ kubectl logs -n metallb-system -l app.kubernetes.io/component=controller
 For Layer 2 mode issues, check the speaker logs:
 
 ```bash
-kubectl logs -n metallb-system -l app.kubernetes.io/component=speaker
+kubectl logs -n metallb-system -l app=metallb,component=speaker
 ```
 
 Verify ARP responses from the cluster using this command from an external machine:
@@ -771,21 +771,28 @@ kubectl get bgppeers -n metallb-system -o yaml
 View detailed speaker logs:
 
 ```bash
-kubectl logs -n metallb-system -l app.kubernetes.io/component=speaker --tail=100
+kubectl logs -n metallb-system -l app=metallb,component=speaker --tail=100
 ```
 
 ### K3s ServiceLB Conflict
 
-If you installed K3s with the default ServiceLB (Klipper), disable it:
+If you installed K3s with the default ServiceLB (Klipper), configure all K3s server nodes to disable it and restart K3s:
+
+```yaml
+disable:
+- servicelb
+```
+
+After K3s is running with ServiceLB disabled, remove any old ServiceLB DaemonSets:
 
 ```bash
-kubectl delete daemonset svclb-* -n kube-system
+kubectl get daemonset -n kube-system -o name | grep '^daemonset.apps/svclb-' | xargs -r kubectl delete -n kube-system
 ```
 
 Or reinstall K3s with ServiceLB disabled:
 
 ```bash
-curl -sfL https://get.k3s.io | INSTALL_K3S_EXEC="--disable servicelb" sh -
+curl -sfL https://get.k3s.io | INSTALL_K3S_EXEC="--disable=servicelb" sh -
 ```
 
 ### Network Policy Conflicts
@@ -801,7 +808,8 @@ metadata:
 spec:
   podSelector:
     matchLabels:
-      app.kubernetes.io/component: speaker
+      app: metallb
+      component: speaker
   policyTypes:
   - Ingress
   - Egress
@@ -831,9 +839,7 @@ metadata:
 data:
   mosquitto.conf: |
     listener 1883
-    listener 8883
-    allow_anonymous false
-    password_file /mosquitto/config/passwd
+    allow_anonymous true
     persistence true
     persistence_location /mosquitto/data/
     log_dest stdout
@@ -863,8 +869,6 @@ spec:
         ports:
         - containerPort: 1883
           name: mqtt
-        - containerPort: 8883
-          name: mqtt-tls
         resources:
           limits:
             memory: "128Mi"
@@ -894,19 +898,16 @@ metadata:
   name: mqtt-broker
   namespace: iot-gateway
   annotations:
-    metallb.universe.tf/address-pool: edge-pool
+    metallb.io/address-pool: edge-pool
+    metallb.io/loadBalancerIPs: 192.168.1.105
 spec:
   type: LoadBalancer
-  loadBalancerIP: 192.168.1.105
   selector:
     app: mqtt-broker
   ports:
   - port: 1883
     targetPort: 1883
     name: mqtt
-  - port: 8883
-    targetPort: 8883
-    name: mqtt-tls
 ```
 
 ### Apply All Resources
@@ -926,8 +927,8 @@ kubectl get svc -n iot-gateway
 Expected output:
 
 ```text
-NAME          TYPE           CLUSTER-IP    EXTERNAL-IP     PORT(S)                         AGE
-mqtt-broker   LoadBalancer   10.43.12.45   192.168.1.105   1883:31234/TCP,8883:31235/TCP   30s
+NAME          TYPE           CLUSTER-IP    EXTERNAL-IP     PORT(S)           AGE
+mqtt-broker   LoadBalancer   10.43.12.45   192.168.1.105   1883:31234/TCP    30s
 ```
 
 Test MQTT connectivity:
@@ -940,7 +941,7 @@ mosquitto_pub -h 192.168.1.105 -t test/topic -m "Hello from IoT device"
 
 Configuring MetalLB with K3s provides a powerful, lightweight solution for load balancing in edge and IoT Kubernetes deployments. Key takeaways:
 
-1. **Disable K3s ServiceLB**: Use `--disable servicelb` when installing K3s to avoid conflicts
+1. **Disable K3s ServiceLB**: Use `--disable=servicelb` when installing K3s to avoid conflicts
 2. **Choose the right mode**: Layer 2 mode is simpler and suitable for most edge deployments; BGP mode offers better scalability
 3. **Plan IP allocation**: Carefully plan your IP address pools based on your network topology
 4. **Optimize for resources**: Use resource limits appropriate for your edge/IoT devices
