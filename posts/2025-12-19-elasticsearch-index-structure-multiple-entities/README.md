@@ -169,6 +169,12 @@ PUT /products
           "tokenizer": "standard",
           "filter": ["lowercase", "synonym_filter"]
         }
+      },
+      "filter": {
+        "synonym_filter": {
+          "type": "synonym",
+          "synonyms": ["laptop, notebook", "phone, smartphone"]
+        }
       }
     }
   },
@@ -265,7 +271,12 @@ PUT /orders_nested
       "items": {
         "type": "nested",
         "properties": {
-          "product_name": {"type": "text"},
+          "product_name": {
+            "type": "text",
+            "fields": {
+              "keyword": {"type": "keyword"}
+            }
+          },
           "quantity": {"type": "integer"},
           "price": {"type": "float"}
         }
