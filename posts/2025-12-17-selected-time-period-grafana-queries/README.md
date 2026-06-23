@@ -17,7 +17,7 @@ Grafana dashboards let users select custom time ranges using the time picker. Bu
 - Use `$__range` for the total selected time period duration
 - Use `$__interval` for automatic resolution-based intervals
 - Use `$__from` and `$__to` for absolute timestamps
-- These variables work across PromQL, InfluxDB, SQL, and more
+- Availability depends on the data source: `$__range` is for Prometheus and Loki, while `$__interval`, `$__from`, `$__to`, and time-filter macros are used more broadly
 - Combine with `$__rate_interval` for accurate rate calculations
 
 ---
@@ -28,9 +28,9 @@ Grafana provides several built-in variables that adapt to the user's time select
 
 | Variable | Description | Example Value |
 |----------|-------------|---------------|
-| `$__range` | Duration of selected time range | `1h`, `24h`, `7d` |
-| `$__range_s` | Range in seconds | `3600`, `86400` |
-| `$__range_ms` | Range in milliseconds | `3600000` |
+| `$__range` | Duration of selected time range (Prometheus and Loki) | `1h`, `24h`, `7d` |
+| `$__range_s` | Range in seconds (Prometheus and Loki) | `3600`, `86400` |
+| `$__range_ms` | Range in milliseconds (Prometheus and Loki) | `3600000` |
 | `$__interval` | Suggested interval for aggregation | `1m`, `5m` |
 | `$__interval_ms` | Interval in milliseconds | `60000` |
 | `$__from` | Start timestamp (Unix ms) | `1640000000000` |
@@ -144,7 +144,7 @@ sum(rate(http_requests_total[$__interval])) by (service)
 
 ## The $__rate_interval Variable
 
-For rate calculations, `$__rate_interval` ensures accuracy by being at least 4x the scrape interval:
+For rate calculations, `$__rate_interval` ensures accuracy by being at least 4x the scrape interval and usually one scrape interval larger than `$__interval`:
 
 ```promql
 # Recommended for rate calculations
@@ -176,12 +176,12 @@ flowchart TD
     E --> F --> G --> H
 ```
 
-Configure the minimum rate interval in your data source settings:
+Configure the scrape interval in your data source settings:
 
 1. Go to Configuration > Data Sources
 2. Select your Prometheus data source
 3. Set "Scrape interval" to match your Prometheus config
-4. Grafana calculates `$__rate_interval` as 4x this value
+4. Grafana calculates `$__rate_interval` as `max($__interval + scrape_interval, 4 * scrape_interval)`
 
 ---
 
@@ -321,7 +321,7 @@ When using `$__range`, data might appear missing:
 # Problem: Last point might be partial
 increase(metric[$__range])
 
-# Solution: Use slightly larger range
+# Solution for stat panels: evaluate the full range at the range end
 increase(metric[$__range] @ end())
 ```
 
@@ -341,9 +341,9 @@ rate(metric[$__interval])
 # Problem: First data point shows spike
 rate(metric[5m])
 
-# Solution: Use irate for instant rate or increase for totals
-irate(metric[5m])
-# or
+# Solution: Use $__rate_interval or a longer range vector
+rate(metric[$__rate_interval])
+# or, for totals
 increase(metric[$__range])
 ```
 
