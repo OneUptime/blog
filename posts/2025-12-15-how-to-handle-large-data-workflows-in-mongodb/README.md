@@ -38,11 +38,11 @@ graph TD
 
 ### Default Cursor Behavior
 
-MongoDB cursors have a default timeout of 10 minutes and batch size of 101 documents (or 16MB, whichever comes first):
+MongoDB cursors normally time out after 10 minutes of inactivity. By default, the initial batch size is 101 documents or 16MB, whichever comes first:
 
 ```javascript
 // Basic cursor - may timeout for large result sets
-const cursor = db.largeCollection.find({});
+const cursor = db.collection('largeCollection').find({});
 
 // This approach can fail for millions of documents
 cursor.forEach(doc => {
@@ -56,15 +56,15 @@ For long-running operations, disable cursor timeout:
 
 ```javascript
 // Disable cursor timeout (use carefully)
-const cursor = db.largeCollection.find({}).noCursorTimeout();
+const cursor = db.collection('largeCollection').find({}, { noCursorTimeout: true });
 
 try {
-  while (cursor.hasNext()) {
-    const doc = cursor.next();
+  while (await cursor.hasNext()) {
+    const doc = await cursor.next();
     await processDocument(doc);
   }
 } finally {
-  cursor.close();  // Always close cursor when done
+  await cursor.close();  // Always close cursor when done
 }
 ```
 
@@ -74,10 +74,10 @@ Adjust batch size based on document size and processing time:
 
 ```javascript
 // Smaller batch size for large documents or slow processing
-const cursor = db.largeCollection.find({}).batchSize(100);
+const cursor = db.collection('largeCollection').find({}).batchSize(100);
 
 // Larger batch size for small documents and fast processing
-const cursor = db.smallDocs.find({}).batchSize(1000);
+const cursor = db.collection('smallDocs').find({}).batchSize(1000);
 ```
 
 ## Batch Processing Patterns
@@ -92,7 +92,7 @@ const pageSize = 1000;
 let page = 0;
 
 while (true) {
-  const docs = await db.collection.find({})
+  const docs = await db.collection('largeCollection').find({})
     .skip(page * pageSize)
     .limit(pageSize)
     .toArray();
@@ -118,7 +118,7 @@ while (true) {
     ? { _id: { $gt: lastId } }
     : {};
 
-  const docs = await db.collection.find(query)
+  const docs = await db.collection('largeCollection').find(query)
     .sort({ _id: 1 })
     .limit(batchSize)
     .toArray();
@@ -136,15 +136,16 @@ while (true) {
 // Process data in time-based chunks
 async function processLargeDataset(startDate, endDate, chunkDays = 1) {
   let currentStart = new Date(startDate);
+  const finalEnd = new Date(endDate);
 
-  while (currentStart < endDate) {
+  while (currentStart < finalEnd) {
     const chunkEnd = new Date(currentStart);
     chunkEnd.setDate(chunkEnd.getDate() + chunkDays);
 
-    const docs = await db.events.find({
+    const docs = await db.collection('events').find({
       timestamp: {
         $gte: currentStart,
-        $lt: chunkEnd > endDate ? endDate : chunkEnd
+        $lt: chunkEnd > finalEnd ? finalEnd : chunkEnd
       }
     }).toArray();
 
@@ -160,11 +161,11 @@ async function processLargeDataset(startDate, endDate, chunkDays = 1) {
 
 ### Handling Memory Limits
 
-Aggregation has a 100MB memory limit per stage. Use `allowDiskUse` for larger operations:
+Some blocking aggregation stages require more than 100MB of memory. In MongoDB 6.0 and later, `allowDiskUseByDefault` controls whether they write temporary files to disk by default; you can set `allowDiskUse` on a specific operation:
 
 ```javascript
 // Enable disk usage for memory-intensive aggregations
-db.largeCollection.aggregate([
+db.collection('largeCollection').aggregate([
   { $match: { status: "active" } },
   { $group: {
       _id: "$category",
@@ -182,7 +183,7 @@ Place operations that reduce data volume early:
 
 ```javascript
 // Good - filter first, then process
-db.orders.aggregate([
+db.collection('orders').aggregate([
   // 1. Filter to reduce data volume early
   { $match: {
       createdAt: { $gte: new Date("2024-01-01") },
@@ -192,15 +193,15 @@ db.orders.aggregate([
   // 2. Project only needed fields
   { $project: {
       customerId: 1,
-      total: 1,
-      items: 1
+      "items.price": 1,
+      "items.quantity": 1
     }
   },
   // 3. Now do expensive operations
   { $unwind: "$items" },
   { $group: {
       _id: "$customerId",
-      totalSpent: { $sum: "$total" }
+      totalSpent: { $sum: { $multiply: ["$items.price", "$items.quantity"] } }
     }
   }
 ], { allowDiskUse: true });
@@ -212,10 +213,10 @@ Use cursor for aggregation results instead of loading all into memory:
 
 ```javascript
 // Get aggregation cursor
-const cursor = db.collection.aggregate([
+const cursor = db.collection('largeCollection').aggregate([
   { $match: { active: true } },
   { $project: { name: 1, value: 1 } }
-], { cursor: { batchSize: 100 } });
+], { batchSize: 100 });
 
 // Process results one at a time
 for await (const doc of cursor) {
@@ -244,7 +245,7 @@ async function updateLargeDataset(updates) {
       }
     }));
 
-    await db.collection.bulkWrite(bulkOps, { ordered: false });
+    await db.collection('largeCollection').bulkWrite(bulkOps, { ordered: false });
 
     console.log(`Processed ${Math.min(i + batchSize, updates.length)} / ${updates.length}`);
   }
@@ -263,7 +264,7 @@ async function bulkInsert(documents) {
     const batch = documents.slice(i, i + batchSize);
 
     try {
-      const result = await db.collection.insertMany(batch, {
+      const result = await db.collection('largeCollection').insertMany(batch, {
         ordered: false  // Continue on error
       });
       inserted += result.insertedCount;
@@ -288,7 +289,7 @@ Export large collections without loading everything into memory:
 
 ```javascript
 const fs = require('fs');
-const { Transform } = require('stream');
+const { once } = require('events');
 
 async function exportToFile(collection, outputPath) {
   const cursor = db.collection(collection).find({});
@@ -299,7 +300,9 @@ async function exportToFile(collection, outputPath) {
 
   for await (const doc of cursor) {
     const prefix = count > 0 ? ',\n' : '';
-    writeStream.write(prefix + JSON.stringify(doc));
+    if (!writeStream.write(prefix + JSON.stringify(doc))) {
+      await once(writeStream, 'drain');
+    }
     count++;
 
     if (count % 10000 === 0) {
@@ -307,8 +310,11 @@ async function exportToFile(collection, outputPath) {
     }
   }
 
-  writeStream.write('\n]');
+  if (!writeStream.write('\n]')) {
+    await once(writeStream, 'drain');
+  }
   writeStream.end();
+  await once(writeStream, 'finish');
 
   console.log(`Export complete: ${count} documents`);
 }
@@ -359,10 +365,10 @@ Only fetch the fields you need:
 
 ```javascript
 // Bad - fetches entire documents
-const docs = await db.collection.find({}).toArray();
+const docs = await db.collection('largeCollection').find({}).toArray();
 
 // Good - fetch only needed fields
-const docs = await db.collection.find({}, {
+const docs = await db.collection('largeCollection').find({}, {
   projection: {
     _id: 1,
     name: 1,
@@ -377,11 +383,11 @@ Avoid `toArray()` for large result sets:
 
 ```javascript
 // Bad - loads all documents into memory
-const allDocs = await db.collection.find({}).toArray();
+const allDocs = await db.collection('largeCollection').find({}).toArray();
 allDocs.forEach(processDocument);
 
 // Good - processes one document at a time
-const cursor = db.collection.find({});
+const cursor = db.collection('largeCollection').find({});
 for await (const doc of cursor) {
   await processDocument(doc);
 }
@@ -404,9 +410,10 @@ function createDocumentStream(collection, query = {}) {
           this.push(doc);
         } else {
           this.push(null);  // End stream
-          cursor.close();
+          await cursor.close();
         }
       } catch (error) {
+        await cursor.close();
         this.destroy(error);
       }
     }
@@ -454,7 +461,7 @@ async function processWithProgress(collection, processFn) {
 ## Best Practices Summary
 
 1. **Use cursor iteration** - Avoid loading entire result sets into memory
-2. **Enable allowDiskUse** - For aggregations exceeding 100MB
+2. **Configure allowDiskUse** - For aggregation stages that need temporary disk files
 3. **Range-based pagination** - Use indexed fields instead of skip/limit
 4. **Bulk operations** - Batch writes to reduce round trips
 5. **Project needed fields** - Minimize data transfer
