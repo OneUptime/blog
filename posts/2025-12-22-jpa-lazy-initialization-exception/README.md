@@ -27,8 +27,8 @@ sequenceDiagram
     DB-->>H: User data
     H-->>R: User entity (orders not loaded)
     R-->>S: User entity
-    S-->>C: User entity
     H->>H: Close Session
+    S-->>C: User entity
 
     C->>C: user.getOrders()
     Note over C: LazyInitializationException!
@@ -60,7 +60,7 @@ public class User {
     private List<Order> orders;
 }
 
-// Problem scenario
+// Problem scenario when Open Session in View is disabled
 @Service
 public class UserService {
 
@@ -69,7 +69,7 @@ public class UserService {
 
     public User getUser(Long id) {
         return userRepository.findById(id).orElseThrow();
-        // Session closes when method returns
+        // Persistence context closes when the repository call returns
     }
 }
 
@@ -223,12 +223,12 @@ public class UserController {
 
 **Why this is not recommended:**
 - Mixes concerns (transaction management in controller)
-- Longer transactions mean longer database locks
+- Longer transactions can hold database connections and persistence contexts for longer
 - Can lead to N+1 query problems
 
 ### Solution 6: Open Session in View (Avoid)
 
-Spring Boot has `spring.jpa.open-in-view=true` by default, which keeps the session open until the view is rendered. This is an anti-pattern.
+Spring Boot has `spring.jpa.open-in-view=true` by default, which keeps the persistence context open until the view is rendered. This is often considered an anti-pattern.
 
 ```properties
 # Disable Open Session in View (recommended)
@@ -269,7 +269,9 @@ public List<UserDTO> getAllUsersWithOrders() {
         .map(user -> new UserDTO(
             user.getId(),
             user.getName(),
-            user.getOrders()  // N queries!
+            user.getOrders().stream()  // N queries!
+                .map(order -> new OrderDTO(order.getId(), order.getTotal()))
+                .toList()
         ))
         .toList();
 }
@@ -280,7 +282,13 @@ public List<UserDTO> getAllUsersWithOrders() {
     List<User> users = userRepository.findAllWithOrders();  // 1 query with JOIN FETCH
 
     return users.stream()
-        .map(user -> new UserDTO(user.getId(), user.getName(), user.getOrders()))
+        .map(user -> new UserDTO(
+            user.getId(),
+            user.getName(),
+            user.getOrders().stream()
+                .map(order -> new OrderDTO(order.getId(), order.getTotal()))
+                .toList()
+        ))
         .toList();
 }
 ```
@@ -393,6 +401,6 @@ public record OrderSummaryDTO(Long id, BigDecimal total, LocalDateTime createdAt
 | @EntityGraph | Simple eager loading | Declarative | Limited flexibility |
 | Hibernate.initialize() | Dynamic needs | Flexible | Can cause N+1 |
 | Batch fetching | Large collections | Reduces queries | Still multiple queries |
-| Open Session in View | Never | - | Anti-pattern |
+| Open Session in View | Rarely (legacy view rendering) | - | Often an anti-pattern |
 
 The LazyInitializationException is a signal that you're accessing data outside its intended scope. The solution is not to extend the session longer, but to think carefully about what data you need and fetch it explicitly within your service layer. Use DTOs to transfer exactly what the caller needs, and use appropriate fetch strategies based on your access patterns.
