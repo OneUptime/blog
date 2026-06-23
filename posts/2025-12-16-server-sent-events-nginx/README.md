@@ -47,8 +47,8 @@ Out of the box, Nginx can break SSE in several ways:
 |---------|------------------|---------|
 | `proxy_buffering` | on | Events batched instead of streamed |
 | `proxy_read_timeout` | 60s | Connection closes after idle time |
-| `gzip` | on (sometimes) | Compresses stream, breaking chunks |
-| `proxy_cache` | varies | May cache streaming response |
+| `gzip` | off unless enabled | Compresses stream if enabled |
+| `proxy_cache` | off unless configured | May cache streaming response if enabled |
 
 ## Basic SSE Configuration
 
@@ -70,8 +70,8 @@ location /events {
     proxy_set_header Connection '';
     proxy_http_version 1.1;
 
-    # Disable chunked encoding transform
-    chunked_transfer_encoding off;
+    # Keep HTTP/1.1 chunked transfer encoding enabled for streams
+    chunked_transfer_encoding on;
 
     # Long timeout for the SSE connection
     proxy_read_timeout 86400s;
@@ -125,10 +125,10 @@ server {
         proxy_read_timeout 86400s;
         proxy_send_timeout 86400s;
 
-        # Disable chunked transfer encoding transformation
-        chunked_transfer_encoding off;
+        # Keep HTTP/1.1 chunked transfer encoding enabled for streams
+        chunked_transfer_encoding on;
 
-        # Pass through the event-stream content type
+        # Tell the backend this request expects an event stream
         proxy_set_header Accept "text/event-stream";
 
         # Do not limit response size
@@ -149,7 +149,7 @@ server {
         proxy_set_header Connection '';
 
         proxy_read_timeout 86400s;
-        chunked_transfer_encoding off;
+        chunked_transfer_encoding on;
     }
 }
 ```
@@ -172,9 +172,6 @@ app.get('/events', (req, res) => {
     res.setHeader('Cache-Control', 'no-cache');
     res.setHeader('Connection', 'keep-alive');
     res.setHeader('X-Accel-Buffering', 'no');  // Nginx-specific
-
-    // Prevent compression
-    res.setHeader('Content-Encoding', 'identity');
 
     // Send initial connection event
     res.write(`data: {"type":"connected","clientId":"${clientId}"}\n\n`);
@@ -313,7 +310,7 @@ curl http://localhost/nginx_status
 
 ## SSE with Authentication
 
-Pass authentication tokens through SSE connections:
+Pass authentication tokens through SSE connections. Native browser `EventSource` cannot set arbitrary request headers, so use cookies or query parameters there; forwarding `Authorization` is useful for non-browser clients or EventSource polyfills that can send it:
 
 ```nginx
 location /events {
@@ -400,7 +397,7 @@ Expected headers:
 ```text
 Content-Type: text/event-stream
 Cache-Control: no-cache
-Connection: keep-alive
+Connection: keep-alive (HTTP/1.1 responses may include this)
 ```
 
 ### Verify No Buffering
@@ -430,7 +427,7 @@ Key settings for SSE through Nginx:
 | `proxy_cache` | off | Prevent caching stream |
 | `gzip` | off | Prevent compression |
 | `proxy_read_timeout` | 86400s | Keep connection open |
-| `chunked_transfer_encoding` | off | Clean chunk handling |
-| `proxy_http_version` | 1.1 | Required for streaming |
+| `chunked_transfer_encoding` | on | Allow chunked HTTP/1.1 streams |
+| `proxy_http_version` | 1.1 | Use HTTP/1.1 to the upstream |
 
 SSE is simpler than WebSockets for one-way server-to-client communication. With proper Nginx configuration, it provides reliable real-time updates without the complexity of WebSocket protocols.
