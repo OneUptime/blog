@@ -89,14 +89,14 @@ Index only non-deleted documents:
 db.products.createIndex(
   { category: 1, name: 1 },
   {
-    partialFilterExpression: { deletedAt: { $exists: false } }
+    partialFilterExpression: { deletedAt: null }
   }
 );
 
 // Active product queries use the index
 db.products.find({
   category: "electronics",
-  deletedAt: { $exists: false }
+  deletedAt: null
 }).sort({ name: 1 });
 
 // Soft delete a product (removed from index automatically)
@@ -225,7 +225,7 @@ Partial indexes support these operators in filter expressions:
 { status: "active" }
 
 // $exists
-{ deletedAt: { $exists: false } }
+{ email: { $exists: true } }
 
 // Comparison operators
 { amount: { $gt: 100 } }
