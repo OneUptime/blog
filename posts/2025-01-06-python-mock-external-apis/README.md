@@ -29,7 +29,7 @@ Flaky tests erode confidence. Mock external dependencies to keep tests fast and 
 ## Installation
 
 ```bash
-pip install responses pytest requests httpx respx
+pip install responses pytest requests httpx respx pytest-asyncio pytest-mock tenacity
 ```
 
 ---
@@ -553,8 +553,10 @@ from tenacity import retry, stop_after_attempt, wait_exponential
 class ResilientClient:
     """Client with automatic retry on failures"""
 
-    # Retry up to 3 times with exponential backoff
-    @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=1, max=10))
+    # Retry up to 3 times with exponential backoff.
+    # reraise=True re-raises the original exception (e.g. requests.HTTPError)
+    # when retries are exhausted; without it, tenacity raises tenacity.RetryError.
+    @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=1, max=10), reraise=True)
     def fetch_data(self, url: str) -> dict:
         response = requests.get(url)
         response.raise_for_status()  # Triggers retry on 4xx/5xx
