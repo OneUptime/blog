@@ -45,14 +45,14 @@ graph TB
 - Single node handles all traffic for a given service (leader election)
 - Simple setup, no router configuration required
 - Limited by single node bandwidth
-- Failover requires new leader election (typically 10-30 seconds)
+- Failover is automatic, but recovery depends on memberlist detection and client neighbor-cache updates
 
 ### BGP Mode Characteristics
 
 - Uses BGP protocol to announce routes to upstream routers
-- Traffic distributed across multiple nodes via ECMP
+- Traffic can be distributed across multiple nodes via ECMP, depending on router support and configuration
 - Requires BGP-capable network infrastructure
-- Horizontal scaling of bandwidth across nodes
+- Horizontal scaling of bandwidth across nodes for many independent connections
 - Faster failover with BFD (sub-second possible)
 
 ## Prerequisites
@@ -115,12 +115,17 @@ spec:
           limits:
             memory: "256Mi"
             cpu: "1000m"
+      - name: iperf3
+        image: networkstatic/iperf3
+        command: ["iperf3", "-s"]
+        ports:
+        - containerPort: 5201
 ```
 
 Create the namespace and deploy the application:
 
 ```bash
-kubectl create namespace benchmark
+kubectl create namespace benchmark --dry-run=client -o yaml | kubectl apply -f -
 kubectl apply -f test-deployment.yaml
 ```
 
@@ -166,14 +171,24 @@ metadata:
   name: benchmark-l2
   namespace: benchmark
   annotations:
-    metallb.universe.tf/address-pool: l2-pool
+    metallb.io/address-pool: l2-pool
 spec:
   type: LoadBalancer
   selector:
     app: benchmark-nginx
   ports:
-  - port: 80
+  - name: http
+    port: 80
     targetPort: 80
+  - name: iperf3
+    port: 5201
+    targetPort: 5201
+```
+
+Apply the L2 service:
+
+```bash
+kubectl apply -f service-l2.yaml
 ```
 
 ### Step 3: Configure MetalLB for BGP Mode
@@ -203,6 +218,18 @@ spec:
   peerAddress: 192.168.1.1
   holdTime: 90s
   keepaliveTime: 30s
+  bfdProfile: fast-failover
+
+---
+apiVersion: metallb.io/v1beta1
+kind: BFDProfile
+metadata:
+  name: fast-failover
+  namespace: metallb-system
+spec:
+  receiveInterval: 300
+  transmitInterval: 300
+  detectMultiplier: 3
 
 ---
 apiVersion: metallb.io/v1beta1
@@ -227,14 +254,18 @@ metadata:
   name: benchmark-bgp
   namespace: benchmark
   annotations:
-    metallb.universe.tf/address-pool: bgp-pool
+    metallb.io/address-pool: bgp-pool
 spec:
   type: LoadBalancer
   selector:
     app: benchmark-nginx
   ports:
-  - port: 80
+  - name: http
+    port: 80
     targetPort: 80
+  - name: iperf3
+    port: 5201
+    targetPort: 5201
 ```
 
 Apply the configurations:
@@ -243,6 +274,8 @@ Apply the configurations:
 kubectl apply -f metallb-bgp-config.yaml
 kubectl apply -f service-bgp.yaml
 ```
+
+The BFD profile requires MetalLB's FRR-based BGP modes and a peer that supports BFD. If you are using native BGP mode or a router that does not support BFD, remove `bfdProfile` and the `BFDProfile` resource and benchmark normal BGP timer behavior instead.
 
 ## Benchmarking Tools and Methodology
 
@@ -365,14 +398,14 @@ Fortio provides detailed percentile latency distribution which is crucial for un
 # L2 mode - capture p50, p75, p90, p99, p99.9 latencies
 kubectl exec -n benchmark benchmark-client -c fortio -- \
   fortio load -qps 1000 -t 60s -c 50 \
-  -json l2_fortio.json \
-  http://$L2_IP/
+  -json - \
+  http://$L2_IP/ > l2_fortio.json
 
 # BGP mode
 kubectl exec -n benchmark benchmark-client -c fortio -- \
   fortio load -qps 1000 -t 60s -c 50 \
-  -json bgp_fortio.json \
-  http://$BGP_IP/
+  -json - \
+  http://$BGP_IP/ > bgp_fortio.json
 ```
 
 ## Throughput Benchmarking
@@ -395,11 +428,11 @@ kubectl exec -n benchmark benchmark-client -c benchmark -- \
 
 Use vegeta for sustained HTTP load testing:
 
-Create a target file for vegeta:
+Create target definitions for vegeta:
 
 ```bash
-echo "GET http://$L2_IP/" > l2_targets.txt
-echo "GET http://$BGP_IP/" > bgp_targets.txt
+L2_TARGET="GET http://$L2_IP/"
+BGP_TARGET="GET http://$BGP_IP/"
 ```
 
 Run the load tests with increasing rates:
@@ -408,15 +441,15 @@ Run the load tests with increasing rates:
 # L2 mode - ramp up from 1000 to 10000 RPS
 for rate in 1000 2000 5000 10000; do
   kubectl exec -n benchmark benchmark-client -c vegeta -- \
-    vegeta attack -targets=/tmp/l2_targets.txt -rate=$rate -duration=60s | \
-    vegeta report --type=json > l2_vegeta_${rate}rps.json
+    sh -c "printf '%s\n' '$L2_TARGET' | vegeta attack -rate=$rate -duration=60s | vegeta report --type=json" \
+    > l2_vegeta_${rate}rps.json
 done
 
 # BGP mode
 for rate in 1000 2000 5000 10000; do
   kubectl exec -n benchmark benchmark-client -c vegeta -- \
-    vegeta attack -targets=/tmp/bgp_targets.txt -rate=$rate -duration=60s | \
-    vegeta report --type=json > bgp_vegeta_${rate}rps.json
+    sh -c "printf '%s\n' '$BGP_TARGET' | vegeta attack -rate=$rate -duration=60s | vegeta report --type=json" \
+    > bgp_vegeta_${rate}rps.json
 done
 ```
 
@@ -503,7 +536,7 @@ sequenceDiagram
     C->>SW: Traffic to VIP
     SW->>N1: Forward to Leader
     N1--xN1: Node Failure
-    Note over N2: Leader Election (10-30s)
+    Note over N2: Memberlist detection + neighbor-cache update
     N2->>SW: Gratuitous ARP
     SW->>N2: Traffic resumes
 
@@ -511,7 +544,7 @@ sequenceDiagram
     C->>SW: Traffic to VIP
     SW->>N1: ECMP to Node 1
     N1--xN1: Node Failure
-    Note over SW: BFD Detection (~300ms)
+    Note over SW: BFD Detection (depends on profile timers)
     SW->>N2: Route withdrawn, traffic shifts
 ```
 
@@ -525,16 +558,22 @@ L2_IP=$1
 OUTPUT_FILE="l2_failover_results.txt"
 
 # Start continuous ping in background
-ping -i 0.1 $L2_IP | while read line; do
+ping -i 0.2 $L2_IP | while read line; do
   echo "$(date +%s.%N) $line"
 done > $OUTPUT_FILE &
 PING_PID=$!
 
-# Find and cordon the leader node
-LEADER_NODE=$(kubectl get endpoints benchmark-l2 -n benchmark -o jsonpath='{.subsets[0].addresses[0].nodeName}')
+# Find and cordon the node currently receiving L2 traffic
+LEADER_NODE=$(kubectl get servicel2status -n metallb-system -o json | \
+  jq -r '.items[] | select(.status.serviceNamespace=="benchmark" and .status.serviceName=="benchmark-l2") | .status.node' | \
+  head -n 1)
+if [ -z "$LEADER_NODE" ]; then
+  echo "No ServiceL2Status node found for benchmark/benchmark-l2"
+  exit 1
+fi
 echo "Leader node: $LEADER_NODE"
 
-# Simulate node failure by cordoning and draining
+# Simulate planned failover by cordoning and draining
 kubectl cordon $LEADER_NODE
 kubectl drain $LEADER_NODE --ignore-daemonsets --delete-emptydir-data --force
 
@@ -546,7 +585,7 @@ kill $PING_PID
 
 # Analyze results - count dropped packets and measure recovery time
 echo "Analyzing failover results..."
-grep -c "Request timeout" $OUTPUT_FILE
+grep -Ec "Request timeout|no answer yet" $OUTPUT_FILE
 ```
 
 Script to measure BGP failover time (requires BFD enabled):
@@ -559,16 +598,22 @@ BGP_IP=$1
 OUTPUT_FILE="bgp_failover_results.txt"
 
 # Start continuous ping in background
-ping -i 0.1 $BGP_IP | while read line; do
+ping -i 0.2 $BGP_IP | while read line; do
   echo "$(date +%s.%N) $line"
 done > $OUTPUT_FILE &
 PING_PID=$!
 
-# Find a node advertising the BGP route
-BGP_NODE=$(kubectl get pods -n metallb-system -l component=speaker -o jsonpath='{.items[0].spec.nodeName}')
+# Find a node advertising the BGP route for this service
+BGP_NODE=$(kubectl get servicebgpstatus -n metallb-system -o json | \
+  jq -r '.items[] | select(.status.serviceNamespace=="benchmark" and .status.serviceName=="benchmark-bgp") | .status.node' | \
+  head -n 1)
+if [ -z "$BGP_NODE" ]; then
+  echo "No ServiceBGPStatus node found for benchmark/benchmark-bgp"
+  exit 1
+fi
 echo "BGP advertising node: $BGP_NODE"
 
-# Simulate node failure
+# Simulate planned failover
 kubectl cordon $BGP_NODE
 kubectl drain $BGP_NODE --ignore-daemonsets --delete-emptydir-data --force
 
@@ -580,7 +625,7 @@ kill $PING_PID
 
 # Analyze results
 echo "Analyzing failover results..."
-grep -c "Request timeout" $OUTPUT_FILE
+grep -Ec "Request timeout|no answer yet" $OUTPUT_FILE
 ```
 
 ## Collecting and Analyzing Results
@@ -607,7 +652,7 @@ spec:
 
 ### Key Metrics to Monitor
 
-Create a Grafana dashboard to visualize these metrics:
+Create a Grafana dashboard to visualize these metrics. The request latency and nginx throughput queries below require your nginx deployment or ingress path to export those Prometheus metrics; plain `nginx:alpine` does not expose them by default.
 
 ```yaml
 # grafana-dashboard-configmap.yaml
@@ -754,12 +799,12 @@ Based on the benchmark results:
 
 2. THROUGHPUT:
    - L2 mode is limited by single-node bandwidth
-   - BGP mode scales linearly with additional nodes
+   - BGP mode can use multiple nodes for many independent connections
    - For high-throughput scenarios, BGP is strongly recommended
 
 3. FAILOVER:
-   - L2 failover: 10-30 seconds (ARP/NDP update propagation)
-   - BGP failover: 1-3 seconds (or <300ms with BFD)
+   - L2 failover: typically a few seconds on modern clients, but client neighbor-cache behavior can make it slower
+   - BGP failover: timer-dependent, with BFD commonly reducing detection to sub-second or near-second ranges
 
 4. RECOMMENDATIONS:
    - Use L2 mode for: Simple setups, development, low traffic
@@ -772,7 +817,7 @@ if __name__ == '__main__':
 
 ## Expected Results and Interpretation
 
-Based on typical benchmarking scenarios, here's what you might expect:
+Based on typical benchmarking scenarios, here's what you might expect. Treat the numbers below as illustrative only; actual results depend on NIC speed, kube-proxy mode, CNI, router ECMP behavior, CPU limits, and traffic shape.
 
 ### Latency Comparison Table
 
@@ -789,7 +834,7 @@ Based on typical benchmarking scenarios, here's what you might expect:
 graph LR
     subgraph "Throughput Scaling"
         L2[L2 Mode<br/>~10 Gbps max<br/>Single node limit]
-        BGP[BGP Mode<br/>~10 Gbps × N nodes<br/>Linear scaling]
+        BGP[BGP Mode<br/>Can use multiple nodes<br/>For many connections]
     end
 ```
 
@@ -804,9 +849,9 @@ graph LR
 
 | Scenario | L2 Mode | BGP Mode (no BFD) | BGP Mode (with BFD) |
 |----------|---------|-------------------|---------------------|
-| Node failure | 10-30s | 3-5s | 0.3-1s |
-| Network partition | 30-60s | 5-10s | 0.3-1s |
-| Graceful shutdown | 5-10s | 1-3s | <1s |
+| Node failure | Usually a few seconds; investigate if consistently >10s | Depends on BGP timers | Depends on BFD timers, commonly sub-second to ~1s |
+| Network partition | Client-dependent neighbor-cache recovery | Depends on BGP timers | Depends on BFD timers, commonly sub-second to ~1s |
+| Graceful shutdown | Usually a few seconds | Depends on route withdrawal and router convergence | Depends on route withdrawal and router convergence |
 
 ## Best Practices for Accurate Benchmarking
 
@@ -832,7 +877,7 @@ kubectl exec -n benchmark benchmark-client -c fortio -- \
 
 # Actual measurement
 kubectl exec -n benchmark benchmark-client -c fortio -- \
-  fortio load -qps 1000 -t 60s -json results.json http://$L2_IP/
+  fortio load -qps 1000 -t 60s -json - http://$L2_IP/ > results.json
 ```
 
 ### 3. Run Multiple Iterations
@@ -887,13 +932,13 @@ Benchmarking MetalLB Layer 2 vs BGP mode reveals important performance character
 1. **Layer 2 Mode** is simpler to configure and works well for development and low-traffic production environments. However, it becomes a bottleneck as traffic increases because all traffic flows through a single leader node.
 
 2. **BGP Mode** requires more infrastructure setup but provides significant advantages for production workloads:
-   - Horizontal scaling through ECMP
+   - Horizontal scaling through ECMP for many independent connections
    - Faster failover with BFD
    - More predictable latency under load
    - Better utilization of cluster resources
 
 3. **Mode Selection Criteria**:
-   - Choose L2 for simplicity when traffic is low (<10,000 RPS)
+   - Choose L2 for simplicity when your measured traffic stays comfortably below single-node capacity
    - Choose BGP when you need high availability (sub-second failover)
    - Choose BGP when throughput requirements exceed single-node capacity
    - Choose BGP for production workloads requiring consistent latency
