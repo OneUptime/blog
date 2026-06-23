@@ -261,15 +261,12 @@ func (r *FileSecretReader) Get(name string) (string, error) {
 	}
 	r.mu.RUnlock()
 
-	// Construct the file path safely
-	// filepath.Clean prevents directory traversal attacks
-	filePath := filepath.Clean(filepath.Join(r.basePath, name))
-
-	// Verify the path is still within our base directory
-	// This prevents attacks like name = "../../../etc/passwd"
-	if !strings.HasPrefix(filePath, filepath.Clean(r.basePath)) {
+	// Verify the name is local before joining it to the base directory.
+	// This prevents attacks like name = "../../../etc/passwd".
+	if !filepath.IsLocal(name) {
 		return "", fmt.Errorf("invalid secret path: attempted directory traversal")
 	}
+	filePath := filepath.Join(r.basePath, filepath.Clean(name))
 
 	// Read the secret file
 	data, err := os.ReadFile(filePath)
@@ -416,7 +413,7 @@ func (vc *VaultClient) renewToken(authInfo *vault.Secret) {
 	// Create a token renewal watcher
 	watcher, err := vc.client.NewLifetimeWatcher(&vault.LifetimeWatcherInput{
 		Secret: authInfo,
-		// Renew the token when 75% of its lifetime has elapsed
+		// Request this renewal increment; the watcher schedules renewals based on the token lifetime
 		Increment: 3600,
 	})
 	if err != nil {
@@ -512,6 +509,7 @@ import (
 	"database/sql"
 	"fmt"
 	"log"
+	"strings"
 	"sync"
 	"time"
 
@@ -522,13 +520,14 @@ import (
 // DynamicDBCredentials manages database connections using Vault-generated credentials
 // It automatically rotates credentials before they expire
 type DynamicDBCredentials struct {
-	vaultClient *vault.Client
-	dbPath      string
-	dbRole      string
+	vaultClient        *vault.Client
+	dbPath             string
+	dbRole             string
+	connectionTemplate string
 
-	currentDB   *sql.DB
+	currentDB    *sql.DB
 	currentLease string
-	mu          sync.RWMutex
+	mu           sync.RWMutex
 
 	stopRotation chan struct{}
 }
@@ -549,10 +548,11 @@ type DynamicDBConfig struct {
 // NewDynamicDBCredentials creates a new dynamic database credential manager
 func NewDynamicDBCredentials(cfg DynamicDBConfig) (*DynamicDBCredentials, error) {
 	ddc := &DynamicDBCredentials{
-		vaultClient:  cfg.VaultClient,
-		dbPath:       cfg.DBPath,
-		dbRole:       cfg.DBRole,
-		stopRotation: make(chan struct{}),
+		vaultClient:        cfg.VaultClient,
+		dbPath:             cfg.DBPath,
+		dbRole:             cfg.DBRole,
+		connectionTemplate: cfg.ConnectionTemplate,
+		stopRotation:       make(chan struct{}),
 	}
 
 	// Get initial credentials and establish connection
@@ -588,10 +588,12 @@ func (d *DynamicDBCredentials) rotate(ctx context.Context) error {
 	}
 
 	// Build connection string (example for PostgreSQL)
-	connStr := fmt.Sprintf(
-		"host=db.example.com port=5432 user=%s password=%s dbname=myapp sslmode=require",
-		username, password,
-	)
+	template := d.connectionTemplate
+	if template == "" {
+		template = "host=db.example.com port=5432 user={{username}} password={{password}} dbname=myapp sslmode=require"
+	}
+	connStr := strings.ReplaceAll(template, "{{username}}", username)
+	connStr = strings.ReplaceAll(connStr, "{{password}}", password)
 
 	// Create new database connection
 	newDB, err := sql.Open("postgres", connStr)
@@ -703,10 +705,13 @@ data:
     template {
       destination = "/vault/secrets/database.json"
       contents = <<EOT
+    {{ with secret "database/creds/go-app" -}}
     {
-      "username": "{{ with secret "database/creds/go-app" }}{{ .Data.username }}{{ end }}",
-      "password": "{{ with secret "database/creds/go-app" }}{{ .Data.password }}{{ end }}"
+      "username": {{ .Data.username | toJSON }},
+      "password": {{ .Data.password | toJSON }},
+      "connection_string": {{ printf "host=db.example.com port=5432 user=%s password=%s dbname=myapp sslmode=require" .Data.username .Data.password | toJSON }}
     }
+    {{ end }}
     EOT
       # Permissions for the rendered file
       perms = 0400
@@ -724,21 +729,12 @@ data:
       perms = 0400
     }
 
-    # Template for TLS certificates
+    # Template for TLS certificate and key
     template {
-      destination = "/vault/secrets/tls.crt"
+      destination = "/vault/secrets/tls.pem"
       contents = <<EOT
     {{ with secret "pki/issue/go-app" "common_name=app.example.com" -}}
     {{ .Data.certificate }}
-    {{ end }}
-    EOT
-      perms = 0400
-    }
-
-    template {
-      destination = "/vault/secrets/tls.key"
-      contents = <<EOT
-    {{ with secret "pki/issue/go-app" "common_name=app.example.com" -}}
     {{ .Data.private_key }}
     {{ end }}
     EOT
@@ -775,8 +771,9 @@ spec:
         vault.hashicorp.com/agent-inject-template-database.json: |
           {{ with secret "database/creds/go-app" -}}
           {
-            "username": "{{ .Data.username }}",
-            "password": "{{ .Data.password }}"
+            "username": {{ .Data.username | toJSON }},
+            "password": {{ .Data.password | toJSON }},
+            "connection_string": {{ printf "host=db.example.com port=5432 user=%s password=%s dbname=myapp sslmode=require" .Data.username .Data.password | toJSON }}
           }
           {{- end }}
     spec:
@@ -788,10 +785,6 @@ spec:
         # Tell the app where to find secrets
         - name: SECRETS_PATH
           value: /vault/secrets
-        volumeMounts:
-        - name: vault-secrets
-          mountPath: /vault/secrets
-          readOnly: true
         resources:
           requests:
             memory: "128Mi"
@@ -799,10 +792,6 @@ spec:
           limits:
             memory: "256Mi"
             cpu: "200m"
-      volumes:
-      - name: vault-secrets
-        emptyDir:
-          medium: Memory  # Store secrets in memory, not on disk
 ```
 
 ### Reading Vault Agent Rendered Secrets
@@ -873,9 +862,6 @@ func (v *VaultAgentSecrets) loadAllSecrets() error {
 		return fmt.Errorf("failed to read secrets directory: %w", err)
 	}
 
-	v.mu.Lock()
-	defer v.mu.Unlock()
-
 	for _, entry := range entries {
 		if entry.IsDir() {
 			continue
@@ -892,7 +878,10 @@ func (v *VaultAgentSecrets) loadAllSecrets() error {
 
 // loadSecret reads and parses a single secret file
 func (v *VaultAgentSecrets) loadSecret(name string) error {
-	path := filepath.Join(v.basePath, name)
+	if !filepath.IsLocal(name) {
+		return fmt.Errorf("invalid secret path: attempted directory traversal")
+	}
+	path := filepath.Join(v.basePath, filepath.Clean(name))
 
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -901,12 +890,17 @@ func (v *VaultAgentSecrets) loadSecret(name string) error {
 
 	// Try to parse as JSON
 	var jsonData interface{}
+	var value interface{}
 	if err := json.Unmarshal(data, &jsonData); err == nil {
-		v.secrets[name] = jsonData
+		value = jsonData
 	} else {
 		// Store as raw string if not valid JSON
-		v.secrets[name] = string(data)
+		value = string(data)
 	}
+
+	v.mu.Lock()
+	v.secrets[name] = value
+	v.mu.Unlock()
 
 	return nil
 }
@@ -922,21 +916,21 @@ func (v *VaultAgentSecrets) watchForChanges() {
 				return
 			}
 
-			// Vault Agent creates temporary files then renames them
-			// We only care about write and create events
-			if event.Op&(fsnotify.Write|fsnotify.Create) != 0 {
+			// Vault Agent can write files directly or render via temporary files and rename them
+			if event.Op&(fsnotify.Write|fsnotify.Create|fsnotify.Rename) != 0 {
 				name := filepath.Base(event.Name)
 
 				// Small delay to ensure file is fully written
 				time.Sleep(100 * time.Millisecond)
 
-				v.mu.Lock()
 				if err := v.loadSecret(name); err == nil {
-					if v.onChange != nil {
-						v.onChange(name)
+					v.mu.RLock()
+					onChange := v.onChange
+					v.mu.RUnlock()
+					if onChange != nil {
+						onChange(name)
 					}
 				}
-				v.mu.Unlock()
 			}
 
 		case err, ok := <-v.watcher.Errors:
@@ -950,6 +944,8 @@ func (v *VaultAgentSecrets) watchForChanges() {
 
 // OnChange registers a callback function that is called when secrets change
 func (v *VaultAgentSecrets) OnChange(fn func(string)) {
+	v.mu.Lock()
+	defer v.mu.Unlock()
 	v.onChange = fn
 }
 
@@ -1017,7 +1013,7 @@ import (
 )
 
 // SecretRotationManager coordinates secret rotation across your application
-// It ensures all components are updated atomically when secrets change
+// It ensures all subscribed components are notified when secrets change
 type SecretRotationManager struct {
 	secretSource  SecretSource
 	subscribers   []RotationSubscriber
