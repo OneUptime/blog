@@ -132,7 +132,7 @@ deploy:
       artifacts: true
     - job: integration_tests
       artifacts: false
-      optional: true  # Deploy even if integration_tests was skipped
+      optional: true  # Deploy even if integration_tests is not added to the pipeline
   script:
     - ./deploy.sh
 ```
@@ -416,27 +416,28 @@ deploy:
   script: ./deploy.sh
 ```
 
-### Cross-Stage needs
+### Same-Stage needs
 
-Jobs can depend on jobs from later stages (but this is usually a design smell):
+Jobs can depend on jobs in the same stage, but later-stage jobs are not valid dependencies:
 
 ```yaml
-# Allowed but unusual
-build:
+stages:
+  - build
+  - test
+
+compile:
   stage: build
-  needs: []
-  script: npm run build
+  script: npm run compile
+
+package:
+  stage: build
+  needs: [compile]
+  script: npm run package
 
 validate:
   stage: test
-  needs: [build]
+  needs: [package]
   script: npm run validate
-
-# build_more depends on validate from a later stage
-build_more:
-  stage: build
-  needs: [validate]
-  script: npm run build:more
 ```
 
 ## Complete Example
