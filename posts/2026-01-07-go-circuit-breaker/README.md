@@ -57,7 +57,7 @@ The `sony/gobreaker` library is a mature, well-tested implementation of the circ
 Install the gobreaker package using go get:
 
 ```bash
-go get github.com/sony/gobreaker
+go get github.com/sony/gobreaker/v2
 ```
 
 ## Basic Circuit Breaker Implementation
@@ -70,14 +70,13 @@ package main
 import (
     "errors"
     "fmt"
-    "time"
 
-    "github.com/sony/gobreaker"
+    "github.com/sony/gobreaker/v2"
 )
 
 func main() {
     // Create a circuit breaker with default settings and a descriptive name
-    cb := gobreaker.NewCircuitBreaker(gobreaker.Settings{
+    cb := gobreaker.NewCircuitBreaker[interface{}](gobreaker.Settings{
         Name: "external-api",
     })
 
@@ -122,10 +121,10 @@ import (
     "log"
     "time"
 
-    "github.com/sony/gobreaker"
+    "github.com/sony/gobreaker/v2"
 )
 
-func createConfiguredCircuitBreaker() *gobreaker.CircuitBreaker {
+func createConfiguredCircuitBreaker() *gobreaker.CircuitBreaker[interface{}] {
     settings := gobreaker.Settings{
         // Name identifies this circuit breaker in logs and metrics
         Name: "payment-service",
@@ -139,6 +138,10 @@ func createConfiguredCircuitBreaker() *gobreaker.CircuitBreaker {
         // If 0, the counts are never cleared during closed state
         // Setting this helps prevent old failures from keeping the circuit open
         Interval: 30 * time.Second,
+
+        // BucketPeriod enables rolling-window counts when greater than 0
+        // If 0, the circuit breaker uses a fixed window strategy
+        BucketPeriod: 5 * time.Second,
 
         // Timeout is the duration of the open state before transitioning to half-open
         // After this duration, the circuit breaker will allow test requests through
@@ -166,9 +169,15 @@ func createConfiguredCircuitBreaker() *gobreaker.CircuitBreaker {
             // You can customize this to ignore certain error types
             return err == nil
         },
+
+        // IsExcluded determines if an error should be ignored by the counters
+        // Return true for errors that should be neither successes nor failures
+        IsExcluded: func(err error) bool {
+            return false
+        },
     }
 
-    return gobreaker.NewCircuitBreaker(settings)
+    return gobreaker.NewCircuitBreaker[interface{}](settings)
 }
 ```
 
@@ -184,7 +193,7 @@ package main
 import (
     "fmt"
 
-    "github.com/sony/gobreaker"
+    "github.com/sony/gobreaker/v2"
 )
 
 // ReadyToTrip function with detailed count analysis
@@ -198,6 +207,9 @@ func advancedReadyToTrip(counts gobreaker.Counts) bool {
     // TotalFailures: Number of failed requests
     fmt.Printf("Total failures: %d\n", counts.TotalFailures)
 
+    // TotalExclusions: Number of excluded requests
+    fmt.Printf("Total exclusions: %d\n", counts.TotalExclusions)
+
     // ConsecutiveSuccesses: Number of consecutive successes
     fmt.Printf("Consecutive successes: %d\n", counts.ConsecutiveSuccesses)
 
@@ -210,7 +222,7 @@ func advancedReadyToTrip(counts gobreaker.Counts) bool {
 }
 
 func main() {
-    cb := gobreaker.NewCircuitBreaker(gobreaker.Settings{
+    cb := gobreaker.NewCircuitBreaker[interface{}](gobreaker.Settings{
         Name:        "analytics-service",
         ReadyToTrip: advancedReadyToTrip,
     })
@@ -236,7 +248,7 @@ import (
     "net/http"
     "time"
 
-    "github.com/sony/gobreaker"
+    "github.com/sony/gobreaker/v2"
 )
 
 // Custom error types for different failure scenarios
@@ -289,8 +301,8 @@ func isRecoverableError(err error) bool {
     return false
 }
 
-func createCircuitBreakerWithCustomFailureDetection() *gobreaker.CircuitBreaker {
-    return gobreaker.NewCircuitBreaker(gobreaker.Settings{
+func createCircuitBreakerWithCustomFailureDetection() *gobreaker.CircuitBreaker[interface{}] {
+    return gobreaker.NewCircuitBreaker[interface{}](gobreaker.Settings{
         Name:         "user-service",
         MaxRequests:  3,
         Interval:     30 * time.Second,
@@ -316,10 +328,9 @@ Use cached or default data when the service is unavailable:
 package main
 
 import (
-    "errors"
     "time"
 
-    "github.com/sony/gobreaker"
+    "github.com/sony/gobreaker/v2"
 )
 
 // CachedProduct represents a cached product entry
@@ -332,14 +343,14 @@ type CachedProduct struct {
 
 // ProductService handles product data with circuit breaker protection
 type ProductService struct {
-    circuitBreaker *gobreaker.CircuitBreaker
+    circuitBreaker *gobreaker.CircuitBreaker[interface{}]
     cache          map[string]CachedProduct
 }
 
 // NewProductService creates a new product service with circuit breaker
 func NewProductService() *ProductService {
     return &ProductService{
-        circuitBreaker: gobreaker.NewCircuitBreaker(gobreaker.Settings{
+        circuitBreaker: gobreaker.NewCircuitBreaker[interface{}](gobreaker.Settings{
             Name:        "product-service",
             MaxRequests: 3,
             Timeout:     30 * time.Second,
@@ -394,7 +405,7 @@ import (
     "sync"
     "time"
 
-    "github.com/sony/gobreaker"
+    "github.com/sony/gobreaker/v2"
 )
 
 // FeatureFlags manages degraded mode features
@@ -407,9 +418,9 @@ type FeatureFlags struct {
 
 // DegradedModeService manages features that can be disabled
 type DegradedModeService struct {
-    recommendationsCB *gobreaker.CircuitBreaker
-    analyticsCB       *gobreaker.CircuitBreaker
-    pricingCB         *gobreaker.CircuitBreaker
+    recommendationsCB *gobreaker.CircuitBreaker[interface{}]
+    analyticsCB       *gobreaker.CircuitBreaker[interface{}]
+    pricingCB         *gobreaker.CircuitBreaker[interface{}]
     features          *FeatureFlags
 }
 
@@ -423,7 +434,7 @@ func NewDegradedModeService() *DegradedModeService {
     }
 
     // Create circuit breakers with state change handlers
-    service.recommendationsCB = gobreaker.NewCircuitBreaker(gobreaker.Settings{
+    service.recommendationsCB = gobreaker.NewCircuitBreaker[interface{}](gobreaker.Settings{
         Name:    "recommendations",
         Timeout: 60 * time.Second,
         OnStateChange: func(name string, from, to gobreaker.State) {
@@ -434,7 +445,7 @@ func NewDegradedModeService() *DegradedModeService {
         },
     })
 
-    service.analyticsCB = gobreaker.NewCircuitBreaker(gobreaker.Settings{
+    service.analyticsCB = gobreaker.NewCircuitBreaker[interface{}](gobreaker.Settings{
         Name:    "analytics",
         Timeout: 60 * time.Second,
         OnStateChange: func(name string, from, to gobreaker.State) {
@@ -496,7 +507,7 @@ import (
     "sync"
     "time"
 
-    "github.com/sony/gobreaker"
+    "github.com/sony/gobreaker/v2"
 )
 
 // QueuedRequest represents a request to be retried
@@ -509,7 +520,7 @@ type QueuedRequest struct {
 
 // RetryQueueService queues failed requests for later retry
 type RetryQueueService struct {
-    circuitBreaker *gobreaker.CircuitBreaker
+    circuitBreaker *gobreaker.CircuitBreaker[interface{}]
     queue          []QueuedRequest
     mu             sync.Mutex
     maxRetries     int
@@ -521,7 +532,7 @@ func NewRetryQueueService() *RetryQueueService {
         maxRetries: 3,
     }
 
-    service.circuitBreaker = gobreaker.NewCircuitBreaker(gobreaker.Settings{
+    service.circuitBreaker = gobreaker.NewCircuitBreaker[interface{}](gobreaker.Settings{
         Name:    "notification-service",
         Timeout: 30 * time.Second,
         OnStateChange: func(name string, from, to gobreaker.State) {
@@ -599,7 +610,7 @@ import (
     "sync"
     "time"
 
-    "github.com/sony/gobreaker"
+    "github.com/sony/gobreaker/v2"
 )
 
 // CircuitBreakerMetrics tracks circuit breaker statistics
@@ -616,7 +627,7 @@ type CircuitBreakerMetrics struct {
 
 // MonitoredCircuitBreaker wraps a circuit breaker with monitoring
 type MonitoredCircuitBreaker struct {
-    cb              *gobreaker.CircuitBreaker
+    cb              *gobreaker.CircuitBreaker[interface{}]
     metrics         *CircuitBreakerMetrics
     mu              sync.RWMutex
     stateChangeChan chan StateChangeEvent
@@ -640,7 +651,7 @@ func NewMonitoredCircuitBreaker(name string) *MonitoredCircuitBreaker {
         stateChangeChan: make(chan StateChangeEvent, 100),
     }
 
-    mcb.cb = gobreaker.NewCircuitBreaker(gobreaker.Settings{
+    mcb.cb = gobreaker.NewCircuitBreaker[interface{}](gobreaker.Settings{
         Name:        name,
         MaxRequests: 3,
         Interval:    30 * time.Second,
@@ -693,8 +704,17 @@ func (mcb *MonitoredCircuitBreaker) Execute(req func() (interface{}, error)) (in
 // GetMetrics returns current circuit breaker metrics
 func (mcb *MonitoredCircuitBreaker) GetMetrics() CircuitBreakerMetrics {
     mcb.mu.RLock()
-    defer mcb.mu.RUnlock()
-    return *mcb.metrics
+    metrics := *mcb.metrics
+    mcb.mu.RUnlock()
+
+    counts := mcb.cb.Counts()
+    metrics.State = mcb.cb.State().String()
+    metrics.Requests = counts.Requests
+    metrics.TotalSuccesses = counts.TotalSuccesses
+    metrics.TotalFailures = counts.TotalFailures
+    metrics.ConsecutiveSuccess = counts.ConsecutiveSuccesses
+    metrics.ConsecutiveFailure = counts.ConsecutiveFailures
+    return metrics
 }
 
 // StateChanges returns a channel for monitoring state changes
@@ -729,13 +749,13 @@ import (
     "net/http"
     "time"
 
-    "github.com/sony/gobreaker"
+    "github.com/sony/gobreaker/v2"
 )
 
 // CircuitBreakerHTTPClient wraps http.Client with circuit breaker
 type CircuitBreakerHTTPClient struct {
     client         *http.Client
-    circuitBreaker *gobreaker.CircuitBreaker
+    circuitBreaker *gobreaker.CircuitBreaker[interface{}]
     baseURL        string
 }
 
@@ -764,7 +784,7 @@ func NewCircuitBreakerHTTPClient(config HTTPClientConfig) *CircuitBreakerHTTPCli
     }
 
     // Create circuit breaker with configuration
-    cb := gobreaker.NewCircuitBreaker(gobreaker.Settings{
+    cb := gobreaker.NewCircuitBreaker[interface{}](gobreaker.Settings{
         Name:        config.CBName,
         MaxRequests: config.CBMaxRequests,
         Interval:    config.CBInterval,
@@ -879,12 +899,12 @@ import (
     "sync"
     "time"
 
-    "github.com/sony/gobreaker"
+    "github.com/sony/gobreaker/v2"
 )
 
 // CircuitBreakerRegistry manages multiple circuit breakers
 type CircuitBreakerRegistry struct {
-    breakers map[string]*gobreaker.CircuitBreaker
+    breakers map[string]*gobreaker.CircuitBreaker[interface{}]
     mu       sync.RWMutex
     defaults gobreaker.Settings
 }
@@ -892,7 +912,7 @@ type CircuitBreakerRegistry struct {
 // NewCircuitBreakerRegistry creates a new registry with default settings
 func NewCircuitBreakerRegistry() *CircuitBreakerRegistry {
     return &CircuitBreakerRegistry{
-        breakers: make(map[string]*gobreaker.CircuitBreaker),
+        breakers: make(map[string]*gobreaker.CircuitBreaker[interface{}]),
         defaults: gobreaker.Settings{
             MaxRequests: 5,
             Interval:    30 * time.Second,
@@ -905,7 +925,7 @@ func NewCircuitBreakerRegistry() *CircuitBreakerRegistry {
 }
 
 // Get retrieves or creates a circuit breaker for a service
-func (r *CircuitBreakerRegistry) Get(serviceName string) *gobreaker.CircuitBreaker {
+func (r *CircuitBreakerRegistry) Get(serviceName string) *gobreaker.CircuitBreaker[interface{}] {
     r.mu.RLock()
     if cb, exists := r.breakers[serviceName]; exists {
         r.mu.RUnlock()
@@ -924,13 +944,13 @@ func (r *CircuitBreakerRegistry) Get(serviceName string) *gobreaker.CircuitBreak
 
     settings := r.defaults
     settings.Name = serviceName
-    cb := gobreaker.NewCircuitBreaker(settings)
+    cb := gobreaker.NewCircuitBreaker[interface{}](settings)
     r.breakers[serviceName] = cb
     return cb
 }
 
 // GetWithSettings retrieves or creates a circuit breaker with custom settings
-func (r *CircuitBreakerRegistry) GetWithSettings(serviceName string, settings gobreaker.Settings) *gobreaker.CircuitBreaker {
+func (r *CircuitBreakerRegistry) GetWithSettings(serviceName string, settings gobreaker.Settings) *gobreaker.CircuitBreaker[interface{}] {
     r.mu.Lock()
     defer r.mu.Unlock()
 
@@ -939,7 +959,7 @@ func (r *CircuitBreakerRegistry) GetWithSettings(serviceName string, settings go
     }
 
     settings.Name = serviceName
-    cb := gobreaker.NewCircuitBreaker(settings)
+    cb := gobreaker.NewCircuitBreaker[interface{}](settings)
     r.breakers[serviceName] = cb
     return cb
 }
@@ -1013,7 +1033,7 @@ import (
     "errors"
     "time"
 
-    "github.com/sony/gobreaker"
+    "github.com/sony/gobreaker/v2"
 )
 
 var (
@@ -1024,8 +1044,8 @@ var (
 // DatabaseClient wraps database operations with circuit breaker
 type DatabaseClient struct {
     db               *sql.DB
-    connectionCB     *gobreaker.CircuitBreaker
-    queryCB          *gobreaker.CircuitBreaker
+    connectionCB     *gobreaker.CircuitBreaker[interface{}]
+    queryCB          *gobreaker.CircuitBreaker[interface{}]
 }
 
 // NewDatabaseClient creates a new database client with circuit breakers
@@ -1033,7 +1053,7 @@ func NewDatabaseClient(db *sql.DB) *DatabaseClient {
     return &DatabaseClient{
         db: db,
         // Connection circuit breaker - trips on connection failures
-        connectionCB: gobreaker.NewCircuitBreaker(gobreaker.Settings{
+        connectionCB: gobreaker.NewCircuitBreaker[interface{}](gobreaker.Settings{
             Name:        "db-connection",
             MaxRequests: 2,
             Timeout:     30 * time.Second,
@@ -1043,7 +1063,7 @@ func NewDatabaseClient(db *sql.DB) *DatabaseClient {
             },
         }),
         // Query circuit breaker - trips on query failures
-        queryCB: gobreaker.NewCircuitBreaker(gobreaker.Settings{
+        queryCB: gobreaker.NewCircuitBreaker[interface{}](gobreaker.Settings{
             Name:        "db-query",
             MaxRequests: 5,
             Timeout:     60 * time.Second,
@@ -1169,11 +1189,11 @@ import (
     "testing"
     "time"
 
-    "github.com/sony/gobreaker"
+    "github.com/sony/gobreaker/v2"
 )
 
 func TestCircuitBreakerTripsOnFailures(t *testing.T) {
-    cb := gobreaker.NewCircuitBreaker(gobreaker.Settings{
+    cb := gobreaker.NewCircuitBreaker[interface{}](gobreaker.Settings{
         Name: "test-breaker",
         ReadyToTrip: func(counts gobreaker.Counts) bool {
             return counts.ConsecutiveFailures >= 3
@@ -1194,7 +1214,7 @@ func TestCircuitBreakerTripsOnFailures(t *testing.T) {
 }
 
 func TestCircuitBreakerRecovery(t *testing.T) {
-    cb := gobreaker.NewCircuitBreaker(gobreaker.Settings{
+    cb := gobreaker.NewCircuitBreaker[interface{}](gobreaker.Settings{
         Name:        "test-breaker",
         MaxRequests: 1,
         Timeout:     100 * time.Millisecond,
@@ -1246,5 +1266,5 @@ By implementing circuit breakers properly, you can build systems that degrade gr
 
 - [sony/gobreaker GitHub Repository](https://github.com/sony/gobreaker)
 - [Martin Fowler's Circuit Breaker Pattern](https://martinfowler.com/bliki/CircuitBreaker.html)
-- [Microsoft's Circuit Breaker Pattern Documentation](https://docs.microsoft.com/en-us/azure/architecture/patterns/circuit-breaker)
+- [Microsoft's Circuit Breaker Pattern Documentation](https://learn.microsoft.com/en-us/azure/architecture/patterns/circuit-breaker)
 - [Release It! by Michael Nygard](https://pragprog.com/titles/mnee2/release-it-second-edition/) - The book that popularized stability patterns
