@@ -100,6 +100,7 @@ import (
     "fmt"
     "os"
     "path/filepath"
+    "strings"
 
     "github.com/spf13/cobra"
     "github.com/spf13/viper"
@@ -141,7 +142,7 @@ Example usage:
     },
 }
 
-// Execute adds all child commands to the root command and sets flags appropriately.
+// Execute runs the root command.
 // This is called by main.main(). It only needs to happen once.
 func Execute() {
     if err := rootCmd.Execute(); err != nil {
@@ -190,16 +191,18 @@ func initConfig() {
     // Read in environment variables that match
     // Environment variables are prefixed with TASKCTL_
     viper.SetEnvPrefix("TASKCTL")
+    viper.SetEnvKeyReplacer(strings.NewReplacer("-", "_"))
     viper.AutomaticEnv()
 
     // If a config file is found, read it in
     if err := viper.ReadInConfig(); err == nil {
-        if verbose {
+        if viper.GetBool("verbose") {
             fmt.Fprintln(os.Stderr, "Using config file:", viper.ConfigFileUsed())
         }
     }
 
     // Set default values
+    verbose = viper.GetBool("verbose")
     if dataDir == "" {
         dataDir = viper.GetString("data-dir")
         if dataDir == "" {
