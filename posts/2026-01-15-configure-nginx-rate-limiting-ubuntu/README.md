@@ -1074,16 +1074,6 @@ http {
             proxy_pass http://api_backend;
         }
 
-        # POST/PUT/DELETE methods - additional restrictions
-        location /api/ {
-            if ($request_method !~ ^(GET|HEAD|OPTIONS)$) {
-                set $write_request 1;
-            }
-
-            limit_req zone=api_general burst=20 nodelay;
-            proxy_pass http://api_backend;
-        }
-
         # Expensive operations
         location /api/v1/reports/ {
             limit_req zone=expensive burst=2;
