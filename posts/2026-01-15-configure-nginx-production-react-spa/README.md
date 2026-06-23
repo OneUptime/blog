@@ -44,7 +44,7 @@ Nginx handles HTTPS encryption efficiently, offloading cryptographic operations 
 Before proceeding, ensure you have:
 
 - A Linux server (Ubuntu, CentOS, or similar)
-- Nginx installed (version 1.18 or higher recommended)
+- Nginx installed (version 1.25.1 or higher recommended; the standalone `http2 on;` directive used in this guide requires Nginx 1.25.1 or later)
 - A React application built for production
 - Basic familiarity with Linux command line
 - Root or sudo access to the server
@@ -761,7 +761,7 @@ server {
         text/xml
         application/json
         application/javascript
-        application/xml+rss
+        application/rss+xml
         image/svg+xml;
 
     # Cache static assets
@@ -795,7 +795,7 @@ services:
       - "80:80"
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost/health"]
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1/health"]
       interval: 30s
       timeout: 10s
       retries: 3
