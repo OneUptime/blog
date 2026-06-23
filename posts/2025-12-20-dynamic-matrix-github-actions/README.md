@@ -111,7 +111,7 @@ jobs:
             echo "has_changes=false" >> $GITHUB_OUTPUT
             echo "matrix={\"package\":[]}" >> $GITHUB_OUTPUT
           else
-            MATRIX_JSON=$(printf '%s\n' "${UNIQUE_PACKAGES[@]}" | jq -R . | jq -s '{package: .}')
+            MATRIX_JSON=$(printf '%s\n' "${UNIQUE_PACKAGES[@]}" | jq -R . | jq -sc '{package: .}')
             echo "has_changes=true" >> $GITHUB_OUTPUT
             echo "matrix=$MATRIX_JSON" >> $GITHUB_OUTPUT
           fi
@@ -161,7 +161,7 @@ jobs:
           ENVIRONMENTS=$(cat environments.json | jq -c '.environments')
 
           # Create matrix combining services and environments
-          MATRIX=$(jq -n \
+          MATRIX=$(jq -n -c \
             --argjson services "$SERVICES" \
             --argjson envs "$ENVIRONMENTS" \
             '{service: $services, environment: $envs}')
@@ -227,7 +227,7 @@ jobs:
       - name: Load matrix from config
         id: load
         run: |
-          MATRIX=$(cat .github/matrix-config.json)
+          MATRIX=$(jq -c . .github/matrix-config.json)
           echo "matrix=$MATRIX" >> $GITHUB_OUTPUT
 
   test:
@@ -278,7 +278,7 @@ jobs:
             "https://api.example.com/servers?status=active")
 
           # Transform API response to matrix format
-          MATRIX=$(echo "$RESPONSE" | jq '{
+          MATRIX=$(echo "$RESPONSE" | jq -c '{
             include: [.[] | {
               server_id: .id,
               hostname: .hostname,
@@ -399,7 +399,7 @@ jobs:
             echo "should_run=false" >> $GITHUB_OUTPUT
             echo "matrix={\"package\":[]}" >> $GITHUB_OUTPUT
           else
-            MATRIX=$(printf '%s\n' "${CHANGED_PACKAGES[@]}" | jq -R . | jq -s '{package: .}')
+            MATRIX=$(printf '%s\n' "${CHANGED_PACKAGES[@]}" | jq -R . | jq -sc '{package: .}')
             echo "should_run=true" >> $GITHUB_OUTPUT
             echo "matrix=$MATRIX" >> $GITHUB_OUTPUT
           fi
@@ -511,7 +511,7 @@ jobs:
           SERVICES=$(find services -name Dockerfile -printf '%h\n' | xargs -n1 basename | sort -u)
 
           # Create matrix
-          MATRIX=$(echo "$SERVICES" | jq -R . | jq -s '{service: .}')
+          MATRIX=$(echo "$SERVICES" | jq -R . | jq -sc '{service: .}')
           echo "matrix=$MATRIX" >> $GITHUB_OUTPUT
 
   build:
