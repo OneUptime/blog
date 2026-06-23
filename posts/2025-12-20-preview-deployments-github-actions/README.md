@@ -223,7 +223,7 @@ jobs:
       - name: Configure kubeconfig
         run: |
           echo "${{ secrets.KUBECONFIG }}" | base64 -d > kubeconfig
-          export KUBECONFIG=kubeconfig
+          echo "KUBECONFIG=$PWD/kubeconfig" >> $GITHUB_ENV
 
       - name: Deploy to Kubernetes
         run: |
@@ -322,7 +322,7 @@ jobs:
       - name: Configure kubeconfig
         run: |
           echo "${{ secrets.KUBECONFIG }}" | base64 -d > kubeconfig
-          export KUBECONFIG=kubeconfig
+          echo "KUBECONFIG=$PWD/kubeconfig" >> $GITHUB_ENV
 
       - name: Delete preview namespace
         run: |
