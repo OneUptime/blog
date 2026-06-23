@@ -246,7 +246,7 @@ int process_headers_bad(struct xdp_md *ctx)
 {
     int i = 0;
 
-    // WRONG: Variable loop bound - verifier cannot prove termination
+    // WRONG: Unbounded condition - verifier cannot prove termination
     // Error: "back-edge from insn X to Y"
     while (some_condition) {  // Unbounded!
         i++;
@@ -256,7 +256,7 @@ int process_headers_bad(struct xdp_md *ctx)
     return XDP_PASS;
 }
 
-// FIXED CODE: Use bounded loops with compile-time known limits
+// FIXED CODE: Use bounded loops with limits the verifier can prove
 // The #pragma unroll directive helps with small, known iterations
 
 #define MAX_HEADERS 10  // Compile-time constant
@@ -264,7 +264,7 @@ int process_headers_bad(struct xdp_md *ctx)
 SEC("xdp")
 int process_headers_good(struct xdp_md *ctx)
 {
-    // Method 1: Bounded for loop with constant limit
+    // Method 1: Bounded for loop with a constant limit
     // The verifier can prove this terminates after MAX_HEADERS iterations
     #pragma unroll
     for (int i = 0; i < MAX_HEADERS; i++) {
@@ -277,7 +277,7 @@ int process_headers_good(struct xdp_md *ctx)
     return XDP_PASS;
 }
 
-// Alternative: Using bpf_loop helper (available in newer kernels 5.17+)
+// Alternative: Using bpf_loop helper (available in Linux 5.17+)
 // This is preferred for larger loop counts
 
 static long loop_callback(u32 index, void *ctx)
@@ -290,7 +290,7 @@ static long loop_callback(u32 index, void *ctx)
 SEC("xdp")
 int process_with_bpf_loop(struct xdp_md *ctx)
 {
-    // bpf_loop provides a verifier-safe way to iterate
+    // bpf_loop provides a verifier-safe way to iterate many times
     // The kernel guarantees termination after nr_loops iterations
     long ret = bpf_loop(MAX_HEADERS, loop_callback, NULL, 0);
 
@@ -439,9 +439,9 @@ int trace_read_correct_ctx(struct trace_event_raw_sys_enter *ctx)
     // Access syscall arguments correctly
     int fd = ctx->args[0];
     void *buf = (void *)ctx->args[1];
-    size_t count = ctx->args[2];
+    unsigned long count = ctx->args[2];
 
-    bpf_printk("read(fd=%d, count=%zu)\n", fd, count);
+    bpf_printk("read(fd=%d, count=%lu)\n", fd, count);
 
     return 0;
 }
@@ -492,7 +492,7 @@ sudo bpftool prog show id 42
 
 # List programs in JSON format for scripting
 # Useful for automated monitoring and tooling
-sudo bpftool prog list --json | jq .
+sudo bpftool --json --pretty prog list | jq .
 ```
 
 ### Dumping Program Instructions
@@ -569,7 +569,7 @@ sudo bpftool btf list
 
 # Dump BTF type information for a specific program
 # Shows all type definitions used by the program
-sudo bpftool btf dump id 42
+sudo bpftool btf dump prog id 42
 
 # Dump kernel BTF (available on kernels 5.4+)
 # This shows all kernel types available to BPF programs
@@ -587,7 +587,7 @@ Check what BPF features are available on your kernel:
 ```bash
 # List all supported BPF features
 # Essential for understanding what's available on your system
-sudo bpftool feature
+sudo bpftool feature probe kernel
 
 # Output includes:
 # - Supported program types (kprobe, tracepoint, xdp, etc.)
@@ -598,9 +598,8 @@ sudo bpftool feature
 # Probe specific features
 sudo bpftool feature probe kernel
 
-# Check helper availability for a program type
-# Shows which helper functions can be called
-sudo bpftool feature probe helpers
+# List helper names known by this bpftool build
+sudo bpftool feature list_builtins helpers
 ```
 
 ## Logging and Tracing Techniques
@@ -626,8 +625,9 @@ int trace_openat(struct pt_regs *ctx)
     __u32 pid = pid_tgid >> 32;
     __u32 tid = pid_tgid & 0xFFFFFFFF;
 
-    // Basic print - format string has max 3 arguments
-    // Note: bpf_printk is limited in format specifiers
+    // Basic print. With libbpf, bpf_printk uses bpf_trace_printk for
+    // up to 3 arguments and bpf_trace_vprintk for more arguments on
+    // kernels that support it (Linux 5.16+).
     bpf_printk("openat called by PID: %d, TID: %d\n", pid, tid);
 
     // Get current task's comm (process name)
@@ -681,6 +681,7 @@ For production debugging, ring buffers provide more efficient structured logging
 
 #include <linux/bpf.h>
 #include <bpf/bpf_helpers.h>
+#include <bpf/bpf_tracing.h>
 
 // Define the event structure we'll send to userspace
 // Include all debugging information you might need
@@ -728,8 +729,8 @@ static __always_inline void emit_debug_event(
 
     bpf_get_current_comm(&event->comm, sizeof(event->comm));
 
-    // Copy message (bpf_probe_read_kernel_str for safety)
-    __builtin_memcpy(event->message, msg, sizeof(event->message));
+    // Copy message safely from a string literal or kernel memory
+    bpf_probe_read_kernel_str(event->message, sizeof(event->message), msg);
 
     // Submit event to userspace
     bpf_ringbuf_submit(event, 0);
@@ -764,6 +765,9 @@ Userspace code to read ring buffer events:
 
 #include <stdio.h>
 #include <signal.h>
+#include <stdbool.h>
+#include <errno.h>
+#include <bpf/bpf.h>
 #include <bpf/libbpf.h>
 #include <time.h>
 
@@ -799,6 +803,12 @@ static void sig_handler(int sig)
 static int handle_event(void *ctx, void *data, size_t data_sz)
 {
     struct debug_event *event = data;
+    const char *event_type = "UNKNOWN";
+
+    if (event->event_type < sizeof(event_type_str) / sizeof(event_type_str[0]) &&
+        event_type_str[event->event_type]) {
+        event_type = event_type_str[event->event_type];
+    }
 
     // Convert timestamp to readable format
     time_t ts_sec = event->timestamp / 1000000000;
@@ -813,7 +823,7 @@ static int handle_event(void *ctx, void *data, size_t data_sz)
            event->cpu,
            event->pid,
            event->comm,
-           event_type_str[event->event_type] ?: "UNKNOWN",
+           event_type,
            event->message,
            event->return_value);
 
@@ -873,6 +883,7 @@ Maps can be used to expose internal state for debugging:
 
 #include <linux/bpf.h>
 #include <bpf/bpf_helpers.h>
+#include <stdbool.h>
 
 // Statistics counters for program debugging
 struct stats {
@@ -1396,9 +1407,9 @@ Use ftrace to trace BPF-related kernel functions:
 # Enable tracing of BPF system calls and functions
 echo 1 > /sys/kernel/debug/tracing/events/bpf/enable
 
-# Trace specific BPF events
-echo 1 > /sys/kernel/debug/tracing/events/bpf/bpf_prog_load/enable
-echo 1 > /sys/kernel/debug/tracing/events/bpf/bpf_prog_run/enable
+# List available BPF trace events, then enable the one you need
+grep '^bpf:' /sys/kernel/debug/tracing/available_events
+echo bpf:bpf_prog_load >> /sys/kernel/debug/tracing/set_event
 
 # View trace output
 cat /sys/kernel/debug/tracing/trace_pipe
@@ -1481,13 +1492,13 @@ sudo bpftool prog profile id 42 duration 5 cycles instructions
 #        2500 instructions
 
 # Show program execution count and average runtime
-sudo bpftool prog show id 42 --json | jq '.run_cnt, .run_time_ns'
+sudo bpftool --json prog show id 42 | jq '.run_cnt, .run_time_ns'
 
 # Use perf to profile BPF programs
 sudo perf stat -e 'bpf:*' -a sleep 10
 
-# Trace BPF program execution times
-sudo perf record -e 'bpf:bpf_prog_run' -a sleep 10
+# Record system-wide samples while the BPF workload runs
+sudo perf record -a -g -- sleep 10
 sudo perf report
 ```
 
