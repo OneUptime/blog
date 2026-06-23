@@ -56,14 +56,20 @@ test:
 
 ```yaml
 deploy_staging:
+  script:
+    - ./deploy.sh staging
   rules:
     - if: $CI_COMMIT_BRANCH == "develop"
 
 deploy_production:
+  script:
+    - ./deploy.sh production
   rules:
     - if: $CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+$/  # Semver tags only
 
 nightly_build:
+  script:
+    - ./build.sh
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
 ```
@@ -72,6 +78,8 @@ nightly_build:
 
 ```yaml
 build_frontend:
+  script:
+    - npm run build:frontend
   rules:
     - changes:
         - frontend/**/*
@@ -79,33 +87,45 @@ build_frontend:
         - package-lock.json
 
 build_backend:
+  script:
+    - ./build-backend.sh
   rules:
     - changes:
         - backend/**/*
         - requirements.txt
 
 build_docs:
+  script:
+    - ./build-docs.sh
   rules:
     - changes:
         - docs/**/*
         - "*.md"
 ```
 
+Without `compare_to`, use `rules:changes` for branch or merge request pipelines. In tag, scheduled, manual, and other pipelines without a Git push event, `rules:changes` evaluates to true unless you set an explicit comparison ref.
+
 ### exists - File Existence
 
 ```yaml
 build_docker:
+  script:
+    - docker build -t app:$CI_COMMIT_REF_SLUG .
   rules:
     - exists:
         - Dockerfile
 
 build_gradle:
+  script:
+    - ./gradlew build
   rules:
     - exists:
         - build.gradle
         - build.gradle.kts
 
 test_python:
+  script:
+    - pytest
   rules:
     - exists:
         - pytest.ini
@@ -121,6 +141,8 @@ Control job execution behavior:
 
 ```yaml
 deploy:
+  script:
+    - ./deploy.sh
   rules:
     - if: $CI_COMMIT_BRANCH == "main"
       when: manual  # Require manual trigger
@@ -195,17 +217,23 @@ deploy_staging:
 
 ```yaml
 test:
+  script:
+    - npm test
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
     - if: $CI_COMMIT_BRANCH == "main"
 
 lint:
+  script:
+    - npm run lint
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
 
 # Skip duplicate pipelines
 
 build:
+  script:
+    - npm run build
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
     - if: $CI_COMMIT_BRANCH == "main" && $CI_PIPELINE_SOURCE != "merge_request_event"
@@ -249,6 +277,8 @@ release_candidate:
 
 ```yaml
 deploy_production:
+  script:
+    - ./deploy.sh production
   rules:
     # Both conditions must be true
     - if: $CI_COMMIT_BRANCH == "main" && $DEPLOY_ENABLED == "true"
@@ -258,6 +288,8 @@ deploy_production:
 
 ```yaml
 test:
+  script:
+    - npm test
   rules:
     # Any of these conditions triggers the job
     - if: $CI_COMMIT_BRANCH == "main"
@@ -269,6 +301,8 @@ test:
 
 ```yaml
 deploy:
+  script:
+    - ./deploy.sh
   rules:
     # Production deployment: main branch, manual trigger
     - if: $CI_COMMIT_BRANCH == "main" && $CI_PIPELINE_SOURCE == "web"
@@ -322,6 +356,8 @@ Compare changes against a specific ref:
 
 ```yaml
 build:
+  script:
+    - npm run build
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
       changes:
@@ -381,7 +417,7 @@ unit_tests:
     - when: on_success
   interruptible: true
 
-# Integration tests - skip for docs-only changes
+# Integration tests - skip when documentation files change
 integration_tests:
   stage: test
   script:
@@ -410,7 +446,7 @@ security_scan:
   script:
     - npm audit --audit-level=high
   rules:
-    - if: $CI_PIPELINE_SOURCE == "schedule"
+    - if: $CI_PIPELINE_SOURCE == "schedule" && $SCHEDULE_TYPE == "weekly"
     - if: $CI_COMMIT_BRANCH == "main"
       allow_failure: true
 
@@ -483,7 +519,7 @@ debug:
 
 1. **Start with workflow rules**: Define when pipelines run at all
 2. **Use rules instead of only/except**: More powerful and consistent
-3. **End with a default**: Always have a final `when: never` or `when: on_success`
+3. **Make catch-all behavior explicit**: If you need a fallback, add a final `when: never` or `when: on_success`
 4. **Use extends for reuse**: Create rule templates
 5. **Test your rules**: Use CI Lint before committing
 6. **Document complex logic**: Add comments explaining non-obvious rules
@@ -491,16 +527,20 @@ debug:
 
 ## Common Mistakes
 
-### Missing Default
+### Unintended Catch-All
 
 ```yaml
-# Bad - job might run unexpectedly
+# Good - no match means the job is not added to other pipelines
 test:
+  script:
+    - npm test
   rules:
     - if: $CI_COMMIT_BRANCH == "main"
 
-# Good - explicit default
+# Also good - explicit default
 test:
+  script:
+    - npm test
   rules:
     - if: $CI_COMMIT_BRANCH == "main"
     - when: never
@@ -511,11 +551,15 @@ test:
 ```yaml
 # Bad - only runs on branches
 test:
+  script:
+    - npm test
   rules:
     - if: $CI_COMMIT_BRANCH
 
 # Good - includes MR pipelines
 test:
+  script:
+    - npm test
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
     - if: $CI_COMMIT_BRANCH
