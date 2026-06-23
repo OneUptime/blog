@@ -63,10 +63,18 @@ Constructor threw exception; nested exception is java.lang.NullPointerException
 public class UserService {
 
     private final UserRepository userRepository;
+    private EmailService emailService;
 
-    // Only parameterized constructor - needs @Autowired
+    // Multiple constructors, none annotated with @Autowired -
+    // Spring can't decide which to use and falls back to a
+    // non-existent default constructor.
     public UserService(UserRepository userRepository) {
         this.userRepository = userRepository;
+    }
+
+    public UserService(UserRepository userRepository, EmailService emailService) {
+        this.userRepository = userRepository;
+        this.emailService = emailService;
     }
 }
 ```
@@ -404,13 +412,21 @@ public class SmsNotificationService implements NotificationService {
     }
 }
 
-// Use @Qualifier for specific implementation
+// Use @Qualifier for specific implementation.
+// With constructor injection the @Qualifier must go on the
+// constructor parameter. (A field-level @Qualifier combined with
+// Lombok's @RequiredArgsConstructor is ignored unless you add
+// `lombok.copyableAnnotations += org.springframework.beans.factory.annotation.Qualifier`
+// to lombok.config, so use an explicit constructor here.)
 @Service
-@RequiredArgsConstructor
 public class OrderService {
 
-    @Qualifier("smsNotificationService")
     private final NotificationService notificationService;
+
+    public OrderService(
+            @Qualifier("smsNotificationService") NotificationService notificationService) {
+        this.notificationService = notificationService;
+    }
 }
 ```
 
