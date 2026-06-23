@@ -173,8 +173,7 @@ kubectl get ciliumnetworkpolicy <policy-name> -n <namespace> -o yaml
 kubectl -n kube-system exec -it $(kubectl -n kube-system get pods -l k8s-app=cilium -o jsonpath='{.items[0].metadata.name}') -- cilium policy trace \
   --src-k8s-pod default:frontend-pod \
   --dst-k8s-pod default:backend-pod \
-  --dport 80 \
-  --protocol TCP
+  --dport 80/tcp
 ```
 
 ## Debugging with Calico
@@ -239,6 +238,8 @@ calicoctl node status
 
 ### Enabling Calico Flow Logs
 
+> **Note:** The file-based flow log settings below (`flowLogsFileEnabled`, `flowLogsFileInclude*`, `flowLogsEnableNetworkSets`, etc.) are part of **Calico Enterprise** and **Calico Cloud**, not open-source (project) Calico. In open-source Calico v3.30+, flow logs are instead exposed through the Goldmane and Whisker components. The example below applies to Calico Enterprise/Cloud clusters.
+
 ```yaml
 # felixconfiguration.yaml
 apiVersion: projectcalico.org/v3
@@ -251,7 +252,7 @@ spec:
   flowLogsFileIncludeLabels: true
   flowLogsFileIncludePolicies: true
   flowLogsFileIncludeService: true
-  # For denied flows
+  # Include NetworkSet metadata in flow logs
   flowLogsEnableNetworkSets: true
 ```
 
