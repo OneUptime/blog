@@ -226,6 +226,17 @@ sudo systemctl restart sshd
 ssh -p 2849 username@server_ip
 ```
 
+On Ubuntu 22.10 and later (including 24.04 LTS), SSH uses systemd socket activation, so the listening port is controlled by `ssh.socket` rather than the `Port` directive alone. After setting the port in `sshd_config`, reload systemd and restart the socket so the change takes effect:
+
+```bash
+# Reload systemd units and restart the SSH socket (Ubuntu 22.10+)
+sudo systemctl daemon-reload
+sudo systemctl restart ssh.socket
+
+# Confirm SSH is now listening on the new port
+sudo ss -tlnp | grep ssh
+```
+
 ## 6. Configure fail2ban for Intrusion Prevention
 
 fail2ban monitors log files and bans IPs that show malicious behavior.
@@ -635,8 +646,9 @@ Add or modify these security settings:
 
 # Protocol and Network Settings
 # --------------------------------------------
-# Use only SSH protocol version 2
-Protocol 2
+# Note: The "Protocol" directive has been removed from modern OpenSSH
+# (it only supports protocol 2). Adding "Protocol 2" will now cause
+# "sshd -t" to fail with an unsupported option error, so it is omitted.
 
 # Listen on specific addresses only (if applicable)
 # ListenAddress 0.0.0.0
