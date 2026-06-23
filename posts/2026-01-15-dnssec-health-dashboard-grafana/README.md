@@ -224,12 +224,12 @@ histogram_quantile(0.95, sum(rate(dnssec_query_duration_seconds_bucket[5m])) by 
   "gridPos": { "x": 12, "y": 8, "w": 12, "h": 8 },
   "fieldConfig": {
     "defaults": {
-      "unit": "ms",
+      "unit": "s",
       "thresholds": {
         "steps": [
           { "color": "green", "value": null },
-          { "color": "yellow", "value": 100 },
-          { "color": "red", "value": 500 }
+          { "color": "yellow", "value": 0.1 },
+          { "color": "red", "value": 0.5 }
         ]
       }
     }
