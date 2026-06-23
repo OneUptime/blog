@@ -53,7 +53,7 @@ Create a Spring Boot application for the Eureka server.
     <parent>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-starter-parent</artifactId>
-        <version>3.2.0</version>
+        <version>4.0.7</version>
     </parent>
 
     <groupId>com.example</groupId>
@@ -62,7 +62,7 @@ Create a Spring Boot application for the Eureka server.
 
     <properties>
         <java.version>17</java.version>
-        <spring-cloud.version>2023.0.0</spring-cloud.version>
+        <spring-cloud.version>2025.1.2</spring-cloud.version>
     </properties>
 
     <dependencies>
@@ -162,7 +162,7 @@ public class SecurityConfig {
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
         http
-            .csrf(csrf -> csrf.disable())
+            .csrf(csrf -> csrf.ignoringRequestMatchers("/eureka/**"))
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers("/actuator/**").permitAll()
                 .anyRequest().authenticated()
@@ -396,7 +396,12 @@ package com.example.apiservice;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.core.ParameterizedTypeReference;
+import org.springframework.http.HttpMethod;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.client.RestTemplate;
+
+import java.util.List;
 
 @Service
 public class ApiService {
@@ -437,11 +442,29 @@ OpenFeign provides a cleaner way to define service clients.
     <groupId>org.springframework.cloud</groupId>
     <artifactId>spring-cloud-starter-openfeign</artifactId>
 </dependency>
+<dependency>
+    <groupId>org.springframework.cloud</groupId>
+    <artifactId>spring-cloud-starter-circuitbreaker-resilience4j</artifactId>
+</dependency>
+```
+
+**application.yml (enable Feign fallbacks):**
+
+```yaml
+spring:
+  cloud:
+    openfeign:
+      circuitbreaker:
+        enabled: true
 ```
 
 **Application.java:**
 
 ```java
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.cloud.openfeign.EnableFeignClients;
+
 @SpringBootApplication
 @EnableFeignClients
 public class ApiServiceApplication {
@@ -459,6 +482,10 @@ package com.example.apiservice.clients;
 import org.springframework.cloud.openfeign.FeignClient;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+
+import java.util.List;
 
 @FeignClient(name = "user-service", fallback = UserServiceFallback.class)
 public interface UserServiceClient {
@@ -509,18 +536,16 @@ public class UserServiceFallback implements UserServiceClient {
 Access the Eureka dashboard and API endpoints.
 
 ```bash
-# Eureka dashboard
-
-open http://localhost:8761
+# Eureka dashboard: open http://localhost:8761 in your browser
 
 # Get all applications (JSON)
-curl -u admin:admin123 http://localhost:8761/eureka/apps
+curl -u admin:admin123 -H 'Accept: application/json' http://localhost:8761/eureka/apps
 
 # Get specific service
-curl -u admin:admin123 http://localhost:8761/eureka/apps/user-service
+curl -u admin:admin123 -H 'Accept: application/json' http://localhost:8761/eureka/apps/user-service
 
 # Check instance status
-curl -u admin:admin123 http://localhost:8761/eureka/apps/user-service/instance-id
+curl -u admin:admin123 -H 'Accept: application/json' http://localhost:8761/eureka/apps/user-service/instance-id
 ```
 
 ## 8. Configure Instance Metadata
