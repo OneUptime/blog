@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: etcd, Leader Election, Distributed System, Coordination, High Availability
 
-Description: Learn how to implement leader election using etcd for distributed coordination, ensuring only one instance performs critical operations in your cluster.
+Description: Learn how to implement leader election using etcd for distributed coordination, so only the elected instance performs critical operations while it still holds its lease.
 
 ---
 
-Leader election is a critical pattern in distributed systems where multiple instances need to coordinate, but only one should perform certain operations at a time. etcd provides primitives like leases, transactions, and watches that make implementing robust leader election straightforward.
+Leader election is a critical pattern in distributed systems where multiple instances need to coordinate, but only one elected instance should perform certain operations at a time. etcd provides primitives like leases, transactions, and watches that make implementing robust leader election straightforward.
 
 ## How Leader Election Works
 
@@ -63,6 +63,7 @@ import (
     "log"
     "os"
     "os/signal"
+    "sync/atomic"
     "syscall"
     "time"
 
@@ -76,7 +77,7 @@ type LeaderElection struct {
     election   *concurrency.Election
     leaderKey  string
     instanceID string
-    isLeader   bool
+    isLeader   atomic.Bool
 }
 
 func NewLeaderElection(endpoints []string, prefix, instanceID string) (*LeaderElection, error) {
@@ -113,13 +114,18 @@ func (le *LeaderElection) Campaign(ctx context.Context) error {
         return fmt.Errorf("campaign failed: %w", err)
     }
 
-    le.isLeader = true
+    le.isLeader.Store(true)
+    go func() {
+        <-le.session.Done()
+        le.isLeader.Store(false)
+    }()
+
     log.Printf("[%s] Elected as leader!", le.instanceID)
     return nil
 }
 
 func (le *LeaderElection) Resign(ctx context.Context) error {
-    if !le.isLeader {
+    if !le.isLeader.Load() {
         return nil
     }
 
@@ -128,7 +134,7 @@ func (le *LeaderElection) Resign(ctx context.Context) error {
         return fmt.Errorf("resign failed: %w", err)
     }
 
-    le.isLeader = false
+    le.isLeader.Store(false)
     return nil
 }
 
@@ -141,7 +147,7 @@ func (le *LeaderElection) GetLeader(ctx context.Context) (string, error) {
 }
 
 func (le *LeaderElection) IsLeader() bool {
-    return le.isLeader
+    return le.isLeader.Load()
 }
 
 func (le *LeaderElection) Close() {
@@ -224,6 +230,8 @@ import (
     "context"
     "fmt"
     "log"
+    "sync"
+    "sync/atomic"
     "time"
 
     clientv3 "go.etcd.io/etcd/client/v3"
@@ -235,8 +243,9 @@ type ManualLeaderElection struct {
     key        string
     value      string
     ttl        int64
-    isLeader   bool
+    isLeader   atomic.Bool
     stopCh     chan struct{}
+    stopOnce   sync.Once
 }
 
 func NewManualLeaderElection(endpoints []string, key, value string, ttl int64) (*ManualLeaderElection, error) {
@@ -257,11 +266,11 @@ func NewManualLeaderElection(endpoints []string, key, value string, ttl int64) (
     }, nil
 }
 
-func (le *ManualLeaderElection) TryBecomeLeader(ctx context.Context) (bool, error) {
+func (le *ManualLeaderElection) TryBecomeLeader(ctx context.Context) (bool, int64, error) {
     // Create a lease
     leaseResp, err := le.client.Grant(ctx, le.ttl)
     if err != nil {
-        return false, fmt.Errorf("failed to create lease: %w", err)
+        return false, 0, fmt.Errorf("failed to create lease: %w", err)
     }
     le.leaseID = leaseResp.ID
 
@@ -274,28 +283,28 @@ func (le *ManualLeaderElection) TryBecomeLeader(ctx context.Context) (bool, erro
 
     if err != nil {
         le.client.Revoke(ctx, le.leaseID)
-        return false, fmt.Errorf("transaction failed: %w", err)
+        return false, 0, fmt.Errorf("transaction failed: %w", err)
     }
 
     if !txnResp.Succeeded {
         // Key already exists - someone else is leader
         le.client.Revoke(ctx, le.leaseID)
-        return false, nil
+        return false, txnResp.Header.Revision, nil
     }
 
-    le.isLeader = true
+    le.isLeader.Store(true)
 
     // Start keep-alive
     go le.keepAlive(ctx)
 
-    return true, nil
+    return true, txnResp.Header.Revision, nil
 }
 
 func (le *ManualLeaderElection) keepAlive(ctx context.Context) {
     ch, err := le.client.KeepAlive(ctx, le.leaseID)
     if err != nil {
         log.Printf("KeepAlive error: %v", err)
-        le.isLeader = false
+        le.isLeader.Store(false)
         return
     }
 
@@ -306,12 +315,12 @@ func (le *ManualLeaderElection) keepAlive(ctx context.Context) {
         case resp, ok := <-ch:
             if !ok {
                 log.Println("KeepAlive channel closed")
-                le.isLeader = false
+                le.isLeader.Store(false)
                 return
             }
             if resp == nil {
                 log.Println("KeepAlive response is nil")
-                le.isLeader = false
+                le.isLeader.Store(false)
                 return
             }
         }
@@ -320,7 +329,7 @@ func (le *ManualLeaderElection) keepAlive(ctx context.Context) {
 
 func (le *ManualLeaderElection) WaitForLeadership(ctx context.Context) error {
     for {
-        became, err := le.TryBecomeLeader(ctx)
+        became, rev, err := le.TryBecomeLeader(ctx)
         if err != nil {
             return err
         }
@@ -330,29 +339,38 @@ func (le *ManualLeaderElection) WaitForLeadership(ctx context.Context) error {
 
         // Watch for leader key deletion
         log.Println("Waiting for leadership...")
-        watchCh := le.client.Watch(ctx, le.key)
+        watchCh := le.client.Watch(ctx, le.key, clientv3.WithRev(rev+1))
 
         for watchResp := range watchCh {
+            if watchResp.Canceled {
+                return watchResp.Err()
+            }
             for _, event := range watchResp.Events {
                 if event.Type == clientv3.EventTypeDelete {
                     // Leader resigned or failed, try to become leader
-                    break
+                    goto retry
                 }
             }
-            break
         }
+        if err := ctx.Err(); err != nil {
+            return err
+        }
+    retry:
+        continue
     }
 }
 
 func (le *ManualLeaderElection) Resign(ctx context.Context) error {
-    close(le.stopCh)
+    le.stopOnce.Do(func() {
+        close(le.stopCh)
+    })
     if le.leaseID != 0 {
         _, err := le.client.Revoke(ctx, le.leaseID)
         if err != nil {
             return err
         }
     }
-    le.isLeader = false
+    le.isLeader.Store(false)
     return nil
 }
 
@@ -678,4 +696,4 @@ etcdctl get /election/scheduler
 
 ---
 
-Leader election with etcd provides a reliable way to coordinate distributed processes. By leveraging leases and transactions, you can ensure exactly one leader is active at any time, enabling safe execution of singleton operations in your distributed system.
+Leader election with etcd provides a reliable way to coordinate distributed processes. By leveraging leases and transactions, and by stopping work when lease renewal fails, you can ensure only the current elected leader performs singleton operations in your distributed system.
