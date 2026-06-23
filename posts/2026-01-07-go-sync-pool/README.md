@@ -285,7 +285,7 @@ func NewByteBufferPool(size int) *ByteBufferPool {
     return &ByteBufferPool{
         pool: sync.Pool{
             New: func() interface{} {
-                buf := make([]byte, size)
+                buf := make([]byte, 0, size)
                 return &buf
             },
         },
@@ -504,7 +504,6 @@ package main
 
 import (
     "bytes"
-    "io"
     "sync"
 )
 
@@ -582,26 +581,26 @@ func NewTieredBufferPool() *TieredBufferPool {
     return &TieredBufferPool{
         small: sync.Pool{
             New: func() interface{} {
-                buf := make([]byte, 1024)
+                buf := make([]byte, 0, 1024)
                 return &buf
             },
         },
         medium: sync.Pool{
             New: func() interface{} {
-                buf := make([]byte, 8*1024)
+                buf := make([]byte, 0, 8*1024)
                 return &buf
             },
         },
         large: sync.Pool{
             New: func() interface{} {
-                buf := make([]byte, 64*1024)
+                buf := make([]byte, 0, 64*1024)
                 return &buf
             },
         },
     }
 }
 
-// Get returns a buffer at least as large as the requested size
+// Get returns a buffer with capacity at least as large as the requested size
 func (p *TieredBufferPool) Get(size int) *[]byte {
     switch {
     case size <= 1024:
@@ -612,7 +611,7 @@ func (p *TieredBufferPool) Get(size int) *[]byte {
         return p.large.Get().(*[]byte)
     default:
         // Allocate directly for very large requests
-        buf := make([]byte, size)
+        buf := make([]byte, 0, size)
         return &buf
     }
 }
@@ -650,7 +649,7 @@ import (
 // CopyBufferPool manages buffers for file copying
 var copyBufferPool = sync.Pool{
     New: func() interface{} {
-        // 32KB is optimal for most file systems
+        // 32KB is a common default buffer size for file copying
         buf := make([]byte, 32*1024)
         return &buf
     },
@@ -688,7 +687,7 @@ func CopyFile(src, dst string) error {
 
 ## JSON Encoder/Decoder Pools
 
-JSON processing is CPU-intensive. Pooling encoders and decoders significantly improves performance.
+JSON processing is CPU-intensive. Pooling buffers used by encoders and decoders can improve performance in allocation-heavy paths.
 
 ### Basic JSON Encoder Pool
 
@@ -698,7 +697,6 @@ package main
 import (
     "bytes"
     "encoding/json"
-    "io"
     "sync"
 )
 
@@ -759,7 +757,6 @@ package main
 import (
     "bytes"
     "encoding/json"
-    "io"
     "sync"
 )
 
@@ -850,7 +847,11 @@ func (jp *JSONProcessor) Marshal(v interface{}) ([]byte, error) {
 
     // Copy result (buffer returns to pool)
     data := buf.Bytes()
-    result := make([]byte, len(data)-1) // Exclude trailing newline
+    if len(data) > 0 && data[len(data)-1] == '\n' {
+        data = data[:len(data)-1]
+    }
+
+    result := make([]byte, len(data))
     copy(result, data)
 
     return result, nil
@@ -879,8 +880,13 @@ func (jp *JSONProcessor) MarshalIndent(v interface{}, prefix, indent string) ([]
         return nil, err
     }
 
-    result := make([]byte, buf.Len())
-    copy(result, buf.Bytes())
+    data := buf.Bytes()
+    if len(data) > 0 && data[len(data)-1] == '\n' {
+        data = data[:len(data)-1]
+    }
+
+    result := make([]byte, len(data))
+    copy(result, data)
     return result, nil
 }
 ```
@@ -1166,31 +1172,34 @@ import (
 // MonitoredPool tracks pool statistics
 type MonitoredPool struct {
     pool     sync.Pool
+    newFunc  func() interface{}
     hits     uint64
     misses   uint64
     puts     uint64
     discards uint64
-    maxSize  int
 }
 
-func NewMonitoredPool(maxSize int, newFunc func() interface{}) *MonitoredPool {
-    mp := &MonitoredPool{maxSize: maxSize}
-    mp.pool.New = func() interface{} {
-        atomic.AddUint64(&mp.misses, 1)
-        return newFunc()
+func NewMonitoredPool(newFunc func() interface{}) *MonitoredPool {
+    return &MonitoredPool{
+        newFunc: newFunc,
     }
-    return mp
 }
 
 func (mp *MonitoredPool) Get() interface{} {
     obj := mp.pool.Get()
-    if obj != nil {
-        atomic.AddUint64(&mp.hits, 1)
+    if obj == nil {
+        atomic.AddUint64(&mp.misses, 1)
+        return mp.newFunc()
     }
+    atomic.AddUint64(&mp.hits, 1)
     return obj
 }
 
 func (mp *MonitoredPool) Put(obj interface{}) {
+    if obj == nil {
+        atomic.AddUint64(&mp.discards, 1)
+        return
+    }
     atomic.AddUint64(&mp.puts, 1)
     mp.pool.Put(obj)
 }
@@ -1217,7 +1226,7 @@ func (mp *MonitoredPool) HitRate() float64 {
 
 ### Graceful Pool Warming
 
-Pre-populate pools to avoid cold-start latency:
+Pre-populate pools to reduce cold-start latency. This is only a hint: `sync.Pool` may drop stored objects at any time, especially around garbage collection.
 
 ```go
 package main
@@ -1256,50 +1265,46 @@ func initBufferPool() *sync.Pool {
 }
 ```
 
-### Pool with Size Limits
+### Pool with Object Size Limits
 
-Prevent unbounded memory growth:
+Prevent oversized objects from being retained:
 
 ```go
 package main
 
 import (
     "sync"
-    "sync/atomic"
 )
 
-// LimitedPool prevents unbounded pool growth
-type LimitedPool struct {
-    pool      sync.Pool
-    allocated int64
-    maxSize   int64
-    objSize   int64
+// LimitedBufferPool avoids retaining buffers above maxBufferCap.
+// sync.Pool does not provide an exact retained-object count.
+type LimitedBufferPool struct {
+    pool         sync.Pool
+    maxBufferCap int
 }
 
-func NewLimitedPool(maxSize, objSize int64, newFunc func() interface{}) *LimitedPool {
-    lp := &LimitedPool{
-        maxSize: maxSize,
-        objSize: objSize,
+func NewLimitedBufferPool(initialCap, maxBufferCap int) *LimitedBufferPool {
+    lp := &LimitedBufferPool{
+        maxBufferCap: maxBufferCap,
     }
     lp.pool.New = func() interface{} {
-        atomic.AddInt64(&lp.allocated, objSize)
-        return newFunc()
+        buf := make([]byte, 0, initialCap)
+        return &buf
     }
     return lp
 }
 
-func (lp *LimitedPool) Get() interface{} {
-    return lp.pool.Get()
+func (lp *LimitedBufferPool) Get() *[]byte {
+    return lp.pool.Get().(*[]byte)
 }
 
-func (lp *LimitedPool) Put(obj interface{}) {
-    // Check if we're over limit
-    if atomic.LoadInt64(&lp.allocated) > lp.maxSize {
-        // Don't return to pool, let GC reclaim
-        atomic.AddInt64(&lp.allocated, -lp.objSize)
+func (lp *LimitedBufferPool) Put(buf *[]byte) {
+    if cap(*buf) > lp.maxBufferCap {
+        // Don't retain oversized buffers.
         return
     }
-    lp.pool.Put(obj)
+    *buf = (*buf)[:0]
+    lp.pool.Put(buf)
 }
 ```
 
