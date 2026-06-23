@@ -111,14 +111,6 @@ data:
         port: 9191
         # Timeout for authorization decisions
         timeout: 1s
-        # Include request headers in authorization check
-        includeRequestHeadersInCheck:
-          - "authorization"
-          - "x-request-id"
-          - "x-forwarded-for"
-        # Include additional metadata for policy decisions
-        includeAdditionalHeadersInCheck:
-          x-ext-authz: "enabled"
 ```
 
 Apply the configuration by updating the Istio ConfigMap:
@@ -311,16 +303,13 @@ data:
 
         # Decode and verify JWT (simplified - in production use JWKS)
         # This example uses a symmetric key for demonstration
-        [valid, _, payload] := io.jwt.decode_verify(token, {
+        [valid, _, _] := io.jwt.decode_verify(token, {
             "secret": "your-jwt-secret-key",
             "alg": "HS256"
         })
 
         # Token must be valid
         valid == true
-
-        # Store claims for later use
-        claims := payload
     }
 
     # Check if user has permission for the requested resource
@@ -735,20 +724,13 @@ curl -v -H "Authorization: Bearer invalid-token" \
   http://httpbin.default.svc.cluster.local/api/users
 
 # Test 3: Request with valid token (should be allowed)
-# First, generate a valid JWT token
-# You can use jwt.io or a script to generate tokens
-TOKEN=$(cat <<EOF | base64 -w 0 | tr '+/' '-_' | tr -d '='
-{
-  "sub": "user123",
-  "roles": ["user", "admin"],
-  "department": "engineering",
-  "clearance_level": 3,
-  "exp": 9999999999
-}
-EOF
-)
+# Generate an HS256 JWT that matches the demo policy's shared secret
+b64url() { openssl base64 -A | tr '+/' '-_' | tr -d '='; }
+HEADER=$(printf '{"alg":"HS256","typ":"JWT"}' | b64url)
+PAYLOAD=$(printf '{"sub":"user123","roles":["user","admin"],"department":"engineering","clearance_level":3,"exp":9999999999}' | b64url)
+SIGNATURE=$(printf '%s.%s' "$HEADER" "$PAYLOAD" | openssl dgst -sha256 -hmac "your-jwt-secret-key" -binary | b64url)
+TOKEN="${HEADER}.${PAYLOAD}.${SIGNATURE}"
 
-# Create a proper JWT (simplified for testing)
 curl -v -H "Authorization: Bearer ${TOKEN}" \
   http://httpbin.default.svc.cluster.local/api/users
 
@@ -767,8 +749,8 @@ View OPA's decision logs to debug authorization issues:
 kubectl logs -n opa-system deployment/opa -f | grep -E "(decision|allow|deny)"
 
 # Query OPA directly for policy evaluation (useful for testing)
-kubectl exec -n opa-system deployment/opa -- \
-  curl -s localhost:8181/v1/data/istio/authz/allow \
+kubectl port-forward -n opa-system svc/opa 8181:8181 &
+curl -s localhost:8181/v1/data/istio/authz/allow \
   -d '{
     "input": {
       "attributes": {
@@ -790,23 +772,24 @@ kubectl exec -n opa-system deployment/opa -- \
 
 When implementing external authorization with OPA, consider these performance optimizations:
 
-### Decision Flow with Caching
+### Data Fetch Flow with Caching
 
 ```mermaid
 graph TD
-    A[Incoming Request] --> B{Check Cache}
-    B -->|Cache Hit| C[Return Cached Decision]
-    B -->|Cache Miss| D[Query OPA]
+    A[Incoming Request] --> D[Query OPA]
     D --> E[Evaluate Rego Policy]
-    E --> F[Return Decision]
-    F --> G[Cache Decision]
+    E --> B{External Data Cached?}
+    B -->|Cache Hit| C[Use Cached External Data]
+    B -->|Cache Miss| I[Fetch External Data]
+    I --> F[Return Decision]
+    F --> G[Cache Eligible Built-in Results]
     G --> H[Return to Envoy]
-    C --> H
+    C --> F
 ```
 
-### 1. Enable Decision Caching
+### 1. Enable Built-in Caching
 
-OPA supports caching authorization decisions to reduce latency:
+OPA supports inter-query caching for eligible built-in function results, such as cached `http.send` responses. This does not cache final authorization decisions by input hash, but it can reduce latency when policies call external data sources:
 
 ```yaml
 # opa-config.yaml
@@ -818,8 +801,8 @@ metadata:
   namespace: opa-system
 data:
   config.yaml: |
-    # Enable decision caching
-    # This caches authorization decisions based on input hash
+    # Enable inter-query built-in caching
+    # This bounds cache storage for eligible built-in function results
     caching:
       inter_query_builtin_cache:
         max_size_bytes: 104857600  # 100MB cache
@@ -1007,10 +990,10 @@ Key metrics to monitor:
 
 | Metric | Description | Alert Threshold |
 |--------|-------------|-----------------|
-| `opa_http_request_duration_seconds` | Policy evaluation latency | > 100ms p99 |
-| `opa_http_request_count_total` | Total authorization requests | Trend analysis |
-| `opa_cache_hits_total` | Cache hit rate | < 80% hit rate |
-| `envoy_ext_authz_denied` | Denied requests | Sudden spikes |
+| `http_request_duration_seconds` | OPA HTTP API request latency | > 100ms p99 |
+| `go_memstats_heap_alloc_bytes` | OPA heap allocation | Unexpected growth |
+| `plugin_status_gauge` | OPA plugin status when status Prometheus metrics are enabled | Non-OK plugin status |
+| `ext_authz.<stat_prefix>.denied` | Envoy denied authorization checks | Sudden spikes |
 
 ## Advanced Patterns
 
@@ -1155,7 +1138,7 @@ Debug by checking OPA decision logs:
 kubectl logs -n opa-system deployment/opa
 
 # Test policy directly
-kubectl exec -n opa-system deployment/opa -- \
+kubectl exec -i -n opa-system deployment/opa -- \
   opa eval -d /policies -i /dev/stdin 'data.istio.authz.allow' <<EOF
 {
   "attributes": {
