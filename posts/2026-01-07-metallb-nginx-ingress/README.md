@@ -12,7 +12,7 @@ Description: A guide to using MetalLB with NGINX Ingress Controller for external
 
 Running Kubernetes in bare-metal or on-premises environments presents a unique challenge: how do you expose services externally without cloud provider load balancers? MetalLB solves this by providing a network load balancer implementation for Kubernetes clusters that don't have access to cloud-native load balancing solutions.
 
-When combined with the NGINX Ingress Controller, MetalLB creates a powerful ingress stack that handles external traffic routing, SSL termination, and load balancing. This guide walks you through the complete integration process, from installation to production-ready configuration.
+When combined with the NGINX Ingress Controller, MetalLB creates a powerful ingress stack that handles external traffic routing, SSL termination, and load balancing. This guide walks you through the complete integration process, from installation to configuration. Note that the Kubernetes community ingress-nginx project was retired in March 2026; existing artifacts remain available, but new production deployments should account for the lack of future security fixes or consider Gateway API or another maintained ingress controller.
 
 ## Understanding the Architecture
 
@@ -72,7 +72,7 @@ flowchart TB
 
 ### How It Works
 
-1. **MetalLB** assigns external IP addresses to LoadBalancer services and announces them to the network using either Layer 2 (ARP/NDP) or BGP protocols
+1. **MetalLB** assigns external IP addresses to LoadBalancer services and announces them to the network using either Layer 2 (ARP/NDP) or BGP protocols. In Layer 2 mode, one speaker node attracts traffic for a given service IP at a time
 2. **NGINX Ingress Controller** runs as a Deployment with a LoadBalancer service type
 3. **Traffic Flow**: External requests hit the MetalLB-assigned IP, get routed to the NGINX Ingress Controller, which then routes based on Ingress rules to backend services
 
@@ -94,7 +94,7 @@ First, let's install MetalLB using the official manifests. This creates the nece
 # Install MetalLB native manifests
 
 # This deploys the controller and speaker daemonset
-kubectl apply -f https://raw.githubusercontent.com/metallb/metallb/v0.14.9/config/manifests/metallb-native.yaml
+kubectl apply -f https://raw.githubusercontent.com/metallb/metallb/v0.16.1/config/manifests/metallb-native.yaml
 
 # Wait for MetalLB pods to be ready
 # The controller manages IP assignments while speakers handle network announcements
@@ -232,7 +232,7 @@ controller:
       # Specify which address pool to use (optional if autoAssign is true)
       metallb.io/address-pool: nginx-ingress-pool
     # External traffic policy affects how traffic is routed
-    # Local: preserves client IP but may cause uneven load distribution
+    # Local: preserves client IP but, in Layer 2 mode, sends traffic only to pods on the elected speaker node
     # Cluster: may lose client IP but provides better load balancing
     externalTrafficPolicy: Local
 
@@ -381,11 +381,12 @@ For development environments, create a self-signed certificate:
 openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
   -keyout tls.key \
   -out tls.crt \
-  -subj "/CN=*.example.com/O=Example Inc"
+  -subj "/CN=*.example.com/O=Example Inc" \
+  -addext "subjectAltName = DNS:*.example.com,DNS:example.com"
 
 # Create a Kubernetes secret to store the certificate
 # This secret will be referenced by Ingress resources
-kubectl create secret tls example-tls \
+kubectl create secret tls example-tls-secret \
   --key tls.key \
   --cert tls.crt \
   --namespace default
@@ -398,7 +399,7 @@ For production, use cert-manager for automatic certificate management:
 ```bash
 # Install cert-manager for automatic certificate management
 # cert-manager handles certificate issuance and renewal
-kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.14.4/cert-manager.yaml
+kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.20.2/cert-manager.yaml
 
 # Wait for cert-manager to be ready
 kubectl wait --for=condition=Available deployment --all -n cert-manager --timeout=120s
@@ -428,7 +429,7 @@ spec:
     solvers:
     - http01:
         ingress:
-          class: nginx
+          ingressClassName: nginx
 ```
 
 Apply the ClusterIssuer:
@@ -451,9 +452,6 @@ metadata:
   name: example-ingress
   namespace: default
   annotations:
-    # Specify the ingress controller class
-    kubernetes.io/ingress.class: nginx
-
     # SSL redirect - automatically redirect HTTP to HTTPS
     nginx.ingress.kubernetes.io/ssl-redirect: "true"
 
@@ -476,7 +474,7 @@ metadata:
     nginx.ingress.kubernetes.io/enable-cors: "true"
     nginx.ingress.kubernetes.io/cors-allow-origin: "https://example.com"
 
-    # Health check configuration for upstream services
+    # Session affinity based on request URI
     nginx.ingress.kubernetes.io/upstream-hash-by: "$request_uri"
 
     # cert-manager annotation for automatic TLS certificate
@@ -597,13 +595,13 @@ spec:
           periodSeconds: 10
 ```
 
-### NGINX Ingress Health Check Annotations
+### NGINX Ingress Retry Annotations
 
-Configure active health checks for upstream services using annotations:
+Configure passive retry behavior for upstream services using annotations. ingress-nginx relies on Kubernetes readiness probes and endpoint updates for backend health, while these annotations control how NGINX retries failed upstream requests:
 
 ```yaml
 # ingress-with-healthcheck.yaml
-# Ingress with active health check configuration
+# Ingress with upstream retry configuration
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
@@ -612,11 +610,10 @@ metadata:
     # Session affinity based on request URI
     nginx.ingress.kubernetes.io/upstream-hash-by: "$request_uri"
 
-    # Connection draining for graceful shutdown
-    nginx.ingress.kubernetes.io/server-snippet: |
-      proxy_next_upstream error timeout http_500 http_502 http_503 http_504;
-      proxy_next_upstream_tries 3;
-      proxy_next_upstream_timeout 10s;
+    # Retry failed upstream requests
+    nginx.ingress.kubernetes.io/proxy-next-upstream: "error timeout http_500 http_502 http_503 http_504"
+    nginx.ingress.kubernetes.io/proxy-next-upstream-tries: "3"
+    nginx.ingress.kubernetes.io/proxy-next-upstream-timeout: "10"
 spec:
   ingressClassName: nginx
   rules:
@@ -647,15 +644,14 @@ metadata:
   name: ingress-nginx-controller
   namespace: ingress-nginx
 data:
-  # Worker process configuration
-  # Adjust based on CPU cores available
-  worker-processes: "auto"
-  worker-connections: "65536"
+  # Worker connection configuration
+  # Adjust based on available file descriptors and traffic profile
+  max-worker-connections: "65536"
 
   # Enable multi-accept for handling multiple connections per worker
-  multi-accept: "true"
+  enable-multi-accept: "true"
 
-  # Use epoll for better performance on Linux
+  # Enable HTTP/2 support
   use-http2: "true"
 
   # Keepalive settings for client connections
@@ -673,7 +669,7 @@ data:
   proxy-buffers-number: "8"
   proxy-body-size: "256m"
 
-  # Enable server-side caching for static content
+  # Hide the NGINX version in generated error pages and headers
   server-tokens: "false"
 
   # Request throttling
@@ -683,7 +679,7 @@ data:
   large-client-header-buffers: "4 16k"
 
   # Access log buffering for better performance
-  access-log-buffering: "true"
+  access-log-params: "buffer=16k flush=1m"
 
   # Enable brotli compression (more efficient than gzip)
   enable-brotli: "true"
@@ -974,7 +970,7 @@ spec:
 
 ## Conclusion
 
-Integrating MetalLB with NGINX Ingress Controller provides a robust, production-ready solution for exposing services in bare-metal Kubernetes environments. This guide covered:
+Integrating MetalLB with NGINX Ingress Controller provides a robust solution for exposing services in bare-metal Kubernetes environments, especially for existing ingress-nginx deployments. For new production environments, factor in the ingress-nginx project retirement and evaluate a maintained ingress controller or Gateway API implementation. This guide covered:
 
 - Complete installation and configuration of both MetalLB and NGINX Ingress Controller
 - SSL/TLS termination with both self-signed and Let's Encrypt certificates
