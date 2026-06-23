@@ -91,7 +91,6 @@ cors:
 ```
 
 ```java
-@Configuration
 @ConfigurationProperties(prefix = "cors")
 public class CorsProperties {
 
