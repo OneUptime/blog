@@ -85,8 +85,8 @@ Logs and events are your primary debugging tools. These commands help you tail a
 Application logs and cluster events provide complementary views: logs show what your code is doing, while events show what Kubernetes is doing. Together they tell the complete story of an incident.
 
 ```bash
-# Stream the last 100 lines of logs from the Deployment (follows all Pods)
-# The -f flag enables follow mode, streaming new log lines as they appear
+# Stream the last 100 lines of logs from the Deployment (picks one Pod)
+# The -f flag enables follow mode; add --all-pods to stream from every Pod
 kubectl logs deploy/payments-api -n prod --tail=100 -f
 
 # Get logs from the previous container instance (after a crash)
@@ -221,7 +221,7 @@ echo "=== Recent Events in $ns ==="
 kubectl get events -n "$ns" --sort-by=.lastTimestamp | tail -n 10
 ```
 
-Run `./scripts/pod-health prod` during on-call to get a quick snapshot.
+Run `./scripts/pod-health.sh prod` during on-call to get a quick snapshot.
 
 ---
 
