@@ -47,17 +47,21 @@ Default content:
 # Rotate logs weekly
 weekly
 
+# Use the adm group by default, since this is the owning
+# group of /var/log/syslog
+su root adm
+
 # Keep 4 weeks of logs
 rotate 4
 
 # Create new empty log files after rotating
 create
 
-# Use date as suffix for rotated files
-dateext
+# Use date as suffix for rotated files (commented out by default)
+#dateext
 
-# Compress rotated logs
-compress
+# Compress rotated logs (commented out by default)
+#compress
 
 # Include application-specific configs
 include /etc/logrotate.d
