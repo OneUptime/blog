@@ -277,6 +277,10 @@ cmd = "go build -o ./tmp/main ."
 # Path to the built binary that Air will execute
 bin = "./tmp/main"
 
+# Entrypoint binary relative to root
+# Air recommends this over relying on bin alone
+entrypoint = ["./tmp/main"]
+
 # Arguments to pass to your application when running
 # Useful for passing flags or configuration
 args_bin = []
@@ -308,8 +312,8 @@ stop_on_error = true
 # Allows graceful shutdown of your application
 send_interrupt = true
 
-# Delay after interrupt before force killing (in milliseconds)
-kill_delay = 500
+# Delay after interrupt before force killing
+kill_delay = "500ms"
 
 # Rerun binary on build error - useful for debugging
 rerun = false
@@ -317,12 +321,50 @@ rerun = false
 # Delay before rerunning (in milliseconds)
 rerun_delay = 500
 
-[build.log]
-# Enable build-time logging
-time = true
+# Build error log file, placed inside tmp_dir
+log = "build-errors.log"
 
-# Show build time in output
-main_only = false
+# Directories to watch for changes
+# Air watches the whole root unless you restrict it here
+include_dir = []
+
+# Directories to exclude from watching
+# These directories will be ignored when detecting file changes
+exclude_dir = [
+    "tmp",
+    "vendor",
+    "node_modules",
+    ".git",
+    "testdata",
+    "docs",
+    "scripts",
+]
+
+# File patterns to exclude from watching
+# Useful for ignoring generated files, tests, or documentation
+exclude_regex = [
+    "_test\\.go$",
+    "_mock\\.go$",
+    "\\.pb\\.go$",
+    "swagger\\.json$",
+    "\\.md$",
+]
+
+# File extensions to watch - only these file types trigger rebuilds
+# Add more extensions if you have other file types that should trigger rebuilds
+include_ext = ["go", "tpl", "tmpl", "html", "env"]
+
+# Specific files to exclude from watching
+exclude_file = [
+    "go.sum",
+    ".air.toml",
+]
+
+# Specific files to watch (in addition to extension-based matching)
+include_file = []
+
+# Exclude unchanged files from triggering rebuilds
+exclude_unchanged = false
 
 [color]
 # Customize output colors for better readability in terminal
@@ -355,62 +397,6 @@ keep_scroll = true
 enabled = false
 proxy_port = 8090
 app_port = 8080
-
-[include]
-# Directories to watch for changes
-# Air will only watch these directories for file changes
-dir = ["."]
-
-[exclude]
-# Directories to exclude from watching
-# These directories will be ignored when detecting file changes
-dir = [
-    "tmp",
-    "vendor",
-    "node_modules",
-    ".git",
-    "testdata",
-    "docs",
-    "scripts",
-]
-
-# File patterns to exclude from watching
-# Useful for ignoring generated files, tests, or documentation
-regex = [
-    "_test\\.go$",
-    "_mock\\.go$",
-    "\\.pb\\.go$",
-    "swagger\\.json$",
-    "\\.md$",
-]
-
-# File extensions to watch - only these file types trigger rebuilds
-# Add more extensions if you have other file types that should trigger rebuilds
-[include_ext]
-list = ["go", "tpl", "tmpl", "html", "env"]
-
-# File extensions to exclude - these never trigger rebuilds
-[exclude_ext]
-list = ["tmp", "log", "pid"]
-
-# Specific files to exclude from watching
-[exclude_file]
-list = [
-    "go.sum",
-    ".air.toml",
-]
-
-# Specific directories to watch (alternative to include.dir)
-[include_dir]
-list = []
-
-# Specific files to watch (in addition to extension-based matching)
-[include_file]
-list = []
-
-# Exclude unchanged files from triggering rebuilds
-[exclude_unchanged]
-enabled = false
 ```
 
 ### Key Configuration Options Explained
@@ -419,15 +405,15 @@ Let's break down the most important configuration options:
 
 **Build Section:**
 - `cmd`: The command to compile your Go application. You can add flags like `-race` for race detection or `-ldflags` for version information.
-- `bin`: Path where the compiled binary is stored. Air runs this after each successful build.
+- `entrypoint`: Path to the compiled binary Air runs after each successful build.
 - `delay`: Time to wait after detecting a change before rebuilding. This batches multiple rapid changes into one build.
 
 **Exclude Section:**
-- `dir`: Directories to ignore. Always exclude `tmp`, `vendor`, `.git`, and any generated directories.
-- `regex`: Regular expressions for files to ignore. Test files and generated protobuf files are good candidates.
+- `exclude_dir`: Directories to ignore. Always exclude `tmp`, `vendor`, `.git`, and any generated directories.
+- `exclude_regex`: Regular expressions for files to ignore. Test files and generated protobuf files are good candidates.
 
 **Include Extensions:**
-- `list`: File extensions that trigger a rebuild. Add any template or configuration files your application uses.
+- `include_ext`: File extensions that trigger a rebuild. Add any template or configuration files your application uses.
 
 ## Step 3: Create the Development Dockerfile
 
@@ -440,7 +426,7 @@ Now let's create a Dockerfile specifically optimized for development with Air:
 
 # Use the official Go image as our base
 # Alpine variant is smaller but we use the full image for better compatibility
-FROM golang:1.22-bookworm
+FROM golang:1.26-bookworm
 
 # Set the working directory inside the container
 # All subsequent commands will run from this directory
@@ -454,7 +440,7 @@ RUN go install github.com/air-verse/air@latest
 # - delve: Go debugger for debugging inside containers
 # - golangci-lint: Linter for code quality checks
 RUN go install github.com/go-delve/delve/cmd/dlv@latest && \
-    curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin v1.55.2
+    curl -sSfL https://golangci-lint.run/install.sh | sh -s -- -b $(go env GOPATH)/bin v2.11.2
 
 # Copy go.mod and go.sum first for better layer caching
 # This layer only rebuilds when dependencies change
@@ -469,7 +455,7 @@ RUN go mod download && go mod verify
 COPY .air.toml ./
 
 # Note: We do NOT copy source code here!
-# Source code is mounted as a volume in docker-compose
+# Source code is mounted as a volume in Docker Compose
 # This enables hot reloading without rebuilding the image
 
 # Expose the application port
@@ -481,9 +467,6 @@ EXPOSE 2345
 
 # Set environment variables for development
 ENV GO111MODULE=on
-ENV CGO_ENABLED=0
-ENV GOOS=linux
-ENV GOARCH=amd64
 
 # Default command: run Air for hot reloading
 # Air will watch for changes and rebuild automatically
@@ -499,12 +482,12 @@ It's helpful to also have a production Dockerfile for comparison. This shows the
 # Multi-stage build for minimal production image
 
 # Stage 1: Build the application
-FROM golang:1.22-bookworm AS builder
+FROM golang:1.26-bookworm AS builder
 
 WORKDIR /app
 
 # Copy dependency files first for caching
-COPY go.mod go.sum ./
+COPY go.mod go.sum* ./
 RUN go mod download && go mod verify
 
 # Copy source code and build
@@ -518,7 +501,7 @@ RUN CGO_ENABLED=0 GOOS=linux go build \
     -o /app/main .
 
 # Stage 2: Create minimal runtime image
-FROM alpine:3.19
+FROM alpine:3.24
 
 # Add CA certificates for HTTPS requests
 RUN apk --no-cache add ca-certificates tzdata
@@ -550,8 +533,6 @@ Docker Compose orchestrates our development environment, handling volume mounts,
 ```yaml
 # docker-compose.yml
 # Development environment with hot reloading
-
-version: '3.8'
 
 services:
   # Main Go application with Air hot reloading
@@ -602,9 +583,6 @@ services:
       - GO111MODULE=on
       - GOPROXY=https://proxy.golang.org,direct
 
-      # Air specific settings
-      - AIR_BUILD_DELAY=500
-
     # Override the default command if needed
     # Uncomment to use delve debugger instead
     # command: dlv debug --headless --listen=:2345 --api-version=2 --accept-multiclient
@@ -635,8 +613,6 @@ services:
     # Persist database data
     volumes:
       - postgres-data:/var/lib/postgresql/data
-      # Initialize database with custom scripts
-      - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init.sql:ro
 
     # Expose PostgreSQL port
     ports:
@@ -748,13 +724,13 @@ Build and start all services with Docker Compose:
 
 ```bash
 # Build the images and start all services
-docker-compose up --build
+docker compose up --build
 
 # Or run in detached mode (background)
-docker-compose up -d --build
+docker compose up -d --build
 
 # View logs in detached mode
-docker-compose logs -f app
+docker compose logs -f app
 ```
 
 ### Verify Hot Reloading Works
@@ -765,7 +741,7 @@ Once the services are running, you should see output like:
 go-hot-reload-app  |
 go-hot-reload-app  |   __    _   ___
 go-hot-reload-app  |  / /\  | | | |_)
-go-hot-reload-app  | /_/--\ |_| |_| \_ v1.49.0, built with Go go1.22
+go-hot-reload-app  | /_/--\ |_| |_| \_ v1.65.3, built with Go go1.26
 go-hot-reload-app  |
 go-hot-reload-app  | watching .
 go-hot-reload-app  | !exclude tmp
@@ -800,25 +776,25 @@ Here are useful commands for managing your development environment:
 
 ```bash
 # Stop all services
-docker-compose down
+docker compose down
 
 # Stop and remove volumes (fresh start)
-docker-compose down -v
+docker compose down -v
 
 # Rebuild a specific service
-docker-compose build app
+docker compose build app
 
 # View real-time logs
-docker-compose logs -f
+docker compose logs -f
 
 # Execute commands in the container
-docker-compose exec app go test ./...
+docker compose exec app go test ./...
 
 # Run a one-off command
-docker-compose run --rm app go mod tidy
+docker compose run --rm app go mod tidy
 
 # Restart a specific service
-docker-compose restart app
+docker compose restart app
 ```
 
 ## Step 7: Advanced Configuration
@@ -832,8 +808,7 @@ To enable debugging, modify your Docker Compose command:
 ```yaml
 # In docker-compose.yml, add to the app service:
 command: >
-  sh -c "go install github.com/go-delve/delve/cmd/dlv@latest &&
-         dlv debug --headless --listen=:2345 --api-version=2 --accept-multiclient ./..."
+  sh -c "dlv debug --headless --listen=:2345 --api-version=2 --accept-multiclient ."
 ```
 
 Then connect your IDE's debugger to `localhost:2345`.
@@ -873,10 +848,10 @@ tmp_dir = "tmp"
 # Build all services
 cmd = "make build-all"
 bin = "./tmp/main"
+entrypoint = ["./tmp/main"]
 delay = 2000
 
-[include]
-dir = [
+include_dir = [
     "cmd",
     "pkg",
     "internal",
@@ -914,6 +889,8 @@ Create development-only code:
 
 package main
 
+import "log"
+
 func init() {
     // Development-only initialization
     log.Println("Running in development mode")
@@ -927,11 +904,9 @@ Build with: `go build -tags dev`
 Reduce watched directories in `.air.toml`:
 
 ```toml
-[include]
-dir = ["cmd", "internal", "pkg"]
+include_dir = ["cmd", "internal", "pkg"]
 
-[exclude]
-dir = [
+exclude_dir = [
     "vendor",
     "node_modules",
     ".git",
@@ -972,7 +947,7 @@ services:
 Run with:
 
 ```bash
-DOCKER_BUILDKIT=1 docker-compose build
+DOCKER_BUILDKIT=1 docker compose build
 ```
 
 ## Troubleshooting Common Issues
@@ -1001,7 +976,7 @@ volumes:
 3. Verify file permissions inside container:
 
 ```bash
-docker-compose exec app ls -la /app
+docker compose exec app ls -la /app
 ```
 
 ### Port Already in Use
@@ -1014,7 +989,7 @@ docker-compose exec app ls -la /app
 [build]
 stop_on_error = true
 send_interrupt = true
-kill_delay = 500
+kill_delay = "500ms"
 ```
 
 ### Slow Rebuilds
@@ -1058,6 +1033,7 @@ pre_cmd = ["mkdir -p tmp"]
 [build]
 cmd = "go build -o ./tmp/main ."
 bin = "./tmp/main"
+entrypoint = ["./tmp/main"]
 ```
 
 ## Best Practices Summary
