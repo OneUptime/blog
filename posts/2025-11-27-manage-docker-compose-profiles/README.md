@@ -161,7 +161,8 @@ jobs:
       matrix:
         # Test core profile alone and with async workers
         # Add more combinations as your stack grows
-        profile: [core, core+async]
+        # COMPOSE_PROFILES is comma-separated, so combine profiles with a comma
+        profile: [core, "core,async"]
     steps:
       # Run tests with the specified profile combination
       # compose-ci.sh parses COMPOSE_PROFILES and runs docker compose
