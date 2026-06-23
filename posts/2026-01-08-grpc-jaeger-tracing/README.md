@@ -323,6 +323,7 @@ import (
     "go.opentelemetry.io/otel/codes"
     "go.opentelemetry.io/otel/trace"
     "google.golang.org/grpc"
+    "google.golang.org/grpc/credentials/insecure"
 
     pb "your-project/proto"
     "your-project/tracing"
