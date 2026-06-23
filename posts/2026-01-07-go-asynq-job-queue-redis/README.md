@@ -19,7 +19,7 @@ Asynq stands out among Go job queue libraries for several reasons:
 - **Simple API**: Clean and intuitive interface that follows Go idioms
 - **Redis-backed**: Leverages Redis for reliable message persistence and distribution
 - **Feature-rich**: Supports delayed tasks, retries, priorities, unique tasks, and more
-- **Observable**: Built-in web UI for monitoring and managing tasks
+- **Observable**: Companion web UI for monitoring and managing tasks
 - **Battle-tested**: Used in production by many companies
 
 ## Prerequisites
@@ -45,8 +45,7 @@ go mod init github.com/yourusername/go-job-queue
 
 # Install Asynq and related packages
 go get github.com/hibiken/asynq
-go get github.com/hibiken/asynq/x/metrics
-go get github.com/redis/go-redis/v9
+go get github.com/hibiken/asynqmon
 ```
 
 ## Project Structure
@@ -104,7 +103,7 @@ func GetRedisClientOpt() asynq.RedisClientOpt {
 }
 
 // GetRedisClusterClientOpt returns configuration for Redis Cluster.
-// Use this for high-availability production deployments.
+// Verify compatibility with the Asynq features you use before choosing Redis Cluster.
 func GetRedisClusterClientOpt() asynq.RedisClusterClientOpt {
 	return asynq.RedisClusterClientOpt{
 		Addrs: []string{
@@ -252,6 +251,7 @@ Task handlers contain the actual business logic for processing jobs. Each handle
 package tasks
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -342,7 +342,7 @@ func (h *WebhookHandler) ProcessTask(ctx context.Context, t *asynq.Task) error {
 	log.Printf("Delivering webhook: id=%s, url=%s", payload.WebhookID, payload.URL)
 
 	// Create HTTP request
-	req, err := http.NewRequestWithContext(ctx, payload.Method, payload.URL, nil)
+	req, err := http.NewRequestWithContext(ctx, payload.Method, payload.URL, bytes.NewReader(payload.Body))
 	if err != nil {
 		return fmt.Errorf("failed to create request: %w: %v", asynq.SkipRetry, err)
 	}
@@ -414,10 +414,8 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
-	"os"
-	"os/signal"
-	"syscall"
 	"time"
 
 	"github.com/hibiken/asynq"
@@ -433,12 +431,12 @@ func main() {
 			// Concurrency specifies the maximum number of concurrent workers
 			Concurrency: 10,
 
-			// Queues is a map of queue names to their priority weights
-			// Higher weight means the queue is processed more frequently
+			// Queues is a map of queue names to their priority weights.
+			// With StrictPriority enabled, higher-weight queues are checked first.
 			Queues: map[string]int{
-				"critical": 6, // Highest priority - processed 6x more often
+				"critical": 6, // Highest priority
 				"default":  3, // Standard priority
-				"low":      1, // Lowest priority - processed least often
+				"low":      1, // Lowest priority
 			},
 
 			// StrictPriority ensures higher priority queues are always processed first
@@ -451,7 +449,7 @@ func main() {
 			// Logger for Asynq internal logging
 			Logger: NewAsynqLogger(),
 
-			// ErrorHandler is called when a task fails after all retries
+			// ErrorHandler is called whenever a task handler returns an error
 			ErrorHandler: asynq.ErrorHandlerFunc(handleError),
 
 			// RetryDelayFunc customizes the delay between retries
@@ -482,28 +480,16 @@ func main() {
 	mux.Handle(tasks.TypeWebhookDelivery, tasks.NewWebhookHandler())
 	mux.Handle(tasks.TypeReportGeneration, &tasks.ReportHandler{})
 
-	// Handle graceful shutdown
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	go func() {
-		sigCh := make(chan os.Signal, 1)
-		signal.Notify(sigCh, syscall.SIGTERM, syscall.SIGINT)
-		<-sigCh
-		log.Println("Received shutdown signal, initiating graceful shutdown...")
-		cancel()
-	}()
-
-	// Start the server
+	// Start the server. Run listens for SIGTERM/SIGINT and gracefully shuts down.
 	log.Println("Starting Asynq worker server...")
 	if err := srv.Run(mux); err != nil {
 		log.Fatalf("Failed to run server: %v", err)
 	}
 }
 
-// handleError is called when a task exhausts all retries.
+// handleError is called whenever a task handler returns an error.
 func handleError(ctx context.Context, task *asynq.Task, err error) {
-	log.Printf("Task %s failed after all retries: %v", task.Type(), err)
+	log.Printf("Task %s failed: %v", task.Type(), err)
 
 	// Here you might want to:
 	// - Send an alert to your monitoring system
@@ -511,7 +497,7 @@ func handleError(ctx context.Context, task *asynq.Task, err error) {
 	// - Notify administrators via Slack/PagerDuty
 }
 
-// customRetryDelay implements exponential backoff with jitter.
+// customRetryDelay implements exponential backoff.
 func customRetryDelay(n int, err error, task *asynq.Task) time.Duration {
 	// Exponential backoff: 1s, 2s, 4s, 8s, 16s, capped at 1 hour
 	delay := time.Duration(1<<uint(n-1)) * time.Second
@@ -594,6 +580,7 @@ The client is responsible for creating and enqueueing tasks. Let us build a comp
 package main
 
 import (
+	"errors"
 	"fmt"
 	"log"
 	"time"
@@ -792,7 +779,7 @@ func enqueueUniqueTask(client *asynq.Client) {
 	)
 
 	if err != nil {
-		if err == asynq.ErrDuplicateTask {
+		if errors.Is(err, asynq.ErrDuplicateTask) {
 			log.Printf("Task already exists, skipping duplicate")
 			return
 		}
@@ -842,6 +829,7 @@ package tasks
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"time"
@@ -866,7 +854,7 @@ func NewDeadLetterQueueProcessor(redisOpt asynq.RedisClientOpt) *DeadLetterQueue
 
 // Close releases resources.
 func (p *DeadLetterQueueProcessor) Close() error {
-	return p.client.Close()
+	return errors.Join(p.inspector.Close(), p.client.Close())
 }
 
 // ListArchivedTasks retrieves tasks from the dead letter queue.
@@ -1077,7 +1065,7 @@ func main() {
 
 ## Setting Up the Asynq Web UI
 
-Asynq provides a web-based monitoring UI that makes it easy to visualize and manage your queues.
+Asynqmon provides a web-based monitoring UI that makes it easy to visualize and manage your queues.
 
 ```go
 // cmd/webui/main.go
@@ -1087,7 +1075,6 @@ import (
 	"log"
 	"net/http"
 
-	"github.com/hibiken/asynq"
 	"github.com/hibiken/asynqmon"
 	"github.com/yourusername/go-job-queue/internal/config"
 )
@@ -1154,7 +1141,6 @@ func main() {
 		config.GetRedisClientOpt(),
 		&asynq.SchedulerOpts{
 			Location: time.UTC,
-			Logger:   NewAsynqLogger(),
 		},
 	)
 
@@ -1206,8 +1192,8 @@ func (h *EmailHandler) ProcessTask(ctx context.Context, t *asynq.Task) error {
     json.Unmarshal(t.Payload(), &payload)
 
     // Check if already sent (idempotency check)
-    if h.emailRepo.WasSent(payload.EmailID) {
-        log.Printf("Email %s already sent, skipping", payload.EmailID)
+    if h.emailRepo.WasSent(payload.UserID, payload.Subject) {
+        log.Printf("Email for user %d already sent, skipping", payload.UserID)
         return nil
     }
 
@@ -1278,7 +1264,7 @@ Key takeaways from this guide:
 
 For production deployments, consider:
 
-- Setting up Redis Sentinel or Cluster for high availability
+- Setting up Redis Sentinel for high availability, or Redis Cluster only after verifying compatibility with the Asynq features you use
 - Integrating with your observability stack (Prometheus, OpenTelemetry)
 - Implementing proper alerting for dead letter queue growth
 - Using the Asynq web UI for operational visibility
