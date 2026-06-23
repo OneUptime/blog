@@ -58,13 +58,13 @@ kubectl cluster-info
 istioctl version
 
 # Download the new version of istioctl
-# Replace 1.20.0 with your target version
+# Replace 1.30.1 with your target version
 # This downloads the official Istio release from GitHub
-curl -L https://istio.io/downloadIstio | ISTIO_VERSION=1.20.0 sh -
+curl -L https://istio.io/downloadIstio | ISTIO_VERSION=1.30.1 sh -
 
 # Add the new istioctl to your PATH
 # This ensures you can run istioctl commands from any directory
-export PATH=$PWD/istio-1.20.0/bin:$PATH
+export PATH=$PWD/istio-1.30.1/bin:$PATH
 ```
 
 ## Upgrade Workflow Overview
@@ -162,8 +162,8 @@ Install the new Istio control plane alongside the existing one using revision la
 Create an IstioOperator manifest with a revision label for the canary deployment:
 
 ```yaml
-# istio-1-20-0.yaml
-# This IstioOperator manifest installs Istio 1.20.0 with a revision label
+# istio-1-30-1.yaml
+# This IstioOperator manifest installs Istio 1.30.1 with a revision label
 # The revision label allows running multiple control planes simultaneously
 apiVersion: install.istio.io/v1alpha1
 kind: IstioOperator
@@ -171,11 +171,11 @@ metadata:
   # Namespace where Istio control plane components will be installed
   namespace: istio-system
   # Unique name for this installation, includes the revision for clarity
-  name: istio-1-20-0
+  name: istio-1-30-1
 spec:
   # The revision label that uniquely identifies this control plane version
   # Namespaces will use this label to select which control plane to use
-  revision: 1-20-0
+  revision: 1-30-1
 
   # Install the default profile which includes istiod and ingress gateway
   # Other profiles: minimal, demo, empty, preview
@@ -187,7 +187,7 @@ spec:
     # Logs will be written to stdout of the sidecar container
     accessLogFile: /dev/stdout
 
-    # Enable Envoy's access log service for structured logging
+    # Enable automatic mutual TLS for mesh traffic where possible
     enableAutoMtls: true
 
     # Default proxy configuration applied to all sidecars
@@ -218,8 +218,17 @@ spec:
         podDisruptionBudget:
           minAvailable: 1
 
-        # Run multiple replicas for high availability
-        replicaCount: 2
+        # Horizontal pod autoscaler for high availability and traffic spikes
+        hpaSpec:
+          minReplicas: 2
+          maxReplicas: 5
+          metrics:
+          - type: Resource
+            resource:
+              name: cpu
+              target:
+                type: Utilization
+                averageUtilization: 80
 
         # Spread replicas across nodes for resilience
         affinity:
@@ -246,10 +255,7 @@ spec:
             cpu: 500m
             memory: 512Mi
 
-        # Multiple replicas for high availability
-        replicaCount: 2
-
-        # Horizontal pod autoscaler for handling traffic spikes
+        # Horizontal pod autoscaler for high availability and traffic spikes
         hpaSpec:
           minReplicas: 2
           maxReplicas: 5
@@ -257,7 +263,9 @@ spec:
           - type: Resource
             resource:
               name: cpu
-              targetAverageUtilization: 80
+              target:
+                type: Utilization
+                averageUtilization: 80
 ```
 
 ### Install the New Control Plane
@@ -268,21 +276,21 @@ Install the new control plane revision using the IstioOperator manifest:
 # Install the new Istio revision using istioctl
 # The --revision flag ensures this creates a new revision instead of upgrading
 # This command is non-disruptive and runs alongside existing installation
-istioctl install -f istio-1-20-0.yaml --revision=1-20-0 -y
+istioctl install -f istio-1-30-1.yaml --revision=1-30-1 -y
 
 # Alternative: Install using Helm for more control over the deployment
 # First, add the Istio Helm repository and update
 helm repo add istio https://istio-release.storage.googleapis.com/charts
 helm repo update
 
-# Install the base chart which includes CRDs
-# Skip this if you already have the CRDs from a previous installation
-helm install istio-base istio/base -n istio-system --set defaultRevision=1-20-0
+# Upgrade the shared base chart so CRDs and validation resources are current
+# Use helm install with --create-namespace only for a first-time Helm install
+helm upgrade istio-base istio/base -n istio-system
 
 # Install istiod with the revision label
 # This creates a separate istiod deployment with the revision suffix
-helm install istiod-1-20-0 istio/istiod -n istio-system \
-  --set revision=1-20-0 \
+helm install istiod-1-30-1 istio/istiod -n istio-system \
+  --set revision=1-30-1 \
   --set pilot.resources.requests.cpu=500m \
   --set pilot.resources.requests.memory=2Gi
 ```
@@ -299,15 +307,15 @@ kubectl get pods -n istio-system -l app=istiod
 # Expected output shows both versions running:
 # NAME                            READY   STATUS    RESTARTS   AGE
 # istiod-5f4f9b8c5-xxxxx          1/1     Running   0          30d
-# istiod-1-20-0-7c8b9d6f4-yyyyy   1/1     Running   0          2m
+# istiod-1-30-1-7c8b9d6f4-yyyyy   1/1     Running   0          2m
 
 # Verify the new revision is registered and healthy
 # This shows all available control plane revisions
 istioctl proxy-status
 
-# Check the new control plane can issue certificates
-# This validates mTLS functionality of the new control plane
-istioctl experimental wait --for=distribution --revision=1-20-0 --timeout=300s
+# Wait for the new istiod deployment to become available
+kubectl wait --for=condition=available deployment/istiod-1-30-1 \
+  -n istio-system --timeout=300s
 ```
 
 ## Step 3: Migrating the Data Plane
@@ -353,7 +361,7 @@ kubectl get namespace test-namespace --show-labels
 # Update the namespace to use the new revision
 # Remove the old injection label and add the new revision label
 # The istio.io/rev label tells Istio which control plane revision to use
-kubectl label namespace test-namespace istio-injection- istio.io/rev=1-20-0 --overwrite
+kubectl label namespace test-namespace istio-injection- istio.io/rev=1-30-1 --overwrite
 
 # Perform a rolling restart of all deployments in the namespace
 # This triggers new pods to be created with the updated sidecar
@@ -378,9 +386,9 @@ Thoroughly validate the migrated workloads before proceeding:
 # All proxies should show SYNCED status with the new revision
 istioctl proxy-status | grep test-namespace
 
-# Verify mTLS is working correctly between pods
-# This shows the TLS mode for connections to your service
-istioctl authn tls-check -n test-namespace
+# Verify the pod is in the mesh and review its traffic and mTLS policy
+istioctl x describe pod -n test-namespace \
+  "$(kubectl get pod -n test-namespace -l app=server -o jsonpath='{.items[0].metadata.name}')"
 
 # Run diagnostic analysis on the namespace
 # This identifies any configuration issues specific to the namespace
@@ -407,7 +415,7 @@ For production environments with many namespaces, use a script to automate the m
 # It includes validation steps and can be used for gradual rollout
 
 # Configuration variables
-NEW_REVISION="1-20-0"
+NEW_REVISION="1-30-1"
 TIMEOUT="300s"
 
 # Function to migrate a single namespace
@@ -509,39 +517,41 @@ cat <<EOF | kubectl apply -f -
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: istio-ingressgateway-1-20-0
+  name: istio-ingressgateway-1-30-1
   namespace: istio-system
 spec:
   replicas: 2
   selector:
     matchLabels:
       app: istio-ingressgateway
-      istio.io/rev: 1-20-0
+      istio: ingressgateway
   template:
     metadata:
+      annotations:
+        # Select the gateway injection template instead of the default sidecar template
+        inject.istio.io/templates: gateway
       labels:
         app: istio-ingressgateway
-        istio.io/rev: 1-20-0
-      annotations:
-        # This annotation triggers sidecar injection from the new revision
-        sidecar.istio.io/inject: "true"
+        istio: ingressgateway
+        istio.io/rev: 1-30-1
     spec:
       containers:
       - name: istio-proxy
-        image: docker.io/istio/proxyv2:1.20.0
+        image: auto
         ports:
         - containerPort: 8080
         - containerPort: 8443
 EOF
 
-# Gradually shift traffic to the new gateway using a Service update
-# This can be done by updating the service selector
-kubectl patch service istio-ingressgateway -n istio-system \
-  --type='json' \
-  -p='[{"op": "add", "path": "/spec/selector/istio.io~1rev", "value": "1-20-0"}]'
+# Verify both gateway versions are selected by the same Service
+kubectl get endpoints -n istio-system istio-ingressgateway \
+  -o "custom-columns=NAME:.metadata.name,PODS:.subsets[*].addresses[*].targetRef.name"
+
+# Gradually shift traffic by scaling the old and new gateway deployments
+kubectl scale deployment istio-ingressgateway-1-30-1 -n istio-system --replicas=2
 
 # Verify traffic is flowing through the new gateway
-kubectl logs -n istio-system -l app=istio-ingressgateway,istio.io/rev=1-20-0 --tail=50
+kubectl logs -n istio-system -l app=istio-ingressgateway,istio.io/rev=1-30-1 --tail=50
 ```
 
 ## Step 4: Validating the Upgrade
@@ -552,8 +562,8 @@ Comprehensive validation ensures the upgrade was successful before removing the 
 
 ```bash
 # 1. Verify all proxies are connected to the new control plane
-# The output should show all proxies synced with the 1-20-0 revision
-istioctl proxy-status | grep -v "1-20-0" | grep -c SYNCED
+# The output should show all proxies synced with the 1-30-1 revision
+istioctl proxy-status | grep -v "1-30-1" | grep -c SYNCED
 # Expected output: 0 (all proxies should be on the new revision)
 
 # 2. Check for configuration synchronization issues
@@ -564,9 +574,10 @@ istioctl proxy-status | grep -E "(STALE|NOT SENT)"
 # This checks for any configuration errors across all namespaces
 istioctl analyze --all-namespaces
 
-# 4. Verify mTLS is working mesh-wide
-# Check that all services have proper TLS configuration
-istioctl authn tls-check pod/$(kubectl get pods -n test-namespace -o jsonpath='{.items[0].metadata.name}') -n test-namespace
+# 4. Verify mTLS policy for a representative workload
+# Check that the pod is in the mesh and that Istio predicts mTLS correctly
+istioctl x describe pod -n test-namespace \
+  "$(kubectl get pods -n test-namespace -o jsonpath='{.items[0].metadata.name}')"
 
 # 5. Test cross-namespace communication
 # Ensure services can communicate across namespaces
@@ -655,11 +666,11 @@ After validating all workloads are running on the new control plane, remove the 
 ```bash
 # Ensure no proxies are still connected to the old control plane
 # This command should return empty or zero results
-istioctl proxy-status | grep -v "1-20-0" | grep -v "REVISION"
+istioctl proxy-status | grep -v "1-30-1" | grep -v "REVISION"
 
 # Double-check all namespaces are labeled with the new revision
 # Look for any namespaces still using istio-injection=enabled
-kubectl get namespaces -L istio-injection,istio.io/rev | grep -v "1-20-0"
+kubectl get namespaces -L istio-injection,istio.io/rev | grep -v "1-30-1"
 
 # Check for any webhooks still pointing to the old revision
 # The mutating webhook should reference the new revision
@@ -671,9 +682,13 @@ kubectl get mutatingwebhookconfigurations -l app=sidecar-injector
 Safely remove the old Istio control plane components:
 
 ```bash
-# If you installed with istioctl, remove the old revision
-# The --revision flag ensures only the old revision is removed
-istioctl uninstall --revision=default -y
+# If you installed the old control plane with a revision, remove that revision
+# The --revision flag ensures only the named old revision is removed
+istioctl uninstall --revision=1-29-1 -y
+
+# If the old control plane was non-revisioned, uninstall it using the
+# same profile or IstioOperator file that was used for the original install
+istioctl uninstall -f manifests/profiles/default.yaml -y
 
 # Alternative: If you installed with Helm, remove the old release
 helm uninstall istiod -n istio-system
@@ -681,13 +696,8 @@ helm uninstall istiod -n istio-system
 # Remove old gateway if deployed separately
 kubectl delete deployment istio-ingressgateway -n istio-system
 
-# Clean up any orphaned resources from the old installation
-kubectl delete configmap istio -n istio-system
-kubectl delete configmap istio-sidecar-injector -n istio-system
-
-# Remove old webhooks
-kubectl delete mutatingwebhookconfiguration istio-sidecar-injector
-kubectl delete validatingwebhookconfiguration istiod-default-validator
+# Check for leftover old-revision webhooks before deleting anything manually
+kubectl get mutatingwebhookconfiguration,validatingwebhookconfiguration | grep istio
 ```
 
 ### Set the New Revision as Default
@@ -697,7 +707,7 @@ Configure the new revision as the default for future deployments:
 ```bash
 # Tag the new revision as the default
 # This allows using istio-injection=enabled label again
-istioctl tag set default --revision 1-20-0 --overwrite
+istioctl tag set default --revision 1-30-1 --overwrite
 
 # Verify the default tag is set correctly
 istioctl tag list
@@ -774,7 +784,7 @@ For a complete rollback of all namespaces:
 # This script reverts all namespaces to the original control plane
 
 OLD_REVISION="default"  # or your previous revision label
-NEW_REVISION="1-20-0"
+NEW_REVISION="1-30-1"
 
 echo "Starting Istio rollback from $NEW_REVISION to $OLD_REVISION"
 echo "=============================================="
@@ -857,10 +867,10 @@ If new pods are not being injected with the new sidecar version:
 kubectl get namespace your-namespace --show-labels
 
 # Verify the mutating webhook is configured correctly
-kubectl get mutatingwebhookconfigurations istio-sidecar-injector-1-20-0 -o yaml
+kubectl get mutatingwebhookconfigurations istio-sidecar-injector-1-30-1 -o yaml
 
 # Check for admission webhook errors
-kubectl logs -n istio-system deploy/istiod-1-20-0 | grep -i "injection"
+kubectl logs -n istio-system deploy/istiod-1-30-1 | grep -i "injection"
 
 # Manually verify injection by creating a test pod
 kubectl run test-pod --image=nginx --restart=Never -n your-namespace
@@ -873,11 +883,11 @@ If proxies show STALE or NOT SENT status:
 
 ```bash
 # Check control plane logs for sync errors
-kubectl logs -n istio-system deploy/istiod-1-20-0 | grep -i error
+kubectl logs -n istio-system deploy/istiod-1-30-1 | grep -i error
 
 # Verify network connectivity between proxy and control plane
 kubectl exec -n your-namespace deploy/your-app -c istio-proxy -- \
-  curl -s istiod-1-20-0.istio-system.svc:15012/debug/connections
+  curl -s istiod-1-30-1.istio-system.svc:15012/debug/connections
 
 # Check for certificate issues
 istioctl proxy-config secret -n your-namespace deploy/your-app
@@ -891,8 +901,8 @@ kubectl rollout restart deployment/your-app -n your-namespace
 If services cannot communicate after migration:
 
 ```bash
-# Check mTLS status between services
-istioctl authn tls-check pod/client-pod.namespace pod/server-pod.namespace
+# Check mTLS status for the affected server pod
+istioctl x describe pod server-pod -n your-namespace
 
 # Verify PeerAuthentication policies are compatible
 kubectl get peerauthentication -A
@@ -922,15 +932,15 @@ If external traffic is not reaching services:
 istioctl analyze -n istio-system
 
 # Verify gateway is listening on the correct ports
-kubectl exec -n istio-system deploy/istio-ingressgateway-1-20-0 -c istio-proxy -- \
+kubectl exec -n istio-system deploy/istio-ingressgateway-1-30-1 -c istio-proxy -- \
   netstat -tlnp
 
 # Check gateway logs for routing errors
-kubectl logs -n istio-system deploy/istio-ingressgateway-1-20-0 --tail=100
+kubectl logs -n istio-system deploy/istio-ingressgateway-1-30-1 --tail=100
 
 # Verify the gateway configuration is synchronized
-istioctl proxy-config listeners -n istio-system deploy/istio-ingressgateway-1-20-0
-istioctl proxy-config routes -n istio-system deploy/istio-ingressgateway-1-20-0
+istioctl proxy-config listeners -n istio-system deploy/istio-ingressgateway-1-30-1
+istioctl proxy-config routes -n istio-system deploy/istio-ingressgateway-1-30-1
 ```
 
 ## Conclusion
