@@ -107,11 +107,10 @@ CMD ["node", "server.js"]
 Auto Test runs tests based on your project type. For Node.js projects, it runs `npm test`.
 
 ```yaml
-# Customize test command
+# Auto Test is presence-based: defining TEST_DISABLED (with any value)
+# skips the test job, so you can run tests in your own job instead.
 variables:
-  TEST_DISABLED: "false"
-  # Custom test command for specific frameworks
-  AUTO_DEVOPS_TEST_SCRIPT: "npm run test:ci"
+  TEST_DISABLED: "true"
 ```
 
 ### Auto Code Quality
@@ -121,9 +120,9 @@ Auto Code Quality analyzes your code for maintainability issues using Code Clima
 ```yaml
 # Configure code quality
 variables:
+  # Set to "true" to skip the code_quality job
   CODE_QUALITY_DISABLED: "false"
-  # Exclude certain paths
-  CODE_QUALITY_EXCLUDE_PATHS: "node_modules,vendor,spec"
+  # Exclude paths via a .codeclimate.yml file (exclude_patterns), not a variable
 ```
 
 ### Auto SAST (Static Application Security Testing)
@@ -173,17 +172,13 @@ variables:
 
   # Enable canary deployments
   CANARY_ENABLED: "true"
-  CANARY_WEIGHT: 25
+  CANARY_PRODUCTION_REPLICAS: 1
 
-  # Resource limits
-  KUBERNETES_MEMORY_LIMIT: 512Mi
-  KUBERNETES_MEMORY_REQUEST: 256Mi
-  KUBERNETES_CPU_LIMIT: "1"
-  KUBERNETES_CPU_REQUEST: "100m"
+  # Resource requests/limits are set via Helm values, for example a
+  # .gitlab/auto-deploy-values.yaml file committed to your repository.
 
   # Ingress configuration
   KUBE_INGRESS_BASE_DOMAIN: apps.example.com
-  AUTO_DEVOPS_DOMAIN: apps.example.com
 ```
 
 ### Environment-Specific Configuration
@@ -200,13 +195,11 @@ variables:
 production:
   variables:
     REPLICAS: $PRODUCTION_REPLICAS
-    KUBERNETES_MEMORY_LIMIT: 1Gi
 
 # Override for staging
 staging:
   variables:
     REPLICAS: $STAGING_REPLICAS
-    KUBERNETES_MEMORY_LIMIT: 512Mi
 ```
 
 ## Customizing Auto DevOps
@@ -243,11 +236,10 @@ Auto DevOps automatically creates review apps for merge requests.
 
 ```yaml
 # Review app configuration
+# REVIEW_DISABLED is presence-based: define it (with any value) to skip
+# review apps. Leave it unset to keep them enabled (the default).
 variables:
-  REVIEW_DISABLED: "false"
-
-  # Auto-stop review apps after merge
-  REVIEW_APP_AUTO_STOP_IN: "1 week"
+  REVIEW_DISABLED: "true"
 ```
 
 Review apps are deployed to URLs like `https://branch-name.apps.example.com`.
@@ -261,25 +253,13 @@ Auto DevOps supports incremental rollouts to gradually shift traffic to new vers
 variables:
   INCREMENTAL_ROLLOUT_MODE: timed
   ROLLOUT_RESOURCE_TYPE: deployment
-
-  # Rollout timing
-  INCREMENTAL_ROLLOUT_INTERVAL: 60
 ```
 
-Rollout modes include manual, which requires manual promotion at each step, and timed, which automatically progresses after the interval.
+Rollout modes include manual, which requires manual promotion at each step, and timed, which automatically progresses after a pause (5 minutes by default) between steps.
 
 ## Monitoring Integration
 
-Auto DevOps integrates with Prometheus for monitoring.
-
-```yaml
-# Enable monitoring
-variables:
-  AUTO_DEVOPS_MODSECURITY_SEC_RULE_ENGINE: "On"
-
-  # Prometheus metrics
-  PROMETHEUS_METRICS_ENABLED: "true"
-```
+Auto DevOps no longer bundles an in-cluster Prometheus or a ModSecurity WAF; the GitLab-managed cluster applications that once provided them have been removed. To monitor Auto DevOps deployments, run your own Prometheus (or other monitoring stack) and configure it to scrape your application's metrics.
 
 ## Complete Custom Auto DevOps Configuration
 
@@ -292,7 +272,6 @@ include:
 
 variables:
   # Application settings
-  AUTO_DEVOPS_DOMAIN: apps.example.com
   KUBE_INGRESS_BASE_DOMAIN: apps.example.com
 
   # Build settings
@@ -300,8 +279,6 @@ variables:
 
   # Deployment settings
   REPLICAS: 3
-  KUBERNETES_MEMORY_LIMIT: 512Mi
-  KUBERNETES_MEMORY_REQUEST: 256Mi
 
   # Feature flags
   STAGING_ENABLED: "true"
@@ -312,10 +289,6 @@ variables:
   SAST_DISABLED: "false"
   DEPENDENCY_SCANNING_DISABLED: "false"
   CONTAINER_SCANNING_DISABLED: "false"
-
-  # Review apps
-  REVIEW_DISABLED: "false"
-  REVIEW_APP_AUTO_STOP_IN: "3 days"
 
 # Custom pre-build validation
 validate:
