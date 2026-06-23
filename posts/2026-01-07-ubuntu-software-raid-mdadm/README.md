@@ -286,7 +286,7 @@ RAID 10 combines mirroring and striping for excellent performance and redundancy
 # Create a RAID 10 array with four disks
 # --level=10: Specifies RAID 10 (mirrored stripes)
 # --raid-devices=4: Creates 2 mirrored pairs, then stripes across them
-# --layout=f2: far layout with 2 copies (alternatives: n2 for near, o2 for offset)
+# --layout=n2: near layout with 2 copies (alternatives: f2 for far, o2 for offset)
 sudo mdadm --create /dev/md10 \
     --level=10 \
     --raid-devices=4 \
@@ -459,8 +459,8 @@ sudo nano /etc/mdadm/mdadm.conf
 sudo sed -i 's/^#MAILADDR.*/MAILADDR admin@example.com/' /etc/mdadm/mdadm.conf
 
 # Restart the mdadm monitor service to apply changes
-sudo systemctl restart mdadm-monitor.service
-sudo systemctl enable mdadm-monitor.service
+sudo systemctl restart mdmonitor.service
+sudo systemctl enable mdmonitor.service
 
 # Test the email notification system
 # This sends a test email to verify configuration
@@ -529,7 +529,7 @@ sudo mdadm --detail /dev/md0
 # Check system logs for RAID-related errors
 # Look for I/O errors or device failures
 sudo dmesg | grep -i "md\|raid\|sdb\|sdc"
-sudo journalctl -u mdadm-monitor --since "1 hour ago"
+sudo journalctl -u mdmonitor --since "1 hour ago"
 ```
 
 ### Removing a Failed Disk
@@ -829,5 +829,5 @@ Remember that while RAID significantly improves availability, it should always b
 
 - [mdadm Manual Page](https://linux.die.net/man/8/mdadm)
 - [Linux RAID Wiki](https://raid.wiki.kernel.org/)
-- [Ubuntu Server Guide - Software RAID](https://ubuntu.com/server/docs/device-mapper-multipathing-introduction)
+- [Ubuntu Community Help Wiki - Software RAID](https://help.ubuntu.com/community/Installation/SoftwareRAID)
 - [Red Hat RAID Configuration Guide](https://access.redhat.com/documentation/en-us/red_hat_enterprise_linux/8/html/managing_storage_devices/managing-raid_managing-storage-devices)
