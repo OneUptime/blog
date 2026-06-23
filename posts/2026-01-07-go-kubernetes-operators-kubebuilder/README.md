@@ -8,7 +8,7 @@ Description: Build Kubernetes operators in Go using Kubebuilder with Custom Reso
 
 ---
 
-Kubernetes operators extend the platform's capabilities by automating complex application lifecycle management. They encode operational knowledge into software, enabling Kubernetes to manage stateful applications, databases, and custom infrastructure components. In this comprehensive guide, we will explore how to build Kubernetes operators in Go using Kubebuilder, the official SDK for building operators.
+Kubernetes operators extend the platform's capabilities by automating complex application lifecycle management. They encode operational knowledge into software, enabling Kubernetes to manage stateful applications, databases, and custom infrastructure components. In this comprehensive guide, we will explore how to build Kubernetes operators in Go using Kubebuilder, a framework for building Kubernetes APIs and controllers.
 
 ## Understanding the Operator Pattern
 
@@ -35,11 +35,11 @@ Operators are particularly valuable when you need to:
 
 Before we begin, ensure you have the following installed:
 
-- Go 1.21 or later
+- Go 1.24.6 or later
 - Docker (for building container images)
 - kubectl configured to access a Kubernetes cluster
 - kind or minikube for local development
-- Kubebuilder v3.x or later
+- Kubebuilder v4.x or later
 
 ### Installing Kubebuilder
 
@@ -94,7 +94,8 @@ webapp-operator/
 ├── go.sum
 ├── hack/
 │   └── boilerplate.go.txt
-└── main.go
+└── cmd/
+    └── main.go
 ```
 
 ### Create an API (CRD and Controller)
@@ -321,6 +322,7 @@ package controller
 import (
     "context"
     "fmt"
+    "reflect"
     "time"
 
     appsv1 "k8s.io/api/apps/v1"
@@ -503,8 +505,11 @@ func (r *WebAppReconciler) buildDeployment(webapp *appsv1alpha1.WebApp) *appsv1.
         })
     }
 
-    // Configure resource limits if specified
-    if webapp.Spec.Resources.CPULimit != "" || webapp.Spec.Resources.MemoryLimit != "" {
+    // Configure resource limits and requests if specified
+    if webapp.Spec.Resources.CPULimit != "" ||
+        webapp.Spec.Resources.MemoryLimit != "" ||
+        webapp.Spec.Resources.CPURequest != "" ||
+        webapp.Spec.Resources.MemoryRequest != "" {
         container.Resources = corev1.ResourceRequirements{
             Limits:   corev1.ResourceList{},
             Requests: corev1.ResourceList{},
@@ -605,10 +610,10 @@ func (r *WebAppReconciler) reconcileService(ctx context.Context, webapp *appsv1a
     }
 
     // Update Service if port changed
-    if existing.Spec.Ports[0].Port != webapp.Spec.Port {
+    if len(existing.Spec.Ports) == 0 || existing.Spec.Ports[0].Port != webapp.Spec.Port {
         logger.Info("Updating Service", "name", service.Name)
-        existing.Spec.Ports[0].Port = webapp.Spec.Port
-        existing.Spec.Ports[0].TargetPort = intstr.FromInt(int(webapp.Spec.Port))
+        existing.Spec.Ports = service.Spec.Ports
+        existing.Spec.Selector = service.Spec.Selector
         if err := r.Update(ctx, existing); err != nil {
             return fmt.Errorf("failed to update service: %w", err)
         }
@@ -645,21 +650,38 @@ func (r *WebAppReconciler) buildService(webapp *appsv1alpha1.WebApp) *corev1.Ser
 
 // needsUpdate checks if the Deployment needs to be updated
 func needsUpdate(existing, desired *appsv1.Deployment) bool {
-    // Compare replicas
-    if *existing.Spec.Replicas != *desired.Spec.Replicas {
+    existingReplicas := int32(1)
+    if existing.Spec.Replicas != nil {
+        existingReplicas = *existing.Spec.Replicas
+    }
+    desiredReplicas := int32(1)
+    if desired.Spec.Replicas != nil {
+        desiredReplicas = *desired.Spec.Replicas
+    }
+    if existingReplicas != desiredReplicas {
         return true
     }
 
-    // Compare container image
-    if len(existing.Spec.Template.Spec.Containers) > 0 &&
-        len(desired.Spec.Template.Spec.Containers) > 0 {
-        if existing.Spec.Template.Spec.Containers[0].Image !=
-            desired.Spec.Template.Spec.Containers[0].Image {
-            return true
-        }
+    if !reflect.DeepEqual(existing.Spec.Template.Labels, desired.Spec.Template.Labels) {
+        return true
     }
 
-    return false
+    if len(existing.Spec.Template.Spec.Containers) != len(desired.Spec.Template.Spec.Containers) {
+        return true
+    }
+    if len(existing.Spec.Template.Spec.Containers) == 0 {
+        return false
+    }
+
+    existingContainer := existing.Spec.Template.Spec.Containers[0]
+    desiredContainer := desired.Spec.Template.Spec.Containers[0]
+
+    return existingContainer.Image != desiredContainer.Image ||
+        !reflect.DeepEqual(existingContainer.Ports, desiredContainer.Ports) ||
+        !reflect.DeepEqual(existingContainer.Env, desiredContainer.Env) ||
+        !reflect.DeepEqual(existingContainer.Resources, desiredContainer.Resources) ||
+        !reflect.DeepEqual(existingContainer.LivenessProbe, desiredContainer.LivenessProbe) ||
+        !reflect.DeepEqual(existingContainer.ReadinessProbe, desiredContainer.ReadinessProbe)
 }
 ```
 
@@ -852,7 +874,7 @@ func (r *WebAppReconciler) handleSuspend(ctx context.Context, webapp *appsv1alph
     }
 
     // Scale to zero if deployment exists
-    if err == nil && *deployment.Spec.Replicas != 0 {
+    if err == nil && (deployment.Spec.Replicas == nil || *deployment.Spec.Replicas != 0) {
         zero := int32(0)
         deployment.Spec.Replicas = &zero
         if err := r.Update(ctx, deployment); err != nil {
@@ -861,7 +883,9 @@ func (r *WebAppReconciler) handleSuspend(ctx context.Context, webapp *appsv1alph
     }
 
     // Update status
-    r.updateStatus(ctx, webapp, appsv1alpha1.PhaseSuspended, "WebApp is suspended")
+    if err := r.updateStatus(ctx, webapp, appsv1alpha1.PhaseSuspended, "WebApp is suspended"); err != nil {
+        return ctrl.Result{}, err
+    }
 
     return ctrl.Result{RequeueAfter: 60 * time.Second}, nil
 }
@@ -889,7 +913,7 @@ func (r *WebAppReconciler) SetupWithManager(mgr ctrl.Manager) error {
 
 Testing is critical for operator reliability. Kubebuilder provides integration with envtest for testing against a real API server.
 
-### Unit Testing the Controller
+### Integration Testing the Controller
 
 Create `internal/controller/webapp_controller_test.go`:
 
@@ -984,14 +1008,25 @@ var _ = Describe("WebApp Controller", func() {
     Context("When updating a WebApp", func() {
         It("Should update the Deployment replicas", func() {
             ctx := context.Background()
+            name := "test-webapp-update"
 
             webappLookupKey := types.NamespacedName{
-                Name:      WebAppName,
+                Name:      name,
                 Namespace: WebAppNamespace,
             }
-            webapp := &appsv1alpha1.WebApp{}
+            webapp := &appsv1alpha1.WebApp{
+                ObjectMeta: metav1.ObjectMeta{
+                    Name:      name,
+                    Namespace: WebAppNamespace,
+                },
+                Spec: appsv1alpha1.WebAppSpec{
+                    Image:    "nginx:latest",
+                    Replicas: 2,
+                    Port:     8080,
+                },
+            }
 
-            Expect(k8sClient.Get(ctx, webappLookupKey, webapp)).Should(Succeed())
+            Expect(k8sClient.Create(ctx, webapp)).Should(Succeed())
 
             // Update replicas
             webapp.Spec.Replicas = 5
@@ -999,7 +1034,7 @@ var _ = Describe("WebApp Controller", func() {
 
             // Verify Deployment was updated
             deploymentLookupKey := types.NamespacedName{
-                Name:      WebAppName,
+                Name:      name,
                 Namespace: WebAppNamespace,
             }
 
@@ -1017,14 +1052,25 @@ var _ = Describe("WebApp Controller", func() {
     Context("When suspending a WebApp", func() {
         It("Should scale down the Deployment to zero", func() {
             ctx := context.Background()
+            name := "test-webapp-suspend"
 
             webappLookupKey := types.NamespacedName{
-                Name:      WebAppName,
+                Name:      name,
                 Namespace: WebAppNamespace,
             }
-            webapp := &appsv1alpha1.WebApp{}
+            webapp := &appsv1alpha1.WebApp{
+                ObjectMeta: metav1.ObjectMeta{
+                    Name:      name,
+                    Namespace: WebAppNamespace,
+                },
+                Spec: appsv1alpha1.WebAppSpec{
+                    Image:    "nginx:latest",
+                    Replicas: 2,
+                    Port:     8080,
+                },
+            }
 
-            Expect(k8sClient.Get(ctx, webappLookupKey, webapp)).Should(Succeed())
+            Expect(k8sClient.Create(ctx, webapp)).Should(Succeed())
 
             // Suspend the WebApp
             webapp.Spec.Suspend = true
@@ -1032,7 +1078,7 @@ var _ = Describe("WebApp Controller", func() {
 
             // Verify Deployment was scaled to zero
             deploymentLookupKey := types.NamespacedName{
-                Name:      WebAppName,
+                Name:      name,
                 Namespace: WebAppNamespace,
             }
 
@@ -1060,14 +1106,25 @@ var _ = Describe("WebApp Controller", func() {
     Context("When deleting a WebApp", func() {
         It("Should clean up owned resources", func() {
             ctx := context.Background()
+            name := "test-webapp-delete"
 
             webappLookupKey := types.NamespacedName{
-                Name:      WebAppName,
+                Name:      name,
                 Namespace: WebAppNamespace,
             }
-            webapp := &appsv1alpha1.WebApp{}
+            webapp := &appsv1alpha1.WebApp{
+                ObjectMeta: metav1.ObjectMeta{
+                    Name:      name,
+                    Namespace: WebAppNamespace,
+                },
+                Spec: appsv1alpha1.WebAppSpec{
+                    Image:    "nginx:latest",
+                    Replicas: 2,
+                    Port:     8080,
+                },
+            }
 
-            Expect(k8sClient.Get(ctx, webappLookupKey, webapp)).Should(Succeed())
+            Expect(k8sClient.Create(ctx, webapp)).Should(Succeed())
 
             // Delete the WebApp
             Expect(k8sClient.Delete(ctx, webapp)).Should(Succeed())
@@ -1080,7 +1137,7 @@ var _ = Describe("WebApp Controller", func() {
 
             // Verify Deployment is deleted (garbage collected)
             deploymentLookupKey := types.NamespacedName{
-                Name:      WebAppName,
+                Name:      name,
                 Namespace: WebAppNamespace,
             }
 
