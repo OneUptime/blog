@@ -73,7 +73,7 @@ func main() {
     // Return the buffer to the pool
     bufferPool.Put(buf)
 
-    // Get the buffer again (should reuse the same one)
+    // Get the buffer again (may reuse the same one)
     buf2 := bufferPool.Get().(*bytes.Buffer)
     buf2.WriteString("Reused buffer!")
     fmt.Println(buf2.String())
@@ -234,11 +234,11 @@ func main() {
 
 ## Custom Pool Implementations with Size Limits
 
-While `sync.Pool` is excellent for many use cases, it doesn't provide size limits. Here's how to build custom pools with bounded sizes.
+While `sync.Pool` is excellent for many use cases, it doesn't provide size limits. Here's how to build custom pools with bounded idle capacity.
 
 ### Bounded Pool with Channel
 
-This implementation uses a buffered channel to create a pool with a maximum size:
+This implementation uses a buffered channel to limit how many idle objects are retained:
 
 ```go
 package main
@@ -250,7 +250,7 @@ import (
     "time"
 )
 
-// BoundedPool provides a fixed-size object pool
+// BoundedPool limits how many idle objects are retained
 type BoundedPool[T any] struct {
     pool     chan T
     factory  func() T
@@ -261,7 +261,7 @@ type BoundedPool[T any] struct {
     returned int64
 }
 
-// NewBoundedPool creates a pool with a maximum size
+// NewBoundedPool creates a pool with a maximum idle size
 func NewBoundedPool[T any](maxSize int, factory func() T, reset func(T)) *BoundedPool[T] {
     return &BoundedPool[T]{
         pool:    make(chan T, maxSize),
@@ -335,7 +335,7 @@ type Buffer struct {
 func main() {
     // Create a bounded pool of buffers
     pool := NewBoundedPool(
-        10, // Maximum 10 buffers in pool
+        10, // Maximum 10 idle buffers retained
         func() *Buffer {
             fmt.Println("Creating new buffer")
             return &Buffer{Data: make([]byte, 0, 4096)}
@@ -388,6 +388,11 @@ import (
 type poolItem[T any] struct {
     value     T
     createdAt time.Time
+}
+
+// Buffer is a simple buffer type for demonstration
+type Buffer struct {
+    Data []byte
 }
 
 // ExpiringPool is a pool that expires idle objects
@@ -939,6 +944,11 @@ func (p *ConnectionPool) Get(ctx context.Context) (*Connection, error) {
             // Someone returned a connection, try again
             return p.Get(ctx)
         case <-ctx.Done():
+            p.mu.Lock()
+            if p.waitCount > 0 {
+                p.waitCount--
+            }
+            p.mu.Unlock()
             return nil, ctx.Err()
         }
     }
@@ -1790,8 +1800,8 @@ Pitfall 4: Relying on sync.Pool for resource limiting.
 // BAD: sync.Pool doesn't guarantee limits
 // Objects may be cleared during GC
 
-// GOOD: Use bounded pool for resource limiting
-pool := NewBoundedPool(maxSize, factory, reset)
+// GOOD: Use a pool or semaphore that enforces active resource limits
+pool := NewConnectionPool(factory, PoolConfig{MaxOpen: maxSize, MaxIdle: maxIdle})
 ```
 
 ## Conclusion
