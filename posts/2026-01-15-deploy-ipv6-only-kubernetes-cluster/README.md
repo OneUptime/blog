@@ -79,10 +79,6 @@ net.ipv6.conf.default.disable_ipv6 = 0
 # Required for some network configurations
 net.ipv6.conf.all.accept_ra = 2
 net.ipv6.conf.default.accept_ra = 2
-
-# Disable IPv4 (optional - only for pure IPv6-only clusters)
-net.ipv4.conf.all.disable_ipv4 = 1
-net.ipv4.conf.default.disable_ipv4 = 1
 EOF
 
 # Apply the settings immediately
@@ -450,7 +446,7 @@ Install Cilium using Helm or the CLI.
 
 ```bash
 # Install Cilium with IPv6 configuration
-cilium install --version 1.15.0 --helm-set-file values.yaml=cilium-ipv6-values.yaml
+cilium install --version 1.15.0 --values cilium-ipv6-values.yaml
 
 # Wait for Cilium to be ready
 cilium status --wait
