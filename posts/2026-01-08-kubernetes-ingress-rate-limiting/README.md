@@ -797,7 +797,7 @@ metadata:
   name: ip-whitelist
   namespace: default
 spec:
-  ipWhiteList:
+  ipAllowList:
     sourceRange:
       - "10.0.0.0/8"
       - "172.16.0.0/12"
@@ -811,7 +811,7 @@ metadata:
   name: ip-whitelist-admin
   namespace: default
 spec:
-  ipWhiteList:
+  ipAllowList:
     sourceRange:
       - "203.0.113.50/32"
       - "198.51.100.0/24"
