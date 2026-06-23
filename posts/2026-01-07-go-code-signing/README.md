@@ -18,7 +18,7 @@ Code signing uses asymmetric cryptography to create a digital signature that pro
 
 ### Why Code Signing Matters for Go Binaries
 
-Go produces statically linked binaries that are easy to distribute but also easy to tamper with. Without verification mechanisms, users cannot distinguish between legitimate releases and malicious ones. Code signing addresses several critical concerns:
+Go can produce statically linked binaries that are easy to distribute but also easy to tamper with. Without verification mechanisms, users cannot distinguish between legitimate releases and malicious ones. Code signing addresses several critical concerns:
 
 - **Authenticity**: Confirms the binary comes from the claimed source
 - **Integrity**: Detects any modifications after signing
@@ -60,8 +60,8 @@ gpg --full-generate-key
 gpg --list-secret-keys --keyid-format LONG
 
 # Example output:
-# sec   rsa4096/ABC123DEF456GHI7 2026-01-07 [SC] [expires: 2028-01-07]
-#       ABCDEF1234567890ABCDEF1234567890ABC123DE
+# sec   rsa4096/ABC123DEF4567890 2026-01-07 [SC] [expires: 2028-01-07]
+#       111122223333444455556666ABC123DEF4567890
 # uid                 [ultimate] Project Release Signing <releases@example.com>
 ```
 
@@ -96,13 +96,13 @@ Users need your public key to verify signatures. Publish it on key servers and y
 gpg --armor --export releases@example.com > release-signing-key.asc
 
 # Upload to key servers for discovery
-gpg --keyserver keys.openpgp.org --send-keys ABC123DEF456GHI7
+gpg --keyserver keys.openpgp.org --send-keys ABC123DEF4567890
 
 # Users import your key before verification
 gpg --import release-signing-key.asc
 
 # Or fetch from keyserver
-gpg --keyserver keys.openpgp.org --recv-keys ABC123DEF456GHI7
+gpg --keyserver keys.openpgp.org --recv-keys ABC123DEF4567890
 
 # Verify the signature against the binary
 # A successful verification shows "Good signature from..."
@@ -160,18 +160,15 @@ When you sign with cosign, it authenticates you via OIDC, requests a certificate
 
 ```bash
 # Install cosign using Go
-go install github.com/sigstore/cosign/v2/cmd/cosign@latest
+go install github.com/sigstore/cosign/v3/cmd/cosign@latest
 
 # Alternatively, download a release binary
-# Verify the cosign binary itself using the bootstrap key
 curl -LO https://github.com/sigstore/cosign/releases/latest/download/cosign-linux-amd64
-curl -LO https://github.com/sigstore/cosign/releases/latest/download/cosign-linux-amd64.sig
-curl -LO https://github.com/sigstore/cosign/releases/latest/download/cosign-linux-amd64.pem
+curl -LO https://github.com/sigstore/cosign/releases/latest/download/cosign-linux-amd64.sigstore.json
 
 # Verify cosign installation
 cosign verify-blob \
-    --certificate cosign-linux-amd64.pem \
-    --signature cosign-linux-amd64.sig \
+    --bundle cosign-linux-amd64.sigstore.json \
     --certificate-identity keyless@projectsigstore.iam.gserviceaccount.com \
     --certificate-oidc-issuer https://accounts.google.com \
     cosign-linux-amd64
@@ -189,16 +186,14 @@ Keyless signing eliminates the need to manage private keys. Your identity (from 
 go build -o myapp ./cmd/myapp
 
 # Sign using keyless mode (opens browser for OIDC authentication)
-# This creates myapp.sig (signature) and myapp.pem (certificate)
-cosign sign-blob --output-signature myapp.sig \
-    --output-certificate myapp.pem \
+# This creates myapp.sigstore.json with the signature, certificate, and transparency log proof
+cosign sign-blob --bundle myapp.sigstore.json \
     myapp
 
 # For headless environments, use device flow
 # COSIGN_EXPERIMENTAL=1 is no longer needed in cosign 2.0+; keyless signing is stable
 cosign sign-blob \
-    --output-signature myapp.sig \
-    --output-certificate myapp.pem \
+    --bundle myapp.sigstore.json \
     --oidc-device-flow \
     myapp
 ```
@@ -211,16 +206,14 @@ Verification requires specifying the expected identity, providing defense agains
 # Verify a blob signed with keyless signing
 # Must specify the expected certificate identity and OIDC issuer
 cosign verify-blob \
-    --signature myapp.sig \
-    --certificate myapp.pem \
+    --bundle myapp.sigstore.json \
     --certificate-identity developer@example.com \
     --certificate-oidc-issuer https://accounts.google.com \
     myapp
 
 # For GitHub Actions workflows, the identity is the workflow file
 cosign verify-blob \
-    --signature myapp.sig \
-    --certificate myapp.pem \
+    --bundle myapp.sigstore.json \
     --certificate-identity https://github.com/org/repo/.github/workflows/release.yml@refs/tags/v1.2.3 \
     --certificate-oidc-issuer https://token.actions.githubusercontent.com \
     myapp
@@ -237,12 +230,12 @@ cosign generate-key-pair
 
 # Sign with your private key
 cosign sign-blob --key cosign.key \
-    --output-signature myapp.sig \
+    --bundle myapp.sigstore.json \
     myapp
 
 # Verify with the public key
 cosign verify-blob --key cosign.pub \
-    --signature myapp.sig \
+    --bundle myapp.sigstore.json \
     myapp
 
 # Store keys in cloud KMS for better security
@@ -251,7 +244,7 @@ cosign generate-key-pair --kms gcpkms://projects/myproject/locations/global/keyR
 
 # Sign using cloud KMS
 cosign sign-blob --key gcpkms://projects/myproject/locations/global/keyRings/myring/cryptoKeys/mykey \
-    --output-signature myapp.sig \
+    --bundle myapp.sigstore.json \
     myapp
 ```
 
@@ -292,7 +285,7 @@ jobs:
           go-version: '1.22'
 
       - name: Install cosign
-        uses: sigstore/cosign-installer@v3
+        uses: sigstore/cosign-installer@v4
 
       # Build binaries for multiple platforms
       - name: Build binaries
@@ -324,8 +317,7 @@ jobs:
           for binary in myapp-*; do
             echo "Signing ${binary}..."
             cosign sign-blob "${binary}" \
-              --output-signature "${binary}.sig" \
-              --output-certificate "${binary}.pem" \
+              --bundle "${binary}.sigstore.json" \
               --yes
 
             # Generate checksum
@@ -338,8 +330,7 @@ jobs:
         with:
           files: |
             dist/myapp-*
-            dist/*.sig
-            dist/*.pem
+            dist/*.sigstore.json
             dist/*.sha256
           generate_release_notes: true
 ```
@@ -460,17 +451,13 @@ sign:
     SIGSTORE_ID_TOKEN:
       aud: sigstore
   before_script:
-    - apk add --no-cache curl
-    - curl -LO https://github.com/sigstore/cosign/releases/latest/download/cosign-linux-amd64
-    - chmod +x cosign-linux-amd64
-    - mv cosign-linux-amd64 /usr/local/bin/cosign
+    - apk add --no-cache cosign
   script:
     - cd dist
     - |
       for binary in myapp-*; do
         cosign sign-blob "${binary}" \
-          --output-signature "${binary}.sig" \
-          --output-certificate "${binary}.pem" \
+          --bundle "${binary}.sigstore.json" \
           --yes
         sha256sum "${binary}" > "${binary}.sha256"
       done
@@ -483,8 +470,15 @@ sign:
 release:
   stage: release
   image: registry.gitlab.com/gitlab-org/release-cli:latest
+  needs:
+    - job: sign
+      artifacts: true
   script:
     - echo "Creating release for ${CI_COMMIT_TAG}"
+  artifacts:
+    paths:
+      - dist/
+    expire_in: 1 week
   release:
     tag_name: $CI_COMMIT_TAG
     description: "Release ${CI_COMMIT_TAG}"
@@ -492,8 +486,8 @@ release:
       links:
         - name: "Linux AMD64 Binary"
           url: "${CI_PROJECT_URL}/-/jobs/${CI_JOB_ID}/artifacts/file/dist/myapp-linux-amd64"
-        - name: "Linux AMD64 Signature"
-          url: "${CI_PROJECT_URL}/-/jobs/${CI_JOB_ID}/artifacts/file/dist/myapp-linux-amd64.sig"
+        - name: "Linux AMD64 Sigstore Bundle"
+          url: "${CI_PROJECT_URL}/-/jobs/${CI_JOB_ID}/artifacts/file/dist/myapp-linux-amd64.sigstore.json"
   rules:
     - if: $CI_COMMIT_TAG
 ```
@@ -529,18 +523,12 @@ if ! command -v cosign &> /dev/null; then
     exit 1
 fi
 
-# Check for signature and certificate files
-SIGNATURE="${BINARY}.sig"
-CERTIFICATE="${BINARY}.pem"
+# Check for Sigstore bundle file
+BUNDLE="${BINARY}.sigstore.json"
 CHECKSUM="${BINARY}.sha256"
 
-if [[ ! -f "${SIGNATURE}" ]]; then
-    echo -e "${RED}Error: Signature file not found: ${SIGNATURE}${NC}"
-    exit 1
-fi
-
-if [[ ! -f "${CERTIFICATE}" ]]; then
-    echo -e "${RED}Error: Certificate file not found: ${CERTIFICATE}${NC}"
+if [[ ! -f "${BUNDLE}" ]]; then
+    echo -e "${RED}Error: Sigstore bundle file not found: ${BUNDLE}${NC}"
     exit 1
 fi
 
@@ -558,17 +546,11 @@ fi
 # Verify Sigstore signature
 echo "Verifying cryptographic signature..."
 if cosign verify-blob \
-    --signature "${SIGNATURE}" \
-    --certificate "${CERTIFICATE}" \
+    --bundle "${BUNDLE}" \
     --certificate-identity-regexp "${EXPECTED_IDENTITY}" \
     --certificate-oidc-issuer "${EXPECTED_ISSUER}" \
     "${BINARY}"; then
     echo -e "${GREEN}Signature verification passed${NC}"
-
-    # Display certificate information
-    echo ""
-    echo "Certificate details:"
-    openssl x509 -in "${CERTIFICATE}" -noout -text | grep -A1 "Subject:"
 else
     echo -e "${RED}Signature verification failed!${NC}"
     echo "The binary may have been tampered with or signed by an unauthorized party."
@@ -589,7 +571,7 @@ set -euo pipefail
 
 BINARY="${1:?Usage: verify-gpg.sh <binary-file>}"
 KEY_URL="${KEY_URL:-https://example.com/release-signing-key.asc}"
-KEY_ID="${KEY_ID:-ABC123DEF456GHI7}"
+KEY_ID="${KEY_ID:-ABC123DEF4567890}"
 
 echo "Verifying ${BINARY} with GPG..."
 
@@ -630,16 +612,12 @@ Provide a Go tool for programmatic verification in user applications.
 package verify
 
 import (
-	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
 	"io"
 	"os"
-
-	"github.com/sigstore/cosign/v2/pkg/cosign"
-	"github.com/sigstore/sigstore/pkg/fulcioroots"
-	"github.com/sigstore/sigstore/pkg/signature"
+	"os/exec"
 )
 
 // VerificationResult contains the outcome of signature verification
@@ -650,50 +628,20 @@ type VerificationResult struct {
 	Error       error
 }
 
-// VerifyBinary verifies a binary against its Sigstore signature
-func VerifyBinary(binaryPath, sigPath, certPath string, expectedIdentity, expectedIssuer string) (*VerificationResult, error) {
-	// Read the binary
-	binaryData, err := os.ReadFile(binaryPath)
+// VerifyBinary verifies a binary against its Sigstore bundle using cosign.
+func VerifyBinary(binaryPath, bundlePath, expectedIdentity, expectedIssuer string) (*VerificationResult, error) {
+	cmd := exec.Command(
+		"cosign", "verify-blob", binaryPath,
+		"--bundle", bundlePath,
+		"--certificate-identity", expectedIdentity,
+		"--certificate-oidc-issuer", expectedIssuer,
+	)
+	output, err := cmd.CombinedOutput()
 	if err != nil {
-		return nil, fmt.Errorf("failed to read binary: %w", err)
-	}
-
-	// Read the signature
-	sigData, err := os.ReadFile(sigPath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read signature: %w", err)
-	}
-
-	// Read the certificate
-	certData, err := os.ReadFile(certPath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read certificate: %w", err)
-	}
-
-	// Get Fulcio roots for verification
-	ctx := context.Background()
-	roots, err := fulcioroots.Get()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get Fulcio roots: %w", err)
-	}
-
-	// Configure verification options
-	checkOpts := &cosign.CheckOpts{
-		RootCerts:         roots,
-		CertIdentity:      expectedIdentity,
-		CertOidcIssuer:    expectedIssuer,
-	}
-
-	// Verify the signature
-	// This validates the certificate chain, signature, and identity claims
-	verifier, err := signature.LoadVerifierFromPEM(certData)
-	if err != nil {
-		return &VerificationResult{Valid: false, Error: err}, nil
-	}
-
-	err = verifier.VerifySignature(sigData, binaryData)
-	if err != nil {
-		return &VerificationResult{Valid: false, Error: err}, nil
+		return &VerificationResult{
+			Valid: false,
+			Error: fmt.Errorf("cosign verification failed: %w: %s", err, output),
+		}, nil
 	}
 
 	return &VerificationResult{
@@ -746,8 +694,7 @@ syft packages . --source-name myapp --source-version v1.2.3 \
 ```bash
 # Sign the SBOM along with the binary
 cosign sign-blob myapp.spdx.json \
-    --output-signature myapp.spdx.json.sig \
-    --output-certificate myapp.spdx.json.pem \
+    --bundle myapp.spdx.json.sigstore.json \
     --yes
 
 # Attach SBOM to container images (if applicable)
@@ -776,8 +723,7 @@ cosign sign --attachment sbom myregistry/myapp:v1.2.3
 
         # Sign the SBOM
         cosign sign-blob "${binary}.spdx.json" \
-          --output-signature "${binary}.spdx.json.sig" \
-          --output-certificate "${binary}.spdx.json.pem" \
+          --bundle "${binary}.spdx.json.sigstore.json" \
           --yes
       fi
     done
@@ -914,6 +860,7 @@ package main
 
 import (
 	"fmt"
+	"os"
 	"runtime/debug"
 )
 
@@ -959,6 +906,10 @@ func printVersionInfo() {
 			fmt.Printf("  %s %s\n", dep.Path, dep.Version)
 		}
 	}
+}
+
+func run() {
+	// Main application logic goes here.
 }
 ```
 
@@ -1033,9 +984,7 @@ jobs:
         run: |
           cd dist
           for binary in myapp-*; do
-            if [[ ! "${binary}" =~ \. ]]; then
-              syft packages "${binary}" -o spdx-json > "${binary}.spdx.json"
-            fi
+            syft packages "${binary}" -o spdx-json > "${binary}.spdx.json"
           done
 
       - name: Generate checksums
@@ -1064,7 +1013,7 @@ jobs:
           path: dist/
 
       - name: Install cosign
-        uses: sigstore/cosign-installer@v3
+        uses: sigstore/cosign-installer@v4
 
       - name: Sign all artifacts
         run: |
@@ -1072,11 +1021,10 @@ jobs:
 
           # Sign binaries
           for binary in myapp-*; do
-            if [[ ! "${binary}" =~ \.(sig|pem|sha256|spdx\.json)$ ]]; then
+            if [[ ! "${binary}" =~ \.(sigstore\.json|sha256|spdx\.json)$ ]]; then
               echo "Signing ${binary}..."
               cosign sign-blob "${binary}" \
-                --output-signature "${binary}.sig" \
-                --output-certificate "${binary}.pem" \
+                --bundle "${binary}.sigstore.json" \
                 --yes
             fi
           done
@@ -1085,15 +1033,13 @@ jobs:
           for sbom in *.spdx.json; do
             echo "Signing ${sbom}..."
             cosign sign-blob "${sbom}" \
-              --output-signature "${sbom}.sig" \
-              --output-certificate "${sbom}.pem" \
+              --bundle "${sbom}.sigstore.json" \
               --yes
           done
 
           # Sign checksum file
           cosign sign-blob checksums.sha256 \
-            --output-signature checksums.sha256.sig \
-            --output-certificate checksums.sha256.pem \
+            --bundle checksums.sha256.sigstore.json \
             --yes
 
       - name: Upload signed artifacts
@@ -1126,16 +1072,15 @@ jobs:
 
             ```bash
             # Install cosign
-            go install github.com/sigstore/cosign/v2/cmd/cosign@latest
+            go install github.com/sigstore/cosign/v3/cmd/cosign@latest
 
-            # Download binary, signature, and certificate
+            # Download binary and Sigstore bundle
             # Then verify:
             cosign verify-blob myapp-linux-amd64 \
-              --signature myapp-linux-amd64.sig \
-              --certificate myapp-linux-amd64.pem \
+              --bundle myapp-linux-amd64.sigstore.json \
               --certificate-identity-regexp "https://github.com/${{ github.repository }}/.github/workflows/.*" \
               --certificate-oidc-issuer https://token.actions.githubusercontent.com
-            ```plaintext
+            ```
 
             ## Checksums
 
@@ -1151,7 +1096,7 @@ jobs:
       actions: read
       id-token: write
       contents: write
-    uses: slsa-framework/slsa-github-generator/.github/workflows/generator_generic_slsa3.yml@v1.9.0
+    uses: slsa-framework/slsa-github-generator/.github/workflows/generator_generic_slsa3.yml@v2.1.0
     with:
       base64-subjects: "${{ needs.build.outputs.hashes }}"
       upload-assets: true
@@ -1200,34 +1145,33 @@ fi
 
 Always provide clear documentation for users to verify your releases:
 
-```markdown
+````markdown
 # Verifying Releases
 
 ## Prerequisites
 
 Install cosign:
 ```bash
-go install github.com/sigstore/cosign/v2/cmd/cosign@latest
-```plaintext
+go install github.com/sigstore/cosign/v3/cmd/cosign@latest
+```
 
 ## Verification Steps
 
-1. Download the binary, signature (.sig), and certificate (.pem)
+1. Download the binary and Sigstore bundle (.sigstore.json)
 2. Run verification:
 
 ```bash
 cosign verify-blob myapp-linux-amd64 \
-    --signature myapp-linux-amd64.sig \
-    --certificate myapp-linux-amd64.pem \
+    --bundle myapp-linux-amd64.sigstore.json \
     --certificate-identity-regexp "https://github.com/yourorg/yourrepo/.github/workflows/.*" \
     --certificate-oidc-issuer https://token.actions.githubusercontent.com
-```plaintext
+```
 
 3. Verify checksum:
 
 ```bash
 sha256sum -c checksums.sha256
-```plaintext
+```
 
 ## Transparency Log
 
@@ -1235,7 +1179,8 @@ All signing events are recorded in the Rekor transparency log. You can search fo
 
 ```bash
 rekor-cli search --artifact myapp-linux-amd64
-```plaintext
+```
+````
 
 ## Conclusion
 
@@ -1253,6 +1198,3 @@ Key takeaways:
 The investment in proper code signing pays dividends in user trust, security incident prevention, and compliance requirements. As supply chain attacks continue to evolve, having cryptographic proof of authenticity becomes increasingly valuable.
 
 Start with the basics and gradually adopt more comprehensive measures. Even simple signature verification significantly raises the bar for attackers and demonstrates your commitment to security.
-
-
-```
