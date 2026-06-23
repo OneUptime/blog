@@ -29,11 +29,13 @@ var data = stream.ReadByte(); // Cannot access a disposed object: 'FileStream'
 The most common cause - the `using` statement disposes the object too early.
 
 ```csharp
-// PROBLEM: Stream disposed before ReadToEndAsync completes
+// PROBLEM: Response disposed before content is read
 public async Task<string> GetDataBadAsync()
 {
+    HttpResponseMessage response;
+
     using (var client = new HttpClient())
-    using (var response = await client.GetAsync("https://api.example.com"))
+    using (response = await client.GetAsync("https://api.example.com"))
     {
         // Response disposed when leaving this block
     }
@@ -137,7 +139,7 @@ sequenceDiagram
 
 ### 4. Dependency Injection Lifetime Mismatch
 
-Injecting a scoped service into a singleton causes this error:
+Injecting a scoped service into a singleton can cause this error, or be rejected by DI scope validation:
 
 ```csharp
 // PROBLEM: Scoped DbContext in singleton service
@@ -179,7 +181,7 @@ public class SingletonServiceGood
 ### 5. Background Services
 
 ```csharp
-// PROBLEM: DbContext disposed in background service
+// PROBLEM: Scoped DbContext captured by a singleton background service
 public class BadBackgroundService : BackgroundService
 {
     private readonly AppDbContext _context;
@@ -193,7 +195,7 @@ public class BadBackgroundService : BackgroundService
     {
         while (!stoppingToken.IsCancellationRequested)
         {
-            // Error: context disposed after first iteration
+            // Error: wrong lifetime for a scoped context
             await _context.Users.ToListAsync();
             await Task.Delay(1000, stoppingToken);
         }
@@ -227,11 +229,11 @@ public class GoodBackgroundService : BackgroundService
 ### 6. HttpClient in Using Block
 
 ```csharp
-// PROBLEM: Creating HttpClient per request and disposing
-public async Task<string> GetDataBad()
+// PROBLEM: Returning the task before the client is done
+public Task<string> GetDataBad()
 {
     using var client = new HttpClient(); // Wrong pattern!
-    return await client.GetStringAsync("https://api.example.com");
+    return client.GetStringAsync("https://api.example.com"); // Client disposed before this completes!
 }
 
 // SOLUTION: Use IHttpClientFactory
@@ -328,7 +330,7 @@ public class ResourceHolder : IDisposable
 ### Async Disposal Pattern
 
 ```csharp
-public class AsyncResourceHolder : IAsyncDisposable, IDisposable
+public sealed class AsyncResourceHolder : IAsyncDisposable, IDisposable
 {
     private Stream? _stream;
     private bool _disposed;
