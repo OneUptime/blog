@@ -67,7 +67,7 @@ hostnamectl
 
 # Output includes:
 # Operating System: Ubuntu 24.04 LTS
-# Kernel: Linux 6.5.0-35-generic
+# Kernel: Linux 6.8.0-35-generic
 # Architecture: x86-64
 ```
 
@@ -76,7 +76,7 @@ hostnamectl
 ```bash
 # Kernel version
 uname -r
-# Output: 6.5.0-35-generic
+# Output: 6.8.0-35-generic
 
 # Kernel name
 uname -s
@@ -84,7 +84,7 @@ uname -s
 
 # All kernel information
 uname -a
-# Output: Linux server 6.5.0-35-generic #35-Ubuntu SMP PREEMPT_DYNAMIC ... x86_64 GNU/Linux
+# Output: Linux server 6.8.0-35-generic #35-Ubuntu SMP PREEMPT_DYNAMIC ... x86_64 GNU/Linux
 
 # Specific details
 uname -m  # Architecture (x86_64)
@@ -400,7 +400,7 @@ For desktop Ubuntu:
 
 ```bash
 # System Settings
-gnome-control-center info
+gnome-control-center info-overview
 
 # System Monitor
 gnome-system-monitor
