@@ -20,7 +20,7 @@ Need a refresher on the core platform pieces first? Skim [Learn Kubernetes Step 
 | **Kind** | CI pipelines, GitHub Actions, ephemeral test envs | Runs nodes as Docker containers; multi-cluster on one host | ~1 GB RAM per cluster | Needs Docker; no load balancer, storage via hostPath |
 | **MicroK8s** | Edge appliances, GPU labs, small on-prem clusters | Single snap install, optional HA, built-in add-ons (MetalLB, Istio) | 4 GB RAM (single) / 3 nodes for HA | Upgrades require snap discipline; not as lightweight as K3s |
 | **K3s** | Retail/industrial sites, ARM boards, remote offices | Single binary, SQLite or embedded etcd, helm-controller, Traefik | 512 MB–1 GB RAM for single-node | Advanced networking/storage needs extra work |
-| **KubeEdge** | IoT fleets needing offline autonomy | Extends K8s control plane to edge nodes via MQTT/WebSocket | Edge nodes run edgesite; control plane stays central | More moving parts (cloudcore/edgecore); steeper learning curve |
+| **KubeEdge** | IoT fleets needing offline autonomy | Extends K8s control plane to edge nodes via MQTT/WebSocket | Edge nodes run edgecore; control plane stays central | More moving parts (cloudcore/edgecore); steeper learning curve |
 
 ## 1. minikube: Friendly On-Ramp
 
@@ -48,7 +48,7 @@ Use minikube for **education, workshops, and local feature development** before 
 Caveats:
 
 - Requires Docker/Containerd on the host runner.
-- LoadBalancers are simulated with `kind load docker-image` + ingress controllers; not representative of cloud LBs.
+- LoadBalancer services need an extra tool such as `cloud-provider-kind` (or MetalLB); not representative of cloud LBs.
 - Storage defaults to hostPath; testing CSI drivers requires extra wiring.
 
 Use Kind when you want **cheap, fast, disposable clusters in automation**. Pair it with [Kubernetes Superpowers](https://oneuptime.com/blog/post/2025-11-27-ten-kubernetes-superpowers-developers-overlook/view) tips like `kubectl diff --server-side` to keep GitOps pipelines honest.
@@ -74,7 +74,7 @@ Choose MicroK8s when you need **turnkey edge clusters with optional HA** and you
 
 - **Single binary:** Includes kubelet, apiserver, controller-manager, scheduler, flannel (default CNI), and a minimal containerd.
 - **Storage flexibility:** Uses SQLite for single-node control planes and embedded etcd (or external DB) for HA. Works with Longhorn, NFS, or local-path provisioner.
-- **Built-in extras:** Helm CRD, Traefik ingress, servicelb-all optional but handy.
+- **Built-in extras:** Helm CRD, Traefik ingress, and ServiceLB-all optional but handy.
 
 Why teams deploy it:
 
