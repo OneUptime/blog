@@ -941,7 +941,14 @@ class MetricsCollector:
         def calculate_rps():
             while True:
                 time.sleep(1)
-                current_count = GRPC_REQUESTS_TOTAL._value.sum()
+                # Sum the counter across all label combinations using the
+                # public collect() API (the labeled parent has no _value).
+                current_count = sum(
+                    sample.value
+                    for metric in GRPC_REQUESTS_TOTAL.collect()
+                    for sample in metric.samples
+                    if sample.name.endswith('_total')
+                )
                 current_time = time.time()
                 rps = (current_count - self._last_request_count) / (current_time - self._last_time)
                 GRPC_REQUESTS_PER_SECOND.set(rps)
