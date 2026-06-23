@@ -39,7 +39,7 @@ graph TB
 
     subgraph "Cluster 2 (Remote)"
         subgraph "istio-system namespace "
-            istiod2[Istiod Agent]
+            remoteConfig[Remote Config and Webhooks]
             eastwest2[East-West Gateway]
         end
         subgraph "Application Namespace "
@@ -47,16 +47,16 @@ graph TB
             svcC2[Service C]
             envoy2[Envoy Sidecar]
         end
-        istiod2 --> envoy2
+        remoteConfig --> envoy2
         svcA2 --- envoy2
         svcC2 --- envoy2
     end
 
-    istiod1 <-->|Config Sync| istiod2
+    istiod1 -->|xDS and injection| remoteConfig
     eastwest1 <-->|mTLS Traffic| eastwest2
 
     style istiod1 fill:#4285f4
-    style istiod2 fill:#34a853
+    style remoteConfig fill:#34a853
     style eastwest1 fill:#fbbc04
     style eastwest2 fill:#fbbc04
 ```
@@ -78,19 +78,19 @@ graph LR
     end
 
     subgraph "Remote Cluster 1"
-        R1_Agent[Istiod Agent]
+        R1_Remote[Remote Config]
         R1_GW[East-West Gateway]
         R1_Apps[Applications]
     end
 
     subgraph "Remote Cluster 2"
-        R2_Agent[Istiod Agent]
+        R2_Remote[Remote Config]
         R2_GW[East-West Gateway]
         R2_Apps[Applications]
     end
 
-    P_Istiod -->|Control| R1_Agent
-    P_Istiod -->|Control| R2_Agent
+    P_Istiod -->|xDS and injection| R1_Remote
+    P_Istiod -->|xDS and injection| R2_Remote
     P_GW <-->|Data| R1_GW
     P_GW <-->|Data| R2_GW
     R1_GW <-->|Data| R2_GW
@@ -133,7 +133,7 @@ graph TB
 
 Before setting up multi-cluster Istio, ensure you have the following:
 
-- Two or more Kubernetes clusters (version 1.25 or later recommended)
+- Two or more Kubernetes clusters running a Kubernetes version supported by your Istio release. For Istio 1.30, Kubernetes 1.32-1.36 are supported.
 - kubectl configured to access all clusters
 - Helm 3.x installed (optional, for Helm-based installation)
 - Network connectivity between clusters (direct or via gateways)
@@ -148,14 +148,14 @@ The following commands verify your prerequisites are met. Run these on your loca
 kubectl config get-contexts
 
 # Verify Kubernetes version on both clusters
-# Istio requires Kubernetes 1.25+ for full feature support
-kubectl --context=cluster1 version --short
-kubectl --context=cluster2 version --short
+# Check the Kubernetes versions on both clusters
+kubectl --context=cluster1 version
+kubectl --context=cluster2 version
 
 # Download and install istioctl if not already installed
-# We use version 1.20.0 which supports the latest multi-cluster features
-curl -L https://istio.io/downloadIstio | ISTIO_VERSION=1.20.0 sh -
-export PATH=$PWD/istio-1.20.0/bin:$PATH
+# We use Istio 1.30.1, which is a supported release at the time of writing
+curl -L https://istio.io/downloadIstio | ISTIO_VERSION=1.30.1 sh -
+export PATH=$PWD/istio-1.30.1/bin:$PATH
 
 # Verify istioctl installation
 istioctl version --remote=false
@@ -205,16 +205,19 @@ cd certs
 # Generate the root CA certificate and private key
 # This root CA will be the trust anchor for all clusters
 # The 'make' command uses Istio's provided Makefile for certificate generation
-make -f ../istio-1.20.0/tools/certs/Makefile.selfsigned.mk root-ca
+make -f ../istio-1.30.1/tools/certs/Makefile.selfsigned.mk root-ca
 
 # Generate intermediate CA for cluster1
 # Each cluster gets its own intermediate CA for better security isolation
 # If one intermediate CA is compromised, only that cluster is affected
-make -f ../istio-1.20.0/tools/certs/Makefile.selfsigned.mk cluster1-cacerts
+make -f ../istio-1.30.1/tools/certs/Makefile.selfsigned.mk cluster1-cacerts
 
 # Generate intermediate CA for cluster2
 # Using the same root CA ensures cross-cluster trust
-make -f ../istio-1.20.0/tools/certs/Makefile.selfsigned.mk cluster2-cacerts
+make -f ../istio-1.30.1/tools/certs/Makefile.selfsigned.mk cluster2-cacerts
+
+# Return to the directory that contains the Istio release directory
+cd ..
 ```
 
 ### Create Certificate Secrets in Each Cluster
@@ -224,7 +227,8 @@ Deploy the CA certificates as Kubernetes secrets. Istio will use these for issui
 ```bash
 # Create the istio-system namespace in cluster1 if it doesn't exist
 # The CA certificates must be in this namespace for Istiod to find them
-kubectl --context=cluster1 create namespace istio-system
+kubectl --context=cluster1 create namespace istio-system --dry-run=client -o yaml | \
+  kubectl --context=cluster1 apply -f -
 
 # Create the CA secret in cluster1 containing all required certificate files
 # - ca-cert.pem: The intermediate CA certificate
@@ -239,7 +243,8 @@ kubectl --context=cluster1 create secret generic cacerts -n istio-system \
 
 # Repeat the same process for cluster2
 # Using the cluster2-specific intermediate CA certificates
-kubectl --context=cluster2 create namespace istio-system
+kubectl --context=cluster2 create namespace istio-system --dry-run=client -o yaml | \
+  kubectl --context=cluster2 apply -f -
 
 kubectl --context=cluster2 create secret generic cacerts -n istio-system \
   --from-file=cluster2/ca-cert.pem \
@@ -260,11 +265,15 @@ Apply network labels to identify cluster network topology. This is crucial for c
 # Label the istio-system namespace in cluster1 with network information
 # The 'topology.istio.io/network' label identifies which network the cluster belongs to
 # Clusters on the same network can communicate directly via Pod IPs
-kubectl --context=cluster1 label namespace istio-system topology.istio.io/network=network1
+kubectl --context=cluster1 label namespace istio-system topology.istio.io/network=network1 --overwrite
 
 # Label cluster2 with its network identifier
 # If clusters are on different networks, traffic flows through east-west gateways
-kubectl --context=cluster2 label namespace istio-system topology.istio.io/network=network2
+kubectl --context=cluster2 label namespace istio-system topology.istio.io/network=network2 --overwrite
+
+# Tell the remote cluster which primary control plane will manage it
+kubectl --context=cluster2 annotate namespace istio-system \
+  topology.istio.io/controlPlaneClusters=cluster1 --overwrite
 ```
 
 ### Understanding Network Topologies
@@ -320,17 +329,6 @@ spec:
 
   # Component-specific configuration
   components:
-    # Configure the Pilot (Istiod) component for multi-cluster
-    pilot:
-      k8s:
-        env:
-          # Enable external Istiod mode for multi-cluster support
-          - name: EXTERNAL_ISTIOD
-            value: "true"
-          # Specify this cluster's unique identifier
-          - name: CLUSTER_ID
-            value: "cluster1"
-
     # Configure the ingress gateway for external traffic
     ingressGateways:
       - name: istio-ingressgateway
@@ -355,10 +353,8 @@ spec:
       # Network identifier for this cluster
       network: network1
 
-      # Configure pilot discovery for multi-cluster
-      pilot:
-        # Enable config distribution to remote clusters
-        enableK8SServiceDiscovery: true
+      # Allow this primary control plane to serve remote clusters
+      externalIstiod: true
 ```
 
 ### Install Istio on the Primary Cluster
@@ -385,62 +381,13 @@ The east-west gateway handles cross-cluster traffic, enabling communication betw
 
 ### Create East-West Gateway Configuration
 
-The east-west gateway is specifically designed for inter-cluster communication:
+The east-west gateway is specifically designed for inter-cluster communication. Use Istio's generated gateway manifest so the gateway labels, ports, and SNI passthrough settings match the installed Istio version:
 
-```yaml
+```bash
+# Generate the east-west gateway manifest for network1
 # Save this as eastwest-gateway.yaml
-# This gateway exposes Istiod and enables cross-cluster mTLS traffic
-apiVersion: install.istio.io/v1alpha1
-kind: IstioOperator
-metadata:
-  name: eastwest-gateway
-spec:
-  # Use minimal profile - we only need the gateway component
-  profile: empty
-
-  components:
-    ingressGateways:
-      # Define the east-west gateway as a specialized ingress gateway
-      - name: istio-eastwestgateway
-        # Label helps identify this as an east-west gateway
-        label:
-          istio: eastwestgateway
-          app: istio-eastwestgateway
-          # Topology label identifies which network this gateway serves
-          topology.istio.io/network: network1
-        enabled: true
-        k8s:
-          # Environment variables configure the gateway behavior
-          env:
-            # Allow the gateway to be discovered by remote clusters
-            - name: ISTIO_META_ROUTER_MODE
-              value: "sni-dnat"
-            # Specify which network this gateway serves
-            - name: ISTIO_META_REQUESTED_NETWORK_VIEW
-              value: network1
-
-          # Service configuration for the gateway
-          service:
-            # Use LoadBalancer to get an external IP for cross-cluster access
-            # In on-prem environments, you might use NodePort instead
-            type: LoadBalancer
-            ports:
-              # Port for cross-cluster mTLS traffic (required)
-              - name: tls
-                port: 15443
-                targetPort: 15443
-              # Port for status (health checks)
-              - name: status-port
-                port: 15021
-                targetPort: 15021
-              # Port for Istiod discovery service (for remote clusters)
-              - name: tls-istiod
-                port: 15012
-                targetPort: 15012
-              # Port for webhook injection (for remote clusters)
-              - name: tls-webhook
-                port: 15017
-                targetPort: 15017
+istio-1.30.1/samples/multicluster/gen-eastwest-gateway.sh \
+  --network network1 > eastwest-gateway.yaml
 ```
 
 ### Install the East-West Gateway
@@ -461,73 +408,14 @@ kubectl --context=cluster1 get pods -n istio-system -l app=istio-eastwestgateway
 kubectl --context=cluster1 get svc istio-eastwestgateway -n istio-system
 ```
 
-### Expose Services Through East-West Gateway
+### Expose the Control Plane Through the East-West Gateway
 
-Create a Gateway resource to expose services for cross-cluster discovery:
-
-```yaml
-# Save this as expose-services.yaml
-# This Gateway exposes all services in the mesh for cross-cluster access
-apiVersion: networking.istio.io/v1beta1
-kind: Gateway
-metadata:
-  name: cross-network-gateway
-  namespace: istio-system
-spec:
-  # Select the east-west gateway to apply this configuration
-  selector:
-    istio: eastwestgateway
-  servers:
-    # Expose all services in the .local domain for cross-cluster access
-    - port:
-        number: 15443
-        name: tls
-        protocol: TLS
-      # Match any service within the mesh
-      hosts:
-        - "*.local"
-      tls:
-        # AUTO_PASSTHROUGH mode lets Envoy route based on SNI
-        # This means the gateway doesn't terminate TLS - it passes through
-        mode: AUTO_PASSTHROUGH
----
-# Expose Istiod for remote clusters to connect
-# This allows remote cluster's Istio agents to get configuration
-apiVersion: networking.istio.io/v1beta1
-kind: Gateway
-metadata:
-  name: istiod-gateway
-  namespace: istio-system
-spec:
-  selector:
-    istio: eastwestgateway
-  servers:
-    # Port for xDS configuration distribution
-    - port:
-        number: 15012
-        name: tls-istiod
-        protocol: TLS
-      hosts:
-        - "*"
-      tls:
-        mode: AUTO_PASSTHROUGH
-    # Port for webhook traffic (sidecar injection)
-    - port:
-        number: 15017
-        name: tls-webhook
-        protocol: TLS
-      hosts:
-        - "*"
-      tls:
-        mode: AUTO_PASSTHROUGH
-```
-
-Apply the gateway configurations:
+Remote clusters need to reach Istiod in the primary cluster through the east-west gateway. Apply Istio's control-plane exposure manifest:
 
 ```bash
-# Apply the gateway configurations to expose services
-# These gateways enable cross-cluster service discovery and communication
-kubectl --context=cluster1 apply -f expose-services.yaml
+# Expose Istiod for remote clusters to connect
+kubectl --context=cluster1 apply -n istio-system \
+  -f istio-1.30.1/samples/multicluster/expose-istiod.yaml
 
 # Verify the gateways are created
 kubectl --context=cluster1 get gateways -n istio-system
@@ -609,24 +497,16 @@ metadata:
   name: istio-remote
 spec:
   # Use the remote profile optimized for remote clusters
-  # This profile doesn't install a full Istiod, just the agent
+  # This profile configures the remote cluster to use the primary Istiod
   profile: remote
 
   # Global values for the remote installation
   values:
+    istiodRemote:
+      # Route sidecar injection requests to the primary control plane
+      injectionPath: /inject/cluster/cluster2/net/network2
+
     global:
-      # Must match the primary cluster's mesh ID
-      meshID: mesh1
-
-      # Multi-cluster configuration
-      multiCluster:
-        # Unique cluster name for this remote cluster
-        clusterName: cluster2
-
-      # Network this cluster belongs to
-      # Different from cluster1 if clusters are on separate networks
-      network: network2
-
       # Point to the primary cluster's Istiod via east-west gateway
       # This is the external address obtained in the previous step
       remotePilotAddress: ${DISCOVERY_ADDRESS}
@@ -644,10 +524,10 @@ spec:
     cni:
       enabled: false
 
-    # Configure ingress gateway for this cluster
+    # Remote clusters do not run a local Istiod
     ingressGateways:
       - name: istio-ingressgateway
-        enabled: true
+        enabled: false
 ```
 
 ### Install Istio on the Remote Cluster
@@ -667,48 +547,19 @@ istioctl install --context=cluster2 -f cluster2-configured.yaml -y
 # Note: You should see fewer pods than in cluster1 since Istiod runs remotely
 kubectl --context=cluster2 get pods -n istio-system
 
-# Check that the Istio agent can connect to the remote Istiod
-kubectl --context=cluster2 logs -n istio-system -l app=istio-ingressgateway | grep -i "connected"
+# Confirm the primary can see the remote cluster
+istioctl --context=cluster1 remote-clusters
 ```
 
 ### Deploy East-West Gateway on Remote Cluster
 
 The remote cluster also needs an east-west gateway for cross-cluster traffic:
 
-```yaml
+```bash
+# Generate the east-west gateway manifest for network2
 # Save this as eastwest-gateway-remote.yaml
-# East-west gateway for cluster2
-apiVersion: install.istio.io/v1alpha1
-kind: IstioOperator
-metadata:
-  name: eastwest-gateway
-spec:
-  profile: empty
-
-  components:
-    ingressGateways:
-      - name: istio-eastwestgateway
-        label:
-          istio: eastwestgateway
-          app: istio-eastwestgateway
-          # Note: This is network2, matching cluster2's network
-          topology.istio.io/network: network2
-        enabled: true
-        k8s:
-          env:
-            - name: ISTIO_META_ROUTER_MODE
-              value: "sni-dnat"
-            - name: ISTIO_META_REQUESTED_NETWORK_VIEW
-              value: network2
-          service:
-            type: LoadBalancer
-            ports:
-              - name: tls
-                port: 15443
-                targetPort: 15443
-              - name: status-port
-                port: 15021
-                targetPort: 15021
+istio-1.30.1/samples/multicluster/gen-eastwest-gateway.sh \
+  --network network2 > eastwest-gateway-remote.yaml
 ```
 
 Install and configure the east-west gateway on cluster2:
@@ -716,9 +567,6 @@ Install and configure the east-west gateway on cluster2:
 ```bash
 # Install the east-west gateway on cluster2
 istioctl install --context=cluster2 -f eastwest-gateway-remote.yaml -y
-
-# Expose services on cluster2 for cross-cluster access
-kubectl --context=cluster2 apply -f expose-services.yaml
 
 # Verify the gateway is running and has an external IP
 kubectl --context=cluster2 get svc istio-eastwestgateway -n istio-system
@@ -728,24 +576,17 @@ kubectl --context=cluster2 get svc istio-eastwestgateway -n istio-system
 
 With both clusters configured, services can now discover each other across cluster boundaries.
 
-### Create Remote Secret for Bidirectional Discovery
+### Expose Services for Cross-Cluster Access
 
-For full bidirectional discovery, cluster2 needs access to cluster1's API server:
+Because the clusters are on separate networks, expose mesh services through the east-west gateways:
 
 ```bash
-# Create a remote secret in cluster2 to access cluster1
-# This enables services in cluster2 to discover services in cluster1
-istioctl create-remote-secret \
-    --context=cluster1 \
-    --name=cluster1 | \
-    kubectl apply -f - --context=cluster2
+# Expose all services in the .local domain for cross-cluster access
+kubectl --context=cluster1 apply -n istio-system \
+  -f istio-1.30.1/samples/multicluster/expose-services.yaml
 
-# Verify both clusters have remote secrets configured
-echo "Cluster1 remote secrets:"
-kubectl --context=cluster1 get secrets -n istio-system -l istio/multiCluster=true
-
-echo "Cluster2 remote secrets:"
-kubectl --context=cluster2 get secrets -n istio-system -l istio/multiCluster=true
+# Verify the remote cluster is attached and synced
+istioctl --context=cluster1 remote-clusters
 ```
 
 ### Service Discovery Flow
@@ -974,7 +815,7 @@ Istio's traffic management features work seamlessly across clusters. Let's confi
 
 ### Locality-Aware Load Balancing
 
-Configure traffic to prefer local cluster endpoints, falling back to remote clusters:
+Configure traffic to prefer local endpoints, falling back to remote localities. Locality load balancing uses endpoint locality in `region/zone/sub-zone` form, so make sure your clusters or nodes are labeled with appropriate topology labels:
 
 ```yaml
 # Save this as locality-lb.yaml
@@ -1015,17 +856,17 @@ spec:
       simple: ROUND_ROBIN
       localityLbSetting:
         enabled: true
-        # Prefer local endpoints first, then distribute to other regions
+        # Prefer local endpoints first, then distribute to other localities
         distribute:
-          - from: "cluster1/*"
+          - from: "region1/zone1/*"
             to:
-              # 80% of traffic stays in cluster1, 20% goes to cluster2
-              "cluster1/*": 80
-              "cluster2/*": 20
-          - from: "cluster2/*"
+              # 80% of traffic stays local, 20% goes to a remote locality
+              "region1/zone1/*": 80
+              "region2/zone1/*": 20
+          - from: "region2/zone1/*"
             to:
-              "cluster2/*": 80
-              "cluster1/*": 20
+              "region2/zone1/*": 80
+              "region1/zone1/*": 20
 ```
 
 Apply the locality-aware configuration:
@@ -1337,6 +1178,7 @@ spec:
             - containerPort: 16686  # UI
             - containerPort: 14268  # Collector HTTP
             - containerPort: 14250  # Collector gRPC
+            - containerPort: 9411   # Zipkin-compatible collector
           env:
             # Enable Elasticsearch storage for production
             # For demo, we use in-memory storage
@@ -1360,6 +1202,8 @@ spec:
       port: 14268
     - name: collector-grpc
       port: 14250
+    - name: zipkin
+      port: 9411
   selector:
     app: jaeger
 ```
@@ -1367,9 +1211,28 @@ spec:
 Configure Istio to send traces to Jaeger:
 
 ```yaml
+# Save this as tracing-provider.yaml
+# Extension provider configuration (apply with istioctl install)
+apiVersion: install.istio.io/v1alpha1
+kind: IstioOperator
+metadata:
+  name: tracing-config
+spec:
+  meshConfig:
+    enableTracing: true
+    defaultConfig:
+      tracing: {}  # Disable legacy MeshConfig tracing options
+    extensionProviders:
+      - name: jaeger
+        zipkin:
+          service: jaeger.istio-system.svc.cluster.local
+          port: 9411
+```
+
+```yaml
 # Save this as telemetry-config.yaml
 # Telemetry resource for configuring tracing
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: mesh-default
@@ -1386,25 +1249,6 @@ spec:
         cluster:
           literal:
             value: "cluster1"
----
-# Extension provider configuration (add to IstioOperator)
-apiVersion: install.istio.io/v1alpha1
-kind: IstioOperator
-metadata:
-  name: tracing-config
-spec:
-  meshConfig:
-    enableTracing: true
-    defaultConfig:
-      tracing:
-        sampling: 100.0
-        zipkin:
-          address: jaeger.istio-system:9411
-    extensionProviders:
-      - name: jaeger
-        zipkin:
-          service: jaeger.istio-system.svc.cluster.local
-          port: 9411
 ```
 
 Apply the observability configurations:
@@ -1412,6 +1256,9 @@ Apply the observability configurations:
 ```bash
 # Deploy Jaeger to the primary cluster
 kubectl --context=cluster1 apply -f jaeger-config.yaml
+
+# Configure the tracing extension provider in Istio
+istioctl install --context=cluster1 -f tracing-provider.yaml -y
 
 # Apply telemetry configuration
 kubectl --context=cluster1 apply -f telemetry-config.yaml
@@ -1478,8 +1325,9 @@ export EW_GW1=$(kubectl --context=cluster1 get svc istio-eastwestgateway -n isti
 # Get cluster2's east-west gateway IP
 export EW_GW2=$(kubectl --context=cluster2 get svc istio-eastwestgateway -n istio-system -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
 
-# Test connectivity from cluster1 to cluster2's gateway
-kubectl --context=cluster1 run test-connectivity --rm -i --restart=Never --image=curlimages/curl -- curl -v https://$EW_GW2:15443 --insecure
+# Test TCP connectivity from cluster1 to cluster2's gateway
+kubectl --context=cluster1 run test-connectivity --rm -i --restart=Never \
+  --image=busybox:1.36 -- nc -vz $EW_GW2 15443
 
 # Check if Istiod can see remote cluster endpoints
 istioctl --context=cluster1 proxy-config endpoints deploy/sleep -n sample | grep helloworld
@@ -1589,7 +1437,9 @@ spec:
             - type: Resource
               resource:
                 name: cpu
-                targetAverageUtilization: 80
+                target:
+                  type: Utilization
+                  averageUtilization: 80
 
   meshConfig:
     # Enable access logging for debugging
@@ -1640,7 +1490,7 @@ spec:
         - protocol: TCP
 ```
 
-Resource Quotas
+### Resource Quotas
 
 Set resource quotas for Istio components:
 
