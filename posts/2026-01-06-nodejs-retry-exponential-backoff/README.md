@@ -62,7 +62,13 @@ async function retry(fn, options = {}) {
 const result = await retry(
   async (attempt) => {
     console.log(`Attempt ${attempt}`);
-    return await fetch('https://api.example.com/data');
+    const response = await fetch('https://api.example.com/data');
+    if (!response.ok) {
+      const error = new Error(`HTTP ${response.status}`);
+      error.status = response.status;
+      throw error;
+    }
+    return response;
   },
   {
     maxAttempts: 5,
@@ -195,20 +201,30 @@ class RetryableOperation {
     }
 
     // Respect Retry-After header
-    if (error.response?.headers?.['retry-after']) {
+    if (this.getHeader(error.response?.headers, 'retry-after')) {
       return true;
     }
 
     return false;
   }
 
+  getHeader(headers, name) {
+    if (!headers) return null;
+
+    if (typeof headers.get === 'function') {
+      return headers.get(name);
+    }
+
+    return headers[name.toLowerCase()] || headers[name] || null;
+  }
+
   getRetryAfter(error) {
-    const retryAfter = error.response?.headers?.['retry-after'];
+    const retryAfter = this.getHeader(error.response?.headers, 'retry-after');
     if (!retryAfter) return null;
 
     // Retry-After can be seconds or HTTP date
-    const seconds = parseInt(retryAfter);
-    if (!isNaN(seconds)) {
+    const seconds = Number(retryAfter);
+    if (Number.isInteger(seconds) && seconds >= 0) {
       return seconds * 1000;
     }
 
