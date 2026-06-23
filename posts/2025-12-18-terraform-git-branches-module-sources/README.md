@@ -149,7 +149,7 @@ module "vpc" {
 
 ### Environment-Specific Branches
 
-Use different branches for different environments by setting the `ref` value directly in each environment's configuration. Note that Terraform's `source` argument does not support variable interpolation -- you must use a literal string:
+Use different branches for different environments by setting the `ref` value directly in each environment's configuration. For broad Terraform version compatibility, use a literal string for `source`. Current Terraform versions allow only expressions that are known during configuration loading, such as constant variables and local values derived from them:
 
 ```hcl
 # environments/development/main.tf
@@ -199,17 +199,17 @@ module "vpc" {
 }
 ```
 
-### Production: Immutable References
+### Production: Stable References
 
 ```hcl
-# Always use tags or commit SHAs in production
+# Use protected tags or commit SHAs in production
 module "vpc" {
   source = "git::https://github.com/myorg/modules.git//vpc?ref=v2.0.1"
 }
 
-# Most secure: specific commit SHA
+# Most reproducible: full commit SHA
 module "vpc" {
-  source = "git::https://github.com/myorg/modules.git//vpc?ref=abc123def456789"
+  source = "git::https://github.com/myorg/modules.git//vpc?ref=abc123def456789abc123def456789abc123def45"
 }
 ```
 
@@ -283,15 +283,15 @@ terraform {
 Use Renovate or Dependabot for module updates:
 
 ```json
-// renovate.json
 {
-  "extends": ["config:base"],
+  "extends": ["config:recommended"],
   "terraform": {
     "enabled": true
   },
-  "regexManagers": [
+  "customManagers": [
     {
-      "fileMatch": ["\\.tf$"],
+      "customType": "regex",
+      "managerFilePatterns": ["/\\.tf$/"],
       "matchStrings": [
         "source\\s*=\\s*\"git::https://github.com/(?<depName>[^/]+/[^/]+)\\.git//[^?]+\\?ref=(?<currentValue>[^\"]+)\""
       ],
@@ -308,7 +308,7 @@ Speed up pipelines by caching modules:
 ```yaml
 # GitHub Actions
 - name: Cache Terraform modules
-  uses: actions/cache@v3
+  uses: actions/cache@v4
   with:
     path: |
       ~/.terraform.d/plugin-cache
@@ -419,17 +419,17 @@ test:
 
 ```hcl
 # Pick one style and stick with it
-# Option A: Always use tags in non-dev environments
+# Option A: Use protected tags in non-dev environments
 module "vpc" {
   source = "git::https://github.com/myorg/modules.git//vpc?ref=v2.0.1"
 }
 
-# Option B: Use commit SHAs for maximum reproducibility
+# Option B: Use full commit SHAs for maximum reproducibility
 module "vpc" {
-  source = "git::https://github.com/myorg/modules.git//vpc?ref=a1b2c3d"
+  source = "git::https://github.com/myorg/modules.git//vpc?ref=a1b2c3d4e5f678901234567890abcdef12345678"
 }
 ```
 
 ## Conclusion
 
-Git branches as Terraform module sources enable flexible development workflows while maintaining infrastructure stability. Use branch references during development, release branches or tags in staging, and always pin to specific tags or commit SHAs in production. Proper authentication setup and caching strategies ensure smooth operations in CI/CD pipelines. Remember that branches can change - when stability matters, prefer immutable references like tags or commit SHAs.
+Git branches as Terraform module sources enable flexible development workflows while maintaining infrastructure stability. Use branch references during development, release branches or tags in staging, and always pin to protected tags or full commit SHAs in production. Proper authentication setup and caching strategies ensure smooth operations in CI/CD pipelines. Remember that branches can change - when stability matters, prefer protected release tags or full commit SHAs.
