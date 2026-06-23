@@ -36,7 +36,7 @@ flowchart LR
 1. **Massive Address Space**: 340 undecillion (3.4 x 10^38) addresses eliminate IP exhaustion concerns
 2. **End-to-End Connectivity**: No NAT means simplified troubleshooting and direct pod communication
 3. **Improved Performance**: Simplified headers and no NAT translation overhead
-4. **Better Security**: IPSec is mandatory in the IPv6 specification
+4. **Better Security**: IPsec support was designed into IPv6 from the start (originally mandatory, downgraded to recommended in RFC 6434)
 5. **Future-Proof Infrastructure**: Government mandates and enterprise requirements increasingly require IPv6
 
 ## Prerequisites
@@ -55,8 +55,8 @@ cat /proc/sys/net/ipv6/conf/all/disable_ipv6
 sysctl net.ipv6.conf.all.forwarding
 # Should return net.ipv6.conf.all.forwarding = 1
 
-# Check Kubernetes version (1.21+ required for stable dual-stack)
-kubectl version --short
+# Check Kubernetes version (1.23+ for GA dual-stack support)
+kubectl version
 ```
 
 ### Enable IPv6 on All Nodes
@@ -110,9 +110,9 @@ spec:
   containers:
   - command:
     - kube-apiserver
-    # Enable dual-stack feature gate (stable in 1.23+)
-    - --feature-gates=IPv6DualStack=true
-    # Service CIDR for dual-stack
+    # Dual-stack is GA and on by default since v1.23. The IPv6DualStack
+    # feature gate was removed in v1.27 and must NOT be set on newer clusters.
+    # A comma-separated IPv4,IPv6 service CIDR is what enables dual-stack:
     - --service-cluster-ip-range=10.96.0.0/16,fd00:10:96::/112
     # Advertise address (use your node's IPv6 address)
     - --advertise-address=2001:db8:1::1
@@ -444,12 +444,6 @@ spec:
   #   secretKeyRef:
   #     name: bgp-secrets
   #     key: router-password
-
-  # Keep alive interval
-  keepAliveTime: 30s
-
-  # Hold time before considering peer down
-  holdTime: 90s
 ```
 
 ### Route Reflector Setup for Large Clusters
@@ -641,7 +635,7 @@ spec:
     - action: Allow
       destination:
         nets:
-          - "2001:db8:external::/48"
+          - "2001:db8:ffff::/48"
         ports:
           - 443
 ```
@@ -732,9 +726,9 @@ spec:
   # bpfEnabled: true
   # bpfDataIfacePattern: "^(eth|ens|enp).*"
 
-  # MTU configuration for IPv6
-  # IPv6 minimum MTU is 1280, but 1500 is recommended
-  mtu: 1500
+  # MTU is not a FelixConfiguration field — configure it on the Installation
+  # resource (calicoNetwork.mtu) or per-tunnel (vxlanMTU, wireguardMTU).
+  # IPv6 minimum MTU is 1280; 1500 is typical for native routing.
 
   # iptables configuration
   iptablesBackend: Auto
@@ -959,7 +953,7 @@ kind: IPPool
 metadata:
   name: production-ipv6
 spec:
-  cidr: fd00:prod::/48
+  cidr: fd00:1::/48
   blockSize: 122
   ipipMode: Never
   nodeSelector: environment == "production"
@@ -970,7 +964,7 @@ kind: IPPool
 metadata:
   name: staging-ipv6
 spec:
-  cidr: fd00:stag::/48
+  cidr: fd00:2::/48
   blockSize: 122
   ipipMode: Never
   nodeSelector: environment == "staging"
@@ -1162,7 +1156,7 @@ spec:
 | `nodeAddressAutodetectionV6` | Node IP detection | `firstFound: true` or specific `interface` |
 | `bgp` | BGP routing | `Enabled` for production |
 | `felixConfiguration.ipv6Support` | Enable IPv6 in Felix | `true` |
-| `felixConfiguration.mtu` | Network MTU | `1500` (or `1440` with VXLAN) |
+| `calicoNetwork.mtu` (Installation) | Network MTU | `1500` (or `1440` with VXLAN) |
 | Service `ipFamilyPolicy` | Service IP families | `PreferDualStack` or `RequireDualStack` |
 | Service `ipFamilies` | IP family order | `[IPv6, IPv4]` (IPv6 preferred) |
 
