@@ -222,7 +222,7 @@ Choosing the right mount options significantly impacts performance, reliability,
 |--------|-------------|-------------------|
 | `hard` | Retry NFS requests indefinitely (prevents data corruption) | Use for critical data |
 | `soft` | Return error after retrans attempts (faster failure) | Use for non-critical data |
-| `intr` | Allow interrupt of NFS operations (deprecated in NFSv4) | Use with hard mounts |
+| `intr` | Allow interrupt of NFS operations (deprecated and silently ignored since kernel 2.6.25) | No longer needed on modern kernels |
 | `timeo=n` | Timeout in tenths of seconds before retry | 600 (60 seconds) |
 | `retrans=n` | Number of retries before soft mount fails | 3 |
 
