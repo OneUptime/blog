@@ -415,8 +415,8 @@ locals {
     var.cost_optimization
   )
 
-  # Reserved instances in production AND NOT cost optimizing
-  use_reserved_instances = (
+  # On-Demand instances in production AND NOT cost optimizing
+  use_on_demand_instances = (
     var.environment == "production" &&
     !var.cost_optimization
   )
@@ -424,7 +424,7 @@ locals {
   # Determine instance purchasing option
   purchasing_option = (
     local.use_spot_instances ? "spot" :
-    local.use_reserved_instances ? "reserved" :
+    local.use_on_demand_instances ? "on-demand" :
     "on-demand"
   )
 }
@@ -526,7 +526,9 @@ locals {
 
 ```hcl
 # Avoid: Deeply nested conditions
-bad_example = var.a ? (var.b ? (var.c ? "x" : "y") : "z") : "w"
+locals {
+  bad_example = var.a ? (var.b ? (var.c ? "x" : "y") : "z") : "w"
+}
 
 # Better: Use locals to break down logic
 locals {
