@@ -20,9 +20,9 @@ A well-organized Go project offers several benefits:
 - **Scalability**: The structure grows naturally as your application expands
 - **Collaboration**: Multiple developers can work on different parts without conflicts
 
-## The Standard Go Project Layout
+## A Common Go Project Layout
 
-The Go community has converged on a standard project layout that has become the de facto structure for production applications. Let us explore each directory and its purpose.
+The Go community uses several common project layout patterns for production applications. Let us explore a practical layout and each directory's purpose.
 
 ### Complete Project Structure Overview
 
@@ -96,6 +96,7 @@ package main
 
 import (
     "context"
+    "database/sql"
     "log"
     "net/http"
     "os"
@@ -103,9 +104,11 @@ import (
     "syscall"
     "time"
 
+    _ "github.com/lib/pq"
+
     "myproject/internal/config"
     "myproject/internal/handler"
-    "myproject/internal/repository"
+    "myproject/internal/repository/postgres"
     "myproject/internal/service"
 )
 
@@ -118,8 +121,15 @@ func main() {
 
     // Initialize dependencies using dependency injection
     // This creates a clear chain: repository -> service -> handler
-    userRepo := repository.NewUserRepository(cfg.Database)
-    userService := service.NewUserService(userRepo)
+    db, err := sql.Open("postgres", cfg.DatabaseURL)
+    if err != nil {
+        log.Fatalf("failed to open database: %v", err)
+    }
+    defer db.Close()
+
+    userRepo := postgres.NewUserRepository(db)
+    passwordRepo := postgres.NewPasswordRepository(db)
+    userService := service.NewUserService(userRepo, passwordRepo)
     userHandler := handler.NewUserHandler(userService)
 
     // Set up HTTP server with configured timeouts
@@ -185,14 +195,14 @@ func main() {
     }
 
     // Initialize queue connection for job processing
-    q, err := queue.NewConnection(cfg.QueueURL)
+    q, err := queue.NewConnection(cfg.RedisURL)
     if err != nil {
         log.Fatalf("failed to connect to queue: %v", err)
     }
     defer q.Close()
 
     // Create worker with the queue connection
-    w := worker.New(q, cfg.WorkerConcurrency)
+    w := worker.New(q)
 
     // Set up context with cancellation for graceful shutdown
     ctx, cancel := context.WithCancel(context.Background())
@@ -345,6 +355,11 @@ type UserRepository interface {
     // Count returns the total number of users
     Count(ctx context.Context) (int64, error)
 }
+
+// PasswordRepository defines the interface for storing password hashes.
+type PasswordRepository interface {
+    Store(ctx context.Context, userID, passwordHash string) error
+}
 ```
 
 ### PostgreSQL Repository Implementation
@@ -480,6 +495,60 @@ func (r *postgresUserRepository) GetByEmail(ctx context.Context, email string) (
     return user, nil
 }
 
+// Update modifies an existing user's data
+func (r *postgresUserRepository) Update(ctx context.Context, user *domain.User) error {
+    user.UpdatedAt = time.Now()
+
+    result, err := r.db.ExecContext(
+        ctx,
+        `
+        UPDATE users
+        SET email = $1, name = $2, role = $3, updated_at = $4
+        WHERE id = $5
+        `,
+        user.Email,
+        user.Name,
+        user.Role,
+        user.UpdatedAt,
+        user.ID,
+    )
+    if err != nil {
+        var pqErr *pq.Error
+        if errors.As(err, &pqErr) && pqErr.Code == "23505" {
+            return domain.ErrUserAlreadyExists
+        }
+        return err
+    }
+
+    rowsAffected, err := result.RowsAffected()
+    if err != nil {
+        return err
+    }
+    if rowsAffected == 0 {
+        return domain.ErrUserNotFound
+    }
+
+    return nil
+}
+
+// Delete removes a user by ID
+func (r *postgresUserRepository) Delete(ctx context.Context, id string) error {
+    result, err := r.db.ExecContext(ctx, `DELETE FROM users WHERE id = $1`, id)
+    if err != nil {
+        return err
+    }
+
+    rowsAffected, err := result.RowsAffected()
+    if err != nil {
+        return err
+    }
+    if rowsAffected == 0 {
+        return domain.ErrUserNotFound
+    }
+
+    return nil
+}
+
 // List retrieves a paginated list of users
 func (r *postgresUserRepository) List(ctx context.Context, offset, limit int) ([]*domain.User, error) {
     query := `
@@ -512,6 +581,39 @@ func (r *postgresUserRepository) List(ctx context.Context, offset, limit int) ([
     }
 
     return users, rows.Err()
+}
+
+// Count returns the total number of users
+func (r *postgresUserRepository) Count(ctx context.Context) (int64, error) {
+    var count int64
+    err := r.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM users`).Scan(&count)
+    return count, err
+}
+
+// postgresPasswordRepository stores password hashes in PostgreSQL
+type postgresPasswordRepository struct {
+    db *sql.DB
+}
+
+// NewPasswordRepository creates a new PostgreSQL-backed password repository
+func NewPasswordRepository(db *sql.DB) repository.PasswordRepository {
+    return &postgresPasswordRepository{db: db}
+}
+
+// Store saves or replaces a password hash for a user
+func (r *postgresPasswordRepository) Store(ctx context.Context, userID, passwordHash string) error {
+    _, err := r.db.ExecContext(
+        ctx,
+        `
+        INSERT INTO user_passwords (user_id, password_hash)
+        VALUES ($1, $2)
+        ON CONFLICT (user_id)
+        DO UPDATE SET password_hash = EXCLUDED.password_hash
+        `,
+        userID,
+        passwordHash,
+    )
+    return err
 }
 ```
 
@@ -652,12 +754,17 @@ func (s *userService) UpdateUser(ctx context.Context, id string, req *domain.Upd
     return user, nil
 }
 
+// DeleteUser removes a user by ID
+func (s *userService) DeleteUser(ctx context.Context, id string) error {
+    return s.userRepo.Delete(ctx, id)
+}
+
 // ListUsers returns a paginated list of users
 func (s *userService) ListUsers(ctx context.Context, page, pageSize int) (*UserListResult, error) {
     // Calculate offset from page number
     offset := (page - 1) * pageSize
 
-    // Fetch users and total count concurrently for better performance
+    // Fetch users and total count for pagination metadata
     users, err := s.userRepo.List(ctx, offset, pageSize)
     if err != nil {
         return nil, err
@@ -977,7 +1084,7 @@ func (s *orderService) CreateOrder(ctx context.Context, userID string, items []d
 
 ### Wire for Dependency Injection
 
-For larger applications, use Google's Wire for compile-time dependency injection:
+For larger applications, you can use Google's Wire for compile-time dependency injection. Note that the original Google Wire project is no longer maintained, so evaluate whether it still fits your maintenance needs before adopting it:
 
 ```go
 // internal/wire/wire.go
@@ -1409,7 +1516,46 @@ func (m *MockUserRepository) GetByEmail(ctx context.Context, email string) (*dom
     return args.Get(0).(*domain.User), args.Error(1)
 }
 
-// Additional mock methods...
+func (m *MockUserRepository) GetByID(ctx context.Context, id string) (*domain.User, error) {
+    args := m.Called(ctx, id)
+    if args.Get(0) == nil {
+        return nil, args.Error(1)
+    }
+    return args.Get(0).(*domain.User), args.Error(1)
+}
+
+func (m *MockUserRepository) Update(ctx context.Context, user *domain.User) error {
+    args := m.Called(ctx, user)
+    return args.Error(0)
+}
+
+func (m *MockUserRepository) Delete(ctx context.Context, id string) error {
+    args := m.Called(ctx, id)
+    return args.Error(0)
+}
+
+func (m *MockUserRepository) List(ctx context.Context, offset, limit int) ([]*domain.User, error) {
+    args := m.Called(ctx, offset, limit)
+    if args.Get(0) == nil {
+        return nil, args.Error(1)
+    }
+    return args.Get(0).([]*domain.User), args.Error(1)
+}
+
+func (m *MockUserRepository) Count(ctx context.Context) (int64, error) {
+    args := m.Called(ctx)
+    return args.Get(0).(int64), args.Error(1)
+}
+
+// MockPasswordRepository is a mock implementation of PasswordRepository for testing
+type MockPasswordRepository struct {
+    mock.Mock
+}
+
+func (m *MockPasswordRepository) Store(ctx context.Context, userID, passwordHash string) error {
+    args := m.Called(ctx, userID, passwordHash)
+    return args.Error(0)
+}
 
 func TestUserService_CreateUser_Success(t *testing.T) {
     // Arrange
