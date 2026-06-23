@@ -26,7 +26,7 @@ From a break-glass machine we log into our registrar and swap the nameservers to
 
 ### 1. Ship an API-first failover switch
 
-We now keep a scoped service token (Zone:Read, Zone:Edit) in Secrets Vault, plus a read-only backup in our hardware key vault. The new `failover/off-cloudflare-proxy.sh` script:
+We now keep a scoped service token (Zone:Read, DNS:Edit) in Secrets Vault, plus a read-only backup in our hardware key vault. The new `failover/off-cloudflare-proxy.sh` script:
 
 - Uses the Cloudflare API to list every `proxied=true` DNS record in the production zones.
 - Writes the pre/post state to our log store for auditability.
