@@ -245,7 +245,7 @@ For operations that do not natively support cancellation, use timeouts:
 
 ```csharp
 public async Task<T> ExecuteWithTimeoutAsync<T>(
-    Func<Task<T>> operation,
+    Func<CancellationToken, Task<T>> operation,
     TimeSpan timeout,
     CancellationToken cancellationToken = default)
 {
@@ -255,7 +255,8 @@ public async Task<T> ExecuteWithTimeoutAsync<T>(
 
     try
     {
-        return await operation();
+        // Pass the linked token so the operation observes the timeout
+        return await operation(linkedCts.Token);
     }
     catch (OperationCanceledException) when (timeoutCts.IsCancellationRequested)
     {
@@ -265,7 +266,7 @@ public async Task<T> ExecuteWithTimeoutAsync<T>(
 
 // Usage
 var result = await ExecuteWithTimeoutAsync(
-    () => httpClient.GetStringAsync(url),
+    ct => httpClient.GetStringAsync(url, ct),
     TimeSpan.FromSeconds(30),
     cancellationToken);
 ```
