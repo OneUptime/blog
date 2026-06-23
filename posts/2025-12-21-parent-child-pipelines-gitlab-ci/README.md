@@ -50,13 +50,13 @@ trigger_frontend:
   stage: triggers
   trigger:
     include: ci/frontend.gitlab-ci.yml
-    strategy: depend
+    strategy: mirror
 
 trigger_backend:
   stage: triggers
   trigger:
     include: ci/backend.gitlab-ci.yml
-    strategy: depend
+    strategy: mirror
 ```
 
 ### Child Pipeline
@@ -89,7 +89,7 @@ test_frontend:
 
 ## Trigger Strategies
 
-### Strategy: depend
+### Strategy: mirror
 
 Wait for the child pipeline to complete:
 
@@ -97,7 +97,7 @@ Wait for the child pipeline to complete:
 trigger_tests:
   trigger:
     include: ci/tests.yml
-    strategy: depend  # Parent waits for child to finish
+    strategy: mirror  # Parent waits for child to finish
 ```
 
 ### Without Strategy
@@ -124,7 +124,7 @@ trigger_deploy:
     VERSION: $CI_COMMIT_SHA
   trigger:
     include: ci/deploy.yml
-    strategy: depend
+    strategy: mirror
 
 # Child (ci/deploy.yml)
 deploy:
@@ -178,7 +178,7 @@ run_dynamic:
     include:
       - artifact: child-pipeline.yml
         job: generate_pipeline
-    strategy: depend
+    strategy: mirror
 ```
 
 ### Complex Dynamic Generation
@@ -217,60 +217,34 @@ generate_matrix:
 ```yaml
 # Parent
 stages:
-  - detect
   - trigger
-
-detect_changes:
-  stage: detect
-  script:
-    - |
-      echo "FRONTEND_CHANGED=false" > changes.env
-      echo "BACKEND_CHANGED=false" >> changes.env
-      echo "INFRA_CHANGED=false" >> changes.env
-
-      git diff --name-only $CI_COMMIT_BEFORE_SHA..$CI_COMMIT_SHA > changed_files.txt
-
-      if grep -q "^frontend/" changed_files.txt; then
-        echo "FRONTEND_CHANGED=true" >> changes.env
-      fi
-
-      if grep -q "^backend/" changed_files.txt; then
-        echo "BACKEND_CHANGED=true" >> changes.env
-      fi
-
-      if grep -q "^infrastructure/" changed_files.txt; then
-        echo "INFRA_CHANGED=true" >> changes.env
-      fi
-  artifacts:
-    reports:
-      dotenv: changes.env
 
 trigger_frontend:
   stage: trigger
-  needs: [detect_changes]
   trigger:
     include: frontend/.gitlab-ci.yml
-    strategy: depend
+    strategy: mirror
   rules:
-    - if: $FRONTEND_CHANGED == "true"
+    - changes:
+        - frontend/**/*
 
 trigger_backend:
   stage: trigger
-  needs: [detect_changes]
   trigger:
     include: backend/.gitlab-ci.yml
-    strategy: depend
+    strategy: mirror
   rules:
-    - if: $BACKEND_CHANGED == "true"
+    - changes:
+        - backend/**/*
 
 trigger_infra:
   stage: trigger
-  needs: [detect_changes]
   trigger:
     include: infrastructure/.gitlab-ci.yml
-    strategy: depend
+    strategy: mirror
   rules:
-    - if: $INFRA_CHANGED == "true"
+    - changes:
+        - infrastructure/**/*
 ```
 
 ### Using rules:changes
@@ -304,7 +278,7 @@ stages:
 .trigger_template:
   stage: build
   trigger:
-    strategy: depend
+    strategy: mirror
 
 trigger_service_a:
   extends: .trigger_template
@@ -334,11 +308,14 @@ deploy_all:
   stage: deploy
   trigger:
     include: ci/deploy-all.yml
-    strategy: depend
+    strategy: mirror
   needs:
-    - trigger_service_a
-    - trigger_service_b
-    - trigger_service_c
+    - job: trigger_service_a
+      optional: true
+    - job: trigger_service_b
+      optional: true
+    - job: trigger_service_c
+      optional: true
   when: on_success
 ```
 
@@ -376,7 +353,7 @@ trigger_combined:
 trigger_optional:
   trigger:
     include: ci/optional-tests.yml
-    strategy: depend
+    strategy: mirror
   allow_failure: true
 ```
 
@@ -396,7 +373,6 @@ cleanup:
 ```yaml
 # .gitlab-ci.yml
 stages:
-  - setup
   - build
   - test
   - deploy
@@ -404,66 +380,35 @@ stages:
 variables:
   DOCKER_HOST: tcp://docker:2376
 
-# Detect which services changed
-detect:
-  stage: setup
-  image: alpine/git
-  script:
-    - |
-      echo "Detecting changes..."
-
-      # Get changed files
-      if [ "$CI_COMMIT_BEFORE_SHA" = "0000000000000000000000000000000000000000" ]; then
-        CHANGED=$(git diff-tree --no-commit-id --name-only -r $CI_COMMIT_SHA)
-      else
-        CHANGED=$(git diff --name-only $CI_COMMIT_BEFORE_SHA..$CI_COMMIT_SHA)
-      fi
-
-      echo "$CHANGED" > changed.txt
-
-      # Set flags
-      echo "API_CHANGED=false" > changes.env
-      echo "WEB_CHANGED=false" >> changes.env
-      echo "WORKER_CHANGED=false" >> changes.env
-
-      grep -q "^api/" changed.txt && echo "API_CHANGED=true" >> changes.env || true
-      grep -q "^web/" changed.txt && echo "WEB_CHANGED=true" >> changes.env || true
-      grep -q "^worker/" changed.txt && echo "WORKER_CHANGED=true" >> changes.env || true
-
-      cat changes.env
-  artifacts:
-    reports:
-      dotenv: changes.env
-
 # Service pipelines
 build_api:
   stage: build
-  needs: [detect]
   trigger:
     include: api/.gitlab-ci.yml
-    strategy: depend
+    strategy: mirror
   rules:
-    - if: $API_CHANGED == "true"
+    - changes:
+        - api/**/*
     - if: $CI_COMMIT_BRANCH == "main"
 
 build_web:
   stage: build
-  needs: [detect]
   trigger:
     include: web/.gitlab-ci.yml
-    strategy: depend
+    strategy: mirror
   rules:
-    - if: $WEB_CHANGED == "true"
+    - changes:
+        - web/**/*
     - if: $CI_COMMIT_BRANCH == "main"
 
 build_worker:
   stage: build
-  needs: [detect]
   trigger:
     include: worker/.gitlab-ci.yml
-    strategy: depend
+    strategy: mirror
   rules:
-    - if: $WORKER_CHANGED == "true"
+    - changes:
+        - worker/**/*
     - if: $CI_COMMIT_BRANCH == "main"
 
 # Integration tests
@@ -478,7 +423,7 @@ integration_tests:
       optional: true
   trigger:
     include: ci/integration-tests.yml
-    strategy: depend
+    strategy: mirror
   rules:
     - if: $CI_COMMIT_BRANCH == "main"
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
@@ -489,7 +434,7 @@ deploy_staging:
   needs: [integration_tests]
   trigger:
     include: ci/deploy.yml
-    strategy: depend
+    strategy: mirror
   variables:
     DEPLOY_ENV: staging
   rules:
@@ -500,7 +445,7 @@ deploy_production:
   needs: [deploy_staging]
   trigger:
     include: ci/deploy.yml
-    strategy: depend
+    strategy: mirror
   variables:
     DEPLOY_ENV: production
   rules:
@@ -535,7 +480,7 @@ test:
 
 ## Best Practices
 
-1. **Use strategy: depend** for pipelines that must complete before continuing
+1. **Use strategy: mirror** for pipelines that must complete before continuing
 2. **Forward variables carefully** to avoid exposing secrets
 3. **Use rules:changes** for efficient monorepo builds
 4. **Keep child pipelines focused** on a single service or concern
