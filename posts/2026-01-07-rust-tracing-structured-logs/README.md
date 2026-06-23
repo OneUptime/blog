@@ -10,7 +10,7 @@ Description: Learn how to implement structured logging in Rust using the tracing
 
 > Logs are your application's journal. When structured properly and correlated with traces, they transform from a wall of text into a queryable, debuggable record of every operation. This guide shows you how to implement production-grade structured logging in Rust.
 
-The `tracing` crate has become Rust's standard for instrumentation, providing both logging and span-based tracing in a unified API. Combined with OpenTelemetry, you get logs that automatically include trace context for end-to-end debugging.
+The `tracing` crate has become Rust's standard for instrumentation, providing both logging and span-based tracing in a unified API. Combined with OpenTelemetry, you can export traces and add trace context to logs for end-to-end debugging.
 
 ---
 
@@ -55,10 +55,11 @@ tracing-subscriber = { version = "0.3", features = [
 ] }
 
 # OpenTelemetry integration
-tracing-opentelemetry = "0.25"
-opentelemetry = "0.24"
-opentelemetry_sdk = { version = "0.24", features = ["rt-tokio"] }
-opentelemetry-otlp = "0.17"
+tracing-opentelemetry = "0.33"
+opentelemetry = { version = "0.32", features = ["trace"] }
+opentelemetry_sdk = { version = "0.32", features = ["trace", "rt-tokio"] }
+opentelemetry-otlp = { version = "0.32", features = ["grpc-tonic"] }
+opentelemetry-semantic-conventions = "0.32"
 
 # Async runtime
 tokio = { version = "1", features = ["full"] }
@@ -66,6 +67,7 @@ tokio = { version = "1", features = ["full"] }
 # Serialization for custom types
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
 ```
 
 ---
@@ -179,7 +181,7 @@ async fn main() {
 }
 
 /// Process an order with full instrumentation
-/// The #[instrument] macro automatically creates a span and logs function entry/exit
+/// The #[instrument] macro automatically creates a span for the function
 #[instrument(
     name = "process_order",
     skip(order_id, customer_id),  // Don't log arguments automatically
@@ -274,22 +276,19 @@ impl std::fmt::Display for OrderError {
 
 ## OpenTelemetry Integration
 
-Connect tracing to OpenTelemetry for trace correlation and export to observability backends.
+Connect tracing to OpenTelemetry for trace export and correlation with observability backends. The OpenTelemetry layer exports spans; the JSON formatting layer still writes application logs.
 
 ```rust
 // src/telemetry.rs
 // OpenTelemetry integration with tracing
 
-use opentelemetry::trace::TracerProvider;
+use opentelemetry::trace::TracerProvider as _;
 use opentelemetry_otlp::WithExportConfig;
 use opentelemetry_sdk::{
-    runtime,
-    trace::{BatchConfig, RandomIdGenerator, Sampler},
+    trace::{RandomIdGenerator, Sampler, SdkTracerProvider},
     Resource,
 };
-use opentelemetry_semantic_conventions::resource::{
-    DEPLOYMENT_ENVIRONMENT, SERVICE_NAME, SERVICE_VERSION,
-};
+use opentelemetry_semantic_conventions::resource::{SERVICE_NAME, SERVICE_VERSION};
 use std::time::Duration;
 use tracing_subscriber::{
     fmt::{self, format::FmtSpan},
@@ -299,44 +298,44 @@ use tracing_subscriber::{
 };
 
 /// Initialize tracing with OpenTelemetry integration
-/// This enables trace correlation in logs
-pub fn init_tracing_with_otel(service_name: &str) -> Result<(), Box<dyn std::error::Error>> {
+/// This exports spans; use the custom formatter below to include trace IDs in log lines
+pub fn init_tracing_with_otel(
+    service_name: &str,
+) -> Result<SdkTracerProvider, Box<dyn std::error::Error + Send + Sync + 'static>> {
     // Create resource attributes
-    let resource = Resource::new(vec![
-        opentelemetry::KeyValue::new(SERVICE_NAME, service_name.to_string()),
-        opentelemetry::KeyValue::new(
-            SERVICE_VERSION,
-            std::env::var("SERVICE_VERSION").unwrap_or_else(|_| "1.0.0".to_string()),
-        ),
-        opentelemetry::KeyValue::new(
-            DEPLOYMENT_ENVIRONMENT,
-            std::env::var("ENVIRONMENT").unwrap_or_else(|_| "development".to_string()),
-        ),
-    ]);
+    let resource = Resource::builder_empty()
+        .with_attributes([
+            opentelemetry::KeyValue::new(SERVICE_NAME, service_name.to_string()),
+            opentelemetry::KeyValue::new(
+                SERVICE_VERSION,
+                std::env::var("SERVICE_VERSION").unwrap_or_else(|_| "1.0.0".to_string()),
+            ),
+            opentelemetry::KeyValue::new(
+                "deployment.environment.name",
+                std::env::var("ENVIRONMENT").unwrap_or_else(|_| "development".to_string()),
+            ),
+        ])
+        .build();
 
     // Configure OTLP exporter
-    let otlp_exporter = opentelemetry_otlp::new_exporter()
-        .tonic()
+    let otlp_exporter = opentelemetry_otlp::SpanExporter::builder()
+        .with_tonic()
         .with_endpoint(
             std::env::var("OTLP_ENDPOINT")
                 .unwrap_or_else(|_| "http://localhost:4317".to_string()),
         )
-        .with_timeout(Duration::from_secs(3));
+        .with_timeout(Duration::from_secs(3))
+        .build()?;
 
     // Build tracer provider
-    let tracer_provider = opentelemetry_otlp::new_pipeline()
-        .tracing()
-        .with_exporter(otlp_exporter)
-        .with_trace_config(
-            opentelemetry_sdk::trace::Config::default()
-                .with_sampler(Sampler::AlwaysOn)
-                .with_id_generator(RandomIdGenerator::default())
-                .with_resource(resource),
-        )
-        .with_batch_config(BatchConfig::default())
-        .install_batch(runtime::Tokio)?;
+    let tracer_provider = SdkTracerProvider::builder()
+        .with_resource(resource)
+        .with_sampler(Sampler::AlwaysOn)
+        .with_id_generator(RandomIdGenerator::default())
+        .with_batch_exporter(otlp_exporter)
+        .build();
 
-    let tracer = tracer_provider.tracer(service_name);
+    let tracer = tracer_provider.tracer(service_name.to_string());
 
     // Create OpenTelemetry layer for tracing
     let otel_layer = tracing_opentelemetry::layer().with_tracer(tracer);
@@ -360,12 +359,14 @@ pub fn init_tracing_with_otel(service_name: &str) -> Result<(), Box<dyn std::err
         .with(json_layer)
         .init();
 
-    Ok(())
+    Ok(tracer_provider)
 }
 
 /// Shutdown OpenTelemetry, flushing pending spans
-pub fn shutdown_otel() {
-    opentelemetry::global::shutdown_tracer_provider();
+pub fn shutdown_otel(tracer_provider: opentelemetry_sdk::trace::SdkTracerProvider) {
+    tracer_provider
+        .shutdown()
+        .expect("failed to shut down tracer provider");
 }
 ```
 
@@ -380,7 +381,6 @@ For cases where you need custom JSON formatting with explicit trace ID inclusion
 // Custom JSON formatter with trace context
 
 use serde::Serialize;
-use std::io;
 use tracing::{Event, Subscriber};
 use tracing_subscriber::{
     fmt::{
@@ -447,15 +447,12 @@ where
         let (trace_id, span_id) = get_otel_trace_context();
 
         // Get current span info
-        let (span_name, span_fields) = ctx.lookup_current().map(|span| {
+        let span_name = ctx.lookup_current().map(|span| {
             let name = span.name();
             let extensions = span.extensions();
-            let fields = extensions
-                .get::<FormattedFields<N>>()
-                .map(|f| f.fields.as_str())
-                .unwrap_or("");
-            (Some(name), Some(fields))
-        }).unwrap_or((None, None));
+            let _fields = extensions.get::<FormattedFields<N>>();
+            name
+        });
 
         // Build log record
         let metadata = event.metadata();
@@ -482,15 +479,16 @@ where
 /// Extract OpenTelemetry trace context
 fn get_otel_trace_context() -> (Option<String>, Option<String>) {
     use opentelemetry::trace::TraceContextExt;
+    use tracing_opentelemetry::OpenTelemetrySpanExt;
 
-    let context = opentelemetry::Context::current();
+    let context = tracing::Span::current().context();
     let span = context.span();
     let span_context = span.span_context();
 
     if span_context.is_valid() {
         (
-            Some(format!("{:032x}", span_context.trace_id())),
-            Some(format!("{:016x}", span_context.span_id())),
+            Some(span_context.trace_id().to_string()),
+            Some(span_context.span_id().to_string()),
         )
     } else {
         (None, None)
@@ -498,10 +496,18 @@ fn get_otel_trace_context() -> (Option<String>, Option<String>) {
 }
 
 /// Visitor to extract event fields
-#[derive(Default)]
 struct JsonVisitor {
     message: Option<String>,
     fields: serde_json::Value,
+}
+
+impl Default for JsonVisitor {
+    fn default() -> Self {
+        Self {
+            message: None,
+            fields: serde_json::Value::Object(serde_json::Map::new()),
+        }
+    }
 }
 
 impl tracing::field::Visit for JsonVisitor {
@@ -557,11 +563,16 @@ impl tracing::field::Visit for JsonVisitor {
             );
         }
     }
-}
 
-impl Default for serde_json::Value {
-    fn default() -> Self {
-        serde_json::Value::Object(serde_json::Map::new())
+    fn record_f64(&mut self, field: &tracing::field::Field, value: f64) {
+        if let serde_json::Value::Object(ref mut map) = self.fields {
+            if let Some(number) = serde_json::Number::from_f64(value) {
+                map.insert(
+                    field.name().to_string(),
+                    serde_json::Value::Number(number),
+                );
+            }
+        }
     }
 }
 ```
@@ -750,7 +761,7 @@ async fn do_work() {
 
 ## Example Output
 
-With JSON logging configured, your output looks like:
+With a custom JSON formatter that includes service and trace context, your output looks like:
 
 ```json
 {"timestamp":"2026-01-07T10:15:23.456789Z","level":"INFO","message":"Application starting","target":"myapp","service":"order-service"}
