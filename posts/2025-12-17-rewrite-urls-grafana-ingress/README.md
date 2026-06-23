@@ -35,10 +35,10 @@ metadata:
   name: grafana
   namespace: monitoring
   annotations:
-    kubernetes.io/ingress.class: nginx
     nginx.ingress.kubernetes.io/rewrite-target: /$2
     nginx.ingress.kubernetes.io/use-regex: "true"
 spec:
+  ingressClassName: nginx
   rules:
     - host: monitoring.example.com
       http:
@@ -102,8 +102,8 @@ grafana.ini:
 
 ingress:
   enabled: true
+  ingressClassName: nginx
   annotations:
-    kubernetes.io/ingress.class: nginx
     nginx.ingress.kubernetes.io/rewrite-target: /$2
     nginx.ingress.kubernetes.io/use-regex: "true"
   hosts:
@@ -123,15 +123,13 @@ metadata:
   name: grafana
   namespace: monitoring
   annotations:
-    kubernetes.io/ingress.class: nginx
     nginx.ingress.kubernetes.io/rewrite-target: /$2
     nginx.ingress.kubernetes.io/use-regex: "true"
-    # WebSocket support
+    # Keep Grafana Live WebSocket connections open
     nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
     nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
-    nginx.ingress.kubernetes.io/connection-proxy-header: "keep-alive"
-    nginx.ingress.kubernetes.io/upstream-hash-by: "$remote_addr"
 spec:
+  ingressClassName: nginx
   rules:
     - host: monitoring.example.com
       http:
@@ -159,6 +157,7 @@ metadata:
     nginx.ingress.kubernetes.io/rewrite-target: /$2
     nginx.ingress.kubernetes.io/use-regex: "true"
 spec:
+  ingressClassName: nginx
   rules:
     - host: monitoring.example.com
       http:
@@ -182,6 +181,7 @@ metadata:
     # Higher timeout for datasource queries
     nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
 spec:
+  ingressClassName: nginx
   rules:
     - host: monitoring.example.com
       http:
@@ -206,12 +206,12 @@ metadata:
   name: grafana
   namespace: monitoring
   annotations:
-    kubernetes.io/ingress.class: nginx
     nginx.ingress.kubernetes.io/rewrite-target: /$2
     nginx.ingress.kubernetes.io/use-regex: "true"
     nginx.ingress.kubernetes.io/ssl-redirect: "true"
     cert-manager.io/cluster-issuer: letsencrypt-prod
 spec:
+  ingressClassName: nginx
   tls:
     - hosts:
         - monitoring.example.com
@@ -277,21 +277,25 @@ metadata:
   name: grafana
   namespace: monitoring
   annotations:
-    kubernetes.io/ingress.class: alb
     alb.ingress.kubernetes.io/scheme: internet-facing
     alb.ingress.kubernetes.io/target-type: ip
     alb.ingress.kubernetes.io/listen-ports: '[{"HTTPS":443}]'
-    alb.ingress.kubernetes.io/actions.grafana-redirect: |
-      {
-        "Type": "forward",
-        "ForwardConfig": {
-          "TargetGroups": [{
-            "ServiceName": "grafana",
-            "ServicePort": "80"
-          }]
+    alb.ingress.kubernetes.io/transforms.grafana: >
+      [
+        {
+          "type": "url-rewrite",
+          "urlRewriteConfig": {
+            "rewrites": [
+              {
+                "regex": "^\\/grafana\\/?(.*)$",
+                "replace": "/$1"
+              }
+            ]
+          }
         }
-      }
+      ]
 spec:
+  ingressClassName: alb
   rules:
     - host: monitoring.example.com
       http:
@@ -300,12 +304,12 @@ spec:
             pathType: Prefix
             backend:
               service:
-                name: grafana-redirect
+                name: grafana
                 port:
-                  name: use-annotation
+                  number: 80
 ```
 
-Note: AWS ALB does not support path rewriting natively. Either serve Grafana at root or use `serve_from_sub_path = true` without stripping the prefix.
+Note: Current AWS Load Balancer Controller releases support URL rewrite transforms. If your controller version does not support transforms, either serve Grafana at root or use `serve_from_sub_path = true` without stripping the prefix.
 
 ## 9. Debug URL Rewrite Issues
 
@@ -334,7 +338,7 @@ Ensure `serve_from_sub_path = true` is set and root_url ends with `/grafana/`.
 ```bash
 # Verify the root_url setting
 kubectl exec deployment/grafana -n monitoring -- \
-  grafana-cli admin settings | grep root_url
+  grep -E "root_url|serve_from_sub_path" /etc/grafana/grafana.ini
 ```
 
 ### Login Redirects to Wrong URL
@@ -343,22 +347,23 @@ Check OAuth callback URL matches root_url.
 
 ```ini
 [auth.generic_oauth]
+enabled = true
 auth_url = https://auth.example.com/oauth/authorize
 token_url = https://auth.example.com/oauth/token
-# Must match the Ingress path
-redirect_uri = https://monitoring.example.com/grafana/login/generic_oauth
+api_url = https://auth.example.com/oauth/userinfo
+
+# Configure this callback URL in the OAuth provider:
+# https://monitoring.example.com/grafana/login/generic_oauth
 ```
 
 ### WebSocket Connection Fails
 
-Verify Ingress allows connection upgrades.
+Verify Ingress keeps WebSocket connections open. Nginx Ingress supports WebSockets by default, but long-lived Grafana Live connections need longer proxy timeouts.
 
 ```yaml
 annotations:
-  nginx.ingress.kubernetes.io/proxy-http-version: "1.1"
-  nginx.ingress.kubernetes.io/configuration-snippet: |
-    proxy_set_header Upgrade $http_upgrade;
-    proxy_set_header Connection "upgrade";
+  nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+  nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
 ```
 
 ### Mixed Content Errors
@@ -382,8 +387,10 @@ metadata:
   name: grafana-multi
   namespace: monitoring
   annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /$2
     nginx.ingress.kubernetes.io/use-regex: "true"
 spec:
+  ingressClassName: nginx
   rules:
     - host: monitoring.example.com
       http:
@@ -473,7 +480,9 @@ metadata:
     nginx.ingress.kubernetes.io/rewrite-target: /$2
     nginx.ingress.kubernetes.io/use-regex: "true"
     nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
 spec:
+  ingressClassName: nginx
   tls:
     - hosts:
         - monitoring.example.com
