@@ -524,6 +524,7 @@ import secrets
 import hashlib
 from pydantic import BaseModel
 import asyncpg
+from app.config import settings
 
 class OAuthClient(BaseModel):
     """Represents a registered OAuth2 client application"""
@@ -900,7 +901,7 @@ flowchart LR
 # API key generation, validation, and management
 import secrets
 import hashlib
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Optional, List
 from pydantic import BaseModel
 import asyncpg
