@@ -57,8 +57,8 @@ sudo apt install -y sysstat
 # Install iotop for real-time per-process I/O monitoring
 sudo apt install -y iotop
 
-# Install dstat for versatile resource statistics
-sudo apt install -y dstat
+# Install Performance Co-Pilot, which provides dstat on Ubuntu 24.04
+sudo apt install -y pcp
 
 # Install blktrace for detailed block device tracing (advanced users)
 sudo apt install -y blktrace
@@ -84,7 +84,7 @@ The `iostat` command is the most comprehensive tool for disk I/O monitoring. It 
 iostat
 
 # Display extended statistics with human-readable output
-# -x: Extended statistics including await, svctm, and %util
+# -x: Extended statistics including await and %util fields
 # -h: Human-readable format with proper units
 iostat -xh
 
@@ -113,8 +113,8 @@ iostat -x 1 1
 Here is a detailed breakdown of each column in the iostat output:
 
 ```text
-Device     r/s     w/s    rkB/s    wkB/s  rrqm/s  wrqm/s  %rrqm  %wrqm  r_await  w_await  aqu-sz  rareq-sz  wareq-sz  svctm  %util
-sda       12.50   45.30   512.00  1024.00    0.50    3.20   3.85   6.60     1.20     2.50    0.15     40.96     22.61   0.85   4.89
+Device     r/s    rkB/s  rrqm/s  %rrqm  r_await  rareq-sz     w/s    wkB/s  wrqm/s  %wrqm  w_await  wareq-sz  aqu-sz  %util
+sda       12.50  512.00    0.50   3.85      1.20     40.96   45.30  1024.00    3.20   6.60      2.50     22.61    0.15   4.89
 ```
 
 | Column | Meaning | Interpretation |
@@ -128,7 +128,6 @@ sda       12.50   45.30   512.00  1024.00    0.50    3.20   3.85   6.60     1.20
 | `r_await` | Average read latency (ms) | Time from request to completion |
 | `w_await` | Average write latency (ms) | Time from request to completion |
 | `aqu-sz` | Average queue size | Number of requests waiting |
-| `svctm` | Service time (deprecated) | Use await instead |
 | `%util` | Device utilization | Percentage of time device was busy |
 
 ### Practical iostat Monitoring Script
@@ -153,32 +152,31 @@ log_message() {
 check_disk_io() {
     # Get iostat output, skip the first report (averages since boot)
     # Use awk to parse and check threshold values
-    iostat -x 1 2 | tail -n +7 | head -n -1 | while read line; do
-        # Skip empty lines and header lines
-        if [[ -z "$line" ]] || [[ "$line" == Device* ]]; then
-            continue
-        fi
+    iostat -x -y 1 1 | awk -v util_threshold="$UTIL_THRESHOLD" -v await_threshold="$AWAIT_THRESHOLD" '
+        /^Device/ {
+            for (i = 1; i <= NF; i++) {
+                col[$i] = i
+            }
+            next
+        }
+        /^(sd|nvme|vd)/ {
+            device = $1
+            util = $(col["%util"]) + 0
+            r_await = $(col["r_await"]) + 0
+            w_await = $(col["w_await"]) + 0
 
-        # Parse the iostat output into variables
-        device=$(echo "$line" | awk '{print $1}')
-        util=$(echo "$line" | awk '{print $NF}' | cut -d'.' -f1)
-        r_await=$(echo "$line" | awk '{print $10}' | cut -d'.' -f1)
-        w_await=$(echo "$line" | awk '{print $11}' | cut -d'.' -f1)
-
-        # Check utilization threshold
-        if [[ "$util" -gt "$UTIL_THRESHOLD" ]]; then
-            log_message "WARNING: Device $device utilization at ${util}% (threshold: ${UTIL_THRESHOLD}%)"
-        fi
-
-        # Check read await threshold
-        if [[ "$r_await" -gt "$AWAIT_THRESHOLD" ]]; then
-            log_message "WARNING: Device $device read latency at ${r_await}ms (threshold: ${AWAIT_THRESHOLD}ms)"
-        fi
-
-        # Check write await threshold
-        if [[ "$w_await" -gt "$AWAIT_THRESHOLD" ]]; then
-            log_message "WARNING: Device $device write latency at ${w_await}ms (threshold: ${AWAIT_THRESHOLD}ms)"
-        fi
+            if (util > util_threshold) {
+                printf "WARNING: Device %s utilization at %.0f%% (threshold: %s%%)\n", device, util, util_threshold
+            }
+            if (r_await > await_threshold) {
+                printf "WARNING: Device %s read latency at %.0fms (threshold: %sms)\n", device, r_await, await_threshold
+            }
+            if (w_await > await_threshold) {
+                printf "WARNING: Device %s write latency at %.0fms (threshold: %sms)\n", device, w_await, await_threshold
+            }
+        }
+    ' | while IFS= read -r message; do
+        log_message "$message"
     done
 }
 
@@ -610,11 +608,17 @@ mysql -e "SHOW FULL PROCESSLIST" 2>/dev/null | grep -v "Sleep" | head -10
 # Step 5: Analyze disk I/O patterns
 echo ""
 echo "--- I/O Pattern Analysis (last 60 seconds) ---"
-iostat -x 1 60 | awk '
+iostat -x -y 1 60 | awk '
+    /^Device/ {
+        for (i = 1; i <= NF; i++) {
+            col[$i] = i
+        }
+        next
+    }
     /^sd|^nvme|^vd/ {
-        reads += $2
-        writes += $3
-        util += $NF
+        reads += $(col["r/s"])
+        writes += $(col["w/s"])
+        util += $(col["%util"])
         count++
     }
     END {
@@ -657,12 +661,18 @@ echo "Output directory: $OUTPUT_DIR"
 # iostat monitoring
 {
     echo "timestamp,device,r/s,w/s,rkB/s,wkB/s,await,util"
-    iostat -x "$INTERVAL" $((DURATION / INTERVAL)) | \
-    awk '/^sd|^nvme|^vd/ {
+    iostat -x -y "$INTERVAL" $((DURATION / INTERVAL)) | \
+    awk '/^Device/ {
+        for (i = 1; i <= NF; i++) {
+            col[$i] = i
+        }
+        next
+    }
+    /^sd|^nvme|^vd/ {
         cmd = "date +%Y-%m-%d\\ %H:%M:%S"
         cmd | getline timestamp
         close(cmd)
-        print timestamp","$1","$4","$5","$6","$7","$10","$NF
+        print timestamp","$1","$(col["r/s"])","$(col["w/s"])","$(col["rkB/s"])","$(col["wkB/s"])","$(col["r_await"])","$(col["%util"])
     }'
 } > "$OUTPUT_DIR/iostat_$TIMESTAMP.csv" &
 IOSTAT_PID=$!
@@ -790,8 +800,16 @@ echo "dirty_expire_centisecs: $(cat /proc/sys/vm/dirty_expire_centisecs) ($(( $(
 # Check for I/O wait on write operations
 echo ""
 echo "--- Current Write Latency ---"
-iostat -x 1 3 | grep -E "^(Device|sd|nvme|vd)" | tail -n +3 | \
-    awk '{printf "%-10s Write Latency: %s ms, Utilization: %s%%\n", $1, $11, $NF}'
+iostat -x -y 1 1 | awk '
+    /^Device/ {
+        for (i = 1; i <= NF; i++) {
+            col[$i] = i
+        }
+        next
+    }
+    /^sd|^nvme|^vd/ {
+        printf "%-10s Write Latency: %s ms, Utilization: %s%%\n", $1, $(col["w_await"]), $(col["%util"])
+    }'
 ```
 
 ## Using blktrace for Advanced Analysis
@@ -857,7 +875,7 @@ if command -v btt &> /dev/null; then
         cat latency_report.avg
     fi
 else
-    echo "Install blktrace-tools for detailed latency analysis: sudo apt install blktrace"
+    echo "Install blktrace for detailed latency analysis: sudo apt install blktrace"
 fi
 
 # Cleanup
@@ -933,14 +951,16 @@ display_dashboard() {
         "Device" "Read/s" "Write/s" "Read KB/s" "Write KB/s" "Await(ms)" "Util %"
     echo "  ────────── ────────── ────────── ──────────── ──────────── ────────── ──────────"
 
-    iostat -x 1 2 | grep -E "^(sd|nvme|vd)" | tail -n +2 | while read line; do
-        device=$(echo "$line" | awk '{print $1}')
-        reads=$(echo "$line" | awk '{print $4}')
-        writes=$(echo "$line" | awk '{print $5}')
-        rkbs=$(echo "$line" | awk '{print $6}')
-        wkbs=$(echo "$line" | awk '{print $7}')
-        await=$(echo "$line" | awk '{print $10}')
-        util=$(echo "$line" | awk '{print $NF}')
+    iostat -x -y 1 1 | awk '
+        /^Device/ {
+            for (i = 1; i <= NF; i++) {
+                col[$i] = i
+            }
+            next
+        }
+        /^sd|^nvme|^vd/ {
+            printf "%s %s %s %s %s %s %s\n", $1, $(col["r/s"]), $(col["w/s"]), $(col["rkB/s"]), $(col["wkB/s"]), $(col["w_await"]), $(col["%util"])
+        }' | while read device reads writes rkbs wkbs await util; do
 
         # Apply color coding
         await_color=""
@@ -1014,16 +1034,17 @@ echo "Interval: ${INTERVAL}s, Total samples: $SAMPLES"
 {
     echo "timestamp,device,r_s,w_s,rkB_s,wkB_s,r_await,w_await,util"
     for ((i=1; i<=SAMPLES; i++)); do
-        iostat -x 1 2 | grep -E "^(sd|nvme|vd)" | tail -n +2 | while read line; do
+        iostat -x -y 1 1 | awk '
+            /^Device/ {
+                for (i = 1; i <= NF; i++) {
+                    col[$i] = i
+                }
+                next
+            }
+            /^sd|^nvme|^vd/ {
+                printf "%s,%s,%s,%s,%s,%s,%s,%s\n", $1, $(col["r/s"]), $(col["w/s"]), $(col["rkB/s"]), $(col["wkB/s"]), $(col["r_await"]), $(col["w_await"]), $(col["%util"])
+            }' | while IFS=',' read -r device r_s w_s rkb wkb r_await w_await util; do
             timestamp=$(date '+%Y-%m-%d %H:%M:%S')
-            device=$(echo "$line" | awk '{print $1}')
-            r_s=$(echo "$line" | awk '{print $4}')
-            w_s=$(echo "$line" | awk '{print $5}')
-            rkb=$(echo "$line" | awk '{print $6}')
-            wkb=$(echo "$line" | awk '{print $7}')
-            r_await=$(echo "$line" | awk '{print $10}')
-            w_await=$(echo "$line" | awk '{print $11}')
-            util=$(echo "$line" | awk '{print $NF}')
             echo "$timestamp,$device,$r_s,$w_s,$rkb,$wkb,$r_await,$w_await,$util"
         done
         sleep "$INTERVAL"
@@ -1088,9 +1109,16 @@ send_alert() {
 
 # Check disk utilization
 check_disk_util() {
-    iostat -x 1 2 | grep -E "^(sd|nvme|vd)" | tail -n +2 | while read line; do
-        device=$(echo "$line" | awk '{print $1}')
-        util=$(echo "$line" | awk '{print $NF}' | cut -d'.' -f1)
+    iostat -x -y 1 1 | awk '
+        /^Device/ {
+            for (i = 1; i <= NF; i++) {
+                col[$i] = i
+            }
+            next
+        }
+        /^sd|^nvme|^vd/ {
+            printf "%s %d\n", $1, $(col["%util"])
+        }' | while read device util; do
 
         if [[ "$util" -ge "$UTIL_THRESHOLD" ]]; then
             send_alert "warning" "Disk $device utilization critical: ${util}%"
@@ -1109,9 +1137,17 @@ check_io_wait() {
 
 # Check latency
 check_latency() {
-    iostat -x 1 2 | grep -E "^(sd|nvme|vd)" | tail -n +2 | while read line; do
-        device=$(echo "$line" | awk '{print $1}')
-        await=$(echo "$line" | awk '{print $10}' | cut -d'.' -f1)
+    iostat -x -y 1 1 | awk '
+        /^Device/ {
+            for (i = 1; i <= NF; i++) {
+                col[$i] = i
+            }
+            next
+        }
+        /^sd|^nvme|^vd/ {
+            max_await = $(col["r_await"]) > $(col["w_await"]) ? $(col["r_await"]) : $(col["w_await"])
+            printf "%s %d\n", $1, max_await
+        }' | while read device await; do
 
         if [[ "$await" -ge "$AWAIT_THRESHOLD" ]]; then
             send_alert "warning" "Disk $device latency high: ${await}ms"
