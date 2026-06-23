@@ -210,8 +210,8 @@ Verify key rotation procedures:
 # Check for multiple keys (indicates rotation in progress or standby)
 dig +short DNSKEY example.com | wc -l
 
-# Check key IDs (key tags)
-dig DNSKEY example.com | grep -oP 'key id = \K\d+'
+# Check key IDs (key tags) - +multiline prints the "key id =" comment
+dig +multiline DNSKEY example.com | grep -oP 'key id = \K\d+'
 ```
 
 **Recommended Rotation Periods:**
@@ -387,7 +387,7 @@ Verify DNSSEC monitoring is in place:
 DOMAIN="example.com"
 
 # Check RRSIG expiration
-EXPIRY=$(dig +short +dnssec $DOMAIN SOA | grep RRSIG | awk '{print $9}')
+EXPIRY=$(dig +dnssec $DOMAIN SOA | grep RRSIG | awk '{print $9}')
 EXPIRY_EPOCH=$(date -d "${EXPIRY:0:4}-${EXPIRY:4:2}-${EXPIRY:6:2}" +%s)
 NOW_EPOCH=$(date +%s)
 DAYS_LEFT=$(( ($EXPIRY_EPOCH - $NOW_EPOCH) / 86400 ))
