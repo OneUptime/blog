@@ -117,7 +117,7 @@ helm repo update
 
 ### Method 2: Using Kubernetes Manifests
 
-If you prefer not to use Helm, you can deploy External-DNS using raw Kubernetes manifests. We'll show this in the provider-specific sections below.
+If you prefer not to use Helm, you can deploy External-DNS using raw Kubernetes manifests from the provider-specific tutorials in the External-DNS documentation.
 
 ## Step 3: Configure External-DNS for Your DNS Provider
 
@@ -149,7 +149,7 @@ This IAM policy grants the minimum permissions required for External-DNS to mana
             "Action": [
                 "route53:ListHostedZones",
                 "route53:ListResourceRecordSets",
-                "route53:ListTagsForResource"
+                "route53:ListTagsForResources"
             ],
             "Resource": [
                 "*"
@@ -228,6 +228,8 @@ First, create a CloudFlare API token with the following permissions:
 - Zone:Read (to list zones)
 - DNS:Edit (to manage records)
 
+Grant the token access to all zones, or configure `--zone-id-filter` if the token is restricted to specific zones.
+
 #### Deploy External-DNS for CloudFlare
 
 This configuration sets up External-DNS for CloudFlare. The API token is stored in a Kubernetes secret for security:
@@ -259,8 +261,7 @@ txtOwnerId: "k8s-external-dns"
 
 # CloudFlare-specific environment variables
 env:
-  # Enable proxy by default (CloudFlare's CDN/DDoS protection)
-  # Set to "false" if you want DNS-only mode
+  # API token used to authenticate to the CloudFlare API
   - name: CF_API_TOKEN
     valueFrom:
       secretKeyRef:
@@ -339,7 +340,7 @@ helm install external-dns external-dns/external-dns \
 
 For AKS clusters or those using Azure DNS.
 
-This configuration uses Azure AD Workload Identity for authentication, which is the modern approach replacing pod identity:
+This configuration uses a Kubernetes secret containing `azure.json` for authentication:
 
 ```yaml
 # values-azure.yaml
@@ -495,7 +496,7 @@ spec:
 
 ### DNS Record Types
 
-External-DNS primarily creates A records (for IPv4) and AAAA records (for IPv6). Here's how to work with different record types:
+External-DNS primarily creates A records (for IPv4) and AAAA records (for IPv6) from the service's external IPs. No target override is needed for the standard LoadBalancer service case:
 
 ```yaml
 # service-a-record.yaml
@@ -506,8 +507,7 @@ metadata:
   name: my-app
   annotations:
     external-dns.alpha.kubernetes.io/hostname: myapp.example.com
-    # Specify A record explicitly (this is the default)
-    external-dns.alpha.kubernetes.io/target: ""
+    # External-DNS derives A/AAAA targets from the Service status
 spec:
   type: LoadBalancer
   ports:
@@ -570,7 +570,7 @@ spec:
 
 ### AWS Route53 Specific Annotations
 
-Route53 supports additional features like alias records and health checks:
+Route53 supports additional features like routing policies and existing health check associations:
 
 ```yaml
 # service-route53.yaml
@@ -581,16 +581,13 @@ metadata:
   name: my-app
   annotations:
     external-dns.alpha.kubernetes.io/hostname: myapp.example.com
-    # Use Route53 alias records (recommended for AWS resources)
-    # Alias records don't incur DNS query charges
-    external-dns.alpha.kubernetes.io/alias: "true"
     # Set record set identifier for routing policies
     external-dns.alpha.kubernetes.io/set-identifier: "us-west-2-primary"
     # AWS region for latency-based routing
     external-dns.alpha.kubernetes.io/aws-region: "us-west-2"
     # Weight for weighted routing (0-255)
     external-dns.alpha.kubernetes.io/aws-weight: "100"
-    # Enable Route53 health check
+    # Associate an existing Route53 health check
     external-dns.alpha.kubernetes.io/aws-health-check-id: "health-check-id"
 spec:
   type: LoadBalancer
@@ -683,13 +680,13 @@ spec:
           # Health checks for the application
           livenessProbe:
             httpGet:
-              path: /health
+              path: /
               port: 80
             initialDelaySeconds: 10
             periodSeconds: 10
           readinessProbe:
             httpGet:
-              path: /ready
+              path: /
               port: 80
             initialDelaySeconds: 5
             periodSeconds: 5
@@ -729,10 +726,6 @@ spec:
       targetPort: 80
       protocol: TCP
       name: http
-    - port: 443
-      targetPort: 443
-      protocol: TCP
-      name: https
   selector:
     app: web-application
 ```
@@ -851,17 +844,14 @@ dig TXT external-dns-webapp.example.com
 
 ### Filtering by Namespace
 
-You can restrict External-DNS to specific namespaces for multi-tenant clusters:
+You can restrict External-DNS to a specific namespace for multi-tenant clusters:
 
 ```yaml
 # values-namespace-filter.yaml
 # External-DNS configuration with namespace filtering
 extraArgs:
-  # Only watch resources in these namespaces
+  # Only watch resources in this namespace
   - --namespace=production
-  - --namespace=staging
-  # Alternatively, use label selector
-  # - --namespace-selector=external-dns=enabled
 ```
 
 ### Source Filtering by Annotations
@@ -914,20 +904,16 @@ extraArgs:
   - --aws-batch-change-interval=10s
 ```
 
-### High Availability Setup
+### Production Reliability Setup
 
-For production environments, run multiple External-DNS replicas with leader election:
+For production environments with the current official Helm chart, keep a single active External-DNS replica. The chart limits `replicaCount` to `0` or `1` to avoid duplicate or conflicting DNS updates:
 
 ```yaml
-# values-ha.yaml
-# High Availability External-DNS configuration
-replicaCount: 2
+# values-production.yaml
+# Production External-DNS configuration
+replicaCount: 1
 
-# Enable leader election to prevent conflicts
-extraArgs:
-  - --leader-elect=true
-
-# Pod anti-affinity to spread replicas across nodes
+# Pod anti-affinity preference for scheduling resilience
 affinity:
   podAntiAffinity:
     preferredDuringSchedulingIgnoredDuringExecution:
@@ -1112,12 +1098,11 @@ spec:
       ports:
         - protocol: TCP
           port: 443
-    # Allow access to Kubernetes API server
+    # Allow access to the Kubernetes API server
+    # Replace this CIDR with your cluster's API server endpoint or service IP
     - to:
-        - namespaceSelector: {}
-          podSelector:
-            matchLabels:
-              component: kube-apiserver
+        - ipBlock:
+            cidr: 10.96.0.1/32
       ports:
         - protocol: TCP
           port: 443
