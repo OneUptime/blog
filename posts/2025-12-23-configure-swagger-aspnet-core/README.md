@@ -426,9 +426,11 @@ if (app.Environment.IsDevelopment() ||
     });
 }
 
-// Or protect with authentication
-app.UseSwagger();
-app.UseSwaggerUI().RequireAuthorization("SwaggerAccess");
+// Or protect with authentication using endpoint routing.
+// MapSwagger/MapSwaggerUI return an IEndpointConventionBuilder, so they
+// support RequireAuthorization (UseSwagger/UseSwaggerUI do not).
+app.MapSwagger().RequireAuthorization("SwaggerAccess");
+app.MapSwaggerUI().RequireAuthorization("SwaggerAccess");
 ```
 
 ## Minimal API Documentation
