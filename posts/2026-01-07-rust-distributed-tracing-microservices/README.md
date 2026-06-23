@@ -38,20 +38,19 @@ This middleware extracts trace context from incoming HTTP requests and creates a
 // Axum middleware for trace context extraction
 
 use axum::{
-    body::Body,
     extract::Request,
-    http::{HeaderMap, StatusCode},
+    http::{HeaderMap, StatusCode, Version},
     middleware::Next,
     response::Response,
 };
 use opentelemetry::{
     global,
     propagation::Extractor,
-    trace::{SpanKind, Status, TraceContextExt, Tracer},
-    Context,
+    trace::Status,
 };
 use std::time::Instant;
-use tracing::{info_span, Instrument, Span};
+use tracing::{info_span, Instrument};
+use tracing_opentelemetry::OpenTelemetrySpanExt;
 
 /// Extractor for HTTP headers - implements OpenTelemetry's Extractor trait
 struct HeaderExtractor<'a>(&'a HeaderMap);
@@ -78,30 +77,27 @@ pub async fn tracing_middleware(request: Request, next: Next) -> Result<Response
     // Get request details for span attributes
     let method = request.method().to_string();
     let uri = request.uri().path().to_string();
-    let version = format!("{:?}", request.version());
+    let version = match request.version() {
+        Version::HTTP_09 => "0.9",
+        Version::HTTP_10 => "1.0",
+        Version::HTTP_11 => "1.1",
+        Version::HTTP_2 => "2",
+        Version::HTTP_3 => "3",
+        _ => "unknown",
+    };
 
-    // Create a span as a child of the extracted context
-    let tracer = global::tracer("http-server");
-    let span = tracer
-        .span_builder(format!("{} {}", method, uri))
-        .with_kind(SpanKind::Server)
-        .with_attributes(vec![
-            opentelemetry::KeyValue::new("http.method", method.clone()),
-            opentelemetry::KeyValue::new("http.route", uri.clone()),
-            opentelemetry::KeyValue::new("http.flavor", version),
-        ])
-        .start_with_context(&tracer, &parent_context);
-
-    // Create a tracing span linked to OpenTelemetry
+    // Create a tracing span and link it to the extracted OpenTelemetry context
     let tracing_span = info_span!(
         "http_request",
-        http.method = %method,
+        http.request.method = %method,
         http.route = %uri,
+        network.protocol.version = %version,
         otel.kind = "server"
     );
+    let _ = tracing_span.set_parent(parent_context);
 
     // Execute the request handler within the span context
-    let response = next.run(request).instrument(tracing_span).await;
+    let response = next.run(request).instrument(tracing_span.clone()).await;
 
     // Record response status and latency
     let status_code = response.status().as_u16();
@@ -109,19 +105,17 @@ pub async fn tracing_middleware(request: Request, next: Next) -> Result<Response
 
     // Set span status based on HTTP status code
     if status_code >= 400 {
-        span.set_status(Status::error(format!("HTTP {}", status_code)));
+        tracing_span.set_status(Status::error(format!("HTTP {}", status_code)));
     }
 
-    span.set_attribute(opentelemetry::KeyValue::new(
-        "http.status_code",
+    tracing_span.set_attribute(
+        "http.response.status_code",
         status_code as i64,
-    ));
-    span.set_attribute(opentelemetry::KeyValue::new(
+    );
+    tracing_span.set_attribute(
         "http.response_latency_ms",
         latency_ms,
-    ));
-
-    span.end();
+    );
 
     Ok(response)
 }
@@ -138,12 +132,12 @@ When making HTTP requests to other services, inject the current trace context in
 use opentelemetry::{
     global,
     propagation::Injector,
-    trace::{SpanKind, TraceContextExt, Tracer},
-    Context,
+    trace::Status,
 };
-use reqwest::{Client, RequestBuilder, Response};
+use reqwest::{Client, Response};
 use std::collections::HashMap;
-use tracing::instrument;
+use tracing::{info_span, instrument, Instrument};
+use tracing_opentelemetry::OpenTelemetrySpanExt;
 
 /// Injector for HTTP headers
 struct HeaderInjector<'a>(&'a mut HashMap<String, String>);
@@ -167,13 +161,13 @@ impl TracedHttpClient {
     }
 
     /// Make a GET request with trace context propagation
-    #[instrument(skip(self), fields(http.method = "GET", http.url = %url))]
+    #[instrument(skip(self), fields(http.request.method = "GET", url.full = %url))]
     pub async fn get(&self, url: &str) -> Result<Response, reqwest::Error> {
         self.request(reqwest::Method::GET, url, None).await
     }
 
     /// Make a POST request with trace context propagation
-    #[instrument(skip(self, body), fields(http.method = "POST", http.url = %url))]
+    #[instrument(skip(self, body), fields(http.request.method = "POST", url.full = %url))]
     pub async fn post(&self, url: &str, body: Option<String>) -> Result<Response, reqwest::Error> {
         self.request(reqwest::Method::POST, url, body).await
     }
@@ -186,14 +180,13 @@ impl TracedHttpClient {
         body: Option<String>,
     ) -> Result<Response, reqwest::Error> {
         // Create a client span for this outgoing request
-        let tracer = global::tracer("http-client");
-        let span = tracer
-            .span_builder(format!("{} {}", method, url))
-            .with_kind(SpanKind::Client)
-            .start(&tracer);
-
-        // Create context with the active span
-        let cx = Context::current_with_span(span);
+        let tracing_span = info_span!(
+            "http_client_request",
+            http.request.method = %method,
+            url.full = %url,
+            otel.kind = "client"
+        );
+        let cx = tracing_span.context();
 
         // Prepare headers with trace context
         let mut headers = HashMap::new();
@@ -215,7 +208,13 @@ impl TracedHttpClient {
         }
 
         // Execute and return response
-        request_builder.send().await
+        let response = request_builder.send().instrument(tracing_span.clone()).await;
+
+        if let Err(err) = &response {
+            tracing_span.set_status(Status::error(err.to_string()));
+        }
+
+        response
     }
 }
 
@@ -270,10 +269,10 @@ For gRPC services using Tonic, context propagation uses metadata headers.
 use opentelemetry::{
     global,
     propagation::Extractor,
-    trace::{SpanKind, TraceContextExt, Tracer},
     Context,
 };
 use tonic::{Request, Status};
+use tracing_opentelemetry::OpenTelemetrySpanExt;
 
 /// Extractor for gRPC metadata
 struct MetadataExtractor<'a>(&'a tonic::metadata::MetadataMap);
@@ -301,23 +300,17 @@ pub fn extract_trace_context<T>(request: &Request<T>) -> Context {
     })
 }
 
-/// Server interceptor that creates spans for incoming requests
-pub fn tracing_interceptor(request: Request<()>) -> Result<Request<()>, Status> {
+/// Server interceptor that extracts trace context for incoming requests
+pub fn tracing_interceptor(mut request: Request<()>) -> Result<Request<()>, Status> {
     // Extract parent context from metadata
     let parent_context = extract_trace_context(&request);
-
-    // Create a server span
-    let tracer = global::tracer("grpc-server");
-    let _span = tracer
-        .span_builder("grpc_request")
-        .with_kind(SpanKind::Server)
-        .start_with_context(&tracer, &parent_context);
+    request.extensions_mut().insert(parent_context);
 
     Ok(request)
 }
 
 // Example gRPC service implementation
-use tonic::{Response, Status};
+use tonic::Response;
 
 pub mod orders {
     tonic::include_proto!("orders");
@@ -334,13 +327,21 @@ pub struct OrderServiceImpl {
 
 #[tonic::async_trait]
 impl OrderService for OrderServiceImpl {
-    #[tracing::instrument(skip(self, request), fields(grpc.method = "CreateOrder"))]
+    #[tracing::instrument(
+        skip(self, request),
+        fields(rpc.system = "grpc", rpc.service = "orders.OrderService", rpc.method = "CreateOrder")
+    )]
     async fn create_order(
         &self,
         request: Request<CreateOrderRequest>,
     ) -> Result<Response<CreateOrderResponse>, Status> {
         // Extract trace context for this request
-        let _parent_cx = extract_trace_context(&request);
+        let parent_cx = request
+            .extensions()
+            .get::<Context>()
+            .cloned()
+            .unwrap_or_else(|| extract_trace_context(&request));
+        let _ = tracing::Span::current().set_parent(parent_cx);
 
         let req = request.into_inner();
 
@@ -359,12 +360,20 @@ impl OrderService for OrderServiceImpl {
         }))
     }
 
-    #[tracing::instrument(skip(self, request), fields(grpc.method = "GetOrder"))]
+    #[tracing::instrument(
+        skip(self, request),
+        fields(rpc.system = "grpc", rpc.service = "orders.OrderService", rpc.method = "GetOrder")
+    )]
     async fn get_order(
         &self,
         request: Request<GetOrderRequest>,
     ) -> Result<Response<GetOrderResponse>, Status> {
-        let _parent_cx = extract_trace_context(&request);
+        let parent_cx = request
+            .extensions()
+            .get::<Context>()
+            .cloned()
+            .unwrap_or_else(|| extract_trace_context(&request));
+        let _ = tracing::Span::current().set_parent(parent_cx);
         let req = request.into_inner();
 
         tracing::info!(order_id = %req.order_id, "Fetching order via gRPC");
@@ -388,13 +397,14 @@ impl OrderService for OrderServiceImpl {
 use opentelemetry::{
     global,
     propagation::Injector,
-    trace::{SpanKind, Tracer},
     Context,
 };
 use tonic::{
     metadata::{MetadataKey, MetadataValue},
     Request,
 };
+use tracing::{info_span, Instrument};
+use tracing_opentelemetry::OpenTelemetrySpanExt;
 
 /// Injector for gRPC metadata
 struct MetadataInjector<'a>(&'a mut tonic::metadata::MetadataMap);
@@ -402,7 +412,7 @@ struct MetadataInjector<'a>(&'a mut tonic::metadata::MetadataMap);
 impl<'a> Injector for MetadataInjector<'a> {
     fn set(&mut self, key: &str, value: String) {
         if let Ok(key) = MetadataKey::from_bytes(key.as_bytes()) {
-            if let Ok(val) = MetadataValue::try_from(&value) {
+            if let Ok(val) = MetadataValue::try_from(value.as_str()) {
                 self.0.insert(key, val);
             }
         }
@@ -410,25 +420,17 @@ impl<'a> Injector for MetadataInjector<'a> {
 }
 
 /// Inject trace context into outgoing gRPC request
-pub fn inject_trace_context<T>(request: &mut Request<T>) {
-    let cx = Context::current();
+pub fn inject_trace_context<T>(request: &mut Request<T>, cx: &Context) {
     global::get_text_map_propagator(|propagator| {
-        propagator.inject_context(&cx, &mut MetadataInjector(request.metadata_mut()))
+        propagator.inject_context(cx, &mut MetadataInjector(request.metadata_mut()))
     });
 }
 
 /// Create a traced gRPC request
-pub fn traced_request<T>(inner: T, method_name: &str) -> Request<T> {
-    // Create a client span for this outgoing request
-    let tracer = global::tracer("grpc-client");
-    let _span = tracer
-        .span_builder(method_name)
-        .with_kind(SpanKind::Client)
-        .start(&tracer);
-
+pub fn traced_request<T>(inner: T, cx: &Context) -> Request<T> {
     // Create request and inject context
     let mut request = Request::new(inner);
-    inject_trace_context(&mut request);
+    inject_trace_context(&mut request, cx);
 
     request
 }
@@ -443,15 +445,24 @@ async fn fetch_order_from_service(order_id: &str) -> Result<GetOrderResponse, to
         .await
         .map_err(|e| tonic::Status::unavailable(format!("Failed to connect: {}", e)))?;
 
+    let span = info_span!(
+        "grpc_client_request",
+        rpc.system = "grpc",
+        rpc.service = "orders.OrderService",
+        rpc.method = "GetOrder",
+        otel.kind = "client"
+    );
+    let cx = span.context();
+
     // Create traced request
     let request = traced_request(
         GetOrderRequest {
             order_id: order_id.to_string(),
         },
-        "orders.OrderService/GetOrder",
+        &cx,
     );
 
-    let response = client.get_order(request).await?;
+    let response = client.get_order(request).instrument(span).await?;
 
     Ok(response.into_inner())
 }
@@ -472,8 +483,7 @@ For asynchronous communication via message queues like Kafka, embed trace contex
 use opentelemetry::{
     global,
     propagation::Injector,
-    trace::{SpanKind, Tracer},
-    Context,
+    trace::Status,
 };
 use rdkafka::{
     producer::{FutureProducer, FutureRecord},
@@ -481,6 +491,8 @@ use rdkafka::{
 };
 use std::collections::HashMap;
 use std::time::Duration;
+use tracing::{info_span, Instrument};
+use tracing_opentelemetry::OpenTelemetrySpanExt;
 
 /// Traced Kafka producer
 pub struct TracedKafkaProducer {
@@ -506,13 +518,13 @@ impl TracedKafkaProducer {
         payload: &[u8],
     ) -> Result<(), KafkaPublishError> {
         // Create a producer span
-        let tracer = global::tracer("kafka-producer");
-        let span = tracer
-            .span_builder(format!("kafka.publish {}", topic))
-            .with_kind(SpanKind::Producer)
-            .start(&tracer);
-
-        let cx = Context::current_with_span(span);
+        let tracing_span = info_span!(
+            "kafka_publish",
+            messaging.system = "kafka",
+            messaging.destination.name = %topic,
+            otel.kind = "producer"
+        );
+        let cx = tracing_span.context();
 
         // Prepare headers with trace context
         let mut trace_headers: HashMap<String, String> = HashMap::new();
@@ -537,8 +549,12 @@ impl TracedKafkaProducer {
 
         self.producer
             .send(record, Duration::from_secs(5))
+            .instrument(tracing_span.clone())
             .await
-            .map_err(|(err, _)| KafkaPublishError::SendError(err))?;
+            .map_err(|(err, _)| {
+                tracing_span.set_status(Status::error(err.to_string()));
+                KafkaPublishError::SendError(err)
+            })?;
 
         tracing::info!(topic, key, "Message published to Kafka");
 
@@ -570,15 +586,17 @@ pub enum KafkaPublishError {
 use opentelemetry::{
     global,
     propagation::Extractor,
-    trace::{SpanKind, TraceContextExt, Tracer},
+    trace::Status,
     Context,
 };
 use rdkafka::{
     consumer::{Consumer, StreamConsumer},
-    message::BorrowedMessage,
+    message::{BorrowedMessage, Headers},
     ClientConfig, Message,
 };
 use std::collections::HashMap;
+use tracing::{info_span, Instrument};
+use tracing_opentelemetry::OpenTelemetrySpanExt;
 
 /// Traced Kafka consumer
 pub struct TracedKafkaConsumer {
@@ -615,16 +633,15 @@ impl TracedKafkaConsumer {
                     let parent_context = extract_context_from_message(&message);
 
                     // Create a consumer span as a child of the producer span
-                    let tracer = global::tracer("kafka-consumer");
-                    let span = tracer
-                        .span_builder(format!(
-                            "kafka.consume {}",
-                            message.topic()
-                        ))
-                        .with_kind(SpanKind::Consumer)
-                        .start_with_context(&tracer, &parent_context);
-
-                    let _guard = Context::current_with_span(span).attach();
+                    let tracing_span = info_span!(
+                        "kafka_consume",
+                        messaging.system = "kafka",
+                        messaging.destination.name = %message.topic(),
+                        messaging.kafka.partition = message.partition(),
+                        messaging.kafka.message.offset = message.offset(),
+                        otel.kind = "consumer"
+                    );
+                    let _ = tracing_span.set_parent(parent_context);
 
                     tracing::info!(
                         topic = message.topic(),
@@ -648,7 +665,8 @@ impl TracedKafkaConsumer {
                     };
 
                     // Process with handler
-                    if let Err(e) = handler(processable).await {
+                    if let Err(e) = handler(processable).instrument(tracing_span.clone()).await {
+                        tracing_span.set_status(Status::error(format!("{:?}", e)));
                         tracing::error!(error = ?e, "Failed to process message");
                     }
                 }
