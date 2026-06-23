@@ -50,13 +50,13 @@ Istio's retry functionality is configured in the VirtualService resource. The re
 
 ### Basic Retry Configuration
 
-The following example demonstrates a basic retry configuration that attempts up to 3 retries with a 2-second timeout per retry attempt:
+The following example demonstrates a basic retry configuration that attempts up to 3 retries with a 2-second timeout per attempt:
 
 ```yaml
 # VirtualService with basic retry configuration
 
 # This configuration retries failed requests up to 3 times
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-service-vs
@@ -75,7 +75,7 @@ spec:
       retries:
         # Maximum number of retry attempts
         attempts: 3
-        # Timeout per retry attempt (not total timeout)
+        # Timeout per attempt, including the initial call and each retry
         perTryTimeout: 2s
         # Only retry on specific conditions (5xx errors and connection failures)
         retryOn: 5xx,reset,connect-failure,retriable-4xx
@@ -88,8 +88,8 @@ Let's break down each retry parameter:
 | Parameter | Description | Default |
 |-----------|-------------|---------|
 | `attempts` | Maximum number of retries | 2 |
-| `perTryTimeout` | Timeout for each retry attempt | Same as request timeout |
-| `retryOn` | Conditions that trigger a retry | connect-failure,refused-stream,unavailable,cancelled,retriable-status-codes |
+| `perTryTimeout` | Timeout for each attempt, including the initial call and any retries | Same as request timeout |
+| `retryOn` | Conditions that trigger a retry | connect-failure,refused-stream,unavailable,cancelled |
 | `retryRemoteLocalities` | Whether to retry on different localities | false |
 
 ## Retry Conditions (retryOn)
@@ -98,11 +98,11 @@ Istio supports various retry conditions that determine when a request should be 
 
 ### Common Retry Conditions
 
-The following configuration shows all available retry conditions with detailed comments:
+The following configuration shows common retry conditions with detailed comments:
 
 ```yaml
-# Comprehensive retry configuration with all condition types
-apiVersion: networking.istio.io/v1beta1
+# Retry configuration with common condition types
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: comprehensive-retry-vs
@@ -161,7 +161,7 @@ When dealing with gateway errors, you may want to configure retries specifically
 ```yaml
 # Configuration targeting gateway errors specifically
 # Useful when services behind API gateways experience intermittent issues
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: gateway-error-retry-vs
@@ -196,7 +196,7 @@ The following example shows how to configure request timeouts in a VirtualServic
 ```yaml
 # VirtualService with timeout configuration
 # This sets a maximum duration for the entire request
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: timeout-example-vs
@@ -221,8 +221,8 @@ When using both retries and timeouts, it's important to understand their interac
 
 ```yaml
 # Combined retry and timeout configuration
-# Total time = min(timeout, attempts * perTryTimeout + backoff time)
-apiVersion: networking.istio.io/v1beta1
+# Total time = min(timeout, (1 + attempts) * perTryTimeout + backoff time)
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: resilient-service-vs
@@ -243,7 +243,7 @@ spec:
         # Number of retry attempts
         attempts: 3
         # Timeout per individual attempt
-        # With 3 attempts at 2s each, max retry time is 6s (plus backoff)
+        # With 3 retries at 2s each, max attempt time is 8s total (plus backoff)
         # This fits within the 10s overall timeout
         perTryTimeout: 2s
         # Retry on server errors and connection issues
@@ -258,7 +258,7 @@ sequenceDiagram
     participant E as Envoy Proxy
     participant S as Service
 
-    Note over C,S: Total Timeout: 10s, perTryTimeout: 2s, attempts: 3
+    Note over C,S: Total Timeout: 10s, perTryTimeout: 2s, attempts: 3 retries
 
     C->>E: Request
     E->>S: Attempt 1
@@ -284,7 +284,7 @@ Different routes may require different timeout values based on their expected re
 ```yaml
 # Route-specific timeout configuration
 # Different endpoints have different performance characteristics
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: multi-route-timeout-vs
@@ -343,42 +343,31 @@ spec:
 
 ### Retry with Exponential Backoff
 
-While Istio uses a default backoff strategy, you can influence retry behavior through DestinationRule:
+While Istio uses a default exponential backoff strategy, you can set the minimum duration between retries in the VirtualService retry policy:
 
 ```yaml
-# DestinationRule to configure connection pool settings
-# These settings affect how retries behave at the connection level
-apiVersion: networking.istio.io/v1beta1
-kind: DestinationRule
+# VirtualService with explicit retry backoff
+apiVersion: networking.istio.io/v1
+kind: VirtualService
 metadata:
-  name: retry-destination-rule
+  name: retry-backoff-vs
   namespace: production
 spec:
-  host: backend-service
-  trafficPolicy:
-    connectionPool:
-      tcp:
-        # Maximum number of TCP connections
-        maxConnections: 100
-        # TCP connection timeout
-        connectTimeout: 5s
-      http:
-        # Maximum pending HTTP requests
-        h2UpgradePolicy: UPGRADE
-        http1MaxPendingRequests: 100
-        # Maximum requests per connection
-        http2MaxRequests: 1000
-        # Maximum retries outstanding at any time
-        maxRetries: 3
-    outlierDetection:
-      # Eject hosts that fail consecutively
-      consecutive5xxErrors: 5
-      # Time between ejection analysis
-      interval: 30s
-      # Minimum ejection duration
-      baseEjectionTime: 30s
-      # Maximum percentage of hosts that can be ejected
-      maxEjectionPercent: 50
+  hosts:
+    - backend-service
+  http:
+    - route:
+        - destination:
+            host: backend-service
+            port:
+              number: 8080
+      timeout: 10s
+      retries:
+        attempts: 3
+        perTryTimeout: 2s
+        retryOn: 5xx,reset,connect-failure
+        # Minimum duration between retry attempts; defaults to 25ms if unset
+        backoff: 500ms
 ```
 
 ### Retry Based on Response Headers
@@ -387,8 +376,8 @@ You can configure retries based on specific response headers:
 
 ```yaml
 # VirtualService with header-based retry configuration
-# Retry when service indicates it's temporarily unavailable
-apiVersion: networking.istio.io/v1beta1
+# Retry when a request tells Envoy which response headers should be retriable
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: header-retry-vs
@@ -406,7 +395,8 @@ spec:
         attempts: 5
         perTryTimeout: 10s
         # Retry based on retriable headers
-        # Service can set x-envoy-retriable-header-names in response
+        # Internal clients can send x-envoy-retriable-header-names
+        # to list response header names that should trigger a retry
         retryOn: retriable-headers,5xx
 ```
 
@@ -419,7 +409,7 @@ Consider the expected response time of your services when setting timeouts:
 ```yaml
 # Best practice: Set timeouts based on service SLOs
 # Example: Service has p99 latency of 500ms, set timeout to 2x-3x that value
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: slo-based-timeout-vs
@@ -464,7 +454,7 @@ flowchart LR
 ```yaml
 # Cascading timeout configuration
 # Each downstream service should have shorter timeout than upstream
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: order-service-vs
@@ -494,7 +484,7 @@ Combine retries with circuit breaking to prevent overwhelming failing services:
 ```yaml
 # DestinationRule with circuit breaking
 # Prevents retry storms from overwhelming a failing service
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: circuit-breaker-dr
@@ -544,7 +534,7 @@ flowchart TD
 # Backend services should have fewer or no retries
 ---
 # Edge service - more retries allowed
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: edge-service-vs
@@ -565,7 +555,7 @@ spec:
         retryOn: 5xx,gateway-error
 ---
 # Internal service - minimal retries
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: internal-service-vs
@@ -594,7 +584,7 @@ Here's a complete production-ready configuration combining all concepts:
 
 ```yaml
 # Production-ready VirtualService with comprehensive retry and timeout configuration
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: production-api-vs
@@ -668,7 +658,7 @@ spec:
         retryOn: 5xx,gateway-error
 ---
 # Accompanying DestinationRule for connection management
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: production-api-dr
@@ -697,21 +687,21 @@ spec:
 
 ## Monitoring Retries and Timeouts
 
-Use Istio's built-in metrics to monitor retry and timeout behavior:
+Use Istio's built-in metrics and Envoy cluster metrics to monitor retry and timeout behavior:
 
 ```yaml
 # Prometheus queries for monitoring retries and timeouts
 
-# Query 1: Retry rate per service
-# rate(istio_requests_total{response_flags=~".*RR.*"}[5m])
+# Query 1: Retry rate from Envoy cluster metrics
+# sum(rate(envoy_cluster_upstream_rq_retry[5m])) by (envoy_cluster_name)
 
-# Query 2: Timeout rate per service
+# Query 2: Timeout rate from Istio response flags
 # rate(istio_requests_total{response_flags=~".*UT.*"}[5m])
 
-# Query 3: Overall retry success rate
-# sum(rate(istio_requests_total{response_flags=~".*RR.*",response_code="200"}[5m]))
+# Query 3: Retry success rate from Envoy cluster metrics
+# sum(rate(envoy_cluster_upstream_rq_retry_success[5m]))
 # /
-# sum(rate(istio_requests_total{response_flags=~".*RR.*"}[5m]))
+# sum(rate(envoy_cluster_upstream_rq_retry[5m]))
 ```
 
 ## Troubleshooting Common Issues
@@ -730,14 +720,14 @@ istioctl proxy-config routes <pod-name> -n your-namespace -o json | grep -A 20 "
 
 ### Issue 2: Timeout Errors Despite Correct Configuration
 
-Ensure the overall timeout is greater than (attempts * perTryTimeout):
+Ensure the overall timeout is greater than ((1 + attempts) * perTryTimeout), plus expected backoff time, if you need every retry to have time to run:
 
 ```yaml
 # Correct configuration
 timeout: 15s
 retries:
-  attempts: 3
-  perTryTimeout: 4s  # 3 * 4s = 12s < 15s overall timeout
+  attempts: 2
+  perTryTimeout: 4s  # (1 + 2) * 4s = 12s < 15s overall timeout
 ```
 
 ### Issue 3: Too Many Retries Causing Issues
