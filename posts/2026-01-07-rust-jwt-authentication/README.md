@@ -42,16 +42,19 @@ jsonwebtoken = "9"
 axum = { version = "0.7", features = ["macros"] }
 axum-extra = { version = "0.9", features = ["typed-header"] }
 tokio = { version = "1", features = ["full"] }
+tracing = "0.1"
 
 # Serialization
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+validator = { version = "0.18", features = ["derive"] }
 
 # Password hashing
 argon2 = "0.5"
 rand = "0.8"
 
 # Utilities
+anyhow = "1"
 chrono = { version = "0.4", features = ["serde"] }
 uuid = { version = "1", features = ["v4", "serde"] }
 thiserror = "1"
@@ -146,7 +149,7 @@ impl RefreshClaims {
 // JWT generation and validation
 
 use jsonwebtoken::{
-    decode, encode, DecodingKey, EncodingKey, Header, TokenData, Validation,
+    decode, encode, Algorithm, DecodingKey, EncodingKey, Header, TokenData, Validation,
 };
 use thiserror::Error;
 use uuid::Uuid;
@@ -196,7 +199,7 @@ impl TokenService {
     ) -> Result<String, TokenError> {
         let claims = AccessClaims::new(user_id, email, roles, self.access_token_ttl);
 
-        encode(&Header::default(), &claims, &self.encoding_key)
+        encode(&Header::new(Algorithm::HS256), &claims, &self.encoding_key)
             .map_err(TokenError::EncodingFailed)
     }
 
@@ -204,7 +207,7 @@ impl TokenService {
     pub fn generate_refresh_token(&self, user_id: Uuid) -> Result<String, TokenError> {
         let claims = RefreshClaims::new(user_id, self.refresh_token_ttl);
 
-        encode(&Header::default(), &claims, &self.encoding_key)
+        encode(&Header::new(Algorithm::HS256), &claims, &self.encoding_key)
             .map_err(TokenError::EncodingFailed)
     }
 
@@ -225,7 +228,7 @@ impl TokenService {
 
     /// Validate and decode access token
     pub fn validate_access_token(&self, token: &str) -> Result<AccessClaims, TokenError> {
-        let mut validation = Validation::default();
+        let mut validation = Validation::new(Algorithm::HS256);
         validation.validate_exp = true;
 
         let token_data: TokenData<AccessClaims> =
@@ -242,7 +245,7 @@ impl TokenService {
 
     /// Validate and decode refresh token
     pub fn validate_refresh_token(&self, token: &str) -> Result<RefreshClaims, TokenError> {
-        let mut validation = Validation::default();
+        let mut validation = Validation::new(Algorithm::HS256);
         validation.validate_exp = true;
 
         let token_data: TokenData<RefreshClaims> =
@@ -564,9 +567,8 @@ struct User {
 // JWT authentication extractor
 
 use axum::{
-    async_trait,
     extract::FromRequestParts,
-    http::{request::Parts, StatusCode},
+    http::request::Parts,
     RequestPartsExt,
 };
 use axum_extra::{
@@ -609,7 +611,6 @@ impl AuthUser {
     }
 }
 
-#[async_trait]
 impl FromRequestParts<AppState> for AuthUser {
     type Rejection = AppError;
 
@@ -636,7 +637,6 @@ impl FromRequestParts<AppState> for AuthUser {
 /// Optional authentication - doesn't fail if no token provided
 pub struct OptionalAuthUser(pub Option<AuthUser>);
 
-#[async_trait]
 impl FromRequestParts<AppState> for OptionalAuthUser {
     type Rejection = AppError;
 
@@ -652,10 +652,9 @@ impl FromRequestParts<AppState> for OptionalAuthUser {
 }
 
 /// Role-based authorization extractor
-pub struct RequireRole<const ROLE: &'static str>;
+pub struct RequireAdmin;
 
-#[async_trait]
-impl<const ROLE: &'static str> FromRequestParts<AppState> for RequireRole<ROLE> {
+impl FromRequestParts<AppState> for RequireAdmin {
     type Rejection = AppError;
 
     async fn from_request_parts(
@@ -664,11 +663,11 @@ impl<const ROLE: &'static str> FromRequestParts<AppState> for RequireRole<ROLE> 
     ) -> Result<Self, Self::Rejection> {
         let user = AuthUser::from_request_parts(parts, state).await?;
 
-        if !user.has_role(ROLE) {
+        if !user.has_role("admin") {
             return Err(AppError::Forbidden);
         }
 
-        Ok(RequireRole)
+        Ok(RequireAdmin)
     }
 }
 ```
@@ -683,7 +682,7 @@ impl<const ROLE: &'static str> FromRequestParts<AppState> for RequireRole<ROLE> 
 
 use axum::{routing::get, Json, Router};
 
-use crate::middleware::auth::{AuthUser, RequireRole};
+use crate::middleware::auth::{AuthUser, RequireAdmin};
 use crate::state::AppState;
 
 pub fn router() -> Router<AppState> {
@@ -703,7 +702,7 @@ async fn get_current_user(user: AuthUser) -> Json<UserProfile> {
 
 /// Admin-only endpoint (requires admin role)
 async fn admin_list_users(
-    _admin: RequireRole<"admin">,
+    _admin: RequireAdmin,
     user: AuthUser,  // Also get user info
 ) -> Json<AdminResponse> {
     tracing::info!(admin.id = %user.id, "Admin accessed user list");
@@ -782,7 +781,7 @@ async function fetchWithAuth(url, options = {}) {
 
 ```rust
 // Set refresh token as HttpOnly cookie
-use axum::http::{header, HeaderValue};
+use axum::http::HeaderValue;
 
 fn set_refresh_token_cookie(token: &str, max_age_days: i64) -> HeaderValue {
     let cookie = format!(
