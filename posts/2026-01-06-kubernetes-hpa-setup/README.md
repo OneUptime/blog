@@ -333,7 +333,7 @@ spec:
 
 **Aggressive (burst traffic):**
 
-Use aggressive scaling when your application experiences sudden traffic spikes and can start handling requests quickly. This configuration doubles capacity every 15 seconds if needed.
+Use aggressive scaling when your application experiences sudden traffic spikes and can start handling requests quickly. This configuration triples capacity every 15 seconds if needed.
 
 ```yaml
 scaleUp:
