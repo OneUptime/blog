@@ -179,8 +179,8 @@ Common fields used in system call rules:
 |-------|-------------|---------|
 | arch | System architecture | arch=b64 (64-bit), arch=b32 (32-bit) |
 | auid | Audit UID (original login UID) | auid>=1000 |
-| uid | Effective user ID | uid=0 |
-| gid | Effective group ID | gid=0 |
+| uid | User ID | uid=0 |
+| gid | Group ID | gid=0 |
 | euid | Effective user ID | euid=0 |
 | pid | Process ID | pid=1234 |
 | ppid | Parent process ID | ppid=1 |
@@ -889,7 +889,7 @@ sudo ausearch -sv yes -i
 sudo ausearch -a 12345 -i
 
 # Search by session ID
-sudo ausearch -se 5 -i
+sudo ausearch --session 5 -i
 ```
 
 ### Output Formatting
@@ -1282,16 +1282,12 @@ Audit logging can impact system performance. Here are strategies to optimize:
 #
 # Performance-tuned configuration
 
-# Increase buffer size for high-volume systems
-# Default is 8192, increase for busy servers
 log_format = ENRICHED
 log_group = adm
 priority_boost = 4
 flush = INCREMENTAL_ASYNC
 freq = 50
 num_logs = 5
-disp_qos = lossy
-dispatcher = /sbin/audispd
 name_format = HOSTNAME
 max_log_file = 50
 max_log_file_action = ROTATE
@@ -1497,8 +1493,6 @@ disk_error_action = SYSLOG
 #
 # Dispatcher settings
 #
-disp_qos = lossy
-dispatcher = /sbin/audispd
 distribute_network = no
 
 #
@@ -1551,7 +1545,7 @@ write_logs = yes
 # EXCLUSION RULES (performance optimization)
 #======================================================================
 
-# Exclude events from processes with unset audit UID
+# Exclude the current-working-directory (CWD) record type from events
 -a always,exclude -F msgtype=CWD
 
 # Exclude high-volume temporary directories (uncomment if needed)
