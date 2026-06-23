@@ -29,14 +29,14 @@ If you're new to SLOs and reliability metrics, you may also want to read:
 Because latency is rarely normally distributed, it’s long-tailed. A handful of very slow outliers (GC pauses, cold starts, retries, network hiccups, lock contention) can inflate the average without affecting most users. The median (P50) ignores those extremes and anchors on the typical experience.
 
 Example: 10,000 requests
-- 9,400 finish in 50 ms
-- 500 finish in 120 ms
-- 90 finish in 600 ms
-- 10 finish in 8,000 ms
+- 9,000 finish in 50 ms
+- 600 finish in 120 ms
+- 350 finish in 600 ms
+- 50 finish in 8,000 ms
 
-Average ≈ (9400*50 + 500*120 + 90*600 + 10*8000)/10000 = ~118 ms  (looks bad)
+Average ≈ (9000*50 + 600*120 + 350*600 + 50*8000)/10000 = ~113 ms  (looks bad)
 Median = 50 ms (most users fine)
-P95 ≈ around 120–130 ms
+P95 ≈ around 120 ms
 P99 ≈ around 600 ms
 
 If you optimized blindly for the average, you might waste time chasing rare anomalies instead of systematic tail behaviors.
