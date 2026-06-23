@@ -51,7 +51,7 @@ resource "aws_instance" "servers" {
 
 ## Using Maps for Complex Configurations
 
-When each resource needs multiple varying attributes, use a list of maps.
+When each resource needs multiple varying attributes, use a list of objects.
 
 ```hcl
 variable "servers" {
@@ -179,15 +179,14 @@ variable "service_count" {
   default = 4
 }
 
-resource "aws_security_group_rule" "service_ports" {
+resource "aws_vpc_security_group_ingress_rule" "service_ports" {
   count = var.service_count
 
-  type              = "ingress"
-  from_port         = var.base_port + count.index
-  to_port           = var.base_port + count.index
-  protocol          = "tcp"
-  cidr_blocks       = ["0.0.0.0/0"]
   security_group_id = aws_security_group.main.id
+  cidr_ipv4         = "0.0.0.0/0"
+  from_port         = var.base_port + count.index
+  ip_protocol       = "tcp"
+  to_port           = var.base_port + count.index
 
   description = "Service port ${var.base_port + count.index}"
 }
