@@ -14,8 +14,9 @@ Grafana dashboards often need to show different panels based on user selections.
 
 ## TL;DR
 
-- Use "Repeat for" option to show panels only when variable values exist
-- Return "No Data" in queries to effectively hide panels
+- Use native "Show / hide rules" in current Grafana versions when you need true conditional visibility
+- Use "Repeat for" options to create panels only for selected variable values
+- Return "No Data" in queries and hide panels with query-result rules when appropriate
 - Use row repeats for grouping related conditional panels
 - Combine with variable options like "Include All" for flexibility
 - Consider separate dashboards for very different views
@@ -24,7 +25,7 @@ Grafana dashboards often need to show different panels based on user selections.
 
 ## Understanding the Challenge
 
-Grafana doesn't have a native "hide panel if variable equals X" feature. However, several workarounds achieve similar results:
+Current Grafana versions include native Show / hide rules that can show or hide panels, rows, or tabs based on template variables. In older dashboards, or when a layout does not support the rule you need, several workarounds achieve similar results:
 
 ```mermaid
 flowchart TD
@@ -34,9 +35,10 @@ flowchart TD
     B -->|All| E[Show All Panels]
 
     subgraph Techniques
-        F[Repeat Panels]
-        G[Conditional Queries]
-        H[Row Repeats]
+        F[Show / Hide Rules]
+        G[Repeat Panels]
+        H[Conditional Queries]
+        I[Row Repeats]
     end
 ```
 
@@ -71,7 +73,7 @@ Include All option: true
 
 ```promql
 # Query automatically filtered by repeated variable value
-sum(rate(http_requests_total{service="$service"}[5m]))
+sum(rate(http_requests_total{service=~"${service:regex}"}[5m]))
 ```
 
 ### Result
@@ -82,42 +84,33 @@ sum(rate(http_requests_total{service="$service"}[5m]))
 
 ---
 
-## Method 2: Conditional Queries That Return No Data
+## Method 2: Conditional Queries and Query-Result Rules
 
-Make queries return no data to effectively hide panels:
+Make queries return no data, then use a Show / hide rule with "Query result: Has data" to hide panels when the query returns nothing:
 
 ### Using Label Matching
 
 ```promql
-# Only returns data if selected service is "api"
-sum(rate(http_requests_total{service="$service"}[5m]))
-  and on() (vector(1) and on() label_replace(vector(1), "check", "$service", "", "") == 1)
+# Only returns API data when the selected service list includes "api"
+sum(rate(http_requests_total{service="api", service=~"${service:regex}"}[5m]))
 ```
 
 ### Simplified Conditional
 
 ```promql
-# For specific service panel - returns nothing if not selected
-sum(rate(http_requests_total{service="api"}[5m]))
-  * on() group_left vector("$service" == "api" or 1)
+# For a production-only panel - returns nothing if another environment is selected
+sum(rate(http_requests_total{environment="production", environment=~"${environment:regex}", service=~"${service:regex}"}[5m]))
 ```
 
 ### Panel Configuration for No Data
 
-```json
-{
-  "fieldConfig": {
-    "defaults": {
-      "noValue": "Not applicable"
-    }
-  },
-  "options": {
-    "showNoDataMessage": true
-  }
-}
+```yaml
+Show / hide rules:
+  Panel visibility: Show
+  Query result: Has data
 ```
 
-When a panel shows "No Data", it still takes space but clearly indicates irrelevance.
+Without a Show / hide rule, a panel that shows "No Data" still takes space but clearly indicates irrelevance.
 
 ---
 
@@ -160,30 +153,28 @@ Create different panel visibility for "All" vs specific selections:
 ### Panel for Specific Selection Only
 
 ```promql
-# Returns data only when NOT "All" is selected
-sum(rate(http_requests_total{service="$service"}[5m]))
-# This naturally works - selecting a specific service shows that service
+# Returns data for the selected service values
+sum(rate(http_requests_total{service=~"${service:regex}"}[5m]))
+# Add a Show / hide rule with "Template variable: service Not equals All" for specific-only panels
 ```
 
 ### Panel for "All" Selection Only
 
 ```promql
-# Create variable that equals 1 when All is selected
-# Use in query condition
 sum(rate(http_requests_total[5m])) by (service)
-# This shows multiple series when All is selected
+# Add a Show / hide rule with "Template variable: service Equals All"
 ```
 
 ### Dashboard Variable for Conditional Logic
 
-Create a hidden variable:
+Configure the panel rule directly:
 
 ```yaml
-Name: is_all
-Type: Custom
-Values: 0
-Query: ${service:queryparam}
-# Use regex to detect if $__all is in the selection
+Panel visibility: Show
+Rule type: Template variable
+Variable: service
+Operator: Equals
+Value: All
 ```
 
 ---
@@ -198,7 +189,7 @@ Use transforms to filter or hide data:
 {
   "transformations": [
     {
-      "id": "filterByName",
+      "id": "filterFieldsByName",
       "options": {
         "include": {
           "pattern": ".*${service}.*"
@@ -257,7 +248,7 @@ Query: label_values(http_requests_total{environment="$environment"}, service)
 
 ```promql
 # Only shows data for production
-sum(rate(http_requests_total{environment="production", service="$service"}[5m]))
+sum(rate(http_requests_total{environment="production", environment=~"${environment:regex}", service=~"${service:regex}"}[5m]))
 # When staging is selected, this returns no data
 ```
 
@@ -267,8 +258,7 @@ Create a panel with query:
 
 ```promql
 # Only returns data for non-production environments
-sum(rate(debug_logs_total{environment="$environment"}[5m]))
-  * on() (1 * ($environment != "production"))
+sum(rate(debug_logs_total{environment!="production", environment=~"${environment:regex}"}[5m]))
 ```
 
 ---
@@ -286,7 +276,7 @@ sum(rate(debug_logs_total{environment="$environment"}[5m]))
       "maxPerRow": 3,
       "targets": [
         {
-          "expr": "sum(rate(http_requests_total{service=\"$service\"}[$__rate_interval]))",
+          "expr": "sum(rate(http_requests_total{service=~\"${service:regex}\"}[$__rate_interval]))",
           "legendFormat": "{{service}}"
         }
       ],
@@ -427,9 +417,9 @@ Repeating panels create multiple queries:
 
 ### "No Data" Shows Instead of Hiding
 
-This is expected behavior. Options:
-- Use transparent background
-- Set very small panel size
+This is expected behavior unless you configure Show / hide rules. Options:
+- Add a Show / hide rule with "Query result: Has data"
+- Add a template-variable Show / hide rule
 - Accept "No Data" as valid state
 
 ### Panel Layout Issues
@@ -443,8 +433,9 @@ When panels repeat, layout can shift:
 
 ## Conclusion
 
-While Grafana lacks native conditional panel visibility, these techniques provide effective alternatives:
+Current Grafana versions support native conditional visibility with Show / hide rules. These techniques provide effective alternatives or complements:
 
+- **Show / Hide Rules**: Best for true conditional visibility based on variables or query results
 - **Panel Repeat**: Best for showing one panel per variable value
 - **Conditional Queries**: Return no data when conditions aren't met
 - **Row Repeats**: Group related conditional panels
