@@ -199,9 +199,9 @@ iptables -L OUTPUT -n -v
 # List all zones and rules
 firewall-cmd --list-all
 
-# Allow connection to local port
-firewall-cmd --permanent --add-port=3000/tcp
-firewall-cmd --reload
+# Check for policies or rich rules that restrict egress or loopback traffic
+firewall-cmd --list-policies
+firewall-cmd --list-rich-rules
 ```
 
 ### Check nftables
@@ -255,8 +255,8 @@ Use this script to diagnose permission issues:
 #!/bin/bash
 
 echo "=== SELinux Status ==="
-getenforce
-getsebool httpd_can_network_connect
+getenforce 2>/dev/null || echo "SELinux tools not installed"
+getsebool httpd_can_network_connect 2>/dev/null || echo "SELinux boolean not available"
 
 echo ""
 echo "=== Nginx Process Info ==="
@@ -265,8 +265,12 @@ ps aux | grep nginx | head -5
 echo ""
 echo "=== Nginx User ==="
 NGINX_USER=$(ps aux | grep "nginx: worker" | grep -v grep | awk '{print $1}' | head -1)
-echo "Worker running as: $NGINX_USER"
-id $NGINX_USER
+if [ -n "$NGINX_USER" ]; then
+    echo "Worker running as: $NGINX_USER"
+    id "$NGINX_USER"
+else
+    echo "No nginx worker process found"
+fi
 
 echo ""
 echo "=== Upstream Connectivity Test ==="
