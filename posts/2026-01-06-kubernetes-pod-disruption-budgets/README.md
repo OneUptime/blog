@@ -14,12 +14,11 @@ Pod Disruption Budgets (PDBs) tell Kubernetes how many pods can be unavailable d
 
 ### Voluntary Disruptions
 
-PDBs protect against these:
+PDBs protect against these (all of which use the Eviction API):
 - Node drains (`kubectl drain`)
 - Cluster upgrades
 - Node autoscaler scale-down
 - Pod eviction API calls
-- Deployment rolling updates
 
 ### Involuntary Disruptions
 
@@ -154,7 +153,7 @@ Cluster autoscaler respects PDBs when scaling down nodes. A node won't be remove
 
 ### Deployment Rolling Update
 
-Rolling updates also respect PDBs:
+Rolling updates are **not** governed by PDBs. Workload controllers like Deployments and StatefulSets delete pods directly instead of going through the Eviction API, so a rolling update is bounded by the Deployment's own `maxUnavailable` and `maxSurge` settings, not by the PDB:
 
 ```yaml
 apiVersion: apps/v1
@@ -167,7 +166,7 @@ spec:
       maxSurge: 1
 ```
 
-The Deployment's maxUnavailable and the PDB's maxUnavailable both apply. The more restrictive wins.
+PDBs only constrain eviction-based disruptions (such as node drains and the cluster autoscaler). To control availability during a rollout, tune the Deployment's `maxUnavailable` and `maxSurge`.
 
 ## Common Patterns
 
@@ -501,7 +500,7 @@ spec:
 EOF
 
 # Try to evict
-kubectl drain <node> --ignore-daemonsets --dry-run
+kubectl drain <node> --ignore-daemonsets --dry-run=client
 ```
 
 ## PDB and HPA Interaction
