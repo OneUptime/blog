@@ -15,7 +15,7 @@ Comparing current metrics with historical data helps identify trends, detect ano
 ## TL;DR
 
 - Use `offset` modifier in PromQL to shift queries backwards
-- Set "Relative time" in query options for non-PromQL sources
+- Set panel-level "Time shift" or "Relative time" overrides for non-PromQL sources
 - Combine current and offset queries in the same panel
 - Use transforms for comparing different time periods
 - Create dedicated comparison dashboards for common patterns
@@ -242,28 +242,27 @@ sum(rate(http_requests_total[5m] offset $offset_period))
 ```yaml
 Name: compare_period
 Type: Custom
-Values:
-  "Same time yesterday": "1d"
-  "Same time last week": "7d"
-  "Same time last month": "30d"
+Values: Same time yesterday : 1d, Same time last week : 7d, Same time last month : 30d
 ```
+
+Use `${compare_period:value}` in the query when using key/value variables.
 
 ---
 
 ## Relative Time Override (Non-PromQL)
 
-For data sources without offset support, use Grafana's relative time override:
+For data sources without offset support, use Grafana's panel-level time range overrides. These settings apply to the whole panel, not to a single query inside the panel:
 
 ### Query Options
 
 1. Edit panel
 2. Expand query options
-3. Set "Relative time" field
+3. Set "Time shift" or "Relative time" field
 
 ```text
-Query A: (no relative time - uses dashboard range)
-Query B: Relative time: now-1d/d  (yesterday)
-Query C: Relative time: now-7d/d  (last week)
+Panel A: (no override - uses dashboard range)
+Panel B: Time shift: 1d  (same range, one day earlier)
+Panel C: Time shift: 1w  (same range, one week earlier)
 ```
 
 ### Time Range Syntax
@@ -271,7 +270,7 @@ Query C: Relative time: now-7d/d  (last week)
 | Syntax | Meaning |
 |--------|---------|
 | `now-1d` | 1 day ago from now |
-| `now-1d/d` | Start of yesterday |
+| `now-1d/d` | Start of yesterday when used as a time boundary |
 | `now-7d/d` | Start of day, 7 days ago |
 | `now-1w/w` | Start of last week |
 | `now-1M/M` | Start of last month |
@@ -307,9 +306,9 @@ sum(rate(http_requests_total[5m] offset 7d))
 Daylight saving time can cause 23 or 25 hour days:
 
 ```promql
-# Use day-aligned offset for consistency
+# Prometheus durations are fixed durations, not calendar-aware periods
 sum(rate(http_requests_total[5m] offset 24h))  # Exactly 24 hours
-sum(rate(http_requests_total[5m] offset 1d))   # Calendar day
+sum(rate(http_requests_total[5m] offset 1d))   # Also exactly 24 hours
 ```
 
 ---
