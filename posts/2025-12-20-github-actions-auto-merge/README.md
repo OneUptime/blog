@@ -135,7 +135,7 @@ jobs:
 
 ## Auto-Merge After Approval
 
-Merge immediately after receiving required approvals:
+Enable auto-merge after receiving an approval:
 
 ```yaml
 name: Auto-Merge Approved PRs
@@ -181,8 +181,6 @@ Wait for CI to complete before merging:
 name: Merge When Ready
 
 on:
-  check_suite:
-    types: [completed]
   workflow_run:
     workflows: ["CI"]
     types: [completed]
@@ -223,7 +221,7 @@ jobs:
 Configure branch protection for safe auto-merge:
 
 ```yaml
-# .github/branch-protection.yml (for reference)
+# Representative branch protection settings
 
 branches:
   main:
@@ -369,8 +367,8 @@ Add pre-merge validation:
             exit 1
           fi
 
-          # Check all checks passed
-          CHECKS=$(gh pr checks "$PR_URL" --json state --jq '.[] | select(.state != "SUCCESS" and .state != "SKIPPED")')
+          # Check all checks passed or were skipped
+          CHECKS=$(gh pr checks "$PR_URL" --json bucket --jq '.[] | select(.bucket != "pass" and .bucket != "skipping")')
           if [ -n "$CHECKS" ]; then
             echo "Not all checks passed"
             exit 1
