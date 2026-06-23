@@ -16,8 +16,8 @@ Here's what each variable contains:
 
 | Variable | Contains | Port Included | Source |
 |----------|----------|---------------|--------|
-| `$host` | Hostname only | No | Host header, server_name, or request line |
-| `$http_host` | Hostname:port | Yes (if non-standard) | Exact Host header value |
+| `$host` | Hostname only | No | Request line, Host header, or server_name |
+| `$http_host` | Hostname:port | Yes (if present) | Exact Host header value |
 
 ```mermaid
 flowchart TD
@@ -51,14 +51,14 @@ The `$host` variable is "smart" - it extracts just the hostname:
 ```
 
 Priority order for `$host`:
-1. Hostname from the request line (rare, HTTP/1.0 style)
+1. Hostname from the request line (for example, an absolute-form request target)
 2. Hostname from the `Host` header (most common)
 3. The `server_name` matching the request
 
 **Key characteristics:**
 - Always lowercase
 - Never includes port number
-- Never empty (falls back to server_name)
+- Falls back to the selected server name if no request host is available
 
 ### $http_host Variable
 
@@ -209,7 +209,7 @@ server {
 ### Scenario 3: Handling Missing Host Header
 
 ```nginx
-# $http_host can be empty, $host never is
+# $http_host can be empty, $host falls back to server_name
 server {
     listen 80 default_server;
     server_name example.com;
@@ -279,7 +279,7 @@ server {
     location / {
         proxy_pass http://backend;
 
-        # Option 1: Use $http_host (includes port)
+        # Option 1: Use $http_host (includes port if client sent it)
         proxy_set_header Host $http_host;
 
         # Option 2: Construct it explicitly
@@ -345,7 +345,7 @@ curl -H "Host: example.com:8080" http://localhost/debug
 curl -H "Host: EXAMPLE.COM" http://localhost/debug
 
 # Test without Host header (HTTP/1.0)
-curl --http1.0 http://localhost/debug
+curl --http1.0 -H "Host:" http://localhost/debug
 ```
 
 ## Common Mistakes
@@ -366,13 +366,13 @@ server {
 server {
     listen 80 default_server;
 
-    set $proxy_host $http_host;
-    if ($proxy_host = "") {
-        set $proxy_host $host;
+    set $effective_host $http_host;
+    if ($effective_host = "") {
+        set $effective_host $host;
     }
 
     location / {
-        proxy_set_header Host $proxy_host;
+        proxy_set_header Host $effective_host;
     }
 }
 ```
@@ -411,11 +411,11 @@ if ($host = "example.com") {
 
 | Situation | Use | Reason |
 |-----------|-----|--------|
-| Standard reverse proxy | `$host` | Clean, always populated |
-| Need to preserve port | `$http_host` | Includes port number |
+| Standard reverse proxy | `$host` | Clean, fallback-aware |
+| Need to preserve port | `$http_host` | Includes port when sent by the client |
 | Logging | `$host` | Consistent format |
 | URL construction | `$host` | No unexpected ports |
 | Exact header preservation | `$http_host` | Matches original request |
-| Fallback safety | `$host` | Never empty |
+| Fallback safety | `$host` | Falls back to server_name |
 
 Choose `$host` as your default and switch to `$http_host` only when you specifically need the port number or exact header value. This approach prevents most host-related configuration issues while maintaining flexibility when needed.
