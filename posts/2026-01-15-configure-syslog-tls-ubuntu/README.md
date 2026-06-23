@@ -669,7 +669,7 @@ destination d_tls_remote {
 
 # Forward all logs to remote server
 log {
-    source(s_sys);    # Built-in local system source
+    source(s_src);    # Default local system source on Ubuntu/Debian
     destination(d_tls_remote);
 };
 EOF
@@ -750,8 +750,9 @@ cat << 'EOF' | sudo tee /etc/rsyslog.d/10-mtls-server.conf
 # Rsyslog Mutual TLS Configuration
 #####################################
 
-module(load="imtcp")
-module(load="gtls"
+# Load imtcp with the gtls stream driver settings
+# gtls is a netstream driver referenced by name - it is not loaded with module(load=)
+module(load="imtcp"
     StreamDriver.Name="gtls"
     StreamDriver.Mode="1"
     StreamDriver.AuthMode="x509/name")
@@ -785,11 +786,7 @@ cat << 'EOF' | sudo tee /etc/rsyslog.d/10-mtls-client.conf
 # Rsyslog Mutual TLS Client
 #####################################
 
-module(load="gtls"
-    StreamDriver.Name="gtls"
-    StreamDriver.Mode="1"
-    StreamDriver.AuthMode="x509/name")
-
+# The gtls stream driver is referenced by name and does not need a separate module(load=) call
 global(
     DefaultNetstreamDriver="gtls"
     # CA certificate to verify server
@@ -1058,8 +1055,7 @@ cat << 'EOF' | sudo tee /etc/rsyslog.d/15-optimized-client.conf
 # Optimized TLS Client Configuration
 #####################################
 
-module(load="gtls")
-
+# The gtls stream driver is referenced by name and does not need a separate module(load=) call
 global(
     DefaultNetstreamDriver="gtls"
     DefaultNetstreamDriverCAFile="/etc/ssl/syslog/ca/ca.crt"
@@ -1261,8 +1257,7 @@ cat << 'EOF' | sudo tee /etc/rsyslog.d/10-tls-client-ha.conf
 # HA-aware TLS Client Configuration
 #####################################
 
-module(load="gtls")
-
+# The gtls stream driver is referenced by name and does not need a separate module(load=) call
 global(
     DefaultNetstreamDriver="gtls"
     DefaultNetstreamDriverCAFile="/etc/ssl/syslog/ca/ca.crt"
