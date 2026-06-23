@@ -112,7 +112,7 @@ Key command-line flags for Kafka Exporter:
 --sasl.enabled                       # Enable SASL authentication
 --sasl.username=user                 # SASL username
 --sasl.password=pass                 # SASL password
---sasl.mechanism=SCRAM-SHA-512      # SASL mechanism
+--sasl.mechanism=scram-sha512       # SASL mechanism
 
 # TLS
 --tls.enabled                        # Enable TLS
@@ -149,15 +149,23 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: kafka-exporter
+  namespace: monitoring
 spec:
+  selector:
+    matchLabels:
+      app: kafka-exporter
   template:
+    metadata:
+      labels:
+        app: kafka-exporter
     spec:
       containers:
         - name: kafka-exporter
+          image: danielqsj/kafka-exporter:latest
           args:
             - --kafka.server=kafka-broker:9092
             - --sasl.enabled
-            - --sasl.mechanism=SCRAM-SHA-512
+            - --sasl.mechanism=scram-sha512
             - --sasl.username=$(KAFKA_USERNAME)
             - --sasl.password=$(KAFKA_PASSWORD)
             - --tls.enabled
@@ -239,15 +247,14 @@ spec:
 
 If not already configured, add Prometheus as a data source in Grafana:
 
-1. Go to Configuration > Data Sources
-2. Click "Add data source"
-3. Select "Prometheus"
+1. Go to Connections > Add new connection
+2. Search for "Prometheus"
+3. Click "Add new data source"
 4. Configure the connection:
 
 ```yaml
 Name: Prometheus
 URL: http://prometheus:9090
-Access: Server (default)
 ```
 
 5. Click "Save & Test"
@@ -256,7 +263,7 @@ Access: Server (default)
 
 Import a pre-built Kafka dashboard:
 
-1. Go to Create > Import
+1. Go to Dashboards > New > Import
 2. Enter dashboard ID: `7589` (popular Kafka Exporter dashboard)
 3. Select your Prometheus data source
 4. Click "Import"
@@ -272,7 +279,7 @@ sum(kafka_consumergroup_lag) by (consumergroup, topic)
 
 **Messages Per Second by Topic**
 ```promql
-sum(rate(kafka_topic_partition_current_offset[5m])) by (topic) * 60
+sum(rate(kafka_topic_partition_current_offset[5m])) by (topic)
 ```
 
 **Partition Count by Topic**
@@ -303,7 +310,7 @@ sum(kafka_consumergroup_lag) by (consumergroup)
 ### Topic Metrics
 
 ```promql
-# Current offset (total messages) per topic
+# Current latest offset per topic
 sum(kafka_topic_partition_current_offset) by (topic)
 
 # Messages per second per topic
@@ -320,7 +327,7 @@ count(kafka_topic_partition_current_offset) by (topic)
 kafka_brokers
 
 # Topics per broker (via partition leaders)
-count(kafka_topic_partition_leader) by (broker_id)
+count_values("broker_id", kafka_topic_partition_leader)
 ```
 
 ## Building a Kafka Dashboard
@@ -355,10 +362,10 @@ topk(10, sum(kafka_consumergroup_lag) by (consumergroup, topic))
 
 ```promql
 # Panel: Messages/sec by Topic (Graph)
-sum(rate(kafka_topic_partition_current_offset[5m])) by (topic) * 60
+sum(rate(kafka_topic_partition_current_offset[5m])) by (topic)
 
 # Panel: Consumer Rate by Group (Graph)
-sum(rate(kafka_consumergroup_current_offset[5m])) by (consumergroup) * 60
+sum(rate(kafka_consumergroup_current_offset[5m])) by (consumergroup)
 ```
 
 ### Row 4: Partitions
