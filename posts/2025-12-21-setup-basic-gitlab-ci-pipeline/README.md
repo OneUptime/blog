@@ -304,10 +304,12 @@ Before committing, validate your `.gitlab-ci.yml`:
 # Using the CI Lint tool in GitLab UI
 # Navigate to: CI/CD > Pipelines > CI lint
 
-# Or use the API
-curl --header "PRIVATE-TOKEN: <your_token>" \
-  "https://gitlab.com/api/v4/ci/lint" \
-  --form "content=@.gitlab-ci.yml"
+# Or use the API (replace :id with your project ID; content must be JSON-encoded)
+jq --null-input --arg yaml "$(cat .gitlab-ci.yml)" '.content=$yaml' \
+  | curl "https://gitlab.com/api/v4/projects/:id/ci/lint" \
+    --header "Content-Type: application/json" \
+    --header "PRIVATE-TOKEN: <your_token>" \
+    --data @-
 ```
 
 ## Conclusion
