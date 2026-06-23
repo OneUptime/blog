@@ -17,7 +17,7 @@ In this comprehensive guide, you will learn how to use `errgroup` for parallel o
 The `errgroup` package lives in `golang.org/x/sync/errgroup` and provides a way to run a group of goroutines and collect the first error that occurs. It builds on top of `sync.WaitGroup` but adds crucial features for production-ready concurrent code:
 
 - **Error propagation**: Captures and returns the first error from any goroutine
-- **Context cancellation**: Automatically cancels all goroutines when one fails
+- **Context cancellation**: Automatically cancels the associated context when one goroutine fails
 - **Bounded concurrency**: Limits the number of concurrent goroutines with `SetLimit`
 - **Clean API**: Simple and intuitive interface for common concurrency patterns
 
@@ -252,7 +252,7 @@ func fetchAllURLs(urls []string) ([]Result, error) {
 
     // Launch a goroutine for each URL
     for _, url := range urls {
-        url := url // Capture loop variable (required for Go versions < 1.22)
+        url := url // Capture loop variable (required for modules declaring go versions before 1.22)
 
         g.Go(func() error {
             // Create request with context for cancellation
@@ -424,7 +424,6 @@ Let us compare errgroup with the standard library's `sync.WaitGroup` to understa
 package main
 
 import (
-    "errors"
     "fmt"
     "sync"
 )
@@ -857,7 +856,7 @@ func fetchWithPartialResults(urls []string) ([]Result, []error) {
 ### 1. Forgetting Loop Variable Capture
 
 ```go
-// WRONG - all goroutines see the same value
+// WRONG before Go 1.22 loop semantics - all goroutines see the same value
 for _, item := range items {
     g.Go(func() error {
         return process(item) // Bug: item changes each iteration
@@ -873,7 +872,7 @@ for _, item := range items {
 }
 ```
 
-Note: Go 1.22+ fixes this behavior, but the pattern is still good practice for compatibility.
+Note: Go 1.22+ fixes this behavior for modules that declare `go 1.22` or later, but the pattern is still good practice for compatibility with older modules.
 
 ### 2. Not Respecting Context Cancellation
 
