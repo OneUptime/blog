@@ -97,9 +97,9 @@ flowchart LR
     end
 
     subgraph Performance["Performance Impact"]
-        P1["~24M pps"]
+        P1["High pps"]
         P2["Wire Speed"]
-        P3["~5M pps"]
+        P3["Lower pps"]
     end
 
     NATIVE --> P1
@@ -169,6 +169,7 @@ sudo apt-get install -y \
     llvm \
     libbpf-dev \
     libelf-dev \
+    ethtool \
     linux-headers-$(uname -r) \
     linux-tools-$(uname -r) \
     build-essential \
@@ -181,6 +182,7 @@ sudo dnf install -y \
     llvm \
     libbpf-devel \
     elfutils-libelf-devel \
+    ethtool \
     kernel-headers \
     kernel-devel \
     bpftool
@@ -188,13 +190,13 @@ sudo dnf install -y \
 
 ### Verifying eBPF Support
 
-This script checks if your kernel supports the necessary eBPF features. A kernel version of 5.x or higher is recommended for full XDP functionality.
+This script checks if your kernel supports the necessary eBPF features. XDP has existed since the 4.x kernel series, while newer features used later in this guide, such as BPF ring buffers, require Linux 5.8 or higher.
 
 ```bash
 #!/bin/bash
 # verify_ebpf_support.sh - Check kernel eBPF capabilities
 
-# Check kernel version (5.x+ recommended for full XDP support)
+# Check kernel version (Linux 5.8+ is recommended for the ring buffer examples)
 echo "Kernel version: $(uname -r)"
 
 # Check if BPF filesystem is mounted (required for map pinning)
@@ -327,6 +329,7 @@ This user-space program loads the eBPF program into the kernel, attaches it to a
 #include <unistd.h>
 #include <signal.h>
 #include <net/if.h>
+#include <linux/if_link.h>
 #include <bpf/libbpf.h>
 #include <bpf/bpf.h>
 
@@ -588,8 +591,8 @@ struct packet_info {
 
 /* Ring buffer for sending packet info to user space.
  * Ring buffers are more efficient than perf buffers for high-volume data.
- * Size must be a power of 2, in pages (4KB each).
- * 256 * 4KB = 1MB buffer
+ * max_entries is the data area size in bytes and must be a power of 2
+ * and page-size aligned.
  */
 struct {
     __uint(type, BPF_MAP_TYPE_RINGBUF);
@@ -626,6 +629,12 @@ static __always_inline void *parse_transport(void *data, void *data_end,
         pkt->tcp_flags = ((tcp->fin) | (tcp->syn << 1) |
                           (tcp->rst << 2) | (tcp->psh << 3) |
                           (tcp->ack << 4) | (tcp->urg << 5));
+
+        if (tcp->doff < 5)
+            return NULL;
+
+        if ((void *)tcp + tcp->doff * 4 > data_end)
+            return NULL;
 
         /* Return pointer to TCP payload (after header) */
         return (void *)tcp + (tcp->doff * 4);
@@ -692,6 +701,13 @@ int capture_packets(struct xdp_md *ctx)
     if ((void *)(ip + 1) > data_end)
         return XDP_PASS;
 
+    if (ip->ihl < 5)
+        return XDP_PASS;
+
+    void *ip_end = (void *)ip + ip->ihl * 4;
+    if (ip_end > data_end)
+        return XDP_PASS;
+
     /* Reserve space in the ring buffer for our packet info.
      * This may fail if the buffer is full (user space not reading fast enough).
      */
@@ -711,7 +727,7 @@ int capture_packets(struct xdp_md *ctx)
     /* Calculate start of transport header.
      * IP header length (ihl) is in 4-byte units.
      */
-    void *transport = (void *)ip + (ip->ihl * 4);
+    void *transport = ip_end;
 
     /* Parse transport layer to get ports */
     void *payload = parse_transport(transport, data_end, ip->protocol, pkt);
@@ -720,20 +736,16 @@ int capture_packets(struct xdp_md *ctx)
      * This is useful for protocol identification and debugging.
      */
     if (payload && payload < data_end) {
-        __u64 payload_size = data_end - payload;
+        pkt->payload_len = 0;
 
-        /* Limit payload capture to our buffer size */
-        if (payload_size > MAX_PAYLOAD_SIZE)
-            payload_size = MAX_PAYLOAD_SIZE;
-
-        /* bpf_probe_read_kernel safely copies data with bounds checking.
-         * The verifier requires bounded size for memory operations.
-         */
-        pkt->payload_len = payload_size;
-        if (payload_size > 0) {
-            /* Clamp to ensure verifier is happy */
-            payload_size &= (MAX_PAYLOAD_SIZE - 1);
-            bpf_probe_read_kernel(pkt->payload, payload_size, payload);
+        /* Copy at most MAX_PAYLOAD_SIZE bytes with verifier-visible bounds. */
+        #pragma unroll
+        for (int i = 0; i < MAX_PAYLOAD_SIZE; i++) {
+            void *byte = payload + i;
+            if (byte + 1 > data_end)
+                break;
+            pkt->payload[i] = *(__u8 *)byte;
+            pkt->payload_len++;
         }
     } else {
         pkt->payload_len = 0;
@@ -771,6 +783,7 @@ The user-space program consumes packet information from the ring buffer and disp
 #include <signal.h>
 #include <arpa/inet.h>
 #include <net/if.h>
+#include <linux/if_link.h>
 #include <bpf/libbpf.h>
 #include <bpf/bpf.h>
 #include <time.h>
@@ -835,7 +848,7 @@ static int handle_packet(void *ctx, void *data, size_t size) {
         format_tcp_flags(pkt->tcp_flags, flags_str, sizeof(flags_str));
     }
 
-    /* Calculate relative timestamp (seconds since epoch) */
+    /* Convert monotonic timestamp from nanoseconds to seconds */
     double ts_sec = (double)pkt->timestamp / 1e9;
 
     /* Print packet summary */
@@ -1181,6 +1194,13 @@ int collect_stats(struct xdp_md *ctx)
         if ((void *)(ip + 1) > data_end)
             return XDP_PASS;
 
+        if (ip->ihl < 5)
+            return XDP_PASS;
+
+        void *ip_end = (void *)ip + ip->ihl * 4;
+        if (ip_end > data_end)
+            return XDP_PASS;
+
         __u64 ip_len = bpf_ntohs(ip->tot_len);
 
         /* Update protocol statistics */
@@ -1201,7 +1221,7 @@ int collect_stats(struct xdp_md *ctx)
             .protocol = ip->protocol,
         };
 
-        void *transport = (void *)ip + (ip->ihl * 4);
+        void *transport = ip_end;
         int is_new_connection = 0;
 
         if (ip->protocol == IPPROTO_TCP) {
@@ -1262,6 +1282,7 @@ This user-space program reads statistics from the BPF maps and can export them i
 #include <signal.h>
 #include <arpa/inet.h>
 #include <net/if.h>
+#include <linux/if_link.h>
 #include <bpf/libbpf.h>
 #include <bpf/bpf.h>
 
@@ -1317,8 +1338,9 @@ void print_top_flows(int flow_map_fd, int top_n) {
     if (top_n > 10) top_n = 10;
 
     /* Iterate through all flows in the map */
-    memset(&key, 0, sizeof(key));
-    while (bpf_map_get_next_key(flow_map_fd, &key, &next_key) == 0) {
+    int first = 1;
+    while (bpf_map_get_next_key(flow_map_fd, first ? NULL : &key, &next_key) == 0) {
+        first = 0;
         if (bpf_map_lookup_elem(flow_map_fd, &next_key, &stats) == 0) {
             /* Check if this flow should be in top N */
             for (int i = 0; i < top_n; i++) {
@@ -1374,8 +1396,9 @@ void print_top_ports(int port_map_fd, int top_n) {
 
     if (top_n > 10) top_n = 10;
 
-    port = 0;
-    while (bpf_map_get_next_key(port_map_fd, &port, &next_port) == 0) {
+    int first = 1;
+    while (bpf_map_get_next_key(port_map_fd, first ? NULL : &port, &next_port) == 0) {
+        first = 0;
         if (bpf_map_lookup_elem(port_map_fd, &next_port, &stats) == 0) {
             for (int i = 0; i < top_n; i++) {
                 if (stats.packets > top_ports[i].stats.packets) {
@@ -1632,6 +1655,9 @@ int track_connections(struct bpf_sock_ops *skops)
     switch (skops->op) {
         case BPF_SOCK_OPS_TCP_CONNECT_CB:
             /* Outgoing connection initiated */
+            bpf_sock_ops_cb_flags_set(skops, skops->bpf_sock_ops_cb_flags |
+                                             BPF_SOCK_OPS_STATE_CB_FLAG |
+                                             BPF_SOCK_OPS_RETRANS_CB_FLAG);
             new_entry.start_time = now;
             new_entry.last_activity = now;
             new_entry.state = CONN_NEW;
@@ -1641,6 +1667,9 @@ int track_connections(struct bpf_sock_ops *skops)
         case BPF_SOCK_OPS_ACTIVE_ESTABLISHED_CB:
         case BPF_SOCK_OPS_PASSIVE_ESTABLISHED_CB:
             /* Connection established */
+            bpf_sock_ops_cb_flags_set(skops, skops->bpf_sock_ops_cb_flags |
+                                             BPF_SOCK_OPS_STATE_CB_FLAG |
+                                             BPF_SOCK_OPS_RETRANS_CB_FLAG);
             entry = bpf_map_lookup_elem(&connections, &key);
             if (entry) {
                 entry->state = CONN_ESTABLISHED;
@@ -1735,7 +1764,7 @@ struct dns_event {
     __u32 dst_ip;
     __u16 query_id;
     __u16 flags;
-    __u8  query_type;       /* A=1, AAAA=28, etc. */
+    __u16 query_type;       /* A=1, AAAA=28, etc. */
     __u8  is_response;      /* 0=query, 1=response */
     __u8  response_code;    /* 0=success, 3=NXDOMAIN, etc. */
     char  query_name[MAX_DNS_NAME_LEN];
@@ -1753,6 +1782,7 @@ struct {
 static __always_inline int parse_dns_name(void *dns_data, void *data_end,
                                            char *name, int max_len) {
     __u8 *ptr = dns_data;
+    __u8 *start = dns_data;
     int name_pos = 0;
     int label_len;
 
@@ -1797,7 +1827,7 @@ static __always_inline int parse_dns_name(void *dns_data, void *data_end,
     }
 
     name[name_pos] = '\0';
-    return name_pos;
+    return ptr - start;
 }
 
 SEC("xdp")
@@ -1819,12 +1849,19 @@ int monitor_dns(struct xdp_md *ctx)
     if ((void *)(ip + 1) > data_end)
         return XDP_PASS;
 
+    if (ip->ihl < 5)
+        return XDP_PASS;
+
+    void *ip_end = (void *)ip + ip->ihl * 4;
+    if (ip_end > data_end)
+        return XDP_PASS;
+
     /* Only process UDP packets */
     if (ip->protocol != IPPROTO_UDP)
         return XDP_PASS;
 
     /* Parse UDP header */
-    struct udphdr *udp = (void *)ip + (ip->ihl * 4);
+    struct udphdr *udp = ip_end;
     if ((void *)(udp + 1) > data_end)
         return XDP_PASS;
 
@@ -1853,6 +1890,7 @@ int monitor_dns(struct xdp_md *ctx)
     evt->flags = bpf_ntohs(dns->flags);
     evt->is_response = (evt->flags >> 15) & 1;  /* QR bit */
     evt->response_code = evt->flags & 0x0F;     /* RCODE */
+    evt->query_type = 0;
 
     /* Parse query name (starts after DNS header) */
     void *query_start = (void *)(dns + 1);
@@ -1861,9 +1899,9 @@ int monitor_dns(struct xdp_md *ctx)
 
     if (name_len > 0) {
         /* Parse query type (2 bytes after name) */
-        void *qtype_ptr = query_start + name_len + 1;
+        __u8 *qtype_ptr = query_start + name_len;
         if ((void *)(qtype_ptr + 2) <= data_end) {
-            evt->query_type = bpf_ntohs(*(__u16 *)qtype_ptr);
+            evt->query_type = ((__u16)qtype_ptr[0] << 8) | qtype_ptr[1];
         }
     }
 
@@ -1921,6 +1959,8 @@ Here are key strategies for optimizing eBPF network monitoring programs:
  */
 
 #include <linux/bpf.h>
+#include <linux/if_ether.h>
+#include <bpf/bpf_endian.h>
 #include <bpf/bpf_helpers.h>
 
 /* Tip 1: Use per-CPU maps for counters to avoid lock contention.
@@ -1980,7 +2020,7 @@ int optimized_handler(struct xdp_md *ctx)
     void *data_end = (void *)(long)ctx->data_end;
 
     /* Quick length check before any parsing */
-    if (data + 14 + 20 > data_end)  /* Ethernet + IP minimum */
+    if ((void *)data + 14 + 20 > data_end)  /* Ethernet + IP minimum */
         return XDP_PASS;  /* Too short to be interesting */
 
     /* Tip 6: Use packet data directly instead of copying.
@@ -2030,109 +2070,38 @@ Choosing the right XDP mode is critical for performance:
 
 | Mode | Performance | Compatibility | Use Case |
 |------|-------------|---------------|----------|
-| **Native (Driver)** | Highest (~24M pps) | Requires driver support | Production high-throughput |
+| **Native (Driver)** | Highest | Requires driver support | Production high-throughput |
 | **Hardware Offload** | Wire speed | Limited NIC support | Maximum performance needed |
-| **Generic (SKB)** | Lower (~5M pps) | All Linux systems | Development/testing |
+| **Generic (SKB)** | Lower | Broad kernel support | Development/testing |
 
-The following code demonstrates how to detect and select the appropriate XDP mode:
+The following code demonstrates how to try native XDP first and fall back to generic mode if the driver does not support native attachment:
 
 ```c
 /* xdp_mode_selector.c
  *
- * Detect and select optimal XDP mode for a given interface.
+ * Try native XDP first, then fall back to generic mode.
  */
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
+#include <unistd.h>
 #include <net/if.h>
 #include <linux/if_link.h>
 #include <bpf/libbpf.h>
 #include <bpf/bpf.h>
 
-/* Check if interface supports native XDP mode.
- * Returns 1 if supported, 0 otherwise.
- */
-int check_native_xdp_support(const char *ifname) {
-    char path[256];
-    FILE *f;
-
-    /* Check for XDP support in sysfs.
-     * Drivers with native XDP support expose this attribute.
-     */
-    snprintf(path, sizeof(path),
-             "/sys/class/net/%s/device/driver", ifname);
-
-    f = fopen(path, "r");
-    if (!f) {
-        return 0;  /* Can't determine, assume no support */
-    }
-    fclose(f);
-
-    /* List of drivers known to support native XDP.
-     * This is not exhaustive - check driver documentation.
-     */
-    const char *xdp_drivers[] = {
-        "mlx5_core",   /* Mellanox ConnectX-4/5/6 */
-        "i40e",        /* Intel XL710/X710 */
-        "ixgbe",       /* Intel 10GbE */
-        "ixgbevf",
-        "nfp",         /* Netronome */
-        "bnxt",        /* Broadcom NetXtreme */
-        "thunder_nicvf",
-        "virtio_net",  /* With specific versions */
-        "veth",        /* Virtual Ethernet pairs */
-        NULL
-    };
-
-    /* Read actual driver name and compare */
-    char driver_link[256];
-    ssize_t len = readlink(path, driver_link, sizeof(driver_link) - 1);
-    if (len < 0)
-        return 0;
-    driver_link[len] = '\0';
-
-    /* Extract driver name from path */
-    char *driver_name = strrchr(driver_link, '/');
-    if (driver_name)
-        driver_name++;
-    else
-        driver_name = driver_link;
-
-    for (int i = 0; xdp_drivers[i] != NULL; i++) {
-        if (strcmp(driver_name, xdp_drivers[i]) == 0) {
-            return 1;
-        }
-    }
-
-    return 0;
-}
-
-/* Select optimal XDP flags for the interface */
-__u32 select_xdp_flags(const char *ifname) {
-    if (check_native_xdp_support(ifname)) {
-        printf("Using native XDP mode for %s\n", ifname);
-        return XDP_FLAGS_DRV_MODE;
-    }
-
-    printf("Using generic (SKB) XDP mode for %s\n", ifname);
-    printf("Note: Generic mode has lower performance than native mode.\n");
-    return XDP_FLAGS_SKB_MODE;
-}
-
 /* Attach XDP program with automatic mode selection */
 int attach_xdp_auto(int ifindex, int prog_fd, const char *ifname) {
-    __u32 flags = select_xdp_flags(ifname);
+    __u32 flags = XDP_FLAGS_DRV_MODE;
 
+    printf("Trying native XDP mode for %s\n", ifname);
     int err = bpf_xdp_attach(ifindex, prog_fd, flags, NULL);
     if (err < 0) {
-        /* If native mode failed, fall back to generic */
-        if (flags == XDP_FLAGS_DRV_MODE) {
-            printf("Native mode failed, falling back to generic...\n");
-            flags = XDP_FLAGS_SKB_MODE;
-            err = bpf_xdp_attach(ifindex, prog_fd, flags, NULL);
-        }
+        printf("Native mode failed, falling back to generic...\n");
+        flags = XDP_FLAGS_SKB_MODE;
+        err = bpf_xdp_attach(ifindex, prog_fd, flags, NULL);
     }
 
     return err;
@@ -2194,6 +2163,7 @@ Implement proper error handling and fallback mechanisms:
 #include <signal.h>
 #include <syslog.h>
 #include <net/if.h>
+#include <linux/if_link.h>
 #include <bpf/libbpf.h>
 #include <bpf/bpf.h>
 
@@ -2376,16 +2346,16 @@ import ctypes
 import http.server
 import time
 from bcc import BPF
-from prometheus_client import start_http_server, Counter, Gauge, Histogram
+from prometheus_client import start_http_server, Gauge, Histogram
 
 # Define metrics
-packets_total = Counter(
+packets_total = Gauge(
     'network_packets_total',
     'Total packets processed',
     ['interface', 'direction', 'protocol']
 )
 
-bytes_total = Counter(
+bytes_total = Gauge(
     'network_bytes_total',
     'Total bytes processed',
     ['interface', 'direction', 'protocol']
@@ -2419,19 +2389,19 @@ def collect_metrics(bpf, interface):
             interface=interface,
             direction='ingress',
             protocol='tcp'
-        )._value._value = tcp_packets
+        ).set(tcp_packets)
 
         packets_total.labels(
             interface=interface,
             direction='ingress',
             protocol='udp'
-        )._value._value = udp_packets
+        ).set(udp_packets)
 
         bytes_total.labels(
             interface=interface,
             direction='ingress',
             protocol='all'
-        )._value._value = total_bytes
+        ).set(total_bytes)
 
     # Count active flows
     flow_map = bpf["flow_stats_map"]
