@@ -70,7 +70,7 @@ class FixedWindowRateLimiter {
     const currentWindow = Math.floor(now / this.windowMs);
 
     for (const [key] of this.windows) {
-      const [, windowNum] = key.split(':');
+      const windowNum = key.slice(key.lastIndexOf(':') + 1);
       if (parseInt(windowNum) < currentWindow - 1) {
         this.windows.delete(key);
       }
@@ -86,13 +86,13 @@ function createRateLimitMiddleware(options) {
     const identifier = req.ip;
     const result = limiter.isAllowed(identifier);
 
-    res.set('X-RateLimit-Limit', options.maxRequests);
+    res.set('X-RateLimit-Limit', limiter.maxRequests);
     res.set('X-RateLimit-Remaining', result.remaining);
 
     if (!result.allowed) {
       return res.status(429).json({
         error: 'Too many requests',
-        retryAfter: Math.ceil(options.windowMs / 1000),
+        retryAfter: Math.ceil(limiter.windowMs / 1000),
       });
     }
 
@@ -216,7 +216,7 @@ class SlidingWindowCounterLimiter {
     const oldestValidWindow = currentWindowStart - this.windowMs;
 
     for (const [key] of this.windows) {
-      const [, windowStart] = key.split(':');
+      const windowStart = key.slice(key.lastIndexOf(':') + 1);
       if (parseInt(windowStart) < oldestValidWindow) {
         this.windows.delete(key);
       }
@@ -328,6 +328,7 @@ class RateLimiter {
       keyGenerator: (req) => req.ip,
       skip: () => false,
       onRateLimited: null,
+      ...options,
     };
 
     // Start cleanup interval
@@ -402,7 +403,7 @@ class RateLimiter {
   }
 
   fixedWindow(key, data, config) {
-    const windowStart = Math.floor(Date.now() / config.windowMs);
+    const windowStart = Math.floor(Date.now() / config.windowMs) * config.windowMs;
     const windowKey = `${key}:${windowStart}`;
 
     const current = data.get(windowKey) || 0;
@@ -469,11 +470,19 @@ class RateLimiter {
       const oldestValid = now - (config.windowMs * 2);
 
       for (const [key] of data) {
-        // Extract timestamp from key if present
-        const parts = key.split(':');
-        if (parts.length > 1) {
-          const timestamp = parseInt(parts[parts.length - 1]);
-          if (timestamp < oldestValid / config.windowMs) {
+        if (config.algorithm === 'token-bucket') {
+          const bucket = data.get(key);
+          if (bucket && now - bucket.lastRefill > (config.maxIdleMs || config.windowMs * 2)) {
+            data.delete(key);
+          }
+          continue;
+        }
+
+        // Extract the timestamp suffix without breaking IPv6 addresses or compound keys.
+        const separatorIndex = key.lastIndexOf(':');
+        if (separatorIndex !== -1) {
+          const timestamp = parseInt(key.slice(separatorIndex + 1), 10);
+          if (timestamp < oldestValid) {
             data.delete(key);
           }
         }
@@ -518,8 +527,8 @@ For Node.js cluster deployments without external services:
 ```javascript
 const cluster = require('cluster');
 
-if (cluster.isMaster) {
-  // Master process maintains global state
+if (cluster.isPrimary) {
+  // Primary process maintains global state
   const globalCounts = new Map();
 
   cluster.on('message', (worker, message) => {
@@ -545,7 +554,7 @@ if (cluster.isMaster) {
 
       // Cleanup old windows
       for (const [k] of globalCounts) {
-        const [, ws] = k.split(':');
+        const ws = k.slice(k.lastIndexOf(':') + 1);
         if (parseInt(ws) < windowStart - 1) {
           globalCounts.delete(k);
         }
@@ -596,17 +605,17 @@ if (cluster.isMaster) {
 
 ## Rate Limit Response Headers
 
-Standard headers to include in responses:
+Common headers to include in responses:
 
 ```javascript
 function setRateLimitHeaders(res, options, result) {
   res.set({
-    // Standard headers
+    // Common X-RateLimit headers
     'X-RateLimit-Limit': options.maxRequests,
     'X-RateLimit-Remaining': result.remaining,
     'X-RateLimit-Reset': Math.ceil((Date.now() + options.windowMs) / 1000),
 
-    // Draft IETF standard headers
+    // Legacy draft/de facto RateLimit headers
     'RateLimit-Limit': options.maxRequests,
     'RateLimit-Remaining': result.remaining,
     'RateLimit-Reset': Math.ceil(options.windowMs / 1000),
