@@ -99,8 +99,11 @@ RUN npm install -g typescript ts-node nodemon
 ARG USERNAME=vscode
 ARG USER_UID=1000
 ARG USER_GID=$USER_UID
+# The node base image already ships a "node" user at UID/GID 1000,
+# so remove it first to free those IDs before creating our own user
 # Create group and user with specified IDs to match host permissions
-RUN groupadd --gid $USER_GID $USERNAME \
+RUN userdel -r node \
+    && groupadd --gid $USER_GID $USERNAME \
     && useradd --uid $USER_UID --gid $USER_GID -m $USERNAME
 
 # Switch to non-root user for subsequent operations
