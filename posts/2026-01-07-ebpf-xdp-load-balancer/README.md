@@ -10,9 +10,9 @@ Description: A guide to implementing a high-performance load balancer using eBPF
 
 ## Introduction
 
-Traditional load balancers operate in user space, which means every packet must traverse the kernel-user boundary, incurring significant overhead. eBPF (extended Berkeley Packet Filter) combined with XDP (eXpress Data Path) allows us to process packets at the earliest possible point in the Linux networking stack, achieving unprecedented performance for load balancing operations.
+Many traditional software load balancers operate in user space, which means packets may traverse the kernel-user boundary and incur additional overhead. eBPF (extended Berkeley Packet Filter) combined with XDP (eXpress Data Path) allows us to process packets at a very early point in the Linux networking stack, achieving excellent performance for load balancing operations.
 
-In this comprehensive guide, we will build a fully functional Layer 4 load balancer from scratch using eBPF and XDP. By the end, you will understand how to implement connection tracking, health checking, and various load balancing algorithms while achieving performance that rivals dedicated hardware load balancers.
+In this comprehensive guide, we will build the core of a Layer 4 load balancer from scratch using eBPF and XDP. By the end, you will understand how to implement connection tracking, health checking, and various load balancing algorithms while achieving performance that can rival dedicated hardware load balancers in suitable environments.
 
 ## Understanding the Architecture
 
@@ -62,7 +62,7 @@ flowchart TB
 
 ### Key Components
 
-1. **XDP Program**: Runs at the NIC driver level, processing packets before they enter the kernel network stack
+1. **XDP Program**: Runs at the XDP hook, ideally in native driver mode, processing packets before they enter most of the kernel network stack
 2. **Connection Tracker**: Maintains state for established connections using eBPF maps
 3. **Load Balancer Logic**: Implements load balancing algorithms (round-robin, least connections, consistent hashing)
 4. **Health Checker**: User-space daemon that updates backend server health status in eBPF maps
@@ -213,6 +213,12 @@ struct lb_config {
 #define LB_ALG_LEAST_CONN       1   /* Route to server with fewest connections */
 #define LB_ALG_IP_HASH          2   /* Hash source IP for consistent routing */
 #define LB_ALG_WEIGHTED_RR      3   /* Weighted round-robin based on capacity */
+
+/* Statistics counter indices */
+#define STAT_PACKETS    0
+#define STAT_BYTES      1
+#define STAT_DROPS      2
+#define STAT_ERRORS     3
 
 /* XDP action return codes (for reference)
  * XDP_ABORTED = 0  - Error occurred, drop packet
@@ -448,12 +454,6 @@ The XDP load balancer program below implements the complete packet processing pi
  */
 char LICENSE[] SEC("license") = "GPL";
 
-/* Statistics counter indices */
-#define STAT_PACKETS    0
-#define STAT_BYTES      1
-#define STAT_DROPS      2
-#define STAT_ERRORS     3
-
 /* Helper to increment per-CPU statistics counter
  * Uses per-CPU map for lock-free updates from multiple CPUs
  */
@@ -481,8 +481,14 @@ static __always_inline int select_backend(struct lb_config *config,
     __u32 *rr_idx;
     __u32 idx;
     __u32 i;
+    __u32 backend_count = config->backend_count;
     struct backend_info *backend;
     __u8 *health;
+
+    if (backend_count == 0)
+        return -1;
+    if (backend_count > MAX_BACKENDS)
+        backend_count = MAX_BACKENDS;
 
     /* Handle different load balancing algorithms */
     switch (config->algorithm) {
@@ -495,8 +501,11 @@ static __always_inline int select_backend(struct lb_config *config,
             return -1;
 
         /* Find next healthy backend starting from current index */
-        for (i = 0; i < config->backend_count; i++) {
-            idx = (*rr_idx + i) % config->backend_count;
+        for (i = 0; i < MAX_BACKENDS; i++) {
+            if (i >= backend_count)
+                break;
+
+            idx = (*rr_idx + i) % backend_count;
 
             /* Check if backend is healthy */
             health = bpf_map_lookup_elem(&health_map, &idx);
@@ -516,7 +525,10 @@ static __always_inline int select_backend(struct lb_config *config,
             __u64 min_conns = ~0ULL;  /* Start with max value */
             int selected = -1;
 
-            for (i = 0; i < config->backend_count && i < MAX_BACKENDS; i++) {
+            for (i = 0; i < MAX_BACKENDS; i++) {
+                if (i >= backend_count)
+                    break;
+
                 idx = i;
                 health = bpf_map_lookup_elem(&health_map, &idx);
                 if (!health || !*health)
@@ -542,8 +554,11 @@ static __always_inline int select_backend(struct lb_config *config,
             __u32 hash = ip_hash(src_ip, config->vip);
 
             /* Find a healthy backend starting from hash position */
-            for (i = 0; i < config->backend_count; i++) {
-                idx = (hash + i) % config->backend_count;
+            for (i = 0; i < MAX_BACKENDS; i++) {
+                if (i >= backend_count)
+                    break;
+
+                idx = (hash + i) % backend_count;
 
                 health = bpf_map_lookup_elem(&health_map, &idx);
                 if (health && *health)
@@ -566,7 +581,10 @@ static __always_inline int select_backend(struct lb_config *config,
             __u32 target;
 
             /* Calculate total weight of healthy backends */
-            for (i = 0; i < config->backend_count && i < MAX_BACKENDS; i++) {
+            for (i = 0; i < MAX_BACKENDS; i++) {
+                if (i >= backend_count)
+                    break;
+
                 idx = i;
                 health = bpf_map_lookup_elem(&health_map, &idx);
                 if (!health || !*health)
@@ -584,7 +602,10 @@ static __always_inline int select_backend(struct lb_config *config,
             target = *rr_idx % total_weight;
             __sync_fetch_and_add(rr_idx, 1);
 
-            for (i = 0; i < config->backend_count && i < MAX_BACKENDS; i++) {
+            for (i = 0; i < MAX_BACKENDS; i++) {
+                if (i >= backend_count)
+                    break;
+
                 idx = i;
                 health = bpf_map_lookup_elem(&health_map, &idx);
                 if (!health || !*health)
@@ -645,6 +666,10 @@ int xdp_load_balancer(struct xdp_md *ctx)
      */
     struct iphdr *ip = (void *)(eth + 1);
     if (!CHECK_BOUNDS(ip, sizeof(*ip), data_end)) {
+        inc_stat(STAT_ERRORS, 1);
+        return XDP_DROP;
+    }
+    if (ip->ihl < 5 || !CHECK_BOUNDS(ip, ip->ihl * 4, data_end)) {
         inc_stat(STAT_ERRORS, 1);
         return XDP_DROP;
     }
@@ -821,8 +846,10 @@ int xdp_load_balancer(struct xdp_md *ctx)
     inc_stat(STAT_PACKETS, 1);
     inc_stat(STAT_BYTES, (data_end - data));
 
-    /* Pass packet to normal network stack for routing
-     * The kernel will forward it to the backend based on the new IP
+    /* Pass packet to normal network stack for routing.
+     * With IP forwarding and routes configured, the kernel can forward it
+     * to the backend based on the new destination IP. The return path still
+     * needs DSR, SNAT/reverse NAT, or an equivalent topology-specific design.
      *
      * Alternative: Use XDP_REDIRECT to send directly to backend
      * if backends are on the same L2 network
@@ -848,16 +875,18 @@ This loader program handles the lifecycle of our XDP load balancer. It uses libb
 #include <signal.h>
 #include <net/if.h>
 #include <arpa/inet.h>
+#include <sys/stat.h>
 #include <linux/if_link.h>
 #include <bpf/libbpf.h>
 #include <bpf/bpf.h>
 
-#include "../include/lb_types.h"
+#include "lb_types.h"
 
 /* Global variables for cleanup */
 static int ifindex = -1;
 static struct bpf_object *obj = NULL;
 static volatile int running = 1;
+static const char *map_pin_dir = "/sys/fs/bpf/xdp_lb";
 
 /* Signal handler for graceful shutdown
  * Catches SIGINT and SIGTERM to allow proper cleanup
@@ -893,8 +922,10 @@ void cleanup(void)
     if (ifindex > 0)
         detach_xdp(ifindex);
 
-    if (obj)
+    if (obj) {
+        bpf_object__unpin_maps(obj, map_pin_dir);
         bpf_object__close(obj);
+    }
 }
 
 /* Add a backend server to the load balancer
@@ -986,6 +1017,9 @@ int print_stats(int stats_fd)
     int num_cpus = libbpf_num_possible_cpus();
     int i;
 
+    if (num_cpus > 256)
+        num_cpus = 256;
+
     /* Read per-CPU counters and sum them */
     key = STAT_PACKETS;
     if (bpf_map_lookup_elem(stats_fd, &key, values) == 0) {
@@ -1072,6 +1106,21 @@ int main(int argc, char **argv)
     err = bpf_object__load(obj);
     if (err) {
         fprintf(stderr, "Failed to load BPF object: %s\n", strerror(-err));
+        return 1;
+    }
+
+    /* Pin maps so other processes, such as the health checker,
+     * can open them through bpffs while the loader is running.
+     */
+    if (mkdir(map_pin_dir, 0755) < 0 && errno != EEXIST) {
+        fprintf(stderr, "Failed to create map pin directory: %s\n",
+                strerror(errno));
+        return 1;
+    }
+
+    err = bpf_object__pin_maps(obj, map_pin_dir);
+    if (err) {
+        fprintf(stderr, "Failed to pin BPF maps: %s\n", strerror(-err));
         return 1;
     }
 
@@ -1168,7 +1217,7 @@ The health checker implementation below performs periodic TCP or HTTP health che
 #include <bpf/libbpf.h>
 #include <bpf/bpf.h>
 
-#include "../include/lb_types.h"
+#include "lb_types.h"
 
 /* Health check configuration */
 #define CHECK_INTERVAL_MS   5000    /* Check interval in milliseconds */
@@ -1291,7 +1340,6 @@ int check_http(struct backend_health_state *state, const char *path)
     int ret = -1;
     char request[256];
     char response[1024];
-    struct pollfd pfd;
     ssize_t n;
 
     /* Create socket */
@@ -1501,7 +1549,7 @@ int main(int argc, char **argv)
     signal(SIGTERM, sig_handler);
 
     /* Open BPF maps by path
-     * Maps are pinned to BPF filesystem by the loader
+     * Maps are pinned to BPF filesystem by the loader while it runs
      */
     snprintf(path, sizeof(path), "%s/health_map", map_dir);
     health_map_fd = bpf_obj_get(path);
@@ -1564,7 +1612,7 @@ int main(int argc, char **argv)
 
 ## Connection Tracking Details
 
-Let's look at how connection tracking works in detail. The connection tracking mechanism ensures that all packets belonging to the same flow are routed to the same backend, which is essential for TCP connections and stateful protocols.
+Let's look at how connection tracking works in detail. The connection tracking mechanism ensures that all inbound packets belonging to the same client-to-VIP flow are routed to the same backend, which is essential for TCP connections and stateful protocols. The simplified DNAT example below assumes the return path is handled separately, for example with DSR or reverse NAT.
 
 ```mermaid
 sequenceDiagram
@@ -1581,7 +1629,7 @@ sequenceDiagram
     XDP->>XDP: Select backend (Round Robin)
     XDP->>ConnTrack: Create entry: Client -> Backend1
     XDP->>Backend1: Forward SYN to Backend1
-    Backend1->>Client: SYN-ACK
+    Backend1->>Client: SYN-ACK via DSR or reverse NAT path
     Client->>XDP: ACK packet
     XDP->>ConnTrack: Lookup connection
     ConnTrack-->>XDP: Found: Backend1
@@ -1601,8 +1649,9 @@ The following code demonstrates how connection tracking entries are created and 
 ```c
 /* Connection tracking key creation example
  *
- * The 5-tuple uniquely identifies a connection and ensures that
- * packets in both directions of a flow can be correlated.
+ * The 5-tuple uniquely identifies the client-to-VIP direction of a
+ * connection. Reverse-direction correlation requires a corresponding
+ * reverse key or a DSR topology.
  */
 
 /* Building the connection key from packet headers */
@@ -1712,7 +1761,6 @@ The Makefile below handles compilation of both eBPF kernel-space code and user-s
 
 # Compiler and tools
 CLANG := clang
-LLC := llc
 CC := gcc
 
 # BPF compilation flags
@@ -1776,6 +1824,7 @@ $(BUILD_DIR)/health_check: $(USER_SRC_DIR)/health_check.c include/lb_types.h
 install: all
 	install -m 755 $(BUILD_DIR)/loader /usr/local/bin/xdp-lb-loader
 	install -m 755 $(BUILD_DIR)/health_check /usr/local/bin/xdp-lb-health
+	install -d /usr/local/share/xdp-lb
 	install -m 644 $(BUILD_DIR)/xdp_lb.o /usr/local/share/xdp-lb/
 
 # Clean build artifacts
@@ -2210,7 +2259,7 @@ watch -n1 "sudo bpftool map dump id <map_id>"
 sudo bpftool net show dev eth0
 
 # View XDP program statistics
-sudo bpftool prog show id <prog_id> --json | jq '.run_cnt, .run_time_ns'
+sudo bpftool -j prog show id <prog_id> | jq '.run_cnt, .run_time_ns'
 
 # Trace XDP program execution (requires kernel debug support)
 sudo bpftrace -e 'tracepoint:xdp:xdp_* { @[probe] = count(); }'
@@ -2250,9 +2299,9 @@ sudo sysctl -w net.ipv4.tcp_tw_reuse=1
 # (may increase CPU usage, test in your environment)
 sudo ethtool -C eth0 rx-usecs 0 tx-usecs 0
 
-# Pin XDP program to specific CPUs using RPS/RFS
-# This ensures consistent processing on the same cores
-echo "0-3" | sudo tee /sys/class/net/eth0/queues/rx-0/rps_cpus
+# For generic/SKB-mode packet processing, configure RPS with a CPU bitmask.
+# Native XDP runs before RPS, so use RX queue and IRQ affinity for that path.
+echo "f" | sudo tee /sys/class/net/eth0/queues/rx-0/rps_cpus
 
 # Set CPU affinity for IRQs
 # Find the IRQ numbers for your NIC and pin them to specific CPUs
@@ -2356,9 +2405,9 @@ Building a load balancer with eBPF and XDP provides exceptional performance that
 3. **Visibility**: Deep introspection into connection state and traffic patterns
 4. **Cost efficiency**: Software-based solution running on commodity hardware
 
-The implementation covered in this guide provides a solid foundation for a production-grade load balancer. You can extend it further with features like:
+The implementation covered in this guide provides a solid foundation for a production-oriented load balancer, once you add the missing topology-specific pieces such as return-path handling and operational hardening. You can extend it further with features like:
 
-- SSL/TLS termination (using kTLS)
+- TLS passthrough or integration with a separate TLS termination proxy
 - Rate limiting per client
 - Geographic load balancing
 - A/B testing traffic splitting
