@@ -74,6 +74,7 @@ The following packages and tools are required for eBPF development on Linux:
 
 sudo apt-get update
 sudo apt-get install -y \
+    bpftool \
     clang \
     llvm \
     libbpf-dev \
@@ -119,7 +120,6 @@ ebpf-go-project/
 |-- bpf/
 |   |-- headers/
 |   |   |-- vmlinux.h          # Kernel type definitions for CO-RE
-|   |   |-- bpf_helpers.h      # BPF helper function definitions
 |   |-- program.c              # eBPF program source code
 |-- internal/
 |   |-- ebpf/
@@ -136,7 +136,7 @@ ebpf-go-project/
 
 ## Writing Your First eBPF Program
 
-Let's create a simple eBPF program that traces system calls. This program attaches to the `execve` tracepoint and records executed processes.
+Let's create a simple eBPF program that traces process execution. This program attaches to the `sched_process_exec` tracepoint and records executed processes.
 
 ### The eBPF C Program
 
@@ -225,11 +225,10 @@ package ebpf
 // The go:generate directive below compiles the eBPF program and generates Go code
 // Flags explained:
 //   -cc clang           : Use clang as the compiler
-//   -target amd64,arm64 : Generate code for both x86_64 and ARM64 architectures
 //   -type event         : Generate Go struct for the 'event' type from C
 //   program              : Base name for generated files (program_bpfel.go, etc.)
-//   ../bpf/program.c    : Path to the eBPF C source file
-//go:generate go run github.com/cilium/ebpf/cmd/bpf2go -cc clang -target amd64,arm64 -type event program ../bpf/program.c -- -I../bpf/headers
+//   ../../bpf/program.c : Path to the eBPF C source file
+//go:generate go run github.com/cilium/ebpf/cmd/bpf2go -cc clang -type event program ../../bpf/program.c -- -I../../bpf/headers
 
 ```
 
@@ -309,23 +308,28 @@ type programMaps struct {
 }
 
 // programObjects contains loaded eBPF programs and maps
-// Use these after calling LoadProgram() to interact with the kernel
+// Use these after calling LoadAndAssign() to interact with the kernel
 type programObjects struct {
     programPrograms
     programMaps
 }
 
-// event matches the C struct definition exactly
+// programPrograms contains references to all loaded eBPF programs
+type programPrograms struct {
+    TraceExec *ebpf.Program `ebpf:"trace_exec"`
+}
+
+// programEvent matches the C struct event definition exactly
 // Field order and sizes must match for correct data reading
-type event struct {
+type programEvent struct {
     Pid       uint32
     Uid       uint32
     Comm      [16]byte
     Timestamp uint64
 }
 
-// loadProgram loads all eBPF programs and maps from the embedded object file
-func loadProgram() (*programObjects, error) {
+// loadProgram loads the eBPF collection spec from the embedded object file
+func loadProgram() (*ebpf.CollectionSpec, error) {
     // Implementation provided by bpf2go
 }
 ```
@@ -423,9 +427,8 @@ int count_packets(struct xdp_md *ctx)
     // Lookup the counter in the per-CPU array
     __u64 *count = bpf_map_lookup_elem(&packet_counter, &key);
     if (count) {
-        // Atomically increment the counter
-        // Each CPU has its own copy, so no locking needed
-        __sync_fetch_and_add(count, 1);
+        // Each CPU has its own copy, so no locking is needed
+        (*count)++;
     }
 
     // Continue processing the packet normally
@@ -448,7 +451,6 @@ import (
     "errors"
     "fmt"
     "net"
-    "unsafe"
 
     "github.com/cilium/ebpf"
 )
@@ -546,16 +548,19 @@ func (mo *MapOperations) Iterate(fn func(key ConnKey, value ConnValue) bool) err
 
 // BatchLookup performs efficient bulk reads from the map
 // This is more efficient than individual lookups for large datasets
-func (mo *MapOperations) BatchLookup(keys []ConnKey) ([]ConnValue, error) {
-    values := make([]ConnValue, len(keys))
+func (mo *MapOperations) BatchLookup(maxEntries int) ([]ConnKey, []ConnValue, error) {
+    keys := make([]ConnKey, maxEntries)
+    values := make([]ConnValue, maxEntries)
+    var cursor ebpf.MapBatchCursor
 
-    // BatchLookup reads multiple entries in a single syscall
-    count, err := mo.connections.BatchLookup(keys, values, nil)
+    // BatchLookup reads multiple entries in a single syscall.
+    // ErrKeyNotExist signals the end of the map and may be returned with data.
+    count, err := mo.connections.BatchLookup(&cursor, keys, values, nil)
     if err != nil && !errors.Is(err, ebpf.ErrKeyNotExist) {
-        return nil, fmt.Errorf("batch lookup failed: %w", err)
+        return nil, nil, fmt.Errorf("batch lookup failed: %w", err)
     }
 
-    return values[:count], nil
+    return keys[:count], values[:count], nil
 }
 
 // IPToUint32 converts a net.IP to uint32 in network byte order
@@ -590,7 +595,9 @@ import (
     "errors"
     "fmt"
     "os"
+    "unsafe"
 
+    "github.com/cilium/ebpf"
     "github.com/cilium/ebpf/ringbuf"
 )
 
@@ -739,9 +746,10 @@ This implementation shows the full lifecycle of loading and attaching eBPF progr
 package ebpf
 
 import (
+    "errors"
     "fmt"
+    "net"
     "os"
-    "runtime"
 
     "github.com/cilium/ebpf"
     "github.com/cilium/ebpf/link"
@@ -756,16 +764,16 @@ type Loader struct {
 
 // LoaderOptions configures the eBPF loader
 type LoaderOptions struct {
-    // PinPath enables persistent BPF object pinning
-    // When set, maps and programs persist after the process exits
+    // PinPath enables persistent BPF map pinning for maps marked PinByName
+    // When set, those maps persist after the process exits
     PinPath string
 
-    // LogLevel controls the BPF verifier log level (0-2)
-    // Higher levels provide more detailed output for debugging
+    // LogLevel controls the BPF verifier log level
+    // LogLevel values can be ORed together for detailed output
     LogLevel uint32
 
-    // LogSize sets the size of the verifier log buffer
-    LogSize int
+    // LogSizeStart sets the initial size of the verifier log buffer
+    LogSizeStart uint32
 }
 
 // NewLoader creates and initializes a new eBPF program loader
@@ -781,8 +789,8 @@ func NewLoader(opts LoaderOptions) (*Loader, error) {
         Programs: ebpf.ProgramOptions{
             // LogLevel controls verifier output verbosity
             LogLevel: ebpf.LogLevel(opts.LogLevel),
-            // LogSize sets the verifier log buffer size
-            LogSize: opts.LogSize,
+            // LogSizeStart sets the initial verifier log buffer size
+            LogSizeStart: opts.LogSizeStart,
         },
     }
 
@@ -885,20 +893,13 @@ func (l *Loader) AttachXDP(ifaceName string, prog *ebpf.Program) error {
 
 // AttachCgroup attaches a cgroup program
 func (l *Loader) AttachCgroup(cgroupPath string, prog *ebpf.Program, attachType ebpf.AttachType) error {
-    // Open the cgroup directory
-    cgroupFd, err := os.Open(cgroupPath)
-    if err != nil {
-        return fmt.Errorf("opening cgroup %s: %w", cgroupPath, err)
-    }
-
     // Attach the program to the cgroup
     lnk, err := link.AttachCgroup(link.CgroupOptions{
-        Path:    cgroupFd.Name(),
+        Path:    cgroupPath,
         Attach:  attachType,
         Program: prog,
     })
     if err != nil {
-        cgroupFd.Close()
         return fmt.Errorf("attaching to cgroup: %w", err)
     }
 
@@ -1016,7 +1017,7 @@ flowchart LR
     subgraph Runtime["Runtime (Target Host)"]
         E[BPF Object]
         F[Kernel BTF]
-        G[libbpf CO-RE]
+        G[cilium/ebpf CO-RE Loader]
         H[Relocated Program]
         I[Kernel]
     end
@@ -1093,10 +1094,10 @@ int trace_openat(struct pt_regs *ctx)
     e->uid = bpf_get_current_uid_gid() & 0xFFFFFFFF;
     bpf_get_current_comm(&e->comm, sizeof(e->comm));
 
-    // Read the filename from the second argument (const char *filename)
-    // Using bpf_probe_read_user_str for user-space strings
-    const char *filename = (const char *)PT_REGS_PARM2(ctx);
-    bpf_probe_read_user_str(&e->filename, sizeof(e->filename), filename);
+    // do_sys_openat2 receives a kernel struct filename pointer as its second argument
+    struct filename *filename = (struct filename *)PT_REGS_PARM2(ctx);
+    const char *name = BPF_CORE_READ(filename, name);
+    bpf_probe_read_kernel_str(&e->filename, sizeof(e->filename), name);
 
     bpf_ringbuf_submit(e, 0);
     return 0;
@@ -1113,12 +1114,15 @@ int trace_tcp_connect(struct pt_regs *ctx)
     // The loader will patch these reads based on the target kernel's BTF
     __u16 family = BPF_CORE_READ(sk, __sk_common.skc_family);
     __u16 dport = BPF_CORE_READ(sk, __sk_common.skc_dport);
+    (void)family;
+    (void)dport;
 
     // Check if field exists in this kernel version using CO-RE
     // This enables writing programs that work across kernel versions
     if (bpf_core_field_exists(sk->sk_max_ack_backlog)) {
         // Field exists in this kernel, safe to read
         __u32 backlog = BPF_CORE_READ(sk, sk_max_ack_backlog);
+        (void)backlog;
         // Use backlog...
     }
 
@@ -1227,6 +1231,7 @@ Tail calls allow one eBPF program to call another, enabling modular program desi
 // bpf/tail_calls.c
 #include "vmlinux.h"
 #include <bpf/bpf_helpers.h>
+#include <bpf/bpf_endian.h>
 
 // Program array map for tail calls
 // This map stores references to other eBPF programs
@@ -1304,6 +1309,7 @@ import (
     "bytes"
     "context"
     "encoding/binary"
+    "errors"
     "fmt"
 
     "github.com/cilium/ebpf"
@@ -1339,7 +1345,7 @@ func (pr *PerfEventReader) ReadLoop(ctx context.Context, handler func(Event) err
         // Read the next event (blocking)
         record, err := pr.reader.Read()
         if err != nil {
-            if perf.IsClosed(err) {
+            if errors.Is(err, perf.ErrClosed) {
                 return nil
             }
             return fmt.Errorf("reading perf event: %w", err)
@@ -1383,6 +1389,7 @@ package ebpf
 
 import (
     "context"
+    "os"
     "os/exec"
     "testing"
     "time"
@@ -1543,7 +1550,7 @@ import (
 
 // Command-line flags
 var (
-    logLevel = flag.Uint("log-level", 0, "BPF verifier log level (0-2)")
+    logLevel = flag.Uint("log-level", 0, "BPF verifier log level bitmask")
     pinPath  = flag.String("pin-path", "", "Path for BPF object pinning")
 )
 
@@ -1701,8 +1708,9 @@ package ebpf
 import (
     "fmt"
     "os"
-    "runtime"
 
+    "github.com/cilium/ebpf"
+    "github.com/cilium/ebpf/features"
     "github.com/cilium/ebpf/rlimit"
 )
 
@@ -1716,9 +1724,6 @@ type ResourceConfig struct {
 
     // PinMaps enables persistent map storage
     PinMaps bool
-
-    // CPUPinning pins the program to specific CPUs
-    CPUPinning []int
 }
 
 // DefaultResourceConfig returns sensible defaults for production use
@@ -1727,7 +1732,6 @@ func DefaultResourceConfig() ResourceConfig {
         MaxMapEntries:  10000,
         RingBufferSize: 256 * 1024, // 256KB
         PinMaps:        false,
-        CPUPinning:     nil,
     }
 }
 
@@ -1739,31 +1743,22 @@ func ApplyResourceLimits() error {
         return fmt.Errorf("removing memlock: %w", err)
     }
 
-    // Lock the current goroutine to its OS thread
-    // This is important when working with cgroups and namespaces
-    runtime.LockOSThread()
-
     return nil
 }
 
 // VerifyKernelSupport checks if the kernel supports required features
 func VerifyKernelSupport() error {
-    // Check for required kernel features
-    checks := []struct {
-        path string
-        name string
-    }{
-        {"/sys/kernel/btf/vmlinux", "BTF"},
-        {"/proc/sys/kernel/unprivileged_bpf_disabled", "BPF syscall"},
+    // Check for vmlinux BTF used by CO-RE
+    if _, err := os.Stat("/sys/kernel/btf/vmlinux"); err != nil {
+        if os.IsNotExist(err) {
+            return fmt.Errorf("BTF not available (missing /sys/kernel/btf/vmlinux)")
+        }
+        return fmt.Errorf("checking BTF: %w", err)
     }
 
-    for _, check := range checks {
-        if _, err := os.Stat(check.path); err != nil {
-            if os.IsNotExist(err) {
-                return fmt.Errorf("%s not available (missing %s)", check.name, check.path)
-            }
-            return fmt.Errorf("checking %s: %w", check.name, err)
-        }
+    // Check for ring buffer map support
+    if err := features.HaveMapType(ebpf.RingBuf); err != nil {
+        return fmt.Errorf("ring buffer maps not available: %w", err)
     }
 
     return nil
