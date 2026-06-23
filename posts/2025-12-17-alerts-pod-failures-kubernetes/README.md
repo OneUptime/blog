@@ -10,9 +10,9 @@ Description: Learn how to configure effective alerts for Kubernetes pod failures
 
 Pod failures in Kubernetes can indicate critical issues that affect application availability. Setting up proper alerting ensures you catch these problems early and respond quickly. This guide shows you how to configure comprehensive pod failure alerts using Prometheus and Grafana.
 
-## Understanding Pod Failure States
+## Understanding Pod Failure Signals
 
-Before setting up alerts, understand the different ways pods can fail:
+Before setting up alerts, understand the pod phases and container-level reasons that indicate failures:
 
 ```mermaid
 stateDiagram-v2
@@ -20,22 +20,23 @@ stateDiagram-v2
     Pending --> Running
     Running --> Succeeded
     Running --> Failed
-    Running --> CrashLoopBackOff
-    CrashLoopBackOff --> Running
-    Running --> OOMKilled
-    OOMKilled --> CrashLoopBackOff
+    Running --> Waiting
+    Waiting --> Running
+    Waiting --> Terminated
+    Terminated --> Waiting
+    Terminated --> Failed
     Failed --> [*]
     Succeeded --> [*]
 ```
 
 ### Key Failure Types
 
-| State | Description | Severity |
-|-------|-------------|----------|
-| CrashLoopBackOff | Container repeatedly crashing | High |
-| OOMKilled | Container killed due to memory limit | High |
-| ImagePullBackOff | Cannot pull container image | Medium |
-| Pending (stuck) | Pod cannot be scheduled | Medium |
+| Signal | Description | Severity |
+|--------|-------------|----------|
+| CrashLoopBackOff | Container repeatedly crashing and backing off before restart | High |
+| OOMKilled | Container's last termination reason was out of memory | High |
+| ImagePullBackOff | Container cannot pull its image | Medium |
+| Pending (stuck) | Pod has not been scheduled or its containers are not ready to start | Medium |
 | Evicted | Pod removed due to node pressure | Medium |
 
 ## Prerequisites
@@ -57,7 +58,7 @@ helm install kube-state-metrics prometheus-community/kube-state-metrics
 
 ### 1. CrashLoopBackOff Detection
 
-This alert fires when a pod enters the CrashLoopBackOff state:
+This alert fires when a container reports the CrashLoopBackOff waiting reason:
 
 ```yaml
 groups:
@@ -77,7 +78,7 @@ groups:
 
 ### 2. OOMKilled Alert
 
-Detect containers being killed due to memory exhaustion:
+Detect containers whose last termination reason was memory exhaustion:
 
 ```yaml
       - alert: PodOOMKilled
@@ -88,21 +89,19 @@ Detect containers being killed due to memory exhaustion:
           severity: warning
         annotations:
           summary: "Container {{ $labels.container }} OOMKilled in {{ $labels.namespace }}/{{ $labels.pod }}"
-          description: "Container was killed due to out of memory. Consider increasing memory limits."
+          description: "Container was last killed due to out of memory. Consider increasing memory limits."
 ```
 
 ### 3. Pod Not Ready
 
-Alert when pods remain not ready for extended periods:
+Alert when non-Job pods remain not ready for extended periods:
 
 ```yaml
       - alert: PodNotReady
         expr: |
-          sum by (namespace, pod) (
-            max by (namespace, pod) (kube_pod_status_phase{phase=~"Pending|Unknown"}) *
-            on(namespace, pod) group_left(owner_kind)
-            topk by(namespace, pod) (1, max by(namespace, pod, owner_kind) (kube_pod_owner{owner_kind!="Job"}))
-          ) > 0
+          (kube_pod_status_ready{condition="false"} == 1)
+          unless on(namespace, pod)
+          kube_pod_owner{owner_kind="Job"}
         for: 15m
         labels:
           severity: warning
@@ -178,17 +177,17 @@ spec:
             severity: warning
           annotations:
             summary: "Container OOMKilled"
-            description: "{{ $labels.namespace }}/{{ $labels.pod }} needs more memory"
+            description: "{{ $labels.namespace }}/{{ $labels.pod }} was last killed due to out of memory"
 
         - alert: PodNotReady
           expr: |
-            min_over_time(sum by (namespace, pod) (kube_pod_status_phase{phase=~"Pending|Unknown"})[15m:1m]) > 0
+            min_over_time(((kube_pod_status_ready{condition="false"} == 1) unless on(namespace, pod) kube_pod_owner{owner_kind="Job"})[15m:1m]) == 1
           for: 0m
           labels:
             severity: warning
           annotations:
-            summary: "Pod stuck in Pending/Unknown"
-            description: "{{ $labels.namespace }}/{{ $labels.pod }} not running for 15+ minutes"
+            summary: "Pod not ready"
+            description: "{{ $labels.namespace }}/{{ $labels.pod }} not ready for 15+ minutes"
 
         - alert: PodFrequentRestart
           expr: |
@@ -240,11 +239,11 @@ stringData:
       repeat_interval: 4h
       receiver: 'default'
       routes:
-        - match:
-            severity: critical
+        - matchers:
+            - severity="critical"
           receiver: 'pagerduty-critical'
-        - match:
-            severity: warning
+        - matchers:
+            - severity="warning"
           receiver: 'slack-warnings'
 
     receivers:
@@ -254,7 +253,7 @@ stringData:
 
       - name: 'pagerduty-critical'
         pagerduty_configs:
-          - service_key: 'your-pagerduty-key'
+          - routing_key: 'your-pagerduty-routing-key'
             severity: critical
 
       - name: 'slack-warnings'
@@ -286,10 +285,10 @@ topk(10,
 )
 ```
 
-### Panel 3: OOMKilled Events
+### Panel 3: OOMKilled Last Terminations
 
 ```promql
-# OOMKilled containers
+# Containers whose last termination reason was OOMKilled
 sum by (namespace, pod, container) (
   kube_pod_container_status_last_terminated_reason{reason="OOMKilled"}
 )
@@ -338,9 +337,9 @@ for: 15m
 Jobs are expected to terminate. Exclude them from not-ready alerts:
 
 ```promql
-kube_pod_status_phase{phase!="Running"}
-* on(namespace, pod) group_left(owner_kind)
-kube_pod_owner{owner_kind!="Job"}
+(kube_pod_status_ready{condition="false"} == 1)
+unless on(namespace, pod)
+kube_pod_owner{owner_kind="Job"}
 ```
 
 ### 3. Namespace-Based Routing
@@ -349,12 +348,12 @@ Route alerts based on namespace importance:
 
 ```yaml
 routes:
-  - match:
-      namespace: production
-      severity: critical
+  - matchers:
+      - namespace="production"
+      - severity="critical"
     receiver: 'pagerduty-prod'
-  - match:
-      namespace: staging
+  - matchers:
+      - namespace="staging"
     receiver: 'slack-staging'
 ```
 
