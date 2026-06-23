@@ -370,7 +370,7 @@ Track WriteConflict frequency to identify problem areas:
 const status = await db.adminCommand({ serverStatus: 1 });
 
 console.log('WiredTiger concurrency stats:');
-console.log('  Write conflicts:', status.wiredTiger.concurrentTransactions.write.out);
+console.log('  Update conflicts:', status.wiredTiger.transaction['update conflicts']);
 console.log('  Read tickets:', status.wiredTiger.concurrentTransactions.read.available);
 console.log('  Write tickets:', status.wiredTiger.concurrentTransactions.write.available);
 
@@ -387,7 +387,7 @@ db.system.profile.find({
 
 WriteConflict errors are a natural part of concurrent MongoDB applications. Handle them effectively by:
 
-1. **Implement retry logic** - Automatic retries with exponential backoff
+1. **Implement retry logic** - Retry transactions with exponential backoff
 2. **Use atomic operations** - Avoid read-modify-write patterns
 3. **Shard hot documents** - Distribute load across multiple documents
 4. **Use optimistic locking** - Version fields for conflict detection
