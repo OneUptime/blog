@@ -38,8 +38,10 @@ service:
                 endpoint: https://oneuptime.com/otlp
                 # Authentication header - replace with your actual token
                 # Get your token from: https://oneuptime.com/docs/telemetry/open-telemetry
+                # In service.telemetry, headers is a list of name/value pairs
                 headers:
-                 x-oneuptime-token: YOUR_ONEUPTIME_TOKEN
+                  - name: x-oneuptime-token
+                    value: YOUR_ONEUPTIME_TOKEN
 ```
 
 Please restart the OpenTelemetry Collector after making these changes to the configuration file.
