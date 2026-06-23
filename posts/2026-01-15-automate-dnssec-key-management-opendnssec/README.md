@@ -148,7 +148,6 @@ The KASP (Key and Signing Policy) file defines how keys are generated, rolled, a
         </Signatures>
         <Denial>
             <NSEC3>
-                <OptOut>false</OptOut>
                 <Resalt>P100D</Resalt>
                 <Hash><Algorithm>1</Algorithm><Iterations>10</Iterations><Salt length="8"/></Hash>
             </NSEC3>
@@ -162,14 +161,13 @@ The KASP (Key and Signing Policy) file defines how keys are generated, rolled, a
                 <Lifetime>P1Y</Lifetime>
                 <Repository>SoftHSM</Repository>
                 <Standby>1</Standby>
-                <ManualRollover>true</ManualRollover>
+                <ManualRollover/>
             </KSK>
             <ZSK>
                 <Algorithm length="1024">8</Algorithm>
                 <Lifetime>P90D</Lifetime>
                 <Repository>SoftHSM</Repository>
                 <Standby>1</Standby>
-                <ManualRollover>false</ManualRollover>
             </ZSK>
         </Keys>
         <Zone><PropagationDelay>PT1H</PropagationDelay></Zone>
@@ -188,7 +186,6 @@ The KASP (Key and Signing Policy) file defines how keys are generated, rolled, a
         </Signatures>
         <Denial>
             <NSEC3>
-                <OptOut>false</OptOut>
                 <Resalt>PT1H</Resalt>
                 <Hash><Algorithm>1</Algorithm><Iterations>5</Iterations><Salt length="8"/></Hash>
             </NSEC3>
@@ -201,13 +198,11 @@ The KASP (Key and Signing Policy) file defines how keys are generated, rolled, a
                 <Algorithm length="2048">8</Algorithm>
                 <Lifetime>PT2H</Lifetime>
                 <Repository>SoftHSM</Repository>
-                <ManualRollover>false</ManualRollover>
             </KSK>
             <ZSK>
                 <Algorithm length="1024">8</Algorithm>
                 <Lifetime>PT30M</Lifetime>
                 <Repository>SoftHSM</Repository>
-                <ManualRollover>false</ManualRollover>
             </ZSK>
         </Keys>
         <Zone><PropagationDelay>PT5M</PropagationDelay></Zone>
@@ -226,7 +221,7 @@ The KASP (Key and Signing Policy) file defines how keys are generated, rolled, a
 | `KSK/Lifetime` | Time between KSK rollovers | P1Y (1 year) |
 | `ZSK/Lifetime` | Time between ZSK rollovers | P90D (90 days) |
 | `Standby` | Number of pre-generated standby keys | 1 |
-| `ManualRollover` | Require manual trigger for rollover | true for KSK |
+| `ManualRollover` | Empty element; include `<ManualRollover/>` to require a manual trigger, omit it for automatic rollover | Present for KSK |
 | `PropagationDelay` | Time for DNS changes to propagate | PT1H (1 hour) |
 
 ## Zone Configuration
