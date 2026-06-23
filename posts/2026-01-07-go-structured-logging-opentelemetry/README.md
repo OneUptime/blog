@@ -12,7 +12,7 @@ Description: A complete guide to setting up structured logging in Go with OpenTe
 
 Structured logging is a cornerstone of modern observability. Unlike traditional plaintext logs, structured logs emit data in a consistent, machine-parseable format (typically JSON), making them easier to query, filter, and analyze. When combined with distributed tracing through OpenTelemetry, structured logs become even more powerful-allowing you to correlate log entries with specific traces and spans across your microservices architecture.
 
-In this comprehensive guide, we will explore three popular Go logging libraries-slog (Go's standard library logger), zerolog, and zap-and demonstrate how to integrate each with OpenTelemetry for trace correlation. By the end, you will have production-ready logging configurations that automatically inject trace and span IDs into your log entries.
+In this comprehensive guide, we will explore three popular Go logging libraries-slog (Go's standard library logger), zerolog, and zap-and demonstrate how to integrate each with OpenTelemetry for trace correlation. By the end, you will have production-ready logging configurations that correlate log entries with trace context.
 
 ## Prerequisites
 
@@ -31,7 +31,7 @@ When debugging distributed systems, you often need to answer questions like:
 - "Which service caused this error?"
 - "What was the sequence of events that led to this failure?"
 
-Without trace correlation, you would need to manually piece together log entries using timestamps and other contextual information. With trace correlation, every log entry includes a `traceId` and `spanId`, allowing you to:
+Without trace correlation, you would need to manually piece together log entries using timestamps and other contextual information. With trace correlation, log entries can include a `trace_id` and `span_id`, allowing you to:
 
 1. **Filter logs by trace**: See all log entries related to a specific request
 2. **Navigate from traces to logs**: Jump from a trace visualization to the corresponding logs
@@ -48,8 +48,6 @@ package main
 
 import (
     "context"
-    "log"
-    "time"
 
     "go.opentelemetry.io/otel"
     "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
@@ -229,7 +227,6 @@ package main
 import (
     "context"
     "log/slog"
-    "os"
     "time"
 
     "go.opentelemetry.io/otel"
@@ -315,7 +312,6 @@ import (
     "time"
 
     "github.com/rs/zerolog"
-    "github.com/rs/zerolog/log"
 )
 
 func setupBasicZerolog() zerolog.Logger {
@@ -344,18 +340,18 @@ func main() {
         Msg("user logged in")
 
     // Logging with nested objects
-    logger.Info().
-        Str("requestId", "req-789").
-        Dict("user", zerolog.Dict().
-            Str("id", "user-123").
-            Str("email", "user@example.com")).
+    event := logger.Info().
+        Str("requestId", "req-789")
+    event.Dict("user", event.CreateDict().
+        Str("id", "user-123").
+        Str("email", "user@example.com")).
         Msg("processing request")
 }
 ```
 
 ### zerolog with OpenTelemetry Trace Correlation
 
-For zerolog, we create a helper function that extracts trace context and adds it to log entries. The hook-based approach allows automatic injection of trace information.
+For zerolog, we create helper functions that extract trace context and add it to log entries. Zerolog hooks can read a context attached with `Event.Ctx` or `Context.Ctx`, but explicit context-aware helpers keep the trace-correlation behavior visible at each call site.
 
 ```go
 package main
@@ -368,15 +364,6 @@ import (
     "github.com/rs/zerolog"
     "go.opentelemetry.io/otel/trace"
 )
-
-// TraceHook is a zerolog hook that adds OpenTelemetry trace context
-type TraceHook struct{}
-
-// Run is called for every log event and adds trace information if available
-func (h TraceHook) Run(e *zerolog.Event, level zerolog.Level, msg string) {
-    // Note: zerolog hooks don't have access to context directly
-    // We'll use a different approach with context-aware logging
-}
 
 // ContextLogger creates a logger with trace context from the given context
 func ContextLogger(ctx context.Context, logger zerolog.Logger) zerolog.Logger {
@@ -505,7 +492,6 @@ package main
 
 import (
     "context"
-    "errors"
     "time"
 
     "go.opentelemetry.io/otel"
@@ -669,7 +655,7 @@ func main() {
 
 ### zap with OpenTelemetry Using otelzap
 
-The otelzap package provides automatic trace correlation. It wraps your zap logger and automatically injects trace context into log entries.
+The otelzap package provides OpenTelemetry integration for zap. It wraps your zap logger so context-aware log calls can record log events on the active span. If your JSON logs also need explicit `trace_id` and `span_id` fields, use the manual field approach shown below.
 
 ```go
 package main
@@ -688,10 +674,8 @@ func setupZapWithOtel() (*otelzap.Logger, error) {
         return nil, err
     }
 
-    // Wrap with otelzap for automatic trace correlation
-    // The WithTraceIDField and WithMinLevel options customize behavior
+    // Wrap with otelzap for OpenTelemetry integration.
     otelLogger := otelzap.New(zapLogger,
-        otelzap.WithTraceIDField(true),    // Add trace_id to logs
         otelzap.WithMinLevel(zap.InfoLevel), // Minimum level for trace correlation
         otelzap.WithStackTrace(true),        // Include stack traces for errors
     )
@@ -988,19 +972,15 @@ func LogError(ctx context.Context, logger *slog.Logger, err error, msg string, a
     // Build the base attributes
     baseAttrs := []slog.Attr{
         slog.String("error", err.Error()),
-        slog.String("errorType", errors.Unwrap(err).Error()),
+    }
+    if unwrapped := errors.Unwrap(err); unwrapped != nil {
+        baseAttrs = append(baseAttrs, slog.String("cause", unwrapped.Error()))
     }
 
     // Combine with provided attributes
     allAttrs := append(baseAttrs, attrs...)
 
-    // Convert to args for ErrorContext
-    args := make([]any, 0, len(allAttrs)*2)
-    for _, attr := range allAttrs {
-        args = append(args, attr.Key, attr.Value)
-    }
-
-    logger.ErrorContext(ctx, msg, args...)
+    logger.LogAttrs(ctx, slog.LevelError, msg, allAttrs...)
 }
 ```
 
@@ -1199,7 +1179,7 @@ func (h *BufferedHandler) Close() {
 **Choose zap when:**
 - You want the best balance of performance and features
 - You need strong typing for log fields
-- You want first-class OpenTelemetry support via otelzap
+- You want a ready-made OpenTelemetry integration via otelzap
 
 ## Conclusion
 
@@ -1214,7 +1194,7 @@ All three libraries covered in this guide-slog, zerolog, and zap-are excellent c
 Regardless of which library you choose, the key principles remain the same:
 
 1. Always use structured logging with consistent field names
-2. Inject trace and span IDs into every log entry
+2. Inject trace and span IDs into log entries emitted within traced operations
 3. Pass context through your application for proper correlation
 4. Follow production best practices for log levels, sampling, and sensitive data handling
 
