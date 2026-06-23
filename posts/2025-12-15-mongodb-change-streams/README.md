@@ -30,7 +30,7 @@ flowchart LR
 Change Streams require:
 - MongoDB 3.6 or later
 - Replica set or sharded cluster deployment
-- Majority read concern capability
+- WiredTiger storage engine and replica set protocol version 1
 
 ## Basic Change Stream Usage
 
@@ -272,6 +272,9 @@ class ResumableChangeStream {
         console.log('Restarting change stream...');
         if (this.changeStream) {
             await this.changeStream.close();
+        }
+        if (this.client) {
+            await this.client.close();
         }
 
         // Wait before reconnecting
