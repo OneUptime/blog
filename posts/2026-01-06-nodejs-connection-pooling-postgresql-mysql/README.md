@@ -143,7 +143,7 @@ Regular health checks ensure your application detects database connectivity issu
 const pool = new Pool({
   // ... connection options
 
-  // Validate connections before use - prevents using stale connections
+  // Abort queries that run too long - prevents a stuck query from holding a connection
   query_timeout: 30000, // 30 second query timeout
 });
 
