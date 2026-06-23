@@ -200,9 +200,9 @@ import "runtime"
 
 // BufferSizeGuidelines demonstrates different buffer sizing strategies
 func BufferSizeGuidelines() {
-    numWorkers := runtime.NumCPU()
+    numWorkers := runtime.GOMAXPROCS(0)
 
-    // CPU-bound tasks: Buffer equal to number of workers
+    // CPU-bound tasks: Buffer equal to the number of CPUs Go can run simultaneously
     // Provides one job ready for each worker
     cpuBoundBuffer := make(chan Job, numWorkers)
 
@@ -425,12 +425,15 @@ import (
 
 // GracefulPool implements a worker pool with proper shutdown handling
 type GracefulPool struct {
-    jobs       chan Job
-    results    chan Result
-    numWorkers int
-    wg         sync.WaitGroup
-    ctx        context.Context
-    cancel     context.CancelFunc
+    jobs         chan Job
+    results      chan Result
+    numWorkers   int
+    wg           sync.WaitGroup
+    submitWg     sync.WaitGroup
+    ctx          context.Context
+    cancel       context.CancelFunc
+    mu           sync.Mutex
+    shuttingDown bool
 }
 
 // NewGracefulPool creates a pool with graceful shutdown support
@@ -470,7 +473,7 @@ func (p *GracefulPool) worker(id int) {
                 select {
                 case p.results <- result:
                 default:
-                    // Results channel full or closed, log and continue
+                    // Results channel full, log and continue
                     fmt.Printf("Worker %d: couldn't send result for job %d\n", id, job.ID)
                 }
             }
@@ -508,6 +511,15 @@ func (p *GracefulPool) processJob(workerID int, job Job) Result {
 
 // Submit adds a job to the pool
 func (p *GracefulPool) Submit(job Job) error {
+    p.mu.Lock()
+    if p.shuttingDown {
+        p.mu.Unlock()
+        return fmt.Errorf("pool is shutting down")
+    }
+    p.submitWg.Add(1)
+    p.mu.Unlock()
+    defer p.submitWg.Done()
+
     select {
     case <-p.ctx.Done():
         return fmt.Errorf("pool is shutting down")
@@ -519,9 +531,15 @@ func (p *GracefulPool) Submit(job Job) error {
 // Shutdown performs graceful shutdown with timeout
 func (p *GracefulPool) Shutdown(timeout time.Duration) error {
     // Signal shutdown
+    p.mu.Lock()
+    p.shuttingDown = true
     p.cancel()
+    p.mu.Unlock()
 
-    // Close jobs channel to signal workers
+    // Wait for in-flight Submit calls before closing the jobs channel.
+    p.submitWg.Wait()
+
+    // Close jobs channel to signal workers.
     close(p.jobs)
 
     // Wait for workers with timeout
@@ -1055,7 +1073,7 @@ func main() {
         fmt.Printf("[%v] %s\n", time.Since(start).Round(time.Millisecond), result.Output)
     }
 
-    fmt.Printf("\nTotal time: %v (expected ~4s for 20 jobs at 5/sec)\n", time.Since(start))
+    fmt.Printf("\nTotal time: %v (expected ~3s for 20 jobs at 5/sec with an initial burst of 5)\n", time.Since(start))
     pool.Shutdown()
 }
 ```
