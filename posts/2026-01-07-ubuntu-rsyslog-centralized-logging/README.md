@@ -197,7 +197,7 @@ input(type="imtcp" port="514")
 ###########################
 
 # Use traditional timestamp format for compatibility
-# Set to "off" to use high-precision timestamps
+# Use the RSYSLOG_FileFormat template instead for high-precision timestamps
 $ActionFileDefaultTemplate RSYSLOG_TraditionalFileFormat
 
 # Set the default permissions for newly created log files
@@ -209,7 +209,8 @@ $FileCreateMode 0640
 # Set default permissions for log directories
 $DirCreateMode 0755
 
-# Enable high-precision timestamps for better log correlation
+# Sync log files to disk after each write to reduce the risk of
+# log loss on a crash (incurs a performance cost from extra fsync calls)
 $ActionFileEnableSync on
 
 # Configure the work directory for rsyslog
@@ -1792,8 +1793,10 @@ curl http://localhost:9199/metrics
 Configure rsyslog to send email alerts for critical events:
 
 ```bash
-# Install the mail output module
-sudo apt install -y rsyslog-pgsql mailutils
+# The ommail mail output module ships with the base rsyslog package,
+# so no extra rsyslog module needs to be installed.
+# Install mailutils only if you also want the `mail` command for testing.
+sudo apt install -y mailutils
 
 # Create alerting configuration
 sudo nano /etc/rsyslog.d/50-alerting.conf
