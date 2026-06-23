@@ -228,12 +228,12 @@ db.projects.updateOne(
 // Result: Backend team members = ["Alice", "Bob", "David"]
 ```
 
-### Pushing to All Matching Nested Arrays
+### Pushing to All Nested Arrays
 
 Use `$[]` to push to the same array field on every element in an array of objects.
 
 ```javascript
-// Add "notification" to all teams' features
+// Add "notifications" to all teams' features
 db.projects.updateOne(
   { _id: projectId },
   { $push: { "teams.$[].features": "notifications" } }

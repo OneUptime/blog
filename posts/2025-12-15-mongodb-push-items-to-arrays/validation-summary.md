@@ -4,32 +4,32 @@
 validated
 
 ## Post Type
-Tutorial
+Tutorial / Guide
 
 ## Technologies Covered
 - MongoDB update operators
-- MongoDB array updates
-- MongoDB positional update operators
-- MongoDB JSON Schema validation
-- MongoDB Node.js driver
-- JavaScript
-- Mermaid diagrams
+- MongoDB array modifiers
+- MongoDB positional array updates
+- MongoDB schema validation
+- Node.js MongoDB driver usage
 
 ## Sources Consulted
 - MongoDB Manual: `$push` update operator - https://www.mongodb.com/docs/manual/reference/operator/update/push/
+- MongoDB Manual: `$each` update modifier - https://www.mongodb.com/docs/manual/reference/operator/update/each/
+- MongoDB Manual: `$slice` update modifier - https://www.mongodb.com/docs/manual/reference/operator/update/slice/
+- MongoDB Manual: `$sort` update modifier - https://www.mongodb.com/docs/manual/reference/operator/update/sort/
+- MongoDB Manual: `$position` update modifier - https://www.mongodb.com/docs/manual/reference/operator/update/position/
 - MongoDB Manual: `$addToSet` update operator - https://www.mongodb.com/docs/manual/reference/operator/update/addtoset/
 - MongoDB Manual: positional `$` update operator - https://www.mongodb.com/docs/manual/reference/operator/update/positional/
 - MongoDB Manual: all positional `$[]` update operator - https://www.mongodb.com/docs/manual/reference/operator/update/positional-all/
 - MongoDB Manual: filtered positional `$[<identifier>]` update operator - https://www.mongodb.com/docs/manual/reference/operator/update/positional-filtered/
-- MongoDB Manual: Avoid Unbounded Arrays - https://www.mongodb.com/docs/manual/data-modeling/design-antipatterns/unbounded-arrays/
-- MongoDB Manual: `$jsonSchema` query operator - https://www.mongodb.com/docs/manual/reference/operator/query/jsonschema/
-- MongoDB Node.js Driver: Modify Documents - https://www.mongodb.com/docs/drivers/node/current/crud/update/modify/
+- MongoDB Manual: JSON Schema validation - https://www.mongodb.com/docs/manual/core/schema-validation/specify-json-schema/
+- MongoDB Manual: Avoid unbounded arrays - https://www.mongodb.com/docs/manual/data-modeling/design-antipatterns/unbounded-arrays/
+- MongoDB Node.js Driver: Modify documents - https://www.mongodb.com/docs/drivers/node/current/crud/update/modify/
 
 ## Issues Found
-- The first Mermaid diagram reused `A` and `C` as both node IDs and subgraph IDs. I changed the outer node IDs and subgraph IDs to unique names so the diagram is unambiguous.
-- The `$[]` explanation said it pushes to "all arrays in an array of objects." I clarified that it pushes to the same array field on every element in an array of objects, which matches MongoDB's all positional operator behavior.
-- The performance guidance used unsupported hard thresholds such as "Large > 1000" and "Arrays over 1000 elements should be reconsidered." MongoDB's official guidance warns against large or unbounded arrays but does not define a universal 1000-element cutoff, so I replaced those thresholds with bounded/growing/unbounded language.
-- The `$addToSet` object guidance said it compares entire objects. I added the field-order caveat from MongoDB's documentation because documents are considered duplicates only when fields, values, and field order match exactly.
+- The nested array section title said "All Matching Nested Arrays" for `$[]`. MongoDB documents `$[]` as the all positional operator that modifies all elements in the specified array field, not only filtered or matching array elements. Changed the heading to "Pushing to All Nested Arrays".
+- The `$[]` example comment said it added `"notification"` while the code pushed `"notifications"`. Updated the comment to match the actual value.
 
 ## Review Notes
-The MongoDB update examples use placeholder IDs such as `ObjectId("...")`, `userId`, `postId`, and `playlistId`; these are acceptable illustrative placeholders but would need real values/imports in runnable code. The shopping cart example is functionally correct for the stated flow, though a production implementation may need additional concurrency handling to avoid duplicate cart items under simultaneous requests.
+The MongoDB operator examples are current and consistent with the official manual. `$push` with `$each`, `$slice`, `$sort`, and `$position` is used correctly; `$addToSet` duplicate behavior is described accurately, including object field-order comparison; and the positional `$`, `$[]`, and `$[<identifier>]` examples use supported syntax. The performance guidance correctly avoids unbounded arrays, although exact array-size thresholds remain application-dependent.
