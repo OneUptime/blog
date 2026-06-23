@@ -89,12 +89,12 @@ There are multiple ways to install Kiali. We will cover the most common approach
 
 ### Method 1: Install Kiali with Istio Addons
 
-This is the simplest approach if you are setting up a new Istio installation. The Istio addons include Kiali along with Prometheus, Grafana, and Jaeger:
+This is the simplest approach if you are setting up a new Istio installation. The Istio addons directory includes Kiali along with Prometheus, Grafana, Jaeger, and other sample observability tools:
 
 ```bash
 # Navigate to your Istio installation directory
 # The samples/addons directory contains pre-configured manifests for common observability tools
-cd istio-1.20.0
+cd istio-1.30.1
 
 # Apply all addons including Kiali, Prometheus, Grafana, and Jaeger
 # This single command sets up the entire observability stack
@@ -120,9 +120,9 @@ helm repo update
 cat << 'EOF' > kiali-values.yaml
 # Kiali deployment configuration
 deployment:
-  # Enable access logging for debugging
-  accessible_namespaces:
-    - "**"
+  # Limit namespace discovery if needed; omit this block for cluster-wide access
+  discovery_selectors:
+    default: []
   # Resource limits for production stability
   resources:
     requests:
@@ -143,10 +143,11 @@ external_services:
     url: "http://prometheus.istio-system:9090"
   grafana:
     enabled: true
-    in_cluster_url: "http://grafana.istio-system:3000"
+    internal_url: "http://grafana.istio-system:3000"
   tracing:
     enabled: true
-    in_cluster_url: "http://jaeger-query.istio-system:16686"
+    provider: jaeger
+    internal_url: "http://jaeger-query.istio-system:16686"
     use_grpc: false
 
 # Server configuration
@@ -195,8 +196,9 @@ spec:
 
   # Deployment settings
   deployment:
-    accessible_namespaces:
-      - "**"
+    # Omit discovery_selectors for cluster-wide access, or add selectors to restrict namespace discovery
+    discovery_selectors:
+      default: []
     view_only_mode: false
 
   # External services integration
@@ -205,10 +207,11 @@ spec:
       url: "http://prometheus.istio-system:9090"
     tracing:
       enabled: true
-      in_cluster_url: "http://jaeger-query.istio-system:16686"
+      provider: jaeger
+      internal_url: "http://jaeger-query.istio-system:16686"
     grafana:
       enabled: true
-      in_cluster_url: "http://grafana.istio-system:3000"
+      internal_url: "http://grafana.istio-system:3000"
 
   # Server settings
   server:
@@ -294,11 +297,11 @@ graph LR
 
 ### Configuring Graph Display Options
 
-You can customize the graph view using URL parameters or through the UI. Here is an example of accessing specific graph configurations:
+You can customize the graph view using URL parameters or through the UI. Kiali's backend API is intended for the Kiali UI and can change between releases, but it can be useful for ad hoc diagnostics:
 
 ```bash
 # Access the graph with specific parameters via the Kiali API
-# This example shows how to programmatically retrieve graph data
+# This example shows how to inspect graph data during troubleshooting
 curl -X GET \
   "http://localhost:20001/kiali/api/namespaces/bookinfo/graph?duration=60s&graphType=versionedApp&injectServiceNodes=true" \
   -H "Authorization: Bearer $KIALI_TOKEN" \
@@ -316,17 +319,20 @@ kubectl label namespace default istio-injection=enabled
 
 # Deploy the Bookinfo sample application
 # This application consists of multiple microservices that we can visualize
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.20/samples/bookinfo/platform/kube/bookinfo.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.30/samples/bookinfo/platform/kube/bookinfo.yaml
 
 # Wait for all pods to be ready
 kubectl wait --for=condition=Ready pods --all -n default --timeout=120s
 
 # Deploy the Bookinfo gateway to expose the application
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.20/samples/bookinfo/networking/bookinfo-gateway.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.30/samples/bookinfo/networking/bookinfo-gateway.yaml
 
 # Generate some traffic to populate the graph
 # The loop continuously sends requests to create traffic patterns for visualization
 export GATEWAY_URL=$(kubectl -n istio-system get service istio-ingressgateway -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+if [ -z "$GATEWAY_URL" ]; then
+  export GATEWAY_URL=$(kubectl -n istio-system get service istio-ingressgateway -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
+fi
 for i in $(seq 1 100); do
   curl -s -o /dev/null "http://$GATEWAY_URL/productpage"
   sleep 0.5
@@ -344,10 +350,10 @@ Kiali uses a color-coded health system:
 ```mermaid
 graph TD
     subgraph "Health Status Colors"
-        G[Green - Healthy] --> |">95% success rate"| G1[All requests successful]
-        Y[Yellow - Degraded] --> |"80-95% success rate"| Y1[Some errors present]
-        O[Orange - Warning] --> |"60-80% success rate"| O1[Significant errors]
-        R[Red - Failure] --> |"<60% success rate"| R1[Critical issues]
+        G[Healthy] --> |"Below degraded threshold"| G1[No configured error threshold exceeded]
+        Y[Degraded] --> |"At or above degraded threshold"| Y1[Some errors present]
+        R[Failure] --> |"At or above failure threshold"| R1[Critical issues]
+        N[No Health Information] --> |"No recent traffic"| N1[No request-rate health available]
     end
 ```
 
@@ -356,44 +362,43 @@ graph TD
 You can customize health thresholds to match your SLOs:
 
 ```yaml
-# Kiali ConfigMap with custom health rate configuration
+# Kiali CR with custom health rate configuration
 # These thresholds determine when services are marked as degraded or unhealthy
-apiVersion: v1
-kind: ConfigMap
+apiVersion: kiali.io/v1alpha1
+kind: Kiali
 metadata:
   name: kiali
   namespace: istio-system
-data:
-  config.yaml: |
-    # Health rate configuration for different traffic types
-    health_config:
-      # Rate thresholds for request-based health
-      rate:
-        - namespace: ".*"
-          kind: ".*"
-          name: ".*"
-          tolerance:
-            # Threshold for degraded status (yellow)
-            - code: "^5\\d\\d$"
-              direction: ".*"
-              protocol: "http"
-              degraded: 5
-              failure: 10
-            # Threshold for gRPC errors
-            - code: "^[1-9]$|^1[0-6]$"
-              direction: ".*"
-              protocol: "grpc"
-              degraded: 5
-              failure: 10
+spec:
+  # Health rate configuration for different traffic types
+  health_config:
+    # Rate thresholds for request-based health
+    rate:
+      - namespace: ".*"
+        kind: ".*"
+        name: ".*"
+        tolerance:
+          # Threshold for degraded status
+          - code: "^5\\d\\d$"
+            direction: ".*"
+            protocol: "http"
+            degraded: 5
+            failure: 10
+          # Threshold for gRPC errors
+          - code: "^[1-9]$|^1[0-6]$"
+            direction: ".*"
+            protocol: "grpc"
+            degraded: 5
+            failure: 10
 ```
 
 ### Viewing Service Health Details
 
-The Kiali API provides detailed health information programmatically:
+The Kiali API can provide detailed health information for diagnostics:
 
 ```bash
 # Retrieve health status for all services in a namespace
-# This is useful for building custom dashboards or alerting systems
+# This is useful for ad hoc troubleshooting and diagnostics
 curl -X GET \
   "http://localhost:20001/kiali/api/namespaces/default/health?type=service" \
   -H "Authorization: Bearer $KIALI_TOKEN" \
@@ -536,7 +541,7 @@ spec:
 ### Viewing Validations via API
 
 ```bash
-# Retrieve all Istio configurations with validation status
+# Retrieve all Istio configurations with validation status for diagnostics
 # The validations field shows any errors or warnings for each configuration
 curl -X GET \
   "http://localhost:20001/kiali/api/namespaces/default/istio?validate=true" \
@@ -556,8 +561,8 @@ The traffic analysis view shows:
 - Protocol-specific metrics (HTTP, gRPC, TCP)
 
 ```bash
-# Query traffic metrics for a specific service
-# This provides detailed statistics about request patterns and performance
+# Query traffic metrics for a specific service during troubleshooting
+# This provides diagnostic statistics about request patterns and performance
 curl -X GET \
   "http://localhost:20001/kiali/api/namespaces/default/services/productpage/metrics?duration=1800s&step=15s&filters[]=request_count&filters[]=request_error_count&filters[]=request_duration" \
   -H "Authorization: Bearer $KIALI_TOKEN" | jq '.'
@@ -570,25 +575,25 @@ Kiali integrates with Jaeger to provide distributed tracing:
 ```yaml
 # Configure Kiali to connect to your tracing backend
 # This enables the traces tab in Kiali's UI
-apiVersion: v1
-kind: ConfigMap
+apiVersion: kiali.io/v1alpha1
+kind: Kiali
 metadata:
   name: kiali
   namespace: istio-system
-data:
-  config.yaml: |
-    external_services:
-      tracing:
-        # Enable tracing integration
-        enabled: true
-        # Internal URL for Jaeger Query service
-        in_cluster_url: "http://jaeger-query.istio-system:16686"
-        # External URL if Jaeger is exposed outside the cluster
-        url: "https://jaeger.example.com"
-        # Use gRPC for better performance with large trace data
-        use_grpc: true
-        # Whitelist of namespaces for which tracing is available
-        whitelist_istio_system: ["jaeger-query", "istio-ingressgateway"]
+spec:
+  external_services:
+    tracing:
+      # Enable tracing integration
+      enabled: true
+      provider: jaeger
+      # Internal URL for Jaeger Query service; use port 16685 when use_grpc is true
+      internal_url: "http://jaeger-query.istio-system:16685"
+      # External URL if Jaeger is exposed outside the cluster
+      external_url: "https://jaeger.example.com"
+      # Use gRPC for better performance with large trace data
+      use_grpc: true
+      # Query Jaeger with service.namespace selectors
+      namespace_selector: true
 ```
 
 ### Traffic Policies and Routing Visualization
@@ -728,30 +733,29 @@ Kiali integrates with Grafana for custom dashboards:
 ```yaml
 # Configure Kiali to link to Grafana dashboards
 # This enables direct navigation from Kiali to relevant Grafana dashboards
-apiVersion: v1
-kind: ConfigMap
+apiVersion: kiali.io/v1alpha1
+kind: Kiali
 metadata:
   name: kiali
   namespace: istio-system
-data:
-  config.yaml: |
-    external_services:
-      grafana:
-        enabled: true
-        # URL for internal Grafana access
-        in_cluster_url: "http://grafana.istio-system:3000"
-        # External URL for browser access
-        url: "https://grafana.example.com"
-        # Dashboard configurations for different resource types
-        dashboards:
-          - name: "Istio Service Dashboard"
-            variables:
-              namespace: "var-namespace"
-              service: "var-service"
-          - name: "Istio Workload Dashboard"
-            variables:
-              namespace: "var-namespace"
-              workload: "var-workload"
+spec:
+  external_services:
+    grafana:
+      enabled: true
+      # URL for internal Grafana access
+      internal_url: "http://grafana.istio-system:3000"
+      # External URL for browser access
+      external_url: "https://grafana.example.com"
+      # Dashboard configurations for different resource types
+      dashboards:
+        - name: "Istio Service Dashboard"
+          variables:
+            namespace: "var-namespace"
+            service: "var-service"
+        - name: "Istio Workload Dashboard"
+          variables:
+            namespace: "var-namespace"
+            workload: "var-workload"
 ```
 
 ## Troubleshooting Common Issues
@@ -851,7 +855,7 @@ spec:
         memory: "1Gi"
     # Use pod anti-affinity for resilience
     affinity:
-      pod_anti_affinity:
+      pod_anti:
         preferredDuringSchedulingIgnoredDuringExecution:
           - weight: 100
             podAffinityTerm:
@@ -861,7 +865,7 @@ spec:
               topologyKey: kubernetes.io/hostname
 
   server:
-    # Enable read-only mode for security if write operations are not needed
+    # Browser-facing host and scheme when Kiali is exposed externally
     web_fqdn: "kiali.example.com"
     web_port: 443
     web_schema: https
@@ -881,11 +885,11 @@ metadata:
   namespace: istio-system
 spec:
   deployment:
-    # Explicitly list allowed namespaces instead of using "**"
-    accessible_namespaces:
-      - "production"
-      - "staging"
-      - "istio-system"
+    # Match only namespaces that carry this label
+    discovery_selectors:
+      default:
+        - matchLabels:
+            kiali.io/member-of: kiali
     # Enable view-only mode to prevent configuration changes
     view_only_mode: true
 ```
