@@ -60,7 +60,7 @@ flowchart LR
 
 Before starting, ensure you have:
 
-- A Kubernetes cluster (1.23+)
+- A Kubernetes cluster version supported by your Istio release
 - Istio installed with egress gateway enabled
 - `kubectl` and `istioctl` CLI tools
 - Basic understanding of Istio concepts
@@ -215,7 +215,7 @@ This ServiceEntry configuration registers an external HTTPS API (GitHub API) in 
 ```yaml
 # serviceentry-github.yaml
 # Register the GitHub API as an external service in the mesh
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
   name: github-api
@@ -246,7 +246,7 @@ For services requiring specific endpoints or IP addresses, use static resolution
 ```yaml
 # serviceentry-database.yaml
 # Register an external database with static IP addresses
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
   name: external-database
@@ -304,12 +304,12 @@ sequenceDiagram
     participant EG as Egress Gateway
     participant Ext as External Service
 
-    App->>Sidecar: HTTP request to api.github.com
+    App->>Sidecar: HTTPS request to api.github.com
     Note over Sidecar: VirtualService routes<br/>to egress gateway
     Sidecar->>EG: Forward request
     Note over EG: Gateway accepts traffic<br/>on port 443
-    Note over EG: DestinationRule applies<br/>TLS settings
-    EG->>Ext: TLS connection to<br/>api.github.com:443
+    Note over EG: Gateway forwards<br/>TLS passthrough traffic
+    EG->>Ext: TLS passthrough to<br/>api.github.com:443
     Ext-->>EG: Response
     EG-->>Sidecar: Forward response
     Sidecar-->>App: HTTP response
@@ -320,7 +320,7 @@ This Gateway configuration defines what traffic the egress gateway accepts:
 ```yaml
 # egress-gateway.yaml
 # Define the egress gateway to accept traffic for external services
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Gateway
 metadata:
   name: egress-gateway
@@ -359,7 +359,7 @@ This VirtualService routes traffic from sidecars to the egress gateway:
 ```yaml
 # virtualservice-github.yaml
 # Route traffic to api.github.com through the egress gateway
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: github-api-routing
@@ -388,6 +388,7 @@ spec:
         # Route to the egress gateway service
         - destination:
             host: istio-egressgateway.istio-system.svc.cluster.local
+            subset: github
             port:
               number: 443
     # Rule for traffic at the egress gateway
@@ -405,55 +406,22 @@ spec:
               number: 443
 ```
 
-This DestinationRule configures connection settings for the egress gateway and external service:
+This DestinationRule configures the egress gateway destination used by sidecars:
 
 ```yaml
 # destinationrule-github.yaml
-# Configure TLS settings for connecting to external services
-apiVersion: networking.istio.io/v1beta1
+# Configure the egress gateway destination used by sidecars
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
-  name: egress-gateway-tls
+  name: egress-gateway-for-github
   namespace: default
 spec:
   # Apply to the egress gateway service
   host: istio-egressgateway.istio-system.svc.cluster.local
-  trafficPolicy:
-    # Configure connection pool settings
-    connectionPool:
-      tcp:
-        # Maximum number of connections
-        maxConnections: 100
-        # Connection timeout
-        connectTimeout: 10s
-      http:
-        # Maximum pending requests
-        h2UpgradePolicy: UPGRADE
-        http1MaxPendingRequests: 100
-        http2MaxRequests: 1000
-    # Port-level TLS settings
-    portLevelSettings:
-      - port:
-          number: 443
-        tls:
-          # ISTIO_MUTUAL uses Istio's mutual TLS
-          mode: ISTIO_MUTUAL
----
-# DestinationRule for the external service
-apiVersion: networking.istio.io/v1beta1
-kind: DestinationRule
-metadata:
-  name: github-api-tls
-  namespace: default
-spec:
-  # Apply to the external GitHub API
-  host: api.github.com
-  trafficPolicy:
-    tls:
-      # SIMPLE mode initiates TLS connection
-      mode: SIMPLE
-      # SNI for the TLS handshake
-      sni: api.github.com
+  # The subset lets the VirtualService attach egress-gateway-specific policy
+  subsets:
+    - name: github
 ```
 
 Apply all the routing configurations:
@@ -502,7 +470,7 @@ This ServiceEntry configuration enables TLS origination for an external API:
 # serviceentry-tls-origination.yaml
 # Define external service with both HTTP and HTTPS ports
 # HTTP for internal mesh traffic, HTTPS for external connection
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
   name: external-api-tls-origination
@@ -523,12 +491,12 @@ spec:
   resolution: DNS
 ```
 
-This Gateway accepts HTTP traffic and prepares it for TLS origination:
+This Gateway accepts mTLS traffic from sidecars and prepares it for TLS origination:
 
 ```yaml
 # gateway-tls-origination.yaml
 # Egress gateway configuration for TLS origination
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Gateway
 metadata:
   name: egress-gateway-tls-origination
@@ -537,13 +505,15 @@ spec:
   selector:
     istio: egressgateway
   servers:
-    # Accept HTTP traffic from the mesh
+    # Accept traffic from sidecars over Istio mutual TLS
     - port:
         number: 80
-        name: http
-        protocol: HTTP
+        name: https-port-for-tls-origination
+        protocol: HTTPS
       hosts:
         - api.external-service.com
+      tls:
+        mode: ISTIO_MUTUAL
 ```
 
 This VirtualService routes HTTP traffic through the egress gateway for TLS origination:
@@ -551,7 +521,7 @@ This VirtualService routes HTTP traffic through the egress gateway for TLS origi
 ```yaml
 # virtualservice-tls-origination.yaml
 # Route HTTP traffic to egress gateway and upgrade to HTTPS
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: external-api-tls-origination
@@ -572,6 +542,7 @@ spec:
         - destination:
             # Route to egress gateway
             host: istio-egressgateway.istio-system.svc.cluster.local
+            subset: external-api
             port:
               number: 80
           # Percentage of traffic (100% in this case)
@@ -596,7 +567,7 @@ This DestinationRule configures TLS origination at the egress gateway:
 ```yaml
 # destinationrule-tls-origination.yaml
 # Configure TLS origination for the external service
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: external-api-tls-origination
@@ -618,17 +589,23 @@ spec:
           sni: api.external-service.com
 ---
 # Mutual TLS between sidecar and egress gateway
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: egress-gateway-mtls
   namespace: default
 spec:
   host: istio-egressgateway.istio-system.svc.cluster.local
-  trafficPolicy:
-    tls:
-      # Use Istio's mutual TLS for in-mesh communication
-      mode: ISTIO_MUTUAL
+  subsets:
+    - name: external-api
+      trafficPolicy:
+        portLevelSettings:
+          - port:
+              number: 80
+            tls:
+              # Use Istio's mutual TLS for sidecar-to-gateway communication
+              mode: ISTIO_MUTUAL
+              sni: api.external-service.com
 ```
 
 Apply the TLS origination configuration:
@@ -653,7 +630,7 @@ This DestinationRule configures mTLS with client certificates for an external se
 ```yaml
 # destinationrule-mtls-external.yaml
 # Configure mutual TLS for external services requiring client certificates
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: external-api-mtls
@@ -664,12 +641,8 @@ spec:
     tls:
       # MUTUAL mode for two-way TLS authentication
       mode: MUTUAL
-      # Client certificate for authentication
-      clientCertificate: /etc/istio/external-certs/client.crt
-      # Private key for the client certificate
-      privateKey: /etc/istio/external-certs/client.key
-      # CA certificate to verify the server
-      caCertificates: /etc/istio/external-certs/ca.crt
+      # Secret containing tls.crt, tls.key, and ca.crt
+      credentialName: external-api-certs
       # SNI for the TLS handshake
       sni: secure-api.partner.com
 ```
@@ -678,47 +651,17 @@ Create a Secret to store the client certificates:
 
 ```bash
 # Create a secret containing the client certificates
-# These certificates are mounted into the egress gateway pod
 kubectl create secret generic external-api-certs \
-  --from-file=client.crt=./certs/client.crt \
-  --from-file=client.key=./certs/client.key \
+  --from-file=tls.crt=./certs/client.crt \
+  --from-file=tls.key=./certs/client.key \
   --from-file=ca.crt=./certs/ca.crt \
   -n istio-system
 ```
 
-Update the egress gateway deployment to mount the certificates:
+Verify that the credential is delivered to the egress gateway:
 
-```yaml
-# egress-gateway-certs.yaml
-# Patch to mount certificates into the egress gateway
-apiVersion: install.istio.io/v1alpha1
-kind: IstioOperator
-metadata:
-  name: istio-egress-certs
-  namespace: istio-system
-spec:
-  components:
-    egressGateways:
-      - name: istio-egressgateway
-        enabled: true
-        k8s:
-          # Add volume mounts for external certificates
-          overlays:
-            - kind: Deployment
-              name: istio-egressgateway
-              patches:
-                # Add volume mount to the container
-                - path: spec.template.spec.containers[0].volumeMounts[-1]
-                  value:
-                    name: external-certs
-                    mountPath: /etc/istio/external-certs
-                    readOnly: true
-                # Add the secret volume
-                - path: spec.template.spec.volumes[-1]
-                  value:
-                    name: external-certs
-                    secret:
-                      secretName: external-api-certs
+```bash
+istioctl -n istio-system proxy-config secret deploy/istio-egressgateway | grep external-api-certs
 ```
 
 ## Step 7: Implement Security Policies for Egress
@@ -791,10 +734,7 @@ spec:
               - cluster.local/ns/default/sa/frontend
       to:
         - operation:
-            # Allow access to GitHub API host
-            hosts:
-              - api.github.com
-            # Allow all HTTPS ports
+            # Allow HTTPS egress through the gateway
             ports:
               - "443"
     # Rule 2: Allow backend service account to access Stripe API
@@ -805,8 +745,6 @@ spec:
               - cluster.local/ns/payments/sa/payment-processor
       to:
         - operation:
-            hosts:
-              - api.stripe.com
             ports:
               - "443"
     # Rule 3: Allow specific namespaces to access external database
@@ -818,37 +756,17 @@ spec:
               - analytics
       to:
         - operation:
-            hosts:
-              - external-db.example.com
             ports:
               - "5432"
 ```
 
-Create a deny-all policy as a safety net to block unauthorized egress:
-
-```yaml
-# authz-deny-all-egress.yaml
-# Deny all egress traffic by default (applied after ALLOW policies)
-apiVersion: security.istio.io/v1
-kind: AuthorizationPolicy
-metadata:
-  name: egress-deny-all
-  namespace: istio-system
-spec:
-  selector:
-    matchLabels:
-      istio: egressgateway
-  # Empty rules with no action means deny all by default
-  # This policy has lower priority than explicit ALLOW policies
-  {}
-```
+When an `ALLOW` policy selects the egress gateway, requests that do not match any `ALLOW` rule are denied. No separate deny-all policy is required for the selected gateway workload.
 
 Apply the authorization policies:
 
 ```bash
 # Apply the authorization policies
 kubectl apply -f authz-egress-policy.yaml
-kubectl apply -f authz-deny-all-egress.yaml
 
 # Verify the policies are applied
 kubectl get authorizationpolicies -n istio-system
@@ -870,7 +788,7 @@ This Telemetry resource configures detailed access logging for egress traffic:
 ```yaml
 # telemetry-egress.yaml
 # Configure telemetry for egress traffic monitoring
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: egress-telemetry
@@ -945,7 +863,7 @@ Configure a Grafana dashboard query for egress traffic visualization:
 
 ## Step 9: Implement Rate Limiting for Egress
 
-Protect external services from being overwhelmed and control API costs with rate limiting.
+Protect external services from being overwhelmed and control API costs with rate limiting. The HTTP local rate limit filter applies to HTTP traffic, such as TLS origination flows where the egress gateway handles HTTP routing before opening TLS to the external service.
 
 This EnvoyFilter configures rate limiting for egress traffic:
 
@@ -1020,7 +938,7 @@ istioctl proxy-config listeners deploy/istio-egressgateway -n istio-system
 
 # Test rate limiting
 for i in {1..150}; do
-  curl -s -o /dev/null -w "%{http_code}\n" https://api.example.com/test
+  kubectl exec deploy/frontend -c frontend -- curl -s -o /dev/null -w "%{http_code}\n" http://api.example.com/test
 done | sort | uniq -c
 # Expected: Some 200s and some 429s (rate limited)
 ```
@@ -1035,7 +953,7 @@ Here's a complete production-ready configuration combining all the concepts:
 
 ---
 # ServiceEntry for external payment API
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
   name: payment-api
@@ -1059,7 +977,7 @@ spec:
 
 ---
 # Gateway configuration
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Gateway
 metadata:
   name: payment-egress-gateway
@@ -1079,7 +997,7 @@ spec:
 
 ---
 # VirtualService for routing
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: payment-api-routing
@@ -1101,6 +1019,7 @@ spec:
       route:
         - destination:
             host: istio-egressgateway.istio-system.svc.cluster.local
+            subset: payment
             port:
               number: 443
     # From egress gateway to external service
@@ -1118,42 +1037,31 @@ spec:
 
 ---
 # DestinationRule for egress gateway mTLS
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: egress-gateway-mtls
   namespace: production
 spec:
   host: istio-egressgateway.istio-system.svc.cluster.local
-  trafficPolicy:
-    portLevelSettings:
-      - port:
-          number: 443
-        tls:
-          mode: ISTIO_MUTUAL
+  subsets:
+    - name: payment
 
 ---
-# DestinationRule for external service TLS
-apiVersion: networking.istio.io/v1beta1
+# DestinationRule for external service resilience settings
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
-  name: payment-api-tls
+  name: payment-api-policy
   namespace: production
 spec:
   host: api.payment-provider.com
   trafficPolicy:
-    tls:
-      mode: SIMPLE
-      sni: api.payment-provider.com
     # Circuit breaker for resilience
     connectionPool:
       tcp:
         maxConnections: 50
         connectTimeout: 5s
-      http:
-        http1MaxPendingRequests: 50
-        http2MaxRequests: 100
-        maxRequestsPerConnection: 10
     # Outlier detection for external service
     outlierDetection:
       consecutive5xxErrors: 5
@@ -1181,8 +1089,6 @@ spec:
               - cluster.local/ns/production/sa/checkout-service
       to:
         - operation:
-            hosts:
-              - api.payment-provider.com
             ports:
               - "443"
 ```
