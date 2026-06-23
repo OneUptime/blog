@@ -125,21 +125,24 @@ Fast, customizable SAST:
 jobs:
   semgrep:
     runs-on: ubuntu-latest
+    container:
+      image: semgrep/semgrep
     permissions:
       security-events: write
     steps:
       - uses: actions/checkout@v4
 
       - name: Semgrep Scan
-        uses: semgrep/semgrep-action@v1
-        with:
-          config: >-
+        run: semgrep ci --sarif --output=semgrep.sarif
+        env:
+          SEMGREP_RULES: >-
             p/security-audit
             p/secrets
             p/owasp-top-ten
 
       - name: Upload SARIF
         uses: github/codeql-action/upload-sarif@v3
+        if: always()
         with:
           sarif_file: semgrep.sarif
 ```
