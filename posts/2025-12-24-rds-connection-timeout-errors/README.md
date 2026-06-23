@@ -226,6 +226,7 @@ const pool = new Pool({
 **Python with psycopg2:**
 
 ```python
+import os
 import psycopg2
 from psycopg2 import pool
 
@@ -306,7 +307,7 @@ const pool = new Pool({
   host: process.env.RDS_HOSTNAME,
   ssl: {
     rejectUnauthorized: true,
-    ca: fs.readFileSync('/path/to/rds-ca-2019-root.pem')
+    ca: fs.readFileSync('/path/to/global-bundle.pem')
   }
 });
 ```
@@ -357,10 +358,16 @@ Lambda functions have unique challenges with RDS connections.
 ### Use RDS Proxy
 
 ```javascript
-const { RDSDataClient, ExecuteStatementCommand } = require('@aws-sdk/client-rds-data');
+const { Pool } = require('pg');
 
-// Connect via RDS Proxy endpoint instead of direct RDS
-const client = new RDSDataClient({ region: 'us-east-1' });
+// Point your standard driver at the RDS Proxy endpoint instead of the direct RDS endpoint
+const pool = new Pool({
+  host: process.env.PROXY_ENDPOINT,
+  port: 5432,
+  database: process.env.RDS_DATABASE,
+  user: process.env.RDS_USERNAME,
+  password: process.env.RDS_PASSWORD
+});
 ```
 
 ### Reuse Connections
