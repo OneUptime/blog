@@ -169,7 +169,7 @@ sum by (service) (rate(http_errors_total[5m])) > 10
 # Namespaces using more than 80% CPU quota
 sum by (namespace) (rate(container_cpu_usage_seconds_total[5m]))
 /
-sum by (namespace) (kube_resourcequota{resource="limits.cpu"})
+sum by (namespace) (kube_resourcequota{resource="limits.cpu", type="hard"})
 > 0.8
 ```
 
@@ -192,18 +192,18 @@ count(node_cpu_utilization > 0.8)
 ```promql
 # Instances above 90th percentile CPU
 node_cpu_utilization >
-  quantile(0.9, node_cpu_utilization)
+  scalar(quantile(0.9, node_cpu_utilization))
 
 # Services with latency above 95th percentile
 histogram_quantile(0.95,
   sum by (service, le) (rate(http_request_duration_seconds_bucket[5m]))
 )
 >
-quantile(0.95,
+scalar(quantile(0.95,
   histogram_quantile(0.95,
     sum by (service, le) (rate(http_request_duration_seconds_bucket[5m]))
   )
-)
+))
 ```
 
 ### Standard Deviation Filtering
@@ -212,7 +212,7 @@ quantile(0.95,
 # CPU more than 2 standard deviations above mean
 node_cpu_utilization
 >
-avg(node_cpu_utilization) + 2 * stddev(node_cpu_utilization)
+scalar(avg(node_cpu_utilization) + 2 * stddev(node_cpu_utilization))
 ```
 
 ## Practical Filtering Patterns
@@ -223,7 +223,7 @@ avg(node_cpu_utilization) + 2 * stddev(node_cpu_utilization)
 # Request rate significantly higher than average
 sum by (instance) (rate(http_requests_total[5m]))
 >
-2 * avg(sum by (instance) (rate(http_requests_total[5m])))
+scalar(2 * avg(sum by (instance) (rate(http_requests_total[5m]))))
 
 # Error rate spike (current vs historical)
 sum by (service) (rate(http_errors_total[5m]))
@@ -360,7 +360,7 @@ groups:
           severity: warning
         annotations:
           summary: "High CPU on {{ $labels.instance }}"
-          description: "CPU is {{ printf \"%.1f\" $value }}%"
+          description: "CPU is {{ humanizePercentage $value }}"
 
       - alert: CriticalMemoryUsage
         expr: |
