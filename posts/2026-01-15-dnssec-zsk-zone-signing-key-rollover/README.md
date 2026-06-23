@@ -421,22 +421,36 @@ rndc dnssec -status example.com
 dnssec-settime -p all /var/named/keys/Kexample.com.*
 ```
 
-### PowerDNS Automated Rollover
+### PowerDNS Manual Rollover
 
-PowerDNS uses the `pdnsutil` command for key management:
+PowerDNS does not perform automatic ZSK rollovers on a timer; there is no
+rollover-interval metadata. Instead, you drive the pre-publication rollover
+yourself with the `pdnsutil` command (run `pdnsutil` regularly, e.g. from cron,
+if you want a scheduled process). When a zone is secured, PowerDNS keeps its
+RRSIGs fresh automatically, but adding, activating, and removing keys is a
+manual operation:
 
 ```bash
-# Enable DNSSEC
+# Enable DNSSEC (live-signed/online mode)
 pdnsutil secure-zone example.com
 
-# Set automatic rollover
-pdnsutil set-meta example.com SOA-EDIT-API DEFAULT
-pdnsutil set-meta example.com PRESIGNED 0
+# Phase 1: publish a new inactive ZSK alongside the existing one
+pdnsutil add-zone-key example.com zsk inactive published ecdsa256
 
-# Configure ZSK rollover interval (in seconds)
-# 90 days = 7776000 seconds
-pdnsutil set-meta example.com ZSK-ROLLOVER-INTERVAL 7776000
+# List keys to find the new key's ID
+pdnsutil show-zone example.com
+
+# Phase 2: after the DNSKEY TTL has passed, activate the new ZSK
+#          and deactivate the old one
+pdnsutil activate-zone-key example.com NEW-KEY-ID
+pdnsutil deactivate-zone-key example.com OLD-KEY-ID
+
+# Phase 3: once old signatures have expired from caches, remove the old ZSK
+pdnsutil remove-zone-key example.com OLD-KEY-ID
 ```
+
+In PowerDNS 5.0 and later these subcommands moved under a `zone` namespace
+(for example, `pdnsutil zone add-key example.com zsk inactive published ecdsa256`).
 
 ### Knot DNS Automated Rollover
 
