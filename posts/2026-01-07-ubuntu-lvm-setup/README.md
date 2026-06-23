@@ -22,7 +22,7 @@ Before diving into the technical details, let us understand why LVM is essential
 2. **Snapshots**: Create point-in-time copies for backups or testing
 3. **Spanning**: Combine multiple physical disks into a single logical volume
 4. **Striping**: Improve performance by distributing data across multiple disks
-5. **Mirroring**: Create redundant copies of data for high availability
+5. **Mirroring**: Create redundant copies of data for disk redundancy
 6. **Thin Provisioning**: Allocate storage on demand rather than upfront
 
 ## Understanding LVM Architecture
@@ -444,8 +444,8 @@ sudo umount /mnt/data
 # Check and repair the file system before shrinking
 sudo e2fsck -f /dev/vg_storage/lv_data
 
-# Reduce the file system to a specific size (slightly smaller than target LV size)
-sudo resize2fs /dev/vg_storage/lv_data 180G
+# Reduce the file system to the target size
+sudo resize2fs /dev/vg_storage/lv_data 200G
 
 # Reduce the Logical Volume
 sudo lvreduce -L 200G /dev/vg_storage/lv_data
@@ -516,8 +516,8 @@ sudo umount /mnt/snap
 # This reverts all changes made since the snapshot was created
 sudo lvconvert --merge /dev/vg_storage/lv_data_snap
 
-# The merge happens on next activation
-# Deactivate and reactivate the volume, or reboot
+# If the merge is deferred because the origin was active,
+# deactivate and reactivate the volume, or reboot
 sudo lvchange -an /dev/vg_storage/lv_data
 sudo lvchange -ay /dev/vg_storage/lv_data
 
@@ -567,7 +567,7 @@ Thin provisioning allows over-allocation of storage and more efficient snapshot 
 sudo lvcreate -L 100G -T vg_storage/thin_pool
 
 # Or create with metadata size specified
-sudo lvcreate -L 100G --thinpool thin_pool vg_storage
+sudo lvcreate -L 100G --poolmetadatasize 1G --thinpool thin_pool vg_storage
 ```
 
 ### Creating Thin Logical Volumes
@@ -765,8 +765,8 @@ sudo lvremove -f "/dev/${VG_NAME}/${SNAP_NAME}"
 1. **Use mirroring for critical data**:
 
 ```bash
-# Create a mirrored Logical Volume
-sudo lvcreate --type mirror -m 1 -L 50G -n lv_critical vg_storage
+# Create a mirrored Logical Volume using RAID1
+sudo lvcreate --type raid1 -m 1 -L 50G -n lv_critical vg_storage
 
 # Verify mirror status
 sudo lvs -o +devices vg_storage/lv_critical
@@ -868,7 +868,7 @@ LVM is an essential tool for any Linux administrator managing storage in develop
 
 ## Additional Resources
 
-- [Ubuntu LVM Documentation](https://ubuntu.com/server/docs/lvm)
+- [Ubuntu LVM Documentation](https://ubuntu.com/server/docs/how-to/storage/manage-logical-volumes/)
 - [Red Hat LVM Administrator Guide](https://access.redhat.com/documentation/en-us/red_hat_enterprise_linux/9/html/configuring_and_managing_logical_volumes/index)
 - [LVM HOWTO](https://tldp.org/HOWTO/LVM-HOWTO/)
 - [dm-cache Documentation](https://www.kernel.org/doc/Documentation/device-mapper/cache.txt)
