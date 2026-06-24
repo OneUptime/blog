@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Azure, Logic Apps, Bicep, Infrastructure as Code, Serverless, Workflow, Automation
 
-Description: Learn how to deploy Azure Logic Apps Standard infrastructure with Bicep templates and workflow definitions for repeatable, version-controlled automation.
+Description: Learn how to deploy Azure Logic Apps Standard with embedded workflow definitions using Bicep templates for repeatable, version-controlled automation.
 
 ---
 

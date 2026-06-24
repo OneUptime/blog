@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ollama, LLM, AI/ML, Custom Models, Machine Learning
 
-Description: A practical guide to importing, creating, and configuring custom models in Ollama for local LLM inference.
+Description: A practical guide to importing, creating, and fine-tuning custom models in Ollama for local LLM inference.
 
 ---
 

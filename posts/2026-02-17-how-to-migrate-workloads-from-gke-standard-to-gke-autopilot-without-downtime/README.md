@@ -1,10 +1,10 @@
-# How to Migrate Workloads from GKE Standard to GKE Autopilot with Minimal Downtime
+# How to Migrate Workloads from GKE Standard to GKE Autopilot Without Downtime
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GCP, GKE, Autopilot, Migration, Kubernetes, Cluster Management
 
-Description: A practical guide to migrating workloads from GKE Standard to GKE Autopilot with minimal downtime using a blue-green cluster migration strategy.
+Description: A practical guide to migrating workloads from GKE Standard to GKE Autopilot with zero downtime using a blue-green cluster migration strategy.
 
 ---
 

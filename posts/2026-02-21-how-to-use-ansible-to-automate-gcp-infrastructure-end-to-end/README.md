@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, GCP, Infrastructure as Code, Automation, DevOps
 
-Description: Complete guide to automating a core GCP infrastructure stack with Ansible, from networking to compute and managed data services, with a real-world example.
+Description: Complete guide to automating an entire GCP infrastructure stack with Ansible, from networking to compute to monitoring, with a real-world example.
 
 ---
 

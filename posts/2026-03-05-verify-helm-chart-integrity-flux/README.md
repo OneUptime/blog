@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Flux CD, GitOps, Kubernetes, Helm, HelmChart, Security, Cosign, Provenance, Verification
 
-Description: Learn how to verify the integrity of OCI Helm charts in Flux CD using Cosign signatures to ensure supply chain security.
+Description: Learn how to verify the integrity and provenance of Helm charts in Flux CD using Cosign signatures and provenance files to ensure supply chain security.
 
 ---
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Azure, Virtual Machine, Compute, Infrastructure as Code
 
-Description: Learn how to create an Azure Virtual Machine with OpenTofu including OS disk, attached network interface, and SSH key configuration.
+Description: Learn how to create an Azure Virtual Machine with OpenTofu including OS disk, network interface, and SSH key configuration.
 
 ## Introduction
 

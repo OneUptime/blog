@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, VMware, NSX, Networking, Software-Defined Networking
 
-Description: Automate VMware NSX network virtualization management with Ansible playbooks for segments and firewalls.
+Description: Automate VMware NSX network virtualization management with Ansible playbooks for segments, firewalls, and load balancers.
 
 ---
 

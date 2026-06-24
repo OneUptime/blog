@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Terraform, AWS, Bedrock, AI, Machine Learning, Generative AI, Infrastructure as Code
 
-Description: Learn how to set up Amazon Bedrock model access, invocation logging, provisioned throughput, and guardrails using Terraform for production generative AI workloads.
+Description: Learn how to set up Amazon Bedrock model access, invocation logging, custom model imports, and guardrails using Terraform for production generative AI workloads.
 
 ---
 

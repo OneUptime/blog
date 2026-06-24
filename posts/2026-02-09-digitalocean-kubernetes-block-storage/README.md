@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, DigitalOcean, DOKS, Storage, CSI
 
-Description: Learn how to configure and use DigitalOcean Block Storage with the CSI driver in DOKS clusters for persistent storage, snapshots, and volume expansion.
+Description: Learn how to configure and use DigitalOcean Block Storage with the CSI driver in DOKS clusters for persistent storage, snapshots, volume expansion, and multi-attach capabilities.
 
 ---
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, Networking, CNI, Installation, AKS, Azure
 
-Description: A step-by-step guide to installing Calico network policy enforcement on Azure Kubernetes Service with Azure CNI.
+Description: A step-by-step guide to installing Calico network policy enforcement on Azure Kubernetes Service, covering both Calico policy-only mode and full CNI installation.
 
 ---
 

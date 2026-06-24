@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Collector, Exporter, OpenSearch, Observability, Telemetry
 
-Description: Learn how to configure the OpenSearch exporter in OpenTelemetry Collector to send traces and logs to OpenSearch for powerful search and analytics capabilities.
+Description: Learn how to configure the OpenSearch exporter in OpenTelemetry Collector to send traces, metrics, and logs to OpenSearch for powerful search and analytics capabilities.
 
 OpenSearch is a popular open-source search and analytics engine that provides powerful capabilities for storing and querying telemetry data. The OpenTelemetry Collector's OpenSearch exporter enables you to send traces and logs directly to OpenSearch clusters, making it an excellent choice for organizations that want full control over their observability data with an open-source solution.
 

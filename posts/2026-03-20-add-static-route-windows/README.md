@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Networking, Routing, Windows, IPv4
+Tags: Networking, Routing, Window, IPv4
 
 Description: Learn how to add static IPv4 routes on Windows using the route add command and PowerShell for both temporary and persistent routing.
 

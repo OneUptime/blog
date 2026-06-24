@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Flux CD, Kubernetes, GitOps, Nuclio, Serverless, High Performance, FaaS, Real-Time
 
-Description: Deploy Nuclio high-performance serverless platform using Flux CD to run real-time event-driven functions on Kubernetes.
+Description: Deploy Nuclio high-performance serverless platform using Flux CD to run real-time event-driven functions with nanosecond latency on Kubernetes.
 
 ---
 

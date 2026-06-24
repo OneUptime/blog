@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, VPA, Autoscaling, Resource Management, Optimization
 
-Description: Learn how to use Kubernetes VPA to automatically adjust pod resource requests and, when configured, limits based on actual usage patterns.
+Description: Learn how to use Kubernetes VPA to automatically adjust pod resource requests and limits based on actual usage patterns.
 
 ---
 

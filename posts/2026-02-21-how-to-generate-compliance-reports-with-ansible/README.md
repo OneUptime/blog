@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, Compliance, Reporting, Automation, DevOps
 
-Description: Generate automated compliance reports with Ansible including HTML reports and compliance summaries.
+Description: Generate automated compliance reports with Ansible including HTML dashboards, CSV exports, and executive summaries.
 
 ---
 

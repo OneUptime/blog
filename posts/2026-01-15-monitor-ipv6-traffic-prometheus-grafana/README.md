@@ -95,7 +95,7 @@ cd node_exporter-1.8.0.linux-amd64
   --web.listen-address=":9100"
 ```
 
-> **Important:** The `netstat` collector reads `/proc/net/snmp6`, but its default `--collector.netstat.fields` filter only exposes a small subset of IPv6 fields (`Ip6_InOctets`, `Ip6_OutOctets`, `Icmp6_InMsgs`, `Icmp6_OutMsgs`, and the `Udp6_*` datagram counters). The packet-count and error/drop/fragmentation metrics used throughout this guide — `Ip6_InReceives`, `Ip6_OutRequests`, `Ip6_InHdrErrors`, `Ip6_InDiscards`, and so on (as well as the IPv4 `Ip_*` counters used for comparison) — are **not** exposed unless you override `--collector.netstat.fields` with a regex like the one above. Without it, queries against those metrics return no data.
+> **Important:** The `netstat` collector reads `/proc/net/snmp6`, but its default `--collector.netstat.fields` filter only exposes a small subset of IPv6 fields (`Ip6_InOctets`, `Ip6_OutOctets`, `Icmp6_InMsgs`, `Icmp6_OutMsgs`, and the `Udp6_*` datagram counters). The packet-count and error/drop/fragmentation metrics used throughout this guide - `Ip6_InReceives`, `Ip6_OutRequests`, `Ip6_InHdrErrors`, `Ip6_InDiscards`, and so on (as well as the IPv4 `Ip_*` counters used for comparison) - are **not** exposed unless you override `--collector.netstat.fields` with a regex like the one above. Without it, queries against those metrics return no data.
 
 Create a systemd service for production:
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Terraform, Jenkins, CI/CD, Infrastructure as Code, DevOps, Pipeline
 
-Description: Build a complete Terraform CI/CD pipeline in Jenkins with Declarative syntax and Shared Libraries, including plan approval gates, state management, and multi-environment deployments.
+Description: Build a complete Terraform CI/CD pipeline in Jenkins with Declarative and Scripted syntax, including plan approval gates, state management, and multi-environment deployments.
 
 ---
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Ruby, Rails, ActionController, HTTP, Tracing
 
-Description: Complete guide to instrumenting Rails ActionController with OpenTelemetry for comprehensive HTTP request tracing, including custom spans, route recognition, and Rack request tracking.
+Description: Complete guide to instrumenting Rails ActionController with OpenTelemetry for comprehensive HTTP request tracing, including custom spans, route recognition, and middleware tracking.
 
 ActionController handles every HTTP request in your Rails application. OpenTelemetry instrumentation captures the request lifecycle with a Rack HTTP server span that is enriched by ActionPack and related Rails instrumentation, giving you detailed insights into request processing performance.
 

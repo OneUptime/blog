@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Resource Management, Vertical Scaling
 
-Description: Learn how to configure container resource resize policies in Kubernetes to enable in-place vertical scaling, improving application availability and resource efficiency.
+Description: Learn how to configure container resource resize policies in Kubernetes to enable in-place vertical scaling without pod restarts, improving application availability and resource efficiency.
 
 ---
 

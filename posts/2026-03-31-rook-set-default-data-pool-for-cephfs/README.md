@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ceph, Rook, CephFS
 
-Description: Learn how the default data pool for a CephFS filesystem is determined at creation time and how to use per-directory overrides to control where new files are stored.
+Description: Learn how to set and change the default data pool for a CephFS filesystem so new files are stored in the correct pool without manual per-directory configuration.
 
 ---
 

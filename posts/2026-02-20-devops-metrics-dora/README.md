@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: DevOps, DORA Metric, Performance, Deployment Frequency, Lead Time
 
-Description: A guide to DORA metrics including deployment frequency, lead time, failed deployment recovery time, and change failure rate for measuring DevOps performance.
+Description: A guide to DORA metrics including deployment frequency, lead time, MTTR, and change failure rate for measuring DevOps performance.
 
 ---
 

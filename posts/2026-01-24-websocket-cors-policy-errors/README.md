@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: WebSocket, CORS, JavaScript, Node.js, Security, Debugging
 
-Description: Learn how to diagnose and fix CORS policy and origin errors in WebSocket connections including server configuration, proxy setups, and browser security requirements.
+Description: Learn how to diagnose and fix CORS policy errors in WebSocket connections including server configuration, proxy setups, and browser security requirements.
 
 ---
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Logging, Syslog, Docker, Log Management, SIEM, Monitoring
 
-Description: Learn how to stream Portainer container logs to a syslog server using Docker's log driver for centralized log management and SIEM integration.
+Description: Learn how to stream Portainer application logs to a syslog server using Docker's log driver for centralized log management and SIEM integration.
 
 ---
 

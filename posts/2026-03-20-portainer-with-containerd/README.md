@@ -1,10 +1,10 @@
-# How to Use Portainer with Containerd via Kubernetes (Without Docker)
+# How to Use Portainer with Containerd (Without Docker)
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Containerd, Kubernetes, CRI, Container
 
-Description: Deploy and configure Portainer to manage Kubernetes environments that use containerd without requiring the Docker daemon.
+Description: Deploy and configure Portainer to manage containers running directly on containerd without requiring the Docker daemon.
 
 ## Introduction
 

@@ -70,7 +70,7 @@ For EKS, add the label via the kubelet `--node-labels` flag in the bootstrap scr
 
 For the Cluster Autoscaler to know about these labels before the node exists (so it can make correct scaling decisions), add the following tag to your Auto Scaling Group:
 
-```
+```yaml
 k8s.io/cluster-autoscaler/node-template/label/role: storage-node
 ```
 

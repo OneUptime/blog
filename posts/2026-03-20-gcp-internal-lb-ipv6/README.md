@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GCP, IPv6, Internal Load Balancer, Private Networking, Cloud
 
-Description: A guide to configuring GCP internal passthrough Network Load Balancer with IPv6, plus the current IPv6 limitations of internal HTTP(S) load balancers.
+Description: A guide to configuring GCP Internal HTTP(S) Load Balancer and Internal TCP/UDP Load Balancer with IPv6 for private network traffic within GCP.
 
 GCP internal passthrough Network Load Balancer supports IPv6 for traffic within your VPC, useful for microservices communication and internal APIs. Internal IPv6 load balancing uses a private `/96` IPv6 range from a subnet whose VPC has ULA internal IPv6 enabled; the examples below use dual-stack backends. Internal HTTP(S) load balancers can use dual-stack VM instance group or zonal `GCE_VM_IP_PORT` NEG backends, but they don't support IPv6 frontends.
 

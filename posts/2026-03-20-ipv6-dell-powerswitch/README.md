@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: IPv6, Dell, PowerSwitch, SmartFabric, Networking, Datacenter
 
-Description: Configure IPv6 on Dell PowerSwitch (S-series, Z-series) running SmartFabric OS10 (Dell OS10) for campus and datacenter IPv6 deployments.
+Description: Configure IPv6 on Dell PowerSwitch (S-series, Z-series) running SmartFabric OS or Dell OS10 for campus and datacenter IPv6 deployments.
 
 ## Introduction
 

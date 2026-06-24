@@ -2,9 +2,9 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Oracle, PostgreSQL, Database Migration, ora2pg, Cloud Migration
+Tags: Azure, Oracle, PostgreSQL, Database Migration, DMS, Azure Database Migration Service, Cloud Migration
 
-Description: A practical guide to migrating Oracle databases to Azure Database for PostgreSQL using ora2pg and related tools.
+Description: A practical guide to migrating Oracle databases to Azure Database for PostgreSQL using Azure Database Migration Service and related tools.
 
 ---
 

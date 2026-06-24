@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Flux CD, Civo, k3s, Kubernetes, GitOps, Marketplace, Cloud
 
-Description: A practical guide to bootstrapping Flux CD on Civo Kubernetes with K3s, platform add-ons, and GitOps workflows.
+Description: A practical guide to bootstrapping Flux CD on Civo Kubernetes with K3s, marketplace apps, and GitOps workflows.
 
 ---
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Docker, Troubleshooting, Docker Engine 29, Compatibility
 
-Description: Resolve Docker Engine 29.0.0 compatibility issues with Portainer by updating to a supported Portainer release and checking related Docker 29 behavior.
+Description: Resolve compatibility issues between Portainer and Docker Engine 29, including API version mismatches, deprecated features, and configuration changes.
 
 ## Introduction
 

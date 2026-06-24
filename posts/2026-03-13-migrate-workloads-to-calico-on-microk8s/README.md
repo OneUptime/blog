@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, Networking, Migration, MicroK8s, CNI
 
-Description: A guide to migrating workloads on MicroK8s from an older or custom CNI to Calico for full network policy support.
+Description: A guide to migrating workloads on MicroK8s from the default networking to Calico for full network policy support.
 
 ---
 

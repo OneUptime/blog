@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: SpamAssassin, IPv6, Email, Spam Filtering, Mail Server, DNSBL
 
-Description: Configure SpamAssassin to correctly handle IPv6 sender addresses in trusted networks, DNSBL checks, and welcomelist rules for accurate spam scoring.
+Description: Configure SpamAssassin to correctly handle IPv6 sender addresses in trusted networks, DNSBL checks, and whitelist rules for accurate spam scoring.
 
 ## Introduction
 

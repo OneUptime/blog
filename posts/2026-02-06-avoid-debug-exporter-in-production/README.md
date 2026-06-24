@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Collector, Production, Best Practice
 
-Description: Learn why the OpenTelemetry debug exporter should not be left enabled in production and how it can overload your Collector under load.
+Description: Learn why the OpenTelemetry debug exporter should never be used in production and how it can crash your Collector under load.
 
 The debug exporter (previously called the logging exporter before Collector v0.86.0) is one of the first things you set up when getting started with the OpenTelemetry Collector. It prints telemetry data to the Collector's configured log output, which is incredibly useful for development. However, leaving it enabled in production is a recipe for disaster. It can fill up disk space, increase CPU usage, and ultimately overload your Collector.
 

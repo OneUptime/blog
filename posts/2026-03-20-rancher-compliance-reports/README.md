@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rancher, Kubernetes, Compliance, Reporting, CIS, Security
 
-Description: Learn how to generate, export, and present compliance reports from Rancher's Compliance Scans feature for audits and security reviews.
+Description: Learn how to generate, export, and present compliance reports from Rancher's CIS scanning tool for audits and security reviews.
 
 Compliance reporting is a critical requirement for organizations operating Kubernetes clusters in regulated industries. Rancher's Compliance Scans feature provides downloadable CSV reports in the UI, and the underlying scan data can also be retrieved with `kubectl` for custom reporting workflows. This guide covers how to generate comprehensive compliance reports from Rancher.
 

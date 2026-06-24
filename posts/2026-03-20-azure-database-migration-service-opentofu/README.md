@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Azure, Database Migration, DMS, PostgreSQL, Infrastructure as Code
 
-Description: Learn how to provision Azure Database Migration Service (classic) and configure PostgreSQL migration projects using OpenTofu.
+Description: Learn how to provision Azure Database Migration Service and configure online migration projects using OpenTofu.
 
 ## Introduction
 

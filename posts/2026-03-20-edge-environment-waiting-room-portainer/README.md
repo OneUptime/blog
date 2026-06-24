@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Edge, Waiting Room, Onboarding, Management
 
-Description: Use Portainer Business Edition's Edge waiting room to review and associate new edge agent connections before granting environment access.
+Description: Use Portainer's Edge waiting room to review and approve new edge agent connections before granting environment access.
 
 ---
 

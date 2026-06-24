@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Docker, Storage, Overlay2, Devicemapper
 
-Description: Configure and optimize classic Docker container storage drivers in Portainer-managed environments for maximum performance and compatibility.
+Description: Configure and optimize container storage drivers in Docker environments managed by Portainer for maximum performance and compatibility.
 
 ## Introduction
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RKE2, Kubernetes, Configuration, Server, Rancher
 
-Description: A practical reference guide to common options in the RKE2 server configuration file for customizing your Kubernetes control plane.
+Description: A comprehensive reference guide to all available options in the RKE2 server configuration file for customizing your Kubernetes control plane.
 
 The RKE2 server configuration file (`/etc/rancher/rke2/config.yaml`) is the primary way to configure many aspects of the RKE2 control plane. Understanding the available options allows you to precisely tune your cluster for your specific requirements. This guide serves as a practical reference for the server configuration file.
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, VPP, Kubernetes, Networking, Troubleshooting, Monitoring
 
-Description: Monitor Calico VPP error counters, interface statistics, and process health using Prometheus metrics and VPP's built-in stats segment to detect issues before they affect application traffic.
+Description: Monitor Calico VPP error counters, interface statistics, and process health using Prometheus metrics and VPP's built-in stats socket to detect issues before they affect application traffic.
 
 ---
 

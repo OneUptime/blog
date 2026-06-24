@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Docker, Container, Debugging, DevOps, Filesystem
 
-Description: Learn how to use docker diff to inspect filesystem changes in containers, track modifications, and debug container behavior by inspecting changes since container creation.
+Description: Learn how to use docker diff to inspect filesystem changes in running containers, track modifications, and debug container behavior by comparing against the original image.
 
 ---
 

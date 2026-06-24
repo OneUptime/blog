@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Raspberry Pi, AArch64, ARM, Linux
 
-Description: Review the requirements and caveats for running RHEL on Raspberry Pi 4-class aarch64 hardware for development, testing, or edge computing experiments.
+Description: Install and run RHEL on a Raspberry Pi 4 using the official aarch64 image for development, testing, or edge computing use cases.
 
 ---
 

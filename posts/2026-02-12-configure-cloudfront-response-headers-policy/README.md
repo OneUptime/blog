@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: AWS, CloudFront, Security Headers, CORS, CSP, HTTP Headers
 
-Description: Learn how to configure CloudFront response headers policies to add security headers, CORS headers, and custom headers without modifying your origin.
+Description: Learn how to configure CloudFront response headers policies to add security headers, CORS headers, and custom headers to all responses without modifying your origin.
 
 ---
 

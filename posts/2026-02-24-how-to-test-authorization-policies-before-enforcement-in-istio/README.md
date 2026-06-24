@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Istio, Authorization, Testing, Security, Kubernetes, Dry Run
 
-Description: Techniques for testing and validating Istio authorization policies before enforcing them in production, including dry-run mode and gradual rollouts.
+Description: Techniques for testing and validating Istio authorization policies before enforcing them in production, including dry-run mode and shadow policies.
 
 ---
 

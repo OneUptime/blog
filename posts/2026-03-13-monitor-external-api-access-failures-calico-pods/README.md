@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, Monitoring, API Access, Egress, Prometheus, Networking
 
-Description: Monitor external API access failures from Calico pods using Calico policy metrics, synthetic API call probes, and DNS resolution monitoring.
+Description: Monitor external API access failures from Calico pods using egress policy metrics, synthetic API call probes, and DNS resolution monitoring.
 
 ---
 

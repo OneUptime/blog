@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Windows, Installation, DevOps, Infrastructure as Code
+Tags: Terraform, Window, Installation, DevOps, Infrastructure as Code
 
 Description: A complete step-by-step guide to installing Terraform on Windows using manual download, Chocolatey, and winget with PATH configuration and verification.
 

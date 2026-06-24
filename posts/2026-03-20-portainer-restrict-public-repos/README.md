@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Security, Registry, Docker, Policy
 
-Description: Learn how to limit Portainer users to approved registries, hide anonymous Docker Hub in the UI, and use supporting controls when you need stricter enforcement.
+Description: Learn how to restrict Portainer users from pulling container images from public registries, enforcing the use of approved private registries only.
 
 ## Introduction
 

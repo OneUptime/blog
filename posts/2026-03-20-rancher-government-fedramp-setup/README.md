@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rancher, Government, FedRAMP, FIPS, Kubernetes, Compliance
 
-Description: A comprehensive guide to configuring Rancher for US government FedRAMP requirements, covering FIPS 140-validated cryptography, STIG hardening, and FedRAMP High deployment considerations.
+Description: A comprehensive guide to configuring Rancher for US government FedRAMP compliance, covering FIPS 140-2, STIG hardening, and FedRAMP High authorization requirements.
 
 ## Overview
 

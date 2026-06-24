@@ -1,10 +1,10 @@
-# Use Controlled Failover for Cloud SQL PostgreSQL with Cross-Region Read Replicas
+# Use Automatic Failover for Cloud SQL PostgreSQL with Cross-Region Read Replicas
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GCP, Cloud SQL, PostgreSQL, Failover, High Availability, Cross-Region Replication
 
-Description: Set up controlled failover for Cloud SQL PostgreSQL using cross-region read replicas to ensure database availability during regional outages with minimal data loss.
+Description: Set up automatic failover for Cloud SQL PostgreSQL using cross-region read replicas to ensure database availability during regional outages with minimal data loss.
 
 ---
 

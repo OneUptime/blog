@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Microservice, Network Latency, Distributed Tracing
 
-Description: Learn how to use OpenTelemetry span timing data to estimate and trace service-to-service latency between microservices in distributed systems.
+Description: Learn how to use OpenTelemetry span timing data to measure and trace network latency between microservices in distributed systems.
 
 When you run a distributed system with dozens of microservices talking to each other over the network, identifying where latency creeps in becomes a real challenge. A request might take 800ms end-to-end, but is that because the database query was slow, or because the hop between Service A and Service B added 200ms of overhead? OpenTelemetry's distributed tracing gives you the tools to estimate that service-to-service overhead from span timing data.
 

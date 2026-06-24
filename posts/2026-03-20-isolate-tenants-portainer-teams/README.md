@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Docker, Multi-Tenant, Team, Isolation, Access Control
 
-Description: Use Portainer's Teams feature and environment access control to create strong boundaries between tenant environments, then apply resource access controls so non-admin users only see their own workloads.
+Description: Use Portainer's Teams feature and environment access control to create strong boundaries between tenant workloads, preventing cross-team visibility and resource access.
 
 ## Introduction
 

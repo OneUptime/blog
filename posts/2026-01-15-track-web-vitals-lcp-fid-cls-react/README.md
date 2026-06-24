@@ -1,10 +1,10 @@
-# How to Track Web Vitals (LCP, INP, CLS) in React Applications
+# How to Track Web Vitals (LCP, FID, CLS) in React Applications
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: React, Web Vitals, Performance, LCP, INP, CLS, Core Web Vitals
+Tags: React, Web Vitals, Performance, LCP, FID, CLS, Core Web Vitals
 
-Description: A comprehensive guide to measuring, tracking, and optimizing Core Web Vitals (LCP, INP, CLS) in React applications using the web-vitals library and real-user monitoring strategies.
+Description: A comprehensive guide to measuring, tracking, and optimizing Core Web Vitals (LCP, FID, CLS) in React applications using the web-vitals library and real-user monitoring strategies.
 
 ---
 

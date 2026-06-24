@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rust, IPv6, Hyper, HTTP, Async, Tokio
 
-Description: Build low-level IPv6 HTTP servers with Rust's Hyper library, handle requests, extract client IPs, and serve cleartext HTTP/2 over IPv6.
+Description: Build low-level IPv6 HTTP servers with Rust's Hyper library, handle requests, extract client IPs, and serve TLS over IPv6.
 
 ## Basic Hyper IPv6 HTTP Server
 

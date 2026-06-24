@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: ArgoCD, GitOps, Kubernetes, Disaster Recovery, High Availability
 
-Description: Learn how to set up an active-passive ArgoCD disaster recovery configuration with failover procedures, state synchronization, and recovery steps.
+Description: Learn how to set up an active-passive ArgoCD disaster recovery configuration with automatic failover, state synchronization, and recovery procedures.
 
 ---
 

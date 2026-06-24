@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GCP, Cloud VPN, VPN Tunnel, IPsec, Networking, Troubleshooting
 
-Description: How to diagnose and fix Cloud VPN tunnel issues when the tunnel is stuck in allocating resources state, shows no incoming packets, or is established but does not pass traffic.
+Description: How to diagnose and fix Cloud VPN tunnel issues when the tunnel is stuck in allocating resources state or shows no incoming packets despite being established.
 
 ---
 

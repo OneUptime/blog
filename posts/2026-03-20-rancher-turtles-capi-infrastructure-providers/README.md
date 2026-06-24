@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rancher Turtles, CAPI, Kubernetes, Infrastructure, Cloud
 
-Description: Configure Cluster API infrastructure providers such as AWS, Azure, vSphere, and Docker with Rancher Turtles `CAPIProvider` resources.
+Description: Configure Cluster API infrastructure providers including AWS, Azure, vSphere, and Docker for multi-cloud Kubernetes provisioning.
 
 ## Introduction
 

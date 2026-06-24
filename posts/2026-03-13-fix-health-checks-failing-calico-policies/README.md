@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, Networking, Troubleshooting
 
-Description: Troubleshoot health check failures after enabling Calico NetworkPolicies by distinguishing kubelet probes from external health checks and allowing the correct source CIDRs and ports.
+Description: Fix liveness and readiness probe failures caused by Calico NetworkPolicies by adding node subnet ipBlock ingress rules and probe port allows.
 
 ---
 

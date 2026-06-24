@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: gRPC, IPv4, Name Resolution, Go, Python, Networking
 
-Description: Use the `ipv4:` target syntax in gRPC C-core-based clients such as Python, and use `passthrough` and custom resolvers for direct IPv4 connections and multi-address load balancing in Go.
+Description: Use the ipv4:// URI scheme in gRPC to create direct IPv4 connections, configure custom name resolvers, and handle multi-address load balancing in Go and Python.
 
 ## Introduction
 

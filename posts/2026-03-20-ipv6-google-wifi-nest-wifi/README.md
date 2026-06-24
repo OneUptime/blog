@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: IPv6, Google Wifi, Nest Wifi, Mesh Network, DHCPv6
 
-Description: Enable and verify IPv6 on Google WiFi and Nest WiFi mesh systems, understand Google's automatic DHCPv6-based IPv6 handling, and troubleshoot common IPv6 issues with Google's mesh platform.
+Description: Enable and verify IPv6 on Google WiFi and Nest WiFi mesh systems, understand automatic DHCPv6-PD handling, and troubleshoot common IPv6 issues with Google's mesh platform.
 
 ## Google WiFi / Nest WiFi IPv6 Architecture
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, Filter, Jinja2, Data Manipulation
 
-Description: Learn how to filter lists by attributes in Ansible using selectattr, rejectattr, and built-in Jinja2 and Ansible tests for precise data selection in playbooks.
+Description: Learn how to filter lists by attributes in Ansible using selectattr, rejectattr, and custom Jinja2 tests for precise data selection in playbooks.
 
 ---
 

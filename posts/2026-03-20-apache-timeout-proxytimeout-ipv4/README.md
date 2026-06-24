@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Apache, Timeout, ProxyTimeout, IPv4, Reverse Proxy, Performance, mod_proxy
 
-Description: Configure Apache's Timeout and ProxyTimeout settings to control how long Apache waits on client and IPv4 backend I/O, preventing hanging connections from exhausting server resources.
+Description: Configure Apache's Timeout and ProxyTimeout directives to control how long requests wait for IPv4 backend responses, preventing hanging connections from exhausting server resources.
 
 ## Introduction
 

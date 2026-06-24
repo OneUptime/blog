@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Ubuntu, AMD, GPU, ROCm, Driver
 
-Description: A practical guide to installing AMD GPU drivers on Ubuntu using Radeon Software for Linux and ROCm, covering both desktop graphics and compute workloads with troubleshooting tips.
+Description: A practical guide to installing AMD GPU drivers on Ubuntu using AMDGPU-PRO and ROCm, covering both desktop graphics and compute workloads with troubleshooting tips.
 
 ---
 

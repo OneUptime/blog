@@ -1,10 +1,10 @@
-# How to Perform a Rolling Upgrade of RHEL Across a Fleet Using Leapp
+# How to Perform a Rolling Upgrade of RHEL Across a Fleet Using Ansible
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, Rolling Upgrade, Leapp, Automation
+Tags: RHEL, Rolling Upgrade, Ansible, Automation
 
-Description: Perform a rolling upgrade of RHEL across your fleet using Leapp.
+Description: Perform a rolling upgrade of RHEL across your fleet using Ansible.
 
 ---
 

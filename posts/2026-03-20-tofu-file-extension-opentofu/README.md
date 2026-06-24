@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, .tofu Extension, HCL, Infrastructure as Code, DevOps
 
-Description: A guide to using OpenTofu's native .tofu file extension in OpenTofu 1.8 and later, which takes precedence over .tf files when both exist.
+Description: A guide to using OpenTofu's native .tofu file extension, which takes precedence over .tf files when both exist.
 
 ## Introduction
 

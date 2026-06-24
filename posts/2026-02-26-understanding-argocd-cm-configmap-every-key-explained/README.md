@@ -1,10 +1,10 @@
-# Understanding ArgoCD argocd-cm ConfigMap: Important Keys Explained
+# Understanding ArgoCD argocd-cm ConfigMap: Every Key Explained
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: ArgoCD, GitOps, Kubernetes, Configuration, Administration
 
-Description: A practical reference to important keys in the ArgoCD argocd-cm ConfigMap, covering SSO configuration, resource customizations, UI behavior, and operational tuning.
+Description: A comprehensive reference to every key in the ArgoCD argocd-cm ConfigMap, covering repository settings, SSO configuration, resource customizations, and operational tuning.
 
 ---
 

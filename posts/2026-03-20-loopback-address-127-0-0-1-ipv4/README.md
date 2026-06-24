@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: IPv4, Networking, Loopback, Localhost, Network Diagnostics
 
-Description: The loopback address 127.0.0.1 is assigned to the loopback interface, a virtual interface that allows a host to communicate with itself without sending traffic onto any physical network, used extensively for local service testing...
+Description: The loopback address 127.0.0.1 is a virtual interface that allows a host to communicate with itself without sending traffic onto any physical network, used extensively for local service testing...
 
 ## What Is the Loopback Interface?
 

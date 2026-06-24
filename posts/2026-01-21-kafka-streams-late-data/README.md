@@ -2,9 +2,9 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Apache Kafka, Kafka Streams, Late Data, Event Time, Stream Time, Grace Periods
+Tags: Apache Kafka, Kafka Streams, Late Data, Event Time, Watermark, Grace Periods
 
-Description: Learn how to handle late-arriving data in Kafka Streams, including grace periods, stream time, out-of-order event processing, and strategies for maintaining accuracy in windowed aggregations.
+Description: Learn how to handle late-arriving data in Kafka Streams, including grace periods, watermarks, out-of-order event processing, and strategies for maintaining accuracy in windowed aggregations.
 
 ---
 

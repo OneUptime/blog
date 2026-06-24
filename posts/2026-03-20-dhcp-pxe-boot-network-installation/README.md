@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: DHCP, PXE Boot, Network Installation, Sysadmin, Linux
 
-Description: PXE (Pre-boot Execution Environment) uses DHCP boot parameters such as `next-server` and `filename` to direct network-booting clients to a TFTP server and bootloader, enabling OS installation without physical media.
+Description: PXE (Pre-boot Execution Environment) uses DHCP options 66 and 67 to deliver TFTP server address and boot filename to network-booting clients, enabling automated OS installation without physical media.
 
 ## How PXE Boot Works
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Redis, System Design, Chat, Real-Time, Pub/Sub, Interview, WebSocket
 
-Description: A complete system design walkthrough for building a real-time chat system using Redis Pub/Sub, Streams, and Hashes for message history and unread counts.
+Description: A complete system design walkthrough for building a real-time chat system using Redis Pub/Sub, Streams, and sorted sets for message history.
 
 ---
 

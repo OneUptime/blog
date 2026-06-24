@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, WinRM, Windows, Troubleshooting, DevOps
+Tags: Ansible, WinRM, Window, Troubleshooting, DevOps
 
 Description: Resolve Ansible WinRM connection failures to Windows hosts with proper listener configuration, certificate setup, and authentication settings.
 

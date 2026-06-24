@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Collector, Processor, Span, Trace, Observability, Distributed Tracing
 
-Description: Learn how to configure the Span Processor in OpenTelemetry Collector to rename spans, extract span attributes, and set span status for better distributed tracing visibility.
+Description: Learn how to configure the Span Processor in OpenTelemetry Collector to transform, enrich, and optimize trace spans for better distributed tracing visibility.
 
 Trace spans carry critical context about distributed operations, but they often need normalization before reaching your backend. The Span Processor can rename spans from existing attributes, extract attributes from span names, and set span status without changing application code. This gives you control over common span cleanup tasks while keeping richer transformations in the Collector pipeline.
 

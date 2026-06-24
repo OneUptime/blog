@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Terraform, Chaos Engineering, AWS FIS, Resilience, Testing, Infrastructure as Code
 
-Description: Learn how to build chaos engineering infrastructure using Terraform with AWS Fault Injection Service for testing system resilience and failure recovery.
+Description: Learn how to build chaos engineering infrastructure using Terraform with AWS Fault Injection Simulator for testing system resilience and failure recovery.
 
 ---
 

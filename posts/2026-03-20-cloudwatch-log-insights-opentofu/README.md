@@ -1,8 +1,8 @@
-# How to Configure CloudWatch Logs Insights with OpenTofu
+# How to Configure CloudWatch Log Insights with OpenTofu
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTofu, AWS, CloudWatch, Logs Insights, Monitoring, Infrastructure as Code
+Tags: OpenTofu, AWS, CloudWatch, Log Insights, Monitoring, Infrastructure as Code
 
 Description: Learn how to create CloudWatch Log Groups, saved queries, and metric filters using OpenTofu for centralized log management.
 
@@ -69,7 +69,7 @@ resource "aws_cloudwatch_query_definition" "error_query" {
 
 ## Common CloudWatch Logs Insights Queries
 
-```
+```text
 # Count errors by hour
 fields @timestamp
 | filter @message like /ERROR/
@@ -77,7 +77,7 @@ fields @timestamp
 | sort hour desc
 ```
 
-```
+```text
 # Top slowest requests
 fields @timestamp, duration, endpoint
 | filter duration > 1000
@@ -85,7 +85,7 @@ fields @timestamp, duration, endpoint
 | limit 20
 ```
 
-```
+```text
 # Error count by service
 fields @timestamp, service, level
 | filter level = "ERROR"

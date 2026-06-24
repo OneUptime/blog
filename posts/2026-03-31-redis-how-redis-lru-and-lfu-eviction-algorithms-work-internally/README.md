@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Redis, LRU, LFU, Eviction, Memory Management, Internal
 
-Description: Understand how Redis implements approximate LRU and approximate LFU eviction algorithms using clock bits and frequency counters to free memory when maxmemory is reached.
+Description: Understand how Redis implements approximate LRU and exact LFU eviction algorithms using clock bits and frequency counters to free memory when maxmemory is reached.
 
 ---
 

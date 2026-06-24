@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Redis, Alert, Supply Chain
 
-Description: Use Redis pub/sub, sorted sets, and hashes to build a real-time supply chain alert system for stock and delay events.
+Description: Use Redis pub/sub, sorted sets, and keyspace notifications to build a real-time supply chain alert system for stock and delay events.
 
 ---
 

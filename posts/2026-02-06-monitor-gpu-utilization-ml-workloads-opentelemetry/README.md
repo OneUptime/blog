@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, GPU Monitoring, Machine Learning, NVIDIA, Observability, Metric, Infrastructure
 
-Description: Learn how to collect and export GPU utilization metrics for ML workloads using OpenTelemetry, covering NVML integration, custom metric instruments, and Collector receivers.
+Description: Learn how to collect and export GPU utilization metrics for ML workloads using OpenTelemetry, covering NVIDIA SMI integration, custom metric instruments, and Collector receivers.
 
 ---
 

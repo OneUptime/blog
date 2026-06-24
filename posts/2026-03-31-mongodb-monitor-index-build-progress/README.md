@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: MongoDB, Index, Monitoring, Administration, currentOp
 
-Description: Learn how to track the progress of index builds in MongoDB using currentOp and server status commands to estimate completion time.
+Description: Learn how to track the progress of index builds in MongoDB using currentOp, $indexBuildStats, and server status commands to estimate completion time.
 
 ---
 

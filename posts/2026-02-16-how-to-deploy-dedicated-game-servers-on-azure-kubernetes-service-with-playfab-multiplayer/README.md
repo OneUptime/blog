@@ -1,10 +1,10 @@
-# How to Deploy Dedicated Game Servers with PlayFab Multiplayer Servers
+# How to Deploy Dedicated Game Servers on Azure Kubernetes Service
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: PlayFab, Game Server, Multiplayer Gaming, Dedicated Server, Game Development, Azure
+Tags: Azure Kubernetes Service, PlayFab, Game Server, Multiplayer Gaming, AKS, Dedicated Server, Game Development
 
-Description: Deploy dedicated game servers using PlayFab Multiplayer Servers for scalable multiplayer gaming experiences.
+Description: Deploy dedicated game servers on Azure Kubernetes Service using PlayFab Multiplayer Servers for scalable multiplayer gaming experiences.
 
 ---
 

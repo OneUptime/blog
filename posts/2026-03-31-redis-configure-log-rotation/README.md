@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Redis, Log Rotation, Logrotate, Linux, Operation
 
-Description: Configure log rotation for Redis using logrotate to prevent Redis log files from growing unbounded, with daily rotation and compression.
+Description: Configure log rotation for Redis using logrotate to prevent Redis log files from growing unbounded, with daily rotation, compression, and signal-based log reopening.
 
 ---
 

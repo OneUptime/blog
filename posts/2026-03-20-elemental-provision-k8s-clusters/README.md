@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Elemental, Kubernetes, Rancher, Provisioning, Edge
 
-Description: Learn how to use Elemental MachineInventorySelectorTemplates with Rancher cluster provisioning to provision Kubernetes clusters on registered bare metal nodes.
+Description: Learn how to use Elemental MachineInventorySelectors and Rancher cluster templates to provision Kubernetes clusters on registered bare metal nodes.
 
 ## Introduction
 

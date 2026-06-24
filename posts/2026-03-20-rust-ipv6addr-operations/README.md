@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Rust, Ipv6Addr, IPv6, Standard Library, std::net, Network Programming
+Tags: Rust, Ipv6Addr, IPv6, Standard Library, Std::net, Network Programming
 
 Description: Use Rust's std::net::Ipv6Addr type for IPv6 address parsing, classification, manipulation, and prefix operations in network applications.
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Istio, Failover, Resilience, Kubernetes, High Availability
 
-Description: How to test Istio failover scenarios including locality-based failover, endpoint health checking, and retry behavior to verify high availability configurations.
+Description: How to test Istio failover scenarios including locality-based failover, endpoint health checking, and cross-cluster failover to verify high availability configurations.
 
 ---
 

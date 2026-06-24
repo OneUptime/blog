@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: IPv4, Networking, Public IP, NAT, Network Diagnostics
 
-Description: Your public IPv4 address is the IPv4 address visible to the internet for your connection, and it can be discovered using web services, DNS queries, or command-line tools.
+Description: Your public IPv4 address is the address visible to the internet from behind your NAT router, and it can be discovered using web services, DNS queries, or command-line tools.
 
 ## Why Your Local IP Is Not Your Public IP
 

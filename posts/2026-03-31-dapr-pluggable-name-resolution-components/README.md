@@ -1,10 +1,10 @@
-# How to Develop Custom Dapr Name Resolution Components
+# How to Develop Dapr Pluggable Name Resolution Components
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Dapr, Custom Component, Name Resolution, Service Discovery, Go
+Tags: Dapr, Pluggable Component, Name Resolution, Service Discovery, gRPC
 
-Description: Build a custom Dapr name resolution component to integrate with non-standard service registries using the components-contrib Resolver interface.
+Description: Build a custom Dapr name resolution component to integrate with non-standard service registries using the pluggable component SDK.
 
 ---
 

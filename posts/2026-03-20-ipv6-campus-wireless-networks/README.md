@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: IPv6, Campus Network, Wireless LAN, Eduroam, DHCPv6, Prefix Delegation, Enterprise Wi-Fi
 
-Description: Deploy IPv6 across campus wireless networks with hierarchical prefix delegation, per-building delegated prefixes, per-SSID /64 allocations, eduroam IPv6 support, and centralized monitoring.
+Description: Deploy IPv6 across campus wireless networks with hierarchical prefix delegation, per-building or per-SSID /64 allocations, eduroam IPv6 support, and centralized monitoring.
 
 ---
 

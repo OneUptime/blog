@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, Timeout, Task Configuration, Error Handling
 
-Description: Configure Ansible task timeouts at the global, play, block, and task level to prevent hung tasks from blocking playbook execution indefinitely.
+Description: Configure Ansible task timeouts at the global, play, and task level to prevent hung tasks from blocking playbook execution indefinitely.
 
 ---
 

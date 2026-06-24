@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Longhorn, Kubernetes, Storage, Velero, Backup, Disaster Recovery
 
-Description: Configure Velero to use Longhorn's CSI snapshot capabilities for Kubernetes backups that capture both cluster resources and persistent volume data.
+Description: Configure Velero to use Longhorn's CSI snapshot capabilities for application-consistent Kubernetes backups including both application state and persistent volume data.
 
 ## Introduction
 

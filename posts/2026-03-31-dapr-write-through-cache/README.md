@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Dapr, Cache, State Management, Write-Through, Pattern
 
-Description: Learn how to implement the write-through cache pattern with Dapr state management so every write updates both the cache and the origin database synchronously.
+Description: Learn how to implement the write-through cache pattern with Dapr state management so every write updates both the cache and the origin database atomically.
 
 ---
 

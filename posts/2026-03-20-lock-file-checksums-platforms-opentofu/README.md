@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTofu, Lock File, Checksum, Cross-Platform, Darwin, Linux, Windows, Infrastructure as Code
+Tags: OpenTofu, Lock File, Checksum, Cross-Platform, Darwin, Linux, Window, Infrastructure as Code
 
 Description: Learn how to manage OpenTofu lock file checksums for multiple operating systems and CPU architectures so teams using macOS, Linux, and Windows can all use the same committed lock file.
 

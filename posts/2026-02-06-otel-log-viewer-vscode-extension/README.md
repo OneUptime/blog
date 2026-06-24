@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, VS Code, Debugging, Trace, Developer Tool
 
-Description: Learn how to install and use the OpenTelemetry Log Viewer VS Code extension to inspect OpenTelemetry JSON logs locally without leaving your editor.
+Description: Learn how to install and use the OpenTelemetry Log Viewer VS Code extension to debug traces and spans locally without leaving your editor.
 
 When you are debugging a distributed system, switching between your editor and a browser-based log viewer breaks your flow. The OpenTelemetry Log Viewer extension for VS Code lets you inspect structured OpenTelemetry logs right inside your editor. This post walks through setting up the extension, writing trace-correlated logs locally, and using the viewer to debug real issues.
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Cilium, Kubernetes, HostPort, eBPF, Networking
 
-Description: Configure and validate Cilium's eBPF-based HostPort implementation that maps container ports to host ports without kube-proxy or iptables rules.
+Description: Configure and validate Cilium's eBPF-based HostPort implementation that maps container ports to node ports without kube-proxy or iptables rules.
 
 ---
 

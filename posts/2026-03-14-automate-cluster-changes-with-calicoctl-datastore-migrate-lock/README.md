@@ -1,10 +1,10 @@
-# Automating the Datastore Migration Lock Step with calicoctl datastore migrate lock
+# Automating Datastore Migration with calicoctl datastore migrate lock
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Calicoctl, Datastore Migration, Automation, Kubernetes
 
-Description: Automate the Calico datastore migration lock step using calicoctl datastore migrate lock with scripts that handle validation, execution, and verification.
+Description: Automate the Calico datastore migration process using calicoctl datastore migrate lock with scripts that handle validation, execution, and verification.
 
 ---
 

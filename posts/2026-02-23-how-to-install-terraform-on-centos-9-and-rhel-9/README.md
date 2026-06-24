@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Terraform, CentOS, RHEL, Linux, Installation, DevOps, Infrastructure as Code
 
-Description: Step-by-step instructions for installing Terraform on CentOS 9 Stream and RHEL 9 using the official HashiCorp repository and manual binary installation.
+Description: Step-by-step instructions for installing Terraform on CentOS 9 Stream and RHEL using the official HashiCorp repository and manual binary installation.
 
 ---
 

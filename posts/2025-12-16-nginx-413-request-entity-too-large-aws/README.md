@@ -97,37 +97,37 @@ http {
     client_header_buffer_size 1k;
     large_client_header_buffers 4 16k;
 
-    include /etc/nginx/conf.d/*.conf;
+    include conf.d/*.conf;
+
+    server {
+        listen 80;
+        server_name _;
+
+        # Include Elastic Beanstalk application mappings, health checks, and static files
+        include conf.d/elasticbeanstalk/*.conf;
+    }
 }
 ```
 
-### Method 3: .ebextensions (Legacy and AL2)
+### Method 3: .ebextensions (Legacy Amazon Linux AMI)
 
-For older platforms or additional flexibility, use `.ebextensions`.
+For retired Amazon Linux AMI platform branches, use the legacy `.ebextensions/nginx/` structure. For AL2023 and Amazon Linux 2, prefer the `.platform/nginx/` structure shown above.
 
 #### Directory Structure
 
 ```text
 your-app/
 ├── .ebextensions/
-│   └── nginx.config
+│   └── nginx/
+│       └── conf.d/
+│           └── client_max_body_size.conf
 └── your-application-files/
 ```
 
-#### .ebextensions/nginx.config
+#### .ebextensions/nginx/conf.d/client_max_body_size.conf
 
-```yaml
-files:
-  "/etc/nginx/conf.d/client_max_body_size.conf":
-    mode: "000644"
-    owner: root
-    group: root
-    content: |
-      client_max_body_size 100M;
-
-container_commands:
-  01_reload_nginx:
-    command: "systemctl reload nginx || service nginx reload"
+```nginx
+client_max_body_size 100M;
 ```
 
 ### Method 4: Using proxy.conf for Proxy Settings
@@ -237,15 +237,15 @@ add_header X-Content-Type-Options "nosniff" always;
 add_header X-XSS-Protection "1; mode=block" always;
 ```
 
-## Also Configure AWS Load Balancer
+## Also Check AWS Load Balancer
 
-The 413 error can also come from the AWS Application Load Balancer.
+The 413 error can also appear before your application when an AWS Application Load Balancer rejects a request.
 
-### Check ALB Limits
+### Check ALB 413 Causes
 
-Application Load Balancer has a fixed maximum body size. If your uploads exceed this, you need to use a Network Load Balancer or configure direct uploads to S3.
+Application Load Balancer does not document a general fixed request body limit for instance targets. AWS documents ALB-generated 413 responses for Lambda targets when the request body exceeds 1 MB, and for requests whose headers exceed ALB header limits. If you are using instance targets on Elastic Beanstalk, a 413 for file uploads is more commonly from Nginx or your application framework.
 
-### Configure Environment Variables
+### Configure Load Balancer Idle Timeout
 
 In your Elastic Beanstalk environment configuration:
 
@@ -263,21 +263,23 @@ For files larger than 100MB, consider using S3 presigned URLs for direct uploads
 ### Backend (Node.js Example)
 
 ```javascript
-const AWS = require('aws-sdk');
-const s3 = new AWS.S3();
+const { S3Client, PutObjectCommand } = require('@aws-sdk/client-s3');
+const { getSignedUrl } = require('@aws-sdk/s3-request-presigner');
+
+const s3 = new S3Client({});
 
 app.get('/api/upload-url', async (req, res) => {
     const { filename, contentType } = req.query;
+    const key = `uploads/${Date.now()}-${filename}`;
 
-    const params = {
+    const command = new PutObjectCommand({
         Bucket: process.env.S3_BUCKET,
-        Key: `uploads/${Date.now()}-${filename}`,
-        ContentType: contentType,
-        Expires: 300 // URL expires in 5 minutes
-    };
+        Key: key,
+        ContentType: contentType
+    });
 
-    const uploadUrl = await s3.getSignedUrlPromise('putObject', params);
-    res.json({ uploadUrl, key: params.Key });
+    const uploadUrl = await getSignedUrl(s3, command, { expiresIn: 300 });
+    res.json({ uploadUrl, key });
 });
 ```
 
@@ -286,7 +288,11 @@ app.get('/api/upload-url', async (req, res) => {
 ```javascript
 async function uploadFile(file) {
     // Get presigned URL from your backend
-    const response = await fetch(`/api/upload-url?filename=${file.name}&contentType=${file.type}`);
+    const params = new URLSearchParams({
+        filename: file.name,
+        contentType: file.type
+    });
+    const response = await fetch(`/api/upload-url?${params}`);
     const { uploadUrl, key } = await response.json();
 
     // Upload directly to S3
@@ -404,7 +410,7 @@ print(response.status_code)  # Should be 200, not 413
 |----------|----------------------|--------|
 | AL2023 / AL2 | `.platform/nginx/conf.d/` | Drop-in config file |
 | AL2023 / AL2 | `.platform/nginx/nginx.conf` | Full override |
-| Any | `.ebextensions/` | File creation + reload |
+| Legacy Amazon Linux AMI | `.ebextensions/nginx/conf.d/` | Legacy drop-in config file |
 | Docker | Both host and container | Configure both if needed |
 
 The key directive is `client_max_body_size`. Set it appropriately for your use case, and remember to also configure timeouts and buffer sizes for reliable large file uploads. For very large files, consider using S3 presigned URLs to bypass the web server entirely.

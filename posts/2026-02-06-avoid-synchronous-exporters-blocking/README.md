@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Exporter, Performance, Latency
 
-Description: Avoid blocking your application's request path by understanding the difference between simple and batch span processors.
+Description: Avoid blocking your application's request path by understanding the difference between synchronous and batch span exporters.
 
 Using a simple processor means every ended span is handed to the exporter immediately, inline with your application's request processing. In SDKs or exporters where that export work is synchronous, a slow backend can add that delay to your request path. This post explains how to identify simple processors and replace them with batch processing.
 

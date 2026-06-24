@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: MongoDB, Talend, ETL, Data Integration, Stitch
 
-Description: Learn how to configure Stitch (now part of Qlik, via Talend) to replicate MongoDB collections to your data warehouse using the MongoDB connector.
+Description: Learn how to configure Stitch (now part of Talend) to replicate MongoDB collections to your data warehouse using the MongoDB connector.
 
 ---
 

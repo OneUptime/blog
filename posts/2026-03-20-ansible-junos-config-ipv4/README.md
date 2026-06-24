@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, Juniper, Junos, IPv4, Network Automation, Junos_config
 
-Description: Use the Ansible junipernetworks.junos.junos_config module to push IPv4 interface and routing configurations to Juniper Junos devices using Junos set commands and XML configuration files.
+Description: Use the Ansible junipernetworks.junos.junos_config module to push IPv4 interface and routing configurations to Juniper JunOS devices using Junos set commands and Jinja2 templates.
 
 ## Introduction
 

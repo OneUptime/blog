@@ -610,12 +610,13 @@ curl -u elastic:password -X PUT "localhost:9200/optimized-index" -H 'Content-Typ
 
 ### Caching Considerations
 
-DLS queries are cached, but complex queries may impact performance:
+DLS queries depend on Lucene BitSet objects that are cached to improve performance. Complex or heavily templated queries can generate many bitsets, so you can tune the dedicated DLS BitSet cache if needed:
 
 ```yaml
-# Increase security cache size if needed
-xpack.security.authz.store.roles.index.cache.max_size: 10000
-xpack.security.authz.store.roles.index.cache.ttl: 20m
+# Tune the document-level security BitSet cache if needed
+# (defaults: size 50mb, ttl 2h)
+xpack.security.dls.bitset.cache.size: 100mb
+xpack.security.dls.bitset.cache.ttl: 2h
 ```
 
 ## Troubleshooting

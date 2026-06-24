@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Docker, Container, Networking, DNS
 
-Description: Learn how to configure custom DNS servers in Portainer, plus search domains and DNS options with Compose or Docker daemon defaults.
+Description: Learn how to configure custom DNS servers, search domains, and DNS options for Docker containers in Portainer.
 
 ## Introduction
 

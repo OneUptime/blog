@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Helm, Kubernetes, DevOps, Migration, Upgrade
 
-Description: Step-by-step guide to migrating your Helm 2 releases and workflows to Helm 3, including the deprecated 2to3 plugin and handling Tiller removal.
+Description: Step-by-step guide to migrating your Helm 2 releases and workflows to Helm 3, including the official 2to3 plugin and handling Tiller removal.
 
 > Helm 3 introduced significant changes including the removal of Tiller, improved security, and a simplified architecture. This guide walks you through migrating existing Helm 2 releases to Helm 3 safely and efficiently.
 

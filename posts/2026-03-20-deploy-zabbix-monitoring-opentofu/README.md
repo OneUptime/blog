@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Zabbix, Monitoring, Infrastructure Monitoring, SNMP
 
-Description: Learn how to deploy Zabbix monitoring server on AWS using OpenTofu with RDS MySQL, ECS Fargate, and Cloud Map service discovery for enterprise-grade infrastructure monitoring.
+Description: Learn how to deploy Zabbix monitoring server on AWS using OpenTofu with RDS MySQL, ECS Fargate, and ALB for enterprise-grade infrastructure monitoring.
 
 ## Introduction
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Sentry, Trace, Error Tracking
 
-Description: Configure the OpenTelemetry Collector to export traces to Sentry using the Sentry exporter with API-token authentication and project routing.
+Description: Configure the OpenTelemetry Collector to export traces to Sentry using the Sentry exporter with DSN-based authentication.
 
 Sentry is primarily known for error tracking, but it also supports distributed tracing. The OpenTelemetry Collector has a dedicated Sentry exporter that forwards OpenTelemetry traces to Sentry's native OTLP ingestion endpoints. This lets you use OpenTelemetry instrumentation across your services while viewing traces in the Sentry performance monitoring UI.
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, Networking, NetworkSet, Validation
 
-Description: How to validate Calico NetworkSet resources to confirm IP sets are correctly defined, labels are applied for policy matching, and IP sets are programmed into the dataplane.
+Description: How to validate Calico NetworkSet resources to confirm IP sets are correctly defined, labels are applied for policy matching, and IP sets are programmed into the kernel.
 
 ---
 

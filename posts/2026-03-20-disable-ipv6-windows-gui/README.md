@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: IPv6, Windows, GUI, Network Configuration, Disable IPv6
+Tags: IPv6, Window, GUI, Network Configuration, Disable IPv6
 
 Description: Step-by-step guide to disabling IPv6 on Windows using the graphical user interface through Network Adapter Properties and Network and Sharing Center.
 

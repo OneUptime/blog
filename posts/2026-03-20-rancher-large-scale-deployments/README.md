@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rancher, Large Scale, Enterprise, Performance, Kubernetes, Architecture
 
-Description: Configure Rancher for large-scale deployments with hundreds of clusters by sizing the management cluster correctly, optimizing etcd, and implementing proper HA.
+Description: Configure Rancher for large-scale deployments with hundreds of clusters by tuning server resources, optimizing etcd, enabling external databases, and implementing proper HA.
 
 ## Introduction
 

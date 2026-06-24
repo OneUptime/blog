@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Helm, Kubernetes, DevOps, Security, Secret, SOPS
 
-Description: Learn how to encrypt and manage sensitive values in Helm charts using helm-secrets plugin and SOPS for secure GitOps workflows.
+Description: Learn how to encrypt and manage sensitive values in Helm charts using helm-secrets plugin and Mozilla SOPS for secure GitOps workflows.
 
 > Storing secrets in plain text in Git is a security nightmare. helm-secrets with SOPS lets you encrypt sensitive values while keeping your GitOps workflow intact-secrets live in Git, but only authorized systems can decrypt them.
 

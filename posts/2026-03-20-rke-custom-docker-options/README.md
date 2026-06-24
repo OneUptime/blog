@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RKE, Kubernetes, Rancher, Docker, Container Runtime, Configuration
 
-Description: Learn how to configure custom Docker daemon options and RKE service container settings in your RKE cluster.
+Description: Learn how to configure custom Docker daemon options and per-service Docker settings in your RKE cluster.
 
 ## Introduction
 

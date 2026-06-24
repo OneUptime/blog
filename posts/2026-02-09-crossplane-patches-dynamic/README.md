@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Crossplane, Configuration
 
-Description: Learn how to use Crossplane patches to create dynamic, flexible Compositions that map user inputs to cloud resources with transforms, value-based configuration, and advanced field manipulation.
+Description: Learn how to use Crossplane patches to create dynamic, flexible Compositions that map user inputs to cloud resources with transforms, conditionals, and advanced field manipulation.
 
 ---
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Windows Server, Docker, Windows Containers
 
-Description: Learn how to install Portainer on Windows Server 2022 to manage Docker containers running on Windows using native Windows containers.
+Description: Learn how to install Portainer on Windows Server 2022 to manage Docker containers running on Windows, including both Linux containers via Hyper-V and native Windows containers.
 
 ## Prerequisites
 

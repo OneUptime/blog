@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Blob Storage, Custom Domain, DNS, Azure Front Door, HTTPS, Web Hosting
+Tags: Azure, Blob Storage, Custom Domain, DNS, CDN, HTTPS, Web Hosting
 
 Description: Step-by-step guide to mapping your own domain name to Azure Blob Storage for cleaner URLs and branded content delivery.
 

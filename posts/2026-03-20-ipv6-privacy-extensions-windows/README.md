@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: IPv6, Privacy Extensions, Windows, PowerShell, Netsh, Security
+Tags: IPv6, Privacy Extensions, Window, PowerShell, Netsh, Security
 
 Description: A guide to enabling and configuring IPv6 privacy extensions on Windows 10 and Windows 11 using netsh, PowerShell, and Group Policy, to ensure temporary IPv6 addresses are used for outbound...
 

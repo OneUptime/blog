@@ -1,10 +1,10 @@
-# Portainer vs CasaOS: Home Server Management Comparison
+# Portainer vs CasaOS: Home Server OS Comparison
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, CasaOS, Home Server, Comparison, Self-Hosted
 
-Description: Evaluate Portainer and CasaOS for home server app and container management to choose the right platform for your homelab.
+Description: Evaluate Portainer and CasaOS for home server container management to choose the right platform for your homelab.
 
 ## Introduction
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: AWS, S3, Lambda, Serverless
 
-Description: Configure S3 event notifications to automatically trigger Lambda functions when objects are created, deleted, restored, tagged, or changed in your S3 buckets.
+Description: Configure S3 event notifications to automatically trigger Lambda functions when objects are created, deleted, or modified in your S3 buckets.
 
 ---
 

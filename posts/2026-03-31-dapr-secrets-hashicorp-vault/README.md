@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Dapr, Secret, HashiCorp Vault, Security, Configuration
 
-Description: Learn how to configure the Dapr HashiCorp Vault secret store component to read secrets from Vault using token-based authentication, with tokens obtained via direct token creation, AppRole, or Kubernetes auth methods.
+Description: Learn how to configure the Dapr HashiCorp Vault secret store component to read secrets from Vault using token, AppRole, or Kubernetes authentication methods.
 
 ---
 

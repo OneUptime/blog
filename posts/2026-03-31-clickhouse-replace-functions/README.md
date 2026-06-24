@@ -1,10 +1,10 @@
-# How to Use replaceOne() and replaceAll() in ClickHouse
+# How to Use replace() and replaceAll() in ClickHouse
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: ClickHouse, String Function, Data Cleaning, Analytics
 
-Description: Learn how replaceOne() and replaceAll() work in ClickHouse to clean, normalize, and redact string data, with practical examples for real-world use cases.
+Description: Learn how replace() and replaceAll() work in ClickHouse to clean, normalize, and redact string data, with practical examples for real-world use cases.
 
 ---
 

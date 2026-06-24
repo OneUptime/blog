@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Portainer, Ruby on Rails, PostgreSQL, Docker Compose, Web Framework, Ruby
+Tags: Portainer, Ruby On Rail, PostgreSQL, Docker Compose, Web Framework, Ruby
 
 Description: Learn how to deploy a Ruby on Rails application with PostgreSQL via Portainer, including database setup, migrations, and production configuration with Puma.
 

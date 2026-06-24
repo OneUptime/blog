@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Talos Linux, Rook-Ceph, Kubernetes, Storage, Distributed Storage, Ceph
 
-Description: Complete walkthrough for deploying a Rook-Ceph distributed storage cluster on Talos Linux with Kubernetes-native block storage.
+Description: Complete walkthrough for deploying a Rook-Ceph distributed storage cluster on Talos Linux with block, filesystem, and object storage.
 
 ---
 

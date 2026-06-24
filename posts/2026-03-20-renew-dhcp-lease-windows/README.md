@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: DHCP, Window, Networking, Network Diagnostics, Sysadmin
 
-Description: Renewing a DHCP lease on Windows releases the current DHCP configuration and requests fresh network settings from the DHCP server, useful when changing networks or resolving IP conflict issues.
+Description: Renewing a DHCP lease on Windows forces the system to release its current IP address and request a new one from the DHCP server, useful when changing networks or resolving IP conflict issues.
 
 For command-line methods, open Command Prompt or PowerShell as Administrator.
 

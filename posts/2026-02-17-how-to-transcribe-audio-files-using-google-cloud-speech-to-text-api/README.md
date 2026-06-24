@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GCP, Speech-to-Text, Audio Transcription, Machine Learning, Cloud API
 
-Description: A practical guide to transcribing short and long audio files using Google Cloud Speech-to-Text API with support for multiple languages and audio formats.
+Description: A practical guide to transcribing audio files of any length using Google Cloud Speech-to-Text API with support for multiple languages and audio formats.
 
 ---
 

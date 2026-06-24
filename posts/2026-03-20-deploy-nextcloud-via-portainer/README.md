@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Nextcloud, Self-Hosting, Docker, Cloud Storage, Docker Compose
 
-Description: Learn how to deploy Nextcloud, the open-source cloud storage platform, using Portainer's stack deployment feature with a persistent Docker Compose configuration.
+Description: Learn how to deploy Nextcloud, the open-source cloud storage platform, using Portainer's stack deployment feature with a production-ready Docker Compose configuration.
 
 ---
 

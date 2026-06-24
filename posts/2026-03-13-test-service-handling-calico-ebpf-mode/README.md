@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, eBPF, Service Handling, Networking
 
-Description: Test Kubernetes virtual-IP service handling in Calico eBPF mode with real workloads including NodePort and LoadBalancer.
+Description: Test all Kubernetes service types in Calico eBPF mode with real workloads including NodePort and LoadBalancer.
 
 ---
 

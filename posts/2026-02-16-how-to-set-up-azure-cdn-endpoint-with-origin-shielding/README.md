@@ -1,10 +1,10 @@
-# How to Set Up Azure Front Door Endpoint with Origin Shielding
+# How to Set Up Azure CDN Endpoint with Origin Shielding
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Azure, CDN, Origin Shielding, Caching, Performance, Content Delivery, Networking
 
-Description: Learn how Azure Front Door uses origin shielding to reduce origin load by adding a mid-tier caching layer between edge POPs and your origin server.
+Description: Learn how to configure Azure CDN with origin shielding to reduce origin load by adding a mid-tier caching layer between edge POPs and your origin server.
 
 ---
 

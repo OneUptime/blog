@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, OpenShift, Kubernetes, Networking, CNI, Installation
 
-Description: A step-by-step guide to migrating OpenShift's default OVN-Kubernetes CNI to Calico on a self-managed OpenShift cluster.
+Description: A step-by-step guide to replacing OpenShift's default OVN-Kubernetes CNI with Calico on a self-managed OpenShift cluster.
 
 ---
 

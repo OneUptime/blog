@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Cilium, Kubernetes, Network Policy, Troubleshooting, Security
 
-Description: How to diagnose and resolve issues with Cilium default deny policies including blocked legitimate traffic, DNS failures, and health check problems.
+Description: How to diagnose and resolve issues with Cilium default deny ingress policies including blocked legitimate traffic, DNS failures, and health check problems.
 
 ---
 

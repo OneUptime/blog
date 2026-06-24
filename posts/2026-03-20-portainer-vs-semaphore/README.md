@@ -1,10 +1,10 @@
-# Portainer vs Semaphore UI: Container Management vs Automation Comparison
+# Portainer vs Semaphore: Container Orchestration Comparison
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Portainer, Semaphore UI, Docker, Ansible, Comparison
+Tags: Portainer, Semaphore, Orchestration, Docker, Comparison
 
-Description: Evaluate Portainer for container management and Semaphore UI for infrastructure automation and deployment pipeline management.
+Description: Evaluate Portainer and Semaphore UI for container orchestration and deployment pipeline management.
 
 ## Introduction
 

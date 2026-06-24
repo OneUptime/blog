@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Crossplane, Database, Cloud, Kubernetes, Infrastructure as Code
 
-Description: How to use Crossplane to provision and manage cloud database services like RDS and Cloud SQL directly from Kubernetes
+Description: How to use Crossplane to provision and manage cloud database services like RDS, Cloud SQL, and Azure Database directly from Kubernetes
 
 ---
 

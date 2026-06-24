@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Longhorn, Orphaned Replicas, Cleanup, Kubernetes, Storage, Disk Space, SUSE Rancher
 
-Description: Learn how to configure Longhorn's automatic orphaned replica cleanup to reclaim disk space consumed by replica directories that Longhorn no longer tracks.
+Description: Learn how to configure Longhorn's automatic orphaned replica cleanup to reclaim disk space consumed by replicas that are no longer associated with any volume.
 
 ---
 

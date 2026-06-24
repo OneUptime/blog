@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rocket.Chat, IPv6, Team Chat, Messaging, Nginx, Node.js, Self-Hosted
 
-Description: Configure Rocket.Chat team messaging platform to serve users connecting from IPv6 networks by verifying Rocket.Chat server binding and updating Nginx reverse proxy configuration.
+Description: Configure Rocket.Chat team messaging platform to serve users connecting from IPv6 networks by updating Node.js server binding and Nginx reverse proxy configuration.
 
 ---
 

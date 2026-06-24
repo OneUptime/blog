@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, SOC2, Compliance, Security, Availability, Confidentiality, Infrastructure as Code
 
-Description: Learn how to provision SOC 2-aligned AWS infrastructure controls using OpenTofu, covering the Trust Services Criteria for Security, Availability, and Confidentiality.
+Description: Learn how to provision SOC 2-compliant AWS infrastructure using OpenTofu, covering the Trust Services Criteria for Security, Availability, and Confidentiality.
 
 ---
 

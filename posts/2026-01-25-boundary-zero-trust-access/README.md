@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: HashiCorp Boundary, Zero Trust, Security, Access Management, Identity-Based Access
+Tags: HashiCorp Boundary, Zero Trust, Security, Access Management, Kubernetes, Identity-Based Access
 
 Description: Learn how to deploy HashiCorp Boundary for zero trust access to infrastructure.
 

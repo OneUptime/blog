@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Retry Logic, Resilience, Provisioner, Infrastructure as Code
 
-Description: Learn how to implement retry logic in OpenTofu for transient failures using provider settings, `terraform_data` provisioners, `time_sleep`, and CI retry wrappers.
+Description: Learn how to implement retry logic in OpenTofu for transient failures using provider settings, null_resource retries, and external_provider patterns.
 
 Cloud APIs fail transiently - rate limits, eventually-consistent reads, and service-side timeouts are routine. OpenTofu itself does not have a built-in retry keyword for resource operations, but several patterns let you build retry behavior into your configurations.
 

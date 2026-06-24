@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Collector, Honeycomb, Dataset Routing
 
-Description: Configure the OpenTelemetry Collector to export traces, metrics, and logs to Honeycomb with signal-specific routing and team tokens.
+Description: Configure the OpenTelemetry Collector to export traces, metrics, and logs to Honeycomb with per-signal dataset routing and team tokens.
 
 Running the OpenTelemetry Collector as a gateway between your services and Honeycomb gives you centralized control over routing, sampling, and enrichment. You can route metrics, and optionally logs or Honeycomb Classic traces, to specific Honeycomb datasets and manage team tokens in one place.
 

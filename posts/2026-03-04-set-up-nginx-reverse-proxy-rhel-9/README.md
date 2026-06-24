@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Nginx, Reverse Proxy, Web Server, Linux
 
-Description: A step-by-step guide to configuring Nginx as a reverse proxy on RHEL, including upstream configuration, WebSocket support, timeouts, and buffering.
+Description: A step-by-step guide to configuring Nginx as a reverse proxy on RHEL, including upstream configuration, WebSocket support, and caching.
 
 ---
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Terraform, Dynamic Blocks, AWS, API Gateway, Serverless, Infrastructure as Code
 
-Description: Learn how to use Terraform `for_each` expressions and dynamic blocks to configure AWS API Gateway resources, methods, integrations, and responses from structured variable data.
+Description: Learn how to use Terraform dynamic blocks to configure AWS API Gateway resources, methods, integrations, and responses from structured variable data.
 
 ---
 

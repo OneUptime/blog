@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Networking, Subnetting, Broadcast, IPv4, CIDR, Network Fundamentals
 
-Description: Calculate the IPv4 subnet broadcast address using binary math, Python, and Linux command-line tools, with worked examples for common CIDR prefixes.
+Description: Calculate the directed broadcast address for any IPv4 subnet using binary math, Python, and Linux command-line tools, with worked examples for common CIDR prefixes.
 
 ## Introduction
 

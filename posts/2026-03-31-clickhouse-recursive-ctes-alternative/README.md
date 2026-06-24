@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: ClickHouse, CTE, Recursive Query, Hierarchical Data, SQL Pattern
 
-Description: ClickHouse supports recursive CTEs since version 24.4, but pre-flattened hierarchies, array functions, and self-joins often perform better for analytical workloads - learn these alternative patterns to query tree-structured data efficiently.
+Description: ClickHouse does not support recursive CTEs - learn alternative patterns using arrays, self-joins, and pre-computed hierarchies to query tree-structured data.
 
 ---
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, OpenAMT, Intel AMT, Deprecated, History, Edge Management
 
-Description: A historical overview of Portainer's Intel OpenAMT integration for out-of-band edge device management, which was deprecated in Portainer 2.36.0 and marked for removal in a future release.
+Description: A historical overview of Portainer's Intel OpenAMT integration for out-of-band edge device management, which was deprecated and removed in later releases.
 
 ---
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GCP, Compute Engine, Persistent Disk, Storage Migration, Cloud Infrastructure
 
-Description: Step-by-step guide to migrating a Compute Engine persistent disk from standard HDD to SSD or vice versa, covering snapshot-based migration, downtime planning, and performance considerations.
+Description: Step-by-step guide to migrating a Compute Engine persistent disk from standard HDD to SSD or vice versa, covering snapshot-based migration, live migration, and performance considerations.
 
 ---
 

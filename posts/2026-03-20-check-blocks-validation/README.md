@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Infrastructure as Code, Terraform, IaC, DevOps, Testing
 
-Description: Learn how to use OpenTofu check blocks to validate infrastructure assumptions during plan and apply and detect configuration drift with custom assertions.
+Description: Learn how to use OpenTofu check blocks to continuously validate infrastructure assumptions and detect configuration drift with custom assertions.
 
 ## Introduction
 

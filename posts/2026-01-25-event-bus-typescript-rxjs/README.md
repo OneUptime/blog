@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: NodeJS, TypeScript, RxJS, Event, Architecture, Design Pattern, Reactive Programming
 
-Description: Learn how to build a type-safe in-process event bus in TypeScript using RxJS, with support for event filtering, replay, error handling, and event aggregation.
+Description: Learn how to build a type-safe event bus in TypeScript using RxJS, with support for event filtering, replay, error handling, and cross-service communication.
 
 ---
 

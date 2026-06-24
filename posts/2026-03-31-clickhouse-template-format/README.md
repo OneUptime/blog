@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: ClickHouse, Template, Data Engineering, Export
 
-Description: Learn how to use ClickHouse's Template format to produce custom text output with arbitrary delimiters, headers, footers, and per-row formatting using placeholder-based templates.
+Description: Learn how to use ClickHouse's Template format to produce custom text output with arbitrary delimiters, headers, footers, and per-row formatting using Jinja-like templates.
 
 ## What Is Template Format?
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, env0, Cost Management, FinOps, Infrastructure as Code, DevOps
 
-Description: Learn how to configure env0 to run OpenTofu deployments and use cost estimation, project budgets, and approval policies to keep cloud spend under control.
+Description: Learn how to configure env0 to run OpenTofu deployments and leverage its built-in cost estimation and budget enforcement features to keep cloud spend under control.
 
 ## Introduction
 

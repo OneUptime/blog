@@ -1,10 +1,10 @@
-# How to Use the amazon.aws.ssm_parameter Lookup Plugin
+# How to Use the community.aws.aws_ssm Lookup Plugin
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, AWS, SSM Parameter Store, Secrets Management
 
-Description: Learn how to use the amazon.aws.ssm_parameter lookup plugin to fetch parameters and secrets from AWS Systems Manager Parameter Store in Ansible.
+Description: Learn how to use the community.aws.aws_ssm lookup plugin to fetch parameters and secrets from AWS Systems Manager Parameter Store in Ansible.
 
 ---
 

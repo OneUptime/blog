@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Docker, Image, Cleanup, DevOps
 
-Description: Learn how to identify and remove dangling Docker images in Portainer to recover disk space consumed by untagged image revisions left behind when tags move to newer builds.
+Description: Learn how to identify and remove dangling Docker images in Portainer to recover disk space consumed by intermediate build layers and replaced image versions.
 
 ## Introduction
 

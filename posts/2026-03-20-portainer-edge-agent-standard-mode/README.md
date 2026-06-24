@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Edge Agent, Standard Mode, Remote, DevOps
 
-Description: Deploy the Portainer Edge Agent in standard mode for near-real-time, on-demand management of remote environments.
+Description: Deploy the Portainer Edge Agent in standard (always-connected) mode for near-real-time management of remote environments.
 
 ---
 

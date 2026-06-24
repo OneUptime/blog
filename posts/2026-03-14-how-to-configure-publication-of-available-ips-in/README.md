@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Cilium, Kubernetes, IPAM, Networking, Configuration
 
-Description: How to read Cilium IPAM published available IP counts, enabling external systems and autoscalers to make informed scheduling decisions.
+Description: How to configure Cilium IPAM to publish available IP counts, enabling external systems and autoscalers to make informed scheduling decisions.
 
 ---
 

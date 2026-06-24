@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, React Native, JavaScript, Mobile, Performance
 
-Description: Master performance monitoring in React Native applications using OpenTelemetry spans to track JavaScript execution, JavaScript/native communication, native module calls, and UI rendering across iOS and Android.
+Description: Master performance monitoring in React Native applications using OpenTelemetry spans to track JavaScript execution, bridge communication, native module calls, and UI rendering across iOS and Android.
 
 React Native enables building mobile apps with JavaScript while delivering native performance. However, the architecture introduces unique performance considerations. JavaScript runs in its own runtime, native UI operations run on native threads, and communication between the JavaScript and native layers happens through the legacy bridge or, in the New Architecture, through JSI-backed native modules and Fabric. Understanding where time is spent requires instrumenting these layers with OpenTelemetry.
 

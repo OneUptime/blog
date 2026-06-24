@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Networking, ARP, Linux, Windows, macOS
+Tags: Networking, ARP, Linux, Window, macOS
 
 Description: Learn how to clear the ARP cache on Linux, Windows, and macOS to resolve stale or incorrect ARP entries.
 

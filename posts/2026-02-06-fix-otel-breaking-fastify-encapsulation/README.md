@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Fastify, Node.js, Plugin System
 
-Description: Resolve confusing OpenTelemetry trace relationships in Fastify apps by scoping instrumentation to the right plugin context.
+Description: Resolve the issue where OpenTelemetry instrumentation breaks Fastify's plugin encapsulation by leaking context across scopes.
 
 Fastify's plugin system is built on encapsulation. Each plugin gets its own scope for decorators, hooks, and route prefixes. Some OpenTelemetry Fastify instrumentation setups can make traces harder to read by creating hook and handler spans that cross plugin boundaries, causing unexpected parent-child relationships and confusing timing in traces.
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Flux, Cost, Kubernetes, Labels, FinOps, Cloud-cost, GitOps
 
-Description: Learn how to implement cloud cost tracking for Flux-managed workloads by automatically applying cost allocation labels to Kubernetes resources through Kustomization variable substitution and Kustomize patches.
+Description: Learn how to implement cloud cost tracking for Flux-managed workloads by automatically applying cost allocation labels to Kubernetes resources through Kustomization post-build patches.
 
 ---
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: ArgoCD, GitOps, Kubernetes, Resource Filtering, Sync Operations
 
-Description: Learn how to use resource filters in ArgoCD to control which resources are included in sync operations, using global settings, projects, directory patterns, and CLI resource selectors.
+Description: Learn how to use resource filters in ArgoCD to control which resources are included in sync operations, using labels, annotations, groups, and kind-based filtering.
 
 ---
 

@@ -1,10 +1,10 @@
-# What Is New in Redis 6.2 and 7.0 (GETDEL, COPY, LMPOP)
+# What Is New in Redis 6.2 (GETDEL, COPY, LMPOP)
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Redis, Command, Feature, COPY, GETDEL
 
-Description: Redis 6.2 added practical new commands including GETDEL, GETEX, and COPY. Redis 7.0 followed with LMPOP, ZMPOP, conditional EXPIRE flags, and the listpack encoding.
+Description: Redis 6.2 added practical new commands including GETDEL, GETEX, COPY, LMPOP, ZMPOP, and improvements to EXPIRE and OBJECT ENCODING.
 
 ---
 

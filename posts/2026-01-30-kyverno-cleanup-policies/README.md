@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Kyverno, Kubernetes, Automation, Cleanup
 
-Description: Automate Kubernetes resource lifecycle management with Kyverno deleting policies for time-based and condition-based resource deletion.
+Description: Automate Kubernetes resource lifecycle management with Kyverno cleanup policies for time-based and condition-based resource deletion.
 
 ---
 

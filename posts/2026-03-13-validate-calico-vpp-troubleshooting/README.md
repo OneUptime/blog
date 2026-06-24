@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, VPP, Kubernetes, Networking, Troubleshooting, Validation
 
-Description: Validate that Calico VPP is correctly configured and operating by verifying interface state, routing tables, CNAT service translations, and packet forwarding through the VPP dataplane.
+Description: Validate that Calico VPP is correctly configured and operating by verifying interface state, routing tables, NAT entries, and packet forwarding through the VPP dataplane.
 
 ---
 

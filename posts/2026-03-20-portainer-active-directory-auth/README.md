@@ -2,9 +2,9 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Portainer, Active Directory, LDAP, Authentication, Windows, Enterprise
+Tags: Portainer, Active Directory, LDAP, Authentication, Window, Enterprise
 
-Description: Configure Portainer Business Edition to authenticate users against Microsoft Active Directory using LDAP with AD-specific settings and service accounts.
+Description: Configure Portainer to authenticate users against Microsoft Active Directory using LDAP with AD-specific settings and service accounts.
 
 ## Introduction
 

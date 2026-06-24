@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Azure, Terraform, IPv6, Public IP, Networking, Infrastructure as Code
 
-Description: A guide to creating and managing Azure Standard IPv6 Public IP addresses with Terraform for use with VMs, load balancers, and application gateways.
+Description: A guide to creating and managing Azure Standard IPv6 Public IP addresses with Terraform for use with VMs, load balancers, and firewalls.
 
 Azure Public IP addresses can be created with either IPv4 or IPv6 addresses. For current deployments, IPv6 Public IPs use Standard SKU with Static allocation, and Azure assigns them from Microsoft's public IPv6 ranges. They are used to expose VMs and load balancers to the internet over IPv6.
 

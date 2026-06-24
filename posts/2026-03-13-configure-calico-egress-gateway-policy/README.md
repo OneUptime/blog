@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, Network Policy, Egress Gateway, Security
 
-Description: Configure Calico egress gateway policies to route outbound traffic leaving your Kubernetes cluster through selected gateways.
+Description: Configure Calico egress gateway policies to control and secure outbound traffic leaving your Kubernetes cluster.
 
 ---
 

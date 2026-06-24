@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Dapr, gRPC, Port, Sidecar, Configuration
 
-Description: Configure the Dapr internal gRPC port used for sidecar-to-sidecar communication in Kubernetes deployments.
+Description: Configure the Dapr internal gRPC port used for sidecar-to-sidecar and sidecar-to-control-plane communication in Kubernetes deployments.
 
 ---
 

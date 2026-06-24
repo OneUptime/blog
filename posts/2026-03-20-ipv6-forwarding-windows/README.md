@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: IPv6, Windows, IP Forwarding, Routing, Netsh
+Tags: IPv6, Window, IP Forwarding, Routing, Netsh
 
 Description: Learn how to enable IPv6 packet forwarding on Windows to allow a Windows Server to route IPv6 traffic between network interfaces.
 

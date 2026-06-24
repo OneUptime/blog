@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, Networking, Performance, Tuning, Rancher
 
-Description: Learn how to tune Calico networking on Rancher-managed Kubernetes clusters for production workloads, covering MTU, IPAM, and eBPF optimizations specific to the Rancher environment.
+Description: Learn how to tune Calico networking on Rancher-managed Kubernetes clusters for production workloads, covering MTU, IPAM, BGP, and eBPF optimizations specific to the Rancher environment.
 
 ---
 

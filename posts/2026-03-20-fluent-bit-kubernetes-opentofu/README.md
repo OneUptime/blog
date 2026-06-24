@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Fluent Bit, Kubernetes, EKS, Logging, Observability, Infrastructure as Code
 
-Description: Learn how to deploy Fluent Bit log collection on Kubernetes and EKS using OpenTofu to efficiently collect, filter, and forward container logs to CloudWatch, S3, and other destinations.
+Description: Learn how to deploy Fluent Bit log collection on Kubernetes and EKS using OpenTofu to efficiently collect, filter, and forward container logs to CloudWatch, Elasticsearch, and other destinations.
 
 Fluent Bit is a lightweight, high-performance log processor designed for Kubernetes environments. Compared to Fluentd, it typically has a lower resource footprint, making it ideal for running as a DaemonSet on every schedulable node. Managing Fluent Bit deployments in OpenTofu ensures consistent, low-overhead log collection across your clusters.
 

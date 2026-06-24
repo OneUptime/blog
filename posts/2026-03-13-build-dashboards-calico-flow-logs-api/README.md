@@ -1,10 +1,10 @@
-# How to Build Dashboards for Calico Felix Metrics
+# How to Build Dashboards for the Calico Flow Logs API
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, Networking, Observability
 
-Description: Build operational dashboards using Calico Felix Prometheus metrics to report on dataplane failures, policy calculation latency, and Felix health.
+Description: Build automated compliance and security dashboards using the Calico Flow Logs API to report on denied traffic trends, cross-namespace connections, and policy enforcement effectiveness.
 
 ---
 

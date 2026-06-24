@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: IPv6, Migration, Legacy Applications, NAT64, Proxy
 
-Description: Strategies for migrating legacy applications to IPv6 including proxy approaches, NAT64/DNS64 for IPv4-only dependencies in IPv6-only environments, and incremental modernization patterns.
+Description: Strategies for migrating legacy applications to IPv6 including proxy approaches, NAT64/DNS64 for IPv4-only backends, and incremental modernization patterns.
 
 ## Introduction
 

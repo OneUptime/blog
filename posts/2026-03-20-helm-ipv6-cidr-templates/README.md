@@ -2,9 +2,9 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Helm, IPv6, CIDR, Ingress, Kubernetes
+Tags: Helm, IPv6, CIDR, Network Policy, Kubernetes
 
-Description: Template IPv6-aware service settings and controller-specific CIDR annotations in Helm charts.
+Description: Template IPv6 CIDR ranges for network policies, service CIDR configuration, and pod CIDR settings in Helm charts.
 
 ## Overview
 

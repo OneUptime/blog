@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rancher, Kubernetes, Google Cloud, GCR, Container Registry, Artifact Registry
 
-Description: Set up Google Artifact Registry, including migrated `gcr.io` repositories, with Rancher using service accounts and Workload Identity Federation for GKE.
+Description: Set up Google Container Registry (GCR) or Artifact Registry with Rancher using service accounts and Workload Identity for secure container image management.
 
 ## Introduction
 

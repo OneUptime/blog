@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Linkerd, Kubernetes, ServiceMesh, Configuration
 
-Description: Configure Linkerd skip ports annotations to bypass proxy redirection for specific traffic, improving performance and compatibility.
+Description: Configure Linkerd skip ports annotations to bypass proxy injection for specific traffic, improving performance and compatibility.
 
 ---
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Docker, Networking, IPv4, Overlapping Subnets, Network Isolation
 
-Description: Manage Docker network subnet conflicts by using distinct bridge subnets, understanding Docker's overlap checks, and preventing conflicts with host, LAN, or VPN routes.
+Description: Manage Docker containers with overlapping IPv4 subnets by using separate bridge networks for isolation, understanding routing behavior, and preventing cross-network communication between...
 
 ## Introduction
 

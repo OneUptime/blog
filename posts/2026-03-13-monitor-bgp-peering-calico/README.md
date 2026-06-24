@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, BGP, Monitoring, Networking
 
-Description: Set up comprehensive BGP peering monitoring in Calico Enterprise using Prometheus metrics, alerting rules, and Grafana dashboards to detect session failures and route anomalies.
+Description: Set up comprehensive BGP peering monitoring in Calico using Prometheus metrics, alerting rules, and Grafana dashboards to detect session failures and route anomalies.
 
 ---
 

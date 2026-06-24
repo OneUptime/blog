@@ -2,9 +2,9 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTofu, AWS, Azure, API Gateway, API Management, Custom Domain, TLS, Infrastructure as Code
+Tags: OpenTofu, AWS, Azure, GCP, API Gateway, Custom Domain, TLS, Infrastructure as Code
 
-Description: Learn how to configure custom domains for AWS API Gateway and Azure API Management using OpenTofu with TLS certificates and DNS routing.
+Description: Learn how to configure custom domains for AWS API Gateway, Azure API Management, and GCP API Gateway using OpenTofu with TLS certificates and DNS routing.
 
 Custom domains replace the default auto-generated API Gateway URLs (like `abc123.execute-api.us-east-1.amazonaws.com`) with branded, memorable URLs like `api.yourcompany.com`. Managing custom domains in OpenTofu ensures consistent TLS certificate management and DNS routing alongside your API configuration.
 

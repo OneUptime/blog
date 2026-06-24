@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, Ansible-lint, Naming Convention, Best Practice
 
-Description: Fix common ansible-lint task naming warnings including missing names, casing issues, and template usage in names.
+Description: Fix all types of ansible-lint task naming warnings including missing names, casing issues, template usage in names, and prefix requirements.
 
 ---
 

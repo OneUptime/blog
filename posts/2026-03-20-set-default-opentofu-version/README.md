@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Version Management, System Configuration, Infrastructure as Code, DevOps
 
-Description: A guide to setting a default OpenTofu version system-wide for users and login sessions on Linux and macOS where supported.
+Description: A guide to setting a default OpenTofu version system-wide for all users and sessions on Linux and macOS.
 
 ## Introduction
 

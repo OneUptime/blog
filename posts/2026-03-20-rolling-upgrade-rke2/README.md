@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RKE2, Rolling Upgrade, Kubernetes, System Upgrade Controller, Zero Downtime, SUSE Rancher
 
-Description: Learn how to perform a controlled rolling upgrade of RKE2 clusters using the System Upgrade Controller to automate node-by-node upgrades with configurable concurrency and drain settings.
+Description: Learn how to perform a zero-downtime rolling upgrade of RKE2 clusters using the System Upgrade Controller to automate node-by-node upgrades with configurable concurrency and drain settings.
 
 ---
 

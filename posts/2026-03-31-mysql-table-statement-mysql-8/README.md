@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: MySQL, Statement, Table, Query, DML
+Tags: MySQL, Statement, Table, Query, DDL
 
 Description: Learn how to use the TABLE statement introduced in MySQL 8.0.19 as a shorthand for SELECT * FROM, supporting UNION, ORDER BY, and LIMIT.
 

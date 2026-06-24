@@ -1,10 +1,10 @@
-# Azure Container Instances and IPv6: Current Limitations
+# How to Configure IPv6 for Azure Container Instances
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Azure, IPv6, Container Instances, ACI, Container, VNet Integration
 
-Description: Azure Container Instances can be deployed into a virtual network for private connectivity, but they don't currently support IPv6 addresses.
+Description: Configure Azure Container Instances with IPv6 connectivity through VNet integration, enabling containers to communicate over IPv6 and receive IPv6 addresses.
 
 ## Introduction
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: ArgoCD, GitOps, Kubernetes, Annotation, UI
 
-Description: Learn how to use the ArgoCD managed-by URL annotation to link child Applications to the Argo CD instance that manages them for better traceability.
+Description: Learn how to use the ArgoCD managed-by URL annotation to link Kubernetes resources to external management tools and documentation for better traceability.
 
 ---
 

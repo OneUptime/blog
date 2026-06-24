@@ -2,9 +2,9 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, ServiceEntry, Security, Egress, Kubernetes, Service Mesh
+Tags: Istio, ServiceEntry, Security, Authorization, Kubernetes, Service Mesh
 
-Description: Use Istio ServiceEntry with outbound traffic policy and Sidecar resources to control which workloads can access specific external services for better security posture.
+Description: Use Istio ServiceEntry with authorization policies to restrict which workloads can access specific external services for better security posture.
 
 ---
 

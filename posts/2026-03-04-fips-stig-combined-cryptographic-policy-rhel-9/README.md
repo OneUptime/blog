@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, FIPS, STIG, Crypto Policy, Linux
 
-Description: Configure a FIPS-based STIG cryptographic policy on RHEL to meet FIPS 140-3 and DISA STIG cryptographic policy requirements.
+Description: Configure the combined FIPS and STIG cryptographic policy on RHEL to meet both FIPS 140-3 and DISA STIG requirements simultaneously.
 
 ---
 

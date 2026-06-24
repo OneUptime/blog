@@ -1,10 +1,10 @@
-# How to Set Up reCAPTCHA Enterprise Action-Scoped Tokens for Specific User Workflows
+# How to Set Up reCAPTCHA Enterprise Action Tokens for Specific User Workflows
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, ReCAPTCHA Enterprise, Action-Scoped Tokens, Security, Web Application
+Tags: GCP, ReCAPTCHA Enterprise, Action Tokens, Security, Web Application
 
-Description: Learn how to implement reCAPTCHA Enterprise action-scoped tokens to protect specific user workflows like login, signup, checkout, and password reset with targeted bot detection.
+Description: Learn how to implement reCAPTCHA Enterprise action tokens to protect specific user workflows like login, signup, checkout, and password reset with targeted bot detection.
 
 ---
 

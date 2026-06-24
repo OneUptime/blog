@@ -2,9 +2,9 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: HART, Industrial IoT, Portainer, HART-IP, Docker, Manufacturing, Edge Computing
+Tags: HART, Industrial IoT, Portainer, OPC-UA, Docker, Manufacturing, Edge Computing
 
-Description: Deploy containerized HART multiplexer software with Portainer to expose field-device data to HART-IP-enabled asset-management applications.
+Description: Deploy containerized HART protocol gateways and data collection agents using Portainer to bridge industrial field instruments to modern data platforms.
 
 ---
 

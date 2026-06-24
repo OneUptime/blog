@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Azure, Storage, Static Website, OpenTofu, CDN, Frontend
 
-Description: Learn how to configure Azure Storage static website hosting with OpenTofu, including custom domain setup and Azure Front Door integration for fast global delivery.
+Description: Learn how to configure Azure Storage static website hosting with OpenTofu, including custom domain setup and Azure CDN integration for fast global delivery.
 
 ## Overview
 

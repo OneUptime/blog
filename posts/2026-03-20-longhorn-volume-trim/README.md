@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Longhorn, Volume Trim, Trim, Storage Optimization, Kubernetes, Disk Space, SUSE Rancher
 
-Description: Learn how to configure and use Longhorn volume trim to reclaim unused disk space by trimming freed filesystem blocks and reducing Longhorn actual storage usage.
+Description: Learn how to configure and use Longhorn volume trim to reclaim unused disk space by discard trimming file system blocks that have been freed, reducing storage costs.
 
 ---
 

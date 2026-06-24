@@ -1,10 +1,10 @@
-# How to Configure Secrets Store CSI Driver with Auto Rotation for Vault Secrets
+# How to Configure Secret Store CSI Driver with Auto Rotation for Vault Secrets
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Vault, CSI
 
-Description: Learn how to use the Secrets Store CSI Driver to mount Vault secrets directly into pods with automatic rotation, eliminating the need for Kubernetes Secrets for file-based secret consumption.
+Description: Learn how to use the Secret Store CSI Driver to mount Vault secrets directly into pods with automatic rotation, eliminating the need for Kubernetes Secrets entirely.
 
 ---
 

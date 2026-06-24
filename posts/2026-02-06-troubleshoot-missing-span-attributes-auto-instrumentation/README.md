@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Span Attributes, Auto-Instrumentation, SDK
 
-Description: Troubleshoot missing custom span attributes that are dropped or not exported because of auto-instrumentation context or SDK configuration limits.
+Description: Troubleshoot missing custom span attributes that are silently dropped by auto-instrumentation or SDK configuration limits.
 
 You added custom attributes to your spans in code, but when you look at the traces in your backend, those attributes are gone. Auto-instrumented spans show up fine, but your custom attributes are nowhere to be found. This post covers the most common reasons and fixes.
 

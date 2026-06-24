@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, kubectl, Krew
 
-Description: Discover how to install and manage kubectl plugins using Krew, the SIG CLI community-maintained package manager that extends kubectl with hundreds of community-built tools and utilities.
+Description: Discover how to install and manage kubectl plugins using Krew, the official package manager that extends kubectl with hundreds of community-built tools and utilities.
 
 ---
 

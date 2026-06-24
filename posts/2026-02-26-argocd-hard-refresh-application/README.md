@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: ArgoCD, GitOps, Kubernetes, Application Management, Cache Management
 
-Description: Learn how to perform a hard refresh in ArgoCD to invalidate manifest and target cluster state caches and force a fresh application comparison.
+Description: Learn how to perform a hard refresh in ArgoCD to invalidate all caches and force a complete re-computation of application state from scratch.
 
 ---
 

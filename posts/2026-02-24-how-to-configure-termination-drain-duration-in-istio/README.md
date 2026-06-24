@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Istio, Termination, Drain Duration, Kubernetes, Envoy
 
-Description: Master the terminationDrainDuration setting in Istio to control how long Envoy is allowed to drain connections during pod shutdown.
+Description: Master the terminationDrainDuration setting in Istio to control how long Envoy waits for connections to finish during pod shutdown.
 
 ---
 

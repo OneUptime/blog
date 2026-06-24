@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Dapr, Keycloak, Authentication, JWT, OAuth2
 
-Description: Integrate self-hosted Keycloak with Dapr JWT middleware to validate realm tokens and extract user roles and attributes in downstream microservices.
+Description: Integrate self-hosted Keycloak with Dapr JWT middleware to validate realm tokens and forward user roles and attributes to downstream microservices.
 
 ---
 

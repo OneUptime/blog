@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, AWS, CloudFront, Origin Shield, CDN, Infrastructure as Code, Performance
 
-Description: Learn how to enable CloudFront Origin Shield using OpenTofu to reduce load on your origin servers by adding an additional caching layer between regional edge caches and your origin.
+Description: Learn how to enable CloudFront Origin Shield using OpenTofu to reduce load on your origin servers by adding an additional caching layer between edge locations and your origin.
 
 ---
 

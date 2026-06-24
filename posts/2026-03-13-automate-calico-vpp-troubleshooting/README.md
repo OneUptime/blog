@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, VPP, Kubernetes, Networking, Troubleshooting, Automation
 
-Description: Automate Calico VPP diagnostic data collection with scripts that gather VPP state, logs, and interface data for rapid incident resolution.
+Description: Automate Calico VPP diagnostic data collection with scripts that gather VPP state, trace logs, and interface statistics for rapid incident resolution.
 
 ---
 

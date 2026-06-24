@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Elixir, Phoenix, Opentelemetry_phoenix, Tracing
 
-Description: Complete guide to instrumenting Phoenix applications with opentelemetry_phoenix library for automatic tracing of Phoenix endpoint, router, and LiveView telemetry events.
+Description: Complete guide to instrumenting Phoenix applications with opentelemetry_phoenix library for automatic tracing of HTTP requests, controllers, and views.
 
 Phoenix is one of the most popular web frameworks in the Elixir ecosystem, known for its performance and developer experience. When running Phoenix applications in production, observability becomes critical for understanding request flows, identifying bottlenecks, and debugging issues. OpenTelemetry provides standardized instrumentation for Phoenix through the `opentelemetry_phoenix` library.
 

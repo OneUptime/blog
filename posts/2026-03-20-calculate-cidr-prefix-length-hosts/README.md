@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: IPv4, CIDR, Subnetting, Networking, Host Count
 
-Description: To find the CIDR prefix length for a required number of hosts in a standard IPv4 subnet, calculate the ceiling of log₂(hosts + 2) to get the host bits needed, then subtract from 32 to get the prefix length.
+Description: To find the CIDR prefix length for a required number of hosts, calculate the ceiling of log₂(hosts + 2) to get the host bits needed, then subtract from 32 to get the prefix length.
 
 ## The Formula
 

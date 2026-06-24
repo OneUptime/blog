@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rook, Ceph, Benchmarking, Performance, Storage, Testing
 
-Description: Learn how to benchmark Ceph storage performance using rados bench and fio to measure throughput, IOPS, and latency for block, object, and file workloads.
+Description: Learn how to benchmark Ceph storage performance using rados bench, fio, and cosbench to measure throughput, IOPS, and latency for block, object, and file workloads.
 
 ---
 

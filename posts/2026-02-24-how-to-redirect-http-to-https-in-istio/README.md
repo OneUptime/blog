@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Istio, HTTPS, TLS, Gateway, Security, Kubernetes
 
-Description: Step-by-step guide to setting up HTTP to HTTPS redirects in Istio using Gateway configuration, VirtualService redirects, and load balancer header handling.
+Description: Step-by-step guide to setting up HTTP to HTTPS redirects in Istio using Gateway configuration, VirtualService redirects, and EnvoyFilter approaches.
 
 ---
 

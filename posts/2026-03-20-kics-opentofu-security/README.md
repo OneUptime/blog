@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, KICS, Security Scanning, Infrastructure as Code, IaC, DevSecOps
 
-Description: Learn how to use KICS to perform comprehensive security scans of OpenTofu configurations stored as `.tf` files or exported as plan JSON.
+Description: Learn how to use KICS to perform comprehensive security scans of OpenTofu configurations.
 
 ## Introduction
 

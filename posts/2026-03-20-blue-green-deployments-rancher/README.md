@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Blue-Green Deployment, Rancher, Kubernetes, Zero Downtime, DevOps, Deployment Strategy, Service
 
-Description: Learn how to implement blue-green deployments in Rancher-managed Kubernetes clusters to minimize downtime by switching traffic between two identical environments.
+Description: Learn how to implement blue-green deployments in Rancher-managed Kubernetes clusters to achieve zero-downtime releases by switching traffic between two identical environments.
 
 ---
 

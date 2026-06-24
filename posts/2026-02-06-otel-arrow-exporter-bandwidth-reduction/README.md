@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, OTel Arrow, Bandwidth, gRPC
 
-Description: Replace your OTLP/gRPC exporter with OTel Arrow to reduce network bandwidth for telemetry data.
+Description: Replace your OTLP/gRPC exporter with OTel Arrow to achieve 30-70% network bandwidth reduction for telemetry data.
 
 The standard OTLP/gRPC exporter sends each batch of telemetry as a protobuf message. It works well, but OTLP protobuf payloads are not columnar. Telemetry is encoded in a resource, scope, and record hierarchy, and repeated values like service names, attribute keys, and resource metadata can still be repeated across records, scopes, and batches. OTel Arrow fixes this by using Apache Arrow's columnar format, which compresses repeated values dramatically. OpenTelemetry's production results report 30-70% less bandwidth compared with similarly configured OTLP/gRPC pipelines using large batches and Zstd compression.
 

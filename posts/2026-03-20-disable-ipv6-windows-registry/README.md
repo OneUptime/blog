@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: IPv6, Windows, Registry, Network Configuration, Disable IPv6
+Tags: IPv6, Window, Registry, Network Configuration, Disable IPv6
 
 Description: Learn how to disable IPv6 on Windows by modifying the DisabledComponents registry key, including the different bitmask values that control which IPv6 components are disabled.
 

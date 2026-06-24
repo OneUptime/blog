@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, GFS2, Pacemaker, Shared Storage, Clustering, DLM
 
-Description: Configure GFS2 (Global File System 2) on a Pacemaker cluster on RHEL 8 or RHEL 9 to allow multiple nodes to simultaneously read and write to shared block storage.
+Description: Configure GFS2 (Global File System 2) on a Pacemaker cluster on RHEL to allow multiple nodes to simultaneously read and write to shared block storage.
 
 ---
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, JMESPath, JSON, Data Querying
 
-Description: Learn how to use the community.general.json_query filter with JMESPath expressions in Ansible for powerful data querying, filtering, and transformation of complex data structures.
+Description: Learn how to use the json_query filter with JMESPath expressions in Ansible for powerful data querying, filtering, and transformation of complex data structures.
 
 ---
 

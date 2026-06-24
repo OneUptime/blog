@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: AWS, High Availability, OpenTofu, Multi-AZ, Auto Scaling, Load Balancer
 
-Description: Learn how to deploy highly available applications on AWS using OpenTofu with multi-AZ deployment, Auto Scaling Groups, health checks, and rolling instance refreshes.
+Description: Learn how to deploy highly available applications on AWS using OpenTofu with multi-AZ deployment, Auto Scaling Groups, health checks, and circuit breakers.
 
 ## Overview
 

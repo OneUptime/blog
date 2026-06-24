@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: AWS, S3, Troubleshooting, Cloud Storage
 
-Description: Debug and fix S3 404 Not Found errors when objects definitely exist, covering key naming, versioning, permissions, and replication issues.
+Description: Debug and fix S3 404 Not Found errors when objects definitely exist, covering eventual consistency, key naming, versioning, and replication issues.
 
 ---
 

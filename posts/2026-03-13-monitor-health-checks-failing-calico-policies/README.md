@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, Networking, Troubleshooting
 
-Description: Monitor for Kubernetes readiness regressions after Calico policy changes using pod readiness metrics, probe failure events, and pod restart rate alerts.
+Description: Monitor for Kubernetes probe failures caused by Calico NetworkPolicies using pod readiness metrics, probe failure counters, and pod restart rate alerts.
 
 ---
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, PostgreSQL, Database Replication, High Availability
 
-Description: Configure PostgreSQL streaming replication with Ansible including primary server setup, replica configuration, and replication verification.
+Description: Configure PostgreSQL streaming replication with Ansible including primary server setup, replica configuration, and automated failover monitoring.
 
 ---
 

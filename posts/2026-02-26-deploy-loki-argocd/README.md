@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: ArgoCD, GitOps, Kubernetes, Loki, Logging
 
-Description: Learn how to deploy Grafana Loki for log aggregation using ArgoCD with scalable configuration, storage backends, and retention policies.
+Description: Learn how to deploy Grafana Loki for log aggregation using ArgoCD with production-ready configuration, storage backends, and retention policies.
 
 ---
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: DNS, Benchmarking, Performance, Linux, Resolver, Optimization
 
-Description: Benchmark multiple DNS resolvers to find the fastest one for your network location using dig-based scripts, resperf, and custom measurement scripts.
+Description: Benchmark multiple DNS resolvers to find the fastest one for your network location using namebench, dnsperftest, and custom measurement scripts.
 
 ## Introduction
 

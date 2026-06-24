@@ -1,10 +1,10 @@
-# How to Configure Flux Alerts with Event Metadata and Label Matching
+# How to Configure Flux Alert with Event Metadata Matching
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Flux, Kubernetes, GitOps, Alert, Metadata, Event Filtering
 
-Description: Learn how to configure Flux alerts with event metadata and label-based event source selection for fine-grained notification control beyond message-based filtering.
+Description: Learn how to configure Flux alerts that match on event metadata fields for fine-grained notification control beyond message-based filtering.
 
 ---
 

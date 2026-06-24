@@ -1,10 +1,10 @@
-# How to Deploy RHEL 9 Instances on GCP
+# How to Deploy RHEL 9 HA Clusters on GCP with Pacemaker
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, GCP
+Tags: RHEL, GCP, High Availability, Pacemaker
 
-Description: Learn how to deploy and configure RHEL instances on GCP.
+Description: Learn how to deploy and configure highly available RHEL clusters on GCP using Pacemaker for automated failover.
 
 ---
 

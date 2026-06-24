@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, AWX, Ansible Tower, IPv6, Automation Platform, Networking
 
-Description: A guide to configuring Ansible AWX and Automation Controller (formerly Ansible Tower) to manage IPv6 hosts, including inventory configuration and credential setup.
+Description: A guide to configuring Ansible AWX and Ansible Automation Platform (Tower) to manage IPv6 hosts, including inventory configuration and credential setup.
 
 Ansible AWX (one of the upstream projects for Red Hat Ansible Automation Platform) and Automation Controller can manage IPv6 hosts just like IPv4 hosts, with a few configuration considerations around inventory formats, SSH settings, and network connectivity.
 

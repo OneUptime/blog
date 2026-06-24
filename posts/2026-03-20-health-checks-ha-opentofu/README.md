@@ -2,9 +2,9 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: High Availability, Health Check, OpenTofu, ALB, Route53, GCP
+Tags: High Availability, Health Check, OpenTofu, ALB, Route53, GCP, Azure
 
-Description: Learn how to configure comprehensive health checks across AWS, GCP, and Kubernetes using OpenTofu for effective traffic routing and workload recovery.
+Description: Learn how to configure comprehensive health checks across AWS, Azure, and GCP using OpenTofu for effective load balancer routing and automatic instance replacement.
 
 ## Overview
 

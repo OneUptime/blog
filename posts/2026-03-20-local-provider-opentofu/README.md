@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Local Provider, Infrastructure as Code, IaC, File Management
 
-Description: Learn how to configure the Local provider in OpenTofu to generate local files, sensitive files, and scripts.
+Description: Learn how to configure the Local provider in OpenTofu to manage local files, directories, and scripts.
 
 ## Introduction
 

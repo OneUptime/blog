@@ -1,10 +1,10 @@
-# How to Reduce Git Requests in ArgoCD
+# How to Reduce Git API Calls in ArgoCD
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: ArgoCD, GitOps, Kubernetes, Git Optimization, Performance
 
-Description: Learn how to reduce Git requests from ArgoCD to avoid provider throttling, reduce network costs, and improve sync performance.
+Description: Learn how to reduce Git API calls from ArgoCD to avoid GitHub rate limits, reduce network costs, and improve sync performance.
 
 ---
 

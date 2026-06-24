@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, Jenkins, CI/CD, DevOps, Automation
 
-Description: Learn how to automate the setup of a Jenkins CI/CD pipeline server using Ansible playbooks with plugins, security, and pipeline job templates.
+Description: Learn how to automate the complete setup of a Jenkins CI/CD pipeline server using Ansible playbooks with plugins, security, and pipelines.
 
 ---
 

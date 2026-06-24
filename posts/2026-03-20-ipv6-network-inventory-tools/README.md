@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: IPv6, Inventory, NAPALM, Netmiko, Automation, Python
 
-Description: Build automated IPv6 network inventory tools that discover interfaces, addresses, and BGP peers from network devices.
+Description: Build automated IPv6 network inventory tools that discover interfaces, addresses, BGP peers, and routing tables from network devices.
 
 ## Introduction
 

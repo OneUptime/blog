@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Cilium, Kubernetes, Validation, Installation, Networking
 
-Description: How to validate a fresh Cilium installation to confirm proper networking and policy enforcement are functioning correctly.
+Description: How to validate a fresh Cilium installation to confirm proper networking, policy enforcement, encryption, and observability are all functioning correctly.
 
 ---
 

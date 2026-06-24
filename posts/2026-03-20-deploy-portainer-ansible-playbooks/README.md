@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Ansible, Automation, Docker, DevOps
 
-Description: Automate the deployment of Portainer Server and Agent containers across multiple servers using Ansible playbooks.
+Description: Automate the initial deployment and configuration of Portainer across multiple servers using Ansible playbooks.
 
 ## Introduction
 

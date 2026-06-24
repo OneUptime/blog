@@ -2,9 +2,9 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Redis, Notification, List, Hash
+Tags: Redis, Notification, List, Sorted Set
 
-Description: Design a real-time social notification system with Redis - queue notifications per user, track unread counts, and support notification preferences with deduplication.
+Description: Design a real-time social notification system with Redis - queue notifications per user, track unread counts, and support notification preferences with TTL-based cleanup.
 
 ---
 

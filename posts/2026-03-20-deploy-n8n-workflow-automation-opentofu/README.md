@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, n8n, Workflow Automation, No-Code, Self-Hosted
 
-Description: Learn how to deploy n8n workflow automation platform on AWS using OpenTofu with RDS PostgreSQL, ECS Fargate, persistent n8n configuration, and S3-backed binary data storage for production-ready automation workflows.
+Description: Learn how to deploy n8n workflow automation platform on AWS using OpenTofu with RDS PostgreSQL, ECS Fargate, and persistent configuration for production-ready automation workflows.
 
 ## Introduction
 

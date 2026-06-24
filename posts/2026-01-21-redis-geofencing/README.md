@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Redis, Geofencing, IoT, Location, Geospatial, GEOSEARCH, Alert, GPS Tracking
+Tags: Redis, Geofencing, IoT, Location, Geospatial, GEORADIUS, Alert, GPS Tracking
 
 Description: A comprehensive guide to implementing geofencing with Redis, covering geospatial indexes, location-based triggers, entry/exit detection, and real-time alerts for IoT and fleet management.
 

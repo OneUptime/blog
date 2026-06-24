@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Azure, CDN, Content Delivery, Infrastructure as Code, Azure Front Door, Performance
 
-Description: Learn how to configure Azure Front Door Standard/Premium profiles, endpoints, routes, and custom domains using OpenTofu for global content acceleration with caching rules and HTTPS enforcement.
+Description: Learn how to configure Azure CDN profiles and endpoints using OpenTofu for global content acceleration with custom domains, caching rules, and HTTPS enforcement.
 
 ---
 

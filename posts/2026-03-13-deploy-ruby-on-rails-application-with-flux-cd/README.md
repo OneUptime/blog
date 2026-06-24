@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Kubernetes, GitOps, Ruby on Rails, Ruby, PostgreSQL, Migration
+Tags: Flux CD, Kubernetes, GitOps, Ruby On Rail, Ruby, PostgreSQL, Migration
 
 Description: Deploy a Ruby on Rails application with database migrations to Kubernetes using Flux CD, handling asset precompilation and the migration Job pattern.
 

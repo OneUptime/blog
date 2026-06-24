@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Kubernetes, Security, kubeconfig, DevOps
 
-Description: Learn how to configure kubeconfig token expiry in Portainer to enforce periodic re-authentication and improve cluster security.
+Description: Learn how to configure kubeconfig token expiry in Portainer Business Edition to enforce periodic re-authentication and improve cluster security.
 
 ## Introduction
 

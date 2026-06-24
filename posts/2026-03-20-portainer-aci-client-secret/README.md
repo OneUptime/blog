@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Azure, ACI, Security, Authentication
 
-Description: Learn how to create and manage a Microsoft Entra ID client secret for the Portainer ACI integration, including rotation best practices and secret storage guidance.
+Description: Learn how to create and manage an Azure AD client secret for the Portainer ACI integration, including rotation best practices and secret storage guidance.
 
 ## Introduction
 

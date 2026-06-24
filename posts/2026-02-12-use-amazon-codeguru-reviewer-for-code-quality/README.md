@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: AWS, CodeGuru, Code Review, DevOps, Code Quality
 
-Description: A hands-on guide to using existing Amazon CodeGuru Reviewer repository associations for automated code reviews, catching bugs, security issues, and performance problems in your codebase.
+Description: A hands-on guide to setting up Amazon CodeGuru Reviewer for automated code reviews, catching bugs, security issues, and performance problems in your codebase.
 
 ---
 

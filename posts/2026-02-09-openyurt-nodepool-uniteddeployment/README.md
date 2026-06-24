@@ -1,10 +1,10 @@
-# How to Set Up OpenYurt NodePool and YurtAppSet
+# How to Set Up OpenYurt NodePool and UnitedDeployment
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, OpenYurt, Edge Computing
 
-Description: Learn how to use OpenYurt's NodePool and YurtAppSet resources to manage groups of edge nodes by location.
+Description: Learn how to use OpenYurt's NodePool and UnitedDeployment resources to manage groups of edge nodes by location.
 
 ---
 

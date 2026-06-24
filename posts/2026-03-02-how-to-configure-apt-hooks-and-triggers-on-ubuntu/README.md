@@ -1,10 +1,10 @@
-# How to Configure APT Hooks on Ubuntu
+# How to Configure APT Hooks and Triggers on Ubuntu
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Ubuntu, APT, Package Management, Automation, Linux
 
-Description: Learn how to configure APT hooks on Ubuntu to automate tasks before and after package installations, upgrades, and removals.
+Description: Learn how to configure APT hooks and dpkg triggers on Ubuntu to automate tasks before and after package installations, upgrades, and removals.
 
 ---
 

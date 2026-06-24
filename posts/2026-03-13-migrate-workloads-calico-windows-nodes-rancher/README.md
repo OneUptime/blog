@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Windows, Rancher, Networking, CNI, Migration
+Tags: Calico, Kubernetes, Window, Rancher, Networking, CNI, Migration
 
 Description: A guide to migrating Windows workloads to Calico networking in a Rancher-managed cluster.
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, StackStorm, Automation, Docker, DevOps
 
-Description: Deploy StackStorm event-driven automation platform using Portainer for IT operations automation and optional Slack-based ChatOps.
+Description: Deploy StackStorm event-driven automation platform using Portainer for IT operations automation and ChatOps.
 
 ## Introduction
 

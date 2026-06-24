@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Data Source, Lifecycle, Custom Conditions, Infrastructure as Code, DevOps
 
-Description: A guide to using data source lifecycle customizations in OpenTofu with preconditions and postconditions, plus controlling when data sources are read.
+Description: A guide to using lifecycle customizations with data sources in OpenTofu to add preconditions, postconditions, and control refresh behavior.
 
 ## Introduction
 

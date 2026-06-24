@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: MySQL, Spatial, Geometry, Function, GIS
 
-Description: Learn how to use MySQL's ST_IsValid() function to check geometry validity, audit spatial data, and understand the difference between well-formedness and validity.
+Description: Learn how to use MySQL's ST_IsValid() function to check geometry validity and how to fix invalid geometries with ST_MakeValid().
 
 ---
 

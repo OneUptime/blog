@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Portainer, Edge Agent, Windows, Docker Desktop, Configuration
+Tags: Portainer, Edge Agent, Window, Docker Desktop, Configuration
 
 Description: Deploy the Portainer Edge Agent on Windows hosts running Docker Desktop or Docker Engine for Windows remote management.
 

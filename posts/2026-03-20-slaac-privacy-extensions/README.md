@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Privacy Extensions, SLAAC, IPv6, Temporary Addresses, RFC 8981
 
-Description: Configure IPv6 Privacy Extensions to generate randomized temporary addresses for SLAAC, reducing device tracking by avoiding a long-lived interface identifier in outbound IPv6 addresses.
+Description: Configure IPv6 Privacy Extensions to generate random temporary addresses for SLAAC, preventing device tracking by hiding the MAC address from the IPv6 address.
 
 ## Introduction
 

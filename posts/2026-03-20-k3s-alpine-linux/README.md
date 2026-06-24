@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: k3s, Kubernetes, Alpine Linux, Lightweight, Edge Computing
 
-Description: Step-by-step guide to installing K3s on Alpine Linux, addressing Alpine-specific OpenRC and cgroup setup requirements.
+Description: Step-by-step guide to installing K3s on Alpine Linux, addressing its unique musl libc and OpenRC init system requirements.
 
 ## Introduction
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Cisco, IPv6, Default Route, IOS, Routing
 
-Description: Configure IPv6 default routes on Cisco IOS using static routes, floating static routes, and routing protocols such as BGP or OSPF.
+Description: Add IPv6 default routes on Cisco IOS using static routes, floating static routes, and via BGP or OSPF learning.
 
 ## Overview
 

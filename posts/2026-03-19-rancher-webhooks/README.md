@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rancher, Kubernetes, Webhook, Automation
 
-Description: Learn how to verify Rancher's built-in admission webhooks and connect external webhook endpoints for alert-driven automation.
+Description: Learn how to set up and configure webhooks in Rancher to automate responses to cluster events, scaling triggers, and policy enforcement.
 
 Rancher uses webhooks to validate and mutate Kubernetes resources in Rancher-managed clusters. For automation workflows such as scaling or notifications, Rancher monitoring can forward alerts to an external webhook endpoint. This guide covers verifying Rancher's built-in webhook component and wiring alert-driven automation to a custom webhook service.
 

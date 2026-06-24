@@ -1,10 +1,10 @@
-# How to Use Consul Service Discovery with the OpenTelemetry Collector Prometheus Receiver
+# How to Use Consul Service Discovery with the OpenTelemetry Collector Receiver
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Consul, Service Discovery, Prometheus Receiver, Dynamic Target
+Tags: OpenTelemetry, Consul, Service Discovery, Receiver Creator, Dynamic Target
 
-Description: Use Consul service discovery with the OpenTelemetry Collector Prometheus receiver to dynamically discover and scrape metric endpoints.
+Description: Use Consul service discovery with the OpenTelemetry Collector receiver creator to dynamically discover and scrape metric endpoints.
 
 Static target lists in your Collector configuration become a maintenance burden as services scale up and down. The Prometheus receiver, using Prometheus Consul service discovery, automatically discovers services registered in Consul and scrapes their metric endpoints. When a new service instance appears, the Collector starts scraping it. When it disappears, scraping stops.
 

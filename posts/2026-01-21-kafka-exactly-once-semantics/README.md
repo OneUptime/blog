@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Apache Kafka, Exactly-Once, Idempotent Producer, Transaction, Data Consistency, Java, Python
 
-Description: A comprehensive guide to implementing exactly-once semantics in Kafka producers using idempotent producers and transactions, avoiding duplicate writes from producer retries and enabling atomic commits in your streaming applications.
+Description: A comprehensive guide to implementing exactly-once semantics in Kafka producers using idempotent producers and transactions, ensuring no duplicate or lost messages in your streaming applications.
 
 ---
 

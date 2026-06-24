@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Antrea, IPv6, Kubernetes, CNI, OVS, Dual-Stack, NetworkPolicy
 
-Description: Configure Antrea CNI for IPv6 and dual-stack Kubernetes clusters using Open vSwitch (OVS) datapath, including IPAM, Antrea NetworkPolicy, and ClusterNetworkPolicy for IPv6.
+Description: Configure Antrea CNI for IPv6 and dual-stack Kubernetes clusters using Open vSwitch (OVS) datapath, including IPAM, AntreaNetworkPolicy, and ClusterNetworkPolicy for IPv6.
 
 ## Introduction
 

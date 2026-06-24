@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Kubernetes, Cluster Policies, Security, Governance
 
-Description: Learn how to configure Kubernetes setup and security policies in Portainer, then combine them with native Kubernetes resource governance controls.
+Description: Learn how to configure Kubernetes cluster policies in Portainer to enforce resource quotas, deployment standards, and security constraints.
 
 ## What Are Cluster Policies?
 

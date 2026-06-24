@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Dapr, Cryptography, Decryption, Security, AES, Key Management
 
-Description: Learn how to decrypt data using the Dapr Cryptography building block, with examples in Go, Python, JavaScript, and the HTTP API.
+Description: Learn how to decrypt data using the Dapr Cryptography building block, with examples in Go, Python, and the HTTP API using AES-GCM and RSA key wrapping.
 
 ---
 

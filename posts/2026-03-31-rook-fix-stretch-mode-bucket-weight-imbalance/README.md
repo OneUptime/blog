@@ -1,10 +1,10 @@
-# How to Fix UNEVEN_WEIGHTS_STRETCH_MODE Health Check in Ceph
+# How to Fix STRETCH_MODE_BUCKET_WEIGHT_IMBALANCE Health Check in Ceph
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ceph, Rook, Stretch Mode, CRUSH, Health Check
 
-Description: Learn how to resolve UNEVEN_WEIGHTS_STRETCH_MODE in Ceph, a warning that the two data site buckets in stretch mode have unequal CRUSH weights.
+Description: Learn how to resolve STRETCH_MODE_BUCKET_WEIGHT_IMBALANCE in Ceph, a warning that the two data site buckets in stretch mode have unequal CRUSH weights.
 
 ---
 

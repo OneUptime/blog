@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Istio, Amazon RDS, AWS, Service Mesh, Kubernetes, Database
 
-Description: How to configure Istio to connect to Amazon RDS instances from Kubernetes pods using ServiceEntries, database client TLS, and proper timeout management.
+Description: How to configure Istio to connect to Amazon RDS instances from Kubernetes pods using ServiceEntries, TLS origination, and proper timeout management.
 
 ---
 

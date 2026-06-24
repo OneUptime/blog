@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Dapr, Workflow, Data Processing, ETL, Pipeline
 
-Description: Build reliable data processing pipelines using Dapr workflows with fan-out parallelism, error handling, checkpointing, and at-least-once activity execution.
+Description: Build reliable data processing pipelines using Dapr workflows with fan-out parallelism, error handling, checkpointing, and exactly-once activity execution.
 
 ---
 

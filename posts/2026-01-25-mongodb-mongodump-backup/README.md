@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: MongoDB, Backup, Mongodump, Disaster Recovery, Database Administration
 
-Description: A comprehensive guide to backing up MongoDB databases using mongodump, including full and consistent backups, compression, restoration procedures, and automation strategies.
+Description: A comprehensive guide to backing up MongoDB databases using mongodump, including full and incremental backups, compression, restoration procedures, and automation strategies.
 
 ---
 

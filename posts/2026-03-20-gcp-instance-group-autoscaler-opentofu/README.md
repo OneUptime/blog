@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GCP, Autoscaling, Instance Groups, OpenTofu, Compute Engine, Infrastructure
 
-Description: Learn how to configure GCP Instance Group Autoscaler with OpenTofu using CPU utilization, Cloud Monitoring metrics, and scale-in controls.
+Description: Learn how to configure GCP Instance Group Autoscaler with OpenTofu using CPU utilization, custom metrics, and scheduled scaling policies.
 
 ## Overview
 

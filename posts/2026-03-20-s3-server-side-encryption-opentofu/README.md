@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, AWS, S3, Encryption, KMS, Security, Infrastructure as Code
 
-Description: Learn how to create S3 buckets with server-side encryption using SSE-S3 and SSE-KMS encryption options in OpenTofu to protect data at rest.
+Description: Learn how to create S3 buckets with server-side encryption using SSE-S3, SSE-KMS, and DSSE-KMS encryption options in OpenTofu to protect data at rest.
 
 ## Introduction
 

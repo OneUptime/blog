@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Docker, PostgreSQL, Patroni, High Availability, Database, Clustering
 
-Description: Deploy a highly available PostgreSQL cluster using Patroni for automatic failover and HAProxy for connection routing via Portainer.
+Description: Deploy a highly available PostgreSQL cluster using Patroni for automatic failover and HAProxy for connection pooling via Portainer.
 
 ## Introduction
 

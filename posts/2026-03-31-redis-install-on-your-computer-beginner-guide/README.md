@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Redis, Install, Beginner, macOS, Windows
+Tags: Redis, Install, Beginner, macOS, Window
 
 Description: Step-by-step instructions to install Redis on macOS, Windows, Linux, and Docker - a beginner guide to getting Redis running locally.
 

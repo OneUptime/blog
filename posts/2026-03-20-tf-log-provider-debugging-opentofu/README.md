@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Debugging, TF_LOG_PROVIDER, Provider, Troubleshooting, Infrastructure as Code
 
-Description: Learn how to use TF_LOG_PROVIDER to capture verbose debug logging only for providers, including provider-specific API call and response details to diagnose provider-level failures.
+Description: Learn how to use TF_LOG_PROVIDER to capture verbose debug logging only for providers, exposing raw API calls and responses to diagnose provider-level failures.
 
 ## Introduction
 

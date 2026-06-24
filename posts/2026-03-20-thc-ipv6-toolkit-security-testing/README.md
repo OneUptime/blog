@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: THC-IPv6, IPv6, Security Testing, Network Tools, Reconnaissance, Fuzzing
 
-Description: A guide to using the THC-IPv6 toolkit for IPv6 security assessment, including host discovery, NDP attacks, and implementation checks in authorized lab environments.
+Description: A guide to using the THC-IPv6 toolkit for IPv6 security assessment, including host discovery, NDP attacks, and protocol fuzzing in authorized lab environments.
 
 The THC-IPv6 toolkit (The Hacker's Choice IPv6 Attack Toolkit) is one of the earliest and most comprehensive IPv6 security testing toolkits. It includes over 20 tools for host discovery, NDP manipulation, Router Advertisement attacks, and IPv6 protocol fuzzing. Use only in authorized environments.
 

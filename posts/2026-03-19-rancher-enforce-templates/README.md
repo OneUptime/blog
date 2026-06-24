@@ -1,10 +1,10 @@
-# How to Enforce RKE Templates with Rancher
+# How to Enforce Cluster Templates with Rancher
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Rancher, Kubernetes, RKE Templates, RBAC
+Tags: Rancher, Kubernetes, Cluster Templates, RBAC
 
-Description: Learn how to enforce RKE templates in Rancher so that all new Rancher-provisioned RKE1 clusters must be created from approved templates.
+Description: Learn how to enforce cluster templates in Rancher so that all new clusters must be created from approved templates.
 
 Enforcing RKE templates in Rancher ensures that every new Rancher-provisioned RKE1 cluster in your organization meets defined standards. When template enforcement is enabled, users cannot create clusters with ad-hoc configurations. This guide shows you how to set up and manage template enforcement effectively.
 

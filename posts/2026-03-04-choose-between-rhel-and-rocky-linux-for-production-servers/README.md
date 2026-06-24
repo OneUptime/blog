@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Comparison, Linux
 
-Description: Step-by-step guide on choosing between RHEL and Rocky Linux for production servers.
+Description: Step-by-step guide on choose between rhel and rocky linux for production servers using Red Hat Enterprise Linux 9.
 
 ---
 

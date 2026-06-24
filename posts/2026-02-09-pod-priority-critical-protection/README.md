@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Pod Priority, Preemption, Resource Management, High Availability
 
-Description: Implement pod priority classes to reduce disruption for critical workloads and ensure essential services are favored during scheduling and node pressure.
+Description: Implement pod priority classes to protect critical workloads from eviction and ensure essential services maintain resources during cluster pressure.
 
 ---
 

@@ -1,10 +1,10 @@
-# How to Use PagerDuty Status Pages
+# How to Use PagerDuty Status Dashboard
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: PagerDuty, Status Pages, Incident Communication, Status Page, Stakeholder Updates
+Tags: PagerDuty, Status Dashboard, Incident Communication, Status Page, Stakeholder Updates
 
-Description: Learn how to configure and use PagerDuty Status Pages to communicate service health to stakeholders and customers.
+Description: Learn how to configure and use PagerDuty Status Dashboard to communicate service health to stakeholders and customers.
 
 ---
 

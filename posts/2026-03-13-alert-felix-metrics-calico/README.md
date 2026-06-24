@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, Networking, Observability
 
-Description: Configure Prometheus scraping for Felix metrics to detect dataplane programming failures and policy calculation slowdowns before they impact pod connectivity.
+Description: Configure Prometheus alert rules for Felix metrics to detect dataplane programming failures, policy calculation slowdowns, and IPAM allocation errors before they impact pod connectivity.
 
 ---
 

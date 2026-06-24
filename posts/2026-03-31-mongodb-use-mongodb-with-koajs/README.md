@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: MongoDB, Koa.js, Middleware, TypeScript, REST
 
-Description: Learn how to integrate MongoDB into a Koa.js application using Mongoose for connection management and koa-router for typed REST endpoints.
+Description: Learn how to integrate MongoDB into a Koa.js application using middleware for connection management and koa-router for typed REST endpoints.
 
 ---
 

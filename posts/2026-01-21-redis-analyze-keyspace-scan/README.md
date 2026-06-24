@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Redis, SCAN, Keyspace, Analysis, Performance, Operation
 
-Description: A comprehensive guide to analyzing Redis keyspace using SCAN command, covering techniques for finding large keys, keys expiring soon, key patterns.
+Description: A comprehensive guide to analyzing Redis keyspace using SCAN command, covering techniques for finding large keys, expired keys, key patterns.
 
 ---
 

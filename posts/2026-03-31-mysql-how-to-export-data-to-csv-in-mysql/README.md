@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: MySQL, CSV, Data Export, SQL, Administration
 
-Description: Learn multiple ways to export MySQL data to CSV format including SELECT INTO OUTFILE, the mysql client, and MySQL Workbench for different use cases.
+Description: Learn multiple ways to export MySQL data to CSV format including SELECT INTO OUTFILE, mysqldump, and MySQL Workbench for different use cases.
 
 ---
 

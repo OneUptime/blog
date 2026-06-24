@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Kubernetes, Helm, Security, DevOps
 
-Description: Learn how to remove the default Bitnami Helm repository from Portainer to simplify your chart catalog or replace the global default with an approved internal repository.
+Description: Learn how to remove the default Bitnami Helm repository from Portainer to simplify your chart catalog or enforce organizational policies on approved repositories.
 
 ## Introduction
 

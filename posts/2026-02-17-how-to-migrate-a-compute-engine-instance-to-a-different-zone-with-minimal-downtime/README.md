@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GCP, Compute Engine, Migration, Zone Migration, Cloud Infrastructure
 
-Description: A practical guide to migrating Compute Engine instances between zones with minimal downtime using machine images, snapshots, and managed instance groups.
+Description: A practical guide to migrating Compute Engine instances between zones with minimal downtime using move operations, snapshots, and managed instance groups.
 
 ---
 

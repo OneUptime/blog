@@ -1,10 +1,10 @@
-# How to Set Up Cross-Region Backups with Google Cloud Backup
+# How to Set Up Cross-Region Backup Replication with Google Cloud Backup
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Google Cloud, Backup and DR, Cross-Region Backups, Disaster Recovery, Backup Vault
+Tags: GCP, Google Cloud, Backup and DR, Cross-Region Replication, Disaster Recovery, Backup Vault
 
-Description: Learn how to configure cross-region backups using Google Cloud Backup and DR backup vaults to protect against regional outages and disasters.
+Description: Learn how to configure cross-region backup replication using Google Cloud Backup and DR backup vaults to protect against regional outages and disasters.
 
 ---
 

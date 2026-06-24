@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GCP, Cloud Function, IPv6, Serverless, VPC Connector, Dual-Stack
 
-Description: Configure Cloud Run functions to use IPv6 networking via Direct VPC egress and dual-stack subnets for private IPv6 resource access.
+Description: Configure GCP Cloud Functions to use IPv6 networking via VPC Connector for private IPv6 resource access.
 
 ## Introduction
 

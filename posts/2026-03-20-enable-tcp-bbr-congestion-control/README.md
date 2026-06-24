@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: TCP, BBR, Congestion Control, Linux, Performance, Sysctl
 
-Description: Learn how to enable Google's BBR TCP congestion control algorithm on Linux to improve throughput and reduce latency, especially on high-bandwidth, higher-latency connections.
+Description: Learn how to enable Google's BBR TCP congestion control algorithm on Linux to improve throughput and reduce latency, especially on high-bandwidth connections.
 
 ## What Is TCP BBR?
 

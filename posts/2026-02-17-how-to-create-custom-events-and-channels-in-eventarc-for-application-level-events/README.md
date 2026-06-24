@@ -1,10 +1,10 @@
-# Create Custom Events and Message Buses in Eventarc for Application-Level Events
+# Create Custom Events and Channels in Eventarc for Application-Level Events
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GCP, Eventarc, Custom Events, Event-Driven, Cloud Run
 
-Description: Learn how to create custom event types and message buses in Google Cloud Eventarc to publish and route application-level events between your own services.
+Description: Learn how to create custom event types and channels in Google Cloud Eventarc to publish and route application-level events between your own services.
 
 ---
 

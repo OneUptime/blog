@@ -1,10 +1,10 @@
-# How to use Kustomize JSON 6902 patches for array element modifications
+# How to use Kustomize patchesJson6902 for array element modifications
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Kustomize, JSON Patch
 
-Description: Master Kustomize JSON 6902 patches to perform precise array modifications in Kubernetes resources including adding, removing, and replacing specific array elements.
+Description: Master Kustomize patchesJson6902 to perform precise array modifications in Kubernetes resources including adding, removing, and replacing specific array elements.
 
 ---
 

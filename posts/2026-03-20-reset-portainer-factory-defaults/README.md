@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Administration, Reset, Factory Defaults, Recovery, Docker
 
-Description: Learn how to completely reset Portainer to factory defaults by removing the data volume, while safely preserving your running containers and services.
+Description: Learn how to completely reset Portainer to factory defaults by removing the data volume, while safely preserving your running containers and stacks.
 
 ---
 

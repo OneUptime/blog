@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Go, Golang, JSON, Marshaling, Struct, Common Errors
 
-Description: Discover why json.Marshal returns an empty object for your Go structs and learn the fixes for unexported fields, omitempty, and other common causes.
+Description: Discover why json.Marshal returns an empty object for your Go structs and learn the fixes for unexported fields, nil pointers, and other common causes.
 
 ---
 

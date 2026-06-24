@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, ExternalDNS, DNS, IPv4, Route53, Cloud, Automation
 
-Description: Deploy ExternalDNS in Kubernetes to automatically create and manage Route 53 DNS records for LoadBalancer Services and Ingresses based on their published external targets.
+Description: Deploy ExternalDNS in Kubernetes to automatically create and manage DNS A records for LoadBalancer and Ingress Services based on IPv4 addresses.
 
 ## Introduction
 

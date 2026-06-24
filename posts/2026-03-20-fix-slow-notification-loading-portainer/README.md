@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Troubleshooting, Performance, Notification, Bulk Operation, Optimization
 
-Description: Learn how to fix Portainer's slow notification loading after bulk operations by clearing browser-stored notification history and understanding which Portainer data is kept in the server database.
+Description: Learn how to fix Portainer's slow notification loading that blocks bulk container and stack operations, including notification queue management and database optimization.
 
 ---
 

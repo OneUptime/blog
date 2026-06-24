@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Collector, Extension, ZPages, Debugging, Observability
 
-Description: Learn how to configure and use the zPages extension in the OpenTelemetry Collector for real-time debugging and monitoring of Collector components with live diagnostic views.
+Description: Learn how to configure and use the zPages extension in the OpenTelemetry Collector for real-time debugging and monitoring of telemetry pipelines with live trace sampling and aggregation views.
 
 The zPages extension in the OpenTelemetry Collector provides a powerful debugging interface that allows you to inspect and troubleshoot Collector components in real-time. Originally developed as part of the OpenCensus project, zPages offers browser-based diagnostic views without requiring external dependencies or backend systems.
 

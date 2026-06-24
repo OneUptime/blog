@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: ArgoCD, GitOps, Kubernetes, VPN, Networking
 
-Description: Learn how to configure ArgoCD to manage Kubernetes clusters that sit behind VPN tunnels, including WireGuard, SSH tunnels, and cloud-native VPN solutions.
+Description: Learn how to configure ArgoCD to manage Kubernetes clusters that sit behind VPN tunnels, including WireGuard, OpenVPN, and cloud-native VPN solutions.
 
 ---
 

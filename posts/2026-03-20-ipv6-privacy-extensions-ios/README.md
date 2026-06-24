@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: IPv6, Privacy Extensions, IOS, IPhone, IPad, Apple, Security
 
-Description: A guide to understanding IPv6 privacy on iOS and iPadOS, including Apple's Private Wi-Fi Address feature, how it relates to IPv6 privacy, and how developers should handle IPv6 addresses...
+Description: A guide to understanding IPv6 privacy extensions on iOS and iPadOS, including Apple's Private Wi-Fi Address feature, how it relates to IPv6 privacy, and how developers should handle IPv6 addresses...
 
 iOS implements IPv6 privacy through several complementary mechanisms. Apple states that IPv6 addresses are generated in a way that helps prevent tracking devices across networks, that temporary addresses are used by default for new connections, and that Private Wi-Fi Address randomizes the Wi-Fi MAC address per network. Together, these significantly reduce address-based tracking on iOS and iPadOS.
 

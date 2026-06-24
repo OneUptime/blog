@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: ArgoCD, GitOps, Kubernetes, UI, Customization
 
-Description: Learn how to customize external links in the ArgoCD UI including link text, icons, and conditional display logic.
+Description: Learn how to customize how managed-by URLs are displayed in the ArgoCD UI including link text, icons, and conditional display logic.
 
 ---
 

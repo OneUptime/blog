@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: ICMPv6, Wireshark, Debugging, Packet Analysis, IPv6
 
-Description: Use Wireshark display filters, protocol dissectors, and flow-graph analysis to debug ICMPv6 issues including NDP failures, PMTU problems, and unreachable destination errors.
+Description: Use Wireshark display filters, protocol dissectors, and follow-stream analysis to debug ICMPv6 issues including NDP failures, PMTU problems, and unreachable destination errors.
 
 ## Introduction
 

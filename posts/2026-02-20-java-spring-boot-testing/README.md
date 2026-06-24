@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Java, Spring Boot, Testing, JUnit, Mockito
 
-Description: Learn how to write unit tests and integration tests for Spring Boot applications using JUnit 5, Mockito, and Testcontainers.
+Description: Learn how to write unit tests and integration tests for Spring Boot applications using JUnit 5, Mockito, and TestContainers.
 
 ---
 

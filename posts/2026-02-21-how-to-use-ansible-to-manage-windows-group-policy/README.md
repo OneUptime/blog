@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Windows, Group Policy, Active Directory
+Tags: Ansible, Window, Group Policy, Active Directory
 
 Description: Learn how to manage Windows Group Policy settings with Ansible using registry-based policy management and GPO automation techniques.
 

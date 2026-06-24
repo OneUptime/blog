@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Bare-Metal Recovery, Disaster Recovery, Linux
 
-Description: Prepare for a bare-metal recovery of a RHEL system from backup images.
+Description: Perform a bare-metal recovery of a RHEL system from backup images.
 
 ---
 

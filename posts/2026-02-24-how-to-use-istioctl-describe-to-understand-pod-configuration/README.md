@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Istio, Istioctl, Kubernetes, Debugging, Service Mesh
 
-Description: Learn how to use the istioctl x describe command to quickly understand what Istio configuration applies to a specific pod in your mesh.
+Description: Learn how to use the istioctl describe command to quickly understand what Istio configuration applies to a specific pod in your mesh.
 
 ---
 

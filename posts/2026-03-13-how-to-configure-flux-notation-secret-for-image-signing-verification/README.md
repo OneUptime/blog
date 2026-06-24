@@ -1,10 +1,10 @@
-# How to Configure Flux Notation Secret for OCI Artifact Signature Verification
+# How to Configure Flux Notation Secret for Image Signing Verification
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Flux, Kubernetes, GitOps, Source Controller, Authentication, Secret, Notation, Image Signing, Supply Chain Security, Verification
 
-Description: A guide to configuring Flux CD to verify OCI artifact signatures using Notation with trust policies and verification certificates.
+Description: A guide to configuring Flux CD to verify container image signatures using Notation (Notary v2) with trust policies and verification certificates.
 
 ---
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, CSV, Inventory, Python, Automation
 
-Description: Learn how to generate Ansible inventory files from CSV data using Python scripts and dynamic inventory scripts.
+Description: Learn how to generate Ansible inventory files from CSV data using Python scripts and custom inventory plugins.
 
 ---
 

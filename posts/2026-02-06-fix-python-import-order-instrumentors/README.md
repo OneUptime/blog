@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Python, Import Order, Instrumentation
 
-Description: Fix Python instrumentation timing issues where OpenTelemetry instrumentors should be applied before your application initializes the instrumented libraries.
+Description: Fix the Python import order issue where OpenTelemetry instrumentors must be applied before the instrumented libraries are imported.
 
 Just like in Node.js, Python OpenTelemetry instrumentation can depend on when instrumentation is applied. Some instrumentors work by monkey-patching library modules, classes, or factory functions. If application objects are created before the instrumentor runs, the patching may be incomplete or ineffective. This post covers the safe patterns for Python.
 

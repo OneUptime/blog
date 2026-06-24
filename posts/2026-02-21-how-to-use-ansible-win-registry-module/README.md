@@ -1,8 +1,8 @@
-# How to Use Ansible win_regedit Module
+# How to Use Ansible win_registry Module
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Windows, Registry, Configuration, Automation
+Tags: Ansible, Window, Registry, Configuration, Automation
 
 Description: Read and write Windows registry keys and values using the Ansible win_regedit module for system configuration and application settings.
 

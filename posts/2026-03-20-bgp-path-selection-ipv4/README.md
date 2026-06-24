@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: BGP, Networking, Routing, IPv4, Path Selection, FRR
 
-Description: Understand FRR's multi-step BGP best-path algorithm and how attributes like weight, local preference, AS path length, and MED influence which route is chosen.
+Description: Understand BGP's multi-step path selection algorithm and how attributes like weight, local preference, AS path length, and MED determine which route is chosen.
 
 ## Introduction
 

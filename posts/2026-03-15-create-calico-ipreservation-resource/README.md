@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, IPReservation, Kubernetes, Networking, IPAM, IP Management
 
-Description: Learn how to create Calico IPReservation resources to reserve specific IP addresses and prevent them from being automatically assigned to pods.
+Description: Learn how to create Calico IPReservation resources to reserve specific IP addresses and prevent them from being assigned to pods.
 
 ---
 

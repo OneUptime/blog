@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Patching, Security, Fleet Management, Linux
 
-Description: Design and implement a patch management strategy for fleets of RHEL servers using dnf-automatic and staged rollouts.
+Description: Design and implement a patch management strategy for fleets of RHEL servers using dnf-automatic, content views, and staged rollouts.
 
 ---
 

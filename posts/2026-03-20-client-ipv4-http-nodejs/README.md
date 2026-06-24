@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Node.js, Express, IPv4, Networking, HTTP, REST API
 
-Description: Learn how to reliably extract the real client IP address from HTTP requests in Node.js and Express, handling direct connections, reverse proxies, and X-Forwarded-For headers correctly.
+Description: Learn how to reliably extract the real client IPv4 address from HTTP requests in Node.js and Express, handling direct connections, reverse proxies, and X-Forwarded-For headers correctly.
 
 ## Express: Direct Connection
 

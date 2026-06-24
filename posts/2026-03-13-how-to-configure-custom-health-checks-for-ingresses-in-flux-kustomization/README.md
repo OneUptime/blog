@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Flux, GitOps, Kubernetes, Health Check, Ingresses, Kustomization
 
-Description: Learn how to configure custom health checks for Ingress resources in Flux Kustomization to verify that an Ingress has been assigned an address.
+Description: Learn how to configure custom health checks for Ingress resources in Flux Kustomization to verify routing rules and TLS are properly established.
 
 ---
 

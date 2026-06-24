@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Rancher Desktop, Windows, Kubernetes, WSL2, Docker
+Tags: Rancher Desktop, Window, Kubernetes, WSL2, Docker
 
 Description: Set up Rancher Desktop on Windows with WSL2 integration for local Kubernetes and container development.
 

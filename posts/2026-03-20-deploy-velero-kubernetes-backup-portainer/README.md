@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Velero, Kubernetes, Backup, Storage, Disaster Recovery
 
-Description: Install Velero on a Kubernetes cluster managed by Portainer to enable namespace-level backups, scheduled backups, and cross-cluster migration of workloads.
+Description: Install Velero on a Kubernetes cluster managed by Portainer to enable namespace-level backups, scheduled snapshots, and cross-cluster migration of workloads.
 
 ---
 

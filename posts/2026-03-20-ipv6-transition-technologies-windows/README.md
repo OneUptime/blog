@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: IPv6, Windows, Teredo, ISATAP, 6to4, Transition Technologies
+Tags: IPv6, Window, Teredo, ISATAP, 6to4, Transition Technologies
 
 Description: An overview of the IPv6 transition technologies built into Windows - Teredo, ISATAP, and 6to4 - how they work, when they activate, and how to check their status.
 

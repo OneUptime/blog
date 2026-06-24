@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Flux, FluxInstance, Cluster Profiles, Kubernetes, GitOps, Multi-Cluster
 
-Description: Learn how to use FluxInstance cluster settings to apply reusable configurations for different cluster types and environments.
+Description: Learn how to use cluster profiles in FluxInstance to apply predefined configurations for different cluster types and environments.
 
 ---
 

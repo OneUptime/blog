@@ -1,10 +1,10 @@
-# How to Configure Health Checks for Deployments in Flux Kustomization
+# How to Configure Custom Health Checks for Deployments in Flux Kustomization
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Flux, GitOps, Kubernetes, Health Check, Deployment, Kustomization
 
-Description: Learn how to configure health checks for Deployment resources in Flux Kustomization to ensure reliable rollouts.
+Description: Learn how to configure custom health checks for Deployment resources in Flux Kustomization to ensure reliable rollouts and automated rollback.
 
 ---
 

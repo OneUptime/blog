@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, GKE, Kubernetes, Google Cloud, Collector, Tracing, Metric, Observability
 
-Description: A hands-on guide to deploying the OpenTelemetry Collector on Google Kubernetes Engine (GKE) and instrumenting workloads for traces and metrics.
+Description: A hands-on guide to deploying the OpenTelemetry Collector on Google Kubernetes Engine (GKE) and instrumenting workloads for traces, metrics, and logs.
 
 ---
 

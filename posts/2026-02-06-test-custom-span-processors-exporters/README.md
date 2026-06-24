@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Span Processors, Exporter, SDK Testing, Custom Component
 
-Description: Use OpenTelemetry SDK test utilities to write thorough tests for custom span processors and exporters across Python and Node.js.
+Description: Use OpenTelemetry SDK test utilities to write thorough tests for custom span processors and exporters across Java, Python, and Node.js.
 
 When you write custom span processors or exporters, you need to test them in isolation before plugging them into your production pipeline. OpenTelemetry SDKs provide test utilities in many languages that make this straightforward. This post covers how to test both processors and exporters with proper setup, assertions, and edge case handling.
 

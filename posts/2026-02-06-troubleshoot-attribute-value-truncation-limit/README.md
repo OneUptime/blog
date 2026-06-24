@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Attribute, Truncation, SDK
 
-Description: Troubleshoot and fix span attribute value truncation caused by configured attribute length limits.
+Description: Troubleshoot and fix span attribute value truncation caused by SDK attribute length limits that silently cut long values.
 
 You set a span attribute with a full SQL query, a request body, or a stack trace, but when you view the span in your backend, the value is cut off mid-sentence. The SDK or telemetry pipeline may be truncating attribute values that exceed the configured length limit. This post explains how to detect, configure, and work around this behavior.
 

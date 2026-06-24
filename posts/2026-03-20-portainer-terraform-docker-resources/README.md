@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Terraform, Docker, Infrastructure, DevOps
 
-Description: Learn how to manage Docker images, networks, volumes, and Compose-based application stacks through the Portainer Terraform provider for fully declarative container infrastructure management.
+Description: Learn how to manage Docker containers, networks, volumes, and images through the Portainer Terraform provider for fully declarative container infrastructure management.
 
 ## Introduction
 

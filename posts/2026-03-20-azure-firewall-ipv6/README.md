@@ -1,10 +1,10 @@
-# Azure Firewall IPv6 Support and Current Limitations
+# How to Configure Azure Firewall with IPv6
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Azure, IPv6, Azure Firewall, Network Security, Dual-Stack, Hub-Spoke
 
-Description: Understand the current IPv6 limitations of Azure Firewall in hub-spoke architectures, and deploy Azure Firewall correctly in a dual-stack VNet using IPv4-only firewall rules.
+Description: Configure Azure Firewall with IPv6 support for hub-spoke network architectures, creating network rules that allow and deny IPv6 traffic through the centralized firewall.
 
 ## Introduction
 

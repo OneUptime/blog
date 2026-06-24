@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: IPv6, macOS, Routing Table, netstat, Networking
 
-Description: Learn how to view and interpret the IPv6 routing table and related IPv6 configuration on macOS using netstat, route, and networksetup commands.
+Description: Learn how to view and interpret the IPv6 routing table on macOS using netstat, route, and networksetup commands.
 
 ## Overview
 

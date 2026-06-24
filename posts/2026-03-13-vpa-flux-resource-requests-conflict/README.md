@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Flux CD, VPA, Kubernetes, GitOps, Resource Management
 
-Description: Learn how to avoid ownership conflicts between VPA (Vertical Pod Autoscaler) resource recommendations and Flux CD GitOps reconciliation.
+Description: Learn how to resolve the conflict between VPA (Vertical Pod Autoscaler) automatically modifying pod resource requests and Flux CD continuously reconciling them back to the Git-declared state.
 
 ---
 

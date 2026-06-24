@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: AWS, CodePipeline, CI/CD, DevOps, Pipeline, Automation
 
-Description: Learn how to use AWS CodePipeline V2 advanced features including pipeline triggers, variables, execution modes, and rollback configurations.
+Description: Learn how to use AWS CodePipeline V2 advanced features including pipeline triggers, variables, parallel stages, and rollback configurations.
 
 ---
 

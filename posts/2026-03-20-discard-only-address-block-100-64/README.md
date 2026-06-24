@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: IPv6, Discard-Only, 100::/64, RFC 6666, Blackhole, Networking
 
-Description: Understand the IPv6 discard-only address block 100::/64 (RFC 6666), a dedicated special-purpose prefix used for routing black holes and sinkholes in network operations.
+Description: Understand the IPv6 discard-only address block 100::/64 (RFC 6666), analogous to IPv4's 192.0.2.0/24, used for routing black holes and sink holes in network operations.
 
 ## Introduction
 

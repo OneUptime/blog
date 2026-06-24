@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Docker Compose, Health Check, Reliability, Stack, DevOps
 
-Description: Add comprehensive health checks to every service in a Portainer stack to improve failure detection and, in Docker Standalone environments, enable reliable startup ordering.
+Description: Add comprehensive health checks to every service in a Portainer stack to enable reliable startup ordering, automatic failure detection, and self-healing container restarts.
 
 ---
 

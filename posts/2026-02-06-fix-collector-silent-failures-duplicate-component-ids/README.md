@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Collector, Configuration, Pipeline
 
-Description: Fix configuration mistakes caused by duplicate or overlapping component IDs in OpenTelemetry Collector pipeline configuration YAML files.
+Description: Fix silent data loss caused by duplicate component IDs in OpenTelemetry Collector pipeline configuration YAML files.
 
 Duplicate or overlapping component IDs in Collector configuration can cause subtle, hard-to-debug issues. Some YAML parsers and configuration merge tools silently overwrite duplicate keys, so the later definition replaces the earlier one. Current Collector releases reject duplicate keys in a single config file, but duplicates can still be introduced or hidden by tooling before the final config reaches the Collector. This can lead to missing processors, wrong exporter settings, or broken pipelines.
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: AWS, Transit Gateway, IPv6, VPC, Cloud Networking, Dual-Stack, BGP
 
-Description: Configure AWS Transit Gateway to route IPv6 traffic between dual-stack VPCs and on-premises networks using dual-stack attachments and route tables.
+Description: Configure AWS Transit Gateway to route IPv6 traffic between dual-stack VPCs, on-premises networks, and the internet using dual-stack attachments and route tables.
 
 ## Introduction
 

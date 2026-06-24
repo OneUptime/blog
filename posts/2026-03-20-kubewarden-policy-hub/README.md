@@ -1,10 +1,10 @@
-# How to Use Kubewarden Policies on Artifact Hub
+# How to Use Kubewarden Policy Hub
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubewarden, Kubernetes, Policy, ArtifactHub, Security
+Tags: Kubewarden, Kubernetes, Policy, PolicyHub, Security
 
-Description: Learn how to discover, evaluate, and deploy pre-built Kubewarden policies from Artifact Hub to accelerate your cluster security implementation.
+Description: Learn how to discover, evaluate, and deploy pre-built policies from the Kubewarden Policy Hub to accelerate your cluster security implementation.
 
 ## Introduction
 

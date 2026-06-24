@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: IPv4, ECN, Networking, Congestion Control, TCP/IP, QoS
 
-Description: The two ECN bits in the IPv4 Differentiated Services (DS) field (historically the ToS byte) allow routers to signal congestion without dropping packets, enabling endpoints to reduce transmission rates and improve network efficiency.
+Description: The two ECN bits in the IPv4 ToS byte allow routers to signal congestion without dropping packets, enabling endpoints to reduce transmission rates and improve network efficiency.
 
 ## What Is ECN?
 

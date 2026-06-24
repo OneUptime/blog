@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Azure, Azure Files, Active Directory, Authentication, Identity, Azure Storage, Security
 
-Description: Learn how to configure Azure Files with Active Directory authentication for identity-based access control using on-premises AD DS or Microsoft Entra Domain Services.
+Description: Learn how to configure Azure Files with Active Directory authentication for identity-based access control using on-premises AD DS or Azure AD DS.
 
 ---
 

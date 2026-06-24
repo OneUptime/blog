@@ -96,7 +96,7 @@ Routing data is collected by the standard polling cycle - no extra
 module flag is needed. Once the device has been polled, view the
 routing tables in the Observium UI:
 
-```
+```text
 Devices > [Device] > Routing
 ```
 

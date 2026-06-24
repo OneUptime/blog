@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Terraform, Module, Versioning, Infrastructure as Code, DevOps, Best Practice
 
-Description: Learn how to pin Terraform module versions using exact versions and constraints to ensure reproducible and safe infrastructure deployments.
+Description: Learn how to pin Terraform module versions using exact versions, constraints, and lock files to ensure reproducible and safe infrastructure deployments.
 
 ---
 

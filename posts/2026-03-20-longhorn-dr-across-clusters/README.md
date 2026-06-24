@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Longhorn, Kubernetes, Disaster Recovery, Multi-Cluster, Storage
 
-Description: A comprehensive guide for configuring cross-cluster disaster recovery using Longhorn, enabling automatic data synchronization and manual failover between primary and secondary Kubernetes clusters.
+Description: A comprehensive guide for configuring cross-cluster disaster recovery using Longhorn, enabling automatic data synchronization and failover between primary and secondary Kubernetes clusters.
 
 ## Introduction
 

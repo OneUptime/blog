@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: SSH, Security, IPv4, Sshd_config, Tunneling, Access Control, AllowTcpForwarding
 
-Description: Learn how to restrict SSH tunneling and port forwarding to specific IPv4 addresses in sshd_config to reduce unauthorized tunnel abuse.
+Description: Learn how to restrict SSH tunneling and port forwarding to specific IPv4 addresses in sshd_config to prevent unauthorized tunnel abuse.
 
 ---
 

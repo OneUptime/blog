@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: BGP, IPv6, MED, BGP Attributes, Routing Policy
 
-Description: Use BGP communities to signal and apply MED (Multi-Exit Discriminator) values for IPv6 route selection between multiple connections to the same neighboring AS.
+Description: Use BGP communities to signal and apply MED (Multi-Exit Discriminator) values for IPv6 route selection between multiple connections.
 
 ## Overview
 

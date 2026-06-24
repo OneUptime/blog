@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, ISO, Lorax, Kickstart, Custom Installation, Linux
 
-Description: Learn how to build custom RHEL installation ISOs with embedded Kickstart files, custom installer runtime images, and optional package repositories using lorax and mkksiso, enabling fully automated and reproducible server deployments.
+Description: Learn how to build custom RHEL installation ISOs with embedded Kickstart files and tailored package sets using lorax and mkksiso, enabling fully automated and reproducible server deployments.
 
 ---
 

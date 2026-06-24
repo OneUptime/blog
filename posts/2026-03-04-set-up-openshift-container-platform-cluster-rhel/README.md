@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, OpenShift, Kubernetes, Container, Enterprise
 
-Description: Deploy an OpenShift Container Platform cluster on bare-metal infrastructure using the user-provisioned infrastructure method.
+Description: Deploy an OpenShift Container Platform cluster on RHEL infrastructure using the installer-provisioned infrastructure method.
 
 ---
 

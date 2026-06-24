@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GCP, Load Balancer, Outlier Detection, Backend Health, Reliability
 
-Description: Learn how to configure outlier detection on Google Cloud Load Balancer to automatically eject unhealthy backend endpoints and improve service reliability.
+Description: Learn how to configure outlier detection on Google Cloud Load Balancer to automatically eject unhealthy backend instances and improve service reliability.
 
 ---
 

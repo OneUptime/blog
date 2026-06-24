@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GCP, BigQuery, Cloud Storage, Schema Auto-Detection, Data Loading
 
-Description: Learn how to load data from Google Cloud Storage into BigQuery using schema auto-detection for CSV and JSON, plus self-describing Parquet and Avro formats with practical examples.
+Description: Learn how to load data from Google Cloud Storage into BigQuery using schema auto-detection, covering CSV, JSON, Parquet, and Avro formats with practical examples.
 
 ---
 

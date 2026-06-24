@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Cilium, Kubernetes, WireGuard, Encryption, Performance, Throughput
 
-Description: How to tune Cilium's WireGuard encryption for maximum throughput, including kernel configuration, CPU allocation, MTU, and routing options.
+Description: How to tune Cilium's WireGuard encryption for maximum throughput, including kernel configuration, CPU allocation, and hardware offload options.
 
 ---
 

@@ -1,10 +1,10 @@
-# How to Set Up Rancher on an EKS Anywhere Cluster
+# How to Set Up Rancher on AWS with EKS Anywhere
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rancher, Kubernetes, AWS, EKS Anywhere
 
-Description: A guide to deploying Rancher on an Amazon EKS Anywhere management cluster to manage EKS-A clusters and other downstream clusters from a single control plane.
+Description: A guide to deploying Rancher on top of Amazon EKS Anywhere to manage EKS-A clusters and other downstream clusters from a single control plane.
 
 ## Introduction
 

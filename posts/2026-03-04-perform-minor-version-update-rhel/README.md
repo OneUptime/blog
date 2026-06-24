@@ -1,4 +1,4 @@
-# How to Perform a Minor Version Update (e.g., RHEL 9.2 to 9.4) on RHEL
+# How to Perform a Minor Version Update (e.g., RHEL.2 to 9.4) on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

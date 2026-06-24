@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Operator, IPv6, Ingress, Nginx
 
-Description: Create and manage Kubernetes Ingress resources and their backing LoadBalancer Services with IPv6-aware configuration in custom Kubernetes operators.
+Description: Create and manage Kubernetes Ingress resources with IPv6 annotations and LoadBalancer IPs in custom Kubernetes operators.
 
 ## Overview
 

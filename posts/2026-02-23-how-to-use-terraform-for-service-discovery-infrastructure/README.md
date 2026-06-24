@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Terraform, Service Discovery, DNS, Consul, Cloud Map, DevOps
 
-Description: Learn how to build service discovery infrastructure with Terraform, including AWS Cloud Map, Consul integration, and DNS-based discovery for dynamic environments.
+Description: Learn how to build service discovery infrastructure with Terraform, including AWS Cloud Map, Consul integration, DNS-based discovery, and service mesh configurations for dynamic environments.
 
 ---
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Istio, OpenTelemetry, Observability, Tracing, Kubernetes
 
-Description: Complete guide to deploying and configuring the OpenTelemetry Collector to work with Istio for traces and access logs.
+Description: Complete guide to deploying and configuring the OpenTelemetry Collector to work with Istio for traces, metrics, and access logs.
 
 ---
 

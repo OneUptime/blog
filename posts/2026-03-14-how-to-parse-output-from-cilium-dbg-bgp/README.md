@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Cilium, BGP, Parsing, Scripting, Networking
 
-Description: Extract and analyze BGP peer state data from cilium-dbg bgp peers command output for monitoring dashboards and automated route validation.
+Description: Extract and analyze BGP state data from cilium-dbg bgp command output for monitoring dashboards and automated route validation.
 
 ---
 

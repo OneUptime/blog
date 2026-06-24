@@ -89,7 +89,7 @@ order history while deleting needed audit records.
 - This is compatible with existing TTL semantics - no breaking change
 EOF
 )"
-```
+```text
 
 ## Submit a Formal Proposal
 

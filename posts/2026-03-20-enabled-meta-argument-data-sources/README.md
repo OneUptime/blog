@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Data Source, Enabled, Count, Conditional, HCL, Infrastructure as Code
 
-Description: Learn how to conditionally enable or disable data sources in OpenTofu using the `enabled` meta-argument, plus `count` and `for_each` patterns when needed.
+Description: Learn how to conditionally enable or disable data sources in OpenTofu using the count trick and the enabled pattern for conditional data source evaluation.
 
 ---
 

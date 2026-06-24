@@ -2,9 +2,9 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTofu, Terraform Enterprise, HCP Terraform, Terraform Cloud, Migration, Infrastructure as Code, DevOps
+Tags: OpenTofu, Terraform Enterprise, Migration, OpenTofu Cloud, Infrastructure as Code, DevOps
 
-Description: Learn how to migrate from Terraform Enterprise (TFE) or HCP Terraform (formerly Terraform Cloud) to OpenTofu-compatible platforms - covering workspace migration, state transfer, and CI/CD updates.
+Description: Learn how to migrate from Terraform Enterprise (TFE) or Terraform Cloud (TFC) to OpenTofu-compatible platforms - covering workspace migration, state transfer, and CI/CD updates.
 
 ## Introduction
 

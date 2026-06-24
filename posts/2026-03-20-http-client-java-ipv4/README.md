@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Java, HTTP, Client, IPv4, HttpClient, Networking
 
-Description: Learn how to create an HTTP client in Java that connects via IPv4 using the modern `java.net.http.HttpClient` (Java 11+).
+Description: Learn how to create an HTTP client in Java that connects via IPv4 using the modern java.net.http.HttpClient (Java 11+) and Apache HttpClient.
 
 ## Java 11+ HttpClient with IPv4
 

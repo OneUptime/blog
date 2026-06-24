@@ -1,10 +1,10 @@
-# How to Configure Istio with an eBPF-Based CNI Data Plane
+# How to Configure Istio for eBPF-Based Data Plane
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Istio, eBPF, Data Plane, Kubernetes, Networking, Service Mesh
 
-Description: How to run Istio on top of an eBPF-based Kubernetes CNI data plane while keeping Istio traffic redirection compatible with the mesh.
+Description: How to configure Istio to use eBPF for traffic redirection instead of iptables, reducing overhead and improving data plane performance.
 
 ---
 

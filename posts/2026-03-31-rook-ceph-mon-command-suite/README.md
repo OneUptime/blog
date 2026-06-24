@@ -41,7 +41,7 @@ ceph mon dump
 
 Output includes the full monmap with monitor names, ranks, and addresses:
 
-```
+```text
 epoch 5
 fsid 12345678-abcd-efgh-ijkl-123456789abc
 last_changed 2025-01-01T00:00:00.000000+0000

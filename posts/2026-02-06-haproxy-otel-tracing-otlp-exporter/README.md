@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, HAProxy, Tracing, OpenTracing Bridge
 
-Description: Configure HAProxy to export distributed traces using the OpenTracing filter and forward them through the OpenTelemetry Collector.
+Description: Configure HAProxy to export distributed traces using the OpenTracing filter with an OTLP exporter bridge for OpenTelemetry integration.
 
 HAProxy supports distributed tracing through its OpenTracing filter. While HAProxy uses the OpenTracing API natively, you can bridge this into OpenTelemetry by sending spans to an OpenTracing-compatible tracer protocol that the OpenTelemetry Collector can receive, then exporting them with OTLP. This post covers how to set up HAProxy tracing with the Collector in the middle.
 

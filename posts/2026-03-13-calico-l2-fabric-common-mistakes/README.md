@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, L2, Networking, VXLAN, IP-in-IP, Troubleshooting, MTU
 
-Description: Common overlay networking mistakes in Calico deployments, from MTU misconfiguration to security group gaps, and how to diagnose and fix them.
+Description: Common L2 overlay networking mistakes in Calico deployments, from MTU misconfiguration to security group gaps, and how to diagnose and fix them.
 
 ---
 

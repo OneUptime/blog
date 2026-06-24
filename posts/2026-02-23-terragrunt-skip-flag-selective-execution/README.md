@@ -1,10 +1,10 @@
-# How to Replace Terragrunt Skip Flag for Selective Execution
+# How to Use Terragrunt Skip Flag for Selective Execution
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Terragrunt, Selective Execution, Exclude, Infrastructure as Code, DevOps
+Tags: Terraform, Terragrunt, Selective Execution, Skip, Infrastructure as Code, DevOps
 
-Description: Learn how to replace the deprecated Terragrunt skip flag with the exclude block, along with include and exclude directory options to selectively run or skip modules during plan, apply, and destroy operations.
+Description: Learn how to use the Terragrunt skip flag along with include and exclude directory options to selectively run or skip modules during plan, apply, and destroy operations.
 
 ---
 

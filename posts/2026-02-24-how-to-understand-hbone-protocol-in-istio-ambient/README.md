@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Istio, Ambient Mesh, HBONE, Protocol, Networking
 
-Description: Understand the HBONE tunneling protocol used in Istio ambient mode, how it reduces the need for sidecar proxies, and what it means for your network architecture.
+Description: Understand the HBONE tunneling protocol used in Istio ambient mode, how it replaces sidecar proxies, and what it means for your network architecture.
 
 ---
 

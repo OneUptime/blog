@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: DHCP, VoIP, Option 150, TFTP, Cisco, Sysadmin
 
-Description: DHCP option 150, originally introduced for Cisco VoIP deployments and documented in RFC 5859, delivers one or more TFTP server IP addresses to IP phones, enabling them to download firmware and configuration automatically during boot.
+Description: DHCP option 150 is a Cisco-proprietary option that delivers the TFTP server address to Cisco IP phones, enabling them to download their firmware and configuration automatically during boot.
 
 ## What Is DHCP Option 150?
 

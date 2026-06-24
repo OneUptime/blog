@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Cloud Backend, Authentication, Terraform Cloud, API Tokens
 
-Description: Learn how to authenticate OpenTofu with the Terraform Cloud backend using API tokens, environment variables, credentials files, and CI/CD secret management methods.
+Description: Learn how to authenticate OpenTofu with the Terraform Cloud backend using API tokens, environment variables, and CI/CD-specific authentication methods.
 
 ## Introduction
 

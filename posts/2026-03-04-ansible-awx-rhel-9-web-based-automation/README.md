@@ -1,10 +1,10 @@
-# How to Set Up Ansible on RHEL for Command-Line Automation
+# How to Set Up Ansible AWX on RHEL for Web-Based Automation
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, Ansible, CLI
+Tags: RHEL, Ansible, AWX, Web UI
 
-Description: Install and configure Ansible on RHEL for command-line automation management.
+Description: Install and configure Ansible AWX on RHEL for web-based automation management.
 
 ---
 

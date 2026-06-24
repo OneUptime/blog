@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Dapr, Workflow, Email, Campaign, Marketing Automation, Orchestration
 
-Description: Learn how to orchestrate multi-step email marketing campaigns using Dapr Workflow, with timed sequences and behavior-based branching.
+Description: Learn how to orchestrate multi-step email marketing campaigns using Dapr Workflow, with timed sequences, behavior-based branching, and A/B testing support.
 
 ---
 

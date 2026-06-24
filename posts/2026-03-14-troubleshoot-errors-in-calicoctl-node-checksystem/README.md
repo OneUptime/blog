@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Calicoctl, System Requirements, Troubleshooting, Kubernetes, Kernel
 
-Description: Resolve errors reported by calicoctl node checksystem, including missing kernel modules and kernel version incompatibilities.
+Description: Resolve errors reported by calicoctl node checksystem, including missing kernel modules, incorrect sysctl settings, and kernel version incompatibilities.
 
 ---
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Atlantis, Pull Request Automation, GitOps, CI/CD, Infrastructure as Code
 
-Description: A step-by-step guide to configuring Atlantis to automatically run OpenTofu plans and execute applies from pull request comments, enabling a GitOps workflow for infrastructure changes.
+Description: A step-by-step guide to configuring Atlantis to automatically run OpenTofu plan and apply operations in response to pull requests, enabling a GitOps workflow for infrastructure changes.
 
 ## Introduction
 

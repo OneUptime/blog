@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, Networking, VPP, DPDK, Uplink, NIC, Configuration
 
-Description: A detailed guide to configuring the uplink interface for Calico VPP, covering DPDK driver selection, PCI device configuration, multi-queue setup, and native VPP uplink modes.
+Description: A detailed guide to configuring the uplink interface for Calico VPP, covering DPDK driver selection, PCI device configuration, multi-queue setup, and SR-IOV uplink modes.
 
 ---
 

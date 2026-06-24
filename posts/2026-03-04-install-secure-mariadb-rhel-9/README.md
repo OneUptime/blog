@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, MariaDB, Database, Security
 
-Description: Install MariaDB on RHEL 9 and secure it with mariadb-secure-installation.
+Description: Install MariaDB on RHEL 9 and secure it with mysql_secure_installation.
 
 ---
 

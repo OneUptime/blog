@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Cassandra, IPv6, Distributed Database, NoSQL, Cluster, Gossip Protocol
 
-Description: Configure an Apache Cassandra cluster to use IPv6 addresses for gossip communication and native transport, enabling NoSQL database clustering over IPv6 networks.
+Description: Configure an Apache Cassandra cluster to use IPv6 addresses for gossip communication, native transport, and RPC, enabling NoSQL database clustering over IPv6 networks.
 
 ---
 

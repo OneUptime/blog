@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: MongoDB, Change Stream, WebSocket, Collaboration, Concurrency
 
-Description: Learn how to build real-time collaborative document editing backed by MongoDB with optimistic version checks, presence tracking, and conflict resolution.
+Description: Learn how to build real-time collaborative document editing backed by MongoDB with operational transforms, presence tracking, and conflict resolution.
 
 ---
 

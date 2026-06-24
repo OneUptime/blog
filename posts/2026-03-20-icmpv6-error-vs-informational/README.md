@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: ICMPv6, Error Messages, Informational Messages, IPv6, RFC 4443
 
-Description: Understand the distinction between ICMPv6 error messages (Types 0-127) and informational messages (Types 128-255), their different rules and behaviors, and why this classification matters for...
+Description: Understand the distinction between ICMPv6 error messages (Types 1-127) and informational messages (Types 128-255), their different rules and behaviors, and why this classification matters for...
 
 ## Introduction
 

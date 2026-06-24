@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Istio, Request Size, Envoy, Kubernetes, API Security
 
-Description: How to set and enforce request body size limits in Istio using EnvoyFilter, including per-service limits, gateway limits, and error handling.
+Description: How to set and enforce request body size limits in Istio using EnvoyFilter, including per-route limits, global limits, and error handling.
 
 ---
 

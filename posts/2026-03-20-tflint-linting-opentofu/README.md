@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, TFLint, Linting, Code Quality, Infrastructure as Code, DevOps
 
-Description: Learn how to use tflint to catch deprecated syntax, naming violations, and provider-specific best practice violations in Terraform-compatible OpenTofu configurations before planning.
+Description: Learn how to use tflint to catch configuration errors, deprecated attributes, and provider-specific best practice violations in OpenTofu configurations before planning.
 
 ## Introduction
 

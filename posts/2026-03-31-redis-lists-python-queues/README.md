@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Redis, Python, List, Queue, redis-py
 
-Description: Implement FIFO and LIFO queues in Python using Redis lists with redis-py, covering RPUSH, LPOP, BLPOP, and bounded queue patterns for background jobs.
+Description: Implement FIFO and LIFO queues in Python using Redis lists with redis-py, covering LPUSH, RPOP, BLPOP, and bounded queue patterns for background jobs.
 
 ---
 

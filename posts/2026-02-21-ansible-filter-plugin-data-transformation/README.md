@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, Plugin, Filter, Jinja2, Data Transformation
 
-Description: Build Ansible filter plugins that transform data structures in your playbooks, from size conversions to config file generation.
+Description: Build Ansible filter plugins that transform data structures in your playbooks, from network calculations to config file generation.
 
 ---
 

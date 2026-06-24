@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Kubernetes Dashboard, Kubernetes, Comparison, UI, DevOps
 
-Description: Compare Portainer and Kubernetes Dashboard to determine which tool is right for different Kubernetes management scenarios and user personas.
+Description: Compare Portainer and the official Kubernetes Dashboard to determine which tool is right for different Kubernetes management scenarios and user personas.
 
 ---
 

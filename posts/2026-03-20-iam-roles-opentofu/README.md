@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, IAM Roles, AWS, Security, OIDC, Infrastructure as Code
 
-Description: Learn how to manage AWS IAM Roles with OpenTofu - creating service roles, cross-account roles, OIDC federation for CI/CD, permission boundaries, and Step Functions execution roles.
+Description: Learn how to manage AWS IAM Roles with OpenTofu - creating service roles, cross-account roles, OIDC federation for CI/CD, permission boundaries, and role chaining patterns.
 
 ## Introduction
 

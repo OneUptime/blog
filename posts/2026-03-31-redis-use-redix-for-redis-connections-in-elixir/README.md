@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Redis, Elixir, Redix, Connection Pooling, OTP
 
-Description: Connect to Redis from Elixir using Redix, manage connection pools with multiple named connections, and run commands in a supervised OTP application.
+Description: Connect to Redis from Elixir using Redix, manage connection pools with Redix.ConnectionPool, and run commands in a supervised OTP application.
 
 ---
 

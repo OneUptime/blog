@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: CoreDNS, DNS, IPv6, Corefile, Kubernetes, Authoritative, Forwarding
 
-Description: Configure CoreDNS as a standalone DNS server with IPv6 support, serving zones and forwarding queries to IPv6 upstream resolvers using the Corefile syntax.
+Description: Configure CoreDNS as a standalone DNS server with IPv6 support, serving zones and forwarding queries over IPv6 transport using the Corefile syntax.
 
 ## Introduction
 

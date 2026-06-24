@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, PHP, Remi, Web Development, Linux
 
-Description: Install PHP 8.2 on RHEL using the Remi repository to use Remi's PHP module stream and package updates beyond what the default AppStream provides.
+Description: Install PHP 8.2 on RHEL using the Remi repository to get the latest PHP features and security updates beyond what the default AppStream provides.
 
 ---
 

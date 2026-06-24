@@ -2,9 +2,9 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Dapr, Service Invocation, Performance, Payload
+Tags: Dapr, Service Invocation, Performance, Streaming, Payload
 
-Description: Handle large payloads in Dapr service invocation using chunking, compression, and reference patterns to avoid size limits and performance degradation.
+Description: Handle large payloads in Dapr service invocation using chunking, compression, reference patterns, and streaming to avoid size limits and performance degradation.
 
 ---
 

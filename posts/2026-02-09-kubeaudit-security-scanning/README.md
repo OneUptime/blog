@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Security, Testing
 
-Description: Learn how to use Kubeaudit to automatically scan Kubernetes clusters for security misconfigurations and enforce security best practices in your CI/CD pipeline.
+Description: Learn how to use Kubeaudit to automatically scan Kubernetes clusters for security misconfigurations, identify vulnerabilities, and enforce security best practices in your CI/CD pipeline.
 
 ---
 

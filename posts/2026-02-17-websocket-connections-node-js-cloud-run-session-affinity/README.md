@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GCP, Cloud Run, WebSocket, Node.js, Real-Time, Google Cloud
 
-Description: Learn how to implement WebSocket connections in Node.js on Cloud Run using session affinity to improve reconnection behavior across multiple instances.
+Description: Learn how to implement WebSocket connections in Node.js on Cloud Run using session affinity to maintain persistent connections across multiple instances.
 
 ---
 

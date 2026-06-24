@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Docker Swarm, Rolling Update, Deployment, Reliability
 
-Description: Configure Docker Swarm rolling update policies through Portainer to perform controlled service updates with configurable parallelism and delay.
+Description: Configure Docker Swarm rolling update policies through Portainer to perform zero-downtime service updates with configurable parallelism and delay.
 
 ---
 

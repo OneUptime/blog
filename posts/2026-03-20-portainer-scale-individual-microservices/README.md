@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Scaling, Microservice, Docker Swarm, Load Balancing, Docker Compose
 
-Description: Learn how to scale individual microservices in Portainer using Docker Swarm service scaling and Swarm stack replica settings.
+Description: Learn how to scale individual microservice containers in Portainer using Docker Compose replica settings and Docker Swarm service scaling.
 
 ---
 

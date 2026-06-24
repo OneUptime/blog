@@ -122,16 +122,16 @@ This default configuration does NOT validate DNSSEC. External queries are forwar
 
 ## Enabling DNSSEC Validation
 
-It is important to understand what CoreDNS can and cannot do here. CoreDNS does **not** perform recursive DNSSEC validation itself — neither the `forward` plugin nor any other built-in plugin verifies RRSIG signatures of upstream answers. The way to get validation in a Kubernetes cluster is to forward external queries to an upstream resolver that validates, and pass its result (including a SERVFAIL on a bogus answer) back to your pods.
+It is important to understand what CoreDNS can and cannot do here. CoreDNS does **not** perform recursive DNSSEC validation itself - neither the `forward` plugin nor any other built-in plugin verifies RRSIG signatures of upstream answers. The way to get validation in a Kubernetes cluster is to forward external queries to an upstream resolver that validates, and pass its result (including a SERVFAIL on a bogus answer) back to your pods.
 
-The separate `dnssec` plugin does **not** validate either — it performs on-the-fly *signing* of zones CoreDNS is authoritative for (such as `cluster.local`). The two capabilities solve different problems:
+The separate `dnssec` plugin does **not** validate either - it performs on-the-fly *signing* of zones CoreDNS is authoritative for (such as `cluster.local`). The two capabilities solve different problems:
 
-1. **Validating external responses** — forward to a validating upstream resolver (simpler, and the only way to get validation)
-2. **Signing your own internal zone** — use the `dnssec` plugin with signing keys
+1. **Validating external responses** - forward to a validating upstream resolver (simpler, and the only way to get validation)
+2. **Signing your own internal zone** - use the `dnssec` plugin with signing keys
 
 ### Approach 1: Validating Upstream Resolver
 
-The simplest — and the only — way to get DNSSEC validation for external names is to forward queries to a resolver that performs DNSSEC validation and returns SERVFAIL for bogus answers.
+The simplest - and the only - way to get DNSSEC validation for external names is to forward queries to a resolver that performs DNSSEC validation and returns SERVFAIL for bogus answers.
 
 #### Using Cloudflare's 1.1.1.1
 
@@ -236,7 +236,7 @@ data:
 
 ### Approach 2: Signing Internal Zones with the `dnssec` Plugin
 
-CoreDNS's `dnssec` plugin does not validate upstream answers — it performs on-the-fly *signing* of the zones CoreDNS is authoritative for. In a cluster that means signing `cluster.local` so that a downstream validating resolver can verify CoreDNS's own answers. It requires signing keys; an empty `dnssec` block with no keys does nothing useful.
+CoreDNS's `dnssec` plugin does not validate upstream answers - it performs on-the-fly *signing* of the zones CoreDNS is authoritative for. In a cluster that means signing `cluster.local` so that a downstream validating resolver can verify CoreDNS's own answers. It requires signing keys; an empty `dnssec` block with no keys does nothing useful.
 
 #### Full Corefile with DNSSEC Plugin
 
@@ -1158,4 +1158,4 @@ kubectl set image deployment/coredns coredns=coredns/coredns:1.11.1 -n kube-syst
 
 ---
 
-DNSSEC validation in CoreDNS adds a critical layer of security to your Kubernetes cluster. By forwarding to an upstream resolver that cryptographically verifies DNS responses, you protect your workloads from cache poisoning and spoofing attacks. Start with a validating upstream resolver — this is what actually performs validation — and use the `dnssec` plugin only if you also need to sign your internal `cluster.local` zone. Always use DNS over TLS to encrypt queries in transit.
+DNSSEC validation in CoreDNS adds a critical layer of security to your Kubernetes cluster. By forwarding to an upstream resolver that cryptographically verifies DNS responses, you protect your workloads from cache poisoning and spoofing attacks. Start with a validating upstream resolver - this is what actually performs validation - and use the `dnssec` plugin only if you also need to sign your internal `cluster.local` zone. Always use DNS over TLS to encrypt queries in transit.

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Windows, Troubleshooting
+Tags: Kubernetes, Window, Troubleshooting
 
 Description: Complete troubleshooting guide for debugging Windows pods stuck in CrashLoopBackOff state with Windows Event Log analysis and diagnostic techniques.
 

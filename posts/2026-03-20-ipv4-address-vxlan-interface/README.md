@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Linux, VXLAN, IPv4, Overlay Network, iproute2, Networking
 
-Description: Assign an IPv4 address to a VXLAN interface so the host has an overlay IP, enabling host communication within the VXLAN segment.
+Description: Assign an IPv4 address to a VXLAN interface as the overlay network endpoint IP, enabling host communication within the VXLAN segment.
 
 ## Introduction
 

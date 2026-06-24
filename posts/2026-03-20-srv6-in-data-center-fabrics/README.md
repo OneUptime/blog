@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: SRv6, Data Center, EVPN, BGP, Fabric, Networking
 
-Description: Understand how SRv6 is deployed in data center fabric architectures as an alternative to VXLAN and MPLS for L2/L3 overlay services using EVPN SRv6.
+Description: Understand how SRv6 is deployed in data center fabric architectures to replace VXLAN and MPLS for L2/L3 overlay services using EVPN SRv6.
 
 ## Introduction
 

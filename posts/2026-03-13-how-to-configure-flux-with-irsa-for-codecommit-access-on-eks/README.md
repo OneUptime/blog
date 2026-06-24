@@ -1,10 +1,10 @@
-# How to Configure Flux with CodeCommit Access on EKS
+# How to Configure Flux with IRSA for CodeCommit Access on EKS
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux, Kubernetes, GitOps, AWS, EKS, CodeCommit
+Tags: Flux, Kubernetes, GitOps, AWS, EKS, IRSA, CodeCommit
 
-Description: Learn how to configure Flux to access AWS CodeCommit repositories on EKS, enabling GitOps workflows with SSH authentication.
+Description: Learn how to configure Flux to access AWS CodeCommit repositories using IRSA on EKS, enabling GitOps workflows without static Git credentials.
 
 ---
 

@@ -1,10 +1,10 @@
-# How to Set Up Multicluster Connectivity Between Istio Clusters
+# How to Set Up Mesh Federation Between Istio Meshes
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Service Mesh, Kubernetes, Multi-Cluster
+Tags: Istio, Service Mesh, Federation, Kubernetes, Multi-Cluster
 
-Description: A practical guide to connecting multiple Istio clusters for unified traffic management and service discovery.
+Description: A practical guide to federating multiple Istio service meshes across clusters for unified traffic management and service discovery.
 
 ---
 

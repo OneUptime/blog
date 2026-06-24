@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Docker, Troubleshooting, Networking, Self-Hosted
 
-Description: Identify and resolve port conflicts that prevent Portainer from starting, including changing published ports and handling competing services on ports 9000 and 9443.
+Description: Identify and resolve port conflicts that prevent Portainer from starting, including changing default ports and handling competing services on ports 9000 and 9443.
 
 ## Introduction
 

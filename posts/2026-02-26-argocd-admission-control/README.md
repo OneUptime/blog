@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: ArgoCD, GitOps, Kubernetes, Security, Admission Control
 
-Description: Learn how to implement Kubernetes admission control for ArgoCD deployments using validating webhooks and OPA Gatekeeper to enforce security and compliance policies.
+Description: Learn how to implement Kubernetes admission control for ArgoCD deployments using validating webhooks, OPA Gatekeeper, and Kyverno to enforce security and compliance policies.
 
 ---
 

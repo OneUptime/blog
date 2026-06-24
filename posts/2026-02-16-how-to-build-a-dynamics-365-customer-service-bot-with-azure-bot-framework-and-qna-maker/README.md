@@ -1,10 +1,10 @@
-# How to Build a Dynamics 365 Customer Service Bot with Azure Bot Framework and Azure AI Language
+# How to Build a Dynamics 365 Customer Service Bot with Azure Bot Framework
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Dynamics 365, Azure Bot Framework, Azure AI Language, Customer Service, Chatbot, AI, Omnichannel
+Tags: Dynamics 365, Azure Bot Framework, QnA Maker, Customer Service, Chatbot, AI, Omnichannel
 
-Description: Build a customer service chatbot that integrates with Dynamics 365 Customer Service using Azure Bot Framework and Azure AI Language custom question answering for automated case resolution.
+Description: Build a customer service chatbot that integrates with Dynamics 365 Customer Service using Azure Bot Framework and QnA Maker for automated case resolution.
 
 ---
 

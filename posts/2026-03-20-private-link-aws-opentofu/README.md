@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, PrivateLink, AWS, VPC Endpoints, Networking, Infrastructure as Code
 
-Description: Learn how to configure AWS PrivateLink and VPC endpoints using OpenTofu - creating interface endpoints for AWS services and custom services, and gateway endpoints for S3 and DynamoDB.
+Description: Learn how to configure AWS PrivateLink using OpenTofu - creating interface VPC endpoints for AWS services and custom services, and gateway endpoints for S3 and DynamoDB.
 
 ## Introduction
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, CNI, Networking
 
-Description: Learn how to upgrade Kubernetes CNI plugins like Calico, Cilium, and Flannel without network disruption using rolling updates, health checks, and proper validation techniques.
+Description: Learn how to upgrade Kubernetes CNI plugins like Calico, Cilium, and Flannel without network disruption using rolling updates, dual-stack approaches, and proper validation techniques.
 
 ---
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: MongoDB, Python, Beanie, ODM, Async
 
-Description: Learn how to use Beanie, an async MongoDB ODM built on Async PyMongo and Pydantic, to define typed documents and build async MongoDB applications with FastAPI.
+Description: Learn how to use Beanie, an async MongoDB ODM built on Motor and Pydantic, to define typed documents and build async MongoDB applications with FastAPI.
 
 ---
 

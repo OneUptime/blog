@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Honeycomb, Markers, Deployment Annotations
 
-Description: Create Honeycomb markers from your CI/CD pipeline to annotate deployment events on Honeycomb graphs for faster incident correlation.
+Description: Create Honeycomb markers from your CI/CD pipeline to annotate deployment events on trace visualizations for faster incident correlation.
 
 Honeycomb Markers let you annotate your Honeycomb graphs with deployment events. When you see a latency spike in Honeycomb, a marker shows you exactly when a deploy happened, making it trivial to correlate performance changes with code changes. While Markers use the Honeycomb API (not OTLP), you can integrate them into OpenTelemetry workflows.
 

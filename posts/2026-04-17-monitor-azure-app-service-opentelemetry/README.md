@@ -2,9 +2,9 @@
 
 Author: [mallersjamie](https://www.github.com/mallersjamie)
 
-Tags: Azure, Azure App Service, OpenTelemetry, Observability, Monitoring, PaaS, OpenTelemetry Collector
+Tags: Azure, Azure App Service, OpenTelemetry, Observability, Monitoring
 
-Description: A practical guide to instrumenting Azure App Services with OpenTelemetry. Covers in-process auto-instrumentation for Node.js, .NET, Java, and Python, how to forward Azure platform logs and metrics via Diagnostic Settings, and the App Service-specific gotchas that trip most teams up.
+Description: A practical guide to instrumenting Azure App Services with OpenTelemetry: in-process auto-instrumentation for Node.js, .NET, Java, and Python, plus forwarding platform logs and metrics.
 
 ---
 
@@ -52,7 +52,7 @@ npm install @opentelemetry/api \
 
 Then in the Azure Portal, go to **your App Service → Configuration → Application settings** and add:
 
-```
+```text
 NODE_OPTIONS = --require @opentelemetry/auto-instrumentations-node/register
 OTEL_SERVICE_NAME = my-node-app
 OTEL_EXPORTER_OTLP_ENDPOINT = https://oneuptime.com/otlp
@@ -69,7 +69,7 @@ Restart the app. Incoming HTTP requests, outbound `fetch`/`http` calls, and popu
 
 For .NET 6+ the cleanest option is the OpenTelemetry Auto-Instrumentation module. Upload `OpenTelemetry.AutoInstrumentation` to `/home/site/wwwroot/otel/` via Kudu (or bundle it in your deployment zip), then set:
 
-```
+```text
 OTEL_DOTNET_AUTO_HOME = /home/site/wwwroot/otel
 CORECLR_ENABLE_PROFILING = 1
 CORECLR_PROFILER = {918728DD-259F-4A6A-AC2B-B85E1B658318}
@@ -88,7 +88,7 @@ On Windows App Service, use `CORECLR_PROFILER_PATH_32` or `CORECLR_PROFILER_PATH
 
 Java has the smoothest ride on App Service because the Java agent attaches at JVM startup with a single flag. Upload `opentelemetry-javaagent.jar` to `/home/site/wwwroot/` and set this for Java SE apps:
 
-```
+```text
 JAVA_OPTS = -javaagent:/home/site/wwwroot/opentelemetry-javaagent.jar
 OTEL_SERVICE_NAME = my-java-app
 OTEL_EXPORTER_OTLP_ENDPOINT = https://oneuptime.com/otlp

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: IPv6, HAProxy, Frontend, Load Balancer, BIND
 
-Description: Learn how to configure HAProxy frontend sections to listen on IPv6 addresses, bind to specific IPv6 addresses, and handle both IPv4 and IPv6 traffic.
+Description: Learn how to configure HAProxy frontend sections to listen on IPv6 addresses, bind to specific IPv6 interfaces, and handle both IPv4 and IPv6 traffic.
 
 ## Basic IPv6 Frontend Bind
 

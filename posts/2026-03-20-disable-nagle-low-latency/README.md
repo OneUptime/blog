@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: TCP, Nagle Algorithm, TCP_NODELAY, Low Latency, Linux, Performance
 
-Description: Disable Nagle's algorithm using TCP_NODELAY in various programming languages and server configurations to reduce latency for interactive applications that send small TCP messages.
+Description: Disable Nagle's algorithm using TCP_NODELAY in various programming languages and server configurations to eliminate 40ms packet coalescing delays for interactive applications.
 
 ## Introduction
 

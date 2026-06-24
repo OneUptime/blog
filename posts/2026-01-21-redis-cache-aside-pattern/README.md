@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Redis, Caching, Cache-Aside, Performance, Database, Python, Node.js, Go
 
-Description: A comprehensive guide to implementing the cache-aside pattern with Redis for lazy loading of database query results.
+Description: A comprehensive guide to implementing the cache-aside pattern with Redis for read-through caching of database queries.
 
 ---
 

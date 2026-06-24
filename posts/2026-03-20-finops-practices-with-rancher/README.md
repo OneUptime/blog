@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rancher, FinOps, Cost Optimization, Cloud, Kubernetes, Chargeback
 
-Description: Implement FinOps practices with Rancher including cost allocation, chargeback/showback reporting, rightsizing automation, quota-based guard rails, and building a culture of cost awareness across...
+Description: Implement FinOps practices with Rancher including cost allocation, chargeback/showback reporting, rightsizing automation, budget enforcement, and building a culture of cost awareness across...
 
 ## Introduction
 

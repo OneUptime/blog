@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: systemd-networkd, Match Section, Interface Selection, Linux, .network, .link, Networking
 
-Description: Learn how to use [Match] sections in `.network` and `.link` files to precisely target specific network interfaces using name, MAC address, driver, and other properties.
+Description: Learn how to use [Match] sections in systemd-networkd .network and .link files to precisely target specific network interfaces using name, MAC address, driver, and other properties.
 
 ---
 

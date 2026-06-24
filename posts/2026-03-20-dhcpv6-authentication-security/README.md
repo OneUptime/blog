@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: DHCPv6, IPv6, Security, Authentication, DHCP
 
-Description: Learn how to protect DHCPv6 infrastructure against rogue server attacks using DHCPv6-Shield, monitoring, and the limited authentication mechanisms defined by DHCPv6.
+Description: Learn how to protect DHCPv6 infrastructure using authentication options to prevent rogue server attacks and unauthorized address assignment.
 
 ## Overview
 

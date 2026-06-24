@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Flux CD, GitOps, Kubernetes, Source Controller, GitRepository, Ignore Rules, Artifact Optimization
 
-Description: Learn how to configure ignore rules in Flux CD GitRepository sources to exclude unnecessary files from artifacts and reduce artifact size.
+Description: Learn how to configure ignore rules in Flux CD GitRepository sources to exclude unnecessary files from artifacts and prevent unwanted reconciliations.
 
 ---
 

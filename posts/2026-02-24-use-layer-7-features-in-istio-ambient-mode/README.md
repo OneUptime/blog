@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Istio, Ambient Mode, Layer 7, Traffic Management, Waypoint
 
-Description: A hands-on guide to using Layer 7 features like HTTP routing, retries, and header-based policies in Istio ambient mode with waypoint proxies.
+Description: A hands-on guide to using Layer 7 features like HTTP routing, retries, rate limiting, and header-based policies in Istio ambient mode with waypoint proxies.
 
 ---
 

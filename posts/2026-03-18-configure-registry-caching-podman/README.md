@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Podman, Container, DevOps, Registry, Caching, Performance, Mirror
 
-Description: Learn how to set up registry caching in Podman to speed up image pulls, reduce bandwidth usage, and support previously cached image pulls during limited-connectivity workflows.
+Description: Learn how to set up registry caching in Podman to speed up image pulls, reduce bandwidth usage, and enable offline container workflows.
 
 ---
 

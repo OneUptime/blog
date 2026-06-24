@@ -1,10 +1,10 @@
-# How to Update Edge Agents with Scheduled Rollback
+# How to Update Edge Agents with Automatic Rollback
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Edge Agent, Update, Rollback, Business Edition
 
-Description: Use Portainer Business Edition's Update & Rollback schedules to safely update edge agents across remote Docker Standalone environments.
+Description: Use Portainer Business Edition's edge update schedules with automatic rollback to safely update edge agents across remote environments.
 
 ## Introduction
 

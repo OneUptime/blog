@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Collector, Helm, Kubernetes
 
-Description: Fix Helm chart upgrade failures for the OpenTelemetry Collector caused by immutable selector label changes in chart versions 0.110.1 and 0.110.2.
+Description: Fix Helm chart upgrade failures for the OpenTelemetry Collector caused by immutable selector label changes in chart version 0.110.0.
 
 You run `helm upgrade` for the OpenTelemetry Collector and get:
 

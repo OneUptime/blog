@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubewarden, Kubernetes, Policy, Monitoring, Observability
 
-Description: Learn how to monitor Kubewarden policy decisions using OpenTelemetry, Prometheus metrics, and audit scanner reports to gain visibility into your admission control activity.
+Description: Learn how to monitor Kubewarden policy decisions using OpenTelemetry, Prometheus metrics, and audit logging to gain visibility into your admission control activity.
 
 ## Introduction
 

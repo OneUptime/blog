@@ -2,9 +2,9 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: IPv6, Cisco SD-WAN, Viptela, VManage, WAN, OMP, Overlay
+Tags: IPv6, Cisco SD-WAN, Viptela, VManage, WAN, BGP, OSPF, Overlay
 
-Description: Configure IPv6 support in Cisco SD-WAN (formerly Viptela) including service-side IPv6 addressing, transport-side IPv6, OMP IPv6 route distribution, and IPv6 traffic-steering policies.
+Description: Configure IPv6 support in Cisco SD-WAN (formerly Viptela) including service-side IPv6 addressing, transport-side IPv6, IPv6 BGP peering, and IPv6 application-aware routing policies.
 
 ---
 

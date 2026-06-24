@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Linux, nmcli, NetworkManager, IPv6, IPv4, Networking
 
-Description: Disable IPv6 on Linux network interfaces using nmcli, forcing connections to use IPv4 only by setting the IPv6 method to disabled.
+Description: Disable IPv6 on Linux network interfaces using nmcli, forcing connections to use IPv4 only by setting the IPv6 method to disabled or ignore.
 
 ## Introduction
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, CloudEvent, Distributed Tracing, Event-Driven Architecture
 
-Description: Learn how to instrument CloudEvents with OpenTelemetry using the distributed tracing extension with the CloudEvents SDK for full event observability.
+Description: Learn how to instrument CloudEvents with OpenTelemetry using the distributed tracing extension in the CloudEvents SDK for full event observability.
 
 CloudEvents is a specification for describing event data in a common way. When you combine it with OpenTelemetry, you get full visibility into how events flow across your distributed system. The CloudEvents distributed tracing extension defines trace context attributes, and the CloudEvents SDK lets you carry those attributes with your events.
 

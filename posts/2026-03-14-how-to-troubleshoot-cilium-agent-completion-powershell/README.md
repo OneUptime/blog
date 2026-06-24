@@ -1,10 +1,10 @@
-# How to Troubleshoot cilium-agent
+# How to Troubleshoot cilium-agent completion powershell
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Cilium, Troubleshooting, CLI
 
-Description: A practical guide covering how to troubleshoot cilium-agent with step-by-step instructions and real-world examples for production Kubernetes clusters.
+Description: A practical guide covering how to troubleshoot cilium-agent completion powershell with step-by-step instructions and real-world examples for production Kubernetes clusters.
 
 ---
 

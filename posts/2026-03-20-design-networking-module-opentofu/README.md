@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Terraform, Networking, VPC, Transit Gateway, AWS, Module
 
-Description: Learn how to design a comprehensive networking module for OpenTofu that manages VPC peering, Transit Gateway attachments, and VPC route updates for connected VPCs.
+Description: Learn how to design a comprehensive networking module for OpenTofu that manages VPC peering, Transit Gateway attachments, and cross-account network connectivity.
 
 ## Introduction
 

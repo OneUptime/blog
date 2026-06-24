@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: IPv6, DSL, PPPoE, DSLAM, ISP, Prefix Delegation
 
-Description: Configure IPv6 for DSL networks using IPv6 over PPPoE with prefix delegation, including access-network forwarding and subscriber address management.
+Description: Configure IPv6 for DSL networks using PPPoEv6 with prefix delegation, including DSLAM configuration and subscriber address management.
 
 ## IPv6 Over PPPoE Architecture
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTofu, Terraform, Licensing, MPL, BSL, Open Source
+Tags: OpenTofu, Terraform, Licensing, MPLS, BSL, Open Source
 
 Description: Understand the license change that triggered the OpenTofu fork - the difference between Mozilla Public License 2.0 and Business Source License 1.1 - and what it means for infrastructure teams...
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Kubernetes, Webhook, CI/CD, Automation
 
-Description: Learn how to configure application webhooks in Portainer to trigger GitOps updates for Kubernetes applications deployed from a Git repository.
+Description: Learn how to configure application webhooks in Portainer to trigger automated redeployments when a new container image is pushed.
 
 ## What Are Application Webhooks?
 

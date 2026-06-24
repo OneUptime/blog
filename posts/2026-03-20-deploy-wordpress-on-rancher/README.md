@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rancher, WordPress, Kubernetes, Helm, MySQL, Content Management
 
-Description: Deploy WordPress on Rancher with persistent storage, MySQL database, and Ingress for a production-ready CMS on Kubernetes.
+Description: Deploy WordPress on Rancher with persistent storage, MySQL database, autoscaling, and Ingress for a production-ready CMS on Kubernetes.
 
 ## Introduction
 

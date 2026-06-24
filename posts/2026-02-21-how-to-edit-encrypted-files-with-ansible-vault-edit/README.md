@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, Vault, Encryption, Security, Secrets Management
 
-Description: Learn how to safely edit Ansible Vault encrypted files using ansible-vault edit without leaving the original file decrypted on disk.
+Description: Learn how to safely edit Ansible Vault encrypted files using ansible-vault edit without ever leaving plain-text secrets on disk.
 
 ---
 

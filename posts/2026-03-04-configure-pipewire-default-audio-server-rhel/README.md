@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, PipeWire, Audio, PulseAudio, Sound, Linux
 
-Description: Configure PipeWire as the default audio server on RHEL 9 and later, replacing the PulseAudio daemon for improved audio handling, lower latency, and better Bluetooth audio support.
+Description: Configure PipeWire as the default audio server on RHEL, replacing PulseAudio for improved audio handling, lower latency, and better Bluetooth audio support.
 
 ---
 

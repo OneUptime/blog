@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, Filter, File Paths, Automation, DevOps
 
-Description: Learn how to use the path_join filter in Ansible to safely construct file paths without worrying about trailing slashes or missing separators.
+Description: Learn how to use the path_join filter in Ansible to safely construct file paths without worrying about trailing slashes or OS differences.
 
 ---
 

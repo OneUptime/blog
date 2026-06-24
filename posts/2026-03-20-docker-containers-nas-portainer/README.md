@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, NAS, Docker, Container Management, Self-Hosted, Home Lab
 
-Description: Use Portainer to manage Docker containers on a NAS device running Docker, covering container lifecycle management, volume management, and log inspection.
+Description: Use Portainer to manage Docker containers on any NAS device, covering container lifecycle management, volume management, and log inspection.
 
 ## Introduction
 

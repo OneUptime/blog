@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Linux, Network Bonding, Balance-XOR, Mode 2, Load Balancing, Networking
 
-Description: Configure Linux balance-XOR bonding (mode 2) to distribute traffic across slave interfaces using a transmit hashing policy for consistent load distribution and fault tolerance.
+Description: Configure Linux balance-XOR bonding (mode 2) to distribute traffic across slave interfaces using a hashing algorithm for consistent per-flow load balancing.
 
 ## Introduction
 

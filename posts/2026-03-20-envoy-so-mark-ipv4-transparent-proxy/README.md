@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Envoy, SO_MARK, IPv4, Transparent Proxy, iptables, Linux, Networking
 
-Description: Learn how to configure Envoy's SO_MARK socket option to mark outbound IPv4 packets so iptables can exclude them from transparent proxy redirects, and so policy routing can optionally steer them via a separate routing table.
+Description: Learn how to configure Envoy's SO_MARK socket option to mark outbound IPv4 packets for policy-based routing in transparent proxy deployments.
 
 ---
 

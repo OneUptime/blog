@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Trivy, Security Scanning, Vulnerability Scanner, Docker, Container Security
 
-Description: Learn how to deploy Trivy as a persistent scanning service with Portainer, providing on-demand image vulnerability scanning via Trivy client/server mode.
+Description: Learn how to deploy Trivy as a persistent scanning service with Portainer, providing on-demand image vulnerability scanning via a REST API.
 
 ---
 

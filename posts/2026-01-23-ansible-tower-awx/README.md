@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, AWX, Ansible Tower, Automation Platform, DevOps, Enterprise Automation
 
-Description: Deploy and configure AWX (the upstream project for automation controller, formerly Ansible Tower) for enterprise automation with web UI, RBAC, job scheduling, and API-driven workflows.
+Description: Deploy and configure AWX (the open-source Ansible Tower) for enterprise automation with web UI, RBAC, job scheduling, and API-driven workflows.
 
 ---
 

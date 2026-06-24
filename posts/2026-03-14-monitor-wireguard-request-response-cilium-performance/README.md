@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Cilium, Kubernetes, WireGuard, Monitoring, Latency, Prometheus
 
-Description: Set up monitoring for WireGuard's impact on request/response latency in Cilium, including synthetic request/response tracking and flow visibility dashboards.
+Description: Set up monitoring for WireGuard's impact on request/response latency in Cilium, including per-transaction latency tracking and crypto overhead dashboards.
 
 ---
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Elemental, Machine Selectors, Kubernetes, Edge, CAPI
 
-Description: Use MachineInventorySelectorTemplate resources to match registered machines to cluster roles for automated Kubernetes provisioning.
+Description: Use MachineInventorySelector resources to match registered machines to cluster roles for automated Kubernetes provisioning.
 
 ## Introduction
 

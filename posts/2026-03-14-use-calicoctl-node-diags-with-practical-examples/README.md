@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Calicoctl, Diagnostic, Kubernetes, Troubleshooting
 
-Description: Learn how to collect comprehensive Calico node diagnostics using calicoctl node diags, including log collection, routing information, iptables state, and system information gathering.
+Description: Learn how to collect comprehensive Calico node diagnostics using calicoctl node diags, including log collection, configuration dumps, and system information gathering.
 
 ---
 

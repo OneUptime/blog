@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Docker, Troubleshooting, Security, Upgrade, CORS
 
-Description: Resolve 'Origin Invalid' errors that can appear after upgrading Portainer behind a reverse proxy, caused by stricter origin validation in affected recent releases.
+Description: Resolve 'Origin Invalid' or CORS-related errors that appear after upgrading Portainer, caused by stricter origin validation introduced in recent versions.
 
 ## Introduction
 

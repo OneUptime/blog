@@ -2,9 +2,9 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Portainer, Docker, API Gateway, Kong, Microservice, Security
+Tags: Portainer, Docker, API Gateway, Kong, Traefik, Microservice, Security
 
-Description: Deploy Kong as a production-ready API gateway with rate limiting, authentication plugins, and monitoring using Portainer.
+Description: Deploy Kong or Traefik as a production-ready API gateway with rate limiting, authentication plugins, and analytics using Portainer.
 
 ## Introduction
 

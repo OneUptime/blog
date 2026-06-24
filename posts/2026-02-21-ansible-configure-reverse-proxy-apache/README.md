@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, Apache, Reverse Proxy, DevOps, Web Server
 
-Description: Set up Apache as a reverse proxy using Ansible with mod_proxy, WebSocket support, load balancing, and proxy security.
+Description: Set up Apache as a reverse proxy using Ansible with mod_proxy, WebSocket support, load balancing, and SSL termination.
 
 ---
 

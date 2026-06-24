@@ -2,9 +2,9 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Video Intelligence API, Content Moderation, Explicit Content Detection, Video Analysis
+Tags: GCP, Video Intelligence API, Content Moderation, SafeSearch, Video Analysis
 
-Description: Automatically detect explicit adult content in uploaded videos using Google Cloud Video Intelligence API explicit content detection.
+Description: Automatically detect explicit and inappropriate content in uploaded videos using Google Cloud Video Intelligence API SafeSearch detection.
 
 ---
 

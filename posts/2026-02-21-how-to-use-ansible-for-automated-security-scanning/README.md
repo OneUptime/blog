@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, Security, Scanning, Vulnerability, DevOps
 
-Description: Automate security compliance checks and remediation with Ansible using custom scan playbooks.
+Description: Automate security vulnerability scanning with Ansible using OpenSCAP, Lynis, and custom scan playbooks.
 
 ---
 

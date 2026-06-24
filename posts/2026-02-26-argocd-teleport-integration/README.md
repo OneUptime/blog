@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: ArgoCD, GitOps, Kubernetes, Teleport, Zero Trust
 
-Description: Learn how to integrate ArgoCD with Teleport for zero-trust access, including certificate-based authentication, audit logging, and just-in-time access controls for GitOps workflows.
+Description: Learn how to integrate ArgoCD with Teleport for zero-trust access, including certificate-based authentication, session recording, and just-in-time access controls for GitOps workflows.
 
 ---
 

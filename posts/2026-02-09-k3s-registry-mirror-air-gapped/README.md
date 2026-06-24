@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, k3s, Air-Gapped
 
-Description: Learn how to set up K3s with private registry mirrors and the embedded distributed registry mirror for air-gapped edge deployments, enabling container image distribution without internet access.
+Description: Learn how to set up K3s with an embedded registry mirror for air-gapped edge deployments, enabling container image distribution without internet access or external registry dependencies.
 
 ---
 

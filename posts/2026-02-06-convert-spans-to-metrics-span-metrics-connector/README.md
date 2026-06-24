@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Collector, Span Metrics, Trace, Metric, RED Metrics, Observability
 
-Description: Master the Span Metrics connector in OpenTelemetry Collector to automatically generate RED metrics from distributed traces for comprehensive service monitoring.
+Description: Master the Span Metrics connector in OpenTelemetry Collector to automatically generate RED metrics and custom measurements from distributed traces for comprehensive service monitoring.
 
 The Span Metrics connector is one of the most valuable components in the OpenTelemetry Collector, automatically generating metrics from trace spans. This connector eliminates the need for duplicate instrumentation, allowing you to derive RED (Rate, Error, Duration) metrics directly from your traces. The result is consistent metrics that perfectly align with your trace data, reducing instrumentation overhead and ensuring your metrics and traces tell the same story.
 

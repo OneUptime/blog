@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Docker, Plex, Media Server, Self-Hosted, Streaming
 
-Description: Deploy Plex Media Server via Portainer with access to your local media library, optional hardware transcoding, and remote access for streaming anywhere with the appropriate Plex subscription.
+Description: Deploy Plex Media Server via Portainer with access to your local media library, optional hardware transcoding, and remote access for streaming anywhere.
 
 ## Introduction
 

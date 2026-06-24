@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: AWS, VPC, Prefix Lists, Security, IP Whitelisting
 
-Description: A hands-on guide to using AWS managed prefix lists for centralized IP whitelisting across security groups in multi-account environments.
+Description: A hands-on guide to using AWS managed prefix lists for centralized IP whitelisting across security groups, NACLs, and WAF rules in multi-account environments.
 
 ---
 

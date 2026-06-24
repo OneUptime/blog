@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Migration, Docker, Administration, Data Volume, Server Move
 
-Description: Learn how to migrate the Portainer data volume from one server to another, preserving Portainer users, stack definitions, registries, and environment configuration stored in the data volume.
+Description: Learn how to migrate the Portainer data volume from one server to another, preserving all users, stacks, registries, and environment configurations.
 
 ---
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: ArgoCD, GitOps, Kubernetes, UI, Customization
 
-Description: Learn how to create and contribute custom resource icons in ArgoCD to improve visual identification of Kubernetes resources in the application tree view.
+Description: Learn how to create and configure custom resource icons in ArgoCD to improve visual identification of Kubernetes resources in the application tree view.
 
 ---
 

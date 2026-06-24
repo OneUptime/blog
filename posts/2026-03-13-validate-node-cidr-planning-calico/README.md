@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, IPAM, CIDR, Networking
 
-Description: Learn how to validate your Calico IP pool planning to ensure sufficient IP space, avoid overlaps, and support future cluster growth.
+Description: Learn how to validate your node CIDR planning with Calico IPAM to ensure sufficient IP space, avoid overlaps, and support future cluster growth.
 
 ---
 

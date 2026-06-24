@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Google Cloud Functions, Serverless, Tracing, Node.js, Python
 
-Description: A practical guide to adding OpenTelemetry tracing to Google Cloud Functions for serverless observability.
+Description: A practical guide to adding OpenTelemetry tracing and metrics to Google Cloud Functions for full serverless observability.
 
 ---
 

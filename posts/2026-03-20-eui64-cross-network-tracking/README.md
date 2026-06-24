@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: IPv6, EUI-64, Privacy, Tracking, Security, Networking
 
-Description: Understand how IPv6 EUI-64 address generation can embed a stable MAC-derived identifier in an IPv6 address, enabling persistent cross-network device tracking and how to mitigate it.
+Description: Understand how IPv6 EUI-64 address generation embeds your device's MAC address into every packet, enabling persistent cross-network device tracking and how to mitigate it.
 
 ## Introduction
 

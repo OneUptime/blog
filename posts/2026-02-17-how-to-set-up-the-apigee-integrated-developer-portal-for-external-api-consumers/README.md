@@ -47,7 +47,7 @@ info:
 
     ```
     x-api-key: YOUR_API_KEY
-    ```
+    ```yaml
 
     ## Rate Limits
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rancher, Nginx, High Availability, Load Balancer, SSL, Stream Module
 
-Description: Use NGINX as a TCP/SSL load balancer for Rancher HA with stream module configuration, passive health checks, optional NGINX Plus active checks, and optional Kubernetes API proxying.
+Description: Use NGINX as a TCP/SSL load balancer for Rancher HA with stream module configuration, upstream health checks, and Kubernetes API proxying.
 
 ## Introduction
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RKE, Kubernetes, Rancher, Networking, CNI, Canal, Flannel, Calico
 
-Description: A comprehensive guide to configuring CNI network plugins in RKE1, including Canal, Flannel, Calico, and Weave.
+Description: A comprehensive guide to configuring CNI network plugins in RKE, including Canal, Flannel, Calico, and Weave.
 
 ## Introduction
 

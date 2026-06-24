@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ruby on Rails, PostgreSQL, Full-Text Search, Database, Search, Performance
+Tags: Ruby On Rail, PostgreSQL, Full-Text Search, Database, Search, Performance
 
 Description: Learn how to implement powerful full-text search in your Rails application using PostgreSQL's built-in search capabilities, from basic tsvector queries to advanced features like ranking, highlighting.
 

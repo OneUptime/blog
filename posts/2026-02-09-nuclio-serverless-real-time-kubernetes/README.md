@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Nuclio, Kubernetes, Serverless, Real-Time, Data-Processing
 
-Description: Deploy Nuclio on Kubernetes for high-performance serverless functions optimized for real-time data processing with low latency and GPU support.
+Description: Deploy Nuclio on Kubernetes for high-performance serverless functions optimized for real-time data processing with sub-millisecond latency and GPU support.
 
 ---
 

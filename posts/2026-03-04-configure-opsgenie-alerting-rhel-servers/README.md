@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, OpsGenie, Alerting, Monitoring, Linux
 
-Description: Set up Opsgenie alerting from RHEL servers using the Opsgenie API to create and manage alerts for system issues.
+Description: Set up Opsgenie alerting from RHEL servers using the Opsgenie API to create and manage incidents for system issues.
 
 ---
 

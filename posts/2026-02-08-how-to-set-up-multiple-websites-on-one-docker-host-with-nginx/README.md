@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Docker, Nginx, Web Server, Reverse Proxy, DevOps, Hosting
 
-Description: Host multiple websites on a single Docker server using Nginx as a reverse proxy with SSL certificate renewal support.
+Description: Host multiple websites on a single Docker server using Nginx as a reverse proxy with automatic SSL certificate management.
 
 ---
 

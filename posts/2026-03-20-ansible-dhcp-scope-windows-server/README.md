@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, DHCP, Windows Server, Automation, PowerShell, IPv4, Network Management
 
-Description: Learn how to automate DHCP scope creation and management on Windows Server using Ansible with the win_powershell module and PowerShell DHCP cmdlets.
+Description: Learn how to automate DHCP scope creation and management on Windows Server using Ansible with the win_shell module and PowerShell DHCP cmdlets.
 
 ---
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, GCP, Vertex AI, Machine Learning, MLOps, Infrastructure as Code
 
-Description: Learn how to create GCP Vertex AI endpoints with OpenTofu, then deploy models and configure traffic splits with the Google Cloud CLI.
+Description: Learn how to create GCP Vertex AI endpoints, deploy models, and configure traffic splits for A/B testing using OpenTofu.
 
 ## Introduction
 

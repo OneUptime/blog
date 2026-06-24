@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Customs Declaration, Trade Compliance, International Logistics
 
-Description: Instrument customs declaration processing and trade compliance validation workflows with OpenTelemetry for audit trail visibility.
+Description: Instrument customs declaration processing and trade compliance validation workflows with OpenTelemetry for full audit trail visibility.
 
 International shipments must clear customs, and that involves a chain of validations: HS code classification, duty calculation, restricted party screening, country-of-origin verification, and document submission to government portals. Any step can fail or stall, holding up goods at the border. OpenTelemetry tracing gives you visibility into every stage of customs processing and, equally important, telemetry that can support compliance audit trails.
 

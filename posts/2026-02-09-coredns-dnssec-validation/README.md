@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: CoreDNS, Kubernetes, DNSSEC, Security, DNS
 
-Description: Learn how to configure DNSSEC-aware resolution with CoreDNS to protect your Kubernetes cluster from DNS spoofing and cache poisoning attacks. Complete implementation guide with monitoring.
+Description: Learn how to configure DNSSEC validation in CoreDNS to protect your Kubernetes cluster from DNS spoofing and cache poisoning attacks. Complete implementation guide with monitoring.
 
 ---
 

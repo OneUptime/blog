@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Dapr, API Key, Authentication, Security, Middleware
 
-Description: Protect Dapr service invocation endpoints with API token authentication using Dapr's built-in token validation and Kubernetes secrets.
+Description: Protect Dapr service invocation endpoints with API key authentication using the built-in middleware component and Kubernetes secrets.
 
 ---
 

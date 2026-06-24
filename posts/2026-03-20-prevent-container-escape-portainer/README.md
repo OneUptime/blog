@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Docker, Security, Container Escape, Privilege Escalation, Hardening
 
-Description: Harden Docker containers against escape attacks by disabling privileged mode, restricting mounts, keeping Docker's default seccomp profile enabled, and applying the no-new-privileges flag via Portainer.
+Description: Harden Docker containers against escape attacks by disabling privileged mode, restricting mounts, enabling seccomp, and applying the no-new-privileges flag via Portainer.
 
 ## Introduction
 

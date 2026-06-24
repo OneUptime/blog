@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, Networking, VPP, DPDK, Validation, Technical
 
-Description: How to technically validate Calico VPP's internal state, including node graph operation, policy programming, CNAT service translation correctness, and FIB consistency verification.
+Description: How to technically validate Calico VPP's internal state, including node graph operation, ACL programming, NAT table correctness, and FIB consistency verification.
 
 ---
 

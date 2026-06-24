@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: IPv6, Networking, Address Types, Prefixes, Unicast, Multicast
+Tags: IPv6, Networking, Address Types, Prefixes, Unicast, Multicast, Anycast
 
 Description: Identify all major IPv6 address types - global unicast, link-local, multicast, loopback, unspecified, and unique local - by their prefix ranges.
 

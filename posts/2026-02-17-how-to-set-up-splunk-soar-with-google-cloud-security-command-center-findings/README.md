@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GCP, Splunk SOAR, Security Command Center, Security Automation, Google Cloud, SIEM
 
-Description: Configure Splunk and Splunk SOAR to ingest and respond to Google Cloud Security Command Center findings for automated security incident response.
+Description: Configure Splunk SOAR to automatically ingest and respond to Google Cloud Security Command Center findings for automated security incident response.
 
 ---
 

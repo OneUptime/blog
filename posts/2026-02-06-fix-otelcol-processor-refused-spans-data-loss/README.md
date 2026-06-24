@@ -1,10 +1,10 @@
-# How to Fix OpenTelemetry Collector Refused Spans Alerting on Data Loss
+# How to Fix 'otelcol_processor_refused_spans' Metric Alerting on Data Loss
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Collector, Metric, Data Loss, Backpressure, Memory, Troubleshooting, Span
 
-Description: Diagnose and resolve refused span and exporter failure metrics in OpenTelemetry Collector to prevent trace data loss and pipeline backpressure issues.
+Description: Diagnose and resolve the otelcol_processor_refused_spans metric in OpenTelemetry Collector to prevent trace data loss and pipeline backpressure issues.
 
 ---
 

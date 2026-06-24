@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, DevOps, Linux, Automation
 
-Description: Learn how to use the Ansible unarchive module to extract tar and zip archives to managed hosts with full control over permissions and destinations.
+Description: Learn how to use the Ansible unarchive module to extract tar, zip, and gz archives to managed hosts with full control over permissions and destinations.
 
 ---
 

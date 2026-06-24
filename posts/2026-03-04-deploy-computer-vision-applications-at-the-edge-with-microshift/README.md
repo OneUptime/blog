@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, MicroShift, Edge, Computer Vision, Kubernetes, Container
 
-Description: Deploy containerized computer vision workloads on edge devices running MicroShift on RHEL, using GPU access and optimized container images.
+Description: Deploy containerized computer vision workloads on edge devices running MicroShift on RHEL, using GPU passthrough and optimized container images.
 
 ---
 

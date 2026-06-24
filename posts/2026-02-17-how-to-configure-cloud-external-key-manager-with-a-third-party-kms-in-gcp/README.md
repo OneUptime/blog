@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GCP, Cloud EKM, External Key Manager, Cloud KMS, Encryption
 
-Description: A practical guide to configuring Google Cloud External Key Manager (Cloud EKM) to use encryption keys stored in a third-party key management system like Thales, Fortanix, or Futurex.
+Description: A practical guide to configuring Google Cloud External Key Manager (Cloud EKM) to use encryption keys stored in a third-party key management system like Thales, Fortanix, or Equinix.
 
 ---
 

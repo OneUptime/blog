@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Azure, PostgreSQL, Citus, Distributed Database, Sharding, Scalability, Flexible Server
 
-Description: Learn how to create and use a Citus-backed Elastic Cluster on Azure Database for PostgreSQL Flexible Server for horizontally scalable distributed queries.
+Description: Learn how to enable and use the Citus extension on Azure Database for PostgreSQL Flexible Server for horizontally scalable distributed queries.
 
 ---
 

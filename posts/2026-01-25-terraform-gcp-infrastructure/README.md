@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Terraform, Google Cloud Platform, GCP, Infrastructure as Code, DevOps, Cloud
 
-Description: A practical guide to deploying Google Cloud Platform infrastructure with Terraform, covering VPC networks, compute instances, private GKE clusters, Cloud SQL, and Cloud Storage with working examples.
+Description: A practical guide to deploying Google Cloud Platform infrastructure with Terraform, covering VPC networks, compute instances, GKE clusters, Cloud SQL, and Cloud Storage with working examples.
 
 ---
 

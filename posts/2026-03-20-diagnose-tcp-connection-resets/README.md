@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: TCP RST, Connection Reset, Wireshark, tcpdump, Troubleshooting
 
-Description: Learn how to diagnose TCP connection resets by capturing and analyzing RST packets with tcpdump and Wireshark, then identify whether the cause is firewall rules, application errors, timeouts...
+Description: Learn how to diagnose TCP connection resets by capturing and analyzing RST packets with tcpdump and Wireshark, then identify whether the cause is firewall rules, application errors, timewall...
 
 ## What Causes TCP RST Packets?
 

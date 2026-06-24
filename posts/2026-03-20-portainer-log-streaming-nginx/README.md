@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Docker, Nginx, Reverse Proxy, Log, Troubleshooting
 
-Description: Fix Portainer container log streaming failures behind Nginx, including buffering issues, timeout configuration, and reverse proxy configuration for real-time log display.
+Description: Fix Portainer container log streaming failures behind Nginx, including buffering issues, timeout configuration, and WebSocket configuration for real-time log display.
 
 ## Introduction
 

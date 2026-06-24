@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Entity Framework Core, Azure SQL, Read Replica, .NET, Performance, Database, Scaling
 
-Description: Scale read-heavy workloads by routing queries to Azure SQL Database read replicas using separate Entity Framework Core contexts.
+Description: Scale read-heavy workloads by routing queries to Azure SQL Database read replicas using Entity Framework Core interceptors.
 
 ---
 

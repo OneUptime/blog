@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Kafka Streams, State Store, Performance
 
-Description: Monitor Kafka Streams application state store latency, commit rate, and processing throughput using custom OpenTelemetry JMX metrics collection.
+Description: Monitor Kafka Streams application state store latency, commit rate, and processing throughput using OpenTelemetry JMX metrics collection.
 
 Kafka Streams applications maintain local state stores for operations like aggregations, joins, and windowed computations. The performance of these state stores directly impacts your stream processing latency. Monitoring state store operations alongside commit rates and processing throughput helps you tune your Kafka Streams applications for optimal performance.
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, QoS, Networking, Bandwidth
 
-Description: Configure Quality of Service controls in Calico to limit pod bandwidth for critical workloads.
+Description: Configure Quality of Service controls in Calico to limit pod bandwidth and prioritize traffic for critical workloads using tc and eBPF.
 
 ---
 

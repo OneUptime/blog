@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Collector, JVM, JMX, Java, Metric, Monitoring, Garbage Collection, Observability
 
-Description: Learn how to collect JVM metrics like heap memory, class loading, CPU, and thread counts using the OpenTelemetry JMX Scraper and Collector.
+Description: Learn how to collect JVM metrics like heap memory, garbage collection, and thread counts using the JMX receiver in the OpenTelemetry Collector.
 
 ---
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Podman, Container, DevOps, Logging, JSON
 
-Description: Learn how to configure and use the json-file log driver alias in Podman for Kubernetes-compatible file logging, including size limits and programmatic parsing.
+Description: Learn how to configure and use the json-file log driver in Podman for Docker-compatible JSON log output, including log rotation and programmatic parsing.
 
 ---
 

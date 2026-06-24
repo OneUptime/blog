@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Podman, IPv6, Container Networking, Netavark, Rootless, Linux
+Tags: Podman, IPv6, Container Networking, CNI, Rootless, Linux
 
 Description: A guide to configuring Podman container networking with IPv6 support, including custom networks, dual-stack configuration, and rootless IPv6 containers.
 

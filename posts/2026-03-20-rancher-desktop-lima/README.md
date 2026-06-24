@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rancher Desktop, Lima, macOS, VM, Configuration
 
-Description: Configure Rancher Desktop on macOS, where Rancher Desktop runs workloads inside a Lima-managed virtual machine, for optimal performance and compatibility.
+Description: Configure the Lima virtual machine backend in Rancher Desktop on macOS for optimal performance and compatibility.
 
 ## Introduction
 

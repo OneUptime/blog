@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rancher, High Availability, Scaling, etcd, Kubernetes, Capacity
 
-Description: Scale Rancher HA from 3 to 5 or 7 server nodes, covering etcd expansion requirements, node join procedures, and load balancer updates.
+Description: Scale Rancher HA from 3 to 5 or more server nodes, covering etcd expansion requirements, node join procedures, and load balancer updates.
 
 ## Introduction
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Azure Repos, Git Hooks, Commit Messages, Conventional Commits, Code Quality, Azure DevOps, Git
 
-Description: Enforce commit message conventions in Azure Repos using client-side Git hooks and Azure DevOps validation for consistent project history.
+Description: Enforce commit message conventions in Azure Repos using client-side and server-side Git hooks for consistent project history.
 
 ---
 

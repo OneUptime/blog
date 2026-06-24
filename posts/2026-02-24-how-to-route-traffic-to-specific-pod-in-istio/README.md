@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Istio, Traffic Routing, Debugging, Kubernetes, Pod Targeting
 
-Description: Learn how to route traffic to a specific pod in Istio for debugging, testing, and troubleshooting using DestinationRule subsets and ServiceEntry.
+Description: Learn how to route traffic to a specific pod in Istio for debugging, testing, and troubleshooting using DestinationRule subsets and WorkloadEntry.
 
 ---
 

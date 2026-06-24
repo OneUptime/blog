@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Troubleshooting, Stack, Recovery, Database, Crash
 
-Description: Learn how to recover from 'Stack Not Found' errors after a Portainer crash by restoring Portainer from backup, re-associating orphaned stacks, or rolling back a failed upgrade.
+Description: Learn how to recover from 'Stack Not Found' errors after a Portainer crash by restoring stack metadata from the database or re-importing running stacks.
 
 ---
 

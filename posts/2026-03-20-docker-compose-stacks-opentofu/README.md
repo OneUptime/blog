@@ -1,10 +1,10 @@
-# How to Manage Docker Resources with OpenTofu
+# How to Docker Compose Stacks with OpenTofu
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Docker, Container, Infrastructure as Code, DevOps
 
-Description: Learn how to manage Docker resources with OpenTofu using the Docker provider for local and remote Docker host management.
+Description: Learn how to docker compose stacks with OpenTofu using the Docker provider for local and remote container management.
 
 ## Introduction
 

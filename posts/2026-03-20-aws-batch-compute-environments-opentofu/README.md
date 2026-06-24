@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, AWS, Batch, Compute, HPC, Infrastructure as Code
 
-Description: Learn how to create AWS Batch managed compute environments with EC2, Spot, and Fargate compute resources using OpenTofu.
+Description: Learn how to create AWS Batch managed and unmanaged compute environments with EC2 and Fargate launch types using OpenTofu.
 
 ## Introduction
 

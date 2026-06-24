@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, HAProxy, PostgreSQL, Load Balancing, Linux
 
-Description: Configure HAProxy to route PostgreSQL connections on RHEL with primary/replica splitting, health checks, and failover support.
+Description: Configure HAProxy to route PostgreSQL connections on RHEL with primary/replica splitting, health checks, and connection pooling.
 
 ---
 

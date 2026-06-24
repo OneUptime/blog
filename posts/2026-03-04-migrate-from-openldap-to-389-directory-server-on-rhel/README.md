@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, 389 Directory Server, OpenLDAP, LDAP, Migration
 
-Description: Migrate your LDAP directory from OpenLDAP to 389 Directory Server on RHEL using the migration tools to preserve users, groups, and schema.
+Description: Migrate your LDAP directory from OpenLDAP to 389 Directory Server on RHEL using the built-in migration tools to preserve users, groups, and schema.
 
 ---
 

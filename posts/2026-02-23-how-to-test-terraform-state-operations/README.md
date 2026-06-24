@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Terraform, Testing, State Management, Infrastructure as Code, DevOps
 
-Description: Learn how to safely test Terraform state operations like imports, moves, and removals before running them against production infrastructure.
+Description: Learn how to safely test Terraform state operations like imports, moves, and replacements before running them against production infrastructure.
 
 ---
 

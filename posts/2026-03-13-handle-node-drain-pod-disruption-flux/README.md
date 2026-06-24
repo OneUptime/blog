@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Flux CD, Kubernetes, GitOps, Day 2 Operations, Node Drain, PodDisruptionBudget, Cluster Operations
 
-Description: Manage node drains and pod disruptions in Flux-managed clusters to ensure workloads move gracefully while Flux continues normal reconciliation.
+Description: Manage node drains and pod disruptions in Flux-managed clusters to ensure workloads move gracefully without triggering unwanted Flux reconciliations.
 
 ---
 

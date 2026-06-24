@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GCP, Cloud SQL, PostgreSQL, Pg_repack, Schema Migration, Zero Downtime, Database
 
-Description: Learn how to use pg_repack on Cloud SQL PostgreSQL to perform table reorganization and post-migration cleanup without extended table locks or application downtime.
+Description: Learn how to use pg_repack on Cloud SQL PostgreSQL to perform table reorganization and schema changes without locking tables or causing application downtime.
 
 ---
 

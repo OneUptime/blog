@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: AWS, S3, Terraform, Infrastructure as Code
 
-Description: Learn how to configure Amazon S3 as a Terraform state backend with state locking, encryption, and best practices for team collaboration.
+Description: Learn how to configure Amazon S3 as a Terraform state backend with DynamoDB locking, encryption, and best practices for team collaboration.
 
 ---
 

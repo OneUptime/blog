@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Loki, Grafana, Alloy, Logging, OpenTofu, Helm, Observability
+Tags: Kubernetes, Loki, Grafana, Promtail, Logging, OpenTofu, Helm, Observability
 
 Description: Learn how to deploy the Grafana Loki stack on Kubernetes using OpenTofu and Helm for centralized log aggregation, querying, and visualization with Grafana.
 

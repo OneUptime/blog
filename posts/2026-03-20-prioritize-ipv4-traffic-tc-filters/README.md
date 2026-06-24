@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: tc, IPv4, Linux, QoS, Traffic Prioritization, HTB
 
-Description: Use tc filters with HTB classes to prioritize outbound IPv4 traffic by destination port, ensuring latency-sensitive applications get bandwidth priority.
+Description: Use tc filters with HTB classes to prioritize IPv4 traffic by destination port, ensuring latency-sensitive applications get bandwidth priority.
 
 Traffic prioritization ensures that critical applications like VoIP, SSH, and DNS are served before bulk transfers when the egress link is congested.
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: OpenStack, Calico, Labels, Testing, Production
 
-Description: A guide to testing label-based network policies in OpenStack with Calico, covering endpoint label validation, policy selector testing, and security group change impact analysis.
+Description: A guide to testing label-based network policies in OpenStack with Calico, covering label propagation validation, policy selector testing, and label change impact analysis.
 
 ---
 

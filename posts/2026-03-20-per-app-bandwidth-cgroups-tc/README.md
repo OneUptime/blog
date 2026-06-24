@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Cgroups, tc, Traffic Control, Bandwidth, IPv4, Linux, QoS
 
-Description: Use Linux cgroups (v1) combined with tc and the net_cls controller to apply per-application IPv4 bandwidth limits by tagging traffic by cgroup membership.
+Description: Use Linux cgroups (v2) combined with tc and eBPF or net_cls to apply per-application IPv4 bandwidth limits by tagging traffic by cgroup membership.
 
 ## Introduction
 

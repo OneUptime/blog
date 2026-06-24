@@ -2,9 +2,9 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: IPv6, VirtualBox, NAT, NAT66, Virtual Networking, Desktop Virtualization
+Tags: IPv6, VirtualBox, NAT, NPTv6, Virtual Networking, Desktop Virtualization
 
-Description: Configure IPv6 NAT and NAT Network modes in VirtualBox to provide IPv6 connectivity to virtual machines, including configurable IPv6 prefixes, host-side NAT66, and port forwarding.
+Description: Configure IPv6 NAT and NAT Network modes in VirtualBox to provide IPv6 connectivity to virtual machines when using ULA prefixes, including NPTv6 translation and port forwarding.
 
 ## Introduction
 

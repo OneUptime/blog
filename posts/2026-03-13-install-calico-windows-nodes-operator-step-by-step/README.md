@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Windows, Operator, Networking, CNI, Installation
+Tags: Calico, Kubernetes, Window, Operator, Networking, CNI, Installation
 
 Description: A step-by-step guide to installing Calico on Windows nodes using the Tigera Operator with operator-managed Windows support.
 

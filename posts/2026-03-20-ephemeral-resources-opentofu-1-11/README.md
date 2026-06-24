@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Ephemeral Resources, OpenTofu 1.11, Secrets Management, Infrastructure as Code
 
-Description: Learn how to use ephemeral resources introduced in OpenTofu 1.11 to retrieve short-lived credentials and secrets without storing them in state or plan files.
+Description: Learn how to use ephemeral resources introduced in OpenTofu 1.11 to retrieve short-lived credentials and secrets without storing them in state.
 
 ## Introduction
 

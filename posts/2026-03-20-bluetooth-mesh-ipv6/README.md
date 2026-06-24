@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: IPv6, Bluetooth, BLE Mesh, IoT, Networking, Smart Building
 
-Description: Understand how Bluetooth Mesh differs from IPv6-over-BLE, including Mesh Proxy access and IPSP/6LoWPAN configuration for native IPv6 connectivity.
+Description: Understand the relationship between Bluetooth Mesh and IPv6, including IP Proxy node configuration for connecting Bluetooth Mesh networks to IPv6 infrastructure.
 
 ## Introduction
 

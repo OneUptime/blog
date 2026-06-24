@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Kubernetes, Operator, Auto-Instrumentation, Observability
 
-Description: Learn how to deploy and configure the OpenTelemetry Operator for Kubernetes to enable automatic instrumentation of applications without modifying container images.
+Description: Learn how to deploy and configure the OpenTelemetry Operator for Kubernetes to enable automatic instrumentation of applications without modifying container images or deployment manifests.
 
 ---
 

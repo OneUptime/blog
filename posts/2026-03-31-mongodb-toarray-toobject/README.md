@@ -1,10 +1,10 @@
-# How to Use $objectToArray and $arrayToObject in MongoDB Aggregation
+# How to Use $toArray and $toObject in MongoDB Aggregation
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: MongoDB, Aggregation, Pipeline, Array, Expression
 
-Description: Learn how to use $objectToArray and $arrayToObject in MongoDB aggregation to convert between arrays and objects, enabling flexible document reshaping transformations.
+Description: Learn how to use $toArray and $toObject in MongoDB aggregation to convert between arrays and objects, enabling flexible document reshaping transformations.
 
 ---
 

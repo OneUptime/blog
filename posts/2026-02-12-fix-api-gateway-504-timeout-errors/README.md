@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: AWS, API Gateway, Lambda, Performance, Troubleshooting
 
-Description: Fix API Gateway 504 timeout errors by understanding API Gateway integration timeouts, optimizing backend performance, and implementing async patterns for long-running tasks.
+Description: Fix API Gateway 504 timeout errors by understanding the 29-second limit, optimizing backend performance, and implementing async patterns for long-running tasks.
 
 ---
 

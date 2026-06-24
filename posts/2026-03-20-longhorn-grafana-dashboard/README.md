@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Longhorn, Kubernetes, Storage, Grafana, Monitoring, Visualization
 
-Description: Set up Grafana dashboards for Longhorn storage monitoring, including how to import the Longhorn example dashboard and create custom panels for capacity and health metrics.
+Description: Set up Grafana dashboards for Longhorn storage monitoring, including how to import the official Longhorn dashboard and create custom panels for capacity and health metrics.
 
 ## Introduction
 

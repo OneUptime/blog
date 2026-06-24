@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: AWS, RDS, PostgreSQL, Migration, Database
 
-Description: Step-by-step guide to migrating your self-managed PostgreSQL database to Amazon RDS using pg_dump and logical replication with minimal downtime.
+Description: Step-by-step guide to migrating your self-managed PostgreSQL database to Amazon RDS using pg_dump, logical replication, and AWS DMS with minimal downtime.
 
 ---
 

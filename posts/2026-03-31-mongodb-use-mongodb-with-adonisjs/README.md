@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: MongoDB, AdonisJS, Node.js
 
-Description: Integrate MongoDB with AdonisJS using Mongoose, with models and query examples for a REST API.
+Description: Integrate MongoDB with AdonisJS using the Lucid MongoDB provider or Mongoose, with models, migrations, and query examples for a REST API.
 
 ---
 

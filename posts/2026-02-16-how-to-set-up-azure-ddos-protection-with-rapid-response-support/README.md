@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Azure, DDoS Protection, Security, Network Security, Incident Response, High Availability
 
-Description: Learn how to deploy Azure DDoS Network Protection with Rapid Response support for fast mitigation during distributed denial-of-service attacks.
+Description: Learn how to deploy Azure DDoS Protection Standard with Rapid Response support for fast mitigation during distributed denial-of-service attacks.
 
 ---
 

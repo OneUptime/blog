@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Docker, HAProxy, Load Balancing, TCP, Networking, Reverse Proxy, High Availability
 
-Description: Configure HAProxy in Docker for TCP load balancing across backend services with health checks, sticky sessions, and TLS passthrough.
+Description: Configure HAProxy in Docker for TCP load balancing across backend services with health checks, sticky sessions, and TLS termination.
 
 ---
 

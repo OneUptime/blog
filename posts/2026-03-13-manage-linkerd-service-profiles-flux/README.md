@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Flux CD, Kubernetes, GitOps, Linkerd, Service Profiles, Traffic Management, Retries
 
-Description: Manage Linkerd ServiceProfile resources using Flux CD GitOps to configure per-route retries, timeouts, and traffic metrics for existing Linkerd-meshed services.
+Description: Manage Linkerd ServiceProfile resources using Flux CD GitOps to configure per-route retries, timeouts, and traffic metrics for Linkerd-meshed services.
 
 ---
 

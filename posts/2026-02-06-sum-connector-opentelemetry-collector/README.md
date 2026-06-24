@@ -2,9 +2,9 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Collector, Connector, Sum Connector, Metrics, Attribute Aggregation
+Tags: OpenTelemetry, Collector, Connector, Sum Connector, Metrics Aggregation, Data Pipeline
 
-Description: Learn how to use the Sum connector in the OpenTelemetry Collector to sum numeric attribute values from spans, span events, data points, and logs into output metrics.
+Description: Learn how to use the Sum connector in OpenTelemetry Collector to aggregate metrics from multiple pipelines and create unified views of your telemetry data.
 
 The Sum connector in the OpenTelemetry Collector sums numeric values found inside telemetry attributes and emits them as a metric time series. It bridges pipeline types: it consumes spans, span events, metric data points, or logs, and produces metrics. It is not a cross-pipeline "totaliser" that merges multiple metric streams - its job is to read a numeric attribute off each telemetry item, add those values up, and expose the running total as a metric.
 

@@ -1,10 +1,10 @@
-# How to Configure Log File Size Limits in Podman
+# How to Configure Log File Rotation in Podman
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Podman, Container, DevOps, Logging, Configuration, Disk Management
 
-Description: Learn how to configure Podman log file size limits with max-size to manage disk space and avoid unbounded container logs.
+Description: Learn how to configure automatic log file rotation in Podman using max-size and max-file options to manage disk space while retaining enough log history for debugging.
 
 ---
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Windows, PowerShell
+Tags: Kubernetes, Window, PowerShell
 
 Description: Implement liveness, readiness, and startup probes for Windows containers using PowerShell scripts and HTTP endpoints with best practices for reliable health checking.
 

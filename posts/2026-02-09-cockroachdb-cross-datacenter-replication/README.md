@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: CockroachDB, Kubernetes, Database
 
-Description: Learn how to set up cross-datacenter replication for CockroachDB across multiple Kubernetes clusters for geo-distribution, regional locality, and global data availability.
+Description: Learn how to set up cross-datacenter replication for CockroachDB across multiple Kubernetes clusters for disaster recovery, geo-distribution, and global data availability.
 
 ---
 

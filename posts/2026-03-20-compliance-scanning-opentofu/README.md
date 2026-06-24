@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Compliance, Security Scanning, CIS Benchmark, HIPAA, SOC2, Infrastructure as Code
 
-Description: Learn how to scan OpenTofu configurations for compliance-related misconfigurations using Checkov and custom OPA policies - ensuring infrastructure meets regulatory...
+Description: Learn how to scan OpenTofu configurations against compliance frameworks like CIS Benchmarks, HIPAA, and SOC 2 using Checkov and custom OPA policies - ensuring infrastructure meets regulatory...
 
 ## Introduction
 

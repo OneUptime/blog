@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, Networking, Troubleshooting
 
-Description: Fix UFW conflicts with Calico by configuring the routed traffic policy, adding encapsulation protocol allows, and ensuring BGP port 179 is not blocked.
+Description: Fix UFW conflicts with Calico by configuring the FORWARD policy, adding encapsulation protocol allows, and ensuring BGP port 179 is not blocked.
 
 ---
 

@@ -1,10 +1,10 @@
-# How to Implement Data Lineage Tracking in GCP Using Dataplex
+# How to Implement Data Lineage Tracking in GCP Using Data Catalog and Dataplex
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Dataplex, Knowledge Catalog, Data Lineage, Data Governance
+Tags: GCP, Data Catalog, Dataplex, Data Lineage, Data Governance
 
-Description: Learn how to implement data lineage tracking in GCP using Dataplex and Knowledge Catalog to visualize how data flows through your pipelines from source to consumption.
+Description: Learn how to implement data lineage tracking in GCP using Data Catalog and Dataplex to visualize how data flows through your pipelines from source to consumption.
 
 ---
 

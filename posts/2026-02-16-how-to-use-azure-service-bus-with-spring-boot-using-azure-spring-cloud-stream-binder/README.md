@@ -1,4 +1,4 @@
-# Use Azure Service Bus with Spring Boot Using spring-cloud-azure-stream-binder-servicebus
+# Use Azure Service Bus with Spring Boot Using azure-spring-cloud-stream-binder
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

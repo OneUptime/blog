@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Azure, IPv6, DNS, AAAA Records, Private DNS, Azure DNS
 
-Description: Create AAAA records in Azure DNS public and private zones, understand current reverse DNS limitations for Azure public IPv6 addresses, and manage dual-stack DNS entries for Azure resources.
+Description: Create AAAA records in Azure DNS public and private zones, configure reverse DNS for IPv6 addresses, and manage dual-stack DNS entries for Azure resources.
 
 ## Introduction
 

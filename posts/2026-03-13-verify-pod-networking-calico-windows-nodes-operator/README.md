@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Windows, Operator, Networking, CNI, Verification
+Tags: Calico, Kubernetes, Window, Operator, Networking, CNI, Verification
 
 Description: A guide to verifying Calico pod networking on operator-managed Windows nodes, using both operator status checks and Windows-native verification.
 

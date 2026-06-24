@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Networking, Multicast, SSM, IGMP, IPv4, Linux
 
-Description: Configure Source-Specific Multicast (SSM) on IPv4 using the 232.0.0.0/8 address range, IGMPv3, and smcroute or a PIM-SSM-capable routing daemon on Linux.
+Description: Configure Source-Specific Multicast (SSM) on IPv4 using the 232.0.0.0/8 address range, IGMPv3, and the smcroute or mrouted tools on Linux.
 
 ## Introduction
 

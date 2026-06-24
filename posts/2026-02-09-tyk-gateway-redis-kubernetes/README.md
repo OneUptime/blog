@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Tyk, API Gateway, Kubernetes
 
-Description: Learn how to deploy Tyk API Gateway on Kubernetes with Redis for distributed rate limiting, session storage, and analytics buffering, enabling scalable API management.
+Description: Learn how to deploy Tyk API Gateway on Kubernetes with Redis as the configuration and analytics backend, enabling scalable API management with real-time rate limiting and session storage.
 
 ---
 

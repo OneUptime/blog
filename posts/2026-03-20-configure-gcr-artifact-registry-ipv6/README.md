@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GCR, Google Artifact Registry, IPv6, GCP, Docker, Container Registry
 
-Description: Configure Artifact Registry, including `gcr.io` repositories hosted on Artifact Registry, to push and pull container images over IPv6 from GCP and external IPv6-capable infrastructure.
+Description: Configure Google Container Registry (GCR) and Artifact Registry to push and pull container images over IPv6 from GCP and external IPv6-capable infrastructure.
 
 ---
 

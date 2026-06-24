@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Cilium, Proxy, Legacy Applications, Networking
 
-Description: Configure CoreDNS rewrites and Cilium redirection features to help legacy applications communicate with Kubernetes services without code changes.
+Description: Configure Cilium transparent proxy to enable legacy applications to communicate with Kubernetes services without code changes, using automatic DNS-based service discovery and traffic redirection.
 
 ---
 

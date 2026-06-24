@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Linux, Network Namespaces, DNS, resolv.conf, Networking, Container
 
-Description: Configure DNS resolution inside a Linux network namespace using /etc/netns/ and ip netns exec to provide namespace-specific resolv.conf files for name resolution.
+Description: Configure DNS resolution inside a Linux network namespace using /etc/netns/ to provide namespace-specific resolv.conf files for name resolution.
 
 ## Introduction
 

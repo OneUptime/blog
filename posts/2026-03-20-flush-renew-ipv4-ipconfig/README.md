@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ipconfig, DHCP, Window, IP Address, Release Renew
 
-Description: Learn how to use ipconfig /release and /renew to release the current IPv4 configuration and request a new DHCP lease, fixing IP assignment and connectivity issues on Windows.
+Description: Learn how to use ipconfig /release and /renew to flush the current IPv4 address and request a new one from the DHCP server, fixing IP assignment and connectivity issues on Windows.
 
 ## When to Use ipconfig /release and /renew
 

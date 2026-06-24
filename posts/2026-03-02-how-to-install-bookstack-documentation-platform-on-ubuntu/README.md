@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Ubuntu, BookStack, Self-Hosted, Documentation, Knowledge Management
 
-Description: Install BookStack on Ubuntu with MariaDB and Nginx, configure it for team documentation with books, chapters, and pages, and set up LDAP authentication.
+Description: Install BookStack on Ubuntu with MySQL and Apache or Nginx, configure it for team documentation with books, chapters, and pages, and set up LDAP or social authentication.
 
 ---
 

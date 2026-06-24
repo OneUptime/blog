@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: AWS, SNS, FIFO, Messaging, SQS
 
-Description: Learn how to use SNS FIFO topics for per-group ordered message delivery with message groups, deduplication, and SQS FIFO queue subscribers.
+Description: Learn how to use SNS FIFO topics for strictly ordered, exactly-once message delivery with message groups, deduplication, and SQS FIFO queue subscribers.
 
 ---
 

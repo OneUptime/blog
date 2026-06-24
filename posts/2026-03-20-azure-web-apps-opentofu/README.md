@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Azure, Web Apps, App Service, OpenTofu, Deployment, PaaS
 
-Description: Learn how to deploy Azure Web Apps with OpenTofu, including application settings, container deployments, and managed identity configuration.
+Description: Learn how to deploy Azure Web Apps with OpenTofu, including application settings, container deployments, managed identity configuration, and startup commands.
 
 ## Overview
 

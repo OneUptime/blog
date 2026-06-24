@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, Networking, Azure, Cloud, Monitoring, Observability
 
-Description: Set up monitoring for Calico networking on Azure using virtual network flow logs, Felix metrics, and Azure Monitor to maintain visibility into pod network health and security policy enforcement.
+Description: Set up monitoring for Calico networking on Azure using NSG flow logs, Felix metrics, and Azure Monitor to maintain visibility into pod network health and security policy enforcement.
 
 ---
 

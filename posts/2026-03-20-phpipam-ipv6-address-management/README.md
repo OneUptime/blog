@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: IPv6, phpIPAM, IPAM, Network Management, Open Source
 
-Description: Configure phpIPAM to manage IPv6 subnets, assign addresses, review current DHCPv6 integration limits, and use the phpIPAM API for IPv6 automation.
+Description: Configure phpIPAM to manage IPv6 subnets, assign addresses, configure DHCPv6 discovery, and use the phpIPAM API for IPv6 automation.
 
 ## Introduction
 

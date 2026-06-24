@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, Monitoring, Prometheus, Grafana, DevOps
 
-Description: Automate the setup of a monitoring stack for web applications using Ansible, covering Prometheus, Grafana, and alerting rules.
+Description: Automate the setup of a complete monitoring stack for web applications using Ansible, covering Prometheus, Grafana, and alerting.
 
 ---
 

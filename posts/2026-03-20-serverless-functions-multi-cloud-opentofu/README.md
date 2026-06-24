@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Serverless, Multi-Cloud, AWS Lambda, Azure Function, Infrastructure as Code
 
-Description: Learn how to use OpenTofu to deploy and manage serverless functions across AWS and Azure from a single configuration using modules and provider configurations.
+Description: Learn how to use OpenTofu to deploy and manage serverless functions across AWS, Azure, and GCP from a single configuration using modules and provider aliases.
 
 ## Introduction
 

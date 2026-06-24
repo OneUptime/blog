@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Metric, Cardinality, SDK Limits
 
-Description: Troubleshoot loss of metric attribute detail caused by the OpenTelemetry SDK capping metric cardinality at the default 2000 limit.
+Description: Troubleshoot silent data loss caused by the OpenTelemetry SDK capping metric cardinality at the default 2000 limit.
 
 Your metric dashboards show consistent values for some attribute combinations but mysteriously flat or missing data for others. The metrics are not being dropped by the Collector or the backend. They are being silently capped at the SDK level before they ever leave your application. The default cardinality limit of 2000 unique attribute combinations per metric collection cycle is the cause.
 

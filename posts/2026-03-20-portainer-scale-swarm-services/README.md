@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Docker Swarm, Scaling, Service, DevOps
 
-Description: Learn how to scale replicated Docker Swarm services up and down using Portainer's UI for handling variable workloads.
+Description: Learn how to scale Docker Swarm services up and down using Portainer's UI for handling variable workloads.
 
 ## Introduction
 

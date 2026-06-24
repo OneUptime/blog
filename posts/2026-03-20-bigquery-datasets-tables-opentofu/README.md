@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, GCP, BigQuery, Data Engineering, Analytics, Infrastructure as Code, Google Cloud
 
-Description: Learn how to create and manage BigQuery datasets, tables, views, and access controls using OpenTofu for governed, reproducible data warehouse infrastructure.
+Description: Learn how to create and manage BigQuery datasets, tables, views, and IAM bindings using OpenTofu for governed, reproducible data warehouse infrastructure.
 
 ---
 

@@ -1,10 +1,10 @@
-# How to Use flux debug kustomization and flux build for Kustomize Debugging
+# How to Use flux debug kustomization for Kustomize Debugging
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Flux CD, Kustomize, Debugging, Troubleshooting, GitOps, Kubernetes, Kustomization
 
-Description: A practical guide to using the flux debug kustomization and flux build kustomization commands to diagnose and fix Kustomize build and deployment issues in Flux CD.
+Description: A practical guide to using the flux debug kustomization command to diagnose and fix Kustomize build and deployment issues in Flux CD.
 
 ---
 

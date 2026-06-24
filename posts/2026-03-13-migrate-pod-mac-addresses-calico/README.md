@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, MAC Address, Networking, CNI
 
-Description: Safely set pod MAC addresses in Calico without causing existing pods to lose network connectivity.
+Description: Safely change MAC address configuration in Calico without causing existing pods to lose network connectivity.
 
 ---
 

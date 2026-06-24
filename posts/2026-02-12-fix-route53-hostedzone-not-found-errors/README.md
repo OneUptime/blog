@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: AWS, Route 53, DNS, Debugging
 
-Description: Troubleshoot and fix Route 53 HostedZone not found errors caused by wrong zone IDs, deleted zones, DNS resolution issues in private zones, and cross-account access issues.
+Description: Troubleshoot and fix Route 53 HostedZone not found errors caused by wrong zone IDs, deleted zones, private zone configurations, and cross-account access issues.
 
 ---
 

@@ -2,9 +2,9 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Portainer, Troubleshooting, Authentication, Login, V2.30, Upgrade
+Tags: Portainer, Troubleshooting, Authentication, Login, V2.30, JWT, Upgrade
 
-Description: Learn how to fix login failures after upgrading to Portainer v2.30.0, including cached browser state, reverse proxy origin errors, admin password reset procedures, and safe rollback steps.
+Description: Learn how to fix login failures introduced in Portainer v2.30.0, including JWT changes, admin password reset procedures, and database migration issues.
 
 ---
 

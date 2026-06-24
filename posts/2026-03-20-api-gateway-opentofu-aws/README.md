@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, AWS, Infrastructure as Code, IaC, API Gateway, Serverless
 
-Description: Learn how to create and configure an AWS HTTP API Gateway using OpenTofu, including routes, integrations, and deployment stages.
+Description: Learn how to create and configure an AWS API Gateway (REST or HTTP API) using OpenTofu, including routes, integrations, and deployment stages.
 
 ## Introduction
 

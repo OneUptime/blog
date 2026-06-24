@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Linux, Security, IP Spoofing, Reverse Path Filtering, Sysctl, Networking
 
-Description: Enable reverse path filtering (rp_filter) on Linux to validate IPv4 source addresses and drop packets that fail the reverse-path check at the kernel level.
+Description: Enable reverse path filtering (rp_filter) on Linux to automatically drop packets with spoofed source IP addresses at the kernel level.
 
 IP spoofing - sending packets with a forged source IP - is used in amplification DDoS attacks and to bypass IP-based access controls. Reverse path filtering (RPF) checks whether the kernel has a route back to the packet's claimed source. In strict mode, that route must go through the interface the packet arrived on.
 

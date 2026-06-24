@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Go, Golang, Net/netip, IPv6, Standard Library, Netip.Addr, Prefix
 
-Description: Use Go's net/netip package (introduced in Go 1.18) for efficient IPv6 address parsing, prefix operations, and network calculations.
+Description: Use Go's net/netip package (introduced in Go 1.18) for efficient, allocation-free IPv6 address parsing, prefix operations, and network calculations.
 
 ## Introduction
 

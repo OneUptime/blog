@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: MySQL, Query Optimization, Monitoring
 
-Description: Monitor MySQL select type counters to identify full joins, full range joins, and other inefficient query patterns using global status.
+Description: Monitor MySQL Com_select and select type counters to identify full joins, full range joins, and other inefficient query patterns using global status.
 
 ---
 

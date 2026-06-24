@@ -1,10 +1,10 @@
-# How to Automate RHEL 9 Image Builds with composer-cli
+# How to Automate RHEL 9 Image Builds with Ansible and composer-cli
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, Image Builder, Composer-cli
+Tags: RHEL, Image Builder, Ansible, Composer-cli
 
-Description: Automate RHEL 9 image builds using composer-cli.
+Description: Automate RHEL 9 image builds using Ansible and composer-cli.
 
 ---
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Spot Instance, AWS, EC2, Cost Optimization, Infrastructure as Code
 
-Description: Learn how to run EC2 Spot Instances with OpenTofu - configuring Spot requests, interruption handlers, mixed instance ASGs, and EC2 Fleet for cost-optimized compute workloads.
+Description: Learn how to run EC2 Spot Instances with OpenTofu - configuring Spot requests, interruption handlers, mixed instance ASGs, and Spot Fleet for cost-optimized compute workloads.
 
 ## Introduction
 

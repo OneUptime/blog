@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Loki, Observability, Caching, Performance
 
-Description: Configure Loki index caching to accelerate log queries with local index-file caching and cache backends.
+Description: Configure Loki index caching to accelerate log queries with in-memory and external cache backends.
 
 ---
 

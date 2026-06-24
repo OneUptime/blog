@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Real-Time, CPU Isolation, Isolcpus, Performance Tuning, Linux
 
-Description: Use the isolcpus kernel parameter on RHEL to dedicate specific CPU cores to real-time processes, preventing the scheduler from load-balancing general-purpose tasks onto those cores.
+Description: Use the isolcpus kernel parameter on RHEL to dedicate specific CPU cores to real-time processes, preventing the kernel scheduler from assigning other tasks to those cores.
 
 ---
 

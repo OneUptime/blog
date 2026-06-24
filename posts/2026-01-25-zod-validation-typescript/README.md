@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: TypeScript, Zod, Validation, Schema, Type Safety, Node.js
 
-Description: A practical guide to validating data with Zod in TypeScript, covering schema definitions, custom validators, error handling, and integration with Express applications.
+Description: A practical guide to validating data with Zod in TypeScript, covering schema definitions, custom validators, error handling, and integration with Express and React applications.
 
 ---
 

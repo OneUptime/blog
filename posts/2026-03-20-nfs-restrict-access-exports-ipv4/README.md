@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: NFS, IPv4, Security, Export, Access Control, Firewall
 
-Description: Restrict NFS share access to specific IPv4 clients using /etc/exports rules, iptables firewall policies, and static RPC port assignments for defense-in-depth security.
+Description: Restrict NFS share access to specific IPv4 clients using /etc/exports rules, iptables firewall policies, and TCP wrappers for defense-in-depth security.
 
 ## Introduction
 

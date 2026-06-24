@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GCP, Cloud Natural Language API, Content Moderation, NLP, Safety
 
-Description: Build a content moderation system using Google Cloud Natural Language API to detect harmful content, classify text categories, and analyze sentiment for user-generated content.
+Description: Build a content moderation system using Google Cloud Natural Language API to detect toxic content, classify text categories, and analyze sentiment for user-generated content.
 
 ---
 

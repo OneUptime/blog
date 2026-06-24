@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Windows, RuntimeClass
+Tags: Kubernetes, Window, RuntimeClass
 
 Description: Configure RuntimeClass to automatically route pods to appropriate Windows or Linux nodes based on container runtime requirements in mixed-OS clusters.
 

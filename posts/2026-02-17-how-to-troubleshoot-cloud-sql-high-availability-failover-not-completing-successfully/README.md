@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GCP, Cloud SQL, High Availability, Failover, Database, Disaster Recovery
 
-Description: How to diagnose and resolve Cloud SQL high availability failover failures, including stuck failovers, application reconnect issues, and recovery procedures.
+Description: How to diagnose and resolve Cloud SQL high availability failover failures, including stuck failovers, split-brain scenarios, and recovery procedures.
 
 ---
 

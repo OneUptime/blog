@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, TLS, Networking
 
-Description: Learn how to use cert-manager annotations on Ingress resources to automatically request and manage TLS certificates without writing separate Certificate manifests.
+Description: Learn how to use cert-manager annotations on Ingress resources to automatically request and manage TLS certificates without creating separate Certificate objects.
 
 ---
 

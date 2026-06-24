@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Performance, Provider Cache, Initialization, Infrastructure as Code, DevOps
 
-Description: Learn how to configure OpenTofu's plugin cache directory to avoid re-downloading providers in fresh working directories, significantly speeding up CI/CD pipelines.
+Description: Learn how to configure OpenTofu's plugin cache directory to avoid re-downloading providers on every tofu init, significantly speeding up CI/CD pipelines.
 
 ## Introduction
 

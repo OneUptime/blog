@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTofu, Azure, Firewall Policies, Network Security, Application Rules, IDPS, Infrastructure as Code
+Tags: OpenTofu, Azure, Firewall Policies, Network Security, Application Rules, IdP, Infrastructure as Code
 
 Description: Learn how to configure Azure Firewall Policies with OpenTofu to centrally manage network, application, and NAT rules across multiple firewalls with IDPS and TLS inspection.
 

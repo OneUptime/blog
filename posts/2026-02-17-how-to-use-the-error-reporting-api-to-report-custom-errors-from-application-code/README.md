@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GCP, Cloud Error Reporting, API, Custom Errors, Application Monitoring
 
-Description: Learn how to use the Google Cloud Error Reporting API to report custom errors directly from your application code in Python, Node.js, and Go.
+Description: Learn how to use the Google Cloud Error Reporting API to report custom errors directly from your application code in Python, Node.js, Java, and Go.
 
 ---
 

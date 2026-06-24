@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Security, Audit, Compliance, BE
 
-Description: Learn how to access and analyze user activity audit logs in Portainer Business Edition to track who did what and when in your container infrastructure.
+Description: Learn how to access and analyze user activity audit logs in Portainer Business Edition to track who did what, when, and from where in your container infrastructure.
 
 ## Introduction
 

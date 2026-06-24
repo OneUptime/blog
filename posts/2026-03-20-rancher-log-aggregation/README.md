@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rancher, Kubernetes, Log Aggregation, Loki, Fluentd, Observability
 
-Description: Build scalable log aggregation pipelines in Rancher using Fluentd and Fluent Bit to collect, process, and forward logs to centralized storage.
+Description: Build scalable log aggregation pipelines in Rancher using Fluentd, Fluent Bit, or Vector to collect, process, and forward logs to centralized storage.
 
 ## Introduction
 

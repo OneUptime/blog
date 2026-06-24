@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Terraform, IPv6, Infrastructure as Code, Networking, Cloud Architecture
 
-Description: A guide to provisioning AWS infrastructure with IPv6-only subnets and instances in Terraform, covering VPCs, instances, and DNS while keeping IPv4 limited to the VPC layer AWS still requires.
+Description: A guide to provisioning fully IPv6-only cloud infrastructure with Terraform, covering VPCs, instances, and DNS without any IPv4 dependencies.
 
 IPv6-only infrastructure eliminates the need for IPv4 address management on instances, NAT gateways, and much of the dual-stack complexity. AWS, GCP, and Hetzner all support IPv6-only deployments. This guide shows how to build an AWS stack with IPv6-only subnets and instances using Terraform.
 

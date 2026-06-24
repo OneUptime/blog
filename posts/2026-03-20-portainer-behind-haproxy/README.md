@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Docker, HAProxy, Reverse Proxy, Load Balancing
 
-Description: Configure HAProxy as an HTTP reverse proxy for Portainer with SSL termination and WebSocket support.
+Description: Configure HAProxy as a TCP and HTTP reverse proxy for Portainer with SSL termination and WebSocket support.
 
 ## Introduction
 

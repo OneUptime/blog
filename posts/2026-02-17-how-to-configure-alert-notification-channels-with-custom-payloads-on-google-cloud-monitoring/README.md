@@ -1,10 +1,10 @@
-# How to Configure Alert Notification Channels with Custom Routing
+# How to Configure Alert Notification Channels with Custom Payloads
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GCP, Cloud Monitoring, Alerting, Webhook, Notification Channels
 
-Description: Learn how to configure notification channels and webhook receivers in Google Cloud Monitoring to route alerts to Slack, PagerDuty, and custom systems with rich context.
+Description: Learn how to configure custom notification channels and webhook payloads in Google Cloud Monitoring to route alerts to Slack, PagerDuty, and custom systems with rich context.
 
 ---
 

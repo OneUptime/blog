@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: IPv6, MAP-T, IPv6 Transition, ISP, Address Mapping
 
-Description: A clear explanation of MAP-T (Mapping of Address and Port using Translation), a stateless IPv6 transition technology that encodes IPv4 addresses and port sets into IPv6 addresses algorithmically.
+Description: A clear explanation of MAP-T (Mapping of Address and Port using Translation), a stateless IPv6 transition technology that encodes IPv4 addresses and port ranges into IPv6 addresses algorithmically.
 
 ## What Is MAP-T?
 

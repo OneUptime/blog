@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Envoy, Performance, Latency, Load Balancing, Reliability
 
-Description: Learn how to implement Envoy request hedging to reduce tail latency by racing an original request against a retry attempt and using the first acceptable response.
+Description: Learn how to implement Envoy request hedging to reduce tail latency by issuing duplicate requests to multiple backends and using the first successful response.
 
 ---
 

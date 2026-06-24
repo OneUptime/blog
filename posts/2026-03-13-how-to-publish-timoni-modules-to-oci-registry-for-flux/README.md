@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Flux, Kubernetes, GitOps, Timoni, OCI, Registry, Publishing
 
-Description: Learn how to publish custom Timoni modules to OCI registries for distribution and use in Timoni workflows that support Flux-managed clusters.
+Description: Learn how to publish custom Timoni modules to OCI registries for distribution and consumption across Flux-managed clusters.
 
 ---
 

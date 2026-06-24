@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: EIGRPv6, IPv6, Cisco, Routing, EIGRP
 
-Description: Understand EIGRPv6 - Cisco-developed distance-vector IPv6 routing protocol - including its operation, metric components, and differences from EIGRP for IPv4.
+Description: Understand EIGRPv6 - Cisco's proprietary distance-vector IPv6 routing protocol - including its operation, metric components, and differences from EIGRP for IPv4.
 
 ## Overview
 

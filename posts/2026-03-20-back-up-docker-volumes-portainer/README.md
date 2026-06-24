@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Docker, Volumes, Backup, Storage
 
-Description: Manage Docker volumes in Portainer and back up their data with Docker CLI for data protection and disaster recovery.
+Description: Create backups of Docker volume data through Portainer for data protection and disaster recovery.
 
 ---
 

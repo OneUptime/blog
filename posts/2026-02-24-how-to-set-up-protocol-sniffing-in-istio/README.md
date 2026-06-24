@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Istio, Protocol Sniffing, Envoy, Kubernetes, Traffic Management
 
-Description: Learn how Istio protocol sniffing works to automatically detect HTTP, HTTP/2, and TCP traffic and how to configure it for various service types.
+Description: Learn how Istio protocol sniffing works to automatically detect HTTP and TCP traffic and how to configure it for various service types.
 
 ---
 

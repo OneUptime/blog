@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Cisco, DMVPN, Phase 3, IPv4, IOS, VPN, Scalability, NHRP
 
-Description: Configure DMVPN Phase 3 on Cisco IOS to enable direct spoke-to-spoke routing after hub redirection while allowing hub-side route summarization for hierarchical DMVPN designs.
+Description: Configure DMVPN Phase 3 on Cisco IOS to achieve hub-independent spoke-to-spoke routing using NHRP summarization, enabling hierarchical DMVPN designs.
 
 ## Introduction
 

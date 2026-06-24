@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: IPv6, Documentation, RFC 9637, Networking, Addressing
 
-Description: Understand the newer 3fff::/20 IPv6 documentation prefix reserved by RFC 9637, why it was created alongside 2001:db8::/32, and how to use both correctly.
+Description: Understand the newer 3fff::/20 IPv6 documentation prefix assigned by RFC 9637, why it was created alongside 2001:db8::/32, and how to use both correctly.
 
 ## Introduction
 

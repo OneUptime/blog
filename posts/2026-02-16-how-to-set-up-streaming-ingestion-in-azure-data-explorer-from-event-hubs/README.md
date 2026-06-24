@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Azure Data Explorer, Streaming Ingestion, Azure Event Hub, Real-Time Data, Kusto, Data Pipeline, Low Latency
 
-Description: Learn how to configure streaming ingestion in Azure Data Explorer from Event Hubs for low-latency data availability in your analytical queries.
+Description: Learn how to configure streaming ingestion in Azure Data Explorer from Event Hubs for sub-second data availability in your analytical queries.
 
 ---
 

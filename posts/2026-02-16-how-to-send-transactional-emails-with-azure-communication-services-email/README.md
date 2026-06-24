@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Azure Communication Services, Email, Transactional Email, SMTP, Email API, Cloud Communication, Notification
 
-Description: Learn how to send transactional emails like order confirmations and password resets using Azure Communication Services Email with the SDK.
+Description: Learn how to send transactional emails like order confirmations and password resets using Azure Communication Services Email with the SDK and REST API.
 
 ---
 

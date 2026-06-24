@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubewarden, Swift, Policy as Code, Kubernetes, WebAssembly, Admission Control, SUSE Rancher
 
-Description: Learn how to write custom Kubewarden admission policies in Swift compiled to WebAssembly using Swift SDKs for WebAssembly, enabling Swift developers to contribute to Kubernetes policy authoring.
+Description: Learn how to write custom Kubewarden admission policies in Swift compiled to WebAssembly using SwiftWasm, enabling Swift developers to contribute to Kubernetes policy authoring.
 
 ---
 

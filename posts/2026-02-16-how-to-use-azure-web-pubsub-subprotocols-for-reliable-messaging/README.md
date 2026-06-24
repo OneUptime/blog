@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Azure, Web PubSub, Subprotocols, Reliable Messaging, WebSocket, JSON, Protocol
 
-Description: Explore Azure Web PubSub subprotocols to enable client-side group management, service acknowledgments, and structured messaging.
+Description: Explore Azure Web PubSub subprotocols to enable reliable messaging, client-side group management, and acknowledgment-based delivery.
 
 ---
 

@@ -2,9 +2,9 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: DHCP, IPAM, phpIPAM, IPv4, Automation, Network Management
+Tags: DHCP, IPAM, NetBox, phpIPAM, IPv4, Automation, Network Management
 
-Description: Integrate ISC DHCP or Kea DHCP server with phpIPAM to automatically track IPv4 lease allocations in your IPAM database.
+Description: Integrate ISC DHCP or Kea DHCP server with NetBox or phpIPAM to automatically track IPv4 lease allocations in your IPAM database.
 
 ## Introduction
 

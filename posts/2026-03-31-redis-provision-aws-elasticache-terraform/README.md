@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Redis, Terraform, AWS, ElastiCache, Infrastructure
 
-Description: Learn how to provision AWS ElastiCache for Redis using Terraform, including subnet groups, replication groups, and security configuration.
+Description: Learn how to provision AWS ElastiCache for Redis using Terraform, including cluster mode, subnet groups, parameter groups, and security configuration.
 
 ---
 

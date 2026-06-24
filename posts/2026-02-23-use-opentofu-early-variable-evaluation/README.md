@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: OpenTofu, Terraform, Variable, Infrastructure as Code, Configuration
 
-Description: Learn how to use OpenTofu's early variable and locals evaluation feature to use variables in backend configurations, module sources, and other places where values usually need to be known during initialization.
+Description: Learn how to use OpenTofu's early variable and locals evaluation feature to use variables in backend configurations, module sources, and other places where Terraform requires hardcoded values.
 
 ---
 

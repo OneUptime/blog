@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, IPAM, IP Reservation, Kubernetes, Networking, Monitoring, Exclusion
 
-Description: Learn how to configure and monitor IP address reservations in Calico to prevent specific IPs from being assigned automatically to pods, ensuring compatibility with existing infrastructure and avoiding IP conflicts.
+Description: Learn how to configure and monitor IP address reservations in Calico to prevent specific IPs from being assigned to pods, ensuring compatibility with existing infrastructure and avoiding IP conflicts.
 
 ---
 

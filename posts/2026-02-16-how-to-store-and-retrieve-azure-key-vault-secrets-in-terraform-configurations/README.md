@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Terraform, Azure, Key Vault, Secrets Management, Infrastructure as Code, Security, DevOps
 
-Description: Learn how to securely store and retrieve secrets from Azure Key Vault in Terraform configurations while minimizing sensitive values in state or code.
+Description: Learn how to securely store and retrieve secrets from Azure Key Vault in Terraform configurations without exposing sensitive values in state or code.
 
 ---
 

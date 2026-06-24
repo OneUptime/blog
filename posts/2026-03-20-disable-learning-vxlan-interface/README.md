@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: VXLAN, Nolearning, FDB, Linux, EVPN, Overlay Networking, Static FDB
 
-Description: Learn how to disable learning on a Linux VXLAN interface and why you would do so, including the use cases for static FDB entries and EVPN-based MAC distribution.
+Description: Learn how to disable MAC learning on a Linux VXLAN interface and why you would do so, including the use cases for static FDB entries and EVPN-based MAC distribution.
 
 ---
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: AWS, DynamoDB, Cost Optimization, Reserved Capacity
 
-Description: Learn how to reduce DynamoDB provisioned capacity costs by up to 77% using reserved capacity, when to use it versus on-demand, and strategies for right-sizing your reservations.
+Description: Learn how to reduce DynamoDB costs by up to 77% using reserved capacity, when to use it versus on-demand, and strategies for right-sizing your reservations.
 
 ---
 

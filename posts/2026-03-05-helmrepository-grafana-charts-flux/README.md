@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Flux CD, GitOps, Kubernetes, Helm, HelmRepository, Grafana, Loki, Tempo, Monitoring
 
-Description: Step-by-step guide to configuring Flux CD HelmRepository resources for Grafana's Helm charts and deploying Grafana, Loki, and Tempo.
+Description: Step-by-step guide to configuring a Flux CD HelmRepository for Grafana's official Helm charts and deploying Grafana, Loki, and Tempo.
 
 ---
 

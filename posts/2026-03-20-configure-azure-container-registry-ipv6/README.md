@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Azure Container Registry, ACR, IPv6, Azure, Docker, AKS, DevOps
 
-Description: Configure Azure Container Registry for access from dual-stack Azure networks by using Azure Private Link, private DNS, and AKS dual-stack integration.
+Description: Configure Azure Container Registry to push and pull container images over IPv6, using Azure Private Endpoints with dual-stack support and AKS IPv6 integration.
 
 ---
 

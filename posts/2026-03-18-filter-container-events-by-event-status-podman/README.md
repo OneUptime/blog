@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Podman, Container, DevOps, Monitoring, Event, Filtering, Status
 
-Description: Learn how to filter Podman events by event status to monitor specific lifecycle states like start, stop, died, and more.
+Description: Learn how to filter Podman events by event status to monitor specific lifecycle states like start, stop, die, and more.
 
 ---
 

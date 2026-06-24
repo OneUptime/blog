@@ -148,7 +148,7 @@ def get_users():
 
 ### Summary Example
 
-Summaries track the total count and sum of observations. Note that the Python client does **not** compute quantiles locally — if you need percentiles like p50/p95/p99, use a Histogram instead. A Summary is a good fit when you only need a running count and total (for example, to derive an average):
+Summaries track the total count and sum of observations. Note that the Python client does **not** compute quantiles locally - if you need percentiles like p50/p95/p99, use a Histogram instead. A Summary is a good fit when you only need a running count and total (for example, to derive an average):
 
 ```python
 from prometheus_client import Summary

@@ -2,9 +2,9 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Logging, Loki, Grafana Alloy, Grafana, Kubernetes, GitOps, Observability
+Tags: Flux CD, Logging, Loki, Promtail, Grafana, Kubernetes, GitOps, Observability
 
-Description: Learn how to deploy a production-grade logging stack with Loki, Grafana Alloy, and Grafana using Flux CD and GitOps workflows.
+Description: Learn how to deploy a production-grade logging stack with Loki, Promtail, and Grafana using Flux CD and GitOps workflows.
 
 ---
 

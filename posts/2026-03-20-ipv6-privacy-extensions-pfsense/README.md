@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: IPv6, pfSense, Privacy, RFC4941, Firewall, Networking
 
-Description: Configure IPv6 privacy extensions on pfSense to generate temporary addresses for autoconfigured WAN interfaces and reduce long-term address correlation for traffic from the firewall itself.
+Description: Configure IPv6 privacy extensions on pfSense to generate temporary addresses for WAN interfaces and prevent persistent device tracking through stable EUI-64 identifiers.
 
 ## Introduction
 

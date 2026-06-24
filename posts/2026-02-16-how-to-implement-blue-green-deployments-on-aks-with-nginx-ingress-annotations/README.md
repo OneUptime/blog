@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: AKS, Blue-Green Deployment, NGINX Ingress, Kubernetes, Deployment Strategy, Azure, DevOps
 
-Description: How to implement blue-green deployments on AKS using NGINX Ingress Controller annotations for zero-downtime releases with fast rollback.
+Description: How to implement blue-green deployments on AKS using NGINX Ingress Controller annotations for zero-downtime releases with instant rollback.
 
 ---
 

@@ -43,7 +43,6 @@ rgw_keystone_admin_user = rgw
 rgw_keystone_admin_password = <rgw-service-password>
 rgw_keystone_accepted_roles = member,admin,_member_
 rgw_keystone_token_cache_size = 500
-rgw_keystone_revocation_interval = 900
 rgw_s3_auth_use_keystone = true
 ```
 

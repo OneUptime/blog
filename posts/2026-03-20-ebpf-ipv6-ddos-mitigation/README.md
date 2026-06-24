@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: eBPF, XDP, IPv6, DDoS, Security
 
-Description: Inspect IPv6 packets with XDP as a foundation for IPv6 DDoS mitigation before they reach the kernel network stack.
+Description: Build XDP-based DDoS mitigation programs that drop malicious IPv6 packets at line rate before they reach the kernel network stack.
 
 ## Overview
 

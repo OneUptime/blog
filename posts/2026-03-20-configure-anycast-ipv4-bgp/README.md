@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Anycast, BGP, IPv4, Networking, High Availability, DNS
 
-Description: Anycast assigns the same IP address to multiple servers in different locations, and BGP routing helps direct clients to the topologically closest available instance, enabling high availability and geographic distribution...
+Description: Anycast assigns the same IP address to multiple servers in different locations, and BGP routing ensures clients are directed to the nearest instance, enabling high availability and geographic load...
 
 ## What Is Anycast?
 

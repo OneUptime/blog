@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: IPv6, IPv4, Dual-Stack, Juniper, Junos
 
-Description: Learn how to configure dual-stack IPv4 and IPv6 routing on Juniper routers running Junos OS, including interface addressing, static routes, OSPF, and BGP address families.
+Description: Learn how to configure dual-stack IPv4 and IPv6 routing on Juniper routers running JunOS, including interface addressing, static routes, OSPF, and BGP address families.
 
 ## Overview
 

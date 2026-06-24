@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Terraform, Cross-Region Replication, AWS, Disaster Recovery, High Availability, Infrastructure as Code
 
-Description: Learn how to build cross-region replication infrastructure using Terraform for S3, DynamoDB, RDS, and ECR to help ensure data availability across AWS regions.
+Description: Learn how to build cross-region replication infrastructure using Terraform for S3, DynamoDB, RDS, and ECS to ensure data availability across AWS regions.
 
 ---
 

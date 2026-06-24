@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rancher, Kubernetes, Ansible, IaC, Installation
 
-Description: Automate Rancher installation on a K3s server using Ansible playbooks.
+Description: Automate Rancher installation across multiple servers using Ansible playbooks.
 
 Ansible is a powerful automation tool that uses simple YAML playbooks to configure systems and deploy software. Using Ansible to install Rancher gives you a repeatable deployment process for a K3s server. This guide walks you through creating Ansible playbooks to automate the entire Rancher installation.
 

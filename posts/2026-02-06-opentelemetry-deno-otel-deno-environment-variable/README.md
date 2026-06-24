@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Deno, Environment Variable, Built-In, Zero-Code, JavaScript
 
-Description: Enable automatic OpenTelemetry instrumentation in Deno applications using the built-in OTEL_DENO environment variable for zero-code tracing, metrics, logs, and observability.
+Description: Enable automatic OpenTelemetry instrumentation in Deno applications using the built-in OTEL_DENO environment variable for zero-code distributed tracing and observability.
 
 Deno has built-in OpenTelemetry support, making it one of the first JavaScript runtimes to ship with observability as a first-class feature. No need to install packages, configure SDKs, or manually instrument your code for supported runtime telemetry. Just set an environment variable, and Deno automatically traces HTTP requests, exports runtime metrics, and captures logs. This is observability done right.
 

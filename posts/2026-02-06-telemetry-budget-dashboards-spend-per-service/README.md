@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Dashboard, Budget Tracking, Observability Cost
 
-Description: Build Grafana dashboards that visualize telemetry spend per service and team using OpenTelemetry Collector count metrics.
+Description: Build Grafana dashboards that visualize telemetry spend per service and team using OpenTelemetry Collector metrics.
 
 Budget visibility is the prerequisite for cost control. If teams cannot see how much telemetry they are producing - and what it costs - they have no basis for optimization decisions. A telemetry budget dashboard translates raw pipeline metrics into dollar amounts, broken down by service and team, with alerts when spending exceeds thresholds.
 

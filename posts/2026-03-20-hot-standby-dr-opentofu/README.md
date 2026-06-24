@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Disaster Recovery, Hot Standby, OpenTofu, AWS, Multi-Region, Active-Passive
 
-Description: Learn how to implement the Hot Standby (Active-Passive) disaster recovery strategy using OpenTofu to maintain a full-capacity mirror environment for rapid failover.
+Description: Learn how to implement the Hot Standby (Active-Passive) disaster recovery strategy using OpenTofu to maintain full-capacity mirror environment for near-instant failover.
 
 ## Overview
 

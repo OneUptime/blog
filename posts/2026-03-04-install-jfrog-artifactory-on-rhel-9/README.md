@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, CI/CD, Linux
 
-Description: Step-by-step guide on installing JFrog Artifactory using Red Hat Enterprise Linux 9.
+Description: Step-by-step guide on install jfrog artifactory using Red Hat Enterprise Linux 9.
 
 ---
 

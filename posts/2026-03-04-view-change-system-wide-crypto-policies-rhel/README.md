@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Crypto Policies, TLS, Security, Encryption, Linux
 
-Description: Learn how to view, change, and manage system-wide cryptographic policies on RHEL to control which ciphers, protocols, and key sizes are permitted across supported applications.
+Description: Learn how to view, change, and manage system-wide cryptographic policies on RHEL to control which ciphers, protocols, and key sizes are permitted across all applications.
 
 ---
 

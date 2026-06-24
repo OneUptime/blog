@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: MySQL, Error Handling, Troubleshooting, Table Repair
 
-Description: Learn how to diagnose and repair MySQL tables affected by ERROR 1194 'Table is marked as crashed' using CHECK TABLE and REPAIR TABLE.
+Description: Learn how to diagnose and repair MySQL tables affected by ERROR 1146 'Table is marked as crashed' using CHECK TABLE and REPAIR TABLE.
 
 ---
 

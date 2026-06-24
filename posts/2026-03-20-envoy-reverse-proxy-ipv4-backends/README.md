@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Envoy, Reverse Proxy, IPv4, HTTP, Service Mesh, Load Balancing
 
-Description: Configure Envoy as a reverse proxy that accepts HTTP traffic and forwards requests to IPv4 backend services with path-based routing.
+Description: Configure Envoy as a reverse proxy that accepts HTTP/HTTPS traffic and forwards requests to IPv4 backend services with path-based routing.
 
 ## Introduction
 

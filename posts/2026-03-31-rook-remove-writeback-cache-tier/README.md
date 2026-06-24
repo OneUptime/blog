@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rook, Ceph, Kubernetes, CacheTiering, Storage, Operation
 
-Description: Learn how to safely remove a writeback cache tier from Ceph by flushing all dirty objects, transitioning through proxy mode, and then removing the tier relationship.
+Description: Learn how to safely remove a writeback cache tier from Ceph by flushing all dirty objects, transitioning through readproxy mode, and then removing the tier relationship.
 
 ---
 

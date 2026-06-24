@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Docker, IPv6, Container Registry, Docker Hub, Networking, DevOps
 
-Description: Verify Docker Hub IPv6 reachability, optionally enable IPv6 for Docker's default bridge network on Linux, and troubleshoot connectivity issues.
+Description: Configure Docker to pull and push images from Docker Hub over IPv6, including Docker daemon IPv6 settings, DNS configuration, and troubleshooting connectivity issues.
 
 ---
 

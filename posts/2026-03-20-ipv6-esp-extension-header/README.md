@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: IPv6, IPsec, ESP, Security, Encryption
 
-Description: Understand the Encapsulating Security Payload (ESP) extension header in IPv6, how it can provide confidentiality and authentication for IPv6 traffic, and how to configure it with Linux IPsec.
+Description: Understand the Encapsulating Security Payload (ESP) extension header in IPv6, how it provides confidentiality and authentication for IPv6 traffic, and how to configure it with Linux IPsec.
 
 ## Introduction
 

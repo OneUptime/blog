@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: IPv6, nftables, Rate Limiting, DoS Protection, Linux
 
-Description: Learn how to implement IPv6 connection rate limiting with nftables using limit rate and meter statements, with flowtable offload for forwarded traffic.
+Description: Learn how to implement IPv6 connection rate limiting with nftables using limit rate, meter, and flow table statements for protection against floods and brute force attacks.
 
 ## Overview
 

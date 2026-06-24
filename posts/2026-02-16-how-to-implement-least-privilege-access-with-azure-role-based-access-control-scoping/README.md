@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, RBAC, Least Privilege, Security, Access Control, IAM, Microsoft Entra ID
+Tags: Azure, RBAC, Least Privilege, Security, Access Control, IAM, Azure AD
 
 Description: A practical guide to implementing least privilege access in Azure using role-based access control scoping, custom roles, and access reviews.
 

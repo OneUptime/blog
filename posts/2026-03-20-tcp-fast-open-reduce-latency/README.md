@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: TCP, Fast Open, TFO, Linux, Latency, Performance
 
-Description: Learn how to enable TCP Fast Open (TFO) on Linux to avoid waiting for a full TCP handshake before sending request data on repeat connections, reducing connection establishment latency.
+Description: Learn how to enable TCP Fast Open (TFO) on Linux to eliminate the round-trip latency of the TCP handshake for repeat connections, reducing connection establishment time.
 
 ## What Is TCP Fast Open?
 

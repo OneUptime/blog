@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Flux CD, GitOps, Kubernetes, OCI, Artifact, CLI
 
-Description: Learn how to use the Flux CLI to check whether local manifest content differs from an OCI artifact before deploying to your Kubernetes cluster.
+Description: Learn how to use the Flux CLI to diff OCI artifacts and compare changes between artifact versions before deploying to your Kubernetes cluster.
 
 ---
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GCP, IPv6, ULA, Internal IPv6, RFC 4193, Google Cloud, VPC
 
-Description: Understand and configure Unique Local Addresses (ULA) for internal IPv6 in Google Cloud VPC, including how GCP assigns VPC-level `/48` prefixes from `fd20::/20` and when to use ULA vs globally routable addresses.
+Description: Understand and configure Unique Local Addresses (ULA) for internal IPv6 in Google Cloud VPC, including how GCP assigns fd::/8 prefixes and when to use ULA vs globally routable addresses.
 
 ## Introduction
 

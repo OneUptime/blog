@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, LUKS, Header Backup, Data Recovery, Encryption, Linux
 
-Description: Back up and restore LUKS headers on RHEL to protect against header corruption and improve recoverability for encrypted data.
+Description: Back up and restore LUKS headers on RHEL to protect against header corruption and ensure encrypted data can always be recovered.
 
 ---
 

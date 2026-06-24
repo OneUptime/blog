@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: SUSE Observability, Rancher, Kubernetes, Monitoring, Topology, Helm, SUSE Rancher
 
-Description: Learn how to install SUSE Observability on a Rancher-managed Kubernetes cluster using Helm, configure the receiver, and connect a monitored cluster for topology-aware Kubernetes monitoring.
+Description: Learn how to install SUSE Observability on a Rancher-managed Kubernetes cluster using Helm, configure the receiver, and connect the Rancher UI for topology-aware cluster monitoring.
 
 ---
 

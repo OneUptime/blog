@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Istio, Helm, Kubernetes, Service Mesh, DevOps, Configuration
 
-Description: A practical guide to advanced Helm chart customization techniques for Istio, covering values overrides, component chart configuration, and post-render hooks.
+Description: A practical guide to advanced Helm chart customization techniques for Istio, covering values overrides, subchart configuration, and post-render hooks.
 
 ---
 

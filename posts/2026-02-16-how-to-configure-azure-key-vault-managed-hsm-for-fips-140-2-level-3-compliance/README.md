@@ -1,10 +1,10 @@
-# How to Configure Azure Key Vault Managed HSM for FIPS 140-3 Level 3 Compliance
+# How to Configure Azure Key Vault Managed HSM for FIPS 140-2 Level 3 Compliance
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure Key Vault, Managed HSM, FIPS 140-3, Compliance, Cryptography, Key Management, Security
+Tags: Azure Key Vault, Managed HSM, FIPS 140-2, Compliance, Cryptography, Key Management, Security
 
-Description: A complete guide to setting up Azure Key Vault Managed HSM for organizations that require FIPS 140-3 Level 3 validated hardware security modules.
+Description: A complete guide to setting up Azure Key Vault Managed HSM for organizations that require FIPS 140-2 Level 3 validated hardware security modules.
 
 ---
 

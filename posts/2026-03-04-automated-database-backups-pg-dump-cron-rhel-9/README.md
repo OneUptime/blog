@@ -1,10 +1,10 @@
-# How to Configure Database Servers on RHEL 9
+# How to Configure Automated Database Backups with pg_dump and Cron on RHEL 9
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, PostgreSQL, MariaDB, MySQL, Database
+Tags: RHEL, PostgreSQL, Pg_dump, Cron, Backup
 
-Description: Configure PostgreSQL, MariaDB, or MySQL database servers on RHEL 9.
+Description: Configure automated PostgreSQL backups using pg_dump and cron on RHEL 9.
 
 ---
 

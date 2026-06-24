@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: AWS, Tag Editor, Tagging, Resource Management
 
-Description: Use AWS Tag Editor to find untagged or incorrectly tagged resources and apply tags in bulk across your AWS account.
+Description: Use AWS Tag Editor to find untagged or incorrectly tagged resources and apply tags in bulk across your entire AWS account or organization.
 
 ---
 

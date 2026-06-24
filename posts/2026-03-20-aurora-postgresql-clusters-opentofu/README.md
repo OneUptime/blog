@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, AWS, Aurora, PostgreSQL, RDS, High Availability, Infrastructure as Code
 
-Description: Learn how to deploy Amazon Aurora PostgreSQL clusters with OpenTofu, including a cluster parameter group, IAM authentication, and Performance Insights configuration.
+Description: Learn how to deploy Amazon Aurora PostgreSQL clusters with OpenTofu, including cluster and instance parameter groups, IAM authentication, and Performance Insights configuration.
 
 ## Introduction
 

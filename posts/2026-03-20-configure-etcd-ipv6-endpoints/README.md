@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: IPv6, etcd, Key-Value Store, Kubernetes, Distributed
 
-Description: Learn how to configure etcd to listen on IPv6 addresses for client and peer communication, including cluster configurations and etcdctl connectivity over IPv6 endpoints.
+Description: Learn how to configure etcd to listen on IPv6 addresses for client and peer communication, including single-node and cluster configurations with IPv6 endpoints.
 
 ## etcd IPv6 Configuration Flags
 

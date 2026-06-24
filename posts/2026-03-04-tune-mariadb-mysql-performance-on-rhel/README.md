@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, MariaDB, MySQL, Performance Tuning, InnoDB, Database
 
-Description: Optimize MariaDB and MySQL performance on RHEL by tuning InnoDB buffer pool, connection settings, and identifying slow queries.
+Description: Optimize MariaDB and MySQL performance on RHEL by tuning InnoDB buffer pool, query cache, connection settings, and identifying slow queries.
 
 ---
 

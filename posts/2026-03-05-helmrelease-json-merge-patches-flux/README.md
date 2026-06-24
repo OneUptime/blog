@@ -1,10 +1,10 @@
-# How to Use HelmRelease with Strategic Merge Patches in Flux
+# How to Use HelmRelease with JSON Merge Patches in Flux
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, GitOps, Kubernetes, Helm, HelmRelease, Strategic Merge Patch, Post Rendering, Kustomize
+Tags: Flux CD, GitOps, Kubernetes, Helm, HelmRelease, JSON Merge Patch, Post Rendering, Kustomize
 
-Description: Learn how to apply strategic merge patches to HelmRelease resources in Flux CD using post-renderers for fine-grained control over Helm chart output.
+Description: Learn how to apply JSON Merge Patches to HelmRelease resources in Flux CD using post-renderers for fine-grained control over Helm chart output.
 
 ---
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rancher, Kubernetes, Upgrade
 
-Description: Learn how to safely recover from a failed Rancher upgrade by restoring pre-upgrade state and starting the previous Rancher version with Helm.
+Description: Learn how to safely roll back a failed Rancher upgrade using Helm rollback and etcd snapshot restoration.
 
 Sometimes a Rancher upgrade does not go as planned. Pods may crash, the UI may become unresponsive, or managed clusters may lose connectivity. This guide covers the supported rollback pattern for Rancher on Kubernetes: restore the pre-upgrade Rancher or local cluster state from backup, then start the previous Rancher version with Helm. It also covers etcd snapshot restoration for RKE, RKE2, and K3s clusters when you need to revert the upstream cluster state.
 

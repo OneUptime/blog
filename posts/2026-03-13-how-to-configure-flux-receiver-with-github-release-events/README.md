@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Flux, Kubernetes, GitOps, Receiver, GitHub, Release, Webhook
 
-Description: Learn how to configure a Flux Receiver that triggers reconciliation when GitHub release events are sent for release-driven deployment workflows.
+Description: Learn how to configure a Flux Receiver that triggers reconciliation when new GitHub releases are published for release-driven deployment workflows.
 
 ---
 

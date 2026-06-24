@@ -1,10 +1,10 @@
-# How to Configure DMARC Policies for Domains Using IPv4 Mail Infrastructure
+# How to Configure DMARC Policies Referencing IPv4 Mail Infrastructure
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: DMARC, IPv4, Email Security, DNS, SPF, DKIM, Anti-Spoofing
 
-Description: Configure DMARC DNS records for domains that send mail over IPv4 infrastructure, specifying what to do with unauthenticated messages and where to send reports.
+Description: Configure DMARC DNS records to define policies for email from your IPv4 mail infrastructure, specifying what to do with unauthenticated messages and where to send reports.
 
 ## Introduction
 

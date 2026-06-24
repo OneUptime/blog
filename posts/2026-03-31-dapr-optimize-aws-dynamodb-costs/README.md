@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Dapr, AWS, DynamoDB, Cost, State Management
 
-Description: Optimize AWS DynamoDB costs when used as a Dapr state store by using on-demand capacity, TTL cleanup, partition key design, and CloudWatch monitoring for cost alerts.
+Description: Optimize AWS DynamoDB costs when used as a Dapr state store by using on-demand capacity, TTL cleanup, partition key design, and DynamoDB Accelerator for read-heavy workloads.
 
 ---
 

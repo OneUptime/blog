@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Docker, Troubleshooting, Authentication, Login
 
-Description: Resolve documented login failures in Portainer v2.30.0, especially reverse-proxy 'Origin invalid' errors, post-update browser-session issues, and admin password reset problems.
+Description: Resolve login failures and authentication issues introduced in Portainer v2.30.0, including password validation changes, session handling updates, and migration issues.
 
 ## Introduction
 

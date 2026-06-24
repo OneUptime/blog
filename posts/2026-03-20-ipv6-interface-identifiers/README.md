@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: IPv6, Networking, Interface Identifier, EUI-64, Privacy Extensions
 
-Description: Understand the role and types of IPv6 interface identifiers - typically the lower 64 bits on a /64 IPv6 subnet - including EUI-64, stable privacy, and temporary addresses.
+Description: Understand the role and types of IPv6 interface identifiers - the lower 64 bits of an IPv6 address - including EUI-64, stable privacy, and temporary addresses.
 
 ## Introduction
 

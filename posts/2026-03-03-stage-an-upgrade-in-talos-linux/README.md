@@ -2,9 +2,9 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Staged Upgrade, Upgrade Planning, Kubernetes
+Tags: Talos Linux, Staged Upgrade, Maintenance Window, Upgrade Planning, Kubernetes
 
-Description: Learn what staged upgrades do in Talos Linux, when to use them, and how to run them safely during a controlled upgrade window.
+Description: Learn how to stage upgrades in Talos Linux to prepare nodes for an upgrade ahead of time and apply the changes during a controlled maintenance window.
 
 ---
 

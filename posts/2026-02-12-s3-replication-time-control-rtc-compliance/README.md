@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: AWS, S3, Replication, Compliance
 
-Description: Configure S3 Replication Time Control to replicate objects within 15 minutes, meeting compliance requirements for data residency and disaster recovery.
+Description: Configure S3 Replication Time Control to guarantee that 99.99 percent of objects replicate within 15 minutes, meeting compliance requirements for data residency and disaster recovery.
 
 ---
 

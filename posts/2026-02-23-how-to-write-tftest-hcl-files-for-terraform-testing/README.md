@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Terraform, Testing, HCL, Infrastructure as Code, DevOps
 
-Description: A detailed guide to the .tftest.hcl file format for Terraform testing, covering the core blocks, attributes, and patterns you need to write effective tests.
+Description: A detailed guide to the .tftest.hcl file format for Terraform testing, covering every block type, attribute, and pattern you need to write effective tests.
 
 ---
 

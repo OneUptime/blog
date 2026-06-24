@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Terraform, Infrastructure as Code, Tracing, Observability, DevOps
 
-Description: Learn how to trace Terraform infrastructure provisioning with OpenTelemetry to gain visibility into resource creation times, provider operation patterns, and provisioning failures.
+Description: Learn how to trace Terraform infrastructure provisioning with OpenTelemetry to gain visibility into resource creation times, API call patterns, and provisioning failures.
 
 ---
 

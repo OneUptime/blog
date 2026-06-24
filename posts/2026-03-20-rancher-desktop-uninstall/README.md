@@ -2,9 +2,9 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Rancher Desktop, Uninstall, Cleanup, macOS, Windows
+Tags: Rancher Desktop, Uninstall, Cleanup, macOS, Window
 
-Description: Completely remove Rancher Desktop and all associated data, configurations, and platform-specific runtime state from your system.
+Description: Completely remove Rancher Desktop and all associated data, configurations, and virtual machines from your system.
 
 ## Introduction
 

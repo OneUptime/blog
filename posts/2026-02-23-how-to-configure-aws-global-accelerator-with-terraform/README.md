@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, AWS Global Accelerator, Networking, Performance, Load Balancing
+Tags: Terraform, AWS Global Accelerator, Networking, Performance, Load Balancing, CDN
 
 Description: Learn how to configure AWS Global Accelerator with Terraform to improve application performance with static anycast IP addresses and intelligent traffic routing.
 

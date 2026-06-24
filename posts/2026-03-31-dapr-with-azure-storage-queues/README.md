@@ -2,9 +2,9 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Dapr, Azure, Storage Queue, Bindings, Messaging
+Tags: Dapr, Azure, Storage Queue, Pub/Sub, Messaging
 
-Description: Configure Dapr bindings with Azure Storage Queues as a simple, low-cost message queue for decoupling microservices with at-least-once delivery guarantees.
+Description: Configure Dapr pub/sub with Azure Storage Queues as a simple, low-cost message queue for decoupling microservices with at-least-once delivery guarantees.
 
 ---
 

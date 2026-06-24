@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Docker, FastAPI, Python, Containerization, Backend, DevOps, Uvicorn, API
 
-Description: Learn how to containerize a FastAPI application with Docker using Uvicorn, non-root users, and production-ready configuration
+Description: Learn how to containerize a FastAPI application with Docker using Uvicorn, multi-stage builds, and production-ready configuration
 
 ---
 

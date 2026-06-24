@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Docker, IPv6, Address Pool, daemon.json, Network Subnets
 
-Description: Configure Docker's default address pool to automatically allocate IPv6 subnets for new IPv6-enabled networks, preventing subnet conflicts and ensuring predictable IPv6 addressing across Docker hosts.
+Description: Configure Docker's default address pool to automatically allocate IPv6 subnets when creating new networks, preventing subnet conflicts and ensuring predictable IPv6 addressing across Docker hosts.
 
 ## Introduction
 

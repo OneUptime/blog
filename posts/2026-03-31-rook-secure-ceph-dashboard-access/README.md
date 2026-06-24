@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rook, Ceph, Security, Dashboard, Kubernetes
 
-Description: Secure the Ceph dashboard in Rook by enabling TLS, configuring SSO with SAML2, restricting access with Ingress rules, and managing dashboard user accounts.
+Description: Secure the Ceph dashboard in Rook by enabling TLS, configuring SSO with Kubernetes OIDC, restricting access with Ingress rules, and managing dashboard user accounts.
 
 ---
 

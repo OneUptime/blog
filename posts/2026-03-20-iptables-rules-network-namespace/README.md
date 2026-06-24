@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Linux, Network Namespaces, iptables, Firewall, Networking, Security, Container
 
-Description: Apply iptables firewall rules within a specific network namespace to create per-namespace firewall policies configured separately from the host and other namespaces.
+Description: Apply iptables firewall rules within a specific network namespace to create per-namespace firewall policies independent of the host and other namespaces.
 
 ## Introduction
 

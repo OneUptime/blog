@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, IPAM, Floating IP, Networking
 
-Description: Configure floating IP addresses in Calico to provide stable IPs that can be reassigned between pods.
+Description: Configure floating IP addresses in Calico to provide stable external IPs that can be reassigned between pods.
 
 ---
 

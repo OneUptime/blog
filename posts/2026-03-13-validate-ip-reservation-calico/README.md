@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, IPAM, Ip-reservation, Kubernetes, Networking, Ip-management
 
-Description: Learn how to validate Calico's IP reservation functionality, ensuring that specific IP addresses are correctly reserved from automatic allocation and cannot be auto-assigned to pods.
+Description: Learn how to validate Calico's IP reservation functionality, ensuring that specific IP addresses are correctly reserved from allocation and cannot be assigned to pods.
 
 ---
 

@@ -1,10 +1,10 @@
-# How to Perform an In-Place Upgrade from RHEL 8 to RHEL 9 Using Leapp
+# How to Perform an In-Place Upgrade from RHEL 8 to RHEL Using Leapp
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: RHEL, Leapp, Upgrade, Linux, Migration
 
-Description: A practical guide to upgrading RHEL 8 to RHEL 9 in place using the Leapp framework, covering pre-upgrade assessment, resolving inhibitors, performing the upgrade, and post-upgrade verification.
+Description: A practical guide to upgrading RHEL 8 to RHEL in place using the Leapp framework, covering pre-upgrade assessment, resolving inhibitors, performing the upgrade, and post-upgrade verification.
 
 ---
 

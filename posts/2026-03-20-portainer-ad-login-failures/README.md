@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Active Directory, Troubleshooting, Authentication, LDAP
 
-Description: Diagnose and fix Active Directory login failures in Portainer Business Edition covering credential errors, account lockouts, and AD-specific configuration issues.
+Description: Diagnose and fix Active Directory login failures in Portainer covering credential errors, account lockouts, and AD-specific configuration issues.
 
 ## Introduction
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Cloud Backend, Remote Execution, Terraform Cloud, CI/CD
 
-Description: Learn how to use remote execution with the OpenTofu cloud backend to queue plans and applies in HCP Terraform's managed infrastructure with streamed output to your terminal.
+Description: Learn how to use remote execution with the OpenTofu cloud backend to run plans and applies in Terraform Cloud's managed infrastructure with streamed output to your terminal.
 
 ## Introduction
 

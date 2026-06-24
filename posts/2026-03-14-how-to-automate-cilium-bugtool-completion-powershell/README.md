@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Bugtool, PowerShell, Automation, Windows
+Tags: Cilium, Bugtool, PowerShell, Automation, Window
 
 Description: Automate the generation and deployment of cilium-bugtool PowerShell completions across Windows workstations and CI environments.
 

@@ -2,9 +2,9 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: IPv6, Latency, Jitter, Performance, Ping, Fping
+Tags: IPv6, Latency, Jitter, Performance, Ping6, Hping3
 
-Description: Measure IPv6 latency and jitter using ping, fping, and custom Python scripts to baseline network performance and detect degradation.
+Description: Measure IPv6 latency and jitter using ping6, hping3, and custom Python scripts to baseline network performance and detect degradation.
 
 ## Introduction
 

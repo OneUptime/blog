@@ -1,10 +1,10 @@
-# How to Use LIMIT for Pagination in MySQL 8
+# How to Use FETCH FIRST N ROWS in MySQL 8
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: MySQL, SQL, Pagination, Standard, Query
 
-Description: Learn how to use LIMIT and OFFSET for result set limiting and pagination in MySQL 8.0, and understand how it compares to the SQL standard FETCH FIRST syntax.
+Description: Learn how to use the SQL standard FETCH FIRST N ROWS syntax in MySQL 8.0 for cleaner, portable result set limiting and pagination.
 
 ---
 

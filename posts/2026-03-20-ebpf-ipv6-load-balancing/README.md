@@ -1,10 +1,10 @@
-# How to Parse IPv6 Packets with eBPF and XDP
+# How to Use eBPF for IPv6 Load Balancing
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: eBPF, XDP, IPv6
+Tags: eBPF, XDP, IPv6, Load Balancing, DNAT
 
-Description: Parse and inspect IPv6 packets in XDP programs using eBPF and kernel headers.
+Description: Implement high-performance IPv6 load balancing using XDP and eBPF DNAT (Destination NAT) without iptables overhead.
 
 ## Overview
 

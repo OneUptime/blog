@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: AWS, Signer, Code Signing, Security, Lambda
 
-Description: Set up AWS Signer to cryptographically sign your code artifacts, enforce signature verification for Lambda deployments, and sign container images.
+Description: Set up AWS Signer to cryptographically sign your code artifacts and enforce signature verification for Lambda deployments and container images.
 
 ---
 

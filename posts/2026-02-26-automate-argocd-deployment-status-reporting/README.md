@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: ArgoCD, GitOps, Kubernetes, Automation, Observability
 
-Description: Learn how to automate ArgoCD deployment status reporting with scripts that track sync operations, deployment history, and deliver reports to stakeholders.
+Description: Learn how to automate ArgoCD deployment status reporting with scripts that track sync operations, deployment history, rollback events, and deliver reports to stakeholders.
 
 ---
 

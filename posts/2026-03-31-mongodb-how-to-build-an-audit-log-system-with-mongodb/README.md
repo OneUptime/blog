@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: MongoDB, Audit Log, Compliance, Schema, Index, Change Stream
 
-Description: Learn how to build an immutable audit log system with MongoDB for compliance and security, using change streams, TTL indexes, and compound indexes.
+Description: Learn how to build an immutable audit log system with MongoDB for compliance and security, using capped collections, change streams, and TTL policies.
 
 ---
 

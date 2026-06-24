@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: ClickHouse, Date Function, Time Function, Query, Analytics
 
-Description: Learn how to use now(), today(), now64(), and yesterday() in ClickHouse to filter recent data and compute elapsed time.
+Description: Learn how to use now(), today(), now64(), yesterday(), and tomorrow() in ClickHouse to filter recent data and compute elapsed time.
 
 ---
 

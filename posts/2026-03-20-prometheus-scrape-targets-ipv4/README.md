@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Prometheus, IPv4, Scrape Targets, Configuration, Monitoring, Metric
 
-Description: Configure Prometheus scrape targets using explicit IPv4 addresses in static_configs, add metadata labels to targets, and organize targets by job and network segment.
+Description: Configure Prometheus scrape targets using explicit IPv4 addresses in static_configs, use relabeling to add metadata, and organize targets by job and network segment.
 
 ## Introduction
 

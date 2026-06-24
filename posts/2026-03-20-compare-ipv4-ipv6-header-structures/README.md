@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: IPv4, IPv6, Networking, Header Structure, TCP/IP, Protocol Comparison
 
-Description: IPv6 simplified the IP header compared to IPv4 by removing fragmentation fields from the base header, eliminating the header checksum, and using a fixed 40-byte base header with extension headers for optional features.
+Description: IPv6 simplified the IP header compared to IPv4 by removing fragmentation fields, replacing the checksum, and using a fixed 40-byte base header with extension headers for optional features.
 
 ## Side-by-Side Header Comparison
 

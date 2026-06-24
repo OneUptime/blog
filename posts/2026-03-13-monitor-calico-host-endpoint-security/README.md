@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, Networking, Security, Host Endpoint, Monitoring, Observability
 
-Description: Learn how to monitor Calico host endpoint security using Felix metrics, Prometheus, and optional policy flow logs to gain continuous visibility into node-level network enforcement.
+Description: Learn how to monitor Calico host endpoint security using Felix metrics, Prometheus, and policy flow logs to gain continuous visibility into node-level network enforcement.
 
 ---
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: ClickHouse, Downsampling, Time-Series, Retention, Aggregation
 
-Description: Learn how to implement time-series downsampling in ClickHouse using materialized views and TTL policies to reduce storage while preserving trends.
+Description: Learn how to implement time-series downsampling in ClickHouse using materialized views, TTL, and AggregatingMergeTree to reduce storage while preserving trends.
 
 ---
 

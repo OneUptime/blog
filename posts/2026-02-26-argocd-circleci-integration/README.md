@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: ArgoCD, GitOps, Kubernetes, CircleCI, CI/CD
 
-Description: Learn how to integrate ArgoCD with CircleCI for automated GitOps deployments, including image tag updates, sync verification, and reusable command configurations for Kubernetes environments.
+Description: Learn how to integrate ArgoCD with CircleCI for automated GitOps deployments, including image tag updates, sync verification, and reusable orb configurations for Kubernetes environments.
 
 ---
 

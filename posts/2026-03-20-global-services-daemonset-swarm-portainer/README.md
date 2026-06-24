@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Docker Swarm, Global Service, DaemonSet, Infrastructure
 
-Description: Deploy Docker Swarm global mode services through Portainer to run exactly one container on each available node across the cluster, equivalent to Kubernetes DaemonSets.
+Description: Deploy Docker Swarm global mode services through Portainer to run exactly one container per node across the entire cluster, equivalent to Kubernetes DaemonSets.
 
 ---
 

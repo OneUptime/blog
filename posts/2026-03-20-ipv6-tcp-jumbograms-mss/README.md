@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: IPv6, TCP, Jumbograms, MSS, Maximum Segment Size
 
-Description: Understand how TCP Maximum Segment Size interacts with IPv6 jumbograms, how TCP can send segments larger than 65515 bytes, and the practical limits of TCP over jumbogram paths.
+Description: Understand how TCP Maximum Segment Size interacts with IPv6 jumbograms, how TCP can send segments larger than 65495 bytes, and the practical limits of TCP over jumbogram paths.
 
 ## Introduction
 

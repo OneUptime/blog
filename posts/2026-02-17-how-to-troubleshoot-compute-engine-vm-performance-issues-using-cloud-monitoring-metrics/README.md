@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GCP, Compute Engine, Cloud Monitoring, Performance, Troubleshooting
 
-Description: A practical guide to diagnosing Compute Engine VM performance problems using Cloud Monitoring metrics, covering CPU scheduling delays, memory pressure, disk I/O bottlenecks, and network saturation.
+Description: A practical guide to diagnosing Compute Engine VM performance problems using Cloud Monitoring metrics, covering CPU throttling, memory pressure, disk I/O bottlenecks, and network saturation.
 
 ---
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Terraform, Infrastructure as Code, DevOps, Terraform Functions, Security
 
-Description: Learn how to use the sensitive function in Terraform to mark values as sensitive and prevent them from appearing in normal plan, apply, and CLI display.
+Description: Learn how to use the sensitive function in Terraform to mark values as sensitive and prevent them from appearing in plan output, logs, and CLI display.
 
 ---
 

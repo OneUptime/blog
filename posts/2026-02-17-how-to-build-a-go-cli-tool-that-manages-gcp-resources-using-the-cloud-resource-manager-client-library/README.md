@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GCP, Cloud Resource Manager, Go, CLI, IAM, Google Cloud
 
-Description: Build a Go CLI tool that manages GCP projects and IAM policies using the Cloud Resource Manager client library for infrastructure automation.
+Description: Build a Go CLI tool that manages GCP projects, folders, and IAM policies using the Cloud Resource Manager client library for infrastructure automation.
 
 ---
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Loki, Log Forwarding, Docker, Grafana, Centralized Logging
 
-Description: Learn how to forward Docker container logs to Loki via Portainer using the Docker Loki log driver, or how existing Promtail deployments can send logs with richer relabeling.
+Description: Learn how to forward Docker container logs to Loki via Portainer using the Docker Loki log driver or Promtail for label-rich log ingestion.
 
 ---
 

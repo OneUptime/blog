@@ -1,10 +1,10 @@
-# How to Use PostgreSQL with KeystoneJS
+# How to Use MongoDB with KeystoneJS
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: PostgreSQL, KeystoneJS, Node.js
+Tags: MongoDB, KeystoneJS, Node.js
 
-Description: Build a content management backend with KeystoneJS and PostgreSQL, defining lists, fields, and access control with the Keystone GraphQL API.
+Description: Build a content management backend with KeystoneJS and MongoDB, defining lists, fields, and access control with the Keystone GraphQL API.
 
 ---
 

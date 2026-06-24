@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: IPv6, Windows, Firewall, PowerShell, Netsh
+Tags: IPv6, Window, Firewall, PowerShell, Netsh
 
 Description: Learn how to configure IPv6 firewall rules on Windows using Windows Defender Firewall, PowerShell New-NetFirewallRule, and netsh advfirewall for controlling inbound and outbound IPv6 traffic.
 

@@ -1,10 +1,10 @@
-# Getting Started with Rancher Desktop
+# How to Enable Extensions in Rancher Desktop
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Rancher Desktop, Kubernetes, Containers, Development Tools
+Tags: Rancher Desktop, Extension, Plugin, Development Tools
 
-Description: Configure Rancher Desktop and use its bundled Kubernetes, container, and Helm tools for local development.
+Description: Install and manage Rancher Desktop extensions to add functionality like monitoring, debugging, and registry management.
 
 ## Introduction
 

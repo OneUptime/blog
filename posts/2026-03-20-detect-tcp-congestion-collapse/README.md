@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: TCP, Congestion, Networking, Performance, Monitoring, Linux
 
-Description: Identify TCP congestion collapse where useful throughput drops dramatically due to excessive retransmissions, and apply congestion management to restore throughput.
+Description: Identify TCP congestion collapse where network utilization drops dramatically due to excessive retransmissions, and apply congestion management to restore throughput.
 
 ## Introduction
 

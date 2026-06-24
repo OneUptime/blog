@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Windows, PowerShell, DNS, IPv4, Set-DnsClientServerAddress, Network Configuration
+Tags: Window, PowerShell, DNS, IPv4, Set-DnsClientServerAddress, Network Configuration
 
 Description: Configure primary and secondary DNS servers on Windows network adapters using the Set-DnsClientServerAddress PowerShell cmdlet for automated, scriptable DNS management.
 

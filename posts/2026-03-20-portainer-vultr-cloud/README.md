@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Vultr, Cloud, Docker, Self-Hosted, DevOps
 
-Description: Deploy Portainer on Vultr cloud with firewall groups, block storage, and backup options for a reliable self-hosted container management platform.
+Description: Deploy Portainer on Vultr cloud with firewall groups, block storage, and optional server snapshots for a reliable self-hosted container management platform.
 
 ## Introduction
 

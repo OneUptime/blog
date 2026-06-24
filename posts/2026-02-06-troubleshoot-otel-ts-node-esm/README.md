@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, TypeScript, Ts-node, ESM
 
-Description: Fix the tracing gap in TypeScript projects where ts-node's ESM mode prevents OpenTelemetry from patching imported modules unless the right loader hooks are registered first.
+Description: Fix the tracing gap in TypeScript projects where ts-node's ESM mode prevents OpenTelemetry from patching imported modules.
 
 TypeScript projects that use `ts-node` with ESM mode have a particularly tricky interaction with OpenTelemetry. The combination of TypeScript compilation, ESM module loading, and OpenTelemetry's instrumentation hooks creates a situation where all three systems can interfere with each other, resulting in zero traces despite correct configuration.
 

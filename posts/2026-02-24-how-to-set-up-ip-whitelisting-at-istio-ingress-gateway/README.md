@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Istio, Security, IP Whitelisting, AuthorizationPolicy, Ingress Gateway
 
-Description: How to restrict access to your Istio Ingress Gateway by whitelisting specific IP addresses using AuthorizationPolicy.
+Description: How to restrict access to your Istio Ingress Gateway by whitelisting specific IP addresses using AuthorizationPolicy and EnvoyFilter approaches.
 
 ---
 

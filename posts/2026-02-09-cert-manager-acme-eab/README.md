@@ -1,10 +1,10 @@
-# Use cert-manager ACME External Account Binding for Enterprise ACME Providers
+# Use cert-manager ACME External Account Binding for Enterprise Let's Encrypt
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, TLS, Security
 
-Description: Learn how to configure cert-manager with ACME External Account Binding (EAB) for ACME providers requiring external account registration.
+Description: Learn how to configure cert-manager with ACME External Account Binding (EAB) for enterprise Let's Encrypt accounts and other ACME providers requiring account registration.
 
 ---
 

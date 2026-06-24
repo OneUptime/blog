@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GCP, VPC Service Controls, Troubleshooting, Audit Log, Cloud Security
 
-Description: A practical troubleshooting guide for diagnosing and fixing VPC Service Controls access denied errors using Cloud Audit Logs and the VPC SC violation analyzer.
+Description: A practical troubleshooting guide for diagnosing and fixing VPC Service Controls access denied errors using Cloud Audit Logs and the VPC SC troubleshooter.
 
 ---
 

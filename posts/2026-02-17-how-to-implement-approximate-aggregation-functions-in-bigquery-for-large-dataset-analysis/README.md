@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GCP, BigQuery, SQL, Approximate Aggregation, Data Analytics
 
-Description: Learn how to use BigQuery approximate aggregation functions like APPROX_COUNT_DISTINCT and APPROX_QUANTILES to analyze large datasets faster with lower slot usage.
+Description: Learn how to use BigQuery approximate aggregation functions like APPROX_COUNT_DISTINCT and APPROX_QUANTILES to analyze large datasets faster and cheaper.
 
 ---
 

@@ -1,10 +1,10 @@
-# How to Manage GitHub Organization and Repository Settings with OpenTofu on GitHub
+# How to Github Organization Settings with OpenTofu on GitHub
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, GitHub, Infrastructure as Code, GitOps, Automation
 
-Description: Learn how to manage GitHub organization and repository settings with OpenTofu for consistent, version-controlled GitHub organisation management.
+Description: Learn how to manage GitHub organization settings with OpenTofu for consistent, version-controlled GitHub organisation management.
 
 ## Introduction
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Redis, Cache, Portainer, Docker, Performance, Caching, Database
 
-Description: Deploy Redis as a high-performance in-memory cache layer alongside your application using Portainer stacks, with authentication and eviction policy configuration.
+Description: Deploy Redis as a high-performance in-memory cache layer alongside your application using Portainer stacks, with persistence, authentication, and eviction policy configuration.
 
 ---
 

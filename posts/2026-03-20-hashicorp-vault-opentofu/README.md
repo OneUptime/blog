@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, HashiCorp Vault, Secrets Management, Security, Infrastructure as Code
 
-Description: Learn how to use the Vault provider in OpenTofu to dynamically generate cloud credentials, read static secrets, and reduce hardcoded sensitive values in your configurations.
+Description: Learn how to use the Vault provider in OpenTofu to dynamically generate cloud credentials, read static secrets, and avoid hardcoding any sensitive values in your configurations.
 
 ## Introduction
 

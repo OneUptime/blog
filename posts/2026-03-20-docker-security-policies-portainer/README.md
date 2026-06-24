@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Security, Docker, Policies, Container Security
 
-Description: Learn how to configure comprehensive Docker security policies in Portainer to enforce a secure baseline for container deployments managed through Portainer.
+Description: Learn how to configure comprehensive Docker security policies in Portainer to enforce a secure baseline for all container deployments.
 
 ## Overview of Docker Security Policies in Portainer
 

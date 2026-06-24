@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Kubernetes, Infrastructure as Code, K8s, Container Orchestration
 
-Description: Learn how to manage Helm releases with the Helm provider in OpenTofu for declarative, version-controlled Kubernetes application deployments.
+Description: Learn how to manage Kubernetes configure helm provider with OpenTofu for declarative, version-controlled Kubernetes configuration.
 
 ## Introduction
 

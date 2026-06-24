@@ -82,7 +82,7 @@ fscrypt status /mnt/cephfs/tenant-a
 ```
 
 Expected output:
-```
+```text
 "/mnt/cephfs/tenant-a" is encrypted with fscrypt.
 Policy:   abc123...
 Unlocked: Yes

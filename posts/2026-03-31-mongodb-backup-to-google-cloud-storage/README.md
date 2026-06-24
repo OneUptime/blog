@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: MongoDB, Backup, GCP, Storage, Automation
 
-Description: Learn how to automate MongoDB backups to Google Cloud Storage using mongodump and gcloud storage, with object lifecycle rules for retention management.
+Description: Learn how to automate MongoDB backups to Google Cloud Storage using mongodump and gsutil, with object lifecycle rules for retention management.
 
 ---
 

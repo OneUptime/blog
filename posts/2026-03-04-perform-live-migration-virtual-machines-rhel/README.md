@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, KVM, Live Migration, Virtualization, High Availability, Linux
 
-Description: Learn how to perform live migration of KVM virtual machines between RHEL hosts with minimal downtime using libvirt and shared storage.
+Description: Learn how to perform live migration of KVM virtual machines between RHEL hosts with zero downtime using libvirt and shared storage.
 
 ---
 

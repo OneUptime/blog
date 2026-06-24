@@ -1,10 +1,10 @@
-# How to Use system.s3queue_log in ClickHouse
+# How to Use system.s3_queue_log in ClickHouse
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: ClickHouse, System, S3, Queue, Logging
 
-Description: Learn how to use system.s3queue_log in ClickHouse to monitor S3Queue table ingestion activity, track file processing status, and debug S3 ingestion errors.
+Description: Learn how to use system.s3_queue_log in ClickHouse to monitor S3Queue table ingestion activity, track file processing status, and debug S3 ingestion errors.
 
 ---
 

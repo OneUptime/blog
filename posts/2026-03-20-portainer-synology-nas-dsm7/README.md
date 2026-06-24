@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Synology, NAS, Docker, DSM 7, Self-Hosted, Home Lab
 
-Description: Install Portainer on a Synology NAS running DSM 7 to manage Docker containers through a web UI instead of Synology's built-in container interface.
+Description: Install Portainer on a Synology NAS running DSM 7 to manage Docker containers through a web UI instead of the limited Container Manager interface.
 
 ## Introduction
 

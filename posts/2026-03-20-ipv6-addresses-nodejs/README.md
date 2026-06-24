@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Node.js, IPv6, Networking, JavaScript, Socket Programming, Development
 
-Description: Handle, validate, parse, and use IPv6 addresses in Node.js applications using built-in net and dns modules.
+Description: Handle, validate, parse, and use IPv6 addresses in Node.js applications using built-in net and dns modules and popular third-party validation libraries.
 
 ## Introduction
 

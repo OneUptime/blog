@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GCP, BigQuery, Amazon Redshift, Data Warehouse, Migration
 
-Description: Migrate your Amazon Redshift data warehouse to Google BigQuery using Storage Transfer Service and SQL translation tools.
+Description: Migrate your Amazon Redshift data warehouse to Google BigQuery using the BigQuery Data Transfer Service and SQL translation tools.
 
 ---
 

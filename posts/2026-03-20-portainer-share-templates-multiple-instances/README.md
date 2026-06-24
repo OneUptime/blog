@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Docker, Template, Multi-Instance, DevOps
 
-Description: Learn strategies for sharing and synchronizing app templates and custom templates across multiple Portainer instances in your infrastructure.
+Description: Learn strategies for sharing and synchronizing custom templates across multiple Portainer instances in your infrastructure.
 
 ## Introduction
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Flagger, Canary, Kubernetes, StatefulSet, Progressive Delivery
 
-Description: Learn the current limitations around Flagger Canary resources for Kubernetes StatefulSets and how to prepare validation patterns for future support.
+Description: Learn how to configure a Flagger Canary resource for Kubernetes StatefulSets to safely roll out updates to stateful applications like databases and caches.
 
 ---
 

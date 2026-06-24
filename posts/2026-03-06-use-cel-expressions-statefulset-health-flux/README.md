@@ -1,10 +1,10 @@
-# How to Use Flux Health Checks for StatefulSet Health
+# How to Use CEL Expressions for StatefulSet Health in Flux
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Flux CD, StatefulSet, Health Check, Kubernetes, GitOps, Stateful Applications
+Tags: Flux CD, CEL, StatefulSet, Health Check, Kubernetes, GitOps, Stateful Applications
 
-Description: A practical guide to configuring health checks for StatefulSet resources in Flux CD, covering ordered rollouts, partition strategies, and persistent volume considerations.
+Description: A practical guide to writing CEL health check expressions for StatefulSet resources in Flux CD, covering ordered rollouts, partition strategies, and persistent volume considerations.
 
 ---
 

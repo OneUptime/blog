@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: tc, Traffic Control, Qdisc, IPv4, Linux, Networking, Cleanup
 
-Description: Cleanly remove all tc (traffic control) queuing discipline rules from a Linux network interface to restore default behavior.
+Description: Cleanly remove all tc (traffic control) queuing discipline rules from a Linux network interface to restore default behavior for IPv4 traffic.
 
 ## Introduction
 

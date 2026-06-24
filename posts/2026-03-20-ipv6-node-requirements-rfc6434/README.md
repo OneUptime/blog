@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: IPv6, RFC 6434, Compliance, Standard, Node Requirements, Networking
 
-Description: Understand the IPv6 node requirements defined in RFC 6434, including the mandatory and recommended features for IPv6-capable devices.
+Description: Understand the IPv6 node requirements defined in RFC 6434, which specifies mandatory and recommended features that IPv6-capable devices must implement.
 
 ---
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: MySQL, REGEXP_LIKE, Regular Expression, String Function, Pattern Matching
 
-Description: Learn how to use the REGEXP_LIKE() function in MySQL 8.0+ to test whether a string matches a regular expression pattern with full ICU regex and Unicode support.
+Description: Learn how to use the REGEXP_LIKE() function in MySQL 8.0+ to test whether a string matches a regular expression pattern with full POSIX regex support.
 
 ---
 

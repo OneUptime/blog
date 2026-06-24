@@ -1,10 +1,10 @@
-# How to Add Custom Object Metadata and Log Requests with Lua in Ceph RGW
+# How to Add Custom Headers with Lua in Ceph RGW
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rook, Ceph, RGW, Lua, Header
 
-Description: Learn how to add custom object metadata, validate request origins, and log request details in Ceph RGW using Lua scripts for observability and operational control.
+Description: Learn how to add, modify, and remove HTTP response headers in Ceph RGW using Lua postRequest scripts for CORS, security, and observability.
 
 ---
 

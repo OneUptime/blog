@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, mTLS, Mutual-tls, Security, Business-edition, Certificate
 
-Description: A guide to configuring mutual TLS (mTLS) authentication for Docker endpoints managed by Portainer Business Edition using client and server certificates.
+Description: A guide to configuring mutual TLS (mTLS) authentication for Portainer Business Edition to enforce client certificate authentication.
 
 ## Overview
 

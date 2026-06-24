@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: ClickHouse, String Similarity, ngramDistance, Fuzzy Search, Text Analytics
 
-Description: Learn how to implement string similarity matching in ClickHouse using ngramDistance, editDistance, and ngramSearch for fuzzy search and deduplication.
+Description: Learn how to implement string similarity matching in ClickHouse using ngramDistance, editDistance, and soundex for fuzzy search and deduplication.
 
 ---
 

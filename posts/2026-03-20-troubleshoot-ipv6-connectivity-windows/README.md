@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: IPv6, Windows, Troubleshooting, Network Diagnostics, PowerShell
+Tags: IPv6, Window, Troubleshooting, Network Diagnostics, PowerShell
 
 Description: A systematic guide to diagnosing and resolving IPv6 connectivity problems on Windows, covering address assignment issues, routing problems, DNS failures, and firewall blocks.
 

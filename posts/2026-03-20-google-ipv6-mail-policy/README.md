@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Email, IPv6, Gmail, Google, SPF, DKIM, DMARC, Mail Deliverability
 
-Description: Meet Gmail's IPv6 DNS and sender-authentication requirements, including PTR records, SPF or DKIM for all senders, and DMARC for bulk senders.
+Description: Meet Google's specific IPv6 mail policy requirements including PTR records, SPF, DKIM, and DMARC to ensure email from IPv6 servers reaches Gmail inboxes.
 
 ## Introduction
 

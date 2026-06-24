@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Talos Linux, Device Selectors, Networking, Configuration, Infrastructure
 
-Description: Learn how to use device selectors in Talos Linux for reliable network interface identification that survives reboots and some hardware changes.
+Description: Learn how to use device selectors in Talos Linux for reliable network interface identification that survives reboots and hardware changes.
 
 ---
 

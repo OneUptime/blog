@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Collector, Extension, HTTP, Networking, Load Balancing, Traffic Management
 
-Description: Comprehensive guide to configuring the HTTP Forwarder extension in OpenTelemetry Collector for forwarding HTTP requests to downstream services.
+Description: Comprehensive guide to configuring the HTTP Forwarder extension in OpenTelemetry Collector for advanced traffic routing, load balancing, and request forwarding capabilities.
 
 The HTTP Forwarder extension in the OpenTelemetry Collector accepts HTTP requests and forwards them to a configured downstream service. It is useful when you need the Collector to expose a simple HTTP forwarding endpoint and add a small set of static headers to forwarded requests.
 

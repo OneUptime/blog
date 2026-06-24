@@ -1,10 +1,10 @@
-# How to Migrate from Istio Sidecar Mode to Ambient Mesh with Minimal Downtime Risk
+# How to Migrate from Istio Sidecar Mode to Ambient Mesh Without Downtime
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Istio, Ambient Mesh, Migration, Kubernetes, Service Mesh
+Tags: Istio, Ambient Mesh, Migration, Kubernetes, Zero Downtime
 
-Description: Learn how to safely migrate Istio deployments from traditional sidecar mode to Ambient Mesh with minimal downtime risk, reducing resource overhead while maintaining security and observability.
+Description: Learn how to safely migrate Istio deployments from traditional sidecar mode to Ambient Mesh without downtime, reducing resource overhead while maintaining security and observability.
 
 ---
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Docker, Learning, Education, Lab
 
-Description: Build an interactive Docker learning lab using Portainer where students can experiment with containers safely in access-controlled lab environments.
+Description: Build an interactive Docker learning lab using Portainer where students can experiment with containers safely in isolated environments.
 
 ## Introduction
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Docker, Resource Limit, Stack, CPU, Memory, Performance
 
-Description: Apply CPU and memory resource constraints per service in a Portainer stack to ensure fair resource sharing between applications on shared Docker hosts.
+Description: Apply CPU, memory, and I/O resource constraints across all services in a Portainer stack to ensure fair resource sharing between applications on shared Docker hosts.
 
 ---
 

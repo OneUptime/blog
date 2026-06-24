@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Longhorn, Kubernetes, Storage, Volumes, Expansion
 
-Description: Learn how to expand Longhorn volumes online and offline to increase storage capacity for your Kubernetes workloads.
+Description: Learn how to expand Longhorn volumes online and offline to increase storage capacity for your Kubernetes workloads without downtime.
 
 ## Introduction
 

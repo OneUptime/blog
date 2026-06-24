@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Podman, Kubernetes, YAML, Linux
 
-Description: Learn how to use podman kube play on RHEL to run Kubernetes Pod, Deployment, and related YAML manifests locally without a Kubernetes cluster.
+Description: Learn how to use podman kube play on RHEL to run Kubernetes Pod, Deployment, and Service YAML manifests locally without a Kubernetes cluster.
 
 ---
 

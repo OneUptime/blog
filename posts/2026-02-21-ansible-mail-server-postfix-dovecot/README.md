@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, Postfix, Dovecot, Email, Linux
 
-Description: Automate the deployment of a complete mail server with Postfix for SMTP and Dovecot for IMAP using Ansible including TLS and DKIM signing.
+Description: Automate the deployment of a complete mail server with Postfix for SMTP and Dovecot for IMAP using Ansible including TLS and spam filtering.
 
 ---
 

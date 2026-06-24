@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, Networking, CNI, Configuration, GKE, Google Cloud
 
-Description: A guide to deploying Calico on a new Google Kubernetes Engine cluster, enabling advanced network policy capabilities when you are not using GKE Dataplane V2.
+Description: A guide to deploying Calico on a new Google Kubernetes Engine cluster, enabling advanced network policy capabilities beyond GKE's native Dataplane V2.
 
 ---
 

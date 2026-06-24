@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GCP, Terraform, Artifact Registry, Container Registry, Infrastructure as Code
 
-Description: Learn how to update your Terraform configurations to replace Google Container Registry resources with Artifact Registry after the GCR shutdown.
+Description: Learn how to update your Terraform configurations to replace Google Container Registry resources with Artifact Registry before the GCR deprecation deadline.
 
 ---
 

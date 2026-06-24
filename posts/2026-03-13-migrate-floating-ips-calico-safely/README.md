@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, IPAM, Floating IP, Networking
 
-Description: Safely implement floating IPs in Calico for applications that require a stable address across pod replacement.
+Description: Safely implement floating IPs in Calico for applications that require IP address stability across pod restarts.
 
 ---
 

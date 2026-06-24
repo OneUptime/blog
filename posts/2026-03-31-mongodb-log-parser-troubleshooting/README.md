@@ -65,9 +65,10 @@ mlogfilter /var/log/mongodb/mongod.log \
 mlogfilter /var/log/mongodb/mongod.log \
   --namespace mydb.orders
 
-# Filter by operation type
+# Filter by operation type (one operation per invocation:
+# query, insert, update, delete, command, or getmore)
 mlogfilter /var/log/mongodb/mongod.log \
-  --operation query update
+  --operation query
 
 # Filter by thread/connection
 mlogfilter /var/log/mongodb/mongod.log \

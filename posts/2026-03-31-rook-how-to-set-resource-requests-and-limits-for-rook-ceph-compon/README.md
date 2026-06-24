@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rook, Ceph, Resource Management, Kubernetes, Performance
 
-Description: Learn how to configure CPU and memory resource requests and limits for Rook-Ceph components (MON, MGR, OSD, MDS, RGW) in the CephCluster, CephFilesystem, and CephObjectStore CRDs.
+Description: Learn how to configure CPU and memory resource requests and limits for Rook-Ceph components (MON, MGR, OSD, MDS, RGW) in the CephCluster CRD.
 
 ---
 

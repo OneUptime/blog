@@ -1,10 +1,10 @@
-# How to Install Node.js 20 on RHEL 9 Using AppStream
+# How to Install Node.js 20 LTS on RHEL 9 Using AppStream
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Node.js, JavaScript, Linux
 
-Description: Learn how to install Node.js 20 using AppStream on RHEL 9 with step-by-step instructions, configuration examples, and lifecycle caveats.
+Description: Learn how to install Node.js 20 LTS Using AppStream on RHEL 9 with step-by-step instructions, configuration examples, and best practices.
 
 ---
 

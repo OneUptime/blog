@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Epinio, Troubleshooting, Kubernetes, PaaS, Debugging
 
-Description: Deploy an application with Epinio and inspect it using routes, logs, environment variables, and scaling commands.
+Description: Debug and resolve common Epinio deployment failures including build errors, resource constraints, and configuration issues.
 
 ## Introduction
 

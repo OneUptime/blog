@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Security, Password Policy, Administration, Configuration
 
-Description: Configure the minimum password length requirement for Portainer's internal authentication to meet your organization's security policy.
+Description: Configure the minimum password length requirement for Portainer user accounts to meet your organization's security policy.
 
 ## Introduction
 

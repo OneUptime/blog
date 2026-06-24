@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Azure, NAT Gateway, SNAT, Outbound Connectivity, VNet, Infrastructure as Code
 
-Description: Learn how to configure Azure NAT Gateway with OpenTofu to provide scalable, highly available outbound internet connectivity for private subnet resources while reducing the risk of SNAT port exhaustion.
+Description: Learn how to configure Azure NAT Gateway with OpenTofu to provide scalable, highly available outbound internet connectivity for private subnet resources without SNAT port exhaustion.
 
 ## Introduction
 

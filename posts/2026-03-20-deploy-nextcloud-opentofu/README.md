@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Nextcloud, File Storage, Collaboration, Self-Hosted
 
-Description: Learn how to deploy Nextcloud on AWS using OpenTofu with RDS, ElastiCache Redis, EFS-backed persistent storage, and ECS Fargate with S3 as the primary object storage backend.
+Description: Learn how to deploy Nextcloud on AWS using OpenTofu with RDS, ElastiCache Redis, EFS storage, and ECS Fargate for a production-ready self-hosted cloud storage platform.
 
 ## Introduction
 

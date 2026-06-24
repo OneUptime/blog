@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Istio, Blue-Green Deployment, VirtualService, Traffic Management, Kubernetes
 
-Description: A step-by-step guide to implementing blue-green deployments using Istio VirtualService for fast traffic switching between versions.
+Description: A step-by-step guide to implementing blue-green deployments using Istio VirtualService for instant traffic switching between versions.
 
 ---
 

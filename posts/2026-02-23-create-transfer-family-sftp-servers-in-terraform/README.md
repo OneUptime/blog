@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Terraform, AWS, Transfer Family, SFTP, File Transfer, Infrastructure as Code
 
-Description: Learn how to create AWS Transfer Family SFTP servers with S3 and EFS backends, service-managed authentication, and user management using Terraform.
+Description: Learn how to create AWS Transfer Family SFTP servers with S3 and EFS backends, custom authentication, and user management using Terraform.
 
 ---
 

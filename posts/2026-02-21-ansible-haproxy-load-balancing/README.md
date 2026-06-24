@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, HAProxy, Load Balancing, High Availability
 
-Description: Deploy and configure HAProxy load balancers with Ansible for HTTP load balancing with health checks and SSL termination.
+Description: Deploy and configure HAProxy load balancers with Ansible for HTTP and TCP load balancing with health checks and SSL termination.
 
 ---
 

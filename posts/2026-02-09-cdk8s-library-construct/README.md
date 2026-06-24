@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: CDK8s, Kubernetes, TypeScript
 
-Description: Learn how to create reusable CDK8s library constructs that encapsulate microservice patterns including deployment, service, ingress, and autoscaling configuration for consistent application deployment.
+Description: Learn how to create reusable CDK8s library constructs that encapsulate microservice patterns including deployment, service, ingress, and monitoring configuration for consistent application deployment.
 
 ---
 

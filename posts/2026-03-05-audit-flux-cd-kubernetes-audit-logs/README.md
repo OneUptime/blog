@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Flux CD, GitOps, Kubernetes, Security, Audit Log, Compliance, Monitoring
 
-Description: Learn how to configure Kubernetes audit logging to track and monitor Kubernetes API operations performed by Flux CD controllers for security and compliance.
+Description: Learn how to configure Kubernetes audit logging to track and monitor all operations performed by Flux CD controllers for security and compliance.
 
 ---
 

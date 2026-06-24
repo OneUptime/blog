@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: IPv4, QoS, DSCP, Networking, DiffServ, Traffic Management
 
-Description: DSCP occupies the top 6 bits of the IPv4 DS field (historically the ToS byte) and allows routers to classify and prioritize traffic, enabling differentiated forwarding behaviors for voice, video, and data applications.
+Description: The DSCP field occupies the top 6 bits of the IPv4 ToS byte and allows routers to classify and prioritize traffic, enabling differentiated forwarding behaviors for voice, video, and data applications.
 
 ## DSCP Basics
 

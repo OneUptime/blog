@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Squid, IPv6, Forward Proxy, HTTP, HTTPS, Caching, ACL
 
-Description: Configure Squid as an explicit forward proxy for IPv6 clients, with ACLs, caching, and HTTPS CONNECT tunneling.
+Description: Configure Squid as an explicit forward proxy for IPv6 clients, with ACLs, caching, and SSL inspection.
 
 ## Introduction
 

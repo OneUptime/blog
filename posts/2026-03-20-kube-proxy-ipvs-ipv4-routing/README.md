@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Kube-proxy, IPVS, IPv4, Service Routing, Performance
 
-Description: Configure kube-proxy to use IPVS mode for IPv4 service routing on Linux nodes, while noting that Kubernetes now recommends nftables for new deployments.
+Description: Switch kube-proxy from iptables to IPVS mode for improved IPv4 service routing performance in large Kubernetes clusters with many services.
 
 IPVS (IP Virtual Server) mode uses the kernel IPVS and iptables APIs rather than only iptables chains. It uses a hash table for service lookups, supports more load balancing algorithms, and historically offered better rule-synchronization performance than iptables in large clusters. As of Kubernetes v1.35, however, IPVS mode is deprecated and Kubernetes recommends nftables as the replacement proxy mode.
 

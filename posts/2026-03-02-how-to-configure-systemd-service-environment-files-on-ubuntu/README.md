@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Ubuntu, Systemd, Linux, DevOps, Configuration
 
-Description: A practical guide to managing environment variables for systemd services using EnvironmentFile, keeping deployment-specific configuration out of unit files on Ubuntu.
+Description: A practical guide to managing environment variables for systemd services using EnvironmentFile, keeping secrets out of unit files on Ubuntu.
 
 ---
 

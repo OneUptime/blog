@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Infrastructure as Code, Provider, Automation, DevOps
 
-Description: Learn how to configure Cloudflare WAF custom rules in OpenTofu using the Cloudflare provider and the `cloudflare_ruleset` resource.
+Description: Learn how to configure and use the Cloudflare Waf Rules provider in OpenTofu to manage Cloudflare Waf Rules resources as code.
 
 ## Introduction
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: IPv6, Extension Headers, Networking, Protocol, RFC 8200
 
-Description: Understand IPv6 extension headers, their purpose, how they are chained together, and which ones may be processed en route versus only by addressed endpoints.
+Description: Understand IPv6 extension headers, their purpose, how they are chained together, and which ones are processed by routers versus only by endpoints.
 
 ## Introduction
 

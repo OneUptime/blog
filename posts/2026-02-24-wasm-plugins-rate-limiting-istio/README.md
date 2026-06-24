@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Istio, WebAssembly, Rate Limiting, Envoy, Traffic Management
 
-Description: Building a custom rate limiting Wasm plugin for Istio with per-client limiting, token buckets, and configurable thresholds.
+Description: Building a custom rate limiting Wasm plugin for Istio with per-client limiting, sliding windows, and configurable thresholds.
 
 ---
 

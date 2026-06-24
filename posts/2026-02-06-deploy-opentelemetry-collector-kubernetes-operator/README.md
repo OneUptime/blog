@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Collector, Kubernetes, Operator, Deployment, K8s, Automation
 
-Description: Master deploying OpenTelemetry Collectors using the Kubernetes Operator for automated management, configuration updates, and scaling configuration with custom resources.
+Description: Master deploying OpenTelemetry Collectors using the Kubernetes Operator for automated management, configuration updates, and scaling with custom resources.
 
 The OpenTelemetry Operator for Kubernetes simplifies collector deployment by providing native Kubernetes resources and automation. Instead of manually managing Deployments, DaemonSets, and ConfigMaps, the operator handles lifecycle management, scaling configuration, and configuration updates through custom resource definitions (CRDs).
 

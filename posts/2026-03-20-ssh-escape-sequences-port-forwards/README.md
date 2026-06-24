@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: SSH, Escape Sequences, IPv4, Port Forwarding, Runtime, CLI
 
-Description: Learn how to enable and use SSH escape sequences to add, inspect, and remove IPv4 port forwards in an active SSH session without reconnecting.
+Description: Learn how to use SSH escape sequences to add, list, and remove IPv4 port forwards in an active SSH session without reconnecting.
 
 ---
 

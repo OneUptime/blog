@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenEBS, LocalPV, Kubernetes
 
-Description: Deploy OpenEBS LocalPV for high-performance node-local storage on Kubernetes with hostpath and LVM modes, capacity management, and application deployment strategies for stateful workloads.
+Description: Deploy OpenEBS LocalPV for high-performance node-local storage on Kubernetes with hostpath and device modes, capacity management, and application deployment strategies for stateful workloads.
 
 ---
 

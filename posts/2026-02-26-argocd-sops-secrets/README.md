@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: ArgoCD, GitOps, Kubernetes, SOPS, Encryption
 
-Description: A practical guide to using SOPS with ArgoCD for encrypting secrets in Git repositories using AGE, PGP, or cloud KMS keys for GitOps workflows.
+Description: A practical guide to using Mozilla SOPS with ArgoCD for encrypting secrets in Git repositories using AGE, PGP, or cloud KMS keys for GitOps workflows.
 
 ---
 

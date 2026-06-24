@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, mTLS, Security, Business Edition, TLS
 
-Description: Configure mutual TLS (mTLS) in front of Portainer Business Edition to require client certificate authentication for the highest level of API and UI security.
+Description: Configure mutual TLS (mTLS) in Portainer Business Edition to require client certificate authentication for the highest level of API and UI security.
 
 ---
 

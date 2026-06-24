@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, Consul, Service Discovery, DevOps
 
-Description: Integrate Ansible with HashiCorp Consul for service discovery, health checking, and runtime inventory management across your infrastructure.
+Description: Integrate Ansible with HashiCorp Consul for service discovery, health checking, and dynamic inventory management across your infrastructure.
 
 ---
 

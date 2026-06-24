@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: ClickHouse, String Function, Text Search, Performance, SQL
 
-Description: Learn how multiSearchAny() and multiSearchFirstPosition() use the Volnitsky algorithm for fast multi-keyword filtering and first-match detection in ClickHouse.
+Description: Learn how multiSearchAny() and multiSearchFirstPosition() use the Aho-Corasick algorithm for fast multi-keyword filtering and first-match detection in ClickHouse.
 
 ---
 

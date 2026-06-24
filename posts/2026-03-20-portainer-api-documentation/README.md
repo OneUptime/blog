@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, API, Documentation, DevOps, Automation
 
-Description: Learn how to access and navigate the Portainer API documentation, including the official hosted API reference, API versioning, and how to explore available endpoints.
+Description: Learn how to access and navigate the Portainer API documentation, including the built-in Swagger UI, API versioning, and how to explore available endpoints.
 
 ## Introduction
 

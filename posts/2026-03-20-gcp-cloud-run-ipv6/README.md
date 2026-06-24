@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GCP, IPv6, Cloud Run, Serverless, Dual-Stack, Google Cloud
 
-Description: Configure Google Cloud Run services to accept IPv6 client connections using a global external Application Load Balancer frontend, and enable Direct VPC egress for Cloud Run with IPv6 support.
+Description: Configure Google Cloud Run services to accept IPv6 client connections using Global Load Balancer frontend, and enable VPC connectivity for Cloud Run with IPv6 support.
 
 ## Introduction
 

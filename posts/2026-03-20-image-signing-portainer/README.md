@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Docker, Security, Image Signing, Cosign, Supply Chain Security
 
-Description: Sign Docker images with Cosign and verify them before deploying through Portainer as part of a supply chain security strategy.
+Description: Sign Docker images with Cosign and configure Portainer to only run verified, signed images as part of a supply chain security strategy.
 
 ## Introduction
 

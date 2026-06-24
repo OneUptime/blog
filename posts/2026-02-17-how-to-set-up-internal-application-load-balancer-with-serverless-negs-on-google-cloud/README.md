@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GCP, Internal Load Balancer, Serverless NEG, Cloud Run, Google Cloud Networking
 
-Description: Step-by-step guide to setting up a Google Cloud Internal Application Load Balancer with serverless NEGs for routing internal traffic to Cloud Run services.
+Description: Step-by-step guide to setting up a Google Cloud Internal Application Load Balancer with serverless NEGs for routing internal traffic to Cloud Run and other serverless services.
 
 ---
 

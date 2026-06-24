@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Loki, Grafana, Log Aggregation, Grafana Alloy, LogQL, Observability, Kubernetes
+Tags: Loki, Grafana, Log Aggregation, Promtail, LogQL, Observability, Kubernetes
 
 Description: Learn how to configure Grafana Loki for cost-effective log aggregation.
 

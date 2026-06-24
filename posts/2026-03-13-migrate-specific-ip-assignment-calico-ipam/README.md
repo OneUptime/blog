@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, IPAM, Static IP, Networking
 
-Description: Safely plan specific IP assignments for pods using Calico IPAM.
+Description: Safely add specific IP assignments to existing pods without causing connectivity disruption.
 
 ---
 

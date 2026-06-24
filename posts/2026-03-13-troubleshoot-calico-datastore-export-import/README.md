@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, Networking, Operation
 
-Description: Diagnose and resolve failures in calicoctl datastore migrate export and import operations when migrating from an etcdv3 datastore to the Kubernetes datastore, including connection errors, permission failures, and import conflicts with existing resources.
+Description: Diagnose and resolve failures in calicoctl datastore migrate export and import operations including connection errors, permission failures, and import conflicts with existing resources.
 
 ---
 

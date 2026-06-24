@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Redis, JSON, Serialization
 
-Description: Learn how to use JSON serialization with Redis across Python and Node.js, including tips for handling special types and schema versioning.
+Description: Learn how to use JSON serialization with Redis across Python, Node.js, and Java, including tips for handling special types and schema versioning.
 
 ---
 

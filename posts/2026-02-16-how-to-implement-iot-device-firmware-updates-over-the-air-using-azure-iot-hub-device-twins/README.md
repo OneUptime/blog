@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Azure IoT Hub, Device Twin, Firmware Update, OTA Updates, IoT, Device Management, Embedded Systems
 
-Description: Learn how to implement over-the-air firmware updates for IoT devices using Azure IoT Hub device twins for coordinated update management.
+Description: Learn how to implement over-the-air firmware updates for IoT devices using Azure IoT Hub device twins and direct methods for coordinated update management.
 
 ---
 

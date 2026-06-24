@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GCP, IPv6, DNS64, NAT64, IPv6-Only, Google Cloud, VPC
 
-Description: Configure IPv6-only subnets on Google Cloud with DNS64 and NAT64 to allow IPv6-only VMs to communicate with IPv4-only internet services using protocol translation.
+Description: Configure IPv6-only subnets on Google Cloud with DNS64 and NAT64 to allow IPv6-only VMs to communicate with IPv4-only services using protocol translation.
 
 ## Introduction
 

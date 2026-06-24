@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rancher, Kubernetes, GCP, Google Cloud, Marketplace
 
-Description: Procure SUSE Rancher through Google Cloud Marketplace and install it on GKE, with Google Workspace authentication and optional Workload Identity Federation for GKE.
+Description: Deploy and manage Rancher through Google Cloud Marketplace on GKE, with integrated billing and GCP identity federation.
 
 ## Introduction
 

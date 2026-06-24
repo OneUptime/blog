@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Kubernetes, GitOps, PostgreSQL, Backup, Restore, CloudNativePG, Barman Cloud
+Tags: Flux CD, Kubernetes, GitOps, PostgreSQL, Backup, Restore, CloudNativePG, PgBackRest
 
 Description: Configure PostgreSQL backup and restore using operator CRDs and Flux CD for automated, GitOps-managed database disaster recovery.
 

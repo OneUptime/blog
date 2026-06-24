@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Jaeger, Distributed Tracing, Sampling, Observability
 
-Description: Learn how to configure Jaeger's adaptive sampling and build an application-side sampler that raises trace sampling rates when Kubernetes services report errors.
+Description: Learn how to configure Jaeger's adaptive sampling to automatically adjust trace sampling rates based on Kubernetes service error rates.
 
 ---
 

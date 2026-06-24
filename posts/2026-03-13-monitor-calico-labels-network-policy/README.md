@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, Network Policy, Labels, Monitoring
 
-Description: Monitor the effectiveness and impact of Calico label-based network policies using metrics, label coverage reports, and selector analytics.
+Description: Monitor the effectiveness and impact of Calico label-based network policies using metrics, label coverage reports, and traffic analytics.
 
 ---
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, MetalLB, BGP, Graceful Restart, High Availability
 
-Description: Learn how to enable BGP graceful restart in MetalLB to maintain traffic forwarding during speaker pod restarts and control-plane maintenance.
+Description: Learn how to enable BGP graceful restart in MetalLB to maintain traffic forwarding during speaker pod restarts and node maintenance.
 
 ---
 

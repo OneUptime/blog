@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Infrastructure as Code, Terraform, IaC, DevOps, Security, Encryption
 
-Description: Learn how to encrypt OpenTofu plan files to protect sensitive infrastructure details in CI/CD workflows.
+Description: Learn how to encrypt OpenTofu plan files to protect sensitive infrastructure details and prevent plan tampering in CI/CD workflows.
 
 ## Introduction
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Epinio, Custom Buildpacks, Kubernetes, PaaS, Configuration
 
-Description: Use a custom builder image with Epinio to add or pin buildpacks for specialized runtimes and build processes.
+Description: Extend Epinio with custom buildpacks to support specialized runtimes and build processes.
 
 ## Introduction
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Docker Compose, Profiles, Selective Deployment, DevOps
 
-Description: Use Docker Compose profiles in Portainer Docker Standalone stacks to selectively start service groups for different environments, enabling one Compose file for dev, staging, and production.
+Description: Use Docker Compose profiles in Portainer stacks to selectively start service groups for different environments, enabling one Compose file for dev, staging, and production.
 
 ---
 

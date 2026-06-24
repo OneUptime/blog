@@ -211,8 +211,7 @@ aws cloudhsmv2 create-hsm \
 
 ### Step 2: Activate and Configure Users
 
-# Client SDK 3 (cloudhsm_mgmt_util / the cloudhsm-client daemon) has reached
-# end of support. Use Client SDK 5's cloudhsm-cli, shown below.
+> **Note:** Client SDK 3 (`cloudhsm_mgmt_util` / the `cloudhsm-client` daemon) has reached end of support. Use Client SDK 5's `cloudhsm-cli`, shown below.
 
 ```bash
 # Activate the new cluster - this sets the first admin password

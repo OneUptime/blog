@@ -1,10 +1,10 @@
-# Safely Reviewing the Calico BlockAffinity Resource in Kubernetes
+# Safely Updating the Calico BlockAffinity Resource in Kubernetes
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes
 
-Description: A step-by-step guide to reviewing Calico BlockAffinity resources in production without causing downtime or connectivity issues.
+Description: A step-by-step guide to modifying Calico BlockAffinity resources in production without causing downtime or connectivity issues.
 
 ---
 

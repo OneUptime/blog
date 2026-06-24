@@ -2,9 +2,9 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: APIPA, 169.254, DHCP, Windows, Troubleshooting
+Tags: APIPA, 169.254, DHCP, Window, Troubleshooting
 
-Description: Learn how to fix the issue where your network adapter gets a 169.254.x.x APIPA address instead of a proper DHCP-assigned IP, typically indicating a DHCP problem.
+Description: Learn how to fix the issue where your network adapter gets a 169.254.x.x APIPA address instead of a proper DHCP-assigned IP, indicating DHCP failure.
 
 ## What Is APIPA?
 

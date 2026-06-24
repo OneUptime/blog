@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rancher, SLE, Docker, Kubernetes, Installation
 
-Description: A complete guide to installing Rancher on SUSE Linux Enterprise Server 15 using Docker for development or testing, including subscription management and SLES-specific configuration.
+Description: A complete guide to installing Rancher on SUSE Linux Enterprise Server 15 using Docker, including subscription management and enterprise configuration.
 
 SUSE Linux Enterprise Server (SLES) is an enterprise-grade Linux distribution designed for mission-critical workloads. Since SUSE acquired Rancher Labs, SLES has become the premier platform for running Rancher in enterprise environments. This guide walks you through installing Rancher on SLES 15 SP5 or later by using Rancher's single-container Docker deployment for development or testing.
 

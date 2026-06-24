@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rancher, Kubernetes, Istio, mTLS, Security, Service Mesh
 
-Description: Learn how to enable and configure mutual TLS (mTLS) in Istio to encrypt and authenticate service-to-service communication in Rancher-managed Kubernetes clusters.
+Description: Learn how to enable and configure mutual TLS (mTLS) in Istio to encrypt and authenticate all service-to-service communication in Rancher-managed Kubernetes clusters.
 
 Mutual TLS (mTLS) is one of Istio's most important security features. With auto mTLS, traffic between workloads with sidecars is encrypted automatically, and PeerAuthentication policies let you require mTLS for workloads in the mesh. Istio provides strong identity-based authentication using X.509 certificates managed by Istio's certificate authority (istiod). This guide covers how to enable and configure mTLS in a Rancher-managed environment.
 

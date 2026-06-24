@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: ArgoCD, GitOps, Kubernetes, Configuration Management
 
-Description: Learn how to override ArgoCD default resource comparison behavior at the system, application, and resource level to handle edge cases in diff calculation and sync determination.
+Description: Learn how to override ArgoCD default resource comparison behavior at the system, project, and application level to handle edge cases in diff calculation and sync determination.
 
 ---
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rook, Ceph, Kubernetes, NFS, Export, Storage
 
-Description: Create and manage NFS exports in Rook-Ceph using the ceph CLI, with access control and path configuration examples.
+Description: Create and manage NFS exports in Rook-Ceph using the CephNFSExport CRD and ceph CLI, with access control and path configuration examples.
 
 ---
 

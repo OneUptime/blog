@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rancher, Kubernetes, API, REST API, Python, Automation
 
-Description: Complete guide to interacting with Rancher's previous `/v3` API using Python, including authentication, CRUD operations, error handling, and building reusable client libraries.
+Description: Complete guide to interacting with the Rancher API using Python, including authentication, CRUD operations, error handling, and building reusable client libraries.
 
 Python is an excellent choice for building Rancher automation tools and integrations. Its rich ecosystem of HTTP libraries and data processing tools makes it easy to interact with the Rancher API. This guide covers everything from basic requests to building a reusable client class for Rancher's previous `/v3` API.
 

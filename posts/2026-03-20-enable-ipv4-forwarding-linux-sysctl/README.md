@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Linux, Networking, IPv4, Sysctl, Routing, IP Forwarding
 
-Description: Enable IPv4 packet forwarding on Linux using sysctl to allow the system to act as a router, NAT gateway, or VPN gateway, and make the change persistent across reboots.
+Description: Enable IPv4 packet forwarding on Linux using sysctl to allow the system to act as a router, NAT gateway, or VPN server, and make the change persistent across reboots.
 
 ## Introduction
 

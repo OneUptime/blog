@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GCP, Private Google Access, Networking, OpenTofu, Security, VPC
 
-Description: Learn how to configure GCP Private Google Access with OpenTofu to allow VMs without external IPs to access Google APIs and services without assigning public IPs to the VMs.
+Description: Learn how to configure GCP Private Google Access with OpenTofu to allow VMs without external IPs to access Google APIs and services using internal IPs only.
 
 ## Overview
 

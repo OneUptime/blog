@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rancher, Kubernetes, vSphere, VMware, Cloud Provider
 
-Description: Configure the out-of-tree vSphere cloud provider in Rancher so RKE2 clusters on vSphere can use the vSphere CPI and CSI drivers for dynamic VMware datastore volumes.
+Description: Configure the vSphere cloud provider in Rancher to enable dynamic VMware datastore volumes and vSphere load balancer integration for on-premises clusters.
 
 ## Introduction
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Podman, Container, DevOps, Networking, Pasta, Rootless
 
-Description: Learn how to use pasta as the rootless networking tool in Podman for improved performance and features.
+Description: Learn how to use pasta as the rootless networking backend in Podman for improved performance and features.
 
 ---
 

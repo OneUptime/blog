@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, Networking, Operation
 
-Description: Automate Calico etcdv3 datastore migration exports with scheduled CronJobs, versioned storage, and automated import testing to ensure migration data integrity.
+Description: Automate Calico datastore exports with scheduled backup CronJobs, versioned backup storage, and automated import testing to ensure backup integrity.
 
 ---
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, BGP, Cisco IOS, Network Automation, Routing
 
-Description: Learn how to automate BGP peer (neighbor) configuration on Cisco IOS routers using Ansible playbooks with the cisco.ios.ios_bgp_global and cisco.ios.ios_bgp_address_family modules.
+Description: Learn how to automate BGP peer (neighbor) configuration on Cisco IOS routers using Ansible playbooks with the cisco.ios.ios_bgp_global and ios_bgp_address_family modules.
 
 ## Step 1: Define BGP Configuration in Inventory
 

@@ -1,10 +1,10 @@
-# How to View Flux Artifact Contents
+# How to Use flux tree artifact to View Artifact Tree
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Flux, Fluxcd, GitOps, Kubernetes, CLI, Tree, Artifact, OCI, Source, DevOps
 
-Description: A practical guide to viewing and exploring the contents of artifacts stored by Flux CD sources.
+Description: A practical guide to using the flux tree artifact command to view and explore the contents of OCI artifacts stored by Flux CD sources.
 
 ---
 

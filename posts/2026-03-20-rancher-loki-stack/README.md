@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rancher, Kubernetes, Loki, Log Aggregation, Grafana, Observability
 
-Description: Deploy the Grafana Loki stack on Rancher for scalable, cost-effective log aggregation with Grafana Alloy for log collection and Grafana for visualization.
+Description: Deploy the Grafana Loki stack on Rancher for scalable, cost-effective log aggregation with Promtail for log collection and Grafana for visualization.
 
 ## Introduction
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, Networking, Migration, EKS, AWS
 
-Description: A comprehensive guide to installing Calico network policy on Amazon EKS, disabling AWS VPC CNI network policy and using Calico's advanced policy engine for richer traffic control.
+Description: A comprehensive guide to installing Calico network policy on Amazon EKS, replacing the default AWS CNI network policy with Calico's advanced policy engine for richer traffic control.
 
 ---
 

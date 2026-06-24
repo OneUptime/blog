@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ipset, iptables, Linux, Security, Firewall, DDoS
 
-Description: Use ipset to create high-performance IP blocklists and allowlists that iptables can match efficiently without creating thousands of individual rules.
+Description: Use ipset to create high-performance IP blocklists and allowlists that iptables can match against in O(1) time, far outperforming individual iptables rules.
 
 Blocking thousands of IPs with individual iptables rules creates a linear lookup chain that degrades performance. Hash-based ipset types such as hash:ip keep lookups fast even when the set grows large.
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, Migration, File Management, Automation
 
-Description: Learn how to migrate from the older with_fileglob syntax to the loop keyword with the fileglob lookup plugin in Ansible.
+Description: Learn how to migrate from the legacy with_fileglob syntax to the modern loop keyword with the fileglob lookup plugin in Ansible.
 
 ---
 

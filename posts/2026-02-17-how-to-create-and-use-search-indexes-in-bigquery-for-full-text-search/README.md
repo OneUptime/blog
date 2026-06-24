@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GCP, BigQuery, Full-Text Search, Search Index, Data Analytics
 
-Description: Learn how to create search indexes in BigQuery for fast full-text search across large datasets, including tokenization and filtering.
+Description: Learn how to create search indexes in BigQuery for fast full-text search across large datasets, including tokenization, filtering, and relevance scoring.
 
 ---
 

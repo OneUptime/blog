@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Istio, Sidecar Injection, Kubernetes, Pod Configuration, Service Mesh
 
-Description: How to control Istio sidecar injection and configuration at the individual pod level using labels and annotations for fine-grained mesh control.
+Description: How to control Istio sidecar injection and configuration at the individual pod level using annotations for fine-grained mesh control.
 
 ---
 

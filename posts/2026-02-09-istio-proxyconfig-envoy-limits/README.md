@@ -1,10 +1,10 @@
-# Use Istio ProxyConfig and Annotations to Tune Envoy Resource Limits per Kubernetes Namespace
+# Use Istio ProxyConfig to Tune Envoy Resource Limits per Kubernetes Namespace
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Istio, Envoy, Kubernetes, Resource Management, Performance Tuning
 
-Description: Learn how to combine Istio ProxyConfig resources and sidecar annotations to fine-tune Envoy proxy memory limits and CPU allocations.
+Description: Learn how to configure Istio ProxyConfig resources to fine-tune Envoy proxy memory limits, CPU allocations.
 
 ---
 

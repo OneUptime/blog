@@ -298,7 +298,7 @@ spec:
         - protocol: TCP
           port: 5432
     # Allow external IPv6 APIs (global unicast only). ULA fd00::/8 is
-    # outside 2000::/3, so it is already excluded — no `except` needed.
+    # outside 2000::/3, so it is already excluded - no `except` needed.
     # (Kubernetes rejects an `except` CIDR that is not a subset of `cidr`.)
     - to:
         - ipBlock:

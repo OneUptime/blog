@@ -1,10 +1,10 @@
-# How to Install Node.js 20 on RHEL Using AppStream
+# How to Install Node.js 20 LTS on RHEL Using AppStream
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, Node.js, AppStream, JavaScript
+Tags: RHEL, Node.js, AppStream, JavaScript, LTS
 
-Description: Learn how to install Node.js 20 on RHEL using the AppStream module system for a Red Hat-packaged Node.js runtime.
+Description: Learn how to install Node.js 20 LTS on RHEL using the AppStream module system for a supported and maintained Node.js runtime.
 
 ---
 

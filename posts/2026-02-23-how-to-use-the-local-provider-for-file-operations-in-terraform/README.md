@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Terraform, Local Provider, File Operations, Infrastructure as Code, Configuration
 
-Description: Learn how to use the Terraform local provider to create and manage local files, generate configuration files, write sensitive files with restricted permissions, and read file contents.
+Description: Learn how to use the Terraform local provider to create and manage local files, generate configuration files, write sensitive data securely, and read file contents.
 
 ---
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GCP, Cloud DNS, Route 53, Migration, Networking
 
-Description: Migrate your Amazon Route 53 DNS zones to Google Cloud DNS with zero-downtime strategies including record export, validation, and gradual cutover.
+Description: Migrate your Amazon Route 53 DNS zones to Google Cloud DNS with zero-downtime strategies including record export, zone transfer, and gradual cutover.
 
 ---
 

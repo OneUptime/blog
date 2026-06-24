@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, HashiCorp Vault, Secrets Management, Security, DevOps
 
-Description: Deploy a HashiCorp Vault server with TLS, storage configuration, initialization, and manual unseal steps using Ansible automation.
+Description: Deploy a HashiCorp Vault server with auto-unseal, secret engines, authentication backends, and policies using Ansible automation.
 
 ---
 

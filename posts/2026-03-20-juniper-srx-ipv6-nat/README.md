@@ -1,10 +1,10 @@
-# How to Configure IPv6 on Juniper SRX
+# How to Configure IPv6 NAT on Juniper SRX
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Juniper, SRX, IPv6, DHCPv6, NDP
+Tags: Juniper, SRX, IPv6, NAT66, NAT64
 
-Description: Configure IPv6 interfaces, routing, firewall filters, and DHCPv6 on a Juniper SRX security gateway.
+Description: Configure NAT66 (IPv6 to IPv6) and NAT64 (IPv6 to IPv4) on Juniper SRX security gateway for IPv6 address translation.
 
 ## Overview
 

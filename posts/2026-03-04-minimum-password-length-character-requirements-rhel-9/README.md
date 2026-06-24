@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Password Policy, Security, Linux
 
-Description: Configure minimum password length and character class requirements on RHEL using pam_pwquality for a robust password policy.
+Description: Configure minimum password length and character class requirements on RHEL using pam_pwquality and login.defs for a robust password policy.
 
 ---
 

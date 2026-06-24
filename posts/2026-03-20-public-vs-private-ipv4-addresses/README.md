@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: IPv4, Networking, Public IP, Private IP, NAT, RFC 1918
 
-Description: Public IPv4 addresses are globally routable and unique on the internet, while private addresses (RFC 1918) are reused across organizations and typically use NAT or another gateway to reach the internet.
+Description: Public IPv4 addresses are globally routable and unique on the internet, while private addresses (RFC 1918) are reused across organizations and require NAT to communicate with the internet.
 
 ## The Key Difference
 

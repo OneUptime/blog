@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Docker, Container Management, Multi-Environment, Operation, API
 
-Description: View environment status across multiple Portainer environments and use the API to inventory running containers across Docker-based environments for efficient fleet-wide visibility.
+Description: View and manage all running containers across multiple Docker and Kubernetes environments from Portainer's unified dashboard and API for efficient fleet-wide container visibility.
 
 ---
 

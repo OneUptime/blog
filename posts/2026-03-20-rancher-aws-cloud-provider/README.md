@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rancher, Kubernetes, AWS, Cloud Provider
 
-Description: Configure the AWS cloud provider in Rancher-managed clusters to enable native AWS LoadBalancers, the EBS CSI driver, and EC2 node lifecycle management.
+Description: Configure the AWS cloud provider in Rancher-managed clusters to enable native AWS LoadBalancers, EBS volumes, and EC2 node lifecycle management.
 
 ## Introduction
 

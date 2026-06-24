@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: IPv6, IANA, Special-Purpose Addresses, RFC 6890, Networking
 
-Description: Understand the IANA IPv6 Special-Purpose Address Registry, which catalogues IPv6 prefixes with specific technical purposes and semantics distinct from ordinary global unicast space.
+Description: Understand the IANA IPv6 Special-Purpose Address Registry, which catalogues reserved address blocks with specific technical purposes distinct from globally routable unicast addresses.
 
 ## Introduction
 

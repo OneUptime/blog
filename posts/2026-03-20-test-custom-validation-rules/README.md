@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Terraform, Validation, Testing, HCL, Infrastructure as Code
 
-Description: Learn how to write and test custom validation rules for OpenTofu input variables to enforce infrastructure policies and catch misconfigurations early.
+Description: Learn how to write and test custom validation rules for OpenTofu variables and outputs to enforce infrastructure policies and catch misconfigurations early.
 
 ## Introduction
 

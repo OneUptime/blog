@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rust, IPv6, Actix-web, HTTP, Web Framework, Networking
 
-Description: Build IPv6-capable web applications with Rust's Actix-Web framework including binding, client IP extraction, request logging, shared state, and TLS.
+Description: Build IPv6-capable web applications with Rust's Actix-Web framework including binding, client IP extraction, and rate limiting by IPv6 prefix.
 
 ## Binding Actix-Web to IPv6
 

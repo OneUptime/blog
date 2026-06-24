@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, Network Policy, Encryption, WireGuard, Security
 
-Description: Migrate Calico WireGuard encrypted pod traffic to protect supported inter-node pod communication in transit.
+Description: Migrate Calico WireGuard encrypted pod traffic to ensure all inter-pod communication is encrypted in transit.
 
 ---
 

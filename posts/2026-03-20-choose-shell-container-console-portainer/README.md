@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Docker, Shell, Console, Bash
 
-Description: Select the appropriate shell (bash, sh, /bin/ash, or custom) for container console access in Portainer based on the container's available shells.
+Description: Select the appropriate shell (bash, sh, or custom) for container console access in Portainer based on the container's available shells.
 
 ---
 

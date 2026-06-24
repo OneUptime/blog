@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Docker, Device Mapper, Storage Driver, DevOps, Linux, LVM
 
-Description: Configure legacy Docker Engine hosts to use the device mapper storage driver with direct-lvm mode for block-level container storage.
+Description: Configure Docker to use the device mapper storage driver with direct-lvm mode for production-grade container storage.
 
 ---
 

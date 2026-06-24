@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Cilium, Kubernetes, mTLS, Security, Service Mesh
 
-Description: Configure mutual authentication in Cilium Service Mesh to authenticate service-to-service communication without modifying application code or managing certificates manually.
+Description: Configure mutual TLS in Cilium Service Mesh to encrypt and authenticate service-to-service communication without modifying application code or managing certificates manually.
 
 ---
 

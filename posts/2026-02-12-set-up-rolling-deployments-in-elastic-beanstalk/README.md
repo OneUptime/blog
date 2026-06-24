@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: AWS, Elastic Beanstalk, Deployment, Zero Downtime
 
-Description: Learn how to configure rolling deployments in AWS Elastic Beanstalk for zero-downtime updates, including rolling with additional batch, immutable, and traffic-splitting strategies.
+Description: Learn how to configure rolling deployments in AWS Elastic Beanstalk for zero-downtime updates, including rolling with additional batch, immutable, and blue-green strategies.
 
 ---
 

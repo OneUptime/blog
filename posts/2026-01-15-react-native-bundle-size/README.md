@@ -399,14 +399,14 @@ Create or update `android/app/proguard-rules.pro`:
 
 ### Using R8 (Recommended)
 
-R8 is the default code shrinker in Android Gradle Plugin 3.4+ and is more efficient than ProGuard. Because it's the default, you don't need to enable it explicitly—it runs whenever `minifyEnabled true` is set (as shown above). You can opt into R8's more aggressive "full mode" in `android/gradle.properties`:
+R8 is the default code shrinker in Android Gradle Plugin 3.4+ and is more efficient than ProGuard. Because it's the default, you don't need to enable it explicitly-it runs whenever `minifyEnabled true` is set (as shown above). You can opt into R8's more aggressive "full mode" in `android/gradle.properties`:
 
-```
+```properties
 # android/gradle.properties
 android.enableR8.fullMode=true
 ```
 
-(The old `android.enableR8` flag is obsolete—R8 can no longer be disabled this way, and the property has been removed from recent AGP versions.)
+(The old `android.enableR8` flag is obsolete-R8 can no longer be disabled this way, and the property has been removed from recent AGP versions.)
 
 ## iOS Optimization
 
@@ -736,11 +736,11 @@ Hermes is a JavaScript engine optimized for React Native, offering significant i
 
 Hermes is enabled by default in React Native 0.70 and later, so on recent versions you typically don't need to do anything. To set it explicitly on React Native 0.71+, edit `android/gradle.properties`:
 
-```
+```properties
 hermesEnabled=true
 ```
 
-(On older versions—before 0.71—Hermes was toggled via `project.ext.react = [ enableHermes: true ]` in `android/app/build.gradle`.)
+(On older versions-before 0.71-Hermes was toggled via `project.ext.react = [ enableHermes: true ]` in `android/app/build.gradle`.)
 
 For iOS, Hermes is likewise enabled by default. If you need to set it explicitly, update `ios/Podfile`:
 

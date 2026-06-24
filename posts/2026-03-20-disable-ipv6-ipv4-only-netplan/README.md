@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Linux, Netplan, Ubuntu, IPv6, IPv4, Networking
 
-Description: Disable IPv6 on Ubuntu and Debian systems that use Netplan, forcing interfaces to use IPv4 only.
+Description: Disable IPv6 on Ubuntu and Debian systems using Netplan configuration, forcing interfaces to use IPv4 only.
 
 ## Introduction
 

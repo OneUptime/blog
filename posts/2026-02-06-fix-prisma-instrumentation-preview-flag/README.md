@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Prisma, Node.js, Database Tracing
 
-Description: Enable Prisma database spans in OpenTelemetry by configuring the tracing preview feature flag in older Prisma versions.
+Description: Enable Prisma database spans in OpenTelemetry by configuring the required tracing preview feature flag in your Prisma schema.
 
 Prisma 4.2.0 through 6.0.x requires an explicit opt-in to enable OpenTelemetry tracing. Without the `tracing` preview feature flag in your Prisma schema and the official Prisma instrumentation package, Prisma queries produce no spans even when OpenTelemetry is installed and configured. In Prisma 6.1.0 and later, tracing is generally available and the preview feature flag is no longer required.
 

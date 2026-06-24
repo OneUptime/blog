@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Rust, Game Server, Docker, Self-Hosted
 
-Description: Deploy a dedicated Rust survival game server using Portainer with Oxide plugins and automatic backups.
+Description: Deploy a dedicated Rust survival game server using Portainer with Oxide plugins and automatic wipes.
 
 ## Introduction
 

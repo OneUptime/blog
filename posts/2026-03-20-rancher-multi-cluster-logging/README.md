@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rancher, Kubernetes, Logging, Multi-Cluster, Observability
 
-Description: Configure centralized multi-cluster logging in Rancher using Rancher Logging (Fluentd/Fluent Bit) to aggregate logs from all clusters to a central log storage system.
+Description: Configure centralized multi-cluster logging in Rancher using Rancher Logging (Fluentd/Fluentbit) to aggregate logs from all clusters to a central log storage system.
 
 ## Introduction
 

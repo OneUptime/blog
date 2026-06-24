@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: ClickHouse, Growth Rate, Analytics, Window Function, SQL
 
-Description: Calculate month-over-month growth rates in ClickHouse using window functions and lag to compare current period metrics against the previous period.
+Description: Calculate month-over-month growth rates in ClickHouse using window functions and LAG to compare current period metrics against the previous period.
 
 ---
 

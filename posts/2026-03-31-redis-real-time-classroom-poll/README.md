@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Redis, Education, Poll
 
-Description: Build live classroom polls with Redis that let instructors gauge student understanding instantly using Pub/Sub for vote delivery and hashes for results.
+Description: Build live classroom polls with Redis that let instructors gauge student understanding instantly using Pub/Sub for vote delivery and sorted sets for results.
 
 ---
 

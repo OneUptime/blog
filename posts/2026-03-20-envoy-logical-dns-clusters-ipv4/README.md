@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Envoy, DNS, IPv4, Logical DNS, Cluster, Service Mesh, Configuration
 
-Description: Learn how to configure Envoy LOGICAL_DNS clusters to prefer or require IPv4 DNS results for services whose addresses change over time.
+Description: Learn how to configure Envoy LOGICAL_DNS clusters to resolve IPv4 service addresses at connect time for services with frequently changing IPs.
 
 ---
 

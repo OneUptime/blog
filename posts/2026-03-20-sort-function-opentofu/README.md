@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Sort, List Functions, HCL, Infrastructure as Code, DevOps
 
-Description: Learn how to use the sort function in OpenTofu to sort a list of strings in lexicographic order.
+Description: Learn how to use the sort function in OpenTofu to sort a list of strings in lexicographic (alphabetical) order.
 
 ---
 

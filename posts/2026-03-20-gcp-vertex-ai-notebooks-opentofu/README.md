@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, GCP, Vertex AI, Notebook, Machine Learning, Infrastructure as Code
 
-Description: Learn how to create GCP Vertex AI Workbench instances with OpenTofu for ML development.
+Description: Learn how to create GCP Vertex AI Workbench managed notebooks and user-managed notebook instances for ML development using OpenTofu.
 
 ## Introduction
 

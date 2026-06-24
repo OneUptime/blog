@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Troubleshooting, Agent Secret, Authentication, Docker, Security
 
-Description: Learn how to diagnose and fix agent secret mismatches between the Portainer server and agent, which cause authentication failures when connecting environments.
+Description: Learn how to diagnose and fix agent secret mismatches between the Portainer server and agent, which cause silent authentication failures when connecting environments.
 
 ---
 

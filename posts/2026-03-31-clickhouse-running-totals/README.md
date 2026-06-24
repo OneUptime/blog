@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: ClickHouse, Running Total, Window Function, Cumulative, Analytics
 
-Description: Learn how to implement running totals in ClickHouse using window functions and cumulative sum patterns for financial and time-series analytics.
+Description: Learn how to implement running totals in ClickHouse using window functions, runningAccumulate, and cumulative sum patterns for financial and time-series analytics.
 
 ---
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Dapr, Scaling, Kubernetes, HPA, Horizontal
 
-Description: Learn how to horizontally scale Dapr applications using Kubernetes HPA and Dapr-aware scaling patterns for stateful and stateless services.
+Description: Learn how to horizontally scale Dapr applications using Kubernetes HPA, KEDA, and Dapr-aware scaling patterns for stateful and stateless services.
 
 ---
 

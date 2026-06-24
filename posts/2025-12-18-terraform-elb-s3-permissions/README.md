@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Terraform, AWS, ELB, ALB, S3, Access Logs, IAM, Permission
 
-Description: Learn how to fix common ELB and ALB S3 access logging permissions issues in Terraform, including bucket policies, encryption settings, and account-specific log paths.
+Description: Learn how to fix common ELB and ALB S3 access logging permissions issues in Terraform, including bucket policies, encryption settings, and region-specific configurations.
 
 Enabling access logs for Elastic Load Balancers (ELB/ALB) to S3 is a common requirement, but the permissions setup is notoriously tricky. This guide covers the common issues and their solutions.
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Flux CD, Kubernetes, GitOps, Vue.js, JavaScript, SPA, Nginx
 
-Description: Deploy a Vue.js application to Kubernetes using Flux CD GitOps workflow, with Nginx serving and runtime configuration injection.
+Description: Deploy a Vue.js application to Kubernetes using Flux CD GitOps workflow, with Nginx serving and runtime environment variable injection.
 
 ---
 

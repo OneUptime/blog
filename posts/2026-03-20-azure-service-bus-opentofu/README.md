@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Azure, Service Bus, Messaging, Queue, Topic, Infrastructure as Code
 
-Description: Learn how to provision Azure Service Bus namespaces, queues, topics, subscriptions, subscription rules, and RBAC assignments using OpenTofu for reliable asynchronous messaging between services.
+Description: Learn how to provision Azure Service Bus namespaces, queues, topics, subscriptions, and authorization rules using OpenTofu for reliable asynchronous messaging between services.
 
 ---
 

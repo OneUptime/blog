@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Istio, Ambient Mesh, Multi-Cluster, Kubernetes, Federation
 
-Description: A practical guide to setting up Istio ambient mode across multiple Kubernetes clusters with multi-primary control planes.
+Description: A practical guide to setting up Istio ambient mode across multiple Kubernetes clusters with shared or separate control planes.
 
 ---
 

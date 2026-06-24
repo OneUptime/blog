@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GCP, Dataplex, BigQuery, Data Quality, Data Governance, Monitoring
 
-Description: Learn how to build a comprehensive data quality monitoring framework for BigQuery tables using Knowledge Catalog data quality tasks with automated checks, alerting, and dashboards.
+Description: Learn how to build a comprehensive data quality monitoring framework for BigQuery tables using Dataplex Data Quality Tasks with automated checks, alerting, and dashboards.
 
 ---
 

@@ -1,10 +1,10 @@
-# How to Use OpenTelemetry with Docker Desktop for Local Development
+# How to Use Docker Desktop Built-In OpenTelemetry Integration
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Docker Desktop, Local Development, Tracing
 
-Description: Use OpenTelemetry with Docker Desktop to collect traces and metrics from your local development environment.
+Description: Use Docker Desktop's built-in OpenTelemetry integration to collect traces and metrics from your local development environment automatically.
 
 Docker Desktop works well with the OpenTelemetry Collector running as a local container. This means you can start collecting traces, metrics, and logs during local development with a small Compose setup. It is a quick way to validate your instrumentation before deploying to staging or production.
 

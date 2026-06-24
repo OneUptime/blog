@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rook, Ceph, Recovery, Throttle, Performance, Operation
 
-Description: Throttle Ceph recovery operations using sleep intervals, concurrency limits, and priority settings to minimize the impact on production client I/O during data recovery.
+Description: Throttle Ceph recovery operations using sleep intervals, bandwidth limits, and priority settings to minimize the impact on production client I/O during data recovery.
 
 ---
 

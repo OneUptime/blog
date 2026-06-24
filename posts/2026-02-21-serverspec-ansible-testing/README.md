@@ -1,10 +1,10 @@
-# How to Use Molecule and Testinfra for Ansible Testing
+# How to Use ServerSpec for Ansible Testing
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Testing, Molecule, Testinfra, Python
+Tags: Ansible, Testing, ServerSpec, Ruby, RSpec
 
-Description: Validate Ansible playbook outcomes using Molecule scenarios, Ansible verifier playbooks, and Testinfra infrastructure tests.
+Description: Validate Ansible playbook outcomes using ServerSpec Ruby-based infrastructure tests with RSpec matchers.
 
 ---
 

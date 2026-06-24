@@ -1,10 +1,10 @@
-# Validating 32-Stream Performance in Cilium
+# Validating 32-Process Performance in Cilium
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, Performance, Parallel Streams, Validation
+Tags: Cilium, Kubernetes, Performance, Multi-Process, Validation
 
-Description: A validation framework for 32-stream parallel workloads in Cilium, ensuring linear scaling, even CPU distribution, and consistent aggregate throughput.
+Description: A validation framework for 32-process parallel workloads in Cilium, ensuring linear scaling, even CPU distribution, and consistent aggregate throughput.
 
 ---
 

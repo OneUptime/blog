@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Flux, Kubernetes, GitOps, Artifactgenerator, Flux-Tree, Visualization
 
-Description: Learn how to use the flux tree artifact generator command with ArtifactGenerator resources to visualize generated ExternalArtifact inventory.
+Description: Learn how to use the flux tree command with ArtifactGenerator resources to visualize source dependencies and deployment relationships.
 
 ---
 

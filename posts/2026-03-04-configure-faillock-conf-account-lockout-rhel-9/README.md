@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Faillock, Account Lockout, Security, Linux
 
-Description: A detailed guide to configuring /etc/security/faillock.conf on RHEL for precise account lockout behavior, including commonly used options and compliance examples.
+Description: A detailed guide to configuring /etc/security/faillock.conf on RHEL for precise account lockout behavior, including all available options and compliance examples.
 
 ---
 

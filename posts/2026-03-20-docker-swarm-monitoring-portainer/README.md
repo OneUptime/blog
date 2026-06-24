@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Docker, Docker Swarm, Monitoring, Prometheus, Grafana, Self-Hosted
 
-Description: Learn how to deploy a monitoring stack including Prometheus, Grafana, cAdvisor, Node Exporter, and an Alertmanager instance on Docker Swarm using Portainer's stack management interface.
+Description: Learn how to deploy a complete monitoring stack including Prometheus, Grafana, and Alertmanager on Docker Swarm using Portainer's stack management interface.
 
 ## Introduction
 

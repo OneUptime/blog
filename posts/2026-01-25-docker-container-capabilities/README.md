@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Docker, Security, Linux, DevOps, Container
 
-Description: Configure Linux capabilities in Docker containers to grant specific privileges without using privileged mode, implementing the principle of least privilege for container security.
+Description: Configure Linux capabilities in Docker containers to grant specific privileges without running as root, implementing the principle of least privilege for container security.
 
 ---
 

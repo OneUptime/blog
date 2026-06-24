@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Cilium, Kubernetes, GAMMA, Gateway API, Troubleshooting
 
-Description: Diagnose Cilium GAMMA support issues in the Gateway API controller including Gateway API configuration problems, CRD version mismatches, and Envoy reconciliation failures.
+Description: Diagnose Cilium GAMMA support issues in the Gateway API controller including feature flag problems, CRD version mismatches, and eBPF program failures.
 
 ---
 

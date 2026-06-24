@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubewarden, Rancher, Kubernetes, Policy, Security
 
-Description: Learn how to install and configure Kubewarden directly from the Rancher UI using the Kubewarden Rancher extension and Apps workflow for simplified policy enforcement setup.
+Description: Learn how to install and configure Kubewarden directly from the Rancher UI using the Rancher Apps catalog for simplified policy enforcement setup.
 
 ## Introduction
 

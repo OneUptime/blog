@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, Networking, Observability
 
-Description: Diagnose and resolve Felix metric collection issues including metrics endpoint not responding, missing target labels on metrics, and metric cardinality issues causing Prometheus storage problems.
+Description: Diagnose and resolve Felix metric collection issues including metrics endpoint not responding, missing node labels on metrics, and metric cardinality issues causing Prometheus storage problems.
 
 ---
 

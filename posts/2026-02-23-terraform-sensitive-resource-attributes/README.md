@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Terraform, Security, Sensitive Data, Infrastructure as Code, Best Practice
 
-Description: Learn how to mark resource attributes as sensitive in Terraform to prevent secrets from appearing in plan output, logs, and routine terminal output.
+Description: Learn how to mark resource attributes as sensitive in Terraform to prevent secrets from appearing in plan output, logs, and state file exploration.
 
 ---
 

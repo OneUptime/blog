@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Cilium, IPv6, Kubernetes, NetworkPolicy, CiliumNetworkPolicy, Security
 
-Description: Configure Cilium CiliumNetworkPolicy and CiliumClusterwideNetworkPolicy for fine-grained IPv6 traffic control in Kubernetes.
+Description: Configure Cilium CiliumNetworkPolicy and CiliumClusterWideNetworkPolicy for fine-grained IPv6 traffic control in Kubernetes.
 
 ## Introduction
 

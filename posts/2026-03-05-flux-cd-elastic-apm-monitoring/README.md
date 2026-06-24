@@ -1,8 +1,8 @@
-# How to Configure Flux CD with the Elastic Stack for Monitoring
+# How to Configure Flux CD with Elastic APM for Monitoring
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, GitOps, Kubernetes, Monitoring, Elastic, Elasticsearch, Kibana, Observability
+Tags: Flux CD, GitOps, Kubernetes, Monitoring, Elastic, APM, Elasticsearch, Kibana, Observability
 
 Description: Learn how to integrate Flux CD with the Elastic Stack to monitor reconciliation metrics, collect controller logs, and visualize GitOps pipeline health in Kibana.
 

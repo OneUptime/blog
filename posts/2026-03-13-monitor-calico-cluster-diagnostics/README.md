@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, Networking, Diagnostic, Monitoring
 
-Description: Monitor Calico cluster health using Prometheus alerts on TigeraStatus conditions, IPAM utilization thresholds, and kube-controllers availability to detect cluster-wide issues before they impact...
+Description: Monitor Calico cluster health using Prometheus alerts on TigeraStatus conditions, IPAM utilization thresholds, and kube-controllers sync lag to detect cluster-wide issues before they impact...
 
 ---
 

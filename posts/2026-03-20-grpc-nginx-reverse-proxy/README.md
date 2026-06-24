@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: gRPC, Nginx, IPv4, Reverse Proxy, TLS, Networking
 
-Description: Learn how to configure Nginx as an IPv4 reverse proxy for gRPC services, including HTTP/2 proxying, TLS termination, load balancing, and gRPC-specific upstream error handling.
+Description: Learn how to configure Nginx as an IPv4 reverse proxy for gRPC services, including HTTP/2 passthrough, TLS termination, load balancing, and gRPC-specific health check error handling.
 
 ## Basic gRPC Proxy (HTTP/2 Plain-Text)
 

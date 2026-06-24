@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Redis, Stream, Audit Log, Compliance, Event Store
 
-Description: Learn how to build an append-only audit log using Redis Streams, with structured event schema, retention policies, and efficient querying by entity or time range.
+Description: Learn how to build a tamper-evident audit log using Redis Streams, with structured event schema, retention policies, and efficient querying by entity or time range.
 
 ---
 

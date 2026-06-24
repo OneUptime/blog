@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, Networking, Troubleshooting
 
-Description: Diagnose Kubernetes API server access failures caused by Calico egress policies by tracing the traffic path, inspecting NetworkPolicy egress rules, and using Calico policy logs.
+Description: Diagnose Kubernetes API server access failures caused by Calico egress policies by tracing the traffic path, inspecting NetworkPolicy egress rules, and using Felix logs.
 
 ---
 

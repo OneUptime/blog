@@ -87,7 +87,7 @@ function Card({ title, subtitle }: CardProps): React.ReactElement {
 }
 
 // Or with arrow functions
-const Card = ({ title, subtitle }: CardProps): React.ReactElement => {
+const CardWithArrow = ({ title, subtitle }: CardProps): React.ReactElement => {
   return (
     <View>
       <Text>{title}</Text>
@@ -314,9 +314,9 @@ const [name, setName] = useState('');            // string
 const [isVisible, setIsVisible] = useState(true); // boolean
 
 // Explicit typing (recommended for clarity)
-const [count, setCount] = useState<number>(0);
-const [name, setName] = useState<string>('');
-const [isVisible, setIsVisible] = useState<boolean>(true);
+const [typedCount, setTypedCount] = useState<number>(0);
+const [typedName, setTypedName] = useState<string>('');
+const [isTypedVisible, setIsTypedVisible] = useState<boolean>(true);
 ```
 
 ### Object State
@@ -428,7 +428,7 @@ const DataDisplay: React.FC = () => {
 
 ## useRef Typing
 
-### DOM Element Refs
+### Native Component Refs
 
 ```typescript
 import { useRef, useEffect } from 'react';
@@ -473,7 +473,7 @@ For values that persist across renders but don't trigger re-renders:
 
 ```typescript
 const Timer: React.FC = () => {
-  const intervalRef = useRef<NodeJS.Timeout | null>(null);
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const countRef = useRef<number>(0);
   const previousValueRef = useRef<string>('');
 
@@ -702,6 +702,8 @@ const Modal: React.FC = () => {
 ### Generic Custom Hook
 
 ```typescript
+import { useCallback, useEffect, useState } from 'react';
+
 interface UseFetchResult<T> {
   data: T | null;
   loading: boolean;
@@ -714,7 +716,7 @@ function useFetch<T>(url: string): UseFetchResult<T> {
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<Error | null>(null);
 
-  const fetchData = async () => {
+  const fetchData = useCallback(async (): Promise<void> => {
     setLoading(true);
     setError(null);
     try {
@@ -729,11 +731,11 @@ function useFetch<T>(url: string): UseFetchResult<T> {
     } finally {
       setLoading(false);
     }
-  };
+  }, [url]);
 
   useEffect(() => {
-    fetchData();
-  }, [url]);
+    void fetchData();
+  }, [fetchData]);
 
   return { data, loading, error, refetch: fetchData };
 }
@@ -823,8 +825,6 @@ function useAsyncStorage<T>(key: string, defaultValue: T | null = null): UseAsyn
 import {
   TouchableOpacity,
   GestureResponderEvent,
-  NativeSyntheticEvent,
-  NativeTouchEvent,
 } from 'react-native';
 
 interface ButtonProps {
@@ -1005,7 +1005,15 @@ const styles = StyleSheet.create({
 ### Image and FlatList Styles
 
 ```typescript
-import { ImageStyle, FlatList, ListRenderItem } from 'react-native';
+import {
+  FlatList,
+  Image,
+  ImageStyle,
+  ListRenderItem,
+  StyleProp,
+  Text,
+  View,
+} from 'react-native';
 
 interface AvatarProps {
   uri: string;
@@ -1120,15 +1128,15 @@ const ProductListScreen: React.FC = () => {
 ### Generic Form Field Component
 
 ```typescript
-interface FormFieldProps<T> {
+interface FormFieldProps<T extends Record<string, string>> {
   name: keyof T;
-  value: T[keyof T];
-  onChange: (name: keyof T, value: T[keyof T]) => void;
+  value: string;
+  onChange: (name: keyof T, value: string) => void;
   label: string;
   error?: string;
 }
 
-function FormField<T>({
+function FormField<T extends Record<string, string>>({
   name,
   value,
   onChange,
@@ -1139,8 +1147,8 @@ function FormField<T>({
     <View>
       <Text>{label}</Text>
       <TextInput
-        value={String(value)}
-        onChangeText={(text) => onChange(name, text as T[keyof T])}
+        value={value}
+        onChangeText={(text) => onChange(name, text)}
       />
       {error && <Text style={{ color: 'red' }}>{error}</Text>}
     </View>
@@ -1191,7 +1199,18 @@ const Button: React.FC<ButtonProps> = (props) => {
 ### Extending Native Component Props
 
 ```typescript
-import { TouchableOpacityProps, TextInputProps } from 'react-native';
+import {
+  ActivityIndicator,
+  StyleProp,
+  Text,
+  TextInput,
+  TextInputProps,
+  TextStyle,
+  TouchableOpacity,
+  TouchableOpacityProps,
+  View,
+  ViewStyle,
+} from 'react-native';
 
 interface CustomButtonProps extends TouchableOpacityProps {
   title: string;
@@ -1299,7 +1318,7 @@ const MessageBubble: React.FC<{ message: Message }> = ({ message }) => {
   if (isVideoMessage(message)) {
     return (
       <View>
-        <Video source={{ uri: message.uri }} />
+        <Text>Video: {message.uri}</Text>
         <Text>Duration: {message.duration}s</Text>
       </View>
     );

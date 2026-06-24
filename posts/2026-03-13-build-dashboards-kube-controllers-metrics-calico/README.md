@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, Networking, Observability
 
-Description: Build Grafana dashboards for Calico kube-controllers Prometheus metrics to visualize controller health.
+Description: Build Grafana dashboards for Calico kube-controllers Prometheus metrics to visualize distribution health.
 
 ---
 

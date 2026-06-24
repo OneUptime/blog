@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Docker, Backup, S3, AWS, Restore, Recovery
 
-Description: Restore Portainer Business Edition from an S3 backup using Portainer's built-in restore interface from a downloaded backup file or directly from S3 during initial setup.
+Description: Restore Portainer Business Edition from an S3 backup using the built-in restore interface or manual S3 download and volume restoration process.
 
 ## Introduction
 

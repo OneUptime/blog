@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ruby on Rails, Devise, Authentication, Security, User Management, Web Development
+Tags: Ruby On Rail, Devise, Authentication, Security, User Management, Web Development
 
 Description: Learn how to implement robust user authentication in Rails using Devise. This guide covers installation, configuration, customization, and security best practices with practical code examples.
 

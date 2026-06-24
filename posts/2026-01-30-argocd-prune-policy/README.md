@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: ArgoCD, GitOps, Kubernetes, Resource-Management
 
-Description: Learn how to configure ArgoCD prune policies to automatically remove resources that are no longer defined in Git and keep your clusters clean.
+Description: Learn how to configure ArgoCD prune policies to automatically remove orphaned Kubernetes resources and keep your clusters clean.
 
 ---
 

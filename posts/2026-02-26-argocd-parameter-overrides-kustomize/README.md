@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: ArgoCD, GitOps, Kubernetes, Kustomize, Configuration Management
 
-Description: Learn how to use ArgoCD parameter overrides with Kustomize to dynamically adjust image tags, namespaces, name prefixes, labels, and annotations without modifying your Git repository.
+Description: Learn how to use ArgoCD parameter overrides with Kustomize to dynamically adjust image tags, replicas, namespaces, and patches without modifying your Git repository.
 
 ---
 

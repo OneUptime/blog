@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Elasticsearch, Synthetic Fields, Runtime Fields, Search Optimization, Data Modeling, Ingest Pipelines
 
-Description: Learn how to create searchable synthetic fields in Elasticsearch using runtime fields and ingest pipelines to derive new data from existing fields.
+Description: Learn how to create searchable synthetic fields in Elasticsearch using runtime fields, ingest pipelines, and scripted fields to derive new data from existing fields without reindexing.
 
 ---
 

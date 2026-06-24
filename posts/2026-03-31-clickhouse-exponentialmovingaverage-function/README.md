@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: ClickHouse, SQL, Aggregate Function, EMA, Moving Average, Time Series
 
-Description: Learn how to use exponentialMovingAverage() in ClickHouse to compute time-weighted EMA with a configurable half-life period for time series smoothing.
+Description: Learn how to use exponentialMovingAverage() in ClickHouse to compute time-weighted EMA with a configurable alpha decay factor for time series smoothing.
 
 ---
 

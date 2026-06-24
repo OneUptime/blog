@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: MySQL, Sharding, Cross-Shard, Architecture, Query
 
-Description: Learn patterns for handling cross-shard queries in MySQL, including scatter-gather, denormalization, aggregation replicas, and routing tables.
+Description: Learn patterns for handling cross-shard queries in MySQL, including scatter-gather, denormalization, secondary indexes, and routing tables.
 
 ---
 

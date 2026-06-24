@@ -1,10 +1,10 @@
-# How to Capture Core Web Vitals (LCP, INP, CLS) as OpenTelemetry Metrics
+# How to Capture Core Web Vitals (LCP, FID, CLS) as OpenTelemetry Metrics
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Core Web Vitals, LCP, INP, CLS, Web Performance, Metric
+Tags: OpenTelemetry, Core Web Vitals, LCP, FID, CLS, Web Performance, Metric
 
-Description: Learn how to capture Core Web Vitals like LCP, INP, and CLS as OpenTelemetry metrics for real user performance monitoring and alerting.
+Description: Learn how to capture Core Web Vitals like LCP, FID, and CLS as OpenTelemetry metrics for real user performance monitoring and alerting.
 
 ---
 

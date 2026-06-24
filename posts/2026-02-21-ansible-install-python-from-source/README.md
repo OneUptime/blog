@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, Python, Compilation, Source Build
 
-Description: Compile and install specific Python versions from source on Debian or Ubuntu servers using Ansible for precise version control.
+Description: Compile and install specific Python versions from source on any Linux distribution using Ansible for precise version control.
 
 ---
 

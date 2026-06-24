@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Education, Team, RBAC, Student Environments
 
-Description: Configure Portainer Business Edition team-based access control to give each student an isolated container environment for hands-on learning.
+Description: Configure Portainer team-based access control to give each student an isolated container environment for hands-on learning.
 
 ## Introduction
 

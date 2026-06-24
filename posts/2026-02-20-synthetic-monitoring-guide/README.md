@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Synthetic Monitoring, Web Performance, Uptime, Testing, Observability
 
-Description: Learn how to set up synthetic monitoring to proactively detect issues before users do with endpoint checks, API flow checks, and SSL certificate monitoring.
+Description: Learn how to set up synthetic monitoring to proactively detect issues before users do with endpoint checks and browser tests.
 
 ---
 

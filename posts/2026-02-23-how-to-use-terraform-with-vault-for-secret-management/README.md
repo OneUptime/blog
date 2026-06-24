@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Terraform, Vault, Secret Management, HashiCorp, Security, DevOps
 
-Description: Learn how to integrate Terraform with HashiCorp Vault for secure secret management, dynamic credentials, and safer state handling in your infrastructure pipelines.
+Description: Learn how to integrate Terraform with HashiCorp Vault for secure secret management, dynamic credentials, and encrypted state storage in your infrastructure pipelines.
 
 ---
 

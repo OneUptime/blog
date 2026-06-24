@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Terraform, AWS, Subnets, IPv4, CIDR, Infrastructure as Code, VPC
 
-Description: Define public- and private-tier AWS subnets with IPv4 CIDR ranges across multiple availability zones using Terraform, with dynamic CIDR calculation and count patterns.
+Description: Create public and private AWS subnets with IPv4 CIDR ranges across multiple availability zones using Terraform, with dynamic CIDR calculation and for_each patterns.
 
 ## Introduction
 

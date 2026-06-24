@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenSearch, Kubernetes, Logging
 
-Description: Learn how to deploy OpenSearch with data streams for efficient Kubernetes log storage and analytics, including Index State Management, rollover policies, and optimized search performance.
+Description: Learn how to deploy OpenSearch with data streams for efficient Kubernetes log storage and analytics, including index lifecycle management, rollover policies, and optimized search performance.
 
 ---
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GCP, IPv6, Load Balancer, Cloud, External, Global
 
-Description: A guide to configuring Google Cloud Platform global external Application Load Balancer with an IPv6 frontend, enabling global IPv6 client access to GCP workloads.
+Description: A guide to configuring Google Cloud Platform External HTTP(S) Load Balancer with IPv6 frontend, enabling global IPv6 client access to GCP workloads.
 
 Google Cloud's global external Application Load Balancer supports IPv6 by assigning both IPv4 and IPv6 global anycast addresses to the frontend. This is configured at the frontend forwarding rule level.
 

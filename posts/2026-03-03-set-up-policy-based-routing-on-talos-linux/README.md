@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Talos Linux, Policy-Based Routing, Networking, Routing Rules, Kubernetes, Network Configuration
 
-Description: Guide to configuring policy-based routing on Talos Linux to route traffic based on source address, destination address, interface, packet mark, or other supported criteria.
+Description: Guide to configuring policy-based routing on Talos Linux to route traffic based on source address, protocol, or other criteria.
 
 ---
 

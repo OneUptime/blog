@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: ArgoCD, GitOps, Kubernetes, Helm, CI/CD
 
-Description: Learn how to pass Helm parameters in ArgoCD applications using set parameters, set-string, structured values, and environment variables for dynamic configuration.
+Description: Learn how to pass Helm parameters in ArgoCD applications using set parameters, set-string, set-json, and environment variables for dynamic configuration.
 
 ---
 

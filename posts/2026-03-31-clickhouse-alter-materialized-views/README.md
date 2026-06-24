@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: ClickHouse, SQL, DDL, Materialized View, ALTER
 
-Description: Learn how to modify materialized views in ClickHouse with ALTER TABLE ... MODIFY QUERY, alter target tables, and recreate views safely.
+Description: Learn how to modify materialized views in ClickHouse, work around ALTER limitations, modify target tables, and recreate views safely with OR REPLACE.
 
 ---
 

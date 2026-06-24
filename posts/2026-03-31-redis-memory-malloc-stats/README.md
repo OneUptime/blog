@@ -22,7 +22,7 @@ Returns a multi-line string containing jemalloc's internal stats.
 
 ## Example Output
 
-```
+```text
 > MEMORY MALLOC-STATS
 ___ Begin jemalloc statistics ___
 Version: "5.3.0-0-..."

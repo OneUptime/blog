@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Nginx, OAuth2
 
-Description: Learn how to configure NGINX Ingress Controller with OAuth2 Proxy for external authentication, enabling secure access control with popular identity providers like Google, GitHub, and Microsoft Entra ID.
+Description: Learn how to configure NGINX Ingress Controller with OAuth2 Proxy for external authentication, enabling secure access control with popular identity providers like Google, GitHub, and Azure AD.
 
 ---
 

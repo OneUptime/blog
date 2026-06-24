@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Istio, Sidecar, Namespace, Kubernetes, Service Mesh, Multi-Tenancy
 
-Description: Apply Istio Sidecar configurations at the namespace level for per-team configuration scoping and resource optimization in multi-namespace clusters.
+Description: Apply Istio Sidecar configurations at the namespace level for per-team isolation, resource optimization, and security boundaries in multi-namespace clusters.
 
 ---
 

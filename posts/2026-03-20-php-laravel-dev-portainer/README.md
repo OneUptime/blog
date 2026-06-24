@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Docker, PHP, Laravel, Development, MySQL, Redis
 
-Description: Build a complete PHP Laravel development environment with Nginx, MySQL, Redis, and Mailhog using Docker and Portainer.
+Description: Build a complete PHP Laravel development environment with Nginx, MySQL, Redis, and hot-reload using Docker and Portainer.
 
 ## Introduction
 

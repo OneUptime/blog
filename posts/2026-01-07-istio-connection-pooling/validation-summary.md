@@ -4,30 +4,31 @@
 validated
 
 ## Post Type
-Technical guide / tutorial
+Tutorial / Guide
 
 ## Technologies Covered
+- Istio
+- Envoy
+- Kubernetes
 - Istio DestinationRule
-- Envoy connection pooling and circuit breaking
-- Kubernetes custom resources
-- Prometheus / Envoy metrics
+- IstioOperator mesh configuration
+- HTTP/1.1, HTTP/2, TCP, gRPC, and WebSocket connection behavior
 
 ## Sources Consulted
 - Istio DestinationRule reference: https://istio.io/latest/docs/reference/config/networking/destination-rule/
+- Istio Envoy statistics configuration: https://istio.io/latest/docs/ops/configuration/telemetry/envoy-stats/
 - Istio circuit breaking task: https://istio.io/latest/docs/tasks/traffic-management/circuit-breaking/
-- Istio Envoy statistics documentation: https://istio.io/latest/docs/ops/configuration/telemetry/envoy-stats/
-- Istio v1 API promotion announcement: https://istio.io/latest/blog/2024/v1-apis/
-- Envoy circuit breaking documentation: https://www.envoyproxy.io/docs/envoy/latest/intro/arch_overview/upstream/circuit_breaking
+- Envoy cluster statistics reference: https://www.envoyproxy.io/docs/envoy/latest/configuration/upstream/cluster_manager/cluster_stats
+- Istio ServiceEntry reference, for wildcard host behavior: https://istio.io/latest/docs/reference/config/networking/service-entry/
 
 ## Issues Found
-- The post used `maxPendingRequests`, which is not the current Istio DestinationRule HTTP connection pool field. Changed all examples and references to `http1MaxPendingRequests`.
-- The post described `maxRetries` as the maximum number of active requests. Added `http2MaxRequests` for active-request limiting and corrected `maxRetries` comments to describe outstanding retries.
-- The post used `USE_CLIENT_PROTOCOL` as an `h2UpgradePolicy` value. Replaced it with valid `h2UpgradePolicy` values (`DEFAULT`, `DO_NOT_UPGRADE`, `UPGRADE`) and used the separate `useClientProtocol: true` field where protocol preservation was intended.
-- DestinationRule examples used `networking.istio.io/v1beta1`. Updated them to the stable `networking.istio.io/v1` API version used by current Istio documentation.
-- The post described `maxConnections` as a total connection limit across backend pods. Updated wording and the calculation example to match Istio's per-destination-host connection pool description.
-- The monitoring example used a generic `ServiceMonitor` selecting `app: istio-proxy`, which is not a reliable Istio sidecar metric setup. Replaced it with Istio's documented `proxyStatsMatcher` configuration for enabling relevant Envoy statistics.
-- The troubleshooting section mentioned adding preconnect, but the snippet did not configure preconnect. Reworded the solution to focus on increasing connection reuse.
-- The memory-pressure section gave a fixed per-connection memory estimate without a source. Reworded it to the more accurate statement that each connection consumes proxy and kernel memory.
+- The post described the source Envoy proxy as maintaining connections to "downstream services." In Envoy terminology, destination services are upstream from the client-side proxy, so this was corrected to "upstream connections to destination services."
+- The TCP section stated that all TCP connection pooling settings apply to HTTP/1.1 and HTTP/2. Istio documents `maxConnections` as limiting HTTP/1.1 or TCP connections, while other TCP settings such as timeout and keepalive apply more broadly. The wording was narrowed to match the official API reference.
+- The `h2UpgradePolicy` diagram said `DO_NOT_UPGRADE` means a single request per connection. HTTP/1.1 can reuse keep-alive connections sequentially, so this was changed to "Sequential requests per connection."
+- A subset example said HTTP/1.1 typically uses one request per connection. The configured value `maxRequestsPerConnection: 1` actually disables HTTP/1.1 keep-alive after one request, so the comment was corrected.
+- Environment-specific examples used wildcard Kubernetes service hosts such as `*.development.svc.cluster.local`. DestinationRule hosts should refer to services in the registry or hosts declared by ServiceEntries; wildcard hosts are valid in contexts such as ServiceEntry-declared hosts, but not as a generic namespace-wide selector for Kubernetes Services. These examples were changed to concrete service FQDNs.
+- A calculation example said `http1MaxPendingRequests: 200` was 20% of `maxConnections: 100`. The comment was corrected to say it is 2x maxConnections.
+- The latency troubleshooting example implied that setting `maxRequestsPerConnection: 200` always increases reuse. Since Istio's default is unlimited requests per connection, the comment was clarified to apply when raising very low limits.
 
 ## Review Notes
-All YAML snippets were parsed successfully after the edits. The tuning ranges remain workload-dependent recommendations rather than universal defaults, so they should still be validated with load testing before production use.
+The configuration field names and API versions used in the examples are current in the official Istio `networking.istio.io/v1` DestinationRule reference. The monitoring section correctly notes that additional Envoy stats may need to be enabled through `proxyStatsMatcher` before alerting on upstream connection and retry metrics.

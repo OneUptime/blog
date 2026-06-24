@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, Patching, Security, Linux, Automation
 
-Description: Automate server patching with Ansible using rolling updates, pre-patch checks, reboot management, and post-patch validation across your fleet.
+Description: Automate server patching with Ansible using rolling updates, pre-patch snapshots, reboot management, and post-patch validation across your fleet.
 
 ---
 

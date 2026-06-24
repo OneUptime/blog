@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Security, Docker Hub, Registry Policy, Compliance
 
-Description: Learn how to limit Portainer users to approved registries and enforce image-source policy where Portainer or Kubernetes supports it.
+Description: Learn how to prevent Portainer users from pulling images from public registries and enforce use of approved private registries.
 
 ## Why Restrict Public Repositories?
 

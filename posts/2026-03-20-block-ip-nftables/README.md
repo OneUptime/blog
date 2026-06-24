@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: nftables, Linux, Firewall, Security, Blocking, IPv4
 
-Description: Block specific IP addresses or subnets with nftables using simple rules, sets for multiple IPs, and timeout-enabled sets for real-time blocking and unblocking.
+Description: Block specific IP addresses or subnets with nftables using simple rules, sets for multiple IPs, and dynamic sets for real-time blocking and unblocking.
 
 Blocking IP addresses with nftables is cleaner and more efficient than iptables, especially when blocking multiple IPs using nftables' built-in set feature.
 

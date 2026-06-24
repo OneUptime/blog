@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Azure, ACI, Azure AD, Security
 
-Description: Learn how to register a Microsoft Entra ID application and configure its permissions to enable Portainer Business Edition to manage Azure Container Instances.
+Description: Learn how to register an Azure Active Directory application and configure its permissions to enable Portainer Business Edition to manage Azure Container Instances.
 
 ## Introduction
 

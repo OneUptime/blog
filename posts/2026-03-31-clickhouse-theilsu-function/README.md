@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: ClickHouse, SQL, Aggregate Function, theilsU, Uncertainty Coefficient, Statistics
 
-Description: Learn how to use theilsU() in ClickHouse to measure the asymmetric association between categorical variables, returning values from -1 to 1.
+Description: Learn how to use theilsU() in ClickHouse to measure the asymmetric predictive power of one categorical variable over another, ranging from 0 to 1.
 
 ---
 

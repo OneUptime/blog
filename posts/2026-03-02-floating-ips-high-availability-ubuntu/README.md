@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Ubuntu, High Availability, Networking, Pacemaker, Failover
 
-Description: Learn how to configure floating IPs (virtual IPs) for high availability on Ubuntu using Pacemaker and Keepalived to ensure continuous service availability.
+Description: Learn how to configure floating IPs (virtual IPs) for high availability on Ubuntu using Pacemaker, Keepalived, and manual approaches to ensure continuous service availability.
 
 ---
 

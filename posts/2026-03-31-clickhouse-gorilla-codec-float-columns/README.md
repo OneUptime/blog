@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: ClickHouse, Compression, Gorilla, Float, TimeSeries, Performance
 
-Description: Learn how to use the Gorilla codec in ClickHouse to compress floating-point time series columns using XOR-based encoding for metrics and sensor data.
+Description: Learn how to use the Gorilla codec in ClickHouse to compress floating-point time series columns using XOR-based delta encoding for metrics and sensor data.
 
 ---
 

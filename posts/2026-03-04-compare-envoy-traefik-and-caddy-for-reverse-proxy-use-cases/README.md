@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Envoy, Proxy, Traefik, Caddy, Web Server, Reverse Proxy, Comparison, Linux
 
-Description: Learn how to compare Envoy, Traefik, and Caddy for Reverse Proxy Use Cases on RHEL 9 with configuration examples and best practices.
+Description: Learn how to compare Envoy, Traefik, and Caddy for Reverse Proxy Use Cases on RHEL 9 with step-by-step instructions, configuration examples, and best practices.
 
 ---
 

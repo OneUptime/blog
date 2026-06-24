@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Uninstall, Linux, macOS, Windows, DevOps, Cleanup, Disk Space, Troubleshooting
+Tags: Docker, Uninstall, Linux, macOS, Window, DevOps, Cleanup, Disk Space, Troubleshooting
 
 Description: Complete instructions for fully removing Docker Engine, Docker Desktop, and all associated data from Linux, macOS, and Windows systems.
 

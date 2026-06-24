@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: ArgoCD, GitOps, Kubernetes, RBAC, Security
 
-Description: Learn how to configure the default RBAC policy in ArgoCD to control baseline permissions for authenticated users.
+Description: Learn how to configure the default RBAC policy in ArgoCD to control baseline permissions for authenticated users who do not have explicit role assignments.
 
 ---
 

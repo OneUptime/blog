@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, IPAM
 
-Description: Practical patterns and real-world examples for using the Calico IPAMConfiguration resource effectively in production Kubernetes environments.
+Description: Practical patterns and real-world examples for using Calico IPAMConfiguration resources effectively in production Kubernetes environments.
 
 ---
 

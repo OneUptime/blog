@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: ArgoCD, GitOps, Kubernetes, CLI, DevOps
 
-Description: Learn how to use the ArgoCD CLI to override application parameters for Helm, Kustomize, and config management plugins, including practical CI/CD integration patterns.
+Description: Learn how to use the ArgoCD CLI to override application parameters for Helm, Kustomize, and plain manifests, including practical CI/CD integration patterns.
 
 ---
 

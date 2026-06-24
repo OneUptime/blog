@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, GCP, Cloud Function, Serverless, FaaS
 
-Description: Deploy and manage GCP Cloud Functions with Ansible including HTTP triggers, Pub/Sub triggers, Cloud Storage triggers, and environment variables.
+Description: Deploy and manage GCP Cloud Functions with Ansible including HTTP triggers, Pub/Sub triggers, environment variables, and VPC connectors.
 
 ---
 

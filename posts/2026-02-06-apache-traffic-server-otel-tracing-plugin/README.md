@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Apache Traffic Server, CDN, Tracing Plugin
 
-Description: Configure the Apache Traffic Server OpenTelemetry tracing plugin to export ATS transaction traces with OTLP HTTP.
+Description: Configure the Apache Traffic Server OpenTelemetry tracing plugin to trace CDN request handling and cache operations with OTLP export.
 
 Apache Traffic Server (ATS) is a high-performance caching proxy used as a CDN edge server and forward proxy. ATS supports OpenTelemetry tracing through an experimental global plugin that creates a server span for each transaction, propagates B3 trace headers upstream, and sends trace information to an OTLP HTTP endpoint. This gives you observability into CDN behavior at the request level.
 

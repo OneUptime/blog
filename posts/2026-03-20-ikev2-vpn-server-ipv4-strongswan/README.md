@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: IKEv2, strongSwan, VPN, IPv4, PKI, Linux
 
-Description: Build a production-ready IKEv2 VPN server with StrongSwan using server certificate authentication and EAP-MSCHAPv2 credentials for secure IPv4 remote access.
+Description: Build a production-ready IKEv2 VPN server with StrongSwan using certificate authentication for secure IPv4 remote access.
 
 IKEv2 is the modern standard for IPSec key exchange, offering faster renegotiation, MOBIKE for mobility, and better security than IKEv1. Combined with server certificate authentication and EAP-MSCHAPv2 user authentication, it provides a robust VPN solution compatible with Windows, macOS, and iOS native VPN clients, plus Android clients such as the strongSwan app.
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rancher, High Availability, k3s, Lightweight Kubernetes
 
-Description: Deploy Rancher in a highly available configuration on K3s for resource-constrained environments, using embedded etcd or an external datastore for cluster state management.
+Description: Deploy Rancher in a highly available configuration on K3s for resource-constrained environments, using embedded or external etcd for cluster state management.
 
 ## Introduction
 

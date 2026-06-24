@@ -19,7 +19,7 @@ A single-stage Dockerfile includes everything in the final image: development de
 ```dockerfile
 # BAD: Single stage - everything ends up in the final image
 
-FROM node:20
+FROM node:24
 
 WORKDIR /app
 COPY package*.json ./
@@ -41,14 +41,14 @@ Multi-stage builds use multiple FROM statements. Each stage can access files fro
 ```dockerfile
 # Stage 1: Install production dependencies only
 # This stage's node_modules will be copied to the final image
-FROM node:20-alpine AS deps
+FROM node:24-alpine AS deps
 WORKDIR /app
 COPY package*.json ./
 RUN npm ci --omit=dev  # No devDependencies (--only=production is deprecated since npm v9)
 
 # Stage 2: Build the application
 # This stage has full devDependencies for TypeScript, etc.
-FROM node:20-alpine AS build
+FROM node:24-alpine AS build
 WORKDIR /app
 COPY package*.json ./
 RUN npm ci                    # All dependencies for build
@@ -57,7 +57,7 @@ RUN npm run build             # Compile TypeScript, bundle, etc.
 
 # Stage 3: Production image (this is what gets deployed)
 # Only contains the runtime - no build tools, no source code
-FROM node:20-alpine AS production
+FROM node:24-alpine AS production
 WORKDIR /app
 
 # Security: Create non-root user to run the application
@@ -91,7 +91,7 @@ This production-ready Dockerfile includes cache mounts for faster rebuilds, secu
 # ============================================
 # Stage 1: Base image with common setup
 # ============================================
-FROM node:20-alpine AS base
+FROM node:24-alpine AS base
 
 # Install security updates
 RUN apk update && apk upgrade --no-cache
@@ -132,7 +132,7 @@ COPY . .
 RUN npm run build
 
 # Prune dev dependencies after build
-RUN npm prune --production
+RUN npm prune --omit=dev
 
 # ============================================
 # Stage 4: Production image
@@ -172,7 +172,7 @@ TypeScript projects require a compile step that needs devDependencies. This Dock
 ```dockerfile
 # syntax=docker/dockerfile:1
 
-FROM node:20-alpine AS base
+FROM node:24-alpine AS base
 WORKDIR /app
 
 # ============================================
@@ -209,7 +209,7 @@ RUN --mount=type=cache,target=/root/.npm \
 # ============================================
 # Production image - minimal runtime only
 # ============================================
-FROM node:20-alpine AS production
+FROM node:24-alpine AS production
 
 ENV NODE_ENV=production
 WORKDIR /app
@@ -237,7 +237,7 @@ NestJS applications follow a similar pattern. The libc6-compat package is needed
 ```dockerfile
 # syntax=docker/dockerfile:1
 
-FROM node:20-alpine AS base
+FROM node:24-alpine AS base
 # libc6-compat is required for some native Node modules
 RUN apk add --no-cache libc6-compat
 WORKDIR /app
@@ -260,7 +260,7 @@ RUN --mount=type=cache,target=/root/.npm \
     npm ci --omit=dev
 
 # Production - minimal runtime image
-FROM node:20-alpine AS production
+FROM node:24-alpine AS production
 ENV NODE_ENV=production
 WORKDIR /app
 
@@ -284,7 +284,7 @@ Docker caches each layer. When a layer changes, all subsequent layers must rebui
 
 ```dockerfile
 # 1. Base image (rarely changes) - cached for months
-FROM node:20-alpine
+FROM node:24-alpine
 
 # 2. System dependencies (changes rarely) - cached until you need new packages
 RUN apk add --no-cache dumb-init
@@ -368,16 +368,16 @@ Distroless images contain only your application and its runtime dependencies. No
 
 ```dockerfile
 # Build stage - use full image for building
-FROM node:20-alpine AS build
+FROM node:24-trixie-slim AS build
 WORKDIR /app
 COPY package*.json ./
 RUN npm ci
 COPY . .
 # Build and remove devDependencies
-RUN npm run build && npm prune --production
+RUN npm run build && npm prune --omit=dev
 
 # Production with distroless - no shell, no package manager
-FROM gcr.io/distroless/nodejs20-debian12
+FROM gcr.io/distroless/nodejs24-debian13
 
 WORKDIR /app
 # Copy only the built application and production dependencies
@@ -427,8 +427,12 @@ on: push
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       # Build image with commit SHA tag for traceability
       - name: Build image
@@ -436,7 +440,7 @@ jobs:
 
       # Scan the built image for vulnerabilities
       - name: Run Trivy scan
-        uses: aquasecurity/trivy-action@master
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: my-app:${{ github.sha }}
           format: 'sarif'                  # GitHub-compatible format
@@ -445,7 +449,7 @@ jobs:
 
       # Upload results to GitHub Security tab
       - name: Upload scan results
-        uses: github/codeql-action/upload-sarif@v2
+        uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: 'trivy-results.sarif'
 ```
@@ -457,16 +461,18 @@ Never put secrets in your Dockerfile or pass them as build arguments - they are 
 ```dockerfile
 # syntax=docker/dockerfile:1
 
-FROM node:20-alpine AS build
+FROM node:24-alpine AS build
 
 # Build argument (visible in image history via `docker history`)
 # OK for non-sensitive configuration
 ARG NODE_ENV=production
 
+# Copy package files before installing dependencies
+COPY package*.json ./
+
 # Secret mount (NOT visible in image history)
-# The secret is mounted as a file during build, then removed
-RUN --mount=type=secret,id=npm_token \
-    NPM_TOKEN=$(cat /run/secrets/npm_token) \
+# Mount an npmrc file during build, then remove it automatically
+RUN --mount=type=secret,id=npmrc,target=/root/.npmrc \
     npm ci
 
 COPY . .
@@ -476,12 +482,12 @@ RUN npm run build
 Build with secrets from the command line:
 
 ```bash
-# Create a file containing the secret (not committed to git!)
-echo "npm_xxxxx" > npm_token.txt
+# Create an .npmrc containing the token (not committed to git!)
+echo "//registry.npmjs.org/:_authToken=npm_xxxxx" > .npmrc
 
 # Build with secret - BuildKit mounts it only during build
 # The secret is never stored in any image layer
-docker build --secret id=npm_token,src=npm_token.txt -t my-app .
+docker build --secret id=npmrc,src=.npmrc -t my-app .
 ```
 
 ## Multi-Architecture Builds
@@ -494,10 +500,11 @@ docker buildx create --name multiarch --use
 
 # Build for multiple platforms and push to registry
 # Docker creates a manifest that points to both architectures
+# Specify target architectures and push directly (multi-arch images are not loaded locally by default)
 docker buildx build \
-  --platform linux/amd64,linux/arm64 \  # Specify target architectures
+  --platform linux/amd64,linux/arm64 \
   -t my-app:latest \
-  --push \                               # Push directly (can't load multi-arch locally)
+  --push \
   .
 ```
 
@@ -505,9 +512,9 @@ docker buildx build \
 
 | Configuration | Image Size |
 |--------------|------------|
-| node:20 (single stage) | ~1.2 GB |
-| node:20-slim | ~250 MB |
-| node:20-alpine | ~180 MB |
+| node:24 (single stage) | ~1.2 GB |
+| node:24-slim | ~250 MB |
+| node:24-alpine | ~180 MB |
 | Multi-stage alpine | ~150 MB |
 | Multi-stage distroless | ~130 MB |
 

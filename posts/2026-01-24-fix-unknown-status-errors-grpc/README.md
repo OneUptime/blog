@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: gRPC, Debugging, Error Handling, Status Code, Troubleshooting
 
-Description: Learn how to diagnose and resolve gRPC Unknown status errors caused by plain errors, serialization issues, and misconfigured services.
+Description: Learn how to diagnose and resolve gRPC Unknown status errors caused by unhandled exceptions, serialization issues, and misconfigured services.
 
 ---
 

@@ -1,10 +1,10 @@
-# How to Fix Duplex Mismatch Errors on Ethernet Links
+# How to Fix 'Network Cable Unplugged' Errors Caused by Duplex Mismatch
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Duplex Mismatch, Ethernet, ethtool, Network Troubleshooting, Linux, Cisco, Speed
 
-Description: Learn how to diagnose and fix duplex mismatch issues that cause intermittent connectivity, high error rates, and poor Ethernet performance.
+Description: Learn how to diagnose and fix duplex mismatch issues that cause intermittent connectivity, high error rates, and 'network cable unplugged' errors on Ethernet interfaces.
 
 ---
 

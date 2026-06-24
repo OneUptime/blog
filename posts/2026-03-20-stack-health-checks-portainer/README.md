@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Docker Compose, Health Check, Monitoring, Stack
 
-Description: Configure comprehensive health checks for every service in a Portainer stack to improve readiness checks and monitoring.
+Description: Configure comprehensive health checks for every service in a Portainer stack to enable automatic recovery and monitoring.
 
 ## Introduction
 

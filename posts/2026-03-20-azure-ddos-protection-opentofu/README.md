@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Azure, DDoS Protection, Network Security, Infrastructure as Code
 
-Description: Learn how to configure Azure DDoS Network Protection with OpenTofu to protect public IP resources against network-layer volumetric and protocol DDoS attacks.
+Description: Learn how to configure Azure DDoS Network Protection with OpenTofu to protect public IP resources against volumetric, protocol, and application-layer DDoS attacks.
 
 ## Introduction
 

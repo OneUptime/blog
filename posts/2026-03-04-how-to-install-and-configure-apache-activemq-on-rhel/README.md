@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, ActiveMQ, Message Broker, JMS, Java
 
-Description: Learn how to install and configure Apache ActiveMQ Classic on RHEL as a Jakarta Messaging/JMS-compatible message broker.
+Description: Learn how to install and configure Apache ActiveMQ Classic on RHEL as a JMS-compliant message broker.
 
 ---
 

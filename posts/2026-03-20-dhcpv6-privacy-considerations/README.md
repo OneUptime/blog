@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: DHCPv6, IPv6, Privacy, DUID, RFC 7844
 
-Description: Understand the privacy implications of DHCPv6, including DUID tracking, address stability issues, and how RFC 7844 anonymity profiles help protect user identity.
+Description: Understand the privacy implications of DHCPv6, including DUID tracking, address stability issues, and how RFC 7844 anonymous stateless profiles help protect user identity.
 
 ## Overview
 

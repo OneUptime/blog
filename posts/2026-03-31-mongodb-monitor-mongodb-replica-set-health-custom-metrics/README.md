@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: MongoDB, Replica Set, Monitoring, Custom Metric, Prometheus
 
-Description: Build custom metrics for MongoDB replica set health using rs.status(), a Prometheus HTTP exporter, and Grafana dashboards for replication monitoring.
+Description: Build custom metrics for MongoDB replica set health using rs.status(), a Prometheus push gateway, and Grafana dashboards for replication monitoring.
 
 ---
 

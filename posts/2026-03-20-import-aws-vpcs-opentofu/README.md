@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Terraform, AWS, VPC, Import, Networking
 
-Description: Learn how to import existing AWS VPCs and their associated resources (subnets, route tables, internet gateways) into OpenTofu state with a repeatable import strategy.
+Description: Learn how to import existing AWS VPCs and their associated resources (subnets, route tables, internet gateways) into OpenTofu state with a complete import strategy.
 
 ## Introduction
 

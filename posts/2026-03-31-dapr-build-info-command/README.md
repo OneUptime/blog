@@ -20,7 +20,7 @@ dapr build-info
 
 Sample output:
 
-```
+```text
 CLI:
   Version: 1.13.0
   Git Commit: a1b2c3d4e5f6789012345678901234567890abcd

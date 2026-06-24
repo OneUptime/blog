@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: ClickHouse, Scheduled Export, Automation, Cron, Data Pipeline
 
-Description: Learn how to set up scheduled data exports from ClickHouse using cron jobs, refreshable materialized views, and pipeline tools for automated reporting.
+Description: Learn how to set up scheduled data exports from ClickHouse using cron jobs, ClickHouse Scheduled Jobs, and pipeline tools for automated reporting.
 
 ---
 

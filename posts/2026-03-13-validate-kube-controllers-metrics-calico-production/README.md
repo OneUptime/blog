@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, Networking, Observability
 
-Description: Validate that Calico kube-controllers Prometheus metrics are collected accurately from the kube-controllers metrics endpoint.
+Description: Validate that Calico kube-controllers Prometheus metrics are collected accurately from all pods.
 
 ---
 

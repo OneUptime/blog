@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rancher, Kubernetes, Elasticsearch, Search, Database
 
-Description: Deploy Elasticsearch on Rancher-managed Kubernetes clusters using the ECK operator for full-text search and log analytics workloads.
+Description: Deploy Elasticsearch on Rancher-managed Kubernetes clusters using the ECK operator or Helm chart for full-text search and log analytics workloads.
 
 ## Introduction
 

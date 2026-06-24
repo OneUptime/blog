@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, Callback Plugins, Email, Notification
 
-Description: Configure the Ansible mail callback plugin to send email notifications when playbooks fail or hosts become unreachable during execution.
+Description: Configure the Ansible mail callback plugin to send email notifications when playbooks complete, fail, or encounter errors during execution.
 
 ---
 

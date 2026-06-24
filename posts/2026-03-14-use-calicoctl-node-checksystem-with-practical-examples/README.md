@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Calicoctl, System Requirements, Kubernetes, Pre-flight Checks
 
-Description: Use calicoctl node checksystem to verify that a host meets Calico's kernel compatibility and module requirements, with practical pre-deployment validation examples.
+Description: Use calicoctl node checksystem to verify that a host meets all kernel and system requirements for running Calico, with practical pre-deployment validation examples.
 
 ---
 

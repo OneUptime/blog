@@ -715,7 +715,7 @@ esac
 
 Here's a comprehensive template you can use for your resolution documentation:
 
-```markdown
+````markdown
 # Resolution: [Brief Title]
 
 ## Metadata
@@ -733,9 +733,9 @@ Here's a comprehensive template you can use for your resolution documentation:
 - [Symptom 1 - be specific]
 - [Symptom 2]
 - Error messages observed:
-  ```
-  [Exact error message from logs]
   ```text
+  [Exact error message from logs]
+  ```
 
 ## Root Cause
 ### Analysis
@@ -757,13 +757,13 @@ Here's a comprehensive template you can use for your resolution documentation:
 
 // After
 [fixed code]
-```bash
+```
 
 ### Configuration Changes
 ```yaml
 ## [config file name]
 [relevant configuration]
-```bash
+```
 
 ## Verification
 ### Immediate Checks
@@ -773,7 +773,7 @@ Here's a comprehensive template you can use for your resolution documentation:
 ### Monitoring Queries
 ```text
 [Query to verify fix]
-```bash
+```
 
 ## Prevention
 ### Action Items
@@ -792,7 +792,7 @@ Here's a comprehensive template you can use for your resolution documentation:
 
 ## Tags
 `tag1` `tag2` `tag3`
-```text
+````
 
 ## Conclusion
 

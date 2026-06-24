@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Kubernetes, Tracing
 
-Description: Configure head-based sampling in the OpenTelemetry Collector to reduce trace volume in Kubernetes while maintaining observability through probabilistic, service-specific, and priority-based sampling.
+Description: Configure head-based sampling in the OpenTelemetry Collector to reduce trace volume in Kubernetes while maintaining observability through probabilistic, rate-limiting, and attribute-based sampling.
 
 ---
 

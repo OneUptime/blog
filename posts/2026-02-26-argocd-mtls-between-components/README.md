@@ -1,10 +1,10 @@
-# How to Configure Strict TLS Between ArgoCD Components
+# How to Configure mTLS Between ArgoCD Components
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: ArgoCD, GitOps, Kubernetes, TLS, Security
 
-Description: Learn how to configure strict TLS certificate verification between ArgoCD server, repo server, and application controller for secure internal communication in production environments.
+Description: Learn how to configure mutual TLS authentication between ArgoCD server, repo server, and application controller for secure internal communication in production environments.
 
 ---
 

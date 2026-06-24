@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Docker, Business Edition, License, CLI, Configuration
 
-Description: Apply and manage your Portainer Business Edition license key using the --license-key flag, PORTAINER_LICENSE_KEY, and the Licenses UI to unlock enterprise features.
+Description: Apply and manage your Portainer Business Edition license key using the --license-key flag and UI settings to unlock enterprise features.
 
 ## Introduction
 

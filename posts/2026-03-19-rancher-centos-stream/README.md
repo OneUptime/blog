@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rancher, CentOS, Docker, Kubernetes, Installation
 
-Description: A complete guide to installing Rancher on CentOS Stream 9 using Docker for testing and development, including system configuration, Docker installation, and firewall setup.
+Description: A complete guide to installing Rancher on CentOS Stream 9 using Docker, including system configuration, Docker installation, and firewall setup.
 
 CentOS Stream serves as the upstream development platform for Red Hat Enterprise Linux and is a popular choice for enterprise server deployments. Because Rancher's single-container Docker install is intended for testing and development rather than production, this guide covers the full installation process for getting Rancher running on CentOS Stream 9 in a non-production environment.
 

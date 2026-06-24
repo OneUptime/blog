@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Education, Team, Docker, Multi-Tenant, Training
 
-Description: Use Portainer's Teams feature to create scoped student environments on a shared Docker host, giving each learner controlled access to containers, stacks, and volumes.
+Description: Use Portainer's Teams feature to create isolated student environments on a shared Docker host, giving each learner their own scoped access to containers, stacks, and volumes.
 
 ---
 

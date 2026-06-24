@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Podman, Container, DevOps, CPU, Resource Limit, Performance
 
-Description: Learn how to control CPU allocation for Podman containers using CPU quotas, shares, and pinning options.
+Description: Learn how to control CPU allocation for Podman containers using CPU quotas, shares, pinning, and real-time scheduling options.
 
 ---
 

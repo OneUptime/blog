@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, S3, MinIO, Object Storage, Backup
 
-Description: Configure S3-compatible object storage (MinIO, Ceph, or AWS S3) for Portainer-managed applications and use it for application file storage and backups.
+Description: Configure S3-compatible object storage (MinIO, Ceph, or AWS S3) for Portainer-managed applications and use it for container backups and data persistence.
 
 ## Introduction
 

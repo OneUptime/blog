@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: IPv6, GeoDNS, DNS, AAAA Records, Content Delivery
 
-Description: Learn how to configure GeoDNS to return different IPv6 AAAA records based on the client's or resolver's geographic location, enabling regional traffic routing for dual-stack services.
+Description: Learn how to configure GeoDNS to return different IPv6 AAAA records based on the client's geographic location, enabling regional traffic routing for dual-stack services.
 
 ## What Is GeoDNS?
 

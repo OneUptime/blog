@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Portainer, WSL2, Ubuntu, Docker, Windows, Self-Hosted
+Tags: Portainer, WSL2, Ubuntu, Docker, Window, Self-Hosted
 
 Description: Learn how to install Portainer CE inside WSL2 Ubuntu on Windows to get a Linux-native Docker container management UI on your Windows machine.
 

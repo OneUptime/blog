@@ -72,7 +72,7 @@ wipefs -a /dev/sdX
 ceph osd tree
 watch ceph status  # Watch for recovery to complete
 ```
-```
+```markdown
 
 ## Runbooks
 
@@ -104,7 +104,7 @@ smartctl -a /dev/sdX
 - If disk failed: follow procedures/replace-osd.md
 - If memory issue: check node OOM killer logs
 - If network: follow runbooks/connectivity.md
-```
+```markdown
 
 ## Keeping the Knowledge Base Current
 

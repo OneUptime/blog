@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: AWS, CloudWatch, Synthetics, Website Monitoring, Availability, Uptime
 
-Description: Use CloudWatch Synthetics canaries to monitor website availability, track uptime, and detect visual and functional issues proactively
+Description: Use CloudWatch Synthetics canaries to monitor website availability, track uptime, and detect visual and functional regressions proactively
 
 ---
 

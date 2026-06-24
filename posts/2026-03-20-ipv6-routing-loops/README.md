@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: IPv6, Routing, Troubleshooting, Traceroute6, Network Diagnostics, BGP
 
-Description: Diagnose IPv6 routing loops using traceroute6, analyze ICMPv6 Time Exceeded messages, and identify misconfigured static routes or dynamic routing protocol issues causing loops.
+Description: Diagnose IPv6 routing loops using traceroute6, analyze TTL-exceeded messages, and identify misconfigured static routes or dynamic routing protocol issues causing loops.
 
 ## Introduction
 

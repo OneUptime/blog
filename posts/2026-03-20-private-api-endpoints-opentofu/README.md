@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: AWS, Azure, Private Endpoint, API Gateway, OpenTofu, Security, PrivateLink
 
-Description: Learn how to configure private API endpoints on AWS and Azure using OpenTofu so API traffic stays on private network paths instead of traversing the public internet.
+Description: Learn how to configure private API endpoints on AWS and Azure using OpenTofu to restrict API access to within VPCs, eliminating public internet exposure.
 
 ## Overview
 

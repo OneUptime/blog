@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Comparison, Linux
 
-Description: Step-by-step guide on choosing between RHEL and Ubuntu Server for enterprise workloads.
+Description: Step-by-step guide on choose between rhel and ubuntu server for enterprise workloads using Red Hat Enterprise Linux 9.
 
 ---
 

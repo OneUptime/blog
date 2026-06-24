@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, OTel Arrow, Collector, Receiver
 
-Description: Configure the OTel Arrow receiver as a drop-in replacement for the OTLP gRPC receiver with backward compatibility.
+Description: Configure the OTel Arrow receiver as a drop-in replacement for the OTLP receiver with full backward compatibility.
 
 The OTel Arrow receiver is designed to be a seamless replacement for the standard OTLP gRPC receiver. It listens on the same port, accepts the same OTLP/gRPC connections, and additionally supports the Arrow-optimized protocol. This means you can swap the gRPC receiver without breaking any existing gRPC exporters. Agents using standard OTLP/gRPC continue to work. Agents upgraded to the OTel Arrow exporter get the bandwidth benefits automatically.
 

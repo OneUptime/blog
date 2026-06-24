@@ -340,7 +340,7 @@ jobs:
             ```bash
             sha256sum -c checksums.txt
             ```
-```
+```yaml
 
 ## 4. Changelog Generation Workflow
 

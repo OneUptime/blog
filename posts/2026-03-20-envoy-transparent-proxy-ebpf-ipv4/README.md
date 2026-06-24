@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Envoy, eBPF, Transparent Proxy, IPv4, Linux, Service Mesh, Networking
 
-Description: Learn how to use a cgroup/connect4 eBPF program to redirect IPv4 `connect()` traffic to Envoy, and how that fits with Envoy's original-destination handling on Linux.
+Description: Learn how to use eBPF-based traffic redirection instead of iptables to set up Envoy as a transparent IPv4 proxy with lower overhead and better observability.
 
 ---
 

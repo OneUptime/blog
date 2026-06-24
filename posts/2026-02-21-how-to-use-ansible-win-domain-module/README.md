@@ -1,10 +1,10 @@
-# How to Use the Ansible microsoft.ad.domain Module
+# How to Use Ansible win_domain Module
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, Window, Active Directory, Domain, Automation
 
-Description: Create and configure Active Directory domains with the Ansible microsoft.ad.domain module including forest creation and domain setup.
+Description: Create and configure Active Directory domains with the Ansible win_domain module including forest creation and domain setup.
 
 ---
 

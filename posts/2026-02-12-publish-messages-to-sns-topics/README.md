@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: AWS, SNS, Messaging, Serverless, Python
 
-Description: Learn how to publish messages to Amazon SNS topics using the CLI, Python, and Node.js, including message attributes, filtering, and batch publishing.
+Description: Learn how to publish messages to Amazon SNS topics using the CLI, Python, Node.js, and Go, including message attributes, filtering, and batch publishing.
 
 ---
 

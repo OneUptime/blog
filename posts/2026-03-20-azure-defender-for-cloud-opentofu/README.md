@@ -1,10 +1,10 @@
-# How to Set Up Microsoft Defender for Cloud with OpenTofu
+# How to Set Up Azure Defender for Cloud with OpenTofu
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Azure, Security, Defender, OpenTofu, Cloud Security, Compliance
 
-Description: Learn how to enable and configure Microsoft Defender for Cloud with OpenTofu to protect Azure resources with threat detection and security posture management.
+Description: Learn how to enable and configure Azure Defender for Cloud (Microsoft Defender for Cloud) with OpenTofu to protect Azure resources with threat detection and security posture management.
 
 ## Overview
 

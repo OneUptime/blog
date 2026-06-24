@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, ActiveMQ, Monitoring, JMX, Messaging, Observability, Java
 
-Description: Learn how to monitor Apache ActiveMQ with OpenTelemetry using JMX metrics, JMS instrumentation, and custom metrics for broker health and queue performance.
+Description: Learn how to monitor Apache ActiveMQ with OpenTelemetry using the JMX receiver, JMS instrumentation, and custom metrics for broker health and queue performance.
 
 ---
 

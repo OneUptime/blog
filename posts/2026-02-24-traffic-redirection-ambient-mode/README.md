@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Istio, Ambient Mesh, Traffic Redirection, Kubernetes, CNI
 
-Description: Understanding how traffic redirection works in Istio ambient mode using the CNI plugin and iptables for transparent interception.
+Description: Understanding how traffic redirection works in Istio ambient mode using the CNI plugin, iptables, and eBPF for transparent interception.
 
 ---
 

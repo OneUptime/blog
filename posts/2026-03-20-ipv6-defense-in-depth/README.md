@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: IPv6, Security, Defense-in-Depth, Architecture, Best Practice
 
-Description: Learn how to implement a layered defense-in-depth security model for IPv6 networks, covering each layer from perimeter filtering to application security.
+Description: Learn how to implement a layered defense-in-depth security model for IPv6 networks, covering each layer from physical access to application security.
 
 ## Overview
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Docker, Java, Spring Boot, Development, Maven, Gradle
 
-Description: Build a complete Java Spring Boot development environment with automatic restarts after recompilation, remote debugging, and supporting services using Docker and Portainer.
+Description: Build a complete Java Spring Boot development environment with hot-reload, remote debugging, and supporting services using Docker and Portainer.
 
 ## Introduction
 

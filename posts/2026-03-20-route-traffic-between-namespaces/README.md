@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Linux, Network Namespaces, Routing, veth, iproute2, Networking, Virtual Networking
 
-Description: Configure static routes and a router namespace or host router to forward traffic between multiple Linux network namespaces on different subnets.
+Description: Configure static routes and a bridge or router namespace to forward traffic between multiple Linux network namespaces on different subnets.
 
 ## Introduction
 

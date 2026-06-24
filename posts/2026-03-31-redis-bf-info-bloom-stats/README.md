@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Redis, RedisBloom, Bloom Filter, Probabilistic, Command
 
-Description: Learn how to use BF.INFO in Redis to retrieve statistics about a Bloom filter including its capacity, current size, expansion rate, and number of inserted elements.
+Description: Learn how to use BF.INFO in Redis to retrieve statistics about a Bloom filter including its capacity, current size, error rate, and number of inserted elements.
 
 ---
 

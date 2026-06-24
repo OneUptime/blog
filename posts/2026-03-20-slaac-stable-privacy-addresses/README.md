@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Stable Privacy, SLAAC, IPv6, RFC 7217, Interface Identifier, Privacy
 
-Description: Understand how RFC 7217 stable privacy addresses generate a unique but stable interface identifier per prefix/network, providing privacy without the address rotation of temporary addresses.
+Description: Understand how RFC 7217 stable privacy addresses generate a unique but stable interface identifier per network, providing privacy without the address instability of random temporary addresses.
 
 ## Introduction
 

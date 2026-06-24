@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, DNS, Wildcard, Traefik, SSL
 
-Description: Configure wildcard DNS records and a wildcard SSL certificate to automatically cover service subdomains for Portainer-managed services.
+Description: Configure wildcard DNS records and wildcard SSL certificates to automatically cover all subdomains for Portainer-managed services.
 
 ## Introduction
 

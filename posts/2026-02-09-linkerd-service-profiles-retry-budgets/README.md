@@ -1,10 +1,10 @@
-# How to Configure Linkerd Service Profiles for Per-Route Retries and Retry Budgets
+# How to Configure Linkerd Service Profiles for Per-Route Retry Budgets
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Linkerd, Kubernetes, Service Mesh, Retries, Reliability
 
-Description: Learn how to create Linkerd Service Profiles with per-route retry policies and service-level retry budgets to automatically retry failed requests while preventing retry storms that can overwhelm your services.
+Description: Learn how to create Linkerd Service Profiles with per-route retry budgets to automatically retry failed requests while preventing retry storms that can overwhelm your services.
 
 ---
 

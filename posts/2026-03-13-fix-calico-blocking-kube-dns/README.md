@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, Networking, Troubleshooting
 
-Description: Fix Calico policies blocking kube-dns by adding ingress allow rules for UDP/TCP port 53 in kube-system namespace policies and GlobalNetworkPolicies.
+Description: Fix Calico policies blocking kube-dns by adding ingress allow rules for UDP port 53 in kube-system namespace policies and GlobalNetworkPolicies.
 
 ---
 

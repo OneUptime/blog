@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, SSO, Single Sign-On, OAuth, Authentication, Enterprise
 
-Description: Enable SSO in Portainer so the OAuth provider can reuse an existing identity-provider session instead of forcing users to log in again.
+Description: Enable SSO in Portainer so users are automatically logged in without the login screen when already authenticated with your identity provider.
 
 ## Introduction
 

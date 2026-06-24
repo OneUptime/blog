@@ -1,10 +1,10 @@
-# Portainer vs CapRover: PaaS Comparison - Paas
+# Portainer vs Caprover: PaaS Comparison - Paas
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Portainer, CapRover, PaaS, Docker, Self-Hosted, Comparison, Deployment
+Tags: Portainer, Caprover, PaaS, Docker, Self-Hosted, Comparison, Deployment
 
-Description: Compare Portainer and CapRover for self-hosted application deployment, examining their feature sets for both simple app hosting and complex container infrastructure management.
+Description: Compare Portainer and Caprover for self-hosted application deployment, examining their feature sets for both simple app hosting and complex container infrastructure management.
 
 ---
 

@@ -2,9 +2,9 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Kubernetes, GitOps, Linkerd, Traffic Policy, Service Mesh
+Tags: Flux CD, Kubernetes, GitOps, Linkerd, Traffic Policy, Circuit Breaking, Service Mesh
 
-Description: Configure Linkerd traffic policies using Flux CD to protect services from unauthorized traffic in production.
+Description: Configure Linkerd traffic policies and circuit breaking using Flux CD to protect services from cascading failures in production.
 
 ---
 

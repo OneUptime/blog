@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, IPv4, Pod CIDR, IPAM, Networking, Calico
 
-Description: Expand the available IPv4 address space for pods in a running Kubernetes cluster by adding secondary Calico IP pools within the existing Kubernetes cluster CIDR, without disrupting existing workloads.
+Description: Expand the available IPv4 address space for pods in a running Kubernetes cluster by adding secondary IP pools without disrupting existing workloads.
 
 Changing the primary Pod CIDR in an existing cluster is disruptive and generally not supported as a live change. If you're using Calico IPAM, the safe in-place approach is to add a secondary, non-overlapping IP pool that still falls within the Kubernetes cluster CIDR. If the Kubernetes cluster CIDR itself must grow, plan a migration or rebuild rather than changing a single flag in place.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: PRTG, IPv6, Network Monitoring, SNMP, Windows, Enterprise Monitoring
+Tags: PRTG, IPv6, Network Monitoring, SNMP, Window, Enterprise Monitoring
 
 Description: Configure PRTG Network Monitor to discover, add, and monitor IPv6-addressed devices using SNMP and ping sensors over IPv6 transport.
 

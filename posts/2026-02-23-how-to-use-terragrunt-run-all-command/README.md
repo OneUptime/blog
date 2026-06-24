@@ -1,10 +1,10 @@
-# How to Use Terragrunt run --all Command
+# How to Use Terragrunt run-all Command
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Terraform, Terragrunt, Infrastructure as Code, DevOps, Module Orchestration, Automation
 
-Description: A comprehensive guide to the Terragrunt run --all command for executing Terraform commands across multiple modules with dependency-aware ordering and parallelism.
+Description: A comprehensive guide to the Terragrunt run-all command for executing Terraform commands across multiple modules with dependency-aware ordering and parallelism.
 
 ---
 

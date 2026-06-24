@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, Firewall, UFW, Security, Role
 
-Description: Build an Ansible role for consistent firewall management using UFW with support for custom rules, port ranges, and rate limiting.
+Description: Build an Ansible role for consistent firewall management using UFW with support for custom rules, application profiles, and rate limiting.
 
 ---
 

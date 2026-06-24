@@ -1,10 +1,10 @@
-# How to Set Up Rancher on K3s with an External Database
+# How to Set Up Rancher with an External Database
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rancher, Kubernetes, Database, High Availability, Installation
 
-Description: Configure the K3s cluster that runs Rancher to use an external MySQL or PostgreSQL database for improved reliability and easier backups.
+Description: Configure Rancher to use an external MySQL or PostgreSQL database for improved reliability and easier backups.
 
 By default, single-server K3s uses an embedded SQLite database. For production Rancher deployments on K3s, using an external database for the K3s datastore provides better reliability, easier backup and restore procedures, and separation of concerns between compute and storage. This guide covers setting up Rancher on K3s with both external MySQL and PostgreSQL databases.
 

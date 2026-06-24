@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, Network Policy, Logging, Audit, Security
 
-Description: Build a validation framework for Calico log rules before production deployment.
+Description: Build a validation framework for Calico Policy Log Rules in Calico before production deployment.
 
 ---
 

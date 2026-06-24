@@ -2,9 +2,9 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Dataplex, Knowledge Catalog, Data Lineage, Data Governance, BigQuery
+Tags: GCP, Dataplex, Data Catalog, Data Lineage, Data Governance, BigQuery
 
-Description: Learn how to track data lineage across your GCP data pipelines using Dataplex and Knowledge Catalog to understand where data comes from and how it flows through your systems.
+Description: Learn how to track data lineage across your GCP data pipelines using Dataplex and Data Catalog to understand where data comes from and how it flows through your systems.
 
 ---
 

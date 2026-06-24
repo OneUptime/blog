@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Infrastructure as Code, Testing, IaC, DevOps, Terraform
 
-Description: Learn how to run OpenTofu tests in parallel by orchestrating multiple `tofu test` invocations, and how to structure your test suite for safe concurrent execution.
+Description: Learn how OpenTofu runs tests in parallel across multiple test files and how to structure your test suite for optimal parallelism and isolation.
 
 ## Introduction
 

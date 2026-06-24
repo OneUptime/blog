@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Celery, Redis, Python, Task Queue
 
-Description: Deploy Celery workers with Redis as the message broker using Portainer stacks.
+Description: Deploy Celery distributed task queue with Redis as the message broker using Portainer stacks.
 
 ## Introduction
 

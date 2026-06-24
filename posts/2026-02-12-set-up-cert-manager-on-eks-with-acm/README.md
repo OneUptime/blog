@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: AWS, EKS, Kubernetes, TLS, Security
 
-Description: Learn how to use AWS Certificate Manager with an ALB on Amazon EKS, and how to set up cert-manager for automated TLS certificate management for your Kubernetes workloads.
+Description: Learn how to set up cert-manager on Amazon EKS and integrate with AWS Certificate Manager for automated TLS certificate management for your Kubernetes workloads.
 
 ---
 

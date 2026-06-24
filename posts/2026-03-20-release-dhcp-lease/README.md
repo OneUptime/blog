@@ -2,9 +2,9 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: DHCP, Networking, Linux, Windows, macOS, Network Diagnostics
+Tags: DHCP, Networking, Linux, Window, macOS, Network Diagnostics
 
-Description: Releasing an IPv4 DHCP lease sends a DHCPRELEASE message to the server; when the server receives it, it can return the IP to the available pool immediately rather than waiting for the lease to expire.
+Description: Releasing a DHCP lease sends a DHCPRELEASE message to the server, allowing it to return the IP to the available pool immediately rather than waiting for the lease to expire.
 
 ## What Happens During Release
 

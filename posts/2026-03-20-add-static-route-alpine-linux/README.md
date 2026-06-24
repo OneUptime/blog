@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Alpine Linux, Static Routes, Networking, Routing, /etc/network/interfaces
 
-Description: Add persistent static routes on Alpine Linux using the ip route command and /etc/network/interfaces post-up directives or OpenRC startup scripts.
+Description: Add persistent static routes on Alpine Linux using the ip route command and /etc/network/interfaces post-up directives or the Alpine-specific iproute2 configuration.
 
 ## Introduction
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: IPv4, Subnetting, Powers of Two, Networking, Mental Math
 
-Description: The Powers of Two method for subnetting uses the observation that borrowed bits double the subnet count while halving address block size, enabling quick mental calculation of subnet requirements...
+Description: The Powers of Two method for subnetting uses the observation that borrowed bits double the subnet count while halving host capacity, enabling quick mental calculation of subnet requirements...
 
 ## The Core Relationship
 

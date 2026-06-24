@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, Networking, Migration, Rancher, CNI
 
-Description: A step-by-step guide to moving workloads from Canal or Flannel clusters to Calico on Rancher-managed Kubernetes clusters, enabling advanced network policy enforcement across your Rancher fleet.
+Description: A step-by-step guide to replacing Canal or Flannel with Calico on Rancher-managed Kubernetes clusters, enabling advanced network policy enforcement across your Rancher fleet.
 
 ---
 

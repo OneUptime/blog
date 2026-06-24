@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Fortio, Load Testing, Performance, Kubernetes
+Tags: Istio, Fortios, Load Testing, Performance, Kubernetes
 
 Description: A complete guide to using Fortio for load testing your Istio service mesh, including deployment, configuration, and result analysis.
 

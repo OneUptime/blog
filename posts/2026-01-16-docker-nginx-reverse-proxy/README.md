@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Docker, Nginx, Reverse Proxy, DevOps, Container
 
-Description: Learn how to configure Nginx as a reverse proxy for Docker containers, including load balancing, SSL termination, and Docker Compose integration.
+Description: Learn how to configure Nginx as a reverse proxy for Docker containers, including load balancing, SSL termination, and automatic container discovery with docker-compose.
 
 ---
 

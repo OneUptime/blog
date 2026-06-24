@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: ArgoCD, GitOps, Kubernetes, Security, Supply Chain
 
-Description: Learn how to verify ArgoCD release binaries and container images using checksums, cosign, and SLSA provenance for supply chain security.
+Description: Learn how to verify ArgoCD release binaries and container images using checksums, GPG signatures, and cosign for supply chain security.
 
 ---
 

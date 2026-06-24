@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, Error Handling, Dictionaries, Jinja2
 
-Description: Learn how to safely handle missing dictionary keys in Ansible using default filter, defined test, dict.get(), omit, combine, and block/rescue patterns to avoid undefined variable errors.
+Description: Learn how to safely handle missing dictionary keys in Ansible using default filter, defined test, ternary, and try/rescue patterns to avoid undefined variable errors.
 
 ---
 

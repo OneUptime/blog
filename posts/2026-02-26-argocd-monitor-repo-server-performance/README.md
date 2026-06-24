@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: ArgoCD, GitOps, Kubernetes, Prometheus, Performance
 
-Description: Learn how to monitor ArgoCD repo server performance using Prometheus metrics, including tracking Git operations, manifest generation, pending repo requests, and resource utilization.
+Description: Learn how to monitor ArgoCD repo server performance using Prometheus metrics, including tracking Git operations, manifest generation, cache efficiency, and resource utilization.
 
 ---
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ceph, Rook, BlueStore, OMAP, Placement Group
 
-Description: Learn how to resolve the BLUESTORE_NO_PER_PG_OMAP health warning in Ceph by running a BlueStore repair on affected OSDs to enable per-PG OMAP tracking.
+Description: Learn how to resolve the BLUESTORE_NO_PER_PG_OMAP health warning in Ceph by migrating OSD OMAP storage to per-PG namespaces for improved performance and isolation.
 
 ---
 

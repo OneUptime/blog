@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Security, Session Management, Administration, Configuration
 
-Description: Set Portainer's session lifetime to require users to reauthenticate after a defined period and support security policies.
+Description: Set the user session timeout in Portainer to automatically log out inactive users and meet security compliance requirements.
 
 ## Introduction
 

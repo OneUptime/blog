@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: IPv6, Eero, Mesh Network, Amazon, DHCPv6
 
-Description: Enable IPv6 on Amazon eero mesh systems, verify global IPv6 connectivity, and troubleshoot IPv6 issues for home networks using eero as the router.
+Description: Enable IPv6 on Amazon eero mesh systems, verify DHCPv6-PD prefix delegation, and troubleshoot IPv6 connectivity for home networks using eero as the router.
 
 ## eero IPv6 Overview
 

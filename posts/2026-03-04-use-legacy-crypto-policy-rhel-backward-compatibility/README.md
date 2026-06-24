@@ -1,10 +1,10 @@
-# How to Use the LEGACY Crypto Policy on RHEL 8 for Backward Compatibility
+# How to Use the LEGACY Crypto Policy on RHEL for Backward Compatibility
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Crypto Policies, LEGACY, TLS, Compatibility, Linux
 
-Description: Learn when and how to use the LEGACY crypto policy on RHEL 8 to maintain backward compatibility with older systems and applications that require deprecated cryptographic algorithms.
+Description: Learn when and how to use the LEGACY crypto policy on RHEL to maintain backward compatibility with older systems and applications that require deprecated cryptographic algorithms.
 
 ---
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Database Cleanup, BoltDB, Performance, Maintenance, Administration
 
-Description: Learn how to reclaim space in Portainer's BoltDB database by compacting it and removing unused Portainer metadata and Docker resources.
+Description: Learn how to clean up stale data in Portainer's BoltDB database by removing old snapshots, compacting the database, and pruning unused resources.
 
 ---
 

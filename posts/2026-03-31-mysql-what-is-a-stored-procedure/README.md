@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: MySQL, Stored Procedure, SQL/PSM, Routine, Database Programming
+Tags: MySQL, Stored Procedure, PL/SQL, Routine, Database Programming
 
 Description: A stored procedure in MySQL is a named, reusable block of SQL code stored in the database that can accept parameters, contain control flow, and be called by name.
 

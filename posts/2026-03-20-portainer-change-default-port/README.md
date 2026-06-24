@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Configuration, Port, Networking, Docker
 
-Description: A guide to changing Portainer's default ports to avoid conflicts with other services or align with network policy requirements.
+Description: A guide to changing Portainer's default HTTP and HTTPS ports for security hardening or to avoid conflicts with other services.
 
 ## Overview
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Redis, Vector, VRANGE, Vector Set, Search
 
-Description: Learn how to use VRANGE in Redis to retrieve vector elements in lexicographic order from a vector set, with examples for pagination and sampling.
+Description: Learn how to use VRANGE in Redis to retrieve vector elements in rank order from a vector set, with examples for pagination and top-N retrieval.
 
 ---
 

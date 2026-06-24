@@ -1,10 +1,10 @@
-# How to Set Up AWS Infrastructure Composer for Visual Design
+# How to Set Up AWS Application Composer for Visual Design
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, Infrastructure Composer, Serverless, Visual Design, CloudFormation, SAM
+Tags: AWS, Application Composer, Serverless, Visual Design, CloudFormation, SAM
 
-Description: Use AWS Infrastructure Composer to visually design and build serverless applications by dragging and dropping AWS resources on an interactive canvas.
+Description: Use AWS Application Composer to visually design and build serverless applications by dragging and dropping AWS resources on an interactive canvas.
 
 ---
 

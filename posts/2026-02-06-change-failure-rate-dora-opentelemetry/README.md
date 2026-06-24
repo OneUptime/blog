@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, DORA Metric, Change Failure Rate, DevOps
 
-Description: Build automated Change Failure Rate measurement using OpenTelemetry to track one of the key DORA metrics for engineering performance.
+Description: Build automated Change Failure Rate measurement using OpenTelemetry to track one of the four key DORA metrics for engineering performance.
 
 Change Failure Rate (CFR), also called Change Fail Rate in current DORA guidance, is one of the DORA metrics that measure software delivery performance. It answers a specific question: what percentage of deployments require immediate intervention following a deployment? Tracking this metric manually through spreadsheets or ticket labels is unreliable. OpenTelemetry provides the instrumentation to capture both sides of the equation - deployments and their outcomes - automatically and accurately.
 

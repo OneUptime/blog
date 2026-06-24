@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Consul, Prometheus, Service Mesh, Health Monitoring
 
-Description: Monitor HashiCorp Consul agent health and service mesh metrics by scraping its Prometheus endpoint with the OTel Collector.
+Description: Monitor HashiCorp Consul service health checks and service mesh metrics by scraping its Prometheus endpoint with the OTel Collector.
 
 HashiCorp Consul exposes a rich set of Prometheus metrics covering agent health, Raft consensus, Envoy sidecar proxy performance, and KV store operations. Scraping these with the OpenTelemetry Collector gives you a unified view of your Consul cluster health alongside your application telemetry.
 

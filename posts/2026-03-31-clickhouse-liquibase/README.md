@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: ClickHouse, Liquibase, Schema Migration, DevOps, Database
 
-Description: Learn how to set up Liquibase for ClickHouse schema management using XML or SQL changelogs with a community ClickHouse Liquibase extension.
+Description: Learn how to set up Liquibase for ClickHouse schema management using XML or SQL changelogs with the official ClickHouse Liquibase extension.
 
 ---
 

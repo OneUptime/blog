@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, API, Automation, DevOps, Infrastructure
 
-Description: Learn how to write comprehensive automation scripts using the Portainer API to configure environments, teams, registries, and stacks in a repeatable, infrastructure-as-code style.
+Description: Learn how to write comprehensive automation scripts using the Portainer API to configure environments, users, registries, and stacks in a repeatable, infrastructure-as-code style.
 
 ## Introduction
 

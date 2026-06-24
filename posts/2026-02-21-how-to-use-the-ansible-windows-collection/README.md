@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Windows, WinRM, PowerShell, DevOps
+Tags: Ansible, Window, WinRM, PowerShell, DevOps
 
 Description: Guide to managing Windows servers with the ansible.windows collection covering WinRM setup, Windows features, services, registry, and file management.
 

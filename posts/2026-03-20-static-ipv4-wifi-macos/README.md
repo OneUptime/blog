@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: WiFi, macOS, Static IP, IPv4, Network Configuration
 
-Description: Learn how to configure a static IPv4 address for WiFi on macOS using System Settings/System Preferences and the networksetup command-line tool.
+Description: Learn how to configure a static IPv4 address for WiFi on macOS using System Preferences and the networksetup command-line tool.
 
 ## When to Use a Static WiFi IP on macOS
 

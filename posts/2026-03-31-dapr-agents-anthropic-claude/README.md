@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Dapr, Agent, Anthropic, Claude, LLM
 
-Description: Learn how to configure Dapr Agents to use Anthropic's Claude models, including tool use and secure API key management.
+Description: Learn how to configure Dapr Agents to use Anthropic's Claude models, including tool use, extended thinking, and secure API key management.
 
 ---
 

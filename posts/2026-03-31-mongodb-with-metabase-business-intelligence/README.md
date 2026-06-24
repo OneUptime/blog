@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: MongoDB, Metabase, Business Intelligence, Dashboard, Analytics
 
-Description: Learn how to connect MongoDB to Metabase to build interactive dashboards and self-service analytics using the visual query builder or native aggregation queries.
+Description: Learn how to connect MongoDB to Metabase to build interactive dashboards and self-service analytics using the MongoDB native driver or a SQL interface.
 
 ---
 

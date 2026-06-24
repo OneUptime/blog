@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, GitLab, CI/CD, Runner, AWS, Kubernetes, Infrastructure as Code
 
-Description: Learn how to deploy GitLab CI/CD runners using OpenTofu on EC2 or Kubernetes, with Kubernetes-based scaling and runner authentication token management.
+Description: Learn how to deploy GitLab CI/CD runners using OpenTofu on EC2 or Kubernetes, with auto-scaling configuration and secure registration token management.
 
 ---
 

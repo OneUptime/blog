@@ -1,10 +1,10 @@
-# Use the Google Gen AI Go SDK to Call Gemini Models from a Cloud Function
+# Use the Go Vertex AI Client Library to Call Gemini Models from a Cloud Function
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GCP, Vertex AI, Go, Gemini, Cloud Function, AI/ML
 
-Description: Learn how to call Gemini models on Vertex AI using the Google Gen AI Go SDK from a Google Cloud Function with practical examples and cost optimization tips.
+Description: Learn how to call Gemini models using the Go Vertex AI client library from a Google Cloud Function with practical examples and cost optimization tips.
 
 ---
 

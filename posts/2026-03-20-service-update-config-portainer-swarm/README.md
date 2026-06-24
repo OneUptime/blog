@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Docker Swarm, Portainer, Rolling Update, Service Update, DevOps
 
-Description: Learn how to configure rolling update strategies for Docker Swarm services in Portainer to minimize deployment downtime.
+Description: Learn how to configure rolling update strategies for Docker Swarm services in Portainer to achieve zero-downtime deployments.
 
 ## What Is Service Update Configuration?
 

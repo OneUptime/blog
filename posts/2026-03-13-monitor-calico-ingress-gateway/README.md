@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, Ingress, Gateway, Networking
 
-Description: Configure Kubernetes ingress routing with Calico network policy enforcement.
+Description: Monitor Calico ingress gateway health, request rates, latency, and error rates using Prometheus and Grafana.
 
 ---
 

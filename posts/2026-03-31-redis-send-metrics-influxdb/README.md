@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Redis, InfluxDB, Metric, Monitoring, Telegraf
 
-Description: Learn how to send Redis metrics to InfluxDB using Telegraf - covering plugin configuration, key metrics, and building queries for Redis monitoring.
+Description: Learn how to send Redis metrics to InfluxDB using Telegraf - covering plugin configuration, key metrics, retention policies, and building queries for Redis monitoring.
 
 ---
 

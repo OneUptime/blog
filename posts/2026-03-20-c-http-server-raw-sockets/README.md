@@ -1,10 +1,10 @@
-# How to Implement a Simple HTTP Server Using POSIX Sockets in C
+# How to Implement a Simple HTTP Server Using Raw Sockets in C
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: C, Socket, HTTP, IPv4, Networking, Systems Programming
 
-Description: Build a minimal HTTP/1.0 server in C using POSIX TCP sockets that accepts IPv4 connections, parses request lines, and returns HTTP responses.
+Description: Build a minimal HTTP/1.0 server in C using raw POSIX sockets that accepts TCP connections on IPv4, parses request lines, and returns HTTP responses.
 
 ## Introduction
 

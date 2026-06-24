@@ -1,10 +1,10 @@
-# How to Prevent IPv6 Theft of Service and Denial of Service via Flow Labels
+# How to Prevent IPv6 Theft and Denial of Service via Flow Labels
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: IPv6, Security, Flow Label, DoS, QoS
 
-Description: Learn how IPv6 Flow Labels can be abused for denial-of-service attacks and unintended flow-specific treatment, and how to implement defenses at the network and firewall level.
+Description: Learn how IPv6 Flow Labels can be abused for denial-of-service attacks and traffic theft, and how to implement defenses at the network and firewall level.
 
 ## Overview
 

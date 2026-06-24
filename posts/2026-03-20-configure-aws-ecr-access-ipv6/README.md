@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: AWS ECR, IPv6, Container Registry, AWS, Docker, VPC, Networking
 
-Description: Configure AWS Elastic Container Registry access over IPv6 using dual-stack VPC endpoints, dual-stack public endpoints, and proper IAM and network configuration.
+Description: Configure AWS Elastic Container Registry access over IPv6 using dual-stack VPC endpoints, ECR public IPv6 endpoints, and proper IAM and network configuration.
 
 ---
 

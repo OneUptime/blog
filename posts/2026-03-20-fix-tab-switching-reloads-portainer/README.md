@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Troubleshooting, Performance, UI, Browser, Caching
 
-Description: Learn how to reduce excessive reload times when switching between Portainer tabs, often caused by repeated environment data fetches.
+Description: Learn how to fix excessive reload times when switching between Portainer tabs, caused by repeated API calls and lack of UI state caching.
 
 ---
 

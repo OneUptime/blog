@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Terraform, Azure, Backend Configuration, State Management, Team Workflows, Infrastructure as Code, DevOps
 
-Description: Learn how to use Terraform partial backend configuration to manage Azure state storage across environments and teams without hardcoding environment-specific details.
+Description: Learn how to use Terraform partial backend configuration to manage Azure state storage across environments and teams without hardcoding sensitive details.
 
 ---
 

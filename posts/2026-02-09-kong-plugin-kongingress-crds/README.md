@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Kong, API Gateway
 
-Description: Master Kong's Custom Resource Definitions and current Kubernetes annotations to configure advanced policies, customize proxy behavior, and manage API gateway settings in Kubernetes environments.
+Description: Master Kong's Custom Resource Definitions (KongPlugin and KongIngress CRDs) to configure advanced policies, customize proxy behavior, and manage API gateway settings in Kubernetes environments.
 
 ---
 

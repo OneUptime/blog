@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Edge Agent, Edge ID, Security, Identity
 
-Description: Configure Portainer to enforce server-generated Edge IDs for manually created edge agents, preventing ID spoofing and ensuring each device has a unique verified identity.
+Description: Configure Portainer to enforce server-generated Edge IDs for edge agents, preventing ID spoofing and ensuring each device has a unique verified identity.
 
 ## Introduction
 

@@ -2,9 +2,9 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: IPv6, Dummy Prefix, 100:0:0:1::/64, RFC 9780, OAM, MPLS
+Tags: IPv6, Dummy Prefix, 100:0:0:1::/64, RFC 9003, Routing, Null Route
 
-Description: Understand the IPv6 Dummy Prefix 100:0:0:1::/64 (RFC 9780), what it is used for, and how it differs from the Discard-Only block 100::/64.
+Description: Understand the IPv6 Dummy Prefix 100:0:0:1::/64 (RFC 9003), its use for dummy routing purposes, and how it differs from the Discard-Only block 100::/64.
 
 ## Introduction
 

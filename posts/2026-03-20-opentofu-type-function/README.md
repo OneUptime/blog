@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Infrastructure as Code, Terraform, IaC, DevOps
 
-Description: Learn how to use the type function in OpenTofu to determine the type of a value for debugging in the interactive console.
+Description: Learn how to use the type function in OpenTofu to determine the type of a value for debugging and type-aware configuration logic.
 
 ## Introduction
 

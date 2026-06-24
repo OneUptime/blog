@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: MongoDB, $accumulator, Custom Aggregation, $group, JavaScript
 
-Description: Learn how to use MongoDB's $accumulator operator to define custom group logic in aggregation pipelines using JavaScript init, accumulate, merge, and finalize functions.
+Description: Learn how to use MongoDB's $accumulator operator to define custom group logic in aggregation pipelines using JavaScript init, accumulate, and finalize functions.
 
 ---
 

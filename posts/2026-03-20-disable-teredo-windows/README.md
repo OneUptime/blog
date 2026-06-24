@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: IPv6, Teredo, Windows, Security, NAT Bypass
+Tags: IPv6, Teredo, Window, Security, NAT Bypass
 
 Description: Learn how to permanently disable Teredo on Windows to prevent IPv6 connectivity leaks through NAT, including netsh commands, PowerShell, Group Policy, and registry methods.
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rancher, High Availability, Failover Testing, Disaster Recovery
 
-Description: Systematically test Rancher HA failover scenarios including node failures, load balancer failover, etcd member loss, and managed cluster agent disruption to validate your high availability configuration.
+Description: Systematically test Rancher HA failover scenarios including node failures, network partitions, and etcd member loss to validate your high availability configuration.
 
 ## Introduction
 

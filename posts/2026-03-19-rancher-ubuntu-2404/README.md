@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rancher, Ubuntu, Docker, Kubernetes, Installation
 
-Description: A step-by-step guide to installing Rancher on Ubuntu 24.04 LTS for testing or development, covering system preparation, Docker setup, and Rancher deployment.
+Description: A step-by-step guide to installing Rancher on Ubuntu 24.04 LTS, covering system preparation, Docker setup, and Rancher deployment.
 
 Ubuntu 24.04 LTS (Noble Numbat) is the latest long-term support release from Canonical, bringing updated kernel versions, improved security features, and better container support. This guide walks you through installing Rancher on a fresh Ubuntu 24.04 server using Docker for testing or development. Rancher does not support single-node Docker installs for production environments.
 

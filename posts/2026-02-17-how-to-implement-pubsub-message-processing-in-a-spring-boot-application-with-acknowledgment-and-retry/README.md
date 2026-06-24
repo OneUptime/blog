@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GCP, Pub/Sub, Spring Boot, Message Processing, Retry, Java
 
-Description: Implement reliable Pub/Sub message processing in Spring Boot with manual acknowledgment, retry policies, dead letter queues, and idempotent processing patterns.
+Description: Implement reliable Pub/Sub message processing in Spring Boot with manual acknowledgment, retry policies, dead letter queues, and exactly-once processing patterns.
 
 ---
 

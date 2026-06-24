@@ -1,10 +1,10 @@
-# How to Install Portainer Agent on Kubernetes
+# How to Install Portainer Agent on Kubernetes via Helm
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Portainer, Kubernetes, Agent, DevOps
+Tags: Portainer, Kubernetes, Helm, Agent, DevOps
 
-Description: Deploy the Portainer Agent on Kubernetes using the Portainer-provided manifests for centralized cluster management from a Portainer server.
+Description: Deploy the Portainer Agent on Kubernetes using Helm charts for centralized cluster management from a Portainer server.
 
 ---
 

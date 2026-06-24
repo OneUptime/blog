@@ -1,10 +1,10 @@
-# How to Configure Image Automation Update Strategy in Flux
+# How to Configure Image Automation Update Strategy SetIfNotPresent in Flux
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux, Image-automation, Update-Strategy, Setters, GitOps, Kubernetes
+Tags: Flux, Image-automation, Update-Strategy, Setifnotpresent, GitOps, Kubernetes
 
-Description: Learn how to configure the supported Flux ImageUpdateAutomation update strategy and how to pause automation when you do not want Flux to keep changing image tags.
+Description: Learn how to configure Flux ImageUpdateAutomation with the SetIfNotPresent update strategy to only set image tags when they are not already defined.
 
 ---
 

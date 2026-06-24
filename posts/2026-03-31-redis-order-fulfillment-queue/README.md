@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Redis, Queue, Order
 
-Description: Build a reliable order fulfillment queue with Redis sorted sets, with priority handling and at-least-once delivery guarantees.
+Description: Build a reliable order fulfillment queue with Redis lists and sorted sets, with priority handling and at-least-once delivery guarantees.
 
 ---
 

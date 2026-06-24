@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Collector, GitHub, Metric, API, DevOps
 
-Description: Learn how to configure the GitHub Receiver in the OpenTelemetry Collector to collect repository metrics and GitHub Actions workflow traces.
+Description: Learn how to configure the GitHub Receiver in the OpenTelemetry Collector to collect repository metrics, workflow data, and GitHub activity.
 
 ---
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Cilium, Kubernetes, Testing, Monitoring, Echo App
 
-Description: How to monitor the Cilium echo app to ensure test reliability and catch false negatives in connectivity and policy testing.
+Description: How to monitor the Cilium echo app to ensure test reliability and catch false positives in connectivity and policy testing.
 
 ---
 

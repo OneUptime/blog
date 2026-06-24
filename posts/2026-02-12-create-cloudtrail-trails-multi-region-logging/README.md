@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: AWS, CloudTrail, Security, Auditing, Multi-Region
 
-Description: Learn how to configure AWS CloudTrail for multi-region logging to capture API activity across enabled regions, with centralized storage and organization-wide trails.
+Description: Learn how to configure AWS CloudTrail for multi-region logging to capture API activity across all regions, with centralized storage and organization-wide trails.
 
 ---
 

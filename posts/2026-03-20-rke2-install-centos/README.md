@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RKE2, Kubernetes, CentOS, Installation, Rancher
 
-Description: A step-by-step guide to installing RKE2 (Rancher Kubernetes Engine 2) on CentOS Stream or supported Enterprise Linux hosts, with notes about CentOS Linux 7 and 8 end-of-life status.
+Description: A step-by-step guide to installing RKE2 (Rancher Kubernetes Engine 2) on CentOS 7 and CentOS 8 for a production-ready Kubernetes cluster.
 
 RKE2 provides a secure, compliant Kubernetes distribution that is well-suited for enterprise environments running supported Enterprise Linux distributions. This guide covers the installation process on CentOS Stream or RHEL-compatible hosts, including the specific prerequisites and configurations needed for these distributions.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Rancher, Windows, Networking, Flannel, CNI
+Tags: Rancher, Window, Networking, Flannel, CNI
 
 Description: Configure networking for Windows nodes in Rancher Kubernetes clusters including CNI selection, network policies, DNS resolution, and service connectivity.
 

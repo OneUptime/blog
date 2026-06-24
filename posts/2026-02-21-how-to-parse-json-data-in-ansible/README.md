@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, JSON, Data Parsing, Automation
 
-Description: Learn how to parse JSON data in Ansible from APIs, files, and command outputs using from_json filter, uri module, and community.general.json_query for data extraction.
+Description: Learn how to parse JSON data in Ansible from APIs, files, and command outputs using from_json filter, uri module, and json_query for data extraction.
 
 ---
 

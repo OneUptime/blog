@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rook, Ceph, Kubernetes, OSD, HealthCheck, Reliability
 
-Description: Tune OSD health check intervals in Rook so the operator detects disk failures quickly and initiates recovery without triggering false-positive OSD removals.
+Description: Tune OSD health check intervals and timeouts in Rook so the operator detects disk failures quickly and initiates recovery without triggering false-positive OSD removals.
 
 ---
 

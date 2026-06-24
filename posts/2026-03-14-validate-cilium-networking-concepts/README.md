@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Cilium, Kubernetes, Networking
 
-Description: Systematically validate that Cilium networking concepts including eBPF datapath, identity-based security, and service load balancing are correctly configured and functioning as expected in your...
+Description: Systematically validate that Cilium networking concepts including eBPF datapath, identity-based security, and service mesh integration is correctly configured and functioning as expected in your...
 
 ---
 

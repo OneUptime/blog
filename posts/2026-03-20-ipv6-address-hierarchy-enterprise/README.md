@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: IPv6, Address Planning, Enterprise Networking, Subnetting, IPAM
 
-Description: Design a scalable IPv6 address hierarchy for enterprise networks using a /48 allocation, with structured region, site, VLAN, and function-based numbering.
+Description: Design a scalable IPv6 address hierarchy for enterprise networks using a /48 allocation, with structured site, building, VLAN, and function-based numbering.
 
 ## Introduction
 

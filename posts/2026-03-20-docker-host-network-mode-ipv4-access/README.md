@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Docker, Networking, Host Network, IPv4, Performance, Container
 
-Description: Configure Docker containers to use host network mode for direct IPv4 access, with performance benefits, platform caveats, and security trade-offs explained.
+Description: Configure Docker containers to use the host network mode, sharing the host's IPv4 stack directly for maximum performance and simplified port management, with security trade-offs explained.
 
 ## Introduction
 

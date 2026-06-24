@@ -2,9 +2,9 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Video Indexer, Azure AI Search, AI, Video Analytics, Search, Machine Learning
+Tags: Azure, Video Indexer, Cognitive Search, AI, Video Analytics, Search, Machine Learning
 
-Description: Build an AI-powered video indexing solution using Azure Video Indexer for content extraction and Azure AI Search for searchable video metadata.
+Description: Build an AI-powered video indexing solution using Azure Video Indexer for content extraction and Cognitive Search for searchable video metadata.
 
 ---
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: IPv6, Netgear, Home Router, DHCPv6, Consumer Networking, Nighthawk
 
-Description: Configure IPv6 on Netgear Nighthawk and Orbi routers through the web admin interface.
+Description: Configure IPv6 on Netgear Nighthawk and Orbi routers through the web admin interface and Netgear mobile app.
 
 ## Supported Netgear Routers
 

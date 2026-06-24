@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Docker, Health Check, Monitoring, Reliability, DevOps
 
-Description: Define and configure Docker container health checks in Portainer stacks to support `depends_on` ordering in Compose-based deployments and improve health status visibility in the Portainer dashboard.
+Description: Define and configure Docker container health checks in Portainer stacks to enable automatic restart on failure, proper depends_on ordering, and health status visibility in the Portainer dashboard.
 
 ---
 

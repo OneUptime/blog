@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rook, Ceph, RGW, Zone, Multisite, Object Storage
 
-Description: Learn how to configure zone features in Ceph RGW to enable or disable specific capabilities like resharding, compressed encryption, and notification features per zone.
+Description: Learn how to configure zone features in Ceph RGW to enable or disable specific capabilities like compression, encryption, and sync features per zone.
 
 ---
 

@@ -1,10 +1,10 @@
-# How to Configure Diff Customization per Application in ArgoCD
+# How to Configure Compare Options per Application in ArgoCD
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: ArgoCD, GitOps, Kubernetes, Configuration Management
 
-Description: Learn how to configure diff customization on a per-application basis in ArgoCD to control how resource diffs are calculated, ignore specific fields, and handle environment-specific comparison behavior.
+Description: Learn how to configure compare options on a per-application basis in ArgoCD to control how resource diffs are calculated, ignore specific fields, and handle environment-specific comparison behavior.
 
 ---
 

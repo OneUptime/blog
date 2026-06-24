@@ -1,10 +1,10 @@
-# How to Set Up Fleet for Multi-Cluster GitOps Deployments
+# How to Set Up Fleet with Pull Request Previews
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Rancher, Fleet, GitOps, Continuous-Delivery, Kubernetes
+Tags: Rancher, Fleet, GitOps, Preview-Environments, Kubernetes
 
-Description: Guide to deploying applications across clusters with Rancher Fleet.
+Description: Guide to creating ephemeral preview environments from pull requests using Rancher Fleet.
 
 ## Introduction
 

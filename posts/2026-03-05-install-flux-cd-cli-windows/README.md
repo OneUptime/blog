@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, GitOps, Kubernetes, Windows, CLI, Chocolatey
+Tags: Flux CD, GitOps, Kubernetes, Window, CLI, Chocolatey
 
 Description: Step-by-step instructions for installing the Flux CD command-line interface on Windows using Chocolatey, direct download, and WSL.
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Web Server, Linux
 
-Description: Step-by-step guide on install and configure OpenLiteSpeed web server using Red Hat Enterprise Linux 9.
+Description: Step-by-step guide on install and configure litespeed web server using Red Hat Enterprise Linux 9.
 
 ---
 

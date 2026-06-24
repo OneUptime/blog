@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Docker, Linux, Permission, Troubleshooting, DevOps
 
-Description: Solve 'permission denied while trying to connect to the Docker daemon socket' and other Docker permission errors. Covers group fixes, socket permissions, and bind-mount ownership.
+Description: Solve 'permission denied while trying to connect to the Docker daemon socket' and other Docker permission errors. Covers rootless mode, group fixes, and socket permissions.
 
 ---
 

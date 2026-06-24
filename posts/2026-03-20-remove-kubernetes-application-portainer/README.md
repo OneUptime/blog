@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Kubernetes, Application Management, Cleanup, DevOps
 
-Description: Learn how to safely remove a Kubernetes application in Portainer and clean up related Kubernetes resources when needed.
+Description: Learn how to safely remove a Kubernetes application and its associated resources through the Portainer UI.
 
 ## Overview
 

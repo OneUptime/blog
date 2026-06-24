@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Synology, NAS, Docker, Task Scheduler, Self-Hosted, Home Lab
 
-Description: Use Synology's Task Scheduler to automatically install and start Portainer on DSM 7.2+ without requiring manual SSH access each time.
+Description: Use Synology's Task Scheduler to automatically install and start Portainer on DSM 7 without requiring manual SSH access each time.
 
 ## Introduction
 

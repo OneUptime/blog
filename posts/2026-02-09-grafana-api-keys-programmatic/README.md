@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Grafana, API, Automation
 
-Description: Master Grafana service account tokens to enable programmatic access for automation, CI/CD pipelines, and integrations by creating, managing, and securing tokens with proper roles and permissions.
+Description: Master Grafana API keys to enable programmatic access for automation, CI/CD pipelines, and integrations by creating, managing, and securing keys with proper scopes and permissions.
 
 ---
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: IPv6, MikroTik, RouterOS, Firewall, Ip6tables
 
-Description: Learn how to configure IPv6 firewall rules on MikroTik RouterOS using the /ipv6 firewall filter commands, including input and forward chain rules.
+Description: Learn how to configure IPv6 firewall rules on MikroTik RouterOS using the /ipv6 firewall filter commands, including input, forward, and output chain rules.
 
 ## Overview
 

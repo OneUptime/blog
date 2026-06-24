@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, WordPress, Apache, MySQL, LAMP, PHP, Web Development
 
-Description: Set up a complete WordPress site on RHEL 9 using the classic LAMP stack with Apache, MySQL, and PHP for a production-ready web server.
+Description: Set up a complete WordPress site on RHEL using the classic LAMP stack with Apache, MySQL, and PHP for a production-ready web server.
 
 ---
 

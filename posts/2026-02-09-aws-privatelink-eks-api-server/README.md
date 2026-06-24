@@ -1,10 +1,10 @@
-# How to Set Up Private EKS API Server Access from On-Premises
+# How to Set Up AWS PrivateLink for EKS API Server Access from On-Premises
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: AWS, Kubernetes, EKS, Networking
 
-Description: Configure private connectivity between on-premises networks and EKS API servers without exposing endpoints to the internet.
+Description: Configure AWS PrivateLink to enable secure private connectivity between on-premises networks and EKS API servers without exposing endpoints to the internet.
 
 ---
 

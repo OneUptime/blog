@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Calicoctl, Datastore, Migration, Kubernetes, etcd, Backup, DevOps
 
-Description: Learn how to use calicoctl datastore migrate export to export Calico etcd datastore data for migration or backup.
+Description: Learn how to use calicoctl datastore migrate export to export Calico configuration data for datastore migration or backup.
 
 ---
 

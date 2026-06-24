@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Redis, Data Warehouse, ETL, Kafka, Pipeline
 
-Description: Learn how to sync Redis data to a data warehouse using Kafka Connect, RDB snapshots, or custom scripts to enable analytics on your operational data.
+Description: Learn how to sync Redis data to a data warehouse using Kafka Connect, Debezium, or custom scripts to enable analytics on your operational data.
 
 ---
 

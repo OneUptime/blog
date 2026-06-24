@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: SRv6, SRH, Segment Routing Header, IPv6, RFC 8754, Networking
 
-Description: Understand the structure of the IPv6 Segment Routing Header (SRH), how it encodes the segment list, and how segment endpoints process it segment by segment.
+Description: Understand the structure of the IPv6 Segment Routing Header (SRH), how it encodes the segment list, and how routers process it hop by hop.
 
 ## Introduction
 

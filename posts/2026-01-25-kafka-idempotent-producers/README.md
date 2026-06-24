@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kafka, Idempotence, Exactly-Once, Data Quality, Reliability
 
-Description: Configure Kafka idempotent producers to eliminate duplicate messages caused by retries, and use transactions when you need end-to-end exactly-once processing.
+Description: Configure Kafka idempotent producers to eliminate duplicate messages caused by retries, ensuring exactly-once delivery semantics.
 
 ---
 

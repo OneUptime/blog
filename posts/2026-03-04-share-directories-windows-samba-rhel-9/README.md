@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, Samba, Windows, File Sharing, Linux
+Tags: RHEL, Samba, Window, File Sharing, Linux
 
 Description: Configure Samba on RHEL to share directories with Windows clients, covering share types, permissions mapping, and Windows-specific considerations.
 

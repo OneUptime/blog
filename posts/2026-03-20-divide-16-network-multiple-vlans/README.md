@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: IPv4, Subnetting, VLAN, Networking, /16, Enterprise
 
-Description: A /16 network can be divided into multiple subnets for use as VLANs by subnetting to /24 (256 subnets of 254 hosts), /23 (128 subnets of 510 hosts), or other prefix lengths depending on the density needed.
+Description: A /16 network can be divided into multiple VLANs by subnetting to /24 (256 VLANs of 254 hosts), /23 (128 VLANs of 510 hosts), or other prefix lengths depending on the density needed.
 
 ## /16 Subnetting Options
 

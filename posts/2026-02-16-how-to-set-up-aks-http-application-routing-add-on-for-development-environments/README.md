@@ -1,10 +1,10 @@
-# How to Set Up AKS Application Routing Add-On for Development Environments
+# How to Set Up AKS HTTP Application Routing Add-On for Development Environments
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: AKS, Kubernetes, HTTP Routing, Ingresses, Azure, Development, DNS
 
-Description: Learn how to set up the AKS application routing add-on to quickly expose services with automatic DNS in development environments.
+Description: Learn how to set up the AKS HTTP application routing add-on to quickly expose services with automatic DNS in development environments.
 
 ---
 

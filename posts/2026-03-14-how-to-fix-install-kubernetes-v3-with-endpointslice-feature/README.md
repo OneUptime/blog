@@ -1,10 +1,10 @@
-# How to Enable CiliumEndpointSlice with Cilium
+# How to Fix Install Kubernetes v3 with EndpointSlice feature enabled
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Cilium, Kubernetes, Performance, Networking
 
-Description: A practical guide covering how to enable CiliumEndpointSlice for Cilium performance with step-by-step instructions and real-world examples for production Kubernetes...
+Description: A practical guide covering how to fix install kubernetes v3 with endpointslice feature enabled in cilium performance with step-by-step instructions and real-world examples for production Kubernetes...
 
 ---
 

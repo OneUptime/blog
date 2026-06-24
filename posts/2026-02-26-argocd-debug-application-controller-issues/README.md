@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: ArgoCD, GitOps, Kubernetes, Controller, Troubleshooting
 
-Description: Learn how to debug ArgoCD application controller issues including high memory usage, slow reconciliation, stuck syncs, sharding problems, and OOMKilled crashes.
+Description: Learn how to debug ArgoCD application controller issues including high memory usage, slow reconciliation, stuck syncs, leader election problems, and OOMKilled crashes.
 
 ---
 

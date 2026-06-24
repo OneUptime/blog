@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Terraform, AWS, Aurora Serverless, Database, Cost Optimization, Infrastructure as Code
 
-Description: Learn how to create Aurora Serverless v2 with auto-scaling and auto-pause in Terraform for cost-effective database workloads that scale automatically based on demand.
+Description: Learn how to create Aurora Serverless v2 with auto-scaling in Terraform for cost-effective database workloads that scale automatically based on demand.
 
 ---
 

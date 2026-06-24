@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GCP, Gemini, Vertex AI, Google Maps, Location AI
 
-Description: Learn how to use Gemini grounding with Google Maps on Vertex AI to build location-aware AI applications that provide accurate place data and local recommendations.
+Description: Learn how to use Gemini grounding with Google Maps on Vertex AI to build location-aware AI applications that provide accurate place data and directions.
 
 ---
 

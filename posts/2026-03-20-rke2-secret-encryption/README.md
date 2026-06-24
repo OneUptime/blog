@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RKE2, Kubernetes, Secret Encryption, Security, Encryption at Rest, Rancher
 
-Description: Learn how to verify and manage secret encryption at rest in RKE2 to protect sensitive cluster data stored in etcd.
+Description: Learn how to enable and manage secret encryption at rest in RKE2 to protect sensitive cluster data stored in etcd.
 
 Kubernetes secrets are base64-encoded in API output by default, which provides no actual encryption - anyone with etcd access can recover the data if encryption at rest is not configured. RKE2 enables secret encryption at rest by default and provides a built-in mechanism to verify, configure, and rotate encryption keys. This guide covers the complete lifecycle of secret encryption in RKE2.
 

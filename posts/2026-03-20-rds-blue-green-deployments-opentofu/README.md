@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, AWS, RDS, Blue-Green Deployment, Database, Infrastructure as Code
 
-Description: Learn how to use OpenTofu to perform low-downtime AWS RDS instance updates with Blue/Green Deployments.
+Description: Learn how to create and manage AWS RDS Blue/Green deployments for zero-downtime database schema changes and engine upgrades using OpenTofu.
 
 ## Introduction
 

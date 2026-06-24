@@ -2,9 +2,9 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: MySQL, Trigger, Recursive, Error 1442, Configuration
+Tags: MySQL, Trigger, Recursive, innodb_recursive_triggers, Configuration
 
-Description: Learn why MySQL triggers can cause recursive modification errors, how the storage engine prevents it, and how to structure triggers that avoid ERROR 1442.
+Description: Learn why MySQL triggers can become recursive, how the innodb_recursive_triggers variable controls this, and how to write triggers that avoid infinite loops.
 
 ---
 

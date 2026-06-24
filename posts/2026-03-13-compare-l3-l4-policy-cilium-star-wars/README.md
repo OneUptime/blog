@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Cilium, Kubernetes, eBPF, Network Policy, Star Wars Demo
 
-Description: A deep dive into L3 and L4 network policy enforcement using the Cilium Star Wars demo, explaining how identity and port policies work in practice.
+Description: A deep dive into L3 and L4 network policy enforcement using the Cilium Star Wars demo, explaining how identity-based IP and port policies work in practice.
 
 ---
 

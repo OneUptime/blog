@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: AWS, Rekognition, Comprehend, Content Moderation, Lambda
 
-Description: Build an automated content moderation system on AWS using Rekognition for images, Comprehend for text, and SQS for review workflows.
+Description: Build an automated content moderation system on AWS using Rekognition for images, Comprehend for text, and Step Functions for review workflows.
 
 ---
 

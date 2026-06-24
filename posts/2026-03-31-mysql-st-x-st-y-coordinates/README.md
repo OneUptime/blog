@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: MySQL, SQL, Spatial, GIS, Geometry, Database
 
-Description: Learn how to use ST_X() and ST_Y() in MySQL to extract coordinates from POINT geometry columns, including update usage and coordinate projection.
+Description: Learn how to use ST_X() and ST_Y() in MySQL to extract longitude and latitude from POINT geometry columns, including update usage and coordinate projection.
 
 ---
 

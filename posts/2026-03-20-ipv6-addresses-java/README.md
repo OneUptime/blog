@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Java, IPv6, Networking, InetAddress, Socket Programming, Development
 
-Description: Handle, validate, parse, and use IPv6 addresses in Java applications using InetAddress, Inet6Address, and ServerSocket, along with Java's IPv6 address preference settings.
+Description: Handle, validate, parse, and use IPv6 addresses in Java applications using InetAddress, Inet6Address, and ServerSocket with proper dual-stack configuration.
 
 ## Introduction
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: AWS, IPv6, Egress-Only Internet Gateway, VPC, Security, Private Subnet
 
-Description: Configure an AWS Egress-Only Internet Gateway (EIGW) to allow private subnet instances to initiate outbound IPv6 connections while blocking unsolicited inbound IPv6 connections from the internet.
+Description: Configure an AWS Egress-Only Internet Gateway (EIGW) to allow private subnet instances to initiate outbound IPv6 connections while blocking all inbound IPv6 traffic.
 
 ## Introduction
 

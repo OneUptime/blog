@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Podman, Container, DevOps, Security, Signature Verification, Policy
 
-Description: Learn how to configure granular signature verification policies in Podman to enforce image trust at the registry, repository, and image-reference level.
+Description: Learn how to configure granular signature verification policies in Podman to enforce image trust at the registry, repository, and tag level.
 
 ---
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RabbitMQ, Message Queue, Performance, Memory Management, DevOps, Microservice
 
-Description: Learn how RabbitMQ lazy queues worked in RabbitMQ 3.11 and earlier, and how modern RabbitMQ versions handle large messages with disk-backed classic and quorum queues.
+Description: Learn how to implement RabbitMQ lazy queues to handle large messages efficiently by storing them on disk instead of memory, reducing memory pressure and improving system stability.
 
 ---
 

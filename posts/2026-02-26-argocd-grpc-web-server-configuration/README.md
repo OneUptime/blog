@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: ArgoCD, GitOps, Kubernetes, gRPC, Networking
 
-Description: Learn how to use ArgoCD's gRPC-Web support to enable browser-based clients and work through proxies configured for HTTP/1.1.
+Description: Learn how to configure ArgoCD's API server for gRPC-Web to enable browser-based clients and work through load balancers that do not support HTTP/2.
 
 ---
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: tc, Netem, IPv4, Packet Loss, Network Testing, Linux
 
-Description: Use tc netem to simulate IPv4 packet loss with configurable rates and burst-loss models to test application resilience under poor network conditions.
+Description: Use tc netem to simulate IPv4 packet loss with configurable rates and correlation to test application resilience under poor network conditions.
 
 Simulating packet loss helps validate how TCP applications handle retransmissions, UDP applications handle missing data, and how quickly applications detect and recover from network degradation.
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: ICMP, Linux, Security, Sysctl, Redirect, Networking
 
-Description: Disable ICMP redirect message acceptance on Linux to prevent an on-link attacker spoofing the current gateway from manipulating your routing table via forged ICMP redirect packets.
+Description: Disable ICMP redirect message acceptance on Linux to prevent attackers from manipulating your routing table via forged ICMP redirect packets.
 
 ICMP redirect messages tell a host to use a different gateway for a specific destination. While legitimate in some networks, an on-link attacker spoofing the current gateway can forge them to redirect traffic through a machine they control, enabling man-in-the-middle attacks.
 

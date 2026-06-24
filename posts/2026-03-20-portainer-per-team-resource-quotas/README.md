@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Resource Quota, Team, Multi-Tenancy, Business Edition, Kubernetes
 
-Description: Learn how to configure per-team resource quotas in Portainer Business Edition for Kubernetes environments and use resource limits in Docker environments to prevent resource overconsumption.
+Description: Learn how to configure per-team resource quotas in Portainer Business Edition for Docker and Kubernetes environments to prevent resource overconsumption.
 
 ---
 

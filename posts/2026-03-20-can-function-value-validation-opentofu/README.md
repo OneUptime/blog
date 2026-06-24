@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Can Function, Validation, HCL, Infrastructure as Code
 
-Description: Learn how to use OpenTofu's can function to test whether expressions are valid and build boolean checks for validation and condition expressions.
+Description: Learn how to use OpenTofu's can function to test whether expressions are valid and build conditional logic based on value presence or type.
 
 The `can` function evaluates an expression and returns `true` if the expression succeeds without an error, or `false` if it would produce an error. Unlike `try`, it does not return the value - it returns a boolean. This makes it useful when you need to turn a potentially failing expression into a boolean result, especially in custom variable validation and other condition expressions.
 

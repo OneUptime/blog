@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Docker, MariaDB, Database, Self-Hosted, MySQL
 
-Description: Deploy MariaDB via Portainer as a MySQL-compatible database with persistent storage, optional custom configuration, and replication support.
+Description: Deploy MariaDB via Portainer as a MySQL-compatible database with Galera clustering support, persistent storage, and optimized configuration.
 
 ## Introduction
 

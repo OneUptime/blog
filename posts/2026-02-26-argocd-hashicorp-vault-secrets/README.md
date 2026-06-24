@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: ArgoCD, GitOps, Kubernetes, HashiCorp Vault, Security
 
-Description: A complete guide to integrating HashiCorp Vault with ArgoCD for secret management using External Secrets Operator, ArgoCD Vault Plugin, and Vault dynamic secrets.
+Description: A complete guide to integrating HashiCorp Vault with ArgoCD for dynamic secret management using the Vault Agent, CSI driver, and External Secrets Operator.
 
 ---
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Azure, Managed Disks, Virtual Machine, Storage, IaaS, Cloud Infrastructure
 
-Description: Step-by-step guide to creating Azure Managed Disks and attaching them to virtual machines using Azure CLI, PowerShell, and ARM templates.
+Description: Step-by-step guide to creating Azure Managed Disks and attaching them to virtual machines using Azure CLI, PowerShell, and the Azure portal.
 
 ---
 

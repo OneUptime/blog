@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rook, Ceph, Cache, Performance, Object Storage, D3N, Tiering
 
-Description: Configure D3N (Datacenter-Data-Delivery Network) cache for Ceph RGW to accelerate reads from tiered or remote object storage.
+Description: Configure D3N (Datacenter-scale Distributed Durable Data-caching Networking) cache for Ceph RGW to accelerate reads from tiered or remote object storage.
 
 ---
 

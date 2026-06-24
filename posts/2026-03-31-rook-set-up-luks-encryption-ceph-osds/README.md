@@ -59,7 +59,7 @@ cryptsetup luksDump /dev/sdb
 ```
 
 Expected output includes:
-```
+```text
 LUKS header information
 Version:        2
 Epoch:          3

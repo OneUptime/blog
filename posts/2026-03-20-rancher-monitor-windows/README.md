@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Rancher, Windows, Monitoring, Prometheus, Windows Exporter
+Tags: Rancher, Window, Monitoring, Prometheus, Node Exporter
 
 Description: Set up monitoring for Windows nodes in Rancher using Windows Exporter, Prometheus, and Grafana dashboards for comprehensive Windows node observability.
 

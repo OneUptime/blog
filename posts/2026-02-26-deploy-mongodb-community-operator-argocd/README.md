@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: ArgoCD, GitOps, Kubernetes, MongoDB, Database
 
-Description: Learn how to deploy MongoDB Community resources using ArgoCD and the MongoDB Controllers for Kubernetes Operator to manage MongoDB replica sets on Kubernetes with a full GitOps workflow.
+Description: Learn how to deploy the MongoDB Community Operator using ArgoCD to manage MongoDB replica sets on Kubernetes with a full GitOps workflow.
 
 ---
 

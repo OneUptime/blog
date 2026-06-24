@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Docker, Hostname, Networking, Container
 
-Description: Configure custom hostnames, domain names, and DNS settings for Docker containers in Portainer for proper identification and name resolution.
+Description: Configure custom hostnames and domain names for Docker containers in Portainer for proper service discovery and identification.
 
 ---
 

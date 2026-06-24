@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Docker, Log, Metadata Enrichment
 
-Description: Learn how to collect Docker container logs and enrich each log record with container name, image, and selected labels using the OpenTelemetry Collector.
+Description: Learn how to collect Docker container logs and enrich each log record with container name, image, and labels using the OpenTelemetry Collector.
 
 When you collect Docker container logs from disk, each log line carries minimal context. You get the message, a timestamp, and the stream type. But for effective troubleshooting, you need to know which container produced the log, what image it was running, and what labels were attached. The OpenTelemetry Collector can enrich log records with this metadata using a combination of the file log receiver, the Docker observer, and the receiver creator.
 

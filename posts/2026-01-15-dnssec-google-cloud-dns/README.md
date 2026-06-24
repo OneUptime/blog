@@ -209,7 +209,7 @@ Updated [https://dns.googleapis.com/dns/v1/projects/my-project/managedZones/exam
 
 ### Step 4: Specify a Custom Algorithm (Optional)
 
-You set the key algorithms in the same command that enables DNSSEC, as shown above. Cloud DNS does not allow changing the key algorithms on a zone that already has DNSSEC enabled — to switch algorithms later, you must first disable DNSSEC, then re-enable it with the new settings.
+You set the key algorithms in the same command that enables DNSSEC, as shown above. Cloud DNS does not allow changing the key algorithms on a zone that already has DNSSEC enabled - to switch algorithms later, you must first disable DNSSEC, then re-enable it with the new settings.
 
 For RSA-based algorithms:
 

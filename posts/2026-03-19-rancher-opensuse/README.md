@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rancher, openSUSE, Docker, Kubernetes, Installation
 
-Description: A step-by-step guide to installing Rancher on openSUSE Leap using Docker for testing and development, including zypper package management and system configuration.
+Description: A step-by-step guide to installing Rancher on openSUSE Leap using Docker, including zypper package management and system configuration.
 
 openSUSE is the community distribution from SUSE and has a natural affinity with Rancher since SUSE acquired Rancher Labs. openSUSE Leap provides a stable, enterprise-aligned distribution that shares its codebase with SUSE Linux Enterprise Server. This guide covers installing Rancher on openSUSE Leap 15.5 or later using Docker for testing and development. For production use, Rancher recommends installing on a high-availability Kubernetes cluster instead of a single Docker container.
 

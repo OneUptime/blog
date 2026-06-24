@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, Networking, IPAM
 
-Description: Systematically validate a completed Calico IPAM split - confirming IPAM consistency, correct pool assignment by node zone, and allocation distribution.
+Description: Systematically validate a completed Calico IPAM split - confirming IPAM consistency, correct pool assignment by node zone, allocation distribution, and that no pods are still using IPs from the...
 
 ---
 

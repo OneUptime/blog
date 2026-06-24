@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Docker, Container, Infrastructure as Code, DevOps
 
-Description: Learn how to build docker images with OpenTofu using the Docker provider to build images and run containers on local and remote Docker hosts.
+Description: Learn how to build docker images with OpenTofu using the Docker provider for local and remote container management.
 
 ## Introduction
 

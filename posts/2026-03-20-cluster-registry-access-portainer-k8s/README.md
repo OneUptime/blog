@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Kubernetes, Container Registry, Image Pull Secrets, DevOps
 
-Description: Learn how to configure registry access in Portainer so selected namespaces can pull from private registries without manual secret creation.
+Description: Learn how to configure cluster-wide registry access in Portainer so all namespaces can pull from private registries without manual secret creation.
 
 ## The Challenge
 

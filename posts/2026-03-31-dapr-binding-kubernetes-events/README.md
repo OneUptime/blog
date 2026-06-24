@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Dapr, Binding, Kubernetes, Event, Monitoring
 
-Description: Configure the Dapr Kubernetes Events input binding to watch Kubernetes events from microservices for auditing, debugging, and cluster-native operational monitoring.
+Description: Configure the Dapr Kubernetes Events output binding to create Kubernetes events from microservices for auditing, debugging, and cluster-native operational logging.
 
 ---
 

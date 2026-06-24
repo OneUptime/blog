@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, AWS, CloudWatch Synthetics, Canaries, Synthetic Monitoring, Availability, Infrastructure as Code
 
-Description: Learn how to create CloudWatch Synthetics Canaries with OpenTofu to continuously test API endpoints and website availability, detecting outages before users do.
+Description: Learn how to create CloudWatch Synthetics Canaries with OpenTofu to continuously test API endpoints and website availability from multiple AWS regions, detecting outages before users do.
 
 ## Introduction
 

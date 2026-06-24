@@ -1,10 +1,10 @@
-# How to Configure GCE Ingress Controller on a Dual-Stack GKE Cluster
+# How to Configure GCE Ingress Controller for IPv6
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: IPv6, GKE, GCE, Google Cloud, Kubernetes, Ingress, Load Balancer
 
-Description: Configure the GCE Ingress Controller on Google Kubernetes Engine (GKE) correctly on a dual-stack cluster, including supported Ingress configuration, BackendConfig usage, and network policy requirements.
+Description: Configure the GCE Ingress Controller on Google Kubernetes Engine (GKE) to create IPv6-capable Global HTTP(S) Load Balancers, including dual-stack service configuration and IPv6 external IP assignment.
 
 ## Introduction
 

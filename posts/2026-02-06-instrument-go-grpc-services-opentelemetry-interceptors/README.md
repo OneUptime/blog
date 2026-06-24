@@ -1,10 +1,10 @@
-# How to Instrument Go gRPC Services with OpenTelemetry Stats Handlers
+# How to Instrument Go gRPC Services with OpenTelemetry Interceptors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Go, gRPC, Stats Handlers, Tracing, Microservice
+Tags: OpenTelemetry, Go, gRPC, Interceptors, Tracing, Microservice
 
-Description: Learn how to instrument Go gRPC services using OpenTelemetry stats handlers for comprehensive distributed tracing across your microservices architecture.
+Description: Learn how to instrument Go gRPC services using OpenTelemetry interceptors for comprehensive distributed tracing across your microservices architecture.
 
 When building microservices with gRPC in Go, observability becomes critical for debugging and performance optimization. OpenTelemetry provides powerful stats handlers that automatically capture traces for both unary and streaming RPCs, giving you complete visibility into your service mesh.
 

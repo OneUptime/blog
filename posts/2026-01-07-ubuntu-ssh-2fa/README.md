@@ -537,7 +537,7 @@ google-authenticator
 
 ### Allowing Fallback Authentication
 
-For recovery scenarios, remember that `/etc/pam.d/sshd` only governs SSH logins — local console (and serial/IPMI) logins use a different PAM service (`login`), so they are **not** affected by the SSH 2FA configuration and already bypass the SSH verification code. Do not add a rule like `auth [success=done default=ignore] pam_succeed_if.so service = sshd` to `/etc/pam.d/sshd`: in that file the `service` is always `sshd`, so the rule would match every connection and skip Google Authenticator, silently disabling 2FA for all SSH access.
+For recovery scenarios, remember that `/etc/pam.d/sshd` only governs SSH logins - local console (and serial/IPMI) logins use a different PAM service (`login`), so they are **not** affected by the SSH 2FA configuration and already bypass the SSH verification code. Do not add a rule like `auth [success=done default=ignore] pam_succeed_if.so service = sshd` to `/etc/pam.d/sshd`: in that file the `service` is always `sshd`, so the rule would match every connection and skip Google Authenticator, silently disabling 2FA for all SSH access.
 
 If you need to recover SSH access without your TOTP device, use one of these instead:
 

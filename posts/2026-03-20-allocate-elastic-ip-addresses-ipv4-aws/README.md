@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: AWS, Elastic IP, IPv4, EC2, Networking, OpenTofu
 
-Description: Learn how to allocate and associate Elastic IP addresses for IPv4 in AWS using the CLI and OpenTofu.
+Description: Learn how to allocate and associate Elastic IP addresses for IPv4 in AWS using the console, CLI, and OpenTofu.
 
 ---
 

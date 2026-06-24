@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Docker, Troubleshooting, Agent, Resource
 
-Description: Fix the issue where Portainer shows duplicate containers, networks, or volumes when using agent-based endpoints, caused by duplicate environment registrations, overlapping Swarm and per-node views, or stale snapshot data.
+Description: Fix the issue where Portainer shows duplicate containers, networks, or volumes when using agent-based endpoints, caused by multiple agent registrations or snapshot conflicts.
 
 ## Introduction
 

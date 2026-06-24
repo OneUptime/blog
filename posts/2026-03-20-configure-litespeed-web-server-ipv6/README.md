@@ -47,7 +47,7 @@ https://[2001:db8::1]:7080/
 
 ## Direct Configuration File Approach
 
-```
+```text
 # /usr/local/lsws/conf/httpd_config.conf
 
 listener IPv6HTTPS {
@@ -85,7 +85,7 @@ The Alt-Svc header is automatically added when HTTP/3 is enabled.
 
 In `httpd_config.conf`, declare the virtual host and point it at its per-vhost config file:
 
-```
+```text
 # /usr/local/lsws/conf/httpd_config.conf
 
 virtualHost yourVirtualHost {
@@ -99,7 +99,7 @@ virtualHost yourVirtualHost {
 
 Then put the per-vhost directives directly (no wrapper) in `vhconf.conf`:
 
-```
+```text
 # /usr/local/lsws/conf/vhosts/yourdomain/vhconf.conf
 
 docRoot                   $VH_ROOT/public_html
@@ -137,7 +137,7 @@ ss -tlnp | grep lshttpd
 
 LSPHP runs as a separate `extprocessor` over a Unix domain socket - connections to the vhost over IPv6 are proxied to it locally:
 
-```
+```text
 # /usr/local/lsws/conf/httpd_config.conf
 
 extprocessor lsphp {

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Dapr, State, Throughput, Redis, Performance
 
-Description: Learn how to optimize Dapr state operations for high-throughput scenarios using bulk operations, transactions, and state store tuning.
+Description: Learn how to optimize Dapr state operations for high-throughput scenarios using bulk operations, pipelining, and state store tuning.
 
 ---
 

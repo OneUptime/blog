@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, AWS, Lambda, Provisioned Concurrency, Cold Start, Performance, Infrastructure as Code
 
-Description: Learn how to configure Lambda Provisioned Concurrency using OpenTofu to reduce cold starts and improve low-latency response consistency for latency-sensitive functions.
+Description: Learn how to configure Lambda Provisioned Concurrency using OpenTofu to eliminate cold starts and ensure consistent low-latency response times for latency-sensitive functions.
 
 ## Introduction
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, GCS, Google Cloud Storage, GCP, Infrastructure as Code, Storage
 
-Description: Learn how to configure Google Cloud Storage buckets with OpenTofu - setting storage classes, retention policies, lifecycle rules, uniform bucket-level access, and bucket notifications.
+Description: Learn how to configure Google Cloud Storage buckets with OpenTofu - setting storage classes, retention policies, lifecycle rules, uniform bucket-level access, and VPC Service Controls.
 
 ## Introduction
 

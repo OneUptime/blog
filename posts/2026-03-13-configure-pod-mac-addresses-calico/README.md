@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, MAC Address, Networking, CNI
 
-Description: Configure how Calico assigns and manages MAC addresses for pod network interfaces, including static MAC assignment.
+Description: Configure how Calico assigns and manages MAC addresses for pod network interfaces, including virtual MAC prefixes and static MAC assignment.
 
 ---
 

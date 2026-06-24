@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RKE2, Kubernetes, Configuration, Worker Nodes, Agent, Rancher
 
-Description: A practical reference guide to common options in the RKE2 agent configuration file for customizing your Kubernetes worker nodes.
+Description: A comprehensive reference guide to all available options in the RKE2 agent configuration file for customizing your Kubernetes worker nodes.
 
 The RKE2 agent configuration file (`/etc/rancher/rke2/config.yaml`) on worker nodes controls how the agent connects to the server cluster and how workloads run on the node. This guide provides a practical reference for common agent configuration options.
 

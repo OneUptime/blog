@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, AWS, EKS, ADOT, Kubernetes, Observability
 
-Description: A practical guide to deploying the AWS Distro for OpenTelemetry (ADOT) on Amazon EKS for collecting traces and metrics from your Kubernetes workloads.
+Description: A practical guide to deploying the AWS Distro for OpenTelemetry (ADOT) on Amazon EKS for collecting traces, metrics, and logs from your Kubernetes workloads.
 
 ---
 

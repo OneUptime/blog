@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: IPv6, Aruba, Wi-Fi, Wireless Controller, AOS, SLAAC, DHCPv6
 
-Description: Configure IPv6 support on Aruba wireless controllers and AOS, including management interface IPv6 addressing, router advertisements for wireless clients, and IPv6 firewall policies.
+Description: Configure IPv6 support on Aruba wireless controllers and AOS, including management interface IPv6 addressing, RA forwarding to wireless clients, and IPv6 firewall policies.
 
 ---
 

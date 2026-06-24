@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Gateway-API, Networking
 
-Description: Learn how to use ReferenceGrant from the Gateway API to enable secure cross-namespace resource references for services and secrets while maintaining namespace isolation.
+Description: Learn how to use ReferenceGrant from the Gateway API to enable secure cross-namespace resource references for services, secrets, and other resources while maintaining namespace isolation.
 
 ---
 

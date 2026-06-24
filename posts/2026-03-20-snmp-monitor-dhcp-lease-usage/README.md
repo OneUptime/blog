@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: SNMP, DHCP, Monitoring, IPv4, Lease, Network Management, OID
 
-Description: Learn how to monitor DHCP pool utilization and lease counts using Microsoft DHCP Server SNMP OIDs and Net-SNMP extend scripts for ISC DHCP, enabling proactive capacity management.
+Description: Learn how to monitor DHCP pool utilization and lease counts using SNMP OIDs from Microsoft DHCP Server and ISC DHCP, enabling proactive capacity management.
 
 ---
 

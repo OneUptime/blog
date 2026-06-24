@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, State Management, Environment Separation, S3, Backend, Infrastructure as Code
 
-Description: Learn how to configure separate state files per environment in OpenTofu using directory-based separation for strong isolation between dev, staging, and production.
+Description: Learn how to configure separate state files per environment in OpenTofu using directory-based separation for complete isolation between dev, staging, and production.
 
 ---
 

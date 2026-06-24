@@ -47,7 +47,8 @@ map $http_upgrade $connection_upgrade {
 }
 
 server {
-    listen 443 ssl http2;
+    listen 443 ssl;
+    http2 on;
     server_name ws.example.com;
 
     # SSL certificates
@@ -102,7 +103,8 @@ server {
 }
 
 server {
-    listen 443 ssl http2;
+    listen 443 ssl;
+    http2 on;
     server_name ws.example.com;
 
     # SSL Configuration
@@ -146,14 +148,14 @@ server {
         proxy_set_header X-Forwarded-Proto $scheme;
 
         # Timeouts for long-lived connections
-        proxy_connect_timeout 7d;
+        proxy_connect_timeout 60s;
         proxy_send_timeout 7d;
         proxy_read_timeout 7d;
 
         # Disable buffering for real-time
         proxy_buffering off;
 
-        # Don't close connection on backend errors
+        # Pass backend error responses through
         proxy_intercept_errors off;
     }
 
@@ -181,7 +183,8 @@ Socket.IO requires special handling for its polling fallback:
 
 ```nginx
 server {
-    listen 443 ssl http2;
+    listen 443 ssl;
+    http2 on;
     server_name app.example.com;
 
     # ... SSL config ...
@@ -224,7 +227,8 @@ Handle different WebSocket endpoints:
 
 ```nginx
 server {
-    listen 443 ssl http2;
+    listen 443 ssl;
+    http2 on;
     server_name example.com;
 
     # ... SSL config ...
@@ -320,7 +324,8 @@ upstream websocket_cluster {
 }
 
 server {
-    listen 443 ssl http2;
+    listen 443 ssl;
+    http2 on;
     server_name ws.example.com;
 
     location / {
@@ -346,16 +351,16 @@ server {
 ```nginx
 error_log /var/log/nginx/websocket-debug.log debug;
 
+# Custom access log for WebSocket (define in the http context)
+log_format websocket '$remote_addr - [$time_local] '
+                     '"$request" $status '
+                     'upgrade="$http_upgrade" '
+                     'connection="$http_connection" '
+                     'backend="$upstream_addr"';
+
 server {
     listen 443 ssl;
     server_name ws.example.com;
-
-    # Custom access log for WebSocket
-    log_format websocket '$remote_addr - [$time_local] '
-                         '"$request" $status '
-                         'upgrade="$http_upgrade" '
-                         'connection="$http_connection" '
-                         'backend="$upstream_addr"';
 
     access_log /var/log/nginx/websocket-access.log websocket;
 
@@ -464,7 +469,8 @@ upstream ws_backend {
 }
 
 server {
-    listen 443 ssl http2;
+    listen 443 ssl;
+    http2 on;
     server_name app.example.com;
 
     ssl_certificate /etc/letsencrypt/live/app.example.com/fullchain.pem;
@@ -484,7 +490,7 @@ server {
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
 
-        proxy_connect_timeout 7d;
+        proxy_connect_timeout 60s;
         proxy_send_timeout 7d;
         proxy_read_timeout 7d;
 

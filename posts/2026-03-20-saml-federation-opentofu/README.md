@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, SAML, Federation, AWS, IAM, SSO, Infrastructure as Code
 
-Description: Learn how to configure SAML 2.0 federation with AWS IAM using OpenTofu to enable Single Sign-On from external identity providers like Okta or Microsoft Entra ID.
+Description: Learn how to configure SAML 2.0 federation with AWS IAM using OpenTofu to enable Single Sign-On from external identity providers like Okta or Azure AD.
 
 ## Introduction
 

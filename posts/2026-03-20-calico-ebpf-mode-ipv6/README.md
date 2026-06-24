@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Calico, eBPF, IPv6, Kubernetes, XDP, Kube-proxy Replacement, Performance
 
-Description: Configure Calico in eBPF mode on an IPv6-capable self-managed Kubernetes cluster, replacing kube-proxy with Calico's eBPF-native service handling.
+Description: Configure Calico in eBPF mode for high-performance IPv6 packet forwarding, replacing kube-proxy with eBPF-native service load balancing.
 
 ## Introduction
 

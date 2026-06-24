@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, NATS, JetStream, Event-Driven, Microservice
 
-Description: Build scalable event-driven architectures on Kubernetes using NATS JetStream for reliable message streaming with persistence and deduplication support.
+Description: Build scalable event-driven architectures on Kubernetes using NATS JetStream for reliable message streaming with persistence and exactly-once delivery.
 
 ---
 

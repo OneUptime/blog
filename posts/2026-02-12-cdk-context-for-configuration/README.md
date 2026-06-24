@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: AWS, CDK, TypeScript, Configuration
 
-Description: Learn how to use CDK context values for configuration management, including synthesis-time lookups, cached context, and patterns for environment-specific settings.
+Description: Learn how to use CDK context values for configuration management, including runtime lookups, cached context, and patterns for environment-specific settings.
 
 ---
 

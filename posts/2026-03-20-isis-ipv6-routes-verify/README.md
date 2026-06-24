@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: IS-IS, IPv6, Routing Table, Verification, Networking
 
-Description: Learn how to verify IS-IS IPv6 route installation on Cisco IOS, Juniper Junos OS, and FRRouting, and interpret the routing table output.
+Description: Learn how to verify IS-IS IPv6 route installation on Cisco IOS, Juniper JunOS, and FRRouting, and interpret the routing table output.
 
 ## Cisco IOS Verification
 

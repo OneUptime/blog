@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: MySQL, DDL, Audit
 
-Description: Learn how to track DDL changes in MySQL using the general query log, binary log, INFORMATION_SCHEMA, and Percona Audit Plugin.
+Description: Learn how to track DDL changes in MySQL using the general query log, performance schema, triggers on metadata tables, and Percona Audit Plugin.
 
 ---
 

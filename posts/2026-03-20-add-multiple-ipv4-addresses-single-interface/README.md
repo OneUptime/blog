@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Linux, Networking, IPv4, ip command, Virtual IP, Network Configuration
 
-Description: Add multiple IPv4 addresses to a single Linux network interface using ip addr add, including secondary addresses, labels, and how to make them persistent.
+Description: Add multiple IPv4 addresses to a single Linux network interface using ip addr add, including secondary addresses, label aliases, and how to make them persistent.
 
 ## Introduction
 

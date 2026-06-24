@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Next.js, AWS, ECS, CloudFront, Infrastructure as Code
 
-Description: Learn how to deploy a Next.js application on AWS using OpenTofu, serving static build assets from S3 and server-side rendered pages from ECS Fargate behind CloudFront.
+Description: Learn how to deploy a Next.js application on AWS using OpenTofu, supporting both static export and server-side rendering with ECS Fargate and CloudFront.
 
 ## Introduction
 

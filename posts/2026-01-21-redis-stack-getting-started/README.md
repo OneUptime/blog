@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Redis, Redis Stack, RediSearch, RedisJSON, RedisTimeSeries, RedisGraph, RedisBloom
 
-Description: A comprehensive guide to getting started with Redis Stack, the all-in-one package combining Redis with Search, JSON, TimeSeries, and Bloom filter modules.
+Description: A comprehensive guide to getting started with Redis Stack, the all-in-one package combining Redis with Search, JSON, TimeSeries, Graph, and Bloom filter modules.
 
 ---
 

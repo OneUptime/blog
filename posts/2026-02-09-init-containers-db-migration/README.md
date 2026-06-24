@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Init Container, Database Migration, Schema Management, DevOps
 
-Description: Learn how to use Kubernetes init containers to run database schema migrations before application containers start, helping maintain schema compatibility during deployments.
+Description: Learn how to use Kubernetes init containers to run database schema migrations safely before application deployment, ensuring schema compatibility and zero-downtime updates.
 
 ---
 

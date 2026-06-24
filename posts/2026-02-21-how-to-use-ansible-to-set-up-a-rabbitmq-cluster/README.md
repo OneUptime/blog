@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, RabbitMQ, Message Queue, Clustering
 
-Description: Deploy a production-ready RabbitMQ cluster using Ansible with quorum queues, management UI, and automated node joining for reliable message delivery.
+Description: Deploy a production-ready RabbitMQ cluster using Ansible with mirrored queues, management UI, and automated node joining for reliable message delivery.
 
 ---
 

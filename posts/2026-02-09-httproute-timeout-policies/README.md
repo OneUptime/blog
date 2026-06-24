@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Gateway API, Reliability
 
-Description: Configure request and backend request timeout policies in Kubernetes Gateway API HTTPRoute to prevent cascading failures, handle slow backends gracefully.
+Description: Configure request and backend timeout policies in Kubernetes Gateway API HTTPRoute to prevent cascading failures, handle slow backends gracefully.
 
 ---
 

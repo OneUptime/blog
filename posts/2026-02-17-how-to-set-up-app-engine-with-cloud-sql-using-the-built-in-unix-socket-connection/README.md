@@ -1,10 +1,10 @@
-# Set Up App Engine Flexible with Cloud SQL Using the Built-In Unix Socket Connection
+# Set Up App Engine with Cloud SQL Using the Built-In Unix Socket Connection
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GCP, App Engine, Cloud SQL, Database, Unix Socket
 
-Description: Learn how to connect your App Engine flexible application to Cloud SQL using the built-in Unix socket proxy for secure, low-latency database access without extra configuration.
+Description: Learn how to connect your App Engine application to Cloud SQL using the built-in Unix socket proxy for secure, low-latency database access without extra configuration.
 
 ---
 

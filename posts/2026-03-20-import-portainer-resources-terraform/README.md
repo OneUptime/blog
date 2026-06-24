@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Terraform, Import, Infrastructure as Code, DevOps
 
-Description: Learn how to import existing Portainer environments, stacks, users, and teams into Terraform state for future management as code.
+Description: Learn how to import existing Portainer environments, stacks, and users into Terraform state for future management as code.
 
 ## Why Import Existing Resources?
 

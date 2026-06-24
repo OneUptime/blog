@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: AWS, S3, Storage, Replication
 
-Description: Master S3 replication rule filtering to selectively replicate objects based on prefixes and tags with practical configuration examples.
+Description: Master S3 replication rule filtering to selectively replicate objects based on prefixes, tags, and object size with practical configuration examples.
 
 ---
 

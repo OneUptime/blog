@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GCP, Deployment Manager, Python Templates, Infrastructure as Code, Cloud Automation
 
-Description: Learn how to use Python templates in Google Cloud Deployment Manager for dynamic resource generation with complex logic and programmatic infrastructure definitions.
+Description: Learn how to use Python templates in Google Cloud Deployment Manager for dynamic resource generation with complex logic, API calls, and programmatic infrastructure definitions.
 
 ---
 

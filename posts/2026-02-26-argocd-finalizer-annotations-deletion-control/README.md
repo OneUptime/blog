@@ -1,10 +1,10 @@
-# How to Use Finalizers for Deletion Control in ArgoCD
+# How to Use Finalizer Annotations for Deletion Control in ArgoCD
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: ArgoCD, GitOps, Kubernetes, Finalizer, Application Lifecycle
 
-Description: Learn how to use ArgoCD finalizers to control what happens when you delete applications, including cascade and orphan deletion strategies.
+Description: Learn how to use ArgoCD finalizer annotations to control what happens when you delete applications, including cascade and orphan deletion strategies.
 
 ---
 

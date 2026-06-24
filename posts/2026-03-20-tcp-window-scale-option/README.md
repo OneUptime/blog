@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: TCP, Linux, Window Scaling, Networking, Performance, RFC7323
 
-Description: Understand the TCP Window Scale option, how the scale factor is exchanged during the handshake, and how to ensure it is active for maximum throughput.
+Description: Understand the TCP Window Scale option, how the scale factor is negotiated during the handshake, and how to ensure it is active for maximum throughput.
 
 ## Introduction
 

@@ -206,7 +206,7 @@ A manually maintained diagram often communicates better:
                                 v            v
                              [v1]      [95% stable / 5% canary]
     ```
-```
+```yaml
 
 ## Documenting Traffic Policies
 

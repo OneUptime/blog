@@ -2,9 +2,9 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Dapr, AWS, Bedrock, AI, Conversation, Language Model
+Tags: Dapr, AWS, Bedrock, AI, Binding, Language Model
 
-Description: Use Dapr's conversation component to invoke AWS Bedrock foundation models for text generation and summarization from microservices without embedding Bedrock SDK calls.
+Description: Use Dapr output bindings to invoke AWS Bedrock foundation models for text generation and summarization from microservices without embedding Bedrock SDK calls.
 
 ---
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RKE2, Kubernetes, Configuration, Control Plane, Rancher
 
-Description: A comprehensive guide to configuring RKE2 server nodes with important configuration options for production Kubernetes deployments.
+Description: A comprehensive guide to configuring RKE2 server nodes with all available configuration options for production Kubernetes deployments.
 
 RKE2 server nodes run the Kubernetes control plane components including the API server, controller manager, scheduler, and etcd. Properly configuring server nodes is critical for security, performance, and availability. This guide covers all the important configuration options for RKE2 server nodes.
 

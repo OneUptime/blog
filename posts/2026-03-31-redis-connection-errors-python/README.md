@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Redis, Python, Error Handling, Resilience, redis-py
 
-Description: Handle Redis connection errors in Python with redis-py using exception handling, retry logic, graceful degradation, and health checks for production resilience.
+Description: Handle Redis connection errors in Python with redis-py using exception handling, retry logic, circuit breakers, and health checks for production resilience.
 
 ---
 

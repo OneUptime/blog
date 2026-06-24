@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rook, Ceph, Quota, Statistics, Object Storage, Administration, Monitoring
 
-Description: View quota settings and synchronize usage statistics in Ceph RGW to improve quota reporting and quota enforcement visibility across users and buckets.
+Description: View quota settings and synchronize usage statistics in Ceph RGW to ensure accurate quota enforcement and reporting across users and buckets.
 
 ---
 

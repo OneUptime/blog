@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: MongoDB, Update, Aggregation, Pipeline
 
-Description: Learn how to update a MongoDB field using the value of another field in the same document, using update pipeline expressions and $set with aggregation operators.
+Description: Learn how to update a MongoDB field using the value of another field in the same document, using update pipeline expressions and $set with $expr.
 
 ---
 

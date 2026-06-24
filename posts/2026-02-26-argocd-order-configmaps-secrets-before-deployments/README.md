@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: ArgoCD, GitOps, Kubernetes, Sync Waves, Configuration Management
 
-Description: Learn how to use ArgoCD sync waves to deploy ConfigMaps and Secrets before the Deployments that reference them, preventing pod startup failures and noisy rollout issues.
+Description: Learn how to use ArgoCD sync waves to deploy ConfigMaps and Secrets before the Deployments that reference them, preventing pod startup failures and CrashLoopBackOff issues.
 
 ---
 

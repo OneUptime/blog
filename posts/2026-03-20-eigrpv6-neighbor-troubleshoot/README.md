@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: EIGRPv6, IPv6, Troubleshooting, Cisco, Routing
 
-Description: Learn how to diagnose and resolve EIGRPv6 neighbor adjacency failures on Cisco routers, including the common shutdown issue, timer issues, and AS number conflicts.
+Description: Learn how to diagnose and resolve EIGRPv6 neighbor adjacency failures on Cisco routers, including the common shutdown issue, timer mismatches, and AS number conflicts.
 
 ## Overview
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Cloud Backend, Team Collaboration, Terraform Cloud, Workflow
 
-Description: Learn how to use the HCP Terraform cloud backend for team collaboration in OpenTofu, including plan reviews, state locking, access controls, and collaborative workflows.
+Description: Learn how to use the Terraform Cloud backend for team collaboration in OpenTofu, including plan reviews, state locking, access controls, and collaborative workflows.
 
 ## Introduction
 

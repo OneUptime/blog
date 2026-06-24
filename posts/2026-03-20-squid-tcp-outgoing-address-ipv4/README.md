@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Squid, IPv4, Tcp_outgoing_address, Source IP, Proxy, Outbound
 
-Description: Use Squid's tcp_outgoing_address directive in Squid 7 and earlier to control which IPv4 source address is used when making outbound connections to origin servers.
+Description: Use Squid's tcp_outgoing_address directive to control which IPv4 source address is used when making outbound connections to origin servers.
 
 ## Introduction
 

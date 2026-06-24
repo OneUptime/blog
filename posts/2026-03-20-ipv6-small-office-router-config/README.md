@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: IPv6, Small Office, Router, DHCPv6, SLAAC, Networking
 
-Description: Configure IPv6 on a small office router with multiple VLANs, using a prefix delegated by the ISP, and SLAAC distribution to employee and guest networks.
+Description: Configure IPv6 on a small office router with multiple VLANs, DHCPv6 prefix delegation from the ISP, and SLAAC distribution to employee and guest networks.
 
 ## Introduction
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Terraform, Infrastructure as Code, String Function, HCL, DevOps
 
-Description: Learn how to use the title function in Terraform to capitalize words, with practical examples for display names, tags, and formatted output.
+Description: Learn how to use the title function in Terraform to convert strings to title case, with practical examples for display names, tags, and formatted output.
 
 ---
 

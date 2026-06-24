@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Dapr, Resiliency, Retry, Microservice, Kubernetes
 
-Description: Configure automatic retry policies for Dapr service invocation and pub/sub using the Resiliency CRD with constant and exponential backoff strategies.
+Description: Configure automatic retry policies for Dapr service invocation and pub/sub using the Resiliency CRD with constant, linear, and exponential backoff strategies.
 
 ---
 

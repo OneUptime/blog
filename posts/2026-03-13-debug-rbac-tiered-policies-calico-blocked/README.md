@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, Network Policy, RBAC, Policy Tiers, Security
 
-Description: Diagnose and fix RBAC for Tiered Policies failures in Calico when policy access is unexpectedly blocked.
+Description: Diagnose and fix RBAC for Tiered Policies failures in Calico when traffic is unexpectedly blocked.
 
 ---
 

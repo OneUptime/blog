@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Redis, Node.js, ioredis, JavaScript, TypeScript
 
-Description: Learn how to install and use ioredis as a Redis client in Node.js, including connection setup, basic operations, reconnection handling, and error handling.
+Description: Learn how to install and use ioredis as a Redis client in Node.js, including connection setup, basic operations, connection pooling, and error handling.
 
 ---
 

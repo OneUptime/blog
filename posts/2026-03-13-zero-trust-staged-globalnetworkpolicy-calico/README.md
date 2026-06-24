@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, Network Policy, Staged Policies, Global Policy
 
-Description: Preview zero trust security using Staged GlobalNetworkPolicy in Calico.
+Description: Implement zero trust security using Staged GlobalNetworkPolicy in Calico.
 
 ---
 

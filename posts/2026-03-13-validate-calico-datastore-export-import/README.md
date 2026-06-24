@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, Networking, Operation
 
-Description: Validate Calico datastore migration export and import operations by comparing resource counts before and after, verifying configuration integrity, and testing policy enforcement after import.
+Description: Validate Calico datastore export and import operations by comparing resource counts before and after, verifying configuration integrity, and testing policy enforcement after import.
 
 ---
 

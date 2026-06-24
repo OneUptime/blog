@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: MySQL, Oracle, Migration, Database, Schema Conversion
 
-Description: Migrate your Oracle database to MySQL by converting schema, rewriting Oracle-specific SQL, and migrating data using open-source tools.
+Description: Migrate your Oracle database to MySQL by converting schema, rewriting Oracle-specific SQL, and migrating data using open-source and AWS tools.
 
 ---
 

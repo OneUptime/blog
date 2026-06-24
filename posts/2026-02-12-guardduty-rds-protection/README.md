@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: AWS, GuardDuty, RDS, Database Security, Threat Detection
 
-Description: Enable GuardDuty RDS Protection to monitor login activity on supported Amazon Aurora and Amazon RDS databases and detect suspicious access patterns.
+Description: Enable GuardDuty RDS Protection to monitor login activity on your Amazon Aurora databases and detect suspicious access patterns.
 
 ---
 

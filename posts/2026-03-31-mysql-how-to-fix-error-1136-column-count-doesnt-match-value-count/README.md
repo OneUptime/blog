@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: MySQL, Error Handling, Troubleshooting, INSERT Errors
 
-Description: Learn how to diagnose and fix MySQL ERROR 1136 'Column count doesn't match value count' in INSERT and INSERT ... SELECT statements.
+Description: Learn how to diagnose and fix MySQL ERROR 1136 'Column count doesn't match value count' in INSERT and SELECT INTO statements.
 
 ---
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, Meta, Error Recovery, Host Management
 
-Description: Learn how to use Ansible meta clear_host_errors to reset host failure state so later plays can target those hosts again.
+Description: Learn how to use Ansible meta clear_host_errors to reset the failure state of hosts and allow them to continue executing tasks.
 
 ---
 

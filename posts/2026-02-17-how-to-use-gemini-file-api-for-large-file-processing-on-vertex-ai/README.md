@@ -1,10 +1,10 @@
-# How to Use Cloud Storage File References for Large File Processing on Vertex AI
+# How to Use Gemini File API for Large File Processing on Vertex AI
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Gemini, Vertex AI, Cloud Storage, Large File Processing
+Tags: GCP, Gemini, Vertex AI, File API, Large File Processing
 
-Description: Learn how to use Cloud Storage file references with Gemini on Vertex AI to upload, manage, and process large files including videos, audio, and documents for AI analysis.
+Description: Learn how to use the Gemini File API on Vertex AI to upload, manage, and process large files including videos, audio, and documents for AI analysis.
 
 ---
 

@@ -1,10 +1,10 @@
-# How to Collect Grafana Internal Performance Metrics and OTLP Traces
+# How to Collect Grafana Internal Performance Metrics via OTLP Export
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Grafana, Performance Metrics, OTLP
 
-Description: Configure Grafana to expose internal performance metrics and export traces via OTLP to the Collector.
+Description: Configure Grafana to export internal performance metrics like dashboard load time and query duration directly via OTLP to the Collector.
 
 Grafana supports native OpenTelemetry export for traces. For internal metrics, Grafana exposes a Prometheus-compatible `/metrics` endpoint that the OpenTelemetry Collector can scrape with its Prometheus receiver. This approach lets you send Grafana metrics and traces through the Collector while preserving trace data that Prometheus scraping cannot capture.
 

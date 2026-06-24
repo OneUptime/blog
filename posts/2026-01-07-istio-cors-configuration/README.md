@@ -100,7 +100,7 @@ flowchart TB
 
 Before configuring CORS policies, ensure you have:
 
-- A running Kubernetes cluster with Istio installed (version 1.18+)
+- A running Kubernetes cluster with Istio installed (version 1.18+ for CORS examples; 1.22+ for the Telemetry API example)
 - `kubectl` configured to access your cluster
 - `istioctl` installed for debugging
 - Basic understanding of Istio VirtualService and Gateway resources
@@ -1385,7 +1385,7 @@ spec:
 
 ## Monitoring CORS with Prometheus Metrics
 
-Track CORS-related metrics for observability. Istio's standard metrics do not include the HTTP method as a label by default, so add a bounded method label before using method-specific Prometheus queries:
+Track CORS-related metrics for observability. Istio's standard metrics do not include the HTTP method as a label by default, so add a bounded method label before using method-specific Prometheus queries. The `telemetry.istio.io/v1` example below requires Istio 1.22 or later:
 
 ```yaml
 # Add request_method to Istio request metrics for CORS monitoring
@@ -1437,7 +1437,7 @@ spec:
 Example Prometheus queries for CORS monitoring:
 
 ```promql
-# Count of OPTIONS (preflight) requests by origin
+# Count of OPTIONS (preflight) requests by source workload
 sum(rate(istio_requests_total{
   request_method="OPTIONS",
   destination_service="api-service.production.svc.cluster.local"

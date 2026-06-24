@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, OpenVPN, VPN, Network Security, AWS
 
-Description: Learn how to deploy OpenVPN Access Server on AWS EC2 using OpenTofu for a managed VPN with user management, MFA support, and web-based client distribution.
+Description: Learn how to deploy OpenVPN Access Server on AWS EC2 using OpenTofu for enterprise-grade VPN with user management, MFA support, and web-based client distribution.
 
 ## Introduction
 

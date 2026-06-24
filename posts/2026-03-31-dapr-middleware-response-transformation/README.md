@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Dapr, Middleware, Response Transformation, Microservice, HTTP
 
-Description: Learn how to use Dapr middleware components to transform HTTP requests and responses in your microservices pipeline, including practical examples with built-in and custom transformations.
+Description: Learn how to use Dapr middleware components to transform HTTP responses in your microservices pipeline, including practical examples with custom transformations.
 
 ---
 

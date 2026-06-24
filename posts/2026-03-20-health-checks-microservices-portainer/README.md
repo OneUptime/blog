@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Docker, Health Check, Microservice, Monitoring, Reliability
 
-Description: Configure Docker health checks for microservices to improve health visibility, load balancer awareness, and deployment safety with Portainer.
+Description: Configure Docker health checks for microservices to enable automatic restart, load balancer awareness, and deployment safety with Portainer.
 
 ## Introduction
 

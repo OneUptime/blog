@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Flux CD, Kubernetes, GitOps, GKE, Google Cloud, Cloud SQL, Sidecar
 
-Description: Deploy the Cloud SQL Auth Proxy as a sidecar in GKE pods using Flux CD GitOps to securely connect applications to Cloud SQL without managing service account keys.
+Description: Deploy the Cloud SQL Auth Proxy as a sidecar in GKE pods using Flux CD GitOps to securely connect applications to Cloud SQL without managing credentials.
 
 ---
 

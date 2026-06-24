@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: IPv6, IPsec, RFC 6434, Security, Protocol History
 
-Description: Understand the history of IPv6's mandatory IPsec requirement, why RFC 6434 relaxed it, and what this means for IPv6 security design today.
+Description: Understand the history of IPv6's mandatory IPsec requirement, why RFC 6434 changed it to optional, and what this means for IPv6 security design today.
 
 ## Overview
 

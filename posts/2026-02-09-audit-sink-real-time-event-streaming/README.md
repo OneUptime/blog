@@ -1,10 +1,10 @@
-# How to Set Up Kubernetes Audit Webhooks for Real-Time Audit Event Streaming
+# How to Set Up Kubernetes Audit Sink for Real-Time Audit Event Streaming
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Security, Audit, Compliance
 
-Description: Learn how to configure Kubernetes audit webhooks to stream audit events in real-time to external systems for security monitoring, compliance tracking, and threat detection.
+Description: Learn how to configure Kubernetes audit sinks to stream audit events in real-time to external systems for security monitoring, compliance tracking, and threat detection.
 
 ---
 

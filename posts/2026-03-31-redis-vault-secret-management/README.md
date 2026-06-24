@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Redis, Vault, Secret Management, Security, HashiCorp
 
-Description: Integrate HashiCorp Vault with Redis to securely manage Redis passwords and application encryption keys using the KV v2 secrets engine, AppRole authentication, and Transit encryption as a service.
+Description: Integrate HashiCorp Vault with Redis to securely manage Redis passwords, TLS certificates, and application encryption keys using dynamic secrets and lease renewal.
 
 ---
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Kubernetes, Network Policies, Security, Zero Trust
 
-Description: Implement Kubernetes Network Policies to enforce zero-trust networking between pods using Portainer's web editor for Kubernetes manifests.
+Description: Implement Kubernetes Network Policies to enforce zero-trust networking between pods using Portainer's YAML manifest interface.
 
 ## Introduction
 

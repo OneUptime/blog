@@ -79,13 +79,13 @@ conn.close()
 
 The connection URI follows this format:
 
-```
+```text
 file:///pool:namespace/dbname?vfs=ceph
 ```
 
 Examples:
 
-```
+```text
 file:///mypool:/app.db?vfs=ceph
 file:///analytics:mynamespace/events.sqlite?vfs=ceph
 ```

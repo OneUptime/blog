@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, Callback Plugins, Output Formatting, DevOps
 
-Description: Learn how to use the Ansible dense callback plugin to get compact playbook output that works well for large inventories and CI/CD pipelines.
+Description: Learn how to use the Ansible dense callback plugin to get compact, one-line-per-task output that works well for large inventories and CI/CD pipelines.
 
 ---
 

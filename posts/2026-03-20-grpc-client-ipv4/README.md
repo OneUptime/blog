@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: gRPC, IPv4, Python, Go, Client, Networking
 
-Description: Learn how to configure a gRPC client to connect to a server at a specific IPv4 address in Python and Go, including channel options, TLS, deadlines, and keepalive settings.
+Description: Learn how to configure a gRPC client to connect to a server at a specific IPv4 address in Python and Go, including channel options, TLS, timeouts, retry policies, and connection management.
 
 ## Python: Basic gRPC Client
 

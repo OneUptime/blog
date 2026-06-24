@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: AWS, Cognito, OIDC, Authentication, SSO
 
-Description: Configure OpenID Connect federation in Amazon Cognito to integrate with an OIDC identity provider for single sign-on.
+Description: Configure OpenID Connect federation in Amazon Cognito to integrate with any OIDC-compliant identity provider for single sign-on.
 
 ---
 

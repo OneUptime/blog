@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Grafana Loki, Recording Rules, LogQL, Performance Optimization, Metric, Pre-Aggregation
 
-Description: A comprehensive guide to using Loki recording rules for pre-computing expensive LogQL queries, creating metrics from logs, and optimizing dashboard performance through pre-computation.
+Description: A comprehensive guide to using Loki recording rules for pre-computing expensive LogQL queries, creating metrics from logs, and optimizing dashboard performance through query result caching.
 
 ---
 

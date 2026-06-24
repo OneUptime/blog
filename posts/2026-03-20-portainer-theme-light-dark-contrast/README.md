@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, UI, Themes, Accessibility, Dark Mode, Configuration, User Setting
 
-Description: Learn how to switch between Portainer's light, dark, high-contrast, and system themes in the user settings for improved readability and accessibility.
+Description: Learn how to switch between Portainer's light, dark, and high-contrast themes in the user settings for improved readability and accessibility.
 
 ---
 

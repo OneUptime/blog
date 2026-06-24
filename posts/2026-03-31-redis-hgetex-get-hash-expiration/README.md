@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Redis, HGETEX, Hash, Expiration, TTL, Field, Command
 
-Description: Learn how to use the Redis HGETEX command (Redis 8.0+) to retrieve hash field values and simultaneously update or remove their expiration in a single atomic operation.
+Description: Learn how to use the Redis HGETEX command (Redis 7.4+) to retrieve hash field values and simultaneously update or remove their expiration in a single atomic operation.
 
 ---
 

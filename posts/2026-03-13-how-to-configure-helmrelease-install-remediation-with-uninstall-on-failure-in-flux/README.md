@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Flux, GitOps, Kubernetes, HelmRelease, Remediation, Uninstall, Helm
 
-Description: Learn how to configure Flux HelmRelease to automatically uninstall failed Helm releases between retries and after the last failed attempt, ensuring clean recovery from failures.
+Description: Learn how to configure Flux HelmRelease to automatically uninstall failed Helm releases before retrying installation, ensuring clean recovery from failures.
 
 ---
 

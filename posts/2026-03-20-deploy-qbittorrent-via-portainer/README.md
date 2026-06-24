@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, qBittorrent, Docker, Self-Hosting, Download Client, BitTorrent
 
-Description: Learn how to deploy qBittorrent via Portainer using the LinuxServer.io image with a web UI and proper download volume mapping.
+Description: Learn how to deploy qBittorrent via Portainer using the linuxserver image with a web UI, proper download volume mapping, and VPN-through-container support.
 
 ---
 

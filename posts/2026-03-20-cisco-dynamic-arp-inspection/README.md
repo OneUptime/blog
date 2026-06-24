@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Cisco, Dynamic ARP Inspection, DAI, IPv4, Security, ARP Spoofing, IOS
 
-Description: Configure Dynamic ARP Inspection (DAI) on Cisco IOS switches to prevent ARP spoofing and poisoning attacks by validating ARP packets against the DHCP snooping binding table and ARP ACLs for static hosts.
+Description: Configure Dynamic ARP Inspection (DAI) on Cisco IOS switches to prevent ARP spoofing and poisoning attacks by validating ARP packets against the DHCP snooping binding table.
 
 ## Introduction
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Windows, Networking, Netsh, TCP/IP, Reset, Troubleshooting
+Tags: Window, Networking, Netsh, TCP/IP, Reset, Troubleshooting
 
 Description: Reset the Windows TCP/IP stack to its default state using netsh int ip reset to resolve persistent network connectivity issues caused by corrupted TCP/IP settings.
 

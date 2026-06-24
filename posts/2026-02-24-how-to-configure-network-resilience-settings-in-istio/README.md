@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Istio, Network Resilience, Circuit Breaking, Retries, Service Mesh, Kubernetes
 
-Description: Complete guide to configuring network resilience in Istio including retries, timeouts, circuit breaking, and outlier detection.
+Description: Complete guide to configuring network resilience in Istio including retries, timeouts, circuit breaking, outlier detection, and rate limiting.
 
 ---
 

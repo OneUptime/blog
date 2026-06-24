@@ -1,10 +1,10 @@
-# How to Perform a One-Time RBD Image Sync Using Snapshot Mirroring
+# How to Configure init-only Mirroring Mode for RBD
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rook, Ceph, RBD, Mirroring, Snapshot
 
-Description: Learn how to perform a one-time initial sync of RBD images in Rook-Ceph using snapshot-based mirroring before enabling continuous replication or completing a data migration.
+Description: Learn how to configure init-only mirroring mode for RBD images in Rook-Ceph for one-time initial sync without ongoing continuous replication.
 
 ---
 

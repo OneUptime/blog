@@ -503,7 +503,7 @@ Never execute shell commands with unsanitized input from configuration files.
 
 Document your plugins thoroughly:
 
-```markdown
+````markdown
 # MultiAppGenerator Plugin
 
 ## Purpose
@@ -531,7 +531,7 @@ spec:
 
 ## Output
 Generates one Deployment per app in the apps list.
-```
+````
 
 Include examples and common troubleshooting scenarios.
 

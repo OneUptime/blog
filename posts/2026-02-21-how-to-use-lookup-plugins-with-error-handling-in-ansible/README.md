@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, Lookup Plugins, Error Handling, Playbook Development
 
-Description: Learn how to handle errors gracefully in Ansible lookup plugins using the errors parameter, default values, and block/rescue sections.
+Description: Learn how to handle errors gracefully in Ansible lookup plugins using the errors parameter, default values, and try-rescue blocks.
 
 ---
 

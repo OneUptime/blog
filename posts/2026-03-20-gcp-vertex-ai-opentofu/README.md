@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, GCP, Vertex AI, Machine Learning, MLOps, Workbench, Infrastructure as Code
 
-Description: Learn how to provision GCP Vertex AI Workbench instances, custom training infrastructure, model endpoints, and supporting IAM, storage, and networking resources using OpenTofu for reproducible ML infrastructure on Google Cloud.
+Description: Learn how to provision GCP Vertex AI Workbench notebooks, training jobs, model endpoints, and feature stores using OpenTofu for reproducible ML infrastructure on Google Cloud.
 
 ---
 

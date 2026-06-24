@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, Network Policy, Encryption, WireGuard, Node Security
 
-Description: Validate WireGuard-based crypto authentication for Calico node traffic to secure inter-node pod communication.
+Description: Validate WireGuard-based crypto authentication for Calico node traffic to secure inter-node communication.
 
 ---
 

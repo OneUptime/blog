@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: ArgoCD, GitOps, Kubernetes, Rollback
 
-Description: Learn how to create custom rollback actions in ArgoCD for Deployments and Argo Rollouts that let you request previous revisions directly from the ArgoCD UI or CLI.
+Description: Learn how to create custom rollback actions in ArgoCD for Deployments, StatefulSets, and Argo Rollouts that let you revert to previous revisions directly from the ArgoCD UI or CLI.
 
 ---
 

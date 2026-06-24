@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Ubuntu, Docker, Container Registry, Caching, DevOps
 
-Description: Learn how to set up a registry proxy cache on Ubuntu to speed up container image pulls, reduce external bandwidth usage, and reduce repeated pulls against Docker Hub and other registries.
+Description: Learn how to set up a registry proxy cache on Ubuntu to speed up container image pulls, reduce external bandwidth usage, and work around rate limits from Docker Hub and other registries.
 
 ---
 

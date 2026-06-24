@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Flux CD, GitOps, Kubernetes, Helm, HelmRelease, Elasticsearch, Search, Logging
 
-Description: Learn how to deploy Elasticsearch on Kubernetes using a Flux HelmRelease with the Elastic Helm chart for scalable search and analytics.
+Description: Learn how to deploy Elasticsearch on Kubernetes using a Flux HelmRelease with the official Elastic Helm chart for scalable search and analytics.
 
 ---
 

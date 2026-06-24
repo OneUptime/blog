@@ -2,9 +2,9 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Last9, Span Metrics Connector, Metrics Derivation
+Tags: OpenTelemetry, Last9, SpanConnector, Metrics Derivation
 
-Description: Set up the OpenTelemetry Collector with the Span Metrics connector to derive RED metrics from traces before exporting to Last9.
+Description: Set up the OpenTelemetry Collector with the SpanConnector to derive RED metrics from traces before exporting to Last9.
 
 While Last9 can derive metrics from traces on the server side, there are situations where you want to compute span-based metrics in the Collector itself. Maybe you need those metrics available to multiple backends, or you want to apply custom dimensions that Last9 does not automatically extract. The Span Metrics connector in the OpenTelemetry Collector bridges the traces pipeline to the metrics pipeline, generating RED metrics from spans before they leave the Collector.
 

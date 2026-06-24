@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: ArgoCD, GitOps, Kubernetes, UI Customization, Security
 
-Description: Learn how to customize the ArgoCD login page with company branding, custom messages, SSO button styling, and background styles to create a professional and informative authentication experience.
+Description: Learn how to customize the ArgoCD login page with company branding, custom messages, SSO button labels, and background styles to create a professional and informative authentication experience.
 
 ---
 

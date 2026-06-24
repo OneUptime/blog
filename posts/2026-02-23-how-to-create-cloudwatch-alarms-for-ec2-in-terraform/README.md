@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Terraform, AWS, CloudWatch, EC2, Monitoring, Infrastructure as Code
 
-Description: Learn how to create comprehensive CloudWatch alarms for EC2 instances using Terraform to monitor CPU, status checks, disk, and network performance.
+Description: Learn how to create comprehensive CloudWatch alarms for EC2 instances using Terraform to monitor CPU, memory, disk, and network performance.
 
 ---
 

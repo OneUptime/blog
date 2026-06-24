@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Docker Swarm, Placement, Constraint, DevOps
 
-Description: Configure Docker Swarm service placement using node labels, placement constraints, and spread preferences via Portainer.
+Description: Configure Docker Swarm service placement strategies using node labels, affinity rules, and spread strategies via Portainer.
 
 ## Introduction
 

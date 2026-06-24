@@ -1,10 +1,10 @@
-# How to Use Ansible to Deploy a Python Application
+# How to Use Ansible to Configure Python Logging
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Python, Monitoring, Configuration
+Tags: Ansible, Python, Logging, Monitoring, Configuration
 
-Description: Deploy a Python application with Ansible including system packages, a virtual environment, systemd service management, a reverse proxy, and health checks.
+Description: Configure centralized Python application logging with Ansible including log rotation, structured logging, and remote log shipping.
 
 ---
 

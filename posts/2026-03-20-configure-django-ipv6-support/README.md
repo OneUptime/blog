@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Django, Python, IPv6, ALLOWED_HOSTS, Web Framework, WSGI, ASGI
 
-Description: Configure Django to accept requests on IPv6-capable hosts by updating ALLOWED_HOSTS, optionally normalizing client IPs behind a reverse proxy, and deploying with an IPv6-capable application server.
+Description: Configure Django to accept requests from IPv6 clients by updating ALLOWED_HOSTS, handling IPv6 in middleware, and deploying with an IPv6-capable application server.
 
 ## Introduction
 

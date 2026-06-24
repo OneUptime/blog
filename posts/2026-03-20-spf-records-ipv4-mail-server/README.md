@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: SPF, IPv4, DNS, Email Security, Postfix, Anti-Spam
 
-Description: Create SPF DNS records that authorize specific IPv4 addresses and ranges to send email on behalf of your domain, helping reduce spoofing and improving deliverability.
+Description: Create SPF DNS records that authorize specific IPv4 addresses and ranges to send email on behalf of your domain, preventing spoofing and improving deliverability.
 
 ## Introduction
 

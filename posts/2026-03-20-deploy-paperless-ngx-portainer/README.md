@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Paperless-ngx, Document Management, Docker, Self-Hosting, OCR
 
-Description: Learn how to deploy Paperless-ngx, the document management system with OCR, via Portainer with a full stack including PostgreSQL and Redis.
+Description: Learn how to deploy Paperless-ngx, the document management system with OCR, via Portainer with a full stack including PostgreSQL, Redis, and Gotenberg.
 
 ---
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, Callback Plugins, YAML, Output Formatting
 
-Description: Configure Ansible's callback result formatting to display playbook results in readable YAML format instead of default JSON-style output.
+Description: Configure the Ansible yaml callback plugin to display playbook results in readable YAML format instead of default Python dictionary output.
 
 ---
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Talos Linux, etcd, Encryption, Kubernetes Security, Secrets Management
 
-Description: A complete guide to setting up Kubernetes Secrets encryption at rest in Talos Linux to protect sensitive data stored in etcd.
+Description: A complete guide to setting up etcd encryption at rest in Talos Linux to protect sensitive Kubernetes data like secrets and configmaps.
 
 ---
 

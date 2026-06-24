@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Windows, Linux
+Tags: Kubernetes, Window, Linux
 
 Description: Learn how to use OS-specific pod fields in Kubernetes to configure Linux and Windows containers correctly, set sysctls, configure Windows security contexts, and manage hybrid clusters.
 

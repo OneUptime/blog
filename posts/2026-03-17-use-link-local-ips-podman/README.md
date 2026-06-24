@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Podman, Container, DevOps, Networking, Link-Local, IPv4
 
-Description: Learn how to use link-local IP addresses with Podman containers on isolated networks.
+Description: Learn how to use link-local IP addresses with Podman containers for automatic address assignment on isolated networks.
 
 ---
 

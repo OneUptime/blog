@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Configuration Management, Hot Reload, DevOps, Microservice, Dynamic Configuration
 
-Description: Learn how to implement configuration hot-reload in your applications, enabling real-time configuration updates without service restarts using file watchers and Consul.
+Description: Learn how to implement configuration hot-reload in your applications, enabling real-time configuration updates without service restarts using file watchers, Consul, and etcd.
 
 ---
 

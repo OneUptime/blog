@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, PAM, Authentication, Security, Linux
 
-Description: Learn how to configure PAM (Pluggable Authentication Modules) with Ansible for password policies, account lockout, SSH access control, and resource limits.
+Description: Learn how to configure PAM (Pluggable Authentication Modules) with Ansible for password policies, account lockout, and multi-factor authentication.
 
 ---
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Redis, Performance, Memory, Key, Troubleshooting
 
-Description: Identify and resolve Redis large key problems that cause latency spikes, blocked clients, and memory pressure using bigkeys, MEMORY USAGE, and chunking.
+Description: Identify and resolve Redis large key problems that cause latency spikes, blocked clients, and memory pressure using bigkeys, OBJECT ENCODING, and chunking.
 
 ---
 

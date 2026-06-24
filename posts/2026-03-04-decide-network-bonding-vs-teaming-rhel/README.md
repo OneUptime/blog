@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Bonding, Teaming, Networking, Linux
 
-Description: A comparison of network bonding vs teaming on RHEL, covering feature differences, deprecation and removal status, and why bonding is now the recommended approach.
+Description: A comparison of network bonding vs teaming on RHEL, covering feature differences, deprecation status, and why bonding is now the recommended approach.
 
 ---
 

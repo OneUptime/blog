@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, GCP, Committed Use Discounts, Cost Optimization, Infrastructure as Code
 
-Description: Learn how to manage Compute Engine commitments with OpenTofu and track related budgets for Cloud SQL and Compute Engine workloads.
+Description: Learn how to purchase and manage GCP Committed Use Discounts with OpenTofu for up to 57% savings on Compute Engine and Cloud SQL workloads.
 
 GCP Committed Use Discounts (CUDs) provide significant discounts in exchange for 1 or 3-year commitments. Depending on the service, those commitments are resource-based or spend-based. Managing the relevant resources in OpenTofu keeps your cost optimization strategy documented.
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Netmiko, Backup, Python, Cron, Network Automation, Cisco
 
-Description: Learn how to automate daily configuration backups of Cisco IOS and IOS XE devices using Netmiko and a scheduled cron job, with versioned storage.
+Description: Learn how to automate daily configuration backups of Cisco and other network devices using Netmiko and a scheduled cron job, with versioned storage.
 
 ## Step 1: Create the Backup Script
 

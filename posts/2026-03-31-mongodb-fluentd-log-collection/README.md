@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: MongoDB, Fluentd, Logging, Log Collection, DevOps
 
-Description: Learn how to configure Fluentd to collect application logs and forward them to MongoDB as structured documents using the fluent-plugin-mongo output plugin.
+Description: Learn how to configure Fluentd to collect application logs and forward them to MongoDB as structured documents using the fluent-plugin-mongodb output plugin.
 
 ---
 

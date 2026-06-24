@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, IPv6, Sysctl, Linux, Node Configuration, Networking
 
-Description: A reference for common sysctl kernel parameters used to run IPv6 workloads on Kubernetes nodes.
+Description: A comprehensive reference for all sysctl kernel parameters required to run IPv6 workloads on Kubernetes nodes.
 
 Kubernetes and common CNI plugins have documented node-level kernel parameter requirements. For kubeadm dual-stack clusters, Kubernetes documents IPv6 forwarding as a per-node requirement; depending on the CNI plugin, service proxy mode, and whether the datapath uses Linux bridge/netfilter, additional sysctl values may be needed to ensure pod networking, service proxying, and network policy enforcement work correctly. For dual-stack clusters, keep the usual IPv4 forwarding and CNI requirements in place as well.
 

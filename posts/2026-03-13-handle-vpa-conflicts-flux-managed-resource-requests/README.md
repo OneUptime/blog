@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Flux CD, Kubernetes, GitOps, Day 2 Operations, VPA, Resource Management, Troubleshooting
 
-Description: Resolve conflicts between VerticalPodAutoscaler and Flux-managed resource requests so VPA can rightsize Pods while Git remains the source of truth for manifests.
+Description: Resolve conflicts between VerticalPodAutoscaler and Flux-managed resource requests so VPA can rightsize containers without Flux reverting the optimized values.
 
 ---
 

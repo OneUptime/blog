@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes
 
-Description: A step-by-step guide to modifying Calico KubeControllersConfiguration resources in production while reducing the risk of downtime or connectivity issues.
+Description: A step-by-step guide to modifying Calico KubeControllersConfiguration resources in production without causing downtime or connectivity issues.
 
 ---
 

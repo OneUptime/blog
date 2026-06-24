@@ -250,7 +250,7 @@ A robust linting setup ensures code quality and consistency across your team.
 ### Install Dependencies
 
 ```bash
-npm install -D eslint@^8 @typescript-eslint/parser @typescript-eslint/eslint-plugin \
+npm install -D eslint @eslint/js typescript-eslint globals \
   eslint-plugin-react eslint-plugin-react-hooks eslint-plugin-react-native \
   eslint-plugin-import eslint-import-resolver-typescript \
   eslint-plugin-prettier eslint-config-prettier prettier \
@@ -259,47 +259,58 @@ npm install -D eslint@^8 @typescript-eslint/parser @typescript-eslint/eslint-plu
 
 ### ESLint Configuration
 
-Create `.eslintrc.js`:
+Create `eslint.config.mjs`:
 
 ```javascript
-// .eslintrc.js
-module.exports = {
-  root: true,
-  parser: '@typescript-eslint/parser',
-  parserOptions: {
-    ecmaVersion: 2020,
-    sourceType: 'module',
-    ecmaFeatures: {
-      jsx: true,
+// eslint.config.mjs
+import js from '@eslint/js';
+import importPlugin from 'eslint-plugin-import';
+import prettierRecommended from 'eslint-plugin-prettier/recommended';
+import reactPlugin from 'eslint-plugin-react';
+import reactHooks from 'eslint-plugin-react-hooks';
+import reactNative from 'eslint-plugin-react-native';
+import globals from 'globals';
+import tseslint from 'typescript-eslint';
+
+export default tseslint.config(
+  {
+    ignores: [
+      'node_modules/',
+      'android/',
+      'ios/',
+      'coverage/',
+      '*.config.js',
+      'metro.config.js',
+      'babel.config.js',
+    ],
+  },
+  js.configs.recommended,
+  ...tseslint.configs.recommended,
+  ...tseslint.configs.recommendedTypeChecked,
+  prettierRecommended,
+  {
+    files: ['**/*.{js,jsx,ts,tsx}'],
+    languageOptions: {
+      ecmaVersion: 2020,
+      sourceType: 'module',
+      globals: {
+        ...globals.node,
+        ...globals.jest,
+      },
+      parserOptions: {
+        ecmaFeatures: {
+          jsx: true,
+        },
+        project: './tsconfig.json',
+        tsconfigRootDir: import.meta.dirname,
+      },
     },
-    project: './tsconfig.json',
-  },
-  plugins: [
-    '@typescript-eslint',
-    'react',
-    'react-hooks',
-    'react-native',
-    'import',
-    'prettier',
-  ],
-  extends: [
-    'eslint:recommended',
-    'plugin:@typescript-eslint/recommended',
-    'plugin:@typescript-eslint/recommended-requiring-type-checking',
-    'plugin:react/recommended',
-    'plugin:react-hooks/recommended',
-    'plugin:react-native/all',
-    'plugin:import/errors',
-    'plugin:import/warnings',
-    'plugin:import/typescript',
-    'prettier',
-  ],
-  env: {
-    'react-native/react-native': true,
-    es2020: true,
-    node: true,
-    jest: true,
-  },
+    plugins: {
+      import: importPlugin,
+      react: reactPlugin,
+      'react-hooks': reactHooks,
+      'react-native': reactNative,
+    },
   settings: {
     react: {
       version: 'detect',
@@ -315,6 +326,12 @@ module.exports = {
     },
   },
   rules: {
+    ...reactPlugin.configs.recommended.rules,
+    ...reactHooks.configs.recommended.rules,
+    ...reactNative.configs.all.rules,
+    ...importPlugin.configs.recommended.rules,
+    ...importPlugin.configs.typescript.rules,
+
     // TypeScript specific rules
     '@typescript-eslint/explicit-function-return-type': 'off',
     '@typescript-eslint/explicit-module-boundary-types': 'off',
@@ -400,16 +417,8 @@ module.exports = {
     // Prettier
     'prettier/prettier': 'error',
   },
-  ignorePatterns: [
-    'node_modules/',
-    'android/',
-    'ios/',
-    'coverage/',
-    '*.config.js',
-    'metro.config.js',
-    'babel.config.js',
-  ],
-};
+  },
+);
 ```
 
 ### Prettier Configuration
@@ -460,8 +469,8 @@ coverage/
 ```json
 {
   "scripts": {
-    "lint": "eslint . --ext .js,.jsx,.ts,.tsx",
-    "lint:fix": "eslint . --ext .js,.jsx,.ts,.tsx --fix",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
     "format": "prettier --write \"src/**/*.{ts,tsx,js,jsx,json}\"",
     "format:check": "prettier --check \"src/**/*.{ts,tsx,js,jsx,json}\"",
     "typecheck": "tsc --noEmit",

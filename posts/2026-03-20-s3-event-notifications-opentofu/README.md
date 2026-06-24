@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, AWS, S3, Event Notification, Lambda, SQS, EventBridge, Infrastructure as Code
 
-Description: Learn how to configure S3 event notifications using OpenTofu to trigger Lambda functions, send messages to SQS, or publish to SNS when supported S3 object events occur.
+Description: Learn how to configure S3 event notifications using OpenTofu to trigger Lambda functions, send messages to SQS, or publish to SNS when objects are created, deleted, or modified.
 
 ## Introduction
 

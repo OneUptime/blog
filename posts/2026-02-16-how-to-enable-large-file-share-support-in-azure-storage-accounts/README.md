@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Azure, Azure Files, Large File Share, Storage Account, Scalability, File Storage
 
-Description: Learn how to enable large file share support in legacy Azure Storage accounts to scale file shares up to 100 TiB with higher IOPS and throughput.
+Description: Learn how to enable large file share support in Azure Storage accounts to scale file shares up to 100 TiB with higher IOPS and throughput.
 
 ---
 

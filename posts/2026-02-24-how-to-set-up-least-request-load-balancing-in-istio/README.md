@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Istio, Least Request, Load Balancing, DestinationRule, Kubernetes
 
-Description: Configure least request load balancing in Istio DestinationRule to favor pods with fewer active requests.
+Description: Configure least request load balancing in Istio DestinationRule to send traffic to the pod with the fewest active requests.
 
 ---
 

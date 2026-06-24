@@ -1,10 +1,10 @@
-# How to Build FIPS-Enabled RHEL 9 bootc Images with bootc-image-builder
+# How to Build FIPS-Enabled RHEL 9 bootc Images with Image Builder
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Image Builder, FIPS, Bootc, Security
 
-Description: Build FIPS-enabled RHEL 9 bootc images with bootc-image-builder.
+Description: Build FIPS-enabled RHEL 9 bootc images with Image Builder.
 
 ---
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: BullMQ, Node.js, Redis, Job Pipelines, Workflow Orchestration, Job Trees, Flow Producer
+Tags: BullMQ, Node.js, Redis, Job Pipelines, Workflow Orchestration, DAG, Flow Producer
 
 Description: A comprehensive guide to using BullMQ Flow Producer for building complex job pipelines and workflows, including parent-child dependencies, parallel execution, result aggregation.
 

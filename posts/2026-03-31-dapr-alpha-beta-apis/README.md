@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Dapr, API, Alpha, Beta, Preview Feature
+Tags: Dapr, API, Alpha, Beta, Feature Flag
 
 Description: Learn how to enable and use Dapr alpha and beta APIs, understand their stability guarantees, and safely test preview features in your applications.
 

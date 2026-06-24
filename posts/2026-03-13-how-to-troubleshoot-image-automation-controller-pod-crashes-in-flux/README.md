@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Flux, Kubernetes, GitOps, Troubleshooting, Image Automation Controller, Pod Crashes, Image Updates, Automation
 
-Description: Learn how to diagnose Image Automation Controller pod crashes and reconciliation failures in Flux, including Git push failures, SSH key issues, and commit signing problems.
+Description: Learn how to diagnose and fix Image Automation Controller pod crashes in Flux, including Git push failures, SSH key issues, and commit signing problems.
 
 ---
 

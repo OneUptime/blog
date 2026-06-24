@@ -360,7 +360,7 @@ For iOS, add to `Info.plist`:
 </array>
 ```
 
-For Android, no manual `build.gradle` changes are required — React Native autolinking (0.60+) wires up the native module automatically. To keep running after the app is terminated, set `stopOnTerminate: false` and `enableHeadless: true` in your configuration and register a headless task in `index.js` (see the Headless Task section below).
+For Android, no manual `build.gradle` changes are required - React Native autolinking (0.60+) wires up the native module automatically. To keep running after the app is terminated, set `stopOnTerminate: false` and `enableHeadless: true` in your configuration and register a headless task in `index.js` (see the Headless Task section below).
 
 ### Implementing Background Fetch
 

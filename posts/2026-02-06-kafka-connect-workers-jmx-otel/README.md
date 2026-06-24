@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Kafka Connect, JMX, Connector Metrics
 
-Description: Monitor Kafka Connect worker health and connector task performance metrics using the OpenTelemetry JMX Scraper and Collector for pipeline visibility.
+Description: Monitor Kafka Connect worker health and connector task performance metrics using the OpenTelemetry Collector JMX receiver for pipeline visibility.
 
 Kafka Connect runs connectors that move data between Kafka and external systems. Each connector has one or more tasks that do the actual work. Monitoring these tasks and the Connect workers that host them is essential for ensuring your data pipelines are healthy. Kafka Connect exposes metrics via JMX that the OpenTelemetry JMX Scraper can collect and send to the Collector.
 

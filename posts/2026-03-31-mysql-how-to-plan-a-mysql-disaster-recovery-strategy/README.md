@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: MySQL, Disaster Recovery, High Availability, Backup, RPO, RTO
+Tags: MySQL, Disaster Recovery, High Availability, Backup, RTO RTO
 
 Description: Learn how to design a MySQL disaster recovery strategy covering RPO and RTO targets, backup types, replication topology, and failover procedures.
 

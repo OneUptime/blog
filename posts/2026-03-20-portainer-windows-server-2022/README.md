@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Windows Server, Docker, Windows Containers, Self-Hosted, Enterprise
 
-Description: Install Docker Engine and Portainer on Windows Server 2022 to manage native Windows containers from a single interface.
+Description: Install Docker Engine and Portainer on Windows Server 2022 to manage both Linux containers (via WSL2) and native Windows containers from a single interface.
 
 ## Introduction
 

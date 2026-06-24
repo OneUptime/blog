@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Operator, IPv6, Testing, Envtest
 
-Description: Use envtest for API-level controller tests and KIND for dual-stack or IPv6-only cluster validation.
+Description: Test Kubernetes operators against dual-stack and IPv6-only clusters using envtest, KIND, and integration testing frameworks.
 
 ## Overview
 

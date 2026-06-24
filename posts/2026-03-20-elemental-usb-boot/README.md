@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Elemental, USB Boot, Edge, Kubernetes, Provisioning
 
-Description: Create bootable USB drives with Elemental seed images for provisioning bare metal nodes without network boot infrastructure.
+Description: Create bootable USB drives with Elemental registration images for provisioning bare metal nodes without network boot infrastructure.
 
 ## Introduction
 

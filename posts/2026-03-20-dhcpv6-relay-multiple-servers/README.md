@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: DHCPv6, Relay, Redundancy, High Availability, Failover, Networking
 
-Description: Configure DHCPv6 relay agents to forward to multiple servers for redundancy, with failover behavior on various platforms.
+Description: Configure DHCPv6 relay agents to forward to multiple servers for redundancy and load distribution, with failover behavior on various platforms.
 
 ## DHCPv6 Multi-Server Relay Behavior
 

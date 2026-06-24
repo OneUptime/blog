@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Performance, Database, Maintenance, BoltDB
 
-Description: Learn how to compact and optimize the Portainer BoltDB database to reclaim disk space on busy instances.
+Description: Learn how to compact and optimize the Portainer BoltDB database to reclaim disk space and improve performance on busy instances.
 
 ---
 

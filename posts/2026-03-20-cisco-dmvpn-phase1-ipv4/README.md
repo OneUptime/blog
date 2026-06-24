@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Cisco, DMVPN, IPv4, IOS, VPN, MGRE, NHRP, Hub-and-Spoke
 
-Description: Configure DMVPN Phase 1 (hub-and-spoke) on Cisco IOS routers using a hub-side mGRE tunnel, NHRP, and IPsec to create a scalable hub-and-spoke VPN topology for IPv4.
+Description: Configure DMVPN Phase 1 (hub-and-spoke) on Cisco IOS routers using mGRE, NHRP, and IPsec to create a scalable hub-and-spoke VPN topology for IPv4.
 
 ## Introduction
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, RBAC, Security
 
-Description: Restrict access to Kubernetes Secrets using RBAC resourceNames and secret naming conventions.
+Description: Restrict access to Kubernetes Secrets using RBAC resourceNames with name prefixes to grant fine-grained permissions based on secret naming conventions.
 
 ---
 

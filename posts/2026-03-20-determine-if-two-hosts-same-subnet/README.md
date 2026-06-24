@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: IPv4, Subnetting, Networking, Network Diagnostics, Python
 
-Description: Two hosts are on the same subnet for a given prefix length if applying the same subnet mask to both IP addresses produces the same network address, which can be checked with bitwise AND or Python's ipaddress module.
+Description: Two hosts are on the same subnet if applying the subnet mask to both IP addresses produces the same network address, which can be checked with bitwise AND or Python's ipaddress module.
 
 ## The Test: Bitwise AND
 

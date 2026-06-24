@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, AWS, Cost Optimization, Resource Scheduling, Infrastructure as Code
 
-Description: Learn how to configure resource scheduling with OpenTofu using EventBridge scheduled rules and Lambda-based automation to stop non-production resources outside business hours.
+Description: Learn how to configure resource scheduling with OpenTofu using AWS Instance Scheduler and Lambda-based automation to stop non-production resources outside business hours.
 
 Resource scheduling stops development and staging resources outside business hours, reducing compute costs by roughly 60-70% for non-production environments. Managing schedules in OpenTofu ensures consistent application across all non-production resources.
 

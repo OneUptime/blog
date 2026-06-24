@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: MySQL, MaxScale, MariaDB, Proxy, Load Balancing, High Availability
 
-Description: MaxScale is a source-available database proxy from MariaDB Corporation that provides intelligent query routing, load balancing, and automatic failover for MySQL and MariaDB clusters.
+Description: MaxScale is an open-source database proxy from MariaDB Corporation that provides intelligent query routing, load balancing, and automatic failover for MySQL and MariaDB clusters.
 
 ---
 

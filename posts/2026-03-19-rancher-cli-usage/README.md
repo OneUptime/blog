@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rancher, Kubernetes, CLI, Cluster Management
 
-Description: A practical guide to using the Rancher CLI for managing clusters, projects, namespaces, and resources from the command line.
+Description: A practical guide to using the Rancher CLI for managing clusters, projects, apps, and resources from the command line.
 
 The Rancher CLI gives you command-line access to your Rancher server, letting you manage clusters, projects, namespaces, and Kubernetes resources without opening a browser. This guide covers the most common operations you will perform with the Rancher CLI.
 

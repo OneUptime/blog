@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Docker, Networking, IPv4, Port Binding, Container, Security
 
-Description: Publish Docker container ports and bind them to specific host IPv4 addresses to control which host addresses accept incoming connections, limiting exposure to trusted networks.
+Description: Publish Docker container ports and bind them to specific host IPv4 addresses to control which interfaces accept external connections, limiting exposure to trusted networks.
 
 ## Introduction
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GCP, IAM, IAM Conditions, IP Restriction, Security, Access Control
 
-Description: Learn how to use IAM Conditions with Access Context Manager in GCP to restrict IAP-secured access based on the requester's IP address for enhanced security and compliance.
+Description: Learn how to use IAM Conditions in GCP to restrict resource access based on the requester's IP address for enhanced security and compliance.
 
 ---
 

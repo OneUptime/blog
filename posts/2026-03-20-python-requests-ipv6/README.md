@@ -2,9 +2,9 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: IPv6, Python, Requests, HTTP, urllib3
+Tags: IPv6, Python, Request, HTTP, Urllib3
 
-Description: Make HTTP requests to IPv6-only servers and dual-stack hosts using Python's requests library, handling IPv6 URL formatting, source address binding, and a simplified Happy Eyeballs fallback pattern.
+Description: Make HTTP requests to IPv6-only servers and dual-stack hosts using Python's requests library, handling IPv6 URL formatting, source address binding, and Happy Eyeballs connection preferences.
 
 ## Basic IPv6 HTTP Requests
 

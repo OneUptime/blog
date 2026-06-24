@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Flux CD, GitOps, Migration, Weaveworks, Kubernetes
 
-Description: Learn how to migrate from Weave GitOps Enterprise to upstream CNCF Flux CD, preserving your GitOps workflows while adopting the modern multi-tenant, multi-cluster Flux architecture.
+Description: Learn how to migrate from Weaveworks Flux v1 to upstream CNCF Flux CD v2, preserving your GitOps workflows while adopting the modern multi-tenant, multi-cluster Flux architecture.
 
 ---
 

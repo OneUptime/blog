@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Flux CD, Crossplane, Dependencies, GitOps, Kubernetes, Kustomization, Infrastructure as Code
 
-Description: Manage dependencies between Crossplane resources using Flux Kustomization ordering and Crossplane reference fields to prevent race conditions.
+Description: Manage dependencies between Crossplane resources using Flux Kustomization ordering and Crossplane reference selectors to prevent race conditions.
 
 ---
 

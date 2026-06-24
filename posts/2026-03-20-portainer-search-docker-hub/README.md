@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Docker, Image, Docker Hub, DevOps
 
-Description: Learn how to search Docker Hub for container images from Portainer while deploying containers or services, then evaluate official and community images.
+Description: Learn how to search Docker Hub for container images directly from Portainer to find official images and community images.
 
 ## Introduction
 

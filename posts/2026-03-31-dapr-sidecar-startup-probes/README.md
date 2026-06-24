@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Dapr, Sidecar, Kubernetes, Probe, Configuration
 
-Description: Configure Kubernetes liveness and readiness probes for the Dapr sidecar to prevent premature health checks and avoid pod restart loops during slow component initialization.
+Description: Configure Kubernetes startup probes for the Dapr sidecar to prevent premature readiness checks and avoid pod restart loops during slow component initialization.
 
 ---
 

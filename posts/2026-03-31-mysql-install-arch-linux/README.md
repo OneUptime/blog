@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: MySQL, Installation, Arch Linux, Linux, Database
 
-Description: Install MySQL on Arch Linux using the official repository via pacman, initialize the data directory, and configure the systemd service.
+Description: Install MySQL on Arch Linux using the official community repository via pacman, initialize the data directory, and configure the systemd service.
 
 ---
 

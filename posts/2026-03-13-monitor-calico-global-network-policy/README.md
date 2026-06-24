@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, Network Policy, Global Policy, Security
 
-Description: Monitor Calico GlobalNetworkPolicy for cluster-wide network traffic control that applies across all namespaces and configured host endpoints.
+Description: Monitor Calico GlobalNetworkPolicy for cluster-wide network traffic control that applies across all namespaces.
 
 ---
 

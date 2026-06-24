@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, RabbitMQ, Messaging, Kubernetes, Helm, Infrastructure as Code, AMQP
 
-Description: Learn how to deploy RabbitMQ on Kubernetes using OpenTofu with clustering, persistent storage, management UI, TLS, and declarative topology resources for production message broker deployments.
+Description: Learn how to deploy RabbitMQ on Kubernetes using OpenTofu with clustering, persistent storage, management UI, and federation for production message broker deployments.
 
 ---
 

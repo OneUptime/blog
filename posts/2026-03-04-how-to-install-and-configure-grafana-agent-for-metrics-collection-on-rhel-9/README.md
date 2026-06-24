@@ -1,10 +1,10 @@
-# How to Install and Configure Grafana Alloy for Metrics Collection on RHEL 9
+# How to Install and Configure Grafana Agent for Metrics Collection on RHEL 9
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Linux, Grafana
 
-Description: Step-by-step guide on install and configure Grafana Alloy for metrics collection on RHEL 9 with practical examples and commands.
+Description: Step-by-step guide on install and configure grafana agent for metrics collection on rhel 9 with practical examples and commands.
 
 ---
 

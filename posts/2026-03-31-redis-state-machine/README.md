@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Redis, State Machine, Design Pattern
 
-Description: Learn how to implement a distributed state machine with Redis using atomic transitions, state history tracking, and concurrent update protection with atomic Lua scripts.
+Description: Learn how to implement a distributed state machine with Redis using atomic transitions, state history tracking, and concurrent update protection with optimistic locking.
 
 ---
 

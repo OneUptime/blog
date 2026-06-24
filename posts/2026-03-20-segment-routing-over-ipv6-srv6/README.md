@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: SRv6, Segment Routing, IPv6, Networking, MPLS, RFC 8754
 
-Description: Understand Segment Routing over IPv6 (SRv6) architecture, how SIDs encode both routing and service instructions, and where SRv6 can replace MPLS in modern networks.
+Description: Understand Segment Routing over IPv6 (SRv6) architecture, how SIDs encode both routing and service instructions, and why SRv6 is replacing MPLS in modern networks.
 
 ## Introduction
 

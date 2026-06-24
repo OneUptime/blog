@@ -2,9 +2,9 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Sentry, Distributed Tracing
+Tags: OpenTelemetry, Sentry, OTLP, Distributed Tracing
 
-Description: Learn how to configure the Sentry SDK to capture OpenTelemetry trace data directly in Sentry for unified observability.
+Description: Learn how to configure the Sentry SDK OTLPIntegration to forward OpenTelemetry trace data directly to Sentry for unified observability.
 
 Sentry has been expanding its OpenTelemetry support over the past couple of years, and one of the most useful additions is built-in OpenTelemetry support in the Sentry SDK. This lets you send OpenTelemetry trace data directly to Sentry without needing a separate collector or exporter pipeline. If you are already using Sentry for error tracking and want to bring in distributed tracing from OpenTelemetry, this is the shortest path to get there.
 

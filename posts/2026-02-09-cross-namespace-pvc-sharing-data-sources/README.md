@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Storage, DevOps
 
-Description: Discover how to copy persistent volume data across Kubernetes namespaces using volume data sources and cross-namespace references for efficient storage management.
+Description: Discover how to share persistent volume data across Kubernetes namespaces using volume data sources and cross-namespace references for efficient storage management.
 
 ---
 

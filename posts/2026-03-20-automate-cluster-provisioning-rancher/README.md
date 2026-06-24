@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rancher, Kubernetes, Cluster Provisioning, Automation, DevOps, Infrastructure
 
-Description: Learn how to automate Kubernetes cluster provisioning in Rancher using the Rancher API and Terraform/OpenTofu provider.
+Description: Learn how to automate Kubernetes cluster provisioning in Rancher using the Rancher API, Terraform provider, and cluster templates.
 
 ---
 

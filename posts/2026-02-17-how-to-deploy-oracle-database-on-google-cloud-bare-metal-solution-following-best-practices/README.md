@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GCP, Google Cloud, Bare Metal Solution, Oracle Database, Database Deployment, Enterprise
 
-Description: Learn how to deploy Oracle Database on Google Cloud Bare Metal Solution following best practices for performance, licensing, and connectivity.
+Description: Learn how to deploy Oracle Database on Google Cloud Bare Metal Solution following best practices for performance, licensing, and high availability.
 
 ---
 

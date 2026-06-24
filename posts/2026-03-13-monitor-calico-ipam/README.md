@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, IPAM, Networking, IP Management
 
-Description: Monitor Calico IPAM health with commands for IP pool utilization, block allocations, and allocation consistency to prevent pod scheduling issues.
+Description: Monitor Calico IPAM health with metrics on IP pool utilization, block allocations, and allocation failures to prevent pod scheduling issues.
 
 ---
 

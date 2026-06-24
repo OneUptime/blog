@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Azure, Static Web Apps, Static Site, CDN, Custom Domain, Infrastructure as Code
 
-Description: Learn how to deploy static websites using Azure Static Web Apps with OpenTofu, including custom domain configuration, preview environments, and function app integration for API backends.
+Description: Learn how to deploy static websites using Azure Static Web Apps with OpenTofu, including custom domain configuration, environment slots, and function app integration for API backends.
 
 ---
 

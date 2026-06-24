@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Azure, Azure Resource Graph, KQL, Resource Inventory, Governance, Cloud Management, Querying
 
-Description: Learn how to write Azure Resource Graph queries using KQL to build a complete inventory of the Azure resources you can access for governance and reporting.
+Description: Learn how to write Azure Resource Graph queries using KQL to build a complete inventory of all resources across your Azure tenant for governance and reporting.
 
 ---
 

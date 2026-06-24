@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: AWS, Elastic Beanstalk, Custom Platforms, DevOps
 
-Description: Legacy guide to building and using custom platforms in AWS Elastic Beanstalk with Packer, including custom AMIs, platform scripts, and builder configuration.
+Description: Guide to building and using custom platforms in AWS Elastic Beanstalk with Packer, including custom AMIs, platform scripts, and builder configuration.
 
 ---
 

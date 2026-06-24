@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Collector, Docker, GHCR
 
-Description: Fix broken Collector deployments after OpenTelemetry stopped publishing newer Collector images to DockerHub.
+Description: Fix broken Collector deployments after the OpenTelemetry Docker image repository moved from DockerHub to GitHub Container Registry.
 
 You try to pull a new Collector version and get:
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Ubuntu, Nextcloud, Self-Hosted, Cloud Storage, Privacy
 
-Description: Install Nextcloud on Ubuntu with Nginx, configure PostgreSQL as the database, enable Redis caching, set up HTTPS, and connect desktop and mobile clients for self-hosted cloud storage.
+Description: Install Nextcloud on Ubuntu with Apache or Nginx, configure PostgreSQL as the database, enable Redis caching, set up HTTPS, and connect desktop and mobile clients for self-hosted cloud storage.
 
 ---
 

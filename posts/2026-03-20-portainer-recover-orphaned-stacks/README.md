@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Docker, Stack, Recovery, Troubleshooting, DevOps
 
-Description: Learn how to recover orphaned Docker stacks in Portainer after an environment is removed and re-added, and how this differs from stacks deployed outside Portainer.
+Description: Learn how to recover orphaned Docker stacks in Portainer - containers running outside Portainer's knowledge that need to be brought back under management.
 
 ## Introduction
 

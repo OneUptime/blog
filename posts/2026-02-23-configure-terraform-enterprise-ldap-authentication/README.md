@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Terraform, Terraform Enterprise, LDAP, Active Directory, Authentication, Security
 
-Description: A practical guide to configuring LDAP authentication for the Terraform Enterprise installer dashboard, including Active Directory integration, group restrictions, and troubleshooting tips.
+Description: A practical guide to configuring LDAP authentication for Terraform Enterprise, including Active Directory integration, group mapping, and troubleshooting tips.
 
 ---
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: RHEL, DNS-SD, Service Discovery, mDNS, Avahi, Linux
 
-Description: Learn how to set up DNS-based Service Discovery (DNS-SD) on RHEL using Avahi and standard DNS records to enable automatic service discovery across your network.
+Description: Learn how to set up DNS-based Service Discovery (DNS-SD) on RHEL using Avahi and standard DNS SRV records to enable automatic service discovery across your network.
 
 ---
 

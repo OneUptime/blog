@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, PDB, Pod Disruption Budget, OpenTofu, High Availability, Infrastructure
 
-Description: Learn how to create Kubernetes Pod Disruption Budgets (PDB) with OpenTofu to help maintain application availability during voluntary disruptions like node drains and cluster upgrades.
+Description: Learn how to create Kubernetes Pod Disruption Budgets (PDB) with OpenTofu to ensure minimum availability during voluntary disruptions like node drains and cluster upgrades.
 
 ## Overview
 

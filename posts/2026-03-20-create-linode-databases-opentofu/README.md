@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Linode, Managed Database, PostgreSQL, Infrastructure as Code
 
-Description: Learn how to create Linode managed database clusters with OpenTofu, including MySQL and PostgreSQL configurations.
+Description: Learn how to create Linode managed database clusters with OpenTofu, including MySQL, PostgreSQL, and MongoDB configurations.
 
 Linode Managed Databases provide fully managed PostgreSQL and MySQL clusters with automatic backups, failover, and maintenance. OpenTofu lets you define these clusters and their access controls as code.
 

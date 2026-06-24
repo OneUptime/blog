@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Redis, Akka, Scala
 
-Description: Learn how to integrate Redis with Akka actors in Scala using the Lettuce client for async caching, distributed state, and pub/sub messaging.
+Description: Learn how to integrate Redis with Akka actors in Scala using the Rediscala or Lettuce client for async caching, distributed state, and pub/sub messaging.
 
 ---
 

@@ -2,9 +2,9 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Rust, IPv6, Network Tools, DNS, Port Scanner, CLI
+Tags: Rust, IPv6, Network Tools, DNS, Port Scanner, Ping, CLI
 
-Description: Build practical IPv6 network tools in Rust including reachability checkers, port scanners, DNS lookup helpers, and subnet calculators.
+Description: Build practical IPv6 network tools in Rust including ping utilities, port scanners, DNS lookup tools, and subnet calculators.
 
 ## IPv6 Reachability Checker
 

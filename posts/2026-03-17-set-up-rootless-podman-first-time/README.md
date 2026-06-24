@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Podman, Container, DevOps, Rootless, Security, Setup
 
-Description: Learn how to set up rootless Podman for the first time to run containers securely without running Podman as root.
+Description: Learn how to set up rootless Podman for the first time to run containers securely without root privileges.
 
 ---
 

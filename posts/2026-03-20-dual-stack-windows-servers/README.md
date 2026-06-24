@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: IPv6, IPv4, Dual-Stack, Windows, PowerShell
+Tags: IPv6, IPv4, Dual-Stack, Window, PowerShell
 
 Description: Learn how to configure dual-stack IPv4 and IPv6 networking on Windows Server using PowerShell, netsh, and GUI tools for static and dynamic addressing.
 

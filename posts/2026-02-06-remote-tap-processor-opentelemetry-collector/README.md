@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Collector, Processor, Remote Tap, Debugging, Telemetry
 
-Description: Learn how to configure the Remote Tap processor in the OpenTelemetry Collector to expose a WebSocket tap for debugging and monitoring telemetry data.
+Description: Learn how to configure the Remote Tap processor in the OpenTelemetry Collector to duplicate and forward telemetry data to additional endpoints for debugging and monitoring purposes.
 
 The Remote Tap processor is a debugging and monitoring tool in the OpenTelemetry Collector that allows connected WebSocket clients to inspect a rate-limited copy of telemetry data without disrupting your primary data pipeline. This capability proves invaluable when troubleshooting production issues, validating data transformations, or observing data flowing through a Collector pipeline.
 

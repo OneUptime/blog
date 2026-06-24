@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Azure, OpenAI, Generative AI, LLM, Infrastructure as Code
 
-Description: Learn how to provision Azure OpenAI Service accounts, deploy models like GPT-4o and GPT-4o mini, and configure private endpoints using OpenTofu.
+Description: Learn how to provision Azure OpenAI Service accounts, deploy models like GPT-4, and configure private endpoints using OpenTofu.
 
 ## Introduction
 

@@ -1,10 +1,10 @@
-# How to Compare Trace Latency Over Time Using Cloud Trace Explorer and the Cloud Trace API
+# How to Compare Trace Latency Over Time Using Cloud Trace Analysis Reports
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GCP, Cloud Trace, Latency Analysis, Performance Monitoring, Observability
 
-Description: Learn how to use Cloud Trace Explorer and the Cloud Trace API to compare latency over different time periods, detect performance regressions, and track the impact of optimizations.
+Description: Learn how to use Cloud Trace analysis reports to compare latency over different time periods, detect performance regressions, and track the impact of optimizations.
 
 ---
 

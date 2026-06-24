@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Java, Spring Boot, OAuth2, CORS, Security
 
-Description: A practical guide to securing your Spring Boot REST APIs using OAuth2 bearer tokens and properly configuring CORS for cross-origin requests.
+Description: A practical guide to securing your Spring Boot REST APIs using OAuth2 for authentication and properly configuring CORS for cross-origin requests.
 
 ---
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GCP, Shared VPC, IPv6, Host Project, Service Project, Dual-Stack
 
-Description: Configure dual-stack shared subnets in a GCP Shared VPC host project so service projects can use centrally managed IPv6 addresses.
+Description: Configure GCP Shared VPC to allocate IPv6 subnets from the host project to service projects for centralized IPv6 management.
 
 ## Introduction
 

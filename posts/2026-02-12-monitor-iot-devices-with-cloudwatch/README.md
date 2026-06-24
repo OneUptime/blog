@@ -344,8 +344,6 @@ def lambda_handler(event, context):
     )
 ```
 
-For a more event-driven approach to detecting device issues, check out our guide on [using IoT Events for detecting complex events](https://oneuptime.com/blog/post/2026-02-12-use-iot-events-for-detecting-complex-events/view).
-
 ## Wrapping Up
 
 Monitoring IoT devices with CloudWatch is a layered approach. Start with the built-in IoT Core metrics for a service-level view, add custom metrics for device-level visibility, set up alarms for the failure modes that matter most, and use Logs Insights for debugging. The goal is to catch problems before your users do - whether that is a single device going offline or a fleet-wide connectivity issue.

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, Launch Wizard, SQL Server, Database, Windows, High Availability
+Tags: AWS, Launch Wizard, SQL Server, Database, Window, High Availability
 
 Description: Use AWS Launch Wizard to deploy production-ready SQL Server environments on EC2 with high availability, best practices, and automated configuration.
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Kubernetes, Performance, Caching, Configuration
 
-Description: Enable Portainer's front-end data caching for Kubernetes environments to improve repeated UI navigation performance on large clusters.
+Description: Enable and configure application data caching for Kubernetes environments in Portainer to dramatically reduce API response times and improve UI performance for large clusters.
 
 ## Introduction
 

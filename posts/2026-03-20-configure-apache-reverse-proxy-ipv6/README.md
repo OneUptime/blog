@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: IPv6, Apache, Reverse Proxy, mod_proxy, Backend
 
-Description: Learn how to configure Apache as a reverse proxy forwarding requests to IPv6 backend servers using mod_proxy, including HTTP backends, HTTPS frontends, and WebSocket proxying.
+Description: Learn how to configure Apache as a reverse proxy forwarding requests to IPv6 backend servers using mod_proxy, including HTTP and HTTPS backends.
 
 ## Enable Required Modules
 

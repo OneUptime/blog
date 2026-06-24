@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Calicoctl, IPAM, Kubernetes, Networking, Troubleshooting, IP Address Management
 
-Description: Learn how to use calicoctl ipam check to validate IPAM data consistency and identify leaked IP addresses.
+Description: Learn how to use calicoctl ipam check to validate IPAM data consistency and identify leaked or orphaned IP addresses.
 
 ---
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: MySQL, SQL, Date Function, Database
 
-Description: Learn how to use MySQL QUARTER() to return the calendar quarter (1-4) of a date for quarterly reporting, grouping, and business analysis.
+Description: Learn how to use MySQL QUARTER() to return the fiscal quarter (1-4) of a date for quarterly reporting, grouping, and business analysis.
 
 ---
 

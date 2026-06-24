@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rancher, Kubernetes, API, REST API, User Management
 
-Description: Complete guide to managing users, roles, and permissions in Rancher programmatically using the legacy `/v3` REST API.
+Description: Complete guide to managing users, roles, and permissions in Rancher programmatically using the REST API.
 
 Managing users in Rancher through the API enables you to automate onboarding and enforce consistent role assignments. This guide uses Rancher's legacy `/v3` API endpoints for creating users and assigning roles at global, cluster, and project levels.
 

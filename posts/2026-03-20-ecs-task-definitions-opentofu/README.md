@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, AWS, ECS, Task Definition, Fargate, Container Configuration, Infrastructure as Code
 
-Description: Learn how to create ECS task definitions with OpenTofu for Fargate, including container definitions, environment variables from Secrets Manager and Parameter Store, and health checks.
+Description: Learn how to create ECS task definitions with OpenTofu for Fargate and EC2 launch types, including container definitions, environment variables from Secrets Manager, and health checks.
 
 ## Introduction
 

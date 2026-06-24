@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Security, Secrets Management, Collector, DevOps
 
-Description: Practical guide to securing API keys, tokens, and credentials in your OpenTelemetry Collector configuration files using environment variables, secret managers, and providers.
+Description: Practical guide to securing API keys, tokens, and credentials in your OpenTelemetry Collector configuration files using environment variables, vaults, and providers.
 
 ---
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Windows, Networking, HNS, Kubernetes, Service Mesh
+Tags: Istio, Window, Networking, HNS, Kubernetes, Service Mesh
 
 Description: Guide to handling Windows-specific networking challenges when integrating Windows container workloads with Istio service mesh.
 

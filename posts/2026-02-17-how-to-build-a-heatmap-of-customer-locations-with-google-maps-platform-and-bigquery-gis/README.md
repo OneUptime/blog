@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GCP, BigQuery, GIS, Google Maps, Heatmap, Data Visualization, Google Cloud
 
-Description: Build a customer location heatmap using Google Maps Platform, deck.gl visualization layers, and BigQuery GIS geospatial data for market analysis and store planning.
+Description: Build a customer location heatmap using Google Maps Platform visualization library and BigQuery GIS geospatial data for market analysis and store planning.
 
 ---
 

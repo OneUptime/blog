@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Import Blocks, HCL, Migration, Infrastructure as Code
 
-Description: Learn how to use OpenTofu import blocks with the experimental -generate-config-out flag to generate starter HCL configuration from existing infrastructure, streamlining the process of bringing resources under...
+Description: Learn how to use OpenTofu import blocks with -generate-config-out to automatically generate HCL configuration from existing infrastructure, streamlining the process of bringing resources under...
 
 ---
 

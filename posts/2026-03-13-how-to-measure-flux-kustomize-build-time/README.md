@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Flux, Kubernetes, GitOps, Performance, Benchmarking, Kustomize, Build Time
 
-Description: Measure and optimize the time Flux spends reconciling Kustomizations, then isolate Kustomize build time to identify bottlenecks in your GitOps pipeline.
+Description: Measure and optimize the time Flux spends running Kustomize builds during reconciliation to identify bottlenecks in your GitOps pipeline.
 
 ---
 

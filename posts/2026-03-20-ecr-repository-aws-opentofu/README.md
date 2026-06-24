@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, AWS, ECR, Docker, Container Registry
 
-Description: Learn how to create an AWS ECR repository with OpenTofu including lifecycle policies, cross-account access, image scanning, and encryption.
+Description: Learn how to create an AWS ECR repository with OpenTofu including lifecycle policies, cross-account access, image scanning, and pull-through cache configuration.
 
 ## Introduction
 

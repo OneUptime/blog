@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, API, Automation, Cleanup, Docker
 
-Description: Automate the cleanup of stopped containers, dangling images, unused volumes, and unused networks across Portainer-managed environments.
+Description: Automate the cleanup of stopped containers, unused images, dangling volumes, and orphaned networks across Portainer-managed environments.
 
 ## Introduction
 

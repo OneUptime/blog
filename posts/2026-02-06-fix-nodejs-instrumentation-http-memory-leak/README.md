@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Node.js, Memory Leak, HTTP Instrumentation
 
-Description: Diagnose and fix memory growth when using OpenTelemetry HTTP instrumentation on Node.js 20 and later versions.
+Description: Diagnose and fix the known memory leak in OpenTelemetry HTTP instrumentation that affects Node.js 20 and later versions.
 
 Some Node.js applications using `@opentelemetry/instrumentation-http` on Node.js 20+ have seen request-volume-related memory growth when older instrumentation versions, custom hooks, or exporter backlogs keep request and response data alive longer than expected. Over time, this can lead to steadily growing memory usage and out-of-memory crashes in long-running applications.
 

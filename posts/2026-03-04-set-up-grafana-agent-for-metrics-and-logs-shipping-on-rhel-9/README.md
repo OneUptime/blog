@@ -1,10 +1,10 @@
-# How to Set Up Grafana Alloy for Metrics and Logs Shipping on RHEL
+# How to Set Up Grafana Agent for Metrics and Logs Shipping on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Monitoring, Linux
 
-Description: Step-by-step guide on set up Grafana Alloy for metrics and logs shipping using Red Hat Enterprise Linux 9.
+Description: Step-by-step guide on set up grafana agent for metrics and logs shipping using Red Hat Enterprise Linux 9.
 
 ---
 

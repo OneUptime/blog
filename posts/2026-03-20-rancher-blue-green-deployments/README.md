@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rancher, Kubernetes, Blue-Green, Deployment, CI/CD
 
-Description: Implement zero-downtime blue-green deployments in Rancher-managed Kubernetes clusters using service switching and CI/CD automation.
+Description: Implement zero-downtime blue-green deployments in Rancher-managed Kubernetes clusters using service switching and GitOps automation.
 
 ## Introduction
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Terraform, Environment, Infrastructure, DevOps
 
-Description: Learn how to create, configure, and manage Portainer environments using Terraform, including Docker, Swarm, and Kubernetes environments with full IaC lifecycle management.
+Description: Learn how to create, configure, and manage Portainer environments using Terraform, including Docker, Kubernetes, and Edge environments with full IaC lifecycle management.
 
 ## Introduction
 

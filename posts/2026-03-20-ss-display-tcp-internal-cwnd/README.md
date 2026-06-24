@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: ss, TCP, CWND, RTT, Linux, Performance
 
-Description: Use ss -i to display TCP internal statistics including congestion window (cwnd), retransmission counters, round-trip time, and receive-side autotuning information for performance analysis.
+Description: Use ss -i to display TCP internal statistics including congestion window (cwnd), retransmission rate, round-trip time, and sender/receiver buffer information for performance analysis.
 
 `ss -i` exposes the TCP stack's internal state for each connection. This is far more detailed than anything netstat can show, helping diagnose throughput problems, retransmissions, and TCP tuning effectiveness.
 

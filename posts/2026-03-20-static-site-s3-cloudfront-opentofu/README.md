@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, AWS, S3, CloudFront, Static Site, CDN, ACM, Route53, Infrastructure as Code
 
-Description: Learn how to deploy a static website on AWS S3 with CloudFront CDN, custom domain, and HTTPS via ACM using OpenTofu.
+Description: Learn how to deploy a static website on AWS S3 with CloudFront CDN, custom domain, HTTPS via ACM, and automatic cache invalidation using OpenTofu.
 
 ---
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Go, Golang, Development, Programming, Linux
 
-Description: Install the Go programming language on RHEL using either Red Hat Go Toolset or the official tarball for the latest version.
+Description: Install the Go programming language on RHEL using either the AppStream package or the official tarball for the latest version.
 
 ---
 

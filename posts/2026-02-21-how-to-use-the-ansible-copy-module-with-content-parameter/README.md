@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, File Management, Configuration Management, DevOps
 
-Description: Learn how to use the Ansible copy module content parameter to write inline text directly to files on remote hosts.
+Description: Learn how to use the Ansible copy module content parameter to write inline text and dynamic variables directly to files on remote hosts.
 
 ---
 

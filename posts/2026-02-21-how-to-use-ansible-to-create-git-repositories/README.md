@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, Git, Repository Management, Automation
 
-Description: Learn how to use Ansible to create Git repositories on local servers, GitHub, and GitLab including bare repos and initial commits.
+Description: Learn how to use Ansible to create Git repositories on local servers, GitHub, and GitLab including bare repos, initial commits, and branch protection setup.
 
 ---
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Cilium, Kubernetes, GAMMA, Gateway API, Validation
 
-Description: Validate supported producer GAMMA configuration in Cilium and confirm consumer or mixed configurations are not applied.
+Description: Validate producer, consumer, and mixed GAMMA configuration types in Cilium by checking route acceptance, backend resolution, and actual traffic behavior.
 
 ---
 

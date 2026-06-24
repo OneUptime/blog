@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Kitchen-Terraform, Testing, Infrastructure as Code, IaC, Test-Driven Infrastructure
 
-Description: Learn how to use Kitchen-Terraform to test OpenTofu configurations with Test Kitchen and InSpec.
+Description: Learn how to use Kitchen-Terraform to test OpenTofu configurations with multiple testing frameworks.
 
 ## Introduction
 

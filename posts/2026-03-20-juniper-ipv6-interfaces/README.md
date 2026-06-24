@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Juniper, IPv6, Junos, Interface, Networking
 
-Description: Configure IPv6 addresses on Juniper Junos interfaces and verify routing, firewall filters, and DHCPv6 settings.
+Description: Configure IPv6 addresses on Juniper Junos physical and logical interfaces with static, EUI-64, and link-local addressing.
 
 ## Overview
 

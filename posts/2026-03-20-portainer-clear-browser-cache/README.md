@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Docker, Troubleshooting, Browser, UI, Cache
 
-Description: Fix Portainer UI issues by properly clearing browser cache, local storage, and cookies - one of the first troubleshooting steps for most Portainer display and JavaScript errors.
+Description: Fix Portainer UI issues by properly clearing browser cache, local storage, and cookies - the first troubleshooting step for most Portainer display and JavaScript errors.
 
 ## Introduction
 

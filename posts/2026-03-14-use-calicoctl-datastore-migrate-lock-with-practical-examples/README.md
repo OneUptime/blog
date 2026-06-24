@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Calicoctl, Datastore Migration, Kubernetes, etcd
 
-Description: Use calicoctl datastore migrate lock to prevent datastore changes from affecting the Calico cluster during migration, ensuring data consistency throughout the process.
+Description: Use calicoctl datastore migrate lock to prevent changes to the Calico datastore during migration, ensuring data consistency throughout the process.
 
 ---
 

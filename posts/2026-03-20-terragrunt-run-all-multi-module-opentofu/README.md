@@ -1,10 +1,10 @@
-# How to Use Terragrunt run --all for Multi-Module Operations with OpenTofu
+# How to Use Terragrunt run-all for Multi-Module Operations with OpenTofu
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Terragrunt, Run-all, Multi-Module, Orchestration
 
-Description: Learn how to use Terragrunt's run --all command to apply, plan, and destroy multiple OpenTofu modules simultaneously while respecting dependency order.
+Description: Learn how to use Terragrunt's run-all command to apply, plan, and destroy multiple OpenTofu modules simultaneously while respecting dependency order.
 
 ## Introduction
 

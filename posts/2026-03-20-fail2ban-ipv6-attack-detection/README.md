@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: IPv6, Fail2Ban, Security, Brute Force, Linux
 
-Description: Configure Fail2Ban to detect and block brute force attacks from IPv6 addresses by using IPv6-capable firewall actions, writing IPv6-compatible filters, and tuning ignore lists for IPv6 prefixes.
+Description: Configure Fail2Ban to detect and block brute force attacks from IPv6 addresses by using ip6tables actions, writing IPv6-compatible filters, and tuning ban policies for IPv6 subnets.
 
 ## Introduction
 

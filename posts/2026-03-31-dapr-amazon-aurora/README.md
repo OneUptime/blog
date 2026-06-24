@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Dapr, Amazon Aurora, AWS, PostgreSQL, State Management
 
-Description: Configure Dapr state management with Amazon Aurora PostgreSQL, including SSL configuration, reader endpoint usage for read scaling, and IAM authentication.
+Description: Configure Dapr state management and bindings with Amazon Aurora PostgreSQL, including connection pooling, SSL configuration, and reader endpoint usage for read scaling.
 
 ---
 

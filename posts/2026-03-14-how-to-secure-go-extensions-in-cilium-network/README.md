@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Cilium, Kubernetes, Network Security, Go
 
-Description: Learn how to secure Go extension workloads in Cilium for Kubernetes. This guide covers practical hardening measures with real examples and commands.
+Description: Learn how to secure Go extension development in Cilium for Kubernetes. This guide covers practical hardening measures with real examples and commands.
 
 ---
 

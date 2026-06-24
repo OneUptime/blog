@@ -1,10 +1,10 @@
-# Understanding ArgoCD argocd-cmd-params-cm: Key Parameters Explained
+# Understanding ArgoCD argocd-cmd-params-cm: Every Key Explained
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: ArgoCD, GitOps, Kubernetes, Configuration, Performance
 
-Description: A practical reference to important keys in the ArgoCD argocd-cmd-params-cm ConfigMap, covering server flags, controller tuning, repo server settings, and performance optimization.
+Description: A complete reference to every key in the ArgoCD argocd-cmd-params-cm ConfigMap, covering server flags, controller tuning, repo server settings, and performance optimization.
 
 ---
 

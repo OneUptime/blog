@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Rancher, SR-IOV, Networking, Kubernetes, High-Performance
+Tags: Rancher, Sriov, Networking, Kubernetes, High-Performance
 
 Description: Guide to configuring SR-IOV network virtualization in Rancher for high-performance network workloads.
 

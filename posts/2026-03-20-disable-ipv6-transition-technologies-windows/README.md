@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: IPv6, Windows, Teredo, ISATAP, 6to4, Security
+Tags: IPv6, Window, Teredo, ISATAP, 6to4, Security
 
 Description: Learn how to disable Teredo, ISATAP, and 6to4 IPv6 transition technologies on Windows to reduce attack surface, prevent unexpected tunnel traffic, and avoid connectivity issues on native...
 

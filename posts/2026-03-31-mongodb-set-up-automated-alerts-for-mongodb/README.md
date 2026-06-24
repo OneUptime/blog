@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: MongoDB, Monitoring, Alert
 
-Description: Set up automated alerts for MongoDB using mongodb_exporter, Prometheus, and alerting rules to catch performance issues before they impact your users.
+Description: Set up automated alerts for MongoDB using mongostat, Prometheus, and alerting rules to catch performance issues before they impact your users.
 
 ---
 

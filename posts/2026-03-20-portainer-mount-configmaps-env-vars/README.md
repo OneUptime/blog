@@ -1,4 +1,4 @@
-# How to Use ConfigMaps as Environment Variables in Portainer (2)
+# How to Mount ConfigMaps as Environment Variables in Portainer (2)
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

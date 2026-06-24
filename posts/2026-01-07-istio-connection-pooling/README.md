@@ -49,7 +49,7 @@ graph LR
     style F fill:#90EE90,stroke:#333
 ```
 
-When a service sends a request, Istio's Envoy proxy maintains a pool of connections to downstream services. These connections are reused across multiple requests, eliminating the overhead of establishing new connections for each call.
+When a service sends a request, Istio's Envoy proxy maintains a pool of upstream connections to destination services. These connections are reused across multiple requests, eliminating the overhead of establishing new connections for each call.
 
 ### Key Benefits of Connection Pooling
 
@@ -105,7 +105,7 @@ flowchart TB
 
 ## Configuring TCP Connection Pooling
 
-TCP connection pooling settings control the behavior of TCP connections at the transport layer. These settings apply to all protocols, including HTTP/1.1 and HTTP/2.
+TCP connection pooling settings control common upstream connection behavior at the transport layer. Some TCP settings, such as connection timeouts and keepalives, apply broadly, while `maxConnections` specifically limits HTTP/1.1 or TCP connections to a destination host.
 
 ### Basic TCP Connection Pool Configuration
 
@@ -254,7 +254,7 @@ flowchart TD
 
         subgraph "DO_NOT_UPGRADE"
             B1[Keep as HTTP/1.1]
-            C1[Single request per connection]
+            C1[Sequential requests per connection]
         end
 
         subgraph "UPGRADE"
@@ -452,7 +452,7 @@ spec:
             # Legacy version doesn't support HTTP/2
             h2UpgradePolicy: DO_NOT_UPGRADE
             http1MaxPendingRequests: 25
-            # HTTP/1.1 typically uses 1 request per connection
+            # Setting this to 1 disables HTTP/1.1 keep-alive
             maxRequestsPerConnection: 1
 
     # Version 2: Modern version with HTTP/2 support
@@ -564,7 +564,7 @@ spec:
         connectTimeout: 30ms
       http:
         # Queue size should handle burst traffic
-        # Set to 20% of maxConnections for typical burst handling
+        # Set to 2x maxConnections for this burst-handling example
         http1MaxPendingRequests: 200
 
         # Balance between connection overhead and load distribution
@@ -591,7 +591,7 @@ metadata:
   name: dev-connection-pool
   namespace: development
 spec:
-  host: "*.development.svc.cluster.local"
+  host: dev-service.development.svc.cluster.local
   trafficPolicy:
     connectionPool:
       tcp:
@@ -613,7 +613,7 @@ metadata:
   name: staging-connection-pool
   namespace: staging
 spec:
-  host: "*.staging.svc.cluster.local"
+  host: staging-service.staging.svc.cluster.local
   trafficPolicy:
     connectionPool:
       tcp:
@@ -633,7 +633,7 @@ metadata:
   name: production-connection-pool
   namespace: production
 spec:
-  host: "*.production.svc.cluster.local"
+  host: production-service.production.svc.cluster.local
   trafficPolicy:
     connectionPool:
       tcp:
@@ -731,7 +731,8 @@ spec:
         # Shorter timeout for faster failover
         connectTimeout: 20ms
       http:
-        # Higher requests per connection = fewer new connections
+        # Higher values than very low limits mean fewer new connections.
+        # Leaving this unset uses Istio's default of unlimited requests per connection.
         maxRequestsPerConnection: 200
         # Longer idle timeout keeps connections alive
         idleTimeout: 300s

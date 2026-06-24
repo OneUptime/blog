@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rook, Ceph, Kubernetes, Helm, CSI, RBD
 
-Description: Configure the OMAP generator in the Rook-Ceph Helm chart to manage RBD volume metadata mappings required for RBD mirroring.
+Description: Configure the OMAP generator in the Rook-Ceph Helm chart to manage RBD volume journaling metadata required for CSI operations.
 
 ---
 

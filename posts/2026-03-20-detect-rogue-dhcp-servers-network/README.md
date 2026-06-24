@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: DHCP, Rogue Server, Network Security, Monitoring, Sysadmin
 
-Description: Rogue DHCP servers can redirect client traffic by providing malicious gateway or DNS addresses, and can be detected using network scanning tools, dhcp-probe, and DHCP traffic captures or client logs.
+Description: Rogue DHCP servers can redirect client traffic by providing malicious gateway or DNS addresses, and can be detected using network scanning tools, dhcp-probe, and DHCP server logs.
 
 ## Why Rogue DHCP Servers Are Dangerous
 

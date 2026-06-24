@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Podman, Linux
 
-Description: Step-by-step guide on configuring Podman registry mirroring and caching using Red Hat Enterprise Linux 9.
+Description: Step-by-step guide on configure podman registry mirroring and caching using Red Hat Enterprise Linux 9.
 
 ---
 

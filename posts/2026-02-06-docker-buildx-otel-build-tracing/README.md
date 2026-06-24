@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Docker Buildx, Build Tracing, Performance
 
-Description: Configure Docker Buildx to export OpenTelemetry traces to Jaeger for each build stage, enabling performance profiling of your container image builds.
+Description: Configure Docker Buildx to export OpenTelemetry traces for each build stage, enabling performance profiling of your container image builds.
 
 Docker Buildx (and BuildKit under the hood) has native OpenTelemetry support. When enabled, it generates traces for BuildKit API calls and build operations. This helps you understand where your builds spend time and identify optimization opportunities like slow package installations, unnecessary layer copies, or cache misses.
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Dapr, Logrus, Go, Logging, Observability
 
-Description: Integrate Logrus structured logging with Dapr Go SDK services, adding Dapr app context and request metadata to all log entries.
+Description: Integrate Logrus structured logging with Dapr Go SDK services, propagating W3C trace headers and Dapr app context through all log entries.
 
 ---
 

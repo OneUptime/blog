@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, AWS, RDS, RDS Proxy, Connection Pooling, Lambda, Infrastructure as Code
 
-Description: Learn how to deploy RDS Proxy using OpenTofu to provide connection pooling, improved resilience during failovers, and IAM authentication for client connections from Lambda and ECS.
+Description: Learn how to deploy RDS Proxy using OpenTofu to provide connection pooling, improved resilience during failovers, and IAM authentication for database connections from Lambda and ECS.
 
 ## Introduction
 

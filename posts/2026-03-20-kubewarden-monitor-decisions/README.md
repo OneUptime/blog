@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubewarden, Monitoring, Policy Decisions, Prometheus, Grafana, Kubernetes, SUSE Rancher
 
-Description: Learn how to monitor Kubewarden policy admission decisions using Prometheus metrics, Grafana dashboards, and Audit Scanner reports to track policy violations and cluster security posture.
+Description: Learn how to monitor Kubewarden policy admission decisions using Prometheus metrics, Grafana dashboards, and audit logs to track policy violations and cluster security posture.
 
 ---
 

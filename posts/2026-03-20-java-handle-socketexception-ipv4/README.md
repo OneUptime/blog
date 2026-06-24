@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Java, SocketException, Error Handling, IPv4, TCP, Networking, Resilience
 
-Description: Properly handle Java `SocketException`, its common subclasses, and related timeout exceptions for IPv4 TCP connections, distinguishing between network errors, timeouts, and intentional closures.
+Description: Properly handle Java SocketException and its subclasses for IPv4 TCP connections, distinguishing between network errors, timeouts, and intentional closures.
 
 ## Introduction
 

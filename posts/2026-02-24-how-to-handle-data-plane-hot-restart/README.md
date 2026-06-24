@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Istio, Data Plane, Hot Restart, Envoy, Kubernetes
 
-Description: Understanding Envoy hot restart and how current Istio sidecars handle proxy configuration, draining, and upgrades.
+Description: Understanding and configuring Envoy hot restart in Istio to apply configuration changes and upgrade proxies without dropping active connections.
 
 ---
 

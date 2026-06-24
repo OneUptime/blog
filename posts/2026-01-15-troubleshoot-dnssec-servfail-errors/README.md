@@ -84,7 +84,7 @@ brew install ldns
 # Basic query showing DNSSEC-related flags
 dig example.com +dnssec
 
-# Query with full validation trace
+# Query with full delegation trace; +trace requests DNSSEC records but does not validate them
 dig example.com +dnssec +multi +trace
 
 # Query specific record types
@@ -111,7 +111,7 @@ delv example.com A +vtrace
 delv @8.8.8.8 example.com +vtrace
 
 # Root trust anchor validation
-delv example.com +root=/etc/bind/bind.keys
+delv -a /etc/bind/bind.keys example.com
 ```
 
 ### Using drill for DNSSEC Analysis
@@ -137,8 +137,8 @@ drill -DT example.com
 First, verify that you're actually experiencing a DNSSEC-related SERVFAIL:
 
 ```bash
-# Query with DNSSEC validation
-dig example.com +dnssec
+# Query a DNSSEC-validating resolver and request DNSSEC records
+dig @8.8.8.8 example.com +dnssec
 ```
 
 Expected output for a SERVFAIL:
@@ -148,17 +148,17 @@ Expected output for a SERVFAIL:
 ;; flags: qr rd ra; QUERY: 1, ANSWER: 0, AUTHORITY: 0, ADDITIONAL: 1
 ```
 
-Now test without DNSSEC validation using a non-validating resolver or the CD (Checking Disabled) flag:
+Now test without DNSSEC validation using the CD (Checking Disabled) flag or by querying an authoritative server directly:
 
 ```bash
 # Disable DNSSEC validation
-dig example.com +cd
+dig @8.8.8.8 example.com +cd
 
-# Or use a non-validating resolver
-dig @4.2.2.2 example.com
+# Or query an authoritative server directly
+dig @ns1.example.com example.com
 ```
 
-If the query succeeds with `+cd` but fails without it, you have a DNSSEC validation issue.
+When using the same validating resolver, if the query succeeds with `+cd` but fails without it, you have a DNSSEC validation issue.
 
 ### Step 2: Check DNSSEC Record Presence
 
@@ -235,7 +235,7 @@ The DS record in the parent zone must match a DNSKEY in your zone:
 dig example.com DS @a.gtld-servers.net +short
 
 # Get DNSKEY records and generate DS
-dig example.com DNSKEY +short | dnssec-dsfromkey -f - example.com
+dig example.com DNSKEY +noall +answer | dnssec-dsfromkey -f - example.com
 ```
 
 Compare the output. The DS record should match one of the generated DS records.
@@ -250,10 +250,10 @@ dig example.com DNSKEY +short
 # Third field is the algorithm number
 
 # Common algorithms:
-# 5 = RSA/SHA-1 (deprecated)
-# 7 = RSASHA1-NSEC3-SHA1
+# 5 = RSA/SHA-1 (not recommended for signing)
+# 7 = RSASHA1-NSEC3-SHA1 (not recommended for signing)
 # 8 = RSA/SHA-256
-# 10 = RSA/SHA-512
+# 10 = RSA/SHA-512 (not recommended for signing)
 # 13 = ECDSA Curve P-256 with SHA-256
 # 14 = ECDSA Curve P-384 with SHA-384
 # 15 = Ed25519
@@ -297,9 +297,10 @@ rndc sign example.com
 # Or reload the zone to trigger automatic re-signing
 rndc reload example.com
 
-# For PowerDNS - rectify and re-sign
-pdnsutil rectify-zone example.com
-pdnsutil secure-zone example.com
+# For PowerDNS - secure and rectify
+pdnsutil zone secure example.com
+pdnsutil zone rectify example.com
+# PowerDNS versions before 5.0 used: pdnsutil rectify-zone and pdnsutil secure-zone
 
 # Verify new signatures
 dig example.com RRSIG +multi
@@ -324,7 +325,7 @@ dig example.com RRSIG +multi
 dig example.com DS +short
 
 # Generate DS from current DNSKEY
-dig example.com DNSKEY | dnssec-dsfromkey -2 -f - example.com
+dig example.com DNSKEY +noall +answer | dnssec-dsfromkey -2 -f - example.com
 
 # Compare the values
 ```
@@ -333,7 +334,7 @@ dig example.com DNSKEY | dnssec-dsfromkey -2 -f - example.com
 
 ```bash
 # Generate correct DS record
-dig example.com DNSKEY +short | grep "257" | dnssec-dsfromkey -2 -f - example.com
+dig example.com DNSKEY +noall +answer | awk '$4 == "DNSKEY" && $5 == "257"' | dnssec-dsfromkey -2 -f - example.com
 
 # Update DS record at your registrar
 # This is typically done through your registrar's control panel
@@ -740,7 +741,7 @@ dnssec-verify -o example.com example.com.zone.signed
 # Quick SERVFAIL diagnosis
 dig example.com                    # Basic query
 dig example.com +cd               # Query without DNSSEC validation
-dig example.com +dnssec           # Query with DNSSEC
+dig example.com +dnssec           # Request DNSSEC records
 delv example.com                  # Validate DNSSEC
 delv example.com +vtrace          # Verbose validation trace
 
@@ -751,10 +752,10 @@ dig example.com RRSIG +multi      # Get signatures with details
 
 # Verify chain of trust
 drill -S example.com              # Chase DNSSEC chain
-dig example.com +dnssec +trace    # Trace with DNSSEC
+dig example.com +dnssec +trace    # Trace delegation and request DNSSEC records
 
 # Generate DS from DNSKEY
-dig example.com DNSKEY | dnssec-dsfromkey -2 -f - example.com
+dig example.com DNSKEY +noall +answer | dnssec-dsfromkey -2 -f - example.com
 ```
 
 ### Common Error Messages and Meanings
@@ -800,7 +801,7 @@ Remember that DNSSEC is designed to fail closed - when validation fails, no answ
 
 - RFC 4033-4035: DNSSEC Protocol Specification
 - RFC 7583: DNSSEC Key Rollover Timing Considerations
-- RFC 8624: Algorithm Implementation Requirements and Usage Guidance
+- RFC 9904: DNSSEC Cryptographic Algorithm Recommendation Update Process
 - ICANN DNSSEC Deployment Guide
 - DNSViz (https://dnsviz.net/) - Visual DNSSEC analyzer
 - Verisign DNSSEC Debugger - Online validation tool

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rancher, AlmaLinux, Docker, Kubernetes, Installation
 
-Description: A complete guide to installing Rancher on AlmaLinux 9 using Docker for development and testing, including OS preparation, Docker setup, and Rancher deployment.
+Description: A complete guide to installing Rancher on AlmaLinux 9 using Docker, including system hardening, Docker setup, and Rancher deployment.
 
 AlmaLinux is a free, community-driven RHEL-compatible Linux distribution that emerged after CentOS shifted to a rolling release. It is governed by the AlmaLinux OS Foundation and is a popular choice for enterprise server deployments. This guide walks you through the full process of installing Rancher on AlmaLinux 9.
 Rancher documents the single-node Docker installation method for development and testing environments, not for production deployments.

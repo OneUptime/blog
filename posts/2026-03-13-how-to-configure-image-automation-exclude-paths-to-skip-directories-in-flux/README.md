@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Flux, Image-automation, Exclude-Paths, GitOps, Kubernetes
 
-Description: Learn how to configure Flux ImageUpdateAutomation to exclude specific directories from manifest scanning and updates.
+Description: Learn how to configure Flux ImageUpdateAutomation to exclude specific directories from image tag scanning and updates.
 
 ---
 

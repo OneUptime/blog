@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: MongoDB, JWT, Authentication, Security, Node.js
 
-Description: Implement a complete JWT authentication system with MongoDB for user registration, login, token refresh, and token revocation using an allowlist pattern.
+Description: Implement a complete JWT authentication system with MongoDB for user registration, login, token refresh, and token revocation using a denylist pattern.
 
 ---
 

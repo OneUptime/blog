@@ -1,10 +1,10 @@
-# How to Implement CoreDNS-Based Federation for Multi-Cluster DNS Resolution
+# How to Implement CoreDNS Federation Plugin for Multi-Cluster DNS Resolution
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, CoreDNS, Multi-Cluster, DNS
 
-Description: Learn how to configure CoreDNS to enable DNS resolution across multiple Kubernetes clusters, facilitating service discovery and communication in multi-cluster architectures.
+Description: Learn how to configure the CoreDNS federation plugin to enable DNS resolution across multiple Kubernetes clusters, facilitating service discovery and communication in multi-cluster architectures.
 
 ---
 

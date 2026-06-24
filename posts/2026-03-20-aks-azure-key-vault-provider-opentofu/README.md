@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Azure, AKS, Key Vault, Secrets Store CSI Driver, Workload Identity, Infrastructure as Code
 
-Description: Learn how to configure AKS with the Azure Key Vault Provider for Secrets Store CSI Driver using OpenTofu to mount Key Vault secrets as Kubernetes volumes, with optional sync to Kubernetes Secrets when needed.
+Description: Learn how to configure AKS with the Azure Key Vault Provider for Secrets Store CSI Driver using OpenTofu to mount Key Vault secrets as Kubernetes volumes without storing secrets in etcd.
 
 ## Introduction
 

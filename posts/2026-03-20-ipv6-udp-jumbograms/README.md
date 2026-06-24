@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: IPv6, UDP, Jumbograms, Jumbo Payload, RFC 2675
 
-Description: Understand how UDP operates with IPv6 jumbograms, the special handling required for the UDP length field, and the practical limits of sending large UDP datagrams on Linux.
+Description: Understand how UDP operates with IPv6 jumbograms, the special handling required for the UDP length field, and how to send large UDP datagrams over jumbogram-capable paths.
 
 ## Introduction
 

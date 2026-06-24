@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, Networking, Observability
 
-Description: Enable Whisker, Calico's built-in network observability UI, to get a real-time browser-based view of aggregated flow logs, policy decisions, and denied traffic in your Kubernetes cluster.
+Description: Enable Whisker, Calico's built-in network observability UI, to get a real-time visual view of pod connections, policy decisions, and denied traffic in your Kubernetes cluster.
 
 ---
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, Dnf5, Fedora, RHEL, Package Management
 
-Description: Learn how to use the Ansible dnf5 module for next-generation package management on Fedora and newer RHEL-family systems.
+Description: Learn how to use the Ansible dnf5 module for next-generation package management on Fedora and future RHEL systems.
 
 ---
 

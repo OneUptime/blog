@@ -1,10 +1,10 @@
-# How to Use OpenSearch Index State Management for Kubernetes Log Retention
+# How to Use OpenSearch Index Lifecycle Management for Kubernetes Log Retention
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenSearch, Kubernetes, Logging
 
-Description: Configure OpenSearch Index State Management (ISM) policies to automatically manage Kubernetes log retention, optimize storage costs, and maintain query performance.
+Description: Configure OpenSearch Index Lifecycle Management (ILM) policies to automatically manage Kubernetes log retention, optimize storage costs, and maintain query performance.
 
 ---
 

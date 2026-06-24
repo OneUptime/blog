@@ -130,7 +130,7 @@ git commit -m "Update OpenTofu version pin to 1.9.0"
 
 ## Communicating the Upgrade to Your Team
 
-```bash
+````bash
 # Create an upgrade guide for your team
 cat > UPGRADE-1.9.md <<'EOF'
 # Upgrading to OpenTofu 1.9.0
@@ -155,7 +155,7 @@ cat > UPGRADE-1.9.md <<'EOF'
 ## No Breaking Changes
 This upgrade has no breaking changes for existing configurations.
 EOF
-```
+````
 
 ## Conclusion
 

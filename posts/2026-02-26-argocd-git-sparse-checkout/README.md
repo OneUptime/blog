@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: ArgoCD, GitOps, Kubernetes, Git, Performance
 
-Description: Learn what Git sparse checkout can and cannot do with ArgoCD, and how to use supported ArgoCD options to reduce clone and manifest generation overhead in large monorepos.
+Description: Learn how to use Git sparse checkout with ArgoCD to reduce clone sizes, speed up sync operations, and efficiently manage monorepos with many applications.
 
 ---
 

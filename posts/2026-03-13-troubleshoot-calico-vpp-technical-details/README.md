@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, Networking, VPP, DPDK, Troubleshooting, Technical
 
-Description: Advanced troubleshooting techniques for Calico VPP technical issues, including node graph debugging, policy programming mismatches, DPDK errors, and VPP memory problems.
+Description: Advanced troubleshooting techniques for Calico VPP technical issues, including node graph debugging, ACL mismatches, DPDK errors, and VPP memory problems.
 
 ---
 

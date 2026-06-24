@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, GCP, IoT Core, IoT, Device Registry, Infrastructure as Code
 
-Description: Historical reference for how GCP IoT Core device registries, Pub/Sub event notifications, and IoT devices were managed with OpenTofu.
+Description: Learn how to create GCP IoT Core device registries, configure Pub/Sub event notifications, and register IoT devices using OpenTofu.
 
 ## Introduction
 

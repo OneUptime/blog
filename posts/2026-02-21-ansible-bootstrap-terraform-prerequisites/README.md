@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, Terraform, Bootstrap, Prerequisites, DevOps
 
-Description: Use Ansible to set up Terraform prerequisites including backend storage, state locking, and execution environments.
+Description: Use Ansible to set up Terraform prerequisites including backend storage, provider credentials, and execution environments.
 
 ---
 

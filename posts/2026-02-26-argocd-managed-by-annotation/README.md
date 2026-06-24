@@ -1,10 +1,10 @@
-# How to Use argocd.argoproj.io/managed-by Label
+# How to Use argocd.argoproj.io/managed-by Annotation
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, Label, Configuration
+Tags: ArgoCD, GitOps, Kubernetes, Annotation, Configuration
 
-Description: Learn how to use the argocd.argoproj.io/managed-by label with ArgoCD to delegate namespace management across namespaces and instances.
+Description: Learn how to use the argocd.argoproj.io/managed-by annotation in ArgoCD to delegate application management across namespaces and instances.
 
 ---
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, Networking, Upgrade, AWS, Self-Managed
 
-Description: Learn how to safely upgrade Calico on self-managed Kubernetes clusters running on AWS EC2, with AWS-specific validation steps and procedures for a low-disruption rolling upgrade.
+Description: Learn how to safely upgrade Calico on self-managed Kubernetes clusters running on AWS EC2, with AWS-specific validation steps and procedures for a zero-disruption rolling upgrade.
 
 ---
 

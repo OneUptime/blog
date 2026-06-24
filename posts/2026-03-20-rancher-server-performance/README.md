@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rancher, Performance, Optimization, Server Tuning, Kubernetes
 
-Description: Optimize Rancher server performance through proper resource allocation, etcd tuning, controller resync tuning, and audit and metrics visibility for large-scale deployments.
+Description: Optimize Rancher server performance through proper resource allocation, database tuning, API rate limiting, and caching configurations for large-scale deployments.
 
 ## Introduction
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: AWS, S3, Cost Management, Tagging
 
-Description: Learn how to use S3 object tagging to organize data, control access, manage lifecycle policies, and analyze storage usage across teams and projects.
+Description: Learn how to use S3 object tagging to organize data, control access, manage lifecycle policies, and allocate storage costs across teams and projects.
 
 ---
 

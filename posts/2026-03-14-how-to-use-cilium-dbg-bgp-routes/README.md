@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Cilium, BGP, Route, Kubernetes, Networking
 
-Description: Inspect BGP routing tables with cilium-dbg bgp routes to view available and advertised routes on Cilium nodes.
+Description: Inspect BGP routing tables with cilium-dbg bgp routes to view advertised and received routes on Cilium nodes.
 
 ---
 

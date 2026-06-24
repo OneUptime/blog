@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: ClickHouse, Projection, Secondary Index, MergeTree, Query Optimization
 
-Description: Learn how to use ClickHouse projections as secondary indexes to accelerate queries that filter on non-primary-key columns.
+Description: Learn how to use ClickHouse projections as secondary indexes to accelerate queries that filter on non-primary-key columns without data duplication overhead.
 
 ---
 

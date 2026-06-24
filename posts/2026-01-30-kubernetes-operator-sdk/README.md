@@ -1091,7 +1091,7 @@ spec:
             description: Names of the Memcached pods
             x-descriptors:
               - urn:alm:descriptor:com.tectonic.ui:podStatuses
-```
+```bash
 
 ### Build and Push Bundle
 

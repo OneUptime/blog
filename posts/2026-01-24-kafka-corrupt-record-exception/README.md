@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Apache Kafka, Troubleshooting, Error Handling, Data Integrity, DevOps, Streaming
 
-Description: Learn how to diagnose and fix CorruptRecordException errors in Kafka, including causes like checksum failures, network issues, and disk corruption.
+Description: Learn how to diagnose and fix CorruptRecordException errors in Kafka, including causes like serialization issues, version mismatches, and disk corruption.
 
 ---
 

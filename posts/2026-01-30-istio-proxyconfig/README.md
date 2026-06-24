@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Istio, Kubernetes, ServiceMesh, Envoy
 
-Description: A practical guide to configuring Istio sidecar proxies using ProxyConfig and related Istio APIs for fine-grained control over concurrency, tracing, logging, and runtime behavior.
+Description: A practical guide to configuring Istio sidecar proxies using ProxyConfig for fine-grained control over concurrency, tracing, logging, and runtime behavior.
 
 ---
 

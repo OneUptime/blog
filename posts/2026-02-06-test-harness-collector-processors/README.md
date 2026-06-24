@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Collector Processors, Testing, Go, Custom Component
 
-Description: Build a test harness in Go that lets you unit test custom OpenTelemetry Collector processors with real trace data.
+Description: Build a test harness in Go that lets you unit test custom OpenTelemetry Collector processors with real trace and metric data.
 
 Writing a custom OpenTelemetry Collector processor is only half the work. The other half is testing it. The Collector SDK provides interfaces and test utilities that let you feed synthetic data into your processor and inspect what comes out, without running a full Collector instance. This post shows you how to build a proper test harness.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: MySQL, SQL, Database, Administration
+Tags: MySQL, SQL, DDL, Database, Administration
 
 Description: Learn how to select and switch databases in MySQL using the USE statement, check the current database, and specify databases without switching using dot notation.
 

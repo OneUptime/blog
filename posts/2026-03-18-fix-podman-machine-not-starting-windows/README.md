@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Podman, Windows, Container, WSL, Virtualization
+Tags: Podman, Window, Container, WSL, Virtualization
 
 Description: A detailed guide to fixing Podman machine startup failures on Windows, covering WSL2 configuration, Hyper-V conflicts, resource allocation, and Windows-specific troubleshooting steps.
 

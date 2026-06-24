@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: APISIX, API Gateway, IPv6, Networking, Lua, Nginx
 
-Description: Enable IPv6 support in Apache APISIX by configuring gateway listeners, an IPv6 Admin API binding, and upstream service definitions for dual-stack operation.
+Description: Enable IPv6 support in Apache APISIX by configuring NGINX listeners, Admin API bindings, and upstream service definitions for dual-stack operation.
 
 ## Introduction
 

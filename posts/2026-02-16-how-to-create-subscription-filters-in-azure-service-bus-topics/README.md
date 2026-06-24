@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Azure Service Bus, Subscription Filters, Topic, Message Routing, Azure, Pub-Sub, Messaging
 
-Description: Configure SQL and correlation filters on Azure Service Bus topic subscriptions to route messages to the right consumers based on message properties.
+Description: Configure SQL and correlation filters on Azure Service Bus topic subscriptions to route messages to the right consumers based on properties and content.
 
 ---
 

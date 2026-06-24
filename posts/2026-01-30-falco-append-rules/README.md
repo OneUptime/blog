@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Falco, Security, Kubernetes, Customization
 
-Description: Learn how to extend and customize Falco rules using append overrides to modify existing detection logic without duplicating rule definitions.
+Description: Learn how to extend and customize Falco rules using the append directive to modify existing detection logic without duplicating rule definitions.
 
 ---
 

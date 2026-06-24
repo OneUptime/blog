@@ -1,10 +1,10 @@
-# How to Troubleshoot Calico Felix Metrics
+# How to Troubleshoot the Calico Flow Logs API
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, Networking, Observability
 
-Description: Diagnose and resolve Calico Felix metrics issues including disabled Prometheus endpoints, missing scrape targets, and missing dataplane or calculation graph metrics.
+Description: Diagnose and resolve Calico Flow Logs API issues including authentication failures, missing data for recent time windows, and query timeout errors on large result sets.
 
 ---
 

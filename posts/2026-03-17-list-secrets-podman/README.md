@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Podman, Container, DevOps, Secret, Management
 
-Description: Learn how to list and view secret metadata stored in Podman for inventory and management purposes.
+Description: Learn how to list and view secrets stored in Podman for inventory and management purposes.
 
 ---
 

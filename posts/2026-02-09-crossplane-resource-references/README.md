@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Crossplane, Kubernetes, Dependencies, Infrastructure-as-Code
 
-Description: Learn how to use Crossplane resource references and selectors to connect managed resources and automatically propagate provider-assigned values.
+Description: Learn how to use Crossplane resource references and selectors to create dependencies between managed resources, ensuring proper provisioning order and automatic value propagation.
 
 ---
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, DaemonSet, Networking, CNI, Calico, Cilium
 
-Description: Learn how to deploy Container Network Interface (CNI) plugins using Kubernetes DaemonSets to provide pod networking, network policies, and advanced networking capabilities across your cluster.
+Description: Learn how to deploy Container Network Interface (CNI) plugins using Kubernetes DaemonSets to provide pod networking, network policies, and service mesh capabilities across your cluster.
 
 ---
 

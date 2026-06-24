@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GCP, Machine Image, Compute Engine, OpenTofu, Infrastructure, Golden Image
 
-Description: Learn how to create GCP Machine Images with OpenTofu to capture VM configuration and data from multiple disks for instance cloning and disaster recovery.
+Description: Learn how to create GCP Machine Images with OpenTofu to capture complete VM state including all disks and configuration for cloning and disaster recovery.
 
 ## Overview
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: AWS, CloudWatch, EC2, Linux, Monitoring
 
-Description: Step-by-step guide to installing and configuring the CloudWatch Agent on EC2 Linux instances for collecting system metrics and application logs.
+Description: Step-by-step guide to installing and configuring the CloudWatch Agent on EC2 Linux instances for collecting system metrics, custom metrics, and application logs.
 
 ---
 

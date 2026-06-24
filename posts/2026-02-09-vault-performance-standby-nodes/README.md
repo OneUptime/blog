@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Vault, High Availability, Performance Standbys, Kubernetes, Enterprise
 
-Description: Learn how to deploy and configure HashiCorp Vault Enterprise performance standby nodes in Kubernetes for improved read scalability and high availability.
+Description: Learn how to deploy and configure HashiCorp Vault Enterprise performance standby nodes in Kubernetes for improved read scalability and disaster recovery capabilities.
 
 ---
 

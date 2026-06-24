@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, Networking, VPP, DPDK, Uplink, Monitoring
 
-Description: Set up monitoring for Calico VPP uplink interfaces to track NIC health, DPDK driver stability, packet drops, and uplink throughput metrics.
+Description: Set up monitoring for Calico VPP uplink interfaces to track NIC health, DPDK driver stability, queue depth utilization, and uplink throughput metrics.
 
 ---
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Flux CD, AWS, EKS, IRSA, IAM, Kubernetes, GitOps, ECR
 
-Description: Learn how to set up Flux CD on Amazon EKS with IAM Roles for Service Accounts (IRSA) to securely access AWS services like ECR, S3, and KMS.
+Description: Learn how to set up Flux CD on Amazon EKS with IAM Roles for Service Accounts (IRSA) to securely access AWS services like ECR, S3, and CodeCommit.
 
 ---
 

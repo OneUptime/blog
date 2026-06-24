@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rancher, Distributed Training, Kubernetes, PyTorch, TensorFlow, GPU, Training Operator
 
-Description: Configure distributed ML model training on Rancher using the legacy Kubeflow Training Operator v1 with PyTorchJob for multi-GPU and multi-node training.
+Description: Configure distributed ML model training on Rancher using the Kubeflow Training Operator with PyTorchJob and TFJob for multi-GPU and multi-node training.
 
 ## Introduction
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Windows, Networking, Netsh, DHCP, IPv4, Network Configuration
+Tags: Window, Networking, Netsh, DHCP, IPv4, Network Configuration
 
 Description: Switch a Windows network adapter from a static IPv4 configuration back to DHCP using netsh commands, and reset DNS to automatic assignment as well.
 

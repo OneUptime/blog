@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Rancher Desktop, WSL2, Windows, Linux, Development
+Tags: Rancher Desktop, WSL2, Window, Linux, Development
 
 Description: Optimize Rancher Desktop integration with Windows Subsystem for Linux 2 for seamless Windows development.
 

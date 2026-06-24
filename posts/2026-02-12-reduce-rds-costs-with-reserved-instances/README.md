@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: AWS, RDS, Cost Optimization, Reserved Instances, Database
 
-Description: A practical guide to saving up to 69% on Amazon RDS costs by using Reserved Instances, including how to choose the right term, payment option, and instance type.
+Description: A practical guide to saving up to 72% on Amazon RDS costs by using Reserved Instances, including how to choose the right term, payment option, and instance type.
 
 ---
 

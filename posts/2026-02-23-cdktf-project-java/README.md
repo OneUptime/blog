@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Terraform, CDKTF, Java, Infrastructure as Code, DevOps, CDK for Terraform
 
-Description: A practical guide to building infrastructure with CDKTF and Java, covering Gradle project setup, resource creation, custom constructs, unit testing with JUnit, and deployment patterns.
+Description: A practical guide to building infrastructure with CDKTF and Java, covering Maven project setup, resource creation, custom constructs, unit testing with JUnit, and deployment patterns.
 
 ---
 

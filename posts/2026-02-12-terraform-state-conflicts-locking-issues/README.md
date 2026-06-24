@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: AWS, Terraform, DevOps, Infrastructure as Code
 
-Description: Practical guide to resolving Terraform state conflicts, lock errors, and corruption issues, including S3 backend configuration, state locking, and recovery procedures.
+Description: Practical guide to resolving Terraform state conflicts, lock errors, and corruption issues, including S3 backend configuration, DynamoDB locking, and recovery procedures.
 
 ---
 

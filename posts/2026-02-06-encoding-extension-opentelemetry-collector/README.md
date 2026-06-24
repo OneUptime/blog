@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Collector, Extension, Encoding, Data Transformation
 
-Description: Learn how to configure the OTLP Encoding Extension in OpenTelemetry Collector to handle OTLP telemetry data encoded as JSON or Protobuf.
+Description: Learn how to configure the Encoding Extension in OpenTelemetry Collector to transform telemetry data between different encoding formats like JSON, Protobuf.
 
 ---
 

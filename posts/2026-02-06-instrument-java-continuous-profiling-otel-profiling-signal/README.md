@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Java, Profiling, JFR
 
-Description: Set up Java applications for continuous profiling with JFR while using OpenTelemetry for traces, metrics, and logs.
+Description: Set up continuous profiling for Java applications using OpenTelemetry's profiling signal with JFR integration to capture CPU and allocation profiles.
 
 Java has one of the best built-in profiling tools available: Java Flight Recorder (JFR). It captures detailed performance data with low overhead, making it suitable for production use. The OpenTelemetry Java agent instruments your application for traces, metrics, and logs, while JFR captures CPU, allocation, lock, and JVM runtime events. As of June 2026, the official OpenTelemetry Java agent does not include a built-in switch that exports JFR recordings as OpenTelemetry Profiles; OpenTelemetry profile support in Java is still alpha and requires separate profile SDK/exporter code or a backend-specific profiler.
 

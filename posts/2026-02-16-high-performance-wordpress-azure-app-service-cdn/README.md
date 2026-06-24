@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Azure, WordPress, App Service, CDN, Performance, Web Hosting
 
-Description: Deploy a fast WordPress site on Azure App Service and accelerate it with Azure Front Door for global content delivery and optimal page load times.
+Description: Deploy a fast WordPress site on Azure App Service and accelerate it with Azure CDN for global content delivery and optimal page load times.
 
 ---
 

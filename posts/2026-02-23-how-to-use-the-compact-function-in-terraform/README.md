@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Terraform, DevOps, Infrastructure as Code, Terraform Functions, Collection Functions
 
-Description: Learn how to use the compact function in Terraform to remove empty string and null elements from a list, with practical examples for cleaning up dynamic configurations.
+Description: Learn how to use the compact function in Terraform to remove empty string elements from a list, with practical examples for cleaning up dynamic configurations.
 
 ---
 

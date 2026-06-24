@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: SRv6, USID, Micro-SID, Compression, RFC 9800, Networking
+Tags: SRv6, USID, Micro-SID, Compression, RFC 9631, Networking
 
 Description: Understand SRv6 micro-SID (uSID) compression that packs multiple node identifiers into a single 128-bit SID, drastically reducing SRv6 header overhead.
 

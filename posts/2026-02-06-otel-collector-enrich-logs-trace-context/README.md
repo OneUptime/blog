@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Collector, Log, Trace Context, Enrichment
 
-Description: Configure the OpenTelemetry Collector to enrich log records with trace context that is already present in non-standard log fields.
+Description: Configure the OpenTelemetry Collector to automatically enrich log records with trace context from matching spans in the same request.
 
 Not every application injects trace IDs into its logs at the SDK level. Legacy services, third-party applications, and some language frameworks make it difficult to modify the logging pipeline. For these cases, the OpenTelemetry Collector can enrich logs with trace context after the fact when the trace ID is already present in a non-standard log field, and it can standardize shared attributes like request IDs for backend correlation.
 

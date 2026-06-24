@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Tail-Based Sampling, Error Traces, Production Debugging, Collector
 
-Description: Build a production debugging workflow that retains every error trace that reaches the OpenTelemetry tail sampler.
+Description: Build a production debugging workflow that captures 100% of error traces using OpenTelemetry tail-based sampling strategies.
 
 In production, you cannot afford to capture every single trace. The volume would overwhelm your storage and your wallet. But you also cannot afford to miss the traces that matter most: the ones that contain errors. Tail-based sampling solves this by making the keep-or-drop decision after the trace is complete, so you can retain every error trace that reaches the sampler while sampling down the healthy traffic.
 

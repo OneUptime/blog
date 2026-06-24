@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GCP, Firestore, NoSQL, OpenTofu, Database, Firebase
 
-Description: Learn how to create and configure Cloud Firestore with OpenTofu including database creation, composite indexes, backup schedules, and IAM access control for document database workloads.
+Description: Learn how to create and configure Cloud Firestore with OpenTofu including database creation, composite indexes, and IAM security rules for document database workloads.
 
 ## Overview
 

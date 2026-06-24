@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Portainer, WSL2, Windows, Ubuntu, Docker
+Tags: Portainer, WSL2, Window, Ubuntu, Docker
 
 Description: Learn how to install Portainer inside WSL2 with Ubuntu to manage Docker containers on your Windows development machine without installing Docker Desktop.
 

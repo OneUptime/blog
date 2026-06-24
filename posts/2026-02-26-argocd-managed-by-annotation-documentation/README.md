@@ -1,10 +1,10 @@
-# How to Use Argo CD Link Annotations for Documentation
+# How to Use Managed By Annotation for Documentation
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: ArgoCD, GitOps, Kubernetes, Annotation, Documentation
 
-Description: Learn how to use Argo CD link annotations as a documentation bridge, linking resources to runbooks, architecture docs, and team wikis.
+Description: Learn how to use the ArgoCD managed-by annotation as a documentation bridge, linking resources to runbooks, architecture docs, and team wikis.
 
 ---
 

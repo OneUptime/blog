@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: MongoDB, Laravel, PHP, REST API, Database
 
-Description: Build a fully functional REST API using Laravel and MongoDB with the official mongodb/laravel-mongodb package for seamless integration.
+Description: Build a fully functional REST API using Laravel and MongoDB with the official jenssegers/laravel-mongodb package for seamless integration.
 
 ---
 

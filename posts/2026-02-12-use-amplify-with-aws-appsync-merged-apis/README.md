@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, Amplify, AppSync, GraphQL, Merged APIs, Backend
+Tags: AWS, Amplify, AppSync, GraphQL, Merged APIs, API Gateway, Backend
 
 Description: Learn how to connect AWS Amplify frontend applications to AppSync Merged APIs for unified GraphQL endpoints across multiple teams
 

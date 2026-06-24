@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Calicoctl, IPAM, Kubernetes, IP Address Management
 
-Description: Use calicoctl ipam split to divide IP pools into smaller pools for improved IP utilization and more granular address management.
+Description: Use calicoctl ipam split to divide IP blocks into smaller allocations for improved IP utilization and more granular per-node address management.
 
 ---
 

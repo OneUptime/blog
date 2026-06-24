@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: ClickHouse, GROUP BY, Query Optimization, Performance, Aggregation
 
-Description: Explains how aligning GROUP BY keys with the table's ORDER BY reduces memory usage and enables ClickHouse's in-order (streaming) aggregation optimization.
+Description: Explains how aligning GROUP BY keys with the table's ORDER BY reduces memory usage and enables the group_by_use_nulls and two-level aggregation optimizations.
 
 ---
 

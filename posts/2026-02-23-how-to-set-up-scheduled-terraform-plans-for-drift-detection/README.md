@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Terraform, CI/CD, Drift Detection, Scheduled Job, GitHub Action, Cron, DevOps
 
-Description: Learn how to configure scheduled Terraform plan runs for continuous drift detection using GitHub Actions cron, GitLab schedules, and AWS EventBridge with CodeBuild.
+Description: Learn how to configure scheduled Terraform plan runs for continuous drift detection using GitHub Actions cron, GitLab schedules, and AWS EventBridge with Lambda.
 
 ---
 

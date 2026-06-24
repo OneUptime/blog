@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Istio, Multi-Cluster, Kubernetes, High Availability, Service Mesh
 
-Description: Configure a complete multi-cluster Istio service mesh with separate control planes, cross-cluster service discovery, and unified traffic management.
+Description: Configure a complete multi-cluster Istio service mesh with shared control plane, cross-cluster service discovery, and unified traffic management.
 
 ---
 

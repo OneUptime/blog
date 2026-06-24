@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, OTel Arrow, Multi-Signal, Pipeline
 
-Description: Set up OTel Arrow to transport traces, metrics, and logs through coordinated Arrow pipelines for better transport efficiency.
+Description: Set up OTel Arrow to transport traces, metrics, and logs on a single Arrow stream for maximum transport efficiency.
 
 Standard OTLP uses separate gRPC service definitions for traces, metrics, and logs. Each signal type gets its own serialization overhead. OTel Arrow provides corresponding Arrow services for traces, metrics, and logs, using Apache Arrow's columnar encoding and stream compression to reduce transport cost. This post shows how to configure Arrow pipelines for all three signals.
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Elasticsearch, IDs Filter, Query Optimization, Performance, Configuration
 
-Description: Learn how to configure and work with ID-based query limits in Elasticsearch.
+Description: Learn how to configure and work with the IDs filter limit in Elasticsearch.
 
 The IDs query in Elasticsearch allows you to query documents by their `_id` field. Elasticsearch does not expose a separate setting just for the number of values in an `ids` query, but the same use case is often implemented with a `terms` query on `_id`, where `index.max_terms_count` applies. This guide explains how to configure that limit and provides alternatives for large ID sets.
 

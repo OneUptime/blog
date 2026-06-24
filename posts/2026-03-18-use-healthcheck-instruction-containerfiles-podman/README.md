@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Podman, Containerfile, HealthCheck, Container Monitoring, DevOps
 
-Description: Learn how to use the HEALTHCHECK instruction in Containerfiles for Podman to monitor container health, detect failures, and integrate with automatic recovery policies.
+Description: Learn how to use the HEALTHCHECK instruction in Containerfiles for Podman to monitor container health, detect failures, and enable automatic recovery.
 
 ---
 

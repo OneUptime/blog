@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, SpanProcessor, Request Context, SDK
 
-Description: Build a custom OpenTelemetry SpanProcessor that adds request-scoped attributes to spans before they end for complete request context.
+Description: Build a custom OpenTelemetry SpanProcessor that adds request-scoped attributes to spans at end time for complete request context.
 
 Some attributes are not available when a span starts. The HTTP response status code, the number of database rows returned, or the total bytes processed are only known when the operation completes. While you can set these in your application code before calling `span.end()`, a custom SpanProcessor can centralize this logic and ensure every span gets the right attributes automatically before export.
 

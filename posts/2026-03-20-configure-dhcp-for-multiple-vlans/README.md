@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: DHCP, VLAN, Networking, Multi-VLAN, Sysadmin
 
-Description: Configuring DHCP for multiple VLANs usually means one scope per VLAN subnet, served either by a centralized DHCP server via relay agents, by separate DHCP servers, or by DHCP running on the router or switch itself.
+Description: Configuring DHCP for multiple VLANs requires either multiple DHCP servers or relay agents that forward requests to a single centralized server, with one scope per VLAN subnet.
 
 ## Architecture Options
 

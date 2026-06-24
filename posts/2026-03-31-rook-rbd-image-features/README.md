@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rook, Ceph, Kubernetes, RBD, ImageFeature, CSI
 
-Description: Learn which RBD image features to enable in Rook for snapshots, cloning, and mirroring, and how to configure them in StorageClass definitions.
+Description: Learn which RBD image features to enable in Rook for snapshots, cloning, mirroring, and encryption, and how to configure them in StorageClass definitions.
 
 ---
 

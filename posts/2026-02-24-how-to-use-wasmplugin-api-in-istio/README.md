@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Istio, WASM, WasmPlugin, API, Kubernetes, Service Mesh
 
-Description: A complete walkthrough of the Istio WasmPlugin API including common fields, configuration options, and practical deployment examples.
+Description: A complete walkthrough of the Istio WasmPlugin API including all fields, configuration options, and practical deployment examples.
 
 ---
 

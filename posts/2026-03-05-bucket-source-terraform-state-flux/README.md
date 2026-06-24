@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Flux CD, GitOps, Kubernetes, Terraform, Bucket, Infrastructure as Code
 
-Description: Learn how to use Flux CD Bucket sources to read Terraform-generated manifests from object storage and use infrastructure outputs to configure Kubernetes deployments.
+Description: Learn how to use Flux CD Bucket sources to read Terraform state from object storage and use infrastructure outputs to configure Kubernetes deployments.
 
 ---
 

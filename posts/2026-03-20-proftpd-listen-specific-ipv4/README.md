@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: ProFTPD, FTP, IPv4, Listen, Configuration, Server
 
-Description: Configure ProFTPD to listen on a specific IPv4 address using the DefaultAddress and SocketBindTight directives, bind to a single interface, and verify the configuration.
+Description: Configure ProFTPD to listen on a specific IPv4 address using the ServerAddress and Port directives, bind to a single interface, and verify the configuration.
 
 ## Introduction
 

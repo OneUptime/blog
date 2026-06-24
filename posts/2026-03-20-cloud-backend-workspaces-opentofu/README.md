@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Cloud Backend, Workspaces, Terraform Cloud, Multi-Environment
 
-Description: Learn how to configure and manage HCP Terraform workspaces with the OpenTofu cloud backend for multi-environment deployments, including workspace naming, tagging, and variable sets.
+Description: Learn how to configure and manage Terraform Cloud workspaces with the OpenTofu cloud backend for multi-environment deployments, including workspace naming, tagging, and variable sets.
 
 ## Introduction
 

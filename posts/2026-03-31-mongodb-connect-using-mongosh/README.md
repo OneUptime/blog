@@ -98,7 +98,7 @@ mongosh "mongodb://localhost:27017" --eval "db.runCommand({ping:1})" --quiet
 
 Output:
 
-```
+```text
 { ok: 1 }
 ```
 

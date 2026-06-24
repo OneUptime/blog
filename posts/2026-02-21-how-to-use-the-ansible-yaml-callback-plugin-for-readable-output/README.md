@@ -1,10 +1,10 @@
-# How to Use Ansible YAML Output Formatting for Readable Output
+# How to Use the Ansible yaml Callback Plugin for Readable Output
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, Callback Plugins, YAML, Output Formatting
 
-Description: Learn how to use Ansible's YAML result formatting to transform the default JSON-style output into human-readable YAML format for easier debugging.
+Description: Learn how to use the Ansible yaml callback plugin to transform the default JSON output into human-readable YAML format for easier debugging.
 
 ---
 

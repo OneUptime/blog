@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, AWS, CloudTrail, Compliance, Infrastructure as Code
 
-Description: Learn how to create AWS CloudTrail organization trails with OpenTofu to capture management events and supported data events across your AWS Organization for centralized auditing.
+Description: Learn how to create AWS CloudTrail organization trails with OpenTofu to capture API activity across all accounts in your AWS Organization for centralized auditing.
 
 Organization trails automatically capture management events across every account in your AWS Organization and can also capture supported data events when you add event selectors. Create the trail from your organization management account and deliver logs to a central S3 bucket. Managing it in OpenTofu ensures consistent audit logging coverage with tamper-evident log validation.
 

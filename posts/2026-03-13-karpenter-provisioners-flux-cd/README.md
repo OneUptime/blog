@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Flux CD, Karpenter, AWS, Kubernetes, Node Provisioning, Autoscaling, GitOps
 
-Description: Manage Karpenter NodePool configurations declaratively with Flux CD, enabling GitOps-driven node autoscaling for diverse workload types.
+Description: Manage Karpenter provisioner configurations declaratively with Flux CD, enabling GitOps-driven node autoscaling for diverse workload types.
 
 ---
 

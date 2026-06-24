@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Podman, Networking, Security, Network Segmentation, Container
 
-Description: Learn how to implement network segmentation with Podman using custom networks, internal networks, and isolation strategies to protect container communication.
+Description: Learn how to implement network segmentation with Podman using custom networks, internal networks, firewall rules, and isolation strategies to protect container communication.
 
 ---
 

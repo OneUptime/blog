@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: MySQL, Installation, Amazon Linux, AWS, Database
 
-Description: Install MySQL on Amazon Linux 2023 using the official MySQL community repository, open the firewall, and prepare the instance for application use.
+Description: Install MySQL 8.0 on Amazon Linux 2023 using the official MySQL community repository, open the firewall, and prepare the instance for application use.
 
 ---
 

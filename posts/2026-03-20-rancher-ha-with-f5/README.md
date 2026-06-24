@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rancher, F5 BIG-IP, High Availability, Enterprise, Load Balancer, SSL
 
-Description: Configure F5 BIG-IP as the enterprise load balancer for Rancher HA with health monitors, persistence profiles, and SSL passthrough configuration.
+Description: Configure F5 BIG-IP as the enterprise load balancer for Rancher HA with iRules for health checking, persistence profiles, and SSL offloading configuration.
 
 ## Introduction
 

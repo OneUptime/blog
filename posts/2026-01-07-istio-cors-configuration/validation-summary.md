@@ -19,6 +19,7 @@ Tutorial / Guide
 - Istio `istioctl` command reference: https://istio.io/latest/docs/reference/commands/istioctl/
 - Istio standard metrics reference: https://istio.io/latest/docs/reference/config/metrics/
 - Istio custom metrics documentation: https://istio.io/latest/docs/tasks/observability/metrics/customize-metrics/
+- Istio v1 APIs announcement: https://istio.io/latest/blog/2024/v1-apis/
 - Envoy CORS filter documentation: https://www.envoyproxy.io/docs/envoy/latest/configuration/http/http_filters/cors_filter
 - MDN Access-Control-Max-Age reference: https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Access-Control-Max-Age
 - MDN Access-Control-Expose-Headers reference: https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Access-Control-Expose-Headers
@@ -26,15 +27,8 @@ Tutorial / Guide
 - MDN CORS guide: https://developer.mozilla.org/en-US/docs/Web/HTTP/Guides/CORS
 
 ## Issues Found
-- The prefix-based origin example claimed `prefix: "https://"` allowed HTTPS subdomains of `example.com`. That actually matches any HTTPS origin, so the example was changed to a controlled preview hostname prefix.
-- The preflight flow diagram implied unmatched preflights return 403. Istio's `unmatchedPreflights` default is to forward unmatched preflights upstream, so the diagram was corrected.
-- The `maxAge` guidance said most browsers cap preflight caching at 24 hours. MDN documents Firefox at 24 hours and Chromium at 2 hours, so the guidance and example value were corrected.
-- The credentials example exposed `set-cookie`. Browsers filter `Set-Cookie` from frontend JavaScript even if listed in `Access-Control-Expose-Headers`, so it was removed.
-- The development example used wildcard `allowHeaders` and `exposeHeaders` with `allowCredentials: true`. Browser wildcard semantics do not apply to credentialed requests, so those were replaced with explicit development headers.
-- The wildcard-origin anti-pattern used `exact: "*"`, which is misleading for Istio's `StringMatch`. It was changed to a catch-all regex example and clarified.
-- The route inspection `jq` command assumed a fixed route config name and location. It was replaced with a generic search for CORS config objects in the route dump.
-- The debugging VirtualService attempted to set a response header from `%REQ(origin)%`, which is an Envoy access-log formatter rather than a VirtualService header substitution. It was replaced with a fixed debug route marker.
-- The PromQL examples filtered by `request_method`, which is not a default Istio metric label. A Telemetry API example was added to create a bounded `request_method` tag for the ingress gateway before using the queries.
+- The prerequisite version said Istio 1.18+ without caveating the `telemetry.istio.io/v1` example. Istio promoted Telemetry APIs to v1 in 1.22, so the prerequisite and monitoring section now state that the Telemetry API example requires Istio 1.22+.
+- The first PromQL comment claimed the query counted preflights by origin, but the query grouped by `source_workload`. The comment was corrected to match the query.
 
 ## Review Notes
 The Istio examples use current `networking.istio.io/v1beta1` resources and the CORS fields documented on `VirtualService.corsPolicy`. The EnvoyFilter access-log example is technically plausible but version-sensitive; for production documentation, Istio's Telemetry API access logging may be preferable in newer installations.

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Vertex AI, Artifact Registry, MLOps, Reproducibility, Google Cloud
 
-Description: Learn how to build reproducible machine learning pipelines using Vertex AI Pipelines and Artifact Registry for consistent and auditable ML workflows.
+Description: Learn how to build fully reproducible machine learning pipelines using Vertex AI Pipelines and Artifact Registry for consistent and auditable ML workflows.
 
 ---
 

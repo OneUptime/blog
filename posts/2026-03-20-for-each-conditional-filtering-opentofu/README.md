@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Terraform, for_each, Filtering, Conditional, HCL
 
-Description: Learn how to filter collection inputs before passing them to for_each in OpenTofu, creating only the resources that meet your specified criteria.
+Description: Learn how to filter map and list inputs before passing them to for_each in OpenTofu, creating only the resources that meet your specified criteria.
 
 ## Introduction
 

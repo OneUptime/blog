@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Docker, IPv6, ULA, Unique Local Address, Internal Networks, RFC 4193
 
-Description: Configure Docker networks with RFC 4193 Unique Local Addresses (ULA) for private container-to-container communication, understand ULA structure, and generate ULA prefixes for your Docker...
+Description: Configure Docker networks with RFC 4193 Unique Local Addresses (ULA) for private container-to-container communication, understand ULA structure, and generate unique ULA prefixes for your Docker...
 
 ## Introduction
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GCP, Cloud SQL, Read Replica, Disaster Recovery, High Availability, Cross-Region
 
-Description: Learn how to set up cross-region read replicas in Cloud SQL for disaster recovery, reduced read latency, and manual failover in multi-region architectures.
+Description: Learn how to set up cross-region read replicas in Cloud SQL for disaster recovery, reduced read latency, and automated failover in multi-region architectures.
 
 ---
 

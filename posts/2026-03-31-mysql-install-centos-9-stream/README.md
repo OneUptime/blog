@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: MySQL, Installation, CentOS, Linux, Database
 
-Description: Install MySQL 8.4 LTS or 8.0 on CentOS 9 Stream using the official MySQL RPM repository, configure firewalld, and prepare the server for production workloads.
+Description: Install MySQL 8.0 on CentOS 9 Stream using the official MySQL RPM repository, configure firewalld, and prepare the server for production workloads.
 
 ---
 
@@ -15,8 +15,8 @@ CentOS 9 Stream ships with MariaDB in its default AppStream repository. To insta
 ```mermaid
 flowchart LR
     A[Download MySQL repo RPM] --> B[dnf install mysql-community-server]
-    B --> C[mysqld --initialize]
-    C --> D[systemctl start mysqld]
+    B --> C[systemctl start mysqld]
+    C --> D[First start auto-initializes data dir]
     D --> E[Retrieve temp password]
     E --> F[mysql_secure_installation]
     F --> G[MySQL ready]

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, Networking, Troubleshooting
 
-Description: Monitoring and alerting setup to detect calico-node CrashLoopBackOff events early using Prometheus metrics and Kubernetes BackOff events.
+Description: Monitoring and alerting setup to detect calico-node CrashLoopBackOff events early using Prometheus metrics, Kubernetes events, and log-based detection.
 
 ---
 

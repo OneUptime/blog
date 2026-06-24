@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: DS-Lite, IPv6, IPv4, ISP, Tunneling, AFTR, B4
 
-Description: Configure DS-Lite (Dual-Stack Lite) for ISP deployments, setting up the AFTR (carrier NAT44 plus IPv4-in-IPv6 tunnel endpoint) and B4 (customer-premises tunnel endpoint) for IPv4 connectivity over IPv6-only...
+Description: Configure DS-Lite (Dual-Stack Lite) for ISP deployments, setting up the AFTR (carrier NAT44 over IPv6 tunnel) and B4 (customer-premises softwire concentrator) for IPv4 connectivity over IPv6-only...
 
 ## Introduction
 

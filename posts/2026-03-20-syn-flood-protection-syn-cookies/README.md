@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: SYN Flood, SYN Cookies, Linux, Security, DDoS, TCP
 
-Description: Enable and configure TCP SYN cookies on Linux to defend against SYN flood DDoS attacks while preserving resources for legitimate connections.
+Description: Enable and configure TCP SYN cookies on Linux to defend against SYN flood DDoS attacks without dropping legitimate connections.
 
 A SYN flood exhausts the server's TCP connection backlog by sending thousands of SYN packets without completing the handshake. SYN cookies allow the server to handle these connections without maintaining state, preserving resources for legitimate users.
 

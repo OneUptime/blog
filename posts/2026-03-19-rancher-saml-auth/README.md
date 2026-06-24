@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rancher, Kubernetes, Authentication, SAML, SSO
 
-Description: A practical guide to configuring SAML-based single sign-on authentication in Rancher with Rancher's supported SAML identity providers.
+Description: A practical guide to configuring SAML-based single sign-on authentication in Rancher with any SAML 2.0 identity provider.
 
 SAML (Security Assertion Markup Language) enables single sign-on (SSO) authentication between Rancher and your identity provider. This allows users to authenticate once with their corporate identity provider and gain access to Rancher without entering separate credentials. This guide covers the general setup process for Rancher's supported SAML providers, such as AD FS, PingIdentity, Keycloak, Okta, and Shibboleth.
 

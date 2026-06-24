@@ -2,9 +2,9 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Go, IPv6, Network Tools, CLI, Ping, DNS
+Tags: Go, IPv6, Network Tools, CLI, Ping, Traceroute
 
-Description: Build practical IPv6 network tools in Go including a ping utility, port scanner, and DNS lookup CLI.
+Description: Build practical IPv6 network tools in Go including ping6, traceroute6, and port scanner as command-line utilities.
 
 ## IPv6 Ping Tool
 

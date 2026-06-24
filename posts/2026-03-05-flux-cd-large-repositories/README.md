@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Flux CD, GitOps, Kubernetes, Performance, Large Repositories, Optimization
 
-Description: A practical guide to configuring Flux CD for efficient operation with large Git repositories, covering shallow branch checkouts, sparse checkouts, exclude filters, and OCI alternatives.
+Description: A practical guide to configuring Flux CD for efficient operation with large Git repositories, covering shallow clones, sparse checkouts, include/exclude filters, and OCI alternatives.
 
 ---
 

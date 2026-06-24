@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Cilium, Observability, Prometheus, TLS, Security, mTLS
 
-Description: Harden the TLS configuration for Cilium Operator Prometheus metrics with mutual TLS, certificate rotation, and access controls to protect sensitive cluster metrics.
+Description: Harden the TLS configuration for Cilium Operator Prometheus metrics with mutual TLS, certificate rotation, cipher suite restrictions, and access controls to protect sensitive cluster metrics.
 
 ---
 

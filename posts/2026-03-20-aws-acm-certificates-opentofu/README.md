@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, AWS, ACM, TLS, SSL, Certificate, Route53, Infrastructure as Code
 
-Description: Learn how to request, validate, and attach AWS Certificate Manager (ACM) certificates using OpenTofu with automatic DNS validation via Route 53 and a separate `us-east-1` certificate for CloudFront.
+Description: Learn how to request, validate, and attach AWS Certificate Manager (ACM) certificates using OpenTofu with automatic DNS validation via Route 53 and multi-region certificate replication for CloudFront.
 
 ---
 

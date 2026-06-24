@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, Networking, Troubleshooting
 
-Description: Fix Calico pod CIDR conflicts by replacing overlapping IP pools and reassigning pod IPs from the new CIDR.
+Description: Fix Calico pod CIDR conflicts by replacing overlapping IP pools, reassigning pod IPs from the new CIDR, and updating routing configuration.
 
 ---
 

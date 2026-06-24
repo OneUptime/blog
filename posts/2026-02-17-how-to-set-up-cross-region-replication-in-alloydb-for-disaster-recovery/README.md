@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GCP, AlloyDB, PostgreSQL, Disaster Recovery, Cross-Region Replication
 
-Description: Learn how to configure cross-region replication in AlloyDB for PostgreSQL to protect your database against regional outages with secondary cluster promotion.
+Description: Learn how to configure cross-region replication in AlloyDB for PostgreSQL to protect your database against regional outages with automated failover capabilities.
 
 ---
 

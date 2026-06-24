@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubewarden, Kubernetes, PodSecurity, Standard, Compliance
 
-Description: Learn how to enforce Baseline- and Restricted-aligned Pod Security checks with Kubewarden policies for fine-grained admission control.
+Description: Learn how to implement Kubernetes Pod Security Standards (Privileged, Baseline, and Restricted) using Kubewarden policies for fine-grained admission control.
 
 ## Introduction
 

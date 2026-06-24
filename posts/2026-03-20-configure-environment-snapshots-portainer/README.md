@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Snapshot, Configuration, Performance, Environment
 
-Description: Configure Portainer snapshot intervals to balance UI freshness with system performance for standard and Edge Async environments.
+Description: Configure the snapshot frequency and behavior for individual Portainer environments to balance UI freshness with system performance.
 
 ---
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Trivy, Security Scanning, Infrastructure as Code, IaC, DevSecOps
 
-Description: Learn how to use Trivy to scan OpenTofu IaC files for security misconfigurations and exposed secrets.
+Description: Learn how to use Trivy to scan OpenTofu IaC files for security vulnerabilities and compliance issues.
 
 ## Introduction
 

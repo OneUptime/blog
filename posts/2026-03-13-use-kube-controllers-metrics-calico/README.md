@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, Networking, Observability
 
-Description: Use Calico kube-controllers Prometheus metrics to monitor IPAM allocation and process health.
+Description: Use Calico kube-controllers Prometheus metrics to monitor policy distribution and synchronization health.
 
 ---
 

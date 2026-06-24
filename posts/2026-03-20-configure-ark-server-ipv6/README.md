@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: ARK Survival Evolved, IPv6, Game Server, Steam, Linux, Self-Hosted Gaming
 
-Description: Set up and configure an ARK: Survival Evolved dedicated server on Linux, including the standard ARK ports to allow on IPv6-capable hosts.
+Description: Set up and configure an ARK: Survival Evolved dedicated server to support IPv6 player connections, covering SteamCMD installation, GameUserSettings, and firewall rules.
 
 ---
 

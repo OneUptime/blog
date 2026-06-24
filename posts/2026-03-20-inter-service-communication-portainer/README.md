@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Portainer, Docker, Microservice, Networking, Communication
+Tags: Portainer, Docker, Microservice, Networking, Service Mesh, Communication
 
 Description: Configure reliable inter-service communication between Docker containers using shared networks, DNS resolution, and message queues managed via Portainer.
 

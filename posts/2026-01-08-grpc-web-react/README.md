@@ -1700,7 +1700,7 @@ sequenceDiagram
 
 ### Nginx Configuration
 
-> **Important:** Nginx is *not* a drop-in replacement for Envoy's gRPC-Web filter. Nginx's `ngx_http_grpc_module` (`grpc_pass`) proxies native gRPC over HTTP/2, but it does **not** perform the gRPC-Web protocol translation that browsers require — it does not move the gRPC status trailers into the response body, so a gRPC-Web client cannot reliably read whether a call succeeded, and server streaming does not work correctly. Use a gRPC-Web-aware proxy (Envoy, or the Improbable/community gRPC-Web modules) for the translation. The Nginx config below is only useful as a front-facing reverse proxy for TLS termination and CORS *in front of* Envoy, not in place of it.
+> **Important:** Nginx is *not* a drop-in replacement for Envoy's gRPC-Web filter. Nginx's `ngx_http_grpc_module` (`grpc_pass`) proxies native gRPC over HTTP/2, but it does **not** perform the gRPC-Web protocol translation that browsers require - it does not move the gRPC status trailers into the response body, so a gRPC-Web client cannot reliably read whether a call succeeded, and server streaming does not work correctly. Use a gRPC-Web-aware proxy (Envoy, or the Improbable/community gRPC-Web modules) for the translation. The Nginx config below is only useful as a front-facing reverse proxy for TLS termination and CORS *in front of* Envoy, not in place of it.
 
 ```nginx
 upstream grpc_backend {

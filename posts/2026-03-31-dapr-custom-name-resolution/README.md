@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Dapr, Name Resolution, Custom Component, Plugin, Service Discovery
 
-Description: Learn how to build and register a custom name resolution component in Dapr using the components-contrib Resolver interface for specialized service discovery needs.
+Description: Learn how to build and register a custom name resolution component in Dapr using the pluggable component SDK for specialized service discovery needs.
 
 ---
 

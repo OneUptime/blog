@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Traceroute, TCP, Linux, Networking, Firewall, Diagnostic
 
-Description: Use tcptraceroute to trace network paths using TCP SYN packets instead of UDP or ICMP, helping with firewalls that block traditional traceroute probes.
+Description: Use tcptraceroute to trace network paths using TCP SYN packets instead of UDP or ICMP, bypassing firewalls that block traditional traceroute probes.
 
 Standard traceroute often hits firewalls that block ICMP or high UDP ports, showing rows of asterisks. tcptraceroute uses TCP SYN packets on real service ports (80, 443, 22), making it useful when you want probes that look more like application traffic on that destination port.
 

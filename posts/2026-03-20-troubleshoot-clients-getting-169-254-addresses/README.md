@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: DHCP, APIPA, Troubleshooting, Networking, 169.254, Network Diagnostics
 
-Description: When a client shows a 169.254.x.x IPv4 link-local/APIPA address, it usually failed to obtain a DHCP lease, indicating a DHCP communication problem that requires...
+Description: When a client shows a 169.254.x.x address, it failed to obtain a DHCP lease and fell back to Automatic Private IP Addressing (APIPA), indicating a DHCP communication problem that requires...
 
 ## Why 169.254.x.x Appears
 

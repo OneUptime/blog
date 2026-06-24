@@ -1,10 +1,10 @@
-# How to Deploy Azure Health Data Services FHIR Service with Custom Search Parameters for Clinical Data
+# How to Deploy Azure API for FHIR with Custom Search Parameters for Clinical Data
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Azure FHIR, Healthcare, Clinical Data, HL7 FHIR, Azure Health Data Services, Search Parameters, Interoperability
 
-Description: Deploy the FHIR service in Azure Health Data Services and configure custom search parameters to enable efficient querying of clinical data for healthcare applications.
+Description: Deploy Azure API for FHIR and configure custom search parameters to enable efficient querying of clinical data for healthcare applications.
 
 ---
 

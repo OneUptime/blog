@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: IPv4, Pub/Sub, ZeroMQ, Python, Networking, Messaging
 
-Description: Learn how to implement the publish-subscribe pattern over IPv4 using ZeroMQ PUB/SUB sockets, and compare it with an in-process Python broker and Redis pub/sub for topic filtering and fanout messaging.
+Description: Learn how to implement the publish-subscribe pattern over IPv4 using ZeroMQ PUB/SUB sockets and a custom broker, with topic filtering, fanout messaging, and fault tolerance.
 
 ## ZeroMQ PUB/SUB
 

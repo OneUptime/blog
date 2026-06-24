@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Cilium, Debugging, Kubernetes, Shell, Networking, DevOps
 
-Description: Learn how to use the cilium-agent shell command to interactively inspect the Cilium agent's registered debug commands and StateDB tables.
+Description: Learn how to use the cilium-agent shell command to interactively inspect and debug the Cilium agent's internal state, endpoints, and datapath configuration.
 
 ---
 

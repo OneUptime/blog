@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Identity, Linux
 
-Description: Step-by-step guide on install and configure OpenLDAP client access using Red Hat Enterprise Linux 9.
+Description: Step-by-step guide on install and configure openldap using Red Hat Enterprise Linux 9.
 
 ---
 

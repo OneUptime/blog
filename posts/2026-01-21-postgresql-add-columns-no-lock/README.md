@@ -1,10 +1,10 @@
-# How to Add Columns Without Long Locks in PostgreSQL
+# How to Add Columns Without Locking in PostgreSQL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: PostgreSQL, Schema Change, Zero Downtime, DDL, Migration
 
-Description: A guide to adding columns to PostgreSQL tables without long blocking operations, covering safe operations and multi-step migration strategies.
+Description: A guide to adding columns to PostgreSQL tables without blocking queries, covering safe operations and multi-step migration strategies.
 
 ---
 

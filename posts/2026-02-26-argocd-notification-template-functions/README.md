@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: ArgoCD, GitOps, Kubernetes, Notification, Go Templates
 
-Description: Learn how to use ArgoCD notification template functions including time formatting, repo helpers, string manipulation, and JSON helpers for building dynamic notifications.
+Description: Learn how to use ArgoCD notification template functions including time formatting, repo helpers, string manipulation, and custom functions for building dynamic notifications.
 
 ---
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Terraform, Provider Development, Go, DevOps, Infrastructure as Code
 
-Description: A step-by-step tutorial on creating a custom Terraform provider from scratch using Go, covering project setup, compilation, and local testing.
+Description: A step-by-step tutorial on creating a custom Terraform provider from scratch using Go, covering project setup, compilation, local testing, and publishing to the registry.
 
 ---
 

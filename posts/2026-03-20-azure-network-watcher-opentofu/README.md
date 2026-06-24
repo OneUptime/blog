@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Azure, Network Watcher, Flow Logs, Diagnostic, Monitoring, Infrastructure as Code
 
-Description: Learn how to configure Azure Network Watcher with OpenTofu to enable virtual network flow logs, connection monitoring, and network diagnostic capabilities for your Azure infrastructure.
+Description: Learn how to configure Azure Network Watcher with OpenTofu to enable NSG flow logs, connection monitoring, and network diagnostic capabilities for your Azure infrastructure.
 
 ## Introduction
 

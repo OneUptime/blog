@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Nomad, Cluster, Container Orchestration, HashiCorp
 
-Description: Learn how to deploy a HashiCorp Nomad cluster on AWS using OpenTofu with Consul integration, ACL policy management, and auto-scaling client nodes for workload orchestration.
+Description: Learn how to deploy a HashiCorp Nomad cluster on AWS using OpenTofu with Consul integration, ACL bootstrapping, and auto-scaling client nodes for workload orchestration.
 
 ## Introduction
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Azure, Function, IPv6, Serverless, VNet Integration, Dual-Stack
 
-Description: Configure Azure Functions for inbound IPv6 and preview outbound IPv6 connectivity on supported hosting plans.
+Description: Configure Azure Functions with VNet integration for IPv6 connectivity and dual-stack outbound networking.
 
 ## Introduction
 

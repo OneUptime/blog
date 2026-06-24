@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Calicoctl, Datastore Migration, Validation, Kubernetes
 
-Description: Verify that calicoctl datastore migrate import completed successfully by checking resource integrity, counts, and pod IP assignment.
+Description: Verify that calicoctl datastore migrate import completed successfully by checking resource integrity, counts, and cluster connectivity.
 
 ---
 

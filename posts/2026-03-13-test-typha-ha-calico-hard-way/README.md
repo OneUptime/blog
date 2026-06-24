@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Typha, Kubernetes, Networking, High Availability, Testing, Hard Way
 
-Description: Validate Typha HA by deliberately killing pods, draining nodes, running rolling restarts, and testing connection rebalancing - confirming that Felix agents maintain policy enforcement continuity through each disruption in a...
+Description: Validate Typha HA by deliberately killing pods, draining nodes, and simulating zone failures - confirming that Felix agents maintain policy enforcement continuity through each disruption in a...
 
 ---
 

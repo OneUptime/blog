@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, IPAM, Floating IP, Networking
 
-Description: Validate that floating IPs in Calico are correctly assigned and can be moved between pods as expected.
+Description: Validate that floating IPs in Calico are correctly routed and can failover between pods as expected.
 
 ---
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Flux CD, GitOps, Kubernetes, Resource Conflicts, Kustomization, Ownership
 
-Description: Learn how Flux CD applies resources when multiple Kustomizations attempt to manage the same Kubernetes resource.
+Description: Learn how Flux CD detects and handles resource conflicts when multiple Kustomizations attempt to manage the same Kubernetes resource.
 
 ---
 

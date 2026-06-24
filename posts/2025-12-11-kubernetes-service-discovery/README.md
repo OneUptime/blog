@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Service Discovery, DNS, CoreDNS, Microservice
 
-Description: Learn how to implement service discovery in Kubernetes using built-in DNS, Services, and EndpointSlices, with practical examples for inter-service communication.
+Description: Learn how to implement service discovery in Kubernetes using built-in DNS, Services, and Endpoints, with practical examples for inter-service communication.
 
 ---
 

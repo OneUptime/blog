@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rook, Ceph, D3N, Cache, RGW, Multi-Layer, Performance
 
-Description: Set up multi-layer caching with D3N in Ceph RGW combining local SSD cache with an optional Nginx reverse proxy for maximum read performance.
+Description: Set up multi-layer caching with D3N in Ceph RGW combining local SSD cache, Redis coordination, and optional CDN integration for maximum read performance.
 
 ---
 

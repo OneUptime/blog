@@ -86,16 +86,22 @@ func (c *ClientSideCache) setupTracking() error {
         return fmt.Errorf("enable tracking: %w", err)
     }
 
-    // Listen for invalidation messages in background
+    // Listen for invalidation messages in background.
+    // Invalidation messages from __redis__:invalidate carry an array of
+    // affected keys, which go-redis exposes on msg.PayloadSlice (not
+    // msg.Payload). An empty slice (e.g. after FLUSHALL/FLUSHDB) means the
+    // whole database was flushed, so drop the entire local cache.
     go func() {
         ch := pubsub.Channel()
         for msg := range ch {
-            if msg.Payload == "" {
+            if len(msg.PayloadSlice) == 0 {
                 c.FlushLocal()
                 continue
             }
-            c.cache.Delete(msg.Payload)
-            fmt.Printf("Invalidated key: %s\n", msg.Payload)
+            for _, key := range msg.PayloadSlice {
+                c.cache.Delete(key)
+                fmt.Printf("Invalidated key: %s\n", key)
+            }
         }
     }()
 

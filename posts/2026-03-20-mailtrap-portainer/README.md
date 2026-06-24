@@ -1,10 +1,10 @@
-# How to Deploy Mailpit via Portainer
+# How to Deploy Mailtrap via Portainer
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Docker, Mailtrap, Email Testing, Self-Hosted, Development
 
-Description: Deploy a self-hosted SMTP testing server using Mailpit via Portainer for safe email testing in development and staging environments.
+Description: Deploy a self-hosted Mailtrap-compatible SMTP testing server using Mailpit via Portainer for safe email testing in development and staging environments.
 
 ## Introduction
 

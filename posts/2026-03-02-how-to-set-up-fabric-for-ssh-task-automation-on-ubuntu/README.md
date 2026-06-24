@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Ubuntu, Fabric, SSH, Automation, Python, DevOps
 
-Description: Learn how to install and use modern Fabric (2.x/3.x) on Ubuntu for SSH-based task automation, covering remote command execution, file transfers, and multi-host deployments.
+Description: Learn how to install and use Fabric 2 on Ubuntu for SSH-based task automation, covering remote command execution, file transfers, and multi-host deployments.
 
 ---
 

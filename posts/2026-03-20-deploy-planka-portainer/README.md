@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Planka, Kanban, Docker, Self-Hosted
 
-Description: Deploy Planka Kanban board using Portainer as a self-hosted Trello alternative for project management.
+Description: Deploy Planka open-source Kanban board using Portainer as a self-hosted Trello alternative for project management.
 
 ## Introduction
 

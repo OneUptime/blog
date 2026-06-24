@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Terraform, ACM, TLS, AWS, Module, Certificate
 
-Description: Learn how to design a reusable ACM certificate module for OpenTofu that handles certificate requests, DNS validation, and the DNS records ACM reuses for automatic renewal.
+Description: Learn how to design a reusable ACM certificate module for OpenTofu that handles certificate request, DNS validation, and automatic renewal configuration.
 
 ## Introduction
 

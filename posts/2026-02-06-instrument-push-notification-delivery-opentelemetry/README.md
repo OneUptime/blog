@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Push Notification, APNs, FCM
 
-Description: Instrument push notification delivery across APNS, FCM, and Web Push providers with OpenTelemetry to track provider acceptance rates and latency.
+Description: Instrument push notification delivery across APNS, FCM, and Web Push providers with OpenTelemetry to track delivery rates and latency.
 
 Push notifications are the primary way social media platforms re-engage users. But the delivery path is complex: your backend generates the notification, routes it to the correct provider (Apple Push Notification Service, Firebase Cloud Messaging, or Web Push), and the provider accepts it for delivery to the device. Each step can fail silently. OpenTelemetry instrumentation gives you visibility into provider acceptance rates, provider latency, and failure modes across all channels.
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RKE2, Kubernetes, Rancher, Monitoring, Observability, Prometheus
 
-Description: Learn how to monitor the health of your RKE2 cluster using built-in tools, Prometheus, and Grafana.
+Description: Learn how to monitor the health of your RKE2 cluster using built-in tools, Prometheus, Grafana, and OneUptime.
 
 ## Introduction
 

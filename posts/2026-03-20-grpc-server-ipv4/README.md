@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: gRPC, IPv4, Python, Go, Networking, Microservice
 
-Description: Learn how to configure a gRPC server to listen on a specific IPv4 address in Python and Go, including bind address syntax, TLS configuration, and graceful shutdown.
+Description: Learn how to configure a gRPC server to listen on a specific IPv4 address in Python and Go, including bind address syntax, TLS configuration, and health checking setup.
 
 ## gRPC Address Syntax
 

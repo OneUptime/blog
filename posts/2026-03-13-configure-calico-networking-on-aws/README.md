@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, Networking, AWS, Cloud, VPC, Configuration
 
-Description: A complete guide to configuring Calico networking on AWS self-managed Kubernetes clusters, covering VPC routing, IP pool configuration, and encapsulation setup for optimal cloud integration.
+Description: A complete guide to configuring Calico networking on AWS self-managed Kubernetes clusters, covering VPC routing, IP pool configuration, and BGP setup for optimal cloud integration.
 
 ---
 

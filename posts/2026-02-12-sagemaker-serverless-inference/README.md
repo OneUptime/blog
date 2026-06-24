@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: AWS, SageMaker, Serverless, Machine Learning, Model Deployment
 
-Description: Deploy machine learning models with SageMaker Serverless Inference for automatic scaling to zero and pay-per-use pricing without managing infrastructure.
+Description: Deploy machine learning models with SageMaker Serverless Inference for automatic scaling to zero and pay-per-request pricing without managing infrastructure.
 
 ---
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: IPv6, Router Advertisement, SLAAC, NDP, Troubleshooting, Network Diagnostics
 
-Description: Diagnose why IPv6 Router Advertisements are not being received, causing hosts to have no default route or no global addresses via SLAAC.
+Description: Diagnose why IPv6 Router Advertisements are not being received, causing hosts to have no default route or global addresses via SLAAC.
 
 ## Introduction
 

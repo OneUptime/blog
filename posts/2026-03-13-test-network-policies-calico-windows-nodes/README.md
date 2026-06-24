@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Windows, Networking, Network Policies
+Tags: Calico, Kubernetes, Window, Networking, Network Policies
 
 Description: A guide to testing Calico network policies on Windows nodes, including cross-OS policy enforcement between Windows and Linux pods.
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, Networking, Metric, Grafana, Automation
 
-Description: Automate Calico Grafana dashboard provisioning using ConfigMaps, a Grafana dashboard sidecar, and GitOps to ensure consistent visualization across all clusters.
+Description: Automate Calico Grafana dashboard provisioning using ConfigMaps, Grafana Operator, and GitOps to ensure consistent visualization across all clusters.
 
 ---
 

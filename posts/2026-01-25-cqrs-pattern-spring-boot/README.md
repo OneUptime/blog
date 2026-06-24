@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Java, Spring Boot, CQRS, Architecture
+Tags: Java, Spring Boot, CQRS, Architecture, Event Sourcing
 
 Description: A practical guide to implementing the Command Query Responsibility Segregation (CQRS) pattern in Spring Boot.
 

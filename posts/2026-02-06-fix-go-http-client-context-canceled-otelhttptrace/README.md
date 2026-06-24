@@ -1,10 +1,10 @@
-# How to Fix Go HTTP Client Spans Showing 'context canceled' When Using otelhttptrace
+# How to Fix Go HTTP Client Spans Showing 'context canceled' Due to otelhttptrace
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Go, HTTP Client, Race Condition
 
-Description: Resolve timeout-related Go HTTP client instrumentation errors where response body reads are recorded as context canceled or deadline exceeded.
+Description: Resolve race conditions in Go HTTP client instrumentation where otelhttptrace causes context canceled errors on timeouts.
 
 If you are using `otelhttp` with `otelhttptrace` to instrument your Go HTTP client and you have timeouts configured, you might see spans with a "context canceled" or "context deadline exceeded" status when the timeout interrupts the response body read. This is a race between the HTTP client timeout mechanism and response processing.
 

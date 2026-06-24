@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Percona, MySQL, Kubernetes
 
-Description: Learn how to deploy Percona XtraDB Cluster on Kubernetes for MySQL high availability with synchronous multi-master replication, automatic failover, and strong data loss protection.
+Description: Learn how to deploy Percona XtraDB Cluster on Kubernetes for MySQL high availability with synchronous multi-master replication, automatic failover, and zero data loss guarantees.
 
 ---
 

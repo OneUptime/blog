@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Rust, DNS, IPv4, UDP, Networking, Protocol, std::net
+Tags: Rust, DNS, IPv4, UDP, Networking, Protocol, Std::net
 
 Description: Build a DNS A record resolver in Rust that sends UDP DNS queries directly to a resolver and parses the IPv4 address responses without external DNS libraries.
 

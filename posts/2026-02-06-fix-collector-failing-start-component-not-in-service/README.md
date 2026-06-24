@@ -1,10 +1,10 @@
-# How to Fix a Collector Component That Is Defined but Not Used
+# How to Fix Collector Failing to Start Because a Component Is Defined but Not
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Collector, Configuration, Troubleshooting
 
-Description: Fix OpenTelemetry Collector configurations where components are defined in config but not referenced in the service section.
+Description: Fix the OpenTelemetry Collector startup failure caused by components defined in config but not referenced in the service section.
 
 You write your Collector configuration, start the Collector, and a processor, receiver, or exporter appears to have no effect. In current Collector versions, defining a component in the configuration file does not enable it by itself. The component must be referenced in a pipeline under the `service` section.
 

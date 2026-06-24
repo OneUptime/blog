@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Network Mirror, Provider Distribution, Enterprise, Infrastructure
 
-Description: Learn how to set up and use provider network mirrors in OpenTofu to serve provider downloads from an internal HTTPS server, enabling centralized provider management across your organization.
+Description: Learn how to set up and use provider network mirrors in OpenTofu to serve provider downloads from an internal HTTP server, enabling centralized provider management across your organization.
 
 ## Introduction
 

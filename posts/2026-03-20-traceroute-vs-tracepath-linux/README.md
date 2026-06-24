@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Traceroute, Tracepath, Linux, Networking, MTU, Diagnostic
 
-Description: Compare traceroute and tracepath on Linux, understand when to use each, and leverage tracepath's automatic Path MTU discovery alongside hop information.
+Description: Compare traceroute and tracepath on Linux, understand when to use each, and leverage tracepath's unique ability to discover path MTU alongside hop information.
 
 Both tools map network paths but work differently. `tracepath` doesn't require root privileges and discovers Path MTU by default - making it ideal for quick diagnostics from non-privileged user accounts.
 

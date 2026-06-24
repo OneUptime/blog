@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rancher, Kubernetes, RKE, Cluster Templates, Infrastructure as Code, DevOps, Version Management
 
-Description: A comprehensive guide to building Rancher Cluster Templates for standardizing Kubernetes deployments across your organization, covering RKE templates, version enforcement, and configuration composition.
+Description: A comprehensive guide to building Rancher Cluster Templates for standardizing Kubernetes deployments across your organization, covering RKE templates, version enforcement, configuration inheritance.
 
 ---
 

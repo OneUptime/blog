@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Java, IPv4, InetAddress, Validation, Networking, Security
 
-Description: Validate IPv4 address strings in Java using InetAddress, regex, and Apache Commons Validator, with methods to check format, reachability, and address type.
+Description: Validate IPv4 address strings in Java using InetAddress, regex, and Apache Commons Net, with methods to check format, reachability, and address type.
 
 ## Introduction
 

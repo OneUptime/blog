@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: AWS, Serverless, Lambda, API Gateway, DynamoDB
 
-Description: Build a complete serverless REST API on AWS using API Gateway, Lambda, and DynamoDB with authentication, validation, error handling, and deployment.
+Description: Build a complete serverless REST API on AWS using API Gateway, Lambda, and DynamoDB with authentication, validation, error handling, and CI/CD deployment.
 
 ---
 

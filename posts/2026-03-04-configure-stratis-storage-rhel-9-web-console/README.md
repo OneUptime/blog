@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Stratis, Web Console, Cockpit, Storage, Linux
 
-Description: Learn how to manage Stratis storage pools and filesystems using the RHEL Web Console (Cockpit), providing a graphical interface for creating pools, filesystems, and common storage tasks.
+Description: Learn how to manage Stratis storage pools and filesystems using the RHEL Web Console (Cockpit), providing a graphical interface for creating pools, filesystems, and snapshots.
 
 ---
 

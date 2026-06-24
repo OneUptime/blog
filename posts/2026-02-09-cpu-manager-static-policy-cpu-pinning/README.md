@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, CPU Management, Performance
 
-Description: Configure Kubernetes CPU Manager with static policy to pin pods to specific CPU cores for guaranteed performance, reduced latency, and reduced CPU throttling in latency-sensitive workloads.
+Description: Configure Kubernetes CPU Manager with static policy to pin pods to specific CPU cores for guaranteed performance, reduced latency, and elimination of CPU throttling in latency-sensitive workloads.
 
 ---
 

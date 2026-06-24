@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Terraform, AWS, VPC Peering, IPv4, Infrastructure as Code, Networking
 
-Description: Configure AWS VPC peering connections for IPv4 using Terraform, including peering requests, accepters, route table updates, and DNS resolution settings.
+Description: Configure AWS VPC peering connections for IPv4 using Terraform, including peering requests, accepters, route propagation, and DNS resolution settings.
 
 ## Introduction
 

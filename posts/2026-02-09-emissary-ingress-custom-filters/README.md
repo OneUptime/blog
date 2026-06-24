@@ -1,10 +1,10 @@
-# How to Configure Emissary-ingress for Request Transformation
+# How to Configure Emissary-ingress with Custom Filters for Request Transformation
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Emissary, API Gateway
 
-Description: Learn how to use Emissary-ingress mappings and authentication services to transform requests and responses, modify headers, implement authentication logic, and build API gateway patterns in Kubernetes.
+Description: Learn how to use Emissary-ingress custom filters to transform requests and responses, modify headers, implement authentication logic, and build sophisticated API gateway patterns in Kubernetes.
 
 ---
 

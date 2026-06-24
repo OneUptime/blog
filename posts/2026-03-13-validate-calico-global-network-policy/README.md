@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, Network Policy, Global Policy, Security
 
-Description: Validate Calico GlobalNetworkPolicy for cluster-wide network traffic control that applies across all namespaces and matching endpoints.
+Description: Validate Calico GlobalNetworkPolicy for cluster-wide network traffic control that applies across all namespaces.
 
 ---
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, VPA, Resource Optimization, Automation, Right-Sizing
 
-Description: Implement automated resource request right-sizing using VPA in recommendation mode with custom controllers to periodically optimize pod resource requests based on actual usage patterns.
+Description: Implement automated resource request right-sizing using VPA in recommendation mode with custom controllers to continuously optimize pod resource requests based on actual usage patterns.
 
 ---
 

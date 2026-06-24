@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rancher, KEDA, Autoscaling, Kubernetes, Event-Driven, Scale-to-Zero
 
-Description: Install KEDA in Rancher and configure event-driven autoscaling for Deployments and Jobs using Kafka, RabbitMQ, Prometheus metrics, and ScaledJobs.
+Description: Install KEDA in Rancher and configure event-driven autoscaling for Deployments and Jobs using Kafka, RabbitMQ, Redis, and custom metric scalers.
 
 ## Introduction
 

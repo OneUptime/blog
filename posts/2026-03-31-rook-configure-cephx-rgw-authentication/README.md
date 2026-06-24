@@ -26,7 +26,7 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
 
 The output shows the key and its capabilities:
 
-```
+```text
 [client.rgw.my-store.a]
     key = AQBxxxxxxxxxx==
     caps mon = "allow *"

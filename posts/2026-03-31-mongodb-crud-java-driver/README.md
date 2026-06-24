@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: MongoDB, Java, Driver, CRUD, Database
 
-Description: Learn how to perform create, read, update, and delete operations with the official MongoDB Java driver using synchronous code examples.
+Description: Learn how to perform create, read, update, and delete operations with the official MongoDB Java driver using synchronous and reactive code examples.
 
 ---
 

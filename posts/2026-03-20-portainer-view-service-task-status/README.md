@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Docker Swarm, Service, Monitoring, DevOps
 
-Description: Learn how to monitor individual Swarm service task status, placement, and lifecycle in Portainer.
+Description: Learn how to monitor individual Swarm service task status, placement, and health in Portainer.
 
 ## Introduction
 

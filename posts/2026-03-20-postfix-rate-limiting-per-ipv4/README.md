@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Postfix, Rate Limiting, IPv4, Anti-Spam, SMTP, Security
 
-Description: Implement per-IPv4 SMTP rate limiting in Postfix using the anvil service, smtpd limits, and a policy daemon such as postfwd to prevent abuse and reduce spam delivery attempts.
+Description: Implement per-IPv4 SMTP rate limiting in Postfix using anvil service, smtpd restrictions, and policyd to prevent abuse and reduce spam delivery attempts.
 
 ## Introduction
 

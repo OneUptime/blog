@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Redis, Random, Sorted Set
 
-Description: Use Redis sorted sets and Python to implement weighted random selection for A/B testing, feature flags, and traffic routing.
+Description: Use Redis sorted sets and Lua scripts to implement weighted random selection for A/B testing, feature flags, and traffic routing.
 
 ---
 

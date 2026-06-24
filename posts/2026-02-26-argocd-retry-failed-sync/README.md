@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: ArgoCD, GitOps, Kubernetes, Sync Operations, Troubleshooting
 
-Description: Learn how to retry failed sync operations in ArgoCD using the UI, CLI, and API-based automation to recover from transient deployment failures.
+Description: Learn how to retry failed sync operations in ArgoCD using the UI, CLI, and declarative configuration to recover from transient deployment failures.
 
 ---
 

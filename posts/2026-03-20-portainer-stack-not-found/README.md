@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Docker, Troubleshooting, Stack, Recovery
 
-Description: Recover stacks that disappear from Portainer after a crash or restart, including re-associating orphaned stacks, redeploying recovered Compose stacks, and restoring stack definitions from backups.
+Description: Recover stacks that disappear from Portainer after a crash or restart, including re-importing running stacks and restoring stack definitions from backups.
 
 ## Introduction
 

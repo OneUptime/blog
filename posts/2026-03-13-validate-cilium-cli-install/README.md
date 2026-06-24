@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Cilium, CLI, Kubernetes, Tool
 
-Description: A step-by-step guide to installing and validating the Cilium CLI tool, ensuring it is correctly installed, compatible with your cluster's Cilium version, and can communicate with your cluster.
+Description: A step-by-step guide to installing and validating the Cilium CLI tool, ensuring it is correctly installed, matches your cluster's Cilium version, and can communicate with your cluster.
 
 ---
 

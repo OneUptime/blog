@@ -2,9 +2,9 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Microservice, Saga Pattern, Distributed Transaction, Cloud Run, Workflow
+Tags: GCP, Microservice, Saga Pattern, Pub/Sub, Distributed Transaction, Cloud Run, Workflow
 
-Description: Implement the saga pattern using Cloud Workflows to manage distributed transactions across microservices without two-phase commit on GCP.
+Description: Implement the saga pattern using Google Cloud Pub/Sub and Cloud Workflows to manage distributed transactions across microservices without two-phase commit on GCP.
 
 ---
 

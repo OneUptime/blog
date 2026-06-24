@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Infrastructure as Code, Provider, Automation, DevOps
 
-Description: Learn how to configure the Cloudflare provider in OpenTofu to manage existing Cloudflare Page Rules resources as code.
+Description: Learn how to configure and use the Cloudflare Page Rules provider in OpenTofu to manage Cloudflare Page Rules resources as code.
 
 ## Introduction
 

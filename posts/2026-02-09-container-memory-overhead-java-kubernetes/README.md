@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Java, Memory Management
 
-Description: Calculate accurate memory requests and limits for Java applications in Kubernetes by accounting for JVM heap, metaspace, thread stacks, direct buffers, and container overhead to prevent OOMKilled pods.
+Description: Calculate accurate memory requests for Java applications in Kubernetes by accounting for JVM heap, metaspace, thread stacks, direct buffers, and container overhead to prevent OOMKilled pods.
 
 ---
 

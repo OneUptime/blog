@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Istio, OpenTelemetry, Context Propagation, W3C Trace Context, B3, Distributed Tracing
 
-Description: How to configure trace context propagation in Istio with OpenTelemetry, supporting W3C Trace Context and B3 propagation formats.
+Description: How to configure trace context propagation in Istio with OpenTelemetry, supporting W3C Trace Context, B3, and custom propagation formats.
 
 ---
 

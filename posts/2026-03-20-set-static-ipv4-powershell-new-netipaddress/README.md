@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Windows, PowerShell, Networking, IPv4, Static IP, New-NetIPAddress
+Tags: Window, PowerShell, Networking, IPv4, Static IP, New-NetIPAddress
 
 Description: Assign a static IPv4 address, prefix length, and default gateway to a Windows network adapter using the PowerShell New-NetIPAddress cmdlet.
 

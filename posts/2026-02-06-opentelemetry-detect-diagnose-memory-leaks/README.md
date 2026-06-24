@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Memory Leak, Debugging, Performance, Metric, Profiling, Node.js, Python, Go
 
-Description: Learn how to use OpenTelemetry metrics and traces to detect memory leaks in production, narrow down the leaking code path, and fix it before it causes an outage.
+Description: Learn how to use OpenTelemetry metrics and traces to detect memory leaks in production, identify the leaking code path, and fix it before it causes an outage.
 
 ---
 

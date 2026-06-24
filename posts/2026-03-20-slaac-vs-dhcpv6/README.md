@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: SLAAC, DHCPv6, IPv6, Address Assignment, M Flag, O Flag
 
-Description: Compare SLAAC and DHCPv6 for IPv6 address assignment, understand when to use each, and how the M, O, and A flags in Router Advertisements affect the choice.
+Description: Compare SLAAC and DHCPv6 for IPv6 address assignment, understand when to use each, and how the M and O flags in Router Advertisements control the choice.
 
 ## Introduction
 

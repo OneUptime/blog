@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Dapr, Azure Monitor, Logging, Kubernetes, Observability
 
-Description: Configure Azure Monitor Container Insights to collect and analyze Dapr sidecar logs from AKS clusters.
+Description: Configure Azure Monitor Container Insights or OMS Agent to collect and analyze Dapr sidecar logs from AKS clusters.
 
 ---
 

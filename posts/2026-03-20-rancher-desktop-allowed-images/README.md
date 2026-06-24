@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rancher Desktop, Security, Image, Allow List, Policy
 
-Description: Set up image allow lists in Rancher Desktop to restrict which container images can be pulled and pushed locally.
+Description: Set up image allow lists in Rancher Desktop to restrict which container images can be pulled and run locally.
 
 ## Introduction
 

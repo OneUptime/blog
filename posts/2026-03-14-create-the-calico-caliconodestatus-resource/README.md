@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes
 
-Description: Learn how to define and apply a Calico CalicoNodeStatus resource to your Kubernetes cluster using kubectl.
+Description: Learn how to define and apply a Calico CalicoNodeStatus resource to your Kubernetes cluster using kubectl and calicoctl.
 
 ---
 

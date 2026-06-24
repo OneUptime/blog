@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GCP, Binary Authorization, Container Security, OpenTofu, Supply Chain, Kubernetes
 
-Description: Learn how to configure GCP Binary Authorization policies with OpenTofu at the project level to enforce container image attestation requirements.
+Description: Learn how to configure GCP Binary Authorization policies with OpenTofu at the project and cluster level to enforce container image attestation requirements.
 
 ## Overview
 

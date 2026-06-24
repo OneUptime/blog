@@ -1,10 +1,10 @@
-# How to Manage Cloudflare DNS Records with OpenTofu
+# How to Cloudflare Dns Records with OpenTofu
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Infrastructure as Code, Provider, Automation, DevOps
 
-Description: Learn how to configure and use the Cloudflare provider in OpenTofu to manage Cloudflare DNS records as code.
+Description: Learn how to configure and use the Cloudflare Dns Records provider in OpenTofu to manage Cloudflare Dns Records resources as code.
 
 ## Introduction
 

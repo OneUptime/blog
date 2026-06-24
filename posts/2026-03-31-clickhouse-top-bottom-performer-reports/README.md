@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: ClickHouse, Top Performer, Ranking, Window Function, Analytics
 
-Description: Learn how to build top and bottom performer reports in ClickHouse using rank, percent_rank, and topK aggregate functions for leaderboard analysis.
+Description: Learn how to build top and bottom performer reports in ClickHouse using rank, dense_rank, and topK aggregate functions for leaderboard analysis.
 
 ---
 

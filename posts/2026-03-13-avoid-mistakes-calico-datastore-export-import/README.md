@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, Networking, Operation
 
-Description: Avoid common mistakes in Calico etcdv3-to-Kubernetes datastore migration operations including importing to the wrong cluster, not locking the source before export, and importing without verifying resource compatibility.
+Description: Avoid common mistakes in Calico datastore operations including importing to the wrong cluster, not locking the source during migration, and importing without verifying resource compatibility.
 
 ---
 

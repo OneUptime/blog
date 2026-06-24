@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Istio, Zipkin, Tracing, Elasticsearch, Storage Backend
 
-Description: Set up persistent storage backends for Zipkin tracing in Istio including Elasticsearch, MySQL, and Cassandra configurations.
+Description: Set up production storage backends for Zipkin tracing in Istio including Elasticsearch, MySQL, and Cassandra configurations.
 
 ---
 

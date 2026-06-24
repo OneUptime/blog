@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Docker, Burp Suite, Security Testing, Penetration Testing, Web Security, OWASP, Proxy
 
-Description: Run Burp Suite Community Edition in Docker for web application security testing with proxy interception and manual testing workflows.
+Description: Run Burp Suite Community Edition in Docker for web application security testing with proxy interception and vulnerability scanning.
 
 ---
 

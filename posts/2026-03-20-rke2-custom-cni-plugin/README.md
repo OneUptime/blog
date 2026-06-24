@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RKE2, Kubernetes, CNI, Custom CNI, Networking, Rancher
 
-Description: Learn how to configure RKE2 to use a custom CNI plugin instead of the built-in Canal, Calico, Cilium, or Flannel options.
+Description: Learn how to configure RKE2 to use a custom CNI plugin instead of the built-in Canal, Calico, or Cilium options.
 
 While RKE2 ships with Canal, Calico, Cilium, and Flannel as built-in primary CNI options, some organizations may need to use a different CNI plugin like Antrea or a custom solution. RKE2 also supports Multus as a secondary CNI plugin alongside a primary CNI. RKE2 supports deploying with no CNI plugin so you can install your own. This guide covers how to configure RKE2 to work with a custom CNI plugin.
 

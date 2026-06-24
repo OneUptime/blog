@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Flux CD, Kubernetes jobs, Pre-Deployment, Hook, GitOps, Kubernetes
 
-Description: A practical guide to running Kubernetes Jobs as pre-deployment tasks using Flux CD dependencies and readiness checks.
+Description: A practical guide to running Kubernetes Jobs as pre-deployment tasks using Flux CD dependencies and health checks.
 
 ---
 

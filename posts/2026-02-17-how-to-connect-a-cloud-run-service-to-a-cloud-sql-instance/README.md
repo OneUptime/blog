@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GCP, Cloud Run, Cloud SQL, Serverless, Database Connectivity
 
-Description: Learn how to securely connect a Cloud Run service to a Cloud SQL instance using the built-in Cloud SQL integration and Cloud SQL language connectors.
+Description: Learn how to securely connect a Cloud Run service to a Cloud SQL instance using the built-in Cloud SQL connector and the Cloud SQL Auth Proxy.
 
 ---
 

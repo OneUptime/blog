@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GCP, SCIM, User Provisioning, Identity Management, Cloud Identity
 
-Description: Learn how to implement automated user provisioning and deprovisioning using SCIM-compatible provisioning with Google Workspace and Cloud Identity APIs for streamlined identity lifecycle management.
+Description: Learn how to implement automated user provisioning and deprovisioning using SCIM protocol integration with Google Cloud Identity for streamlined identity lifecycle management.
 
 ---
 

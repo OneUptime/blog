@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Flux CD, GitOps, Kubernetes, Source Controller, Artifact, OCI
 
-Description: A comprehensive guide to understanding how Flux CD's source-controller fetches, packages, and serves artifacts from Git repositories, Helm repositories, OCI registries, and object storage buckets.
+Description: A comprehensive guide to understanding how Flux CD's source-controller fetches, packages, and serves artifacts from Git repositories, Helm repositories, OCI registries, and S3-compatible storage.
 
 ---
 

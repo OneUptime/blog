@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Terraform, AWS, State Management
 
-Description: Learn how to set up secure Terraform state storage using AWS S3 lockfiles, enabling team collaboration on Kubernetes infrastructure with encryption and versioning.
+Description: Learn how to set up secure Terraform state storage using AWS S3 and DynamoDB for locking, enabling team collaboration on Kubernetes infrastructure with encryption and versioning.
 
 ---
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, OTTL, Span Events, Transform Processor, Filter Processor
+Tags: OpenTelemetry, OTTL, Span Events, Transform Processor
 
 Description: Use OTTL to selectively drop specific span events like verbose exception details while keeping the parent span and its attributes intact.
 

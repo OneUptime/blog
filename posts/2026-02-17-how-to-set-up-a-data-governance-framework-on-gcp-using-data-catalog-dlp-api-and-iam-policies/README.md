@@ -1,10 +1,10 @@
-# How to Set Up a Data Governance Framework on GCP Using Dataplex Universal Catalog and DLP API
+# How to Set Up a Data Governance Framework on GCP Using Data Catalog DLP API
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Data Governance, Dataplex Universal Catalog, DLP API, IAM, Data Classification, Compliance
+Tags: GCP, Data Governance, Data Catalog, DLP API, IAM, Data Classification, Compliance
 
-Description: A hands-on guide to building a data governance framework on GCP using Dataplex Universal Catalog for discovery, DLP API for sensitive data detection, and IAM policies for access control.
+Description: A hands-on guide to building a data governance framework on GCP using Data Catalog for discovery, DLP API for sensitive data detection, and IAM policies for access control.
 
 ---
 

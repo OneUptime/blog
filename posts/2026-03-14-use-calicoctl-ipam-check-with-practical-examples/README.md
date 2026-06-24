@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Calico, Calicoctl, IPAM, Health Check, Kubernetes, IP Management
 
-Description: Use calicoctl ipam check to audit IP address allocation health, detect leaked IPs, identify leaked handles, and ensure IPAM consistency across your cluster.
+Description: Use calicoctl ipam check to audit IP address allocation health, detect leaked IPs, identify orphaned blocks, and ensure IPAM consistency across your cluster.
 
 ---
 

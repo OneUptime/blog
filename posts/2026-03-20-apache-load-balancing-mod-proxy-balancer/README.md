@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Apache, Mod_proxy_balancer, Load Balancing, IPv4, High Availability, HTTP
 
-Description: Configure Apache mod_proxy_balancer to distribute HTTP traffic across multiple IPv4 backend servers with request-count scheduling, traffic-based balancing, and sticky sessions.
+Description: Configure Apache mod_proxy_balancer to distribute HTTP traffic across multiple IPv4 backend servers with round-robin, traffic-weighted, and session-sticky algorithms.
 
 ## Introduction
 

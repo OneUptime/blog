@@ -1,10 +1,10 @@
-# How to Configure OCI Artifact Verification for Application Deployments with Flux
+# How to Configure Image Verification for Application Containers with Flux
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Flux, Kubernetes, GitOps, Security, Supply Chain, Image Verification, Container Security, OCI
 
-Description: Learn how to configure Flux to verify signed OCI artifacts for your application deployments before they are reconciled in your cluster.
+Description: Learn how to configure Flux to verify container image signatures for your application workloads before they are deployed to your cluster.
 
 ---
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GCP, Artifact Registry, Container Registry, Docker, Migration
 
-Description: A practical guide to migrating your Docker images from Google Container Registry to Artifact Registry after the Container Registry shutdown, with step-by-step instructions.
+Description: A practical guide to migrating your Docker images from Google Container Registry to Artifact Registry before the deprecation deadline, with step-by-step instructions.
 
 ---
 

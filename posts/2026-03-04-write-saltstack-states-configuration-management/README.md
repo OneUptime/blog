@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, SaltStack, Configuration Management, Linux
 
-Description: Learn how to write SaltStack states for configuration management on RHEL with step-by-step instructions, configuration examples, and best practices.
+Description: Learn how to write SaltStack States Configuration Management on RHEL with step-by-step instructions, configuration examples, and best practices.
 
 ---
 

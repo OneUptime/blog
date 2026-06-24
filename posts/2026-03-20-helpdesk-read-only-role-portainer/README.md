@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, RBAC, Helpdesk, Read-Only, Access Control
 
-Description: Configure the Helpdesk role in Portainer Business Edition to grant read-only access to containers and logs for support teams without allowing any modifications.
+Description: Configure the Helpdesk role in Portainer to grant read-only access to containers and logs for support teams without allowing any modifications.
 
 ---
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: AWS, S3, Logging, Audit, Security
 
-Description: Learn how to enable and configure S3 server access logging to create audit trails for requests made to your S3 buckets for security and compliance.
+Description: Learn how to enable and configure S3 server access logging to create audit trails of all requests made to your S3 buckets for security and compliance.
 
 ---
 

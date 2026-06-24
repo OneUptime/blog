@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Docker, Self-Hosted, Nextcloud, File Sync, Cloud Storage
 
-Description: Deploy Nextcloud as a self-hosted Dropbox/Google Drive alternative using Portainer with optional Traefik-based SSL and mobile sync support.
+Description: Deploy Nextcloud as a self-hosted Dropbox/Google Drive alternative using Portainer with automatic SSL and mobile sync support.
 
 ## Introduction
 

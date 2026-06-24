@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Collector, Extension, Authentication, AWS, SigV4, Cloud, Security
 
-Description: Learn how to configure AWS Signature Version 4 authentication in the OpenTelemetry Collector to securely send telemetry data to AWS services like Amazon Managed Service for Prometheus.
+Description: Learn how to configure AWS Signature Version 4 authentication in the OpenTelemetry Collector to securely send telemetry data to AWS services like CloudWatch and X-Ray.
 
 AWS Signature Version 4 (SigV4) is the authentication mechanism used by Amazon Web Services to verify the identity and integrity of requests. The OpenTelemetry Collector's SigV4 auth extension enables seamless integration with AWS services by automatically signing requests using AWS credentials, eliminating the need for long-lived API keys or bearer tokens.
 

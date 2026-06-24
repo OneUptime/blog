@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GCP, Load Balancer, Path-Based Routing, Regex, URL Map, Google Cloud
 
-Description: Configure Google Cloud Application Load Balancer with regex-based path matching for advanced URL routing to different backend services.
+Description: Configure Google Cloud HTTP(S) Load Balancer with regex-based path matching for advanced URL routing to different backend services.
 
 ---
 

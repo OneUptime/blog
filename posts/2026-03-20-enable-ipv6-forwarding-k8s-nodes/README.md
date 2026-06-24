@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, IPv6, Linux, Sysctl, Networking, Node Configuration
 
-Description: A step-by-step guide to enabling IPv6 packet forwarding on Kubernetes nodes so that nodes can forward IPv6 traffic for pods between networks.
+Description: A step-by-step guide to enabling IPv6 packet forwarding on Kubernetes nodes so that pods can route IPv6 traffic between networks.
 
 IPv6 forwarding allows a Linux host to act as a router and pass IPv6 packets between network interfaces. Kubernetes nodes must have this enabled for pod traffic that needs to be routed between interfaces, including cross-node and pod-to-external IPv6 communication, to work correctly.
 

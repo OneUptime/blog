@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Terraform, Trivy, Security Scanning, Infrastructure as Code, DevSecOps
 
-Description: Learn how to use Trivy to scan OpenTofu and Terraform configurations for security misconfigurations in infrastructure-as-code.
+Description: Learn how to use Trivy to scan OpenTofu and Terraform configurations for security misconfigurations, vulnerabilities, and compliance violations.
 
 ## Introduction
 

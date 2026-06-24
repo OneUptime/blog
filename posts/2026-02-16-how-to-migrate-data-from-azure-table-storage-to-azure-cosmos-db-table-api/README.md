@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Azure, Table Storage, Cosmos DB, Data Migration, Cloud Migration, NoSQL, Database
 
-Description: A step-by-step guide to migrating your data from Azure Table Storage to Azure Cosmos DB Table API with a planned cutover and validation.
+Description: A step-by-step guide to migrating your data from Azure Table Storage to Azure Cosmos DB Table API with minimal downtime and data loss.
 
 ---
 

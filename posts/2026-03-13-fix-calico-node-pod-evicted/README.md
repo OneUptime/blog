@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, Networking, Troubleshooting
 
-Description: Fix calico-node pod eviction by setting system-node-critical priority class, clearing node pressure, and adjusting resource requests and limits to reduce re-eviction risk.
+Description: Fix calico-node pod eviction by setting system-node-critical priority class, clearing node pressure, and adjusting resource limits to prevent re-eviction.
 
 ---
 

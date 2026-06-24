@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, VMware, Disk Expansion, LVM, Storage, Linux
 
-Description: Expand a RHEL virtual disk in VMware vSphere and grow the filesystem online without rebooting the virtual machine when your VMware configuration supports hot extend.
+Description: Expand a RHEL virtual disk in VMware vSphere and grow the filesystem online without rebooting the virtual machine.
 
 ---
 

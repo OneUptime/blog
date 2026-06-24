@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Terraform, IaC, Provider, for_each
 
-Description: Learn how OpenTofu 1.9+ supports for_each on provider blocks, enabling dynamic multi-region and multi-account deployments.
+Description: Learn how OpenTofu 1.7+ supports for_each on provider blocks, enabling dynamic multi-region and multi-account deployments.
 
 OpenTofu 1.9 introduced the ability to use `for_each` with provider configurations, enabling truly dynamic multi-region and multi-account deployments without repeating provider blocks.
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: AWS, ECS, Troubleshooting, Docker, Health Check
 
-Description: A practical guide to diagnosing and fixing ECS container health check failures, covering both ECS container health checks and ALB target group health checks.
+Description: A practical guide to diagnosing and fixing ECS container health check failures, covering both Docker health checks and ALB target group health checks.
 
 ---
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: nftables, Linux, Firewall, Security, Management
 
-Description: Safely flush all nftables rules using flush ruleset, flush table, and flush chain commands, and use atomic replacement on remote servers to avoid lockouts or unprotected gaps.
+Description: Safely flush all nftables rules using flush ruleset, flush table, and flush chain commands, with the correct sequence to avoid losing remote access.
 
 Flushing nftables rules removes all or selected firewall rules. For a full reset, `flush ruleset` removes the hooked base chains and their policies along with the rules. On remote servers, the safer workflow is to load a replacement ruleset atomically instead of leaving the host with an empty firewall.
 

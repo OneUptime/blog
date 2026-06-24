@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Flux, Kubernetes, GitOps, Security, Network Policies, Calico, NetworkSet
 
-Description: Secure Flux controllers using Calico GlobalNetworkPolicy and NetworkSet resources for enterprise-grade network segmentation and optional DNS-based egress control.
+Description: Secure Flux controllers using Calico GlobalNetworkPolicy and NetworkSet resources for enterprise-grade network segmentation and DNS-based egress control.
 
 ---
 

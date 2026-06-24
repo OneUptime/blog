@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Dapr, Alibaba Cloud, OSS, Binding, Object Storage
 
-Description: Learn how to configure and use the Dapr Alibaba Cloud OSS output binding to upload objects to Alibaba Cloud Object Storage Service from microservices.
+Description: Learn how to configure and use the Dapr Alibaba Cloud OSS output binding to upload, retrieve, and manage objects in Alibaba Cloud Object Storage Service from microservices.
 
 ---
 

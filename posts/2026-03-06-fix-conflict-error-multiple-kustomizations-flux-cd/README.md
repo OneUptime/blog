@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Flux CD, Kustomization, Kubernetes, Troubleshooting, GitOps, Server-Side Apply, Conflict Resolution
 
-Description: A guide to resolving field ownership conflicts when multiple Flux CD Kustomizations or controllers touch the same Kubernetes resource using server-side apply and SSA policies.
+Description: A guide to resolving field ownership conflicts when multiple Flux CD Kustomizations manage the same Kubernetes resource using server-side apply and force configuration.
 
 ---
 

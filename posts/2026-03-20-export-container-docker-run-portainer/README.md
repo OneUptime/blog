@@ -1,10 +1,10 @@
-# How to Recreate Container Configuration as a Docker Run Command Using Portainer
+# How to Export Container Configuration as Docker Run Command - Portainer
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Docker, Container, Configuration, DevOps
 
-Description: Inspect running container configurations in Portainer and recreate equivalent docker run commands for documentation or migration.
+Description: Export running container configurations as docker run commands from Portainer for documentation or migration.
 
 ## Introduction
 

@@ -1,10 +1,10 @@
-# How to Fix Flux CD Artifact Storage Errors on Raspberry Pi
+# How to Fix Flux CD Badger Database Error on Raspberry Pi
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Raspberry Pi, ARM, Artifact Storage, GitOps, Kubernetes, Troubleshooting
+Tags: Flux CD, Raspberry Pi, ARM, Badger, Database, Embedded, GitOps, Kubernetes, Troubleshooting
 
-Description: A troubleshooting guide for resolving Flux source-controller artifact storage errors when running Flux CD on Raspberry Pi and other ARM-based or resource-constrained devices.
+Description: A troubleshooting guide for resolving Badger database errors when running Flux CD on Raspberry Pi and other ARM-based or resource-constrained devices.
 
 ---
 

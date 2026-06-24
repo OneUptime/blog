@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Linux, ip command, iproute2, IPv4, Networking
 
-Description: Remove an IPv4 address from a Linux network interface using ip addr del, including removing specific addresses, all IPv4 addresses, and managing secondary IPs.
+Description: Remove an IPv4 address from a Linux network interface using ip addr del, including removing specific addresses, all addresses, and managing secondary IPs.
 
 ## Introduction
 

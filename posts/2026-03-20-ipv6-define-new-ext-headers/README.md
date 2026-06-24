@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: IPv6, Extension Headers, Protocol Design, IANA, RFC 8200
 
-Description: Learn the process and considerations for defining new IPv6 extension headers and options through the IANA registration process and IETF review and approval paths.
+Description: Learn the process and considerations for defining new IPv6 extension headers and options through the IANA registration process and IETF standards track.
 
 ## Introduction
 

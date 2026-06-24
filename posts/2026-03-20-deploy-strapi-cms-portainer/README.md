@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Strapi, CMS, Portainer, Docker, Headless CMS, Content Management, Node.js
 
-Description: Deploy Strapi headless CMS with PostgreSQL database via Portainer for a production-ready content management platform with a REST API and optional GraphQL API for your frontend applications.
+Description: Deploy Strapi headless CMS with PostgreSQL database via Portainer for a production-ready content management platform with a REST and GraphQL API for your frontend applications.
 
 ---
 

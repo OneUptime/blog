@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: ClickHouse, Elasticsearch, Data Export, ETL, Integration
 
-Description: Learn how to export data from ClickHouse to Elasticsearch using the url table function, Python bulk indexing scripts, and Logstash.
+Description: Learn how to export data from ClickHouse to Elasticsearch using HTTP URLs, the elasticsearch engine table, and bulk indexing scripts.
 
 ---
 

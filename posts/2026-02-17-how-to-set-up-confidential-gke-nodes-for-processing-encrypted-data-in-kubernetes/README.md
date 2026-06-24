@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GCP, Confidential GKE, Kubernetes, Confidential Computing, Container Security
 
-Description: Step-by-step guide to deploying Confidential GKE nodes that encrypt node VM memory at the hardware level for processing sensitive data in Kubernetes.
+Description: Step-by-step guide to deploying Confidential GKE nodes that encrypt container memory at the hardware level for processing sensitive data in Kubernetes.
 
 ---
 

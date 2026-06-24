@@ -1,10 +1,10 @@
-# How to Use Pod Overhead for Sandboxed and VM-Based Runtimes in Kubernetes
+# How to Use Pod Overhead for Virtual Machine-Based Runtimes in Kubernetes
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Virtualization, Resource
 
-Description: Learn how to configure Pod Overhead in Kubernetes for sandboxed and VM-based container runtimes like Kata Containers and gVisor to accurately account for additional resource consumption beyond application.
+Description: Learn how to configure Pod Overhead in Kubernetes for VM-based container runtimes like Kata Containers and gVisor to accurately account for additional resource consumption beyond application.
 
 ---
 

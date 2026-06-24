@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Chef, IPv6, Cookbook, Supermarket, Configuration Management, Automation
 
-Description: A guide to using Chef Infra resources and Chef Supermarket cookbooks for IPv6 configuration, including the built-in `sysctl` resource plus the `firewall` and `network_interfaces_v2` cookbooks for standardized IPv6 deployment.
+Description: A guide to using Chef Supermarket cookbooks for IPv6 configuration, including the sysctl, firewall, and network cookbooks for standardized IPv6 deployment.
 
 Chef Supermarket cookbooks and Chef Infra's built-in resources can simplify IPv6 deployment. Leveraging existing building blocks reduces implementation time and provides tested code for common IPv6 configuration tasks.
 

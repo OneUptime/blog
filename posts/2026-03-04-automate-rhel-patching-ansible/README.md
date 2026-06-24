@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Ansible, Patching, Security, Automation, Linux
 
-Description: Build an automated patching workflow for RHEL servers using Ansible, including pre-patch checks, staged rollouts, and reboot handling.
+Description: Build an automated patching workflow for RHEL servers using Ansible, including pre-patch checks, staged rollouts, and rollback capabilities.
 
 ---
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: ArgoCD, GitOps, Kubernetes, Linkerd, Service Mesh
 
-Description: Learn how to manage Linkerd service mesh configuration with ArgoCD, including traffic policies, retry budgets, timeouts, service profiles, and authorization policies.
+Description: Learn how to manage Linkerd service mesh configuration with ArgoCD, including traffic policies, retry budgets, timeouts, service profiles, and multi-cluster mesh management.
 
 ---
 

@@ -731,7 +731,7 @@ function App() {
 RAM (Random Access Memory) bundles allow loading JavaScript modules on demand, significantly improving startup time on Android.
 
 > **Note:** RAM bundles only apply to the JavaScriptCore engine and are *not*
-> compatible with Hermes — Hermes already memory-maps its bytecode and loads it
+> compatible with Hermes - Hermes already memory-maps its bytecode and loads it
 > lazily, so it provides the same benefit without RAM bundles. RAM bundles are
 > deprecated as of React Native 0.75. If you have enabled Hermes (recommended),
 > skip this section.

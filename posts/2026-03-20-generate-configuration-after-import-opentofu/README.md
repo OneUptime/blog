@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Terraform, Import, Config Generation, Generate-config-out, HCL
 
-Description: Learn how to use OpenTofu's experimental -generate-config-out flag to generate starter HCL configuration from imported resources, accelerating the migration of existing infrastructure to code.
+Description: Learn how to use OpenTofu's -generate-config-out flag to automatically generate HCL configuration from imported resources, accelerating the migration of existing infrastructure to code.
 
 ## Introduction
 

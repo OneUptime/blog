@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: ArgoCD, GitOps, Kubernetes, Infrastructure, Bootstrapping
 
-Description: Learn how to use ArgoCD to bootstrap essential Kubernetes cluster infrastructure components including namespaces, storage classes, DNS, policy engines, and service mesh in the correct order.
+Description: Learn how to use ArgoCD to bootstrap essential Kubernetes cluster infrastructure components including CNI, CSI drivers, DNS, policy engines, and service mesh in the correct order.
 
 ---
 

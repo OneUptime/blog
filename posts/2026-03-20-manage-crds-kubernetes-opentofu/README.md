@@ -1,10 +1,10 @@
-# How to Manage Kubernetes CRDs with OpenTofu
+# How to Manage Crds Kubernetes with OpenTofu on Kubernetes
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Kubernetes, Infrastructure as Code, K8s, Container Orchestration
 
-Description: Learn how to manage Kubernetes CustomResourceDefinitions (CRDs) with OpenTofu for declarative, version-controlled API extensions.
+Description: Learn how to manage Kubernetes manage crds kubernetes with OpenTofu for declarative, version-controlled Kubernetes configuration.
 
 ## Introduction
 

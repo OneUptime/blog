@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, CLI Flags, Performance, Snapshot, Configuration, Docker
 
-Description: Learn how to use the --snapshot-interval flag to control how frequently Portainer snapshots environment data, balancing freshness with resource usage.
+Description: Learn how to use the --snapshot-interval flag to control how frequently Portainer polls Docker environments for state changes, balancing freshness with resource usage.
 
 ---
 

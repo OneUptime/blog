@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Dapr, CI/CD, Automation, GitHub Action, Upgrade
 
-Description: Learn how to automate Dapr version upgrades using GitHub Actions, with automated compatibility testing and staged rollout to production.
+Description: Learn how to automate Dapr version upgrades using GitHub Actions and ArgoCD, with automated compatibility testing and staged rollout to production.
 
 ---
 

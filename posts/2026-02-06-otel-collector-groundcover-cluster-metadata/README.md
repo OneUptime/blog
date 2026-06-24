@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Groundcover, Kubernetes, Metadata Enrichment
 
-Description: Enrich OpenTelemetry data with cluster-level metadata using the Collector's resource_detection and k8s_attributes processors for Groundcover.
+Description: Enrich OpenTelemetry data with cluster-level metadata using the Collector's resource detection and k8s_attributes processors for Groundcover.
 
 When running multiple Kubernetes clusters, each sending telemetry to Groundcover, you need cluster-level metadata on every span, metric, and log record. Without it, you cannot distinguish which cluster produced a given trace. The OpenTelemetry Collector provides several processors and resource detectors that automatically attach cluster identity and node-level metadata to your telemetry before it reaches Groundcover.
 

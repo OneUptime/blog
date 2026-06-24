@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: IPv6, IPAM, REST API, Automation, NetBox, Python
 
-Description: Use IPAM REST APIs to automate IPv6 address allocation, prefix management, and associated DNS name tracking as part of infrastructure provisioning workflows.
+Description: Use IPAM REST APIs to automate IPv6 address allocation, prefix management, and DNS record creation as part of infrastructure provisioning workflows.
 
 ## Introduction
 

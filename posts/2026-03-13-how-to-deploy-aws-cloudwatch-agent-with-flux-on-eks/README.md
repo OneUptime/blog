@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux, Kubernetes, GitOps, AWS, EKS, CloudWatch, Monitoring, Observability
+Tags: Flux, Kubernetes, GitOps, AWS, EKS, CloudWatch, Monitoring, Observability, Helm
 
 Description: Learn how to deploy the AWS CloudWatch Agent and Fluent Bit on EKS using Flux for GitOps-managed cluster monitoring, container insights, and log collection.
 

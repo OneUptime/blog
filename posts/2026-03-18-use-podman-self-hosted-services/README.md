@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Podman, Self-Hosting, Container, Privacy, Open Source
 
-Description: Learn how to deploy self-hosted alternatives to cloud services using Podman, including git hosting, project management, note-taking, monitoring, and collaboration tools in rootless containers.
+Description: Learn how to deploy self-hosted alternatives to cloud services using Podman, including email, git hosting, project management, and collaboration tools in rootless containers.
 
 ---
 

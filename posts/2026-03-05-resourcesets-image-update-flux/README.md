@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Flux CD, GitOps, Kubernetes, Image Automation, ResourceSets, Templating
 
-Description: Learn how to use Flux Operator ResourceSets to template and manage Flux image update automation resources across multiple applications and environments.
+Description: Learn how to use Flux CD ResourceSets to template and manage image update automation resources across multiple applications and environments.
 
 ---
 

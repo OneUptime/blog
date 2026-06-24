@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rancher, Enterprise Scale, 1000 Clusters, Performance, Architecture, High Availability
 
-Description: Architecture and configuration guide for running Rancher Server at 1000+ cluster scale with high-availability management clusters, horizontal scaling, and load balancer settings for agent connectivity.
+Description: Architecture and configuration guide for running Rancher Server at 1000+ cluster scale with external databases, horizontal scaling, and optimized agent configurations.
 
 ## Introduction
 

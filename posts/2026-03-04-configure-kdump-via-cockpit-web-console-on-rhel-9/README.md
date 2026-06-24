@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Cockpit, Linux
 
-Description: Step-by-step guide on configuring kdump via Cockpit Web Console using Red Hat Enterprise Linux 9.
+Description: Step-by-step guide on configure kdump via cockpit web console using Red Hat Enterprise Linux 9.
 
 ---
 

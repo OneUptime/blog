@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Terraform, S3, State Management, AWS, Linux
 
-Description: Configure Terraform to store its state file remotely in an AWS S3 bucket with state locking on RHEL.
+Description: Configure Terraform to store its state file remotely in an AWS S3 bucket with DynamoDB locking on RHEL.
 
 ---
 

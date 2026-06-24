@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GKE, Binary Authorization, Security, OpenTofu, Container Security, Supply Chain
 
-Description: Learn how to configure GKE Binary Authorization with OpenTofu to enforce that deployed images are backed by cryptographically verifiable attestations.
+Description: Learn how to configure GKE Binary Authorization with OpenTofu to enforce that only cryptographically verified container images are deployed to your clusters.
 
 ## Overview
 

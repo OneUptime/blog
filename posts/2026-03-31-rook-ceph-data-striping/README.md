@@ -1,10 +1,10 @@
-# How to Understand Ceph Data Striping (Object Size, Stripe Unit, Stripe Count)
+# How to Understand Ceph Data Striping (Object Size, Stripe Width, Stripe Count)
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rook, Ceph, Striping, Performance, Storage, Kubernetes
 
-Description: Learn how Ceph stripes large files across multiple objects using object size, stripe unit, and stripe count parameters to maximize parallelism and throughput.
+Description: Learn how Ceph stripes large files across multiple objects using object size, stripe width, and stripe count parameters to maximize parallelism and throughput.
 
 ---
 

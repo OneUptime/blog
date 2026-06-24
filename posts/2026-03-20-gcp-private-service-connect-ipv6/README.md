@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GCP, IPv6, Private Service Connect, PSC, Google Cloud, Private Endpoint
 
-Description: Configure Google Cloud Private Service Connect (PSC) consumer endpoints in dual-stack subnets for IPv6 access to regional Google APIs and published services.
+Description: Configure Google Cloud Private Service Connect (PSC) endpoints in dual-stack subnets for IPv6 access to Google APIs and published services, and set up PSC with IPv6 consumer endpoints.
 
 ## Introduction
 

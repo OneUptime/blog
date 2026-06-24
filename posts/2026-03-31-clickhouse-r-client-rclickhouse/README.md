@@ -1,10 +1,10 @@
-# How to Use ClickHouse R Client (RClickhouse)
+# How to Use ClickHouse R Client (RClickHouse)
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: ClickHouse, R, RClickhouse, DBI, Data Analysis
+Tags: ClickHouse, R, RClickHouse, DBI, Data Analysis
 
-Description: Learn how to connect to ClickHouse from R using RClickhouse and DBI to run queries, fetch data frames, and insert results from data analysis.
+Description: Learn how to connect to ClickHouse from R using RClickHouse and DBI to run queries, fetch data frames, and insert results from data analysis.
 
 ---
 

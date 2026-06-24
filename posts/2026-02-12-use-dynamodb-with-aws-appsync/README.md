@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: AWS, DynamoDB, AppSync, GraphQL, Serverless
 
-Description: Learn how to connect DynamoDB to AWS AppSync to build real-time GraphQL APIs with CRUD operations, resolvers, and subscriptions.
+Description: Learn how to connect DynamoDB to AWS AppSync to build real-time GraphQL APIs with automatic CRUD operations, resolvers, and subscriptions.
 
 ---
 

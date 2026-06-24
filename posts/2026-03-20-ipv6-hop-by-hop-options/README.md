@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: IPv6, Hop-by-Hop, Extension Headers, Router Alert, Networking
 
-Description: Understand the IPv6 Hop-by-Hop Options extension header, how it is handled along the path, and its practical uses for Router Alert and Jumbo Payload options.
+Description: Understand the IPv6 Hop-by-Hop Options extension header, how it is processed by every router, and its practical uses for Router Alert and Jumbo Payload options.
 
 ## Introduction
 

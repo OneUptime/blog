@@ -56,7 +56,7 @@ For dual-stack clusters, you should see both IPv4 and IPv6 addresses assigned to
 
 ## Installing MetalLB
 
-Install MetalLB using the official manifests. IPv6 BGP and BFD are **not** supported by the native BGP backend (`metallb-native.yaml`) — you must deploy an FRR-based backend. Use `metallb-frr-k8s.yaml`, which ships the FRR-K8s backend and provides BGP with BFD support and IPv6:
+Install MetalLB using the official manifests. IPv6 BGP and BFD are **not** supported by the native BGP backend (`metallb-native.yaml`) - you must deploy an FRR-based backend. Use `metallb-frr-k8s.yaml`, which ships the FRR-K8s backend and provides BGP with BFD support and IPv6:
 
 ```bash
 # Install MetalLB v0.14.9 (latest stable as of writing)

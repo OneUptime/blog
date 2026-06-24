@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Window, Static Routes, Route add, PowerShell, Networking, Routing
 
-Description: Add persistent static routes on Windows using the `route /p add` command or New-NetRoute PowerShell cmdlet to survive reboots.
+Description: Add persistent static routes on Windows using the route add command with the -p flag or New-NetRoute PowerShell cmdlet to survive reboots.
 
 ## Introduction
 

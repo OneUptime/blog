@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: MySQL, Window Function, Moving Average, Analytics, AVG
 
-Description: Learn how to calculate simple, centered, and exponential moving averages in MySQL 8.0 using AVG() OVER() with sliding window frame clauses.
+Description: Learn how to calculate simple, weighted, and exponential moving averages in MySQL 8.0 using AVG() OVER() with sliding window frame clauses.
 
 ---
 

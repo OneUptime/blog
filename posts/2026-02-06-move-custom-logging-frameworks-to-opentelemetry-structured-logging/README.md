@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Logging, Structured Logging, Migration, Observability, Log4j, Serilog
 
-Description: A practical guide for replacing custom and framework-specific logging with OpenTelemetry structured logging, including bridge integrations for Log4j, Logback, Serilog, and Python logging.
+Description: A practical guide for replacing custom and framework-specific logging with OpenTelemetry structured logging, including bridge integrations for Log4j, SLF4J, Serilog, and Python logging.
 
 ---
 

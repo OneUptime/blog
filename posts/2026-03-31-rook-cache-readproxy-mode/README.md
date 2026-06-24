@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rook, Ceph, Kubernetes, CacheTiering, Storage, Performance
 
-Description: Learn how to configure readproxy cache mode in Ceph, where the cache tier proxies read requests to the backing pool for objects not already in the cache.
+Description: Learn how to configure readproxy cache mode in Ceph, where the cache tier proxies read requests to the backing pool without caching data locally, and writes bypass the cache entirely.
 
 ---
 

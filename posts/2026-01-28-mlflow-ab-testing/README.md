@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: MLflow, A/B Testing, MLOps, Machine Learning, Experimentation, Python
 
-Description: Learn how to implement A/B testing for machine learning models using MLflow for experiment tracking, variant metadata, and statistical analysis.
+Description: Learn how to implement A/B testing for machine learning models using MLflow for experiment tracking, traffic splitting, and statistical analysis.
 
 ---
 

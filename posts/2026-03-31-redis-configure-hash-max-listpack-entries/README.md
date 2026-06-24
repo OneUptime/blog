@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Redis, Hash, Memory, Listpack
 
-Description: Configure hash-max-listpack-entries and hash-max-listpack-value to keep Redis hashes in memory-efficient listpack encoding and reduce memory by up to 2.5x.
+Description: Configure hash-max-listpack-entries and hash-max-listpack-value to keep Redis hashes in memory-efficient listpack encoding and reduce memory by up to 5x.
 
 ---
 

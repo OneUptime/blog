@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: IS-IS, Juniper, IPv6, Junos, Routing
 
-Description: Step-by-step guide to configuring IS-IS for IPv6 routing on Juniper routers using Junos OS, including multi-topology and per-interface metric configuration.
+Description: Step-by-step guide to configuring IS-IS for IPv6 routing on Juniper routers using JunOS, including multi-topology and per-interface metric configuration.
 
 ## Overview
 

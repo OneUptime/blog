@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Redis, Bloom Filter, Event, Deduplication
 
-Description: Detect and discard duplicate events in real-time event streams using Redis Bloom Filters for memory-efficient deduplication.
+Description: Detect and discard duplicate events in real-time event streams using Redis Bloom Filters for memory-efficient exactly-once processing guarantees.
 
 ---
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kafka, SASL, Authentication, IPv4, Security, Configuration, Messaging
 
-Description: Learn how to configure Apache Kafka with SASL/SCRAM authentication over IPv4 to require client authentication before producing or consuming messages.
+Description: Learn how to configure Apache Kafka with SASL/PLAIN or SASL/SCRAM authentication over IPv4 to require client authentication before producing or consuming messages.
 
 ---
 

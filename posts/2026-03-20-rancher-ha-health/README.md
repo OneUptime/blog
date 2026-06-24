@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rancher, High Availability, Health Monitoring, Prometheus, Alerting
 
-Description: Monitor the health of your Rancher HA deployment with comprehensive checks for etcd, Rancher pods, and managed cluster connectivity.
+Description: Monitor the health of your Rancher HA deployment with comprehensive checks for etcd, API server, Rancher pods, and managed cluster connectivity.
 
 ## Introduction
 

@@ -2,9 +2,9 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Azure Arc, Data Services, Kubernetes, SQL Managed Instance, Hybrid Cloud
+Tags: Azure, Azure Arc, Data Services, Kubernetes, SQL Managed Instance, PostgreSQL, Hybrid Cloud
 
-Description: Learn how to deploy Azure Arc-enabled SQL Managed Instance on any supported Kubernetes cluster running anywhere.
+Description: Learn how to deploy Azure Arc-enabled data services like SQL Managed Instance and PostgreSQL on any Kubernetes cluster running anywhere.
 
 ---
 

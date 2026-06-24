@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Cilium, Kubernetes, IPAM, Validation, Networking
 
-Description: How to validate that Cilium IPAM correctly publishes available IP pools and used IP counts in CiliumNode resources for each cluster node.
+Description: How to validate that Cilium IPAM correctly publishes available IP counts in CiliumNode resources for each cluster node.
 
 ---
 

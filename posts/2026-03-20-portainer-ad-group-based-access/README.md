@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Active Directory, Group, RBAC, Access Control
 
-Description: Map Active Directory security groups to Portainer Business Edition teams to control environment access based on AD group membership.
+Description: Map Active Directory security groups to Portainer teams to control environment access based on AD group membership.
 
 ## Introduction
 

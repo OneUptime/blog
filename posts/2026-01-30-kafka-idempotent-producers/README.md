@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Kafka, Idempotent Producer, Exactly-Once, Reliability
 
-Description: Learn to implement Kafka idempotent producers with producer IDs, sequence numbers, and retry handling for producer-side exactly-once delivery.
+Description: Learn to implement Kafka idempotent producers with producer IDs, sequence numbers, and retry handling for exactly-once semantics.
 
 ---
 

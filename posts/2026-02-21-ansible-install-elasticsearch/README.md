@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, Elasticsearch, Search, DevOps
 
-Description: Automate Elasticsearch installation on Ubuntu/Debian systems using Ansible playbooks with proper configuration and security.
+Description: Automate Elasticsearch installation on Ubuntu and RHEL systems using Ansible playbooks with proper configuration and security.
 
 ---
 

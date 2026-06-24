@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Dapr, Outbox Pattern, State Management, Pub/Sub, Microservice
 
-Description: Learn how to implement the transactional outbox pattern in Dapr to guarantee at-least-once message delivery alongside state updates without distributed transactions.
+Description: Learn how to implement the transactional outbox pattern in Dapr to guarantee exactly-once message delivery alongside state updates without distributed transactions.
 
 ---
 

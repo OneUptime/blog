@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: AWS, API Gateway, IPv6, Cloud, Dualstack, Terraform
 
-Description: Enable IPv6 access for AWS API Gateway HTTP and REST APIs using dualstack endpoints, custom domains, and Terraform.
+Description: Enable IPv6 access for AWS API Gateway HTTP and REST APIs using dualstack endpoints, custom domains, and CloudFront integration.
 
 ## Introduction
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: IPv6, Regex, Regular Expression, Validation, Programming, Pattern Matching
 
-Description: Write and use regular expressions to match, validate, and extract IPv6 addresses from text, logs, and user input, handling common IPv6 text forms, URL literals, and zone IDs.
+Description: Write and use regular expressions to match, validate, and extract IPv6 addresses from text, logs, and user input, handling all valid IPv6 formats.
 
 ## Introduction
 

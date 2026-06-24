@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rancher, Kubernetes, CIS, Security, Compliance, Benchmark
 
-Description: Learn how to run CIS (Center for Internet Security) benchmark scans on your Kubernetes clusters using Rancher's CIS Benchmark app on Rancher v2.11 and earlier.
+Description: Learn how to run CIS (Center for Internet Security) benchmark scans on your Kubernetes clusters using Rancher's built-in CIS scanning tool.
 
 The Center for Internet Security (CIS) provides Kubernetes benchmarks that define security best practices for Kubernetes cluster configuration. On Rancher v2.11 and earlier, Rancher exposes CIS scanning through the CIS Benchmark app and related Kubernetes CRDs, making it easy to assess your cluster's security posture against these benchmarks. Rancher v2.12 and later use the Compliance app instead. This guide walks you through running CIS scans in a Rancher environment.
 

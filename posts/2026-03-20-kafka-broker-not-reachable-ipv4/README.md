@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kafka, IPv4, Troubleshooting, Connection, Broker, Debug
 
-Description: Diagnose and fix Kafka broker connectivity issues on IPv4, including advertised.listeners misconfiguration, port blocks, legacy ZooKeeper registration failures, KRaft quorum issues, and consumer group errors.
+Description: Diagnose and fix Kafka broker connectivity issues on IPv4, including advertised.listeners misconfiguration, port blocks, ZooKeeper/KRaft registration failures, and consumer group errors.
 
 ## Introduction
 

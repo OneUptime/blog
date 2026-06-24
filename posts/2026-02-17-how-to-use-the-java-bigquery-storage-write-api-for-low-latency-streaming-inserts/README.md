@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GCP, BigQuery, Storage Write API, Java, Streaming, Data Ingestion
 
-Description: Use the BigQuery Storage Write API in Java for low-latency streaming inserts with Protocol Buffers serialization, default and committed streams, and error handling.
+Description: Use the BigQuery Storage Write API in Java for low-latency streaming inserts with Protocol Buffers serialization, committed and buffered write modes, and error handling.
 
 ---
 

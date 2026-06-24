@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Cilium, Bugtool, Zsh, Parsing, Scripting
 
-Description: Extract subcommands, flags, and descriptions from cilium-bugtool zsh completion data for automated documentation and tooling.
+Description: Extract subcommands, flags, and descriptions from cilium-bugtool zsh completion scripts for automated documentation and tooling.
 
 ---
 

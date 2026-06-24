@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Windows, Linux, Networking
+Tags: Calico, Kubernetes, Window, Linux, Networking
 
 Description: Safely add Windows nodes to an existing Linux-only Calico Kubernetes cluster.
 

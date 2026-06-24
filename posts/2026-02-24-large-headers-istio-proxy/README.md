@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Istio, Envoy, Header, Proxy Configuration, Troubleshooting
 
-Description: Fix issues with large HTTP headers being rejected by Istio's Envoy proxy by configuring header size limits and connection manager settings.
+Description: Fix issues with large HTTP headers being rejected by Istio's Envoy proxy by configuring header size limits, buffer sizes, and connection manager settings.
 
 ---
 

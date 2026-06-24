@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: ArgoCD, GitOps, Kubernetes, GitHub, OCI
 
-Description: Learn how to configure ArgoCD to pull Helm charts and OCI artifacts from GitHub Container Registry using personal access tokens.
+Description: Learn how to configure ArgoCD to pull Helm charts and OCI artifacts from GitHub Container Registry using personal access tokens and GitHub App authentication.
 
 ---
 

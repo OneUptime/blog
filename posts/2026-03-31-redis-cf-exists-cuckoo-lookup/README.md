@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Redis, RedisBloom, Cuckoo Filter, Probabilistic, Command
 
-Description: Learn how to use CF.EXISTS in Redis to check whether an element is present in a Cuckoo filter with no false negatives and a low false positive rate.
+Description: Learn how to use CF.EXISTS in Redis to check whether an element is present in a Cuckoo filter with no false negatives and a configurable false positive rate.
 
 ---
 

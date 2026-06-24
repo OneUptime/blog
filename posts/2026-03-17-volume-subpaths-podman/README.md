@@ -1,10 +1,10 @@
-# How to Mount Volume Subdirectories in Podman
+# How to Use Volume Subpaths in Podman
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Podman, Container, DevOps, Volumes, Subdirectories, Storage
+Tags: Podman, Container, DevOps, Volumes, Subpaths, Storage
 
-Description: Learn how to mount specific subdirectories from a Podman volume into containers using bind mounts.
+Description: Learn how to mount specific subdirectories from a Podman volume into containers using subpath options.
 
 ---
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Docker, Networking, IPv4, Rootless, Security, Container
 
-Description: Configure IPv4 networking for Docker containers running in rootless mode with slirp4netns, understand port binding limitations, and optionally use the experimental pasta driver to expose services without root privileges.
+Description: Configure IPv4 networking for Docker containers running in rootless mode using slirp4netns or pasta, understand port binding limitations, and expose services without root privileges.
 
 ## Introduction
 

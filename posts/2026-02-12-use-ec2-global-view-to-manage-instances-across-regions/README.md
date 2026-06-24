@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: AWS, EC2, Global View, Multi-Region, Resource Management, Operation
 
-Description: Use EC2 Global View to see EC2 instances, VPCs, subnets, security groups, EBS volumes, and Auto Scaling groups across AWS regions from a single dashboard.
+Description: Use EC2 Global View to see and manage EC2 instances, VPCs, subnets, and security groups across all AWS regions from a single dashboard.
 
 ---
 

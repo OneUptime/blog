@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Envoy, DNS, IPv4, IPv6, Configuration, Service Mesh, Networking
 
-Description: Learn how to configure Envoy's V4_PREFERRED DNS lookup family to prefer IPv4 addresses for upstream clusters on dual-stack networks.
+Description: Learn how to configure Envoy's V4_PREFERRED DNS lookup family to ensure upstream clusters resolve to IPv4 addresses on dual-stack networks.
 
 ---
 

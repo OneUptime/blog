@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Loyalty Program, Points Redemption, Travel
 
-Description: Trace loyalty program points calculation and redemption flows using OpenTelemetry span attributes for transaction visibility.
+Description: Trace loyalty program points calculation and redemption flows using OpenTelemetry span attributes for full transaction visibility.
 
 Travel loyalty programs are complex financial systems where points have real monetary value. Every points calculation, transfer, and redemption needs to be accurate and auditable. When a frequent flyer redeems 100,000 points for a flight, the system needs to validate their balance, calculate the correct deduction (including tier bonuses and partner transfers), process the booking, and update the account. This post shows how to trace these workflows with OpenTelemetry, using span attributes to create a clear diagnostic trail alongside your system of record.
 

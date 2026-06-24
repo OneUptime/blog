@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RabbitMQ, Kubernetes, High-Availability
 
-Description: Learn how to configure RabbitMQ mirrored queues (classic queue mirroring) for legacy RabbitMQ 3.13 and earlier clusters on Kubernetes with automatic failover and partition handling.
+Description: Learn how to configure RabbitMQ mirrored queues (classic queue mirroring) for high availability on Kubernetes with automatic failover, partition handling, and production-ready clustering.
 
 ---
 

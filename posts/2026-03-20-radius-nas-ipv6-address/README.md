@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RADIUS, NAS-IPv6-Address, IPv6, RFC 3162, AAA, Networking
 
-Description: Configure and use the NAS-IPv6-Address RADIUS attribute (RFC 3162, attribute 95) for identifying network access servers by IPv6 address in Access-Request packets.
+Description: Configure and use the NAS-IPv6-Address RADIUS attribute (RFC 3162, attribute 95) for identifying network access servers by IPv6 address in authentication and accounting.
 
 ## What Is NAS-IPv6-Address?
 

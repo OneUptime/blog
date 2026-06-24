@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Dapr, TypeScript, JavaScript, Node.js, Type Safety
 
-Description: Learn how to use the Dapr JavaScript SDK with TypeScript for type-safe distributed microservices with interfaces and generics.
+Description: Learn how to use the Dapr JavaScript SDK with TypeScript for type-safe distributed microservices with interfaces, generics, and decorators.
 
 ---
 

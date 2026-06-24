@@ -2,9 +2,9 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Serverless, Cloud Run, OpenTofu, Firestore, API Gateway
+Tags: GCP, Serverless, Cloud Run, Cloud Function, OpenTofu, Firestore, API Gateway
 
-Description: Learn how to build a serverless API backend on GCP using OpenTofu with Cloud Run, API Gateway, Firestore, and IAM-based backend authentication.
+Description: Learn how to build a serverless API backend on GCP using OpenTofu with Cloud Run, Firebase API Gateway, Firestore, and IAP for authentication.
 
 ## Overview
 

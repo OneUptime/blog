@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: IPv6, NDP, Renumbering, Router Advertisement, Prefix Deprecation, Networking
 
-Description: Implement graceful IPv6 network renumbering using NDP Router Advertisements, prefix deprecation, and RFC 4192/RFC 4862 guidance.
+Description: Implement graceful IPv6 network renumbering using NDP Router Advertisements, prefix deprecation, and RFC 7084 guidelines.
 
 ## IPv6 Renumbering Process
 

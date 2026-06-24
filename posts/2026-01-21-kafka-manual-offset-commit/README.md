@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Apache Kafka, Offset Management, Consumer, At-Least-Once, Exactly-Once, Java, Python
 
-Description: A comprehensive guide to implementing manual offset commit in Kafka consumers, covering commit strategies, at-least-once semantics, and error handling.
+Description: A comprehensive guide to implementing manual offset commit in Kafka consumers, covering commit strategies, at-least-once and exactly-once semantics, error handling.
 
 ---
 

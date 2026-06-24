@@ -1,10 +1,10 @@
-# How to Parse Output from Cilium CLI Commands
+# How to Parse Output from cilium-agent completion bash
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Cilium, CLI
 
-Description: A practical guide covering how to parse output from Cilium CLI commands with step-by-step instructions and real-world examples for production Kubernetes clusters.
+Description: A practical guide covering how to parse output from cilium-agent completion bash with step-by-step instructions and real-world examples for production Kubernetes clusters.
 
 ---
 

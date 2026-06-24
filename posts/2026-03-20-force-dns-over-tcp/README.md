@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: DNS, TCP, UDP, Linux, Networking, Configuration, Troubleshooting
 
-Description: Configure DNS clients to use TCP instead of UDP for all queries, useful when UDP is blocked, to verify TCP DNS works, or to work around UDP transport issues.
+Description: Configure DNS clients to use TCP instead of UDP for all queries, useful when UDP is blocked, to verify TCP DNS works, or to bypass UDP packet size limitations.
 
 ## Introduction
 

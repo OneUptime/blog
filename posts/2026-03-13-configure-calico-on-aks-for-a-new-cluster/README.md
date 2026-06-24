@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, Networking, CNI, Configuration, AKS, Azure
 
-Description: A step-by-step guide to deploying Calico as the network policy engine on a new Azure Kubernetes Service cluster, enabling Kubernetes NetworkPolicy enforcement with Azure CNI.
+Description: A step-by-step guide to deploying Calico as the network policy engine on a new Azure Kubernetes Service cluster, enabling advanced network policies beyond what Azure CNI provides natively.
 
 ---
 

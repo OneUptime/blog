@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Podman, Container, DevOps, podman-compose, Docker Compose
 
-Description: Learn how to run existing Docker Compose files using podman-compose with minimal or no modifications.
+Description: Learn how to run existing Docker Compose files using podman-compose without any modifications.
 
 ---
 

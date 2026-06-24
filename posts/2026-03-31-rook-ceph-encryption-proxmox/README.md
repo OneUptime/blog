@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ceph, Proxmox, Encryption, Security, LUKS, Data Protection
+Tags: Ceph, Rook, Proxmox, Encryption, Security, LUKS, Data Protection
 
 Description: Enable Ceph OSD encryption at rest in a Proxmox environment to protect VM disk data stored in Ceph RBD pools using dmcrypt/LUKS on OSD devices.
 

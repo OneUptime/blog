@@ -86,7 +86,7 @@ module "secure_module" {
 
 The OpenTofu documentation recommends using a `.netrc` file to provide credentials for HTTP/HTTPS module sources. OpenTofu searches for `.netrc` in your home directory by default, and the location can be overridden with the `NETRC` environment variable.
 
-```
+```text
 machine artifacts.mycompany.com
   login myuser
   password mytoken

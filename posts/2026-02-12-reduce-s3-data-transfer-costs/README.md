@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: AWS, S3, Cost Optimization, Cloud Storage, Data Transfer
 
-Description: Learn practical strategies to reduce Amazon S3 data transfer costs including using VPC endpoints, CloudFront, compression, and intelligent tiering.
+Description: Learn practical strategies to reduce Amazon S3 data transfer costs including using VPC endpoints, CloudFront, S3 Transfer Acceleration, and intelligent tiering.
 
 ---
 

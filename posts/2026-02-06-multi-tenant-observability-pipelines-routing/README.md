@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Multi-Tenancy, Observability, Collector, Routing, Pipeline
 
-Description: Learn how to build multi-tenant observability pipelines using OpenTelemetry Collector routing connectors to isolate and direct telemetry data per tenant.
+Description: Learn how to build multi-tenant observability pipelines using OpenTelemetry Collector routing processors to isolate and direct telemetry data per tenant.
 
 ---
 

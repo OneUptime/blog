@@ -2,9 +2,9 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Operator, IPv6, Monitoring
+Tags: Kubernetes, Operator, IPv6, Monitoring, Prometheus
 
-Description: Monitor Kubernetes operator health and the IPv6 resources it manages using IPv6-aware validation, testing, and monitoring checks.
+Description: Monitor Kubernetes operator health and the IPv6 resources it manages using Prometheus metrics and custom alerts.
 
 ## Overview
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Active Directory, Ansible, System Roles, Linux
 
-Description: A practical guide to automating Active Directory domain joins and configuration on RHEL using RHEL System Roles and Ansible, covering the ad_integration role, SSSD settings, and timesync.
+Description: A practical guide to automating Active Directory domain joins and configuration on RHEL using RHEL System Roles and Ansible, covering the ad_integration and sssd roles.
 
 ---
 

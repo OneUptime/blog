@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Core Web Vitals, LCP, INP, CLS, Full-Stack Performance
+Tags: OpenTelemetry, Core Web Vitals, LCP, FID, CLS, Full-Stack Performance
 
 Description: Correlate Core Web Vitals from the browser with backend OpenTelemetry traces to pinpoint whether slow performance originates on the frontend or backend.
 

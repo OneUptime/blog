@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: DKIM, IPv4, Postfix, Email Security, OpenDKIM, Authentication
 
-Description: Configure OpenDKIM with Postfix to cryptographically sign outbound email from IPv4 servers, improving deliverability and helping receivers detect spoofed messages.
+Description: Configure OpenDKIM with Postfix to cryptographically sign outbound email from IPv4 servers, improving deliverability and preventing email spoofing.
 
 ## Introduction
 

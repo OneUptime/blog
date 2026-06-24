@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: IPv4, Network Migration, Mergers, Renumbering, NAT, Network Design
 
-Description: Create a structured IPv4 address migration plan for network mergers that resolves CIDR conflicts using temporary NAT, phased renumbering, and parallel old/new addressing during transition.
+Description: Create a structured IPv4 address migration plan for network mergers that resolves CIDR conflicts using NAT, phased renumbering, and dual-stack transition periods.
 
 ## Introduction
 

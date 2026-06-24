@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: REST API, IPv4, Rate Limiting, Python, Node.js, Redis
 
-Description: Learn how to implement per-IP rate limiting in REST APIs using sliding window and fixed-window algorithms in Python and Node.js, with Redis for distributed deployments.
+Description: Learn how to implement per-IP rate limiting in REST APIs using sliding window and token bucket algorithms in Python and Node.js, with Redis for distributed deployments.
 
 ## Python / Flask: Simple In-Memory Rate Limiter
 

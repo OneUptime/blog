@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Windows, PowerShell, Networking, DHCP, IPv4, Network Configuration
+Tags: Window, PowerShell, Networking, DHCP, IPv4, Network Configuration
 
 Description: Enable DHCP on a Windows network adapter using PowerShell cmdlets, remove static IP configuration, and request a new DHCP lease to restore dynamic addressing.
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Traefik, TCP, Database, Port Routing
 
-Description: Learn how to configure Traefik TCP routing to expose non-HTTP services like databases and message brokers deployed via Portainer, without publishing each backend container's port directly on the host.
+Description: Learn how to configure Traefik TCP routing to expose non-HTTP services like databases and message brokers deployed via Portainer, without exposing ports directly on the host.
 
 ## When to Use TCP Routing
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: IPv6, Consul, HashiCorp, Service Discovery, Service Mesh
 
-Description: Learn how to configure HashiCorp Consul 1.22.x and later agents and clusters to use IPv6 addresses for client API, DNS, RPC, and cluster (Serf) communication.
+Description: Learn how to configure HashiCorp Consul agents and clusters to use IPv6 addresses for client API, DNS, RPC, and cluster (Serf) communication.
 
 ## Consul Server Configuration
 

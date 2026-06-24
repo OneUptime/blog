@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Nginx, Load Balancing, High Availability, Linux
 
-Description: Learn how to configure Nginx as a load balancer on RHEL with round-robin, least connections, and IP hash algorithms plus passive failure handling.
+Description: Learn how to configure Nginx as a load balancer on RHEL with round-robin, least connections, and IP hash algorithms plus health checks.
 
 ---
 

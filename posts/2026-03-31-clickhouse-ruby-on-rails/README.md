@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: ClickHouse, Ruby, Rails, Database, Analytics, ActiveRecord
 
-Description: Add ClickHouse to a Ruby on Rails application using the clickhouse-activerecord gem for ORM support and the ClickHouse HTTP API for raw analytical queries.
+Description: Add ClickHouse to a Ruby on Rails application using the clickhouse-activerecord gem for ORM support and clickhouse-client for raw analytical queries.
 
 ---
 

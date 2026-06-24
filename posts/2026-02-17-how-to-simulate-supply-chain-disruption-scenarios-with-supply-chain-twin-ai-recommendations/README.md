@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GCP, Supply Chain Twin, AI, Simulation, Supply Chain Risk Management
 
-Description: Use a Google Cloud Supply Chain Twin-style data foundation to simulate supply chain disruption scenarios and generate mitigation recommendations.
+Description: Use Google Cloud Supply Chain Twin to simulate supply chain disruption scenarios and get AI-powered recommendations for mitigation strategies.
 
 ---
 

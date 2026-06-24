@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, CentOS Stream, Migration, Convert2RHEL, Linux
 
-Description: Plan an unsupported migration from CentOS Stream 8 to RHEL 8 using Convert2RHEL, including preparation steps and post-conversion validation.
+Description: Migrate from CentOS Stream 8 to RHEL 8 using Convert2RHEL, including preparation steps and post-conversion validation.
 
 ---
 

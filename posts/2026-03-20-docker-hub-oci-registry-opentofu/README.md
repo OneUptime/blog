@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Docker Hub, OCI Registry, Provider Distribution, Public Registry
 
-Description: Learn how to use Docker Hub as an OCI registry for storing OpenTofu provider mirrors and distributing OpenTofu modules, leveraging Docker Hub's public and private repository infrastructure.
+Description: Learn how to use Docker Hub as an OCI registry for distributing OpenTofu providers and modules, leveraging Docker Hub's public and private repository infrastructure.
 
 ## Introduction
 

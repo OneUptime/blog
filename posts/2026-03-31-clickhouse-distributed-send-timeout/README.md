@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: ClickHouse, Distributed Table, Timeout, Configuration, Network, Cluster
 
-Description: Configure send_timeout, receive_timeout, and connect_timeout_with_failover_ms in ClickHouse to control how long distributed queries wait for shard responses before failing.
+Description: Configure distributed_send_timeout and related settings in ClickHouse to control how long distributed queries wait for shard responses before failing.
 
 ---
 

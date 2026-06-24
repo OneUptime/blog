@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: DHCPv6, Stateful, Stateless, M Flag, O Flag, IPv6
 
-Description: Understand the difference between stateful DHCPv6 (full address assignment) and stateless DHCPv6 (options only), when to use each, and how RA flags M and O signal DHCPv6 address and option configuration.
+Description: Understand the difference between stateful DHCPv6 (full address assignment) and stateless DHCPv6 (options only), when to use each, and how RA flags M and O control client behavior.
 
 ## Introduction
 

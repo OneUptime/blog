@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, AWS X-Ray, Distributed Tracing, Observability, AWS
 
-Description: Step-by-step instructions for exporting OpenTelemetry traces to AWS X-Ray using the collector and SDK OTLP export, with trace ID format conversion details.
+Description: Step-by-step instructions for exporting OpenTelemetry traces to AWS X-Ray using the collector and SDK exporters, with trace ID format conversion details.
 
 ---
 

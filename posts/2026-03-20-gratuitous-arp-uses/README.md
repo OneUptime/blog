@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Networking, ARP, IPv4, High Availability
 
-Description: Learn what gratuitous ARP is, when it is used, and how it helps with failover, address announcements, and cache updates.
+Description: Learn what gratuitous ARP is, when it is used, and how it helps with failover, IP conflict detection, and cache updates.
 
 ## What Is Gratuitous ARP?
 

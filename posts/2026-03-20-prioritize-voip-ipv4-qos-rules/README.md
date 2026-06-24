@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: VoIP, QoS, IPv4, Linux, tc, DSCP
 
-Description: Configure Linux tc and iptables QoS rules to give locally generated VoIP IPv4 traffic higher-priority egress queuing, ensuring low latency and jitter for voice calls.
+Description: Configure Linux tc and iptables QoS rules to give VoIP IPv4 traffic strict priority queuing, ensuring low latency and jitter for voice calls.
 
 VoIP requires low latency (< 150ms), low jitter (< 30ms), and minimal packet loss (< 1%). Without QoS, large file transfers or streaming can degrade call quality. This guide prioritizes locally generated outbound VoIP traffic at the Linux level.
 

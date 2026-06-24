@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, SNMP, IPv4, Network Automation, Monitoring, Multi-Vendor
 
-Description: Use Ansible to deploy SNMP configuration across Cisco IOS, Linux hosts, and Juniper devices for centralized IPv4 network monitoring, including SNMPv3 on Cisco IOS and community-based SNMP on Linux and Junos.
+Description: Use Ansible to deploy SNMPv3 and SNMPv2c configuration across Cisco IOS, Linux hosts, and Juniper devices for centralized IPv4 network monitoring.
 
 ## Introduction
 

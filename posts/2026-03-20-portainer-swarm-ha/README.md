@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Docker Swarm, High Availability, Infrastructure, Clustering
 
-Description: Configure a highly available Docker Swarm cluster with multiple manager nodes and deploy Portainer to manage it.
+Description: Configure a highly available Docker Swarm cluster with multiple manager nodes and deploy Portainer to manage it with HA.
 
 ## Introduction
 

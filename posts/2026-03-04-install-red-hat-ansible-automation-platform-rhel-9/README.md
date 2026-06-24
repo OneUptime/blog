@@ -1,10 +1,10 @@
-# How to Install Ansible Core on RHEL 9
+# How to Install Red Hat Ansible Automation Platform on RHEL 9
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, Ansible Core, Red Hat, Automation
+Tags: RHEL, Ansible Automation Platform, Red Hat, Automation
 
-Description: Install Ansible Core on RHEL 9 for enterprise automation.
+Description: Install Red Hat Ansible Automation Platform on RHEL 9 for enterprise automation.
 
 ---
 

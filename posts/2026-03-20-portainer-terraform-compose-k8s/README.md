@@ -1,4 +1,4 @@
-# How to Convert Docker Compose to Kubernetes Manifests with Portainer Terraform (2)
+# How to Convert Docker Compose to Kubernetes Manifests with Portainer Terra (2)
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

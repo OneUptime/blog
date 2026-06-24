@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Deployment, Reliability
 
-Description: Discover how minReadySeconds in Kubernetes deployments prevents pods from being counted as available too quickly, ensuring stable rollouts and reducing the chance that crashing pods replace healthy ones.
+Description: Discover how minReadySeconds in Kubernetes deployments prevents pods from being marked ready too quickly, ensuring stable rollouts and preventing crashes from reaching production.
 
 ---
 

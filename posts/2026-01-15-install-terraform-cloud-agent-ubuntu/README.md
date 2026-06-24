@@ -50,7 +50,7 @@ df -h /
 
 ### Terraform Cloud Requirements
 
-- A Terraform Cloud (HCP Terraform) account — cloud agents are available across HCP Terraform tiers (the Free tier includes a limited number of agents, and paid tiers or Terraform Enterprise provide more)
+- A Terraform Cloud (HCP Terraform) account - cloud agents are available across HCP Terraform tiers (the Free tier includes a limited number of agents, and paid tiers or Terraform Enterprise provide more)
 - Organization admin or owner permissions
 - Access to create agent pools and generate tokens
 

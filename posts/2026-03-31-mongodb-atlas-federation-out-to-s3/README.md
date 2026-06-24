@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: MongoDB, Atlas Data Federation, S3
 
-Description: Use the $out stage in MongoDB Atlas Data Federation aggregation pipelines to write query results back to S3 in formats like JSON, CSV, and Parquet for downstream processing.
+Description: Use the $out stage in MongoDB Atlas Data Federation aggregation pipelines to write query results back to S3 in JSON or CSV format for downstream processing.
 
 ---
 

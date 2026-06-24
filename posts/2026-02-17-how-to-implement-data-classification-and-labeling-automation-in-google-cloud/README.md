@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GCP, Data Classification, Cloud DLP, Data Governance, Automation
 
-Description: A hands-on guide to automating data classification and labeling across Google Cloud resources using Cloud DLP, Knowledge Catalog, and Cloud Functions.
+Description: A hands-on guide to automating data classification and labeling across Google Cloud resources using Cloud DLP, Data Catalog, and Cloud Functions.
 
 ---
 

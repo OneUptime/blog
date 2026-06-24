@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Go, Priority Queue, Request Processing, Performance, Concurrency
 
-Description: Learn how to build a production-ready priority-based request queue in Go using heap data structures, synchronization primitives, and goroutines to handle high-priority requests before low-priority ones.
+Description: Learn how to build a production-ready priority-based request queue in Go using heap data structures, goroutines, and channels to handle high-priority requests before low-priority ones.
 
 ---
 

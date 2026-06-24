@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RKE, RKE2, Kubernetes, Rancher, Migration, Upgrade
 
-Description: A guide to migrating workloads from an RKE (v1) cluster to a new RKE2 cluster with minimal downtime.
+Description: A complete guide to migrating workloads from an RKE (v1) cluster to a new RKE2 cluster with minimal downtime.
 
 ## Introduction
 

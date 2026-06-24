@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rook, Ceph, Quincy, Release, Feature, RADOS
 
-Description: Explore the key features introduced in Ceph Quincy (v17) including improved scrubbing, BlueStore fragmentation handling, RGW multisite improvements, and new cephadm capabilities.
+Description: Explore the key features introduced in Ceph Quincy (v17) including rados osd snaps, improved scrubbing, RGW multisite improvements, and new RADOS capabilities.
 
 ---
 

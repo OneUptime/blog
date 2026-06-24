@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, Python, Parsing, JSON, Automation
 
-Description: Parse Ansible playbook output in Python using the `ansible.posix` JSON callback plugin and regex patterns for reporting and monitoring integration.
+Description: Parse Ansible playbook output in Python using the JSON callback plugin and regex patterns for reporting and monitoring integration.
 
 ---
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Cisco, DMVPN, Phase 2, IPv4, IOS, VPN, Spoke-to-Spoke, NHRP
 
-Description: Configure DMVPN Phase 2 on Cisco IOS to enable direct spoke-to-spoke IPv4 tunnels by preserving spoke next-hops in routing updates, reducing hub bandwidth requirements in large deployments.
+Description: Configure DMVPN Phase 2 on Cisco IOS to enable direct spoke-to-spoke IPv4 tunnels after initial hub routing, reducing hub bandwidth requirements in large deployments.
 
 ## Introduction
 

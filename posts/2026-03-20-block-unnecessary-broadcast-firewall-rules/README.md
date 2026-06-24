@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Networking, Broadcast, iptables, Firewall, Linux, Security
 
-Description: Use iptables to selectively block unnecessary broadcast and local multicast traffic such as NetBIOS, unnecessary SSDP, and directed broadcasts while preserving essential services like DHCP and ARP.
+Description: Use iptables to selectively block unnecessary broadcast traffic such as NetBIOS, unnecessary SSDP, and directed broadcasts while preserving essential services like DHCP and ARP.
 
 ## Introduction
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: iptables, Conntrack, Linux, Firewall, Stateful, Networking
 
-Description: Use iptables connection tracking (conntrack) and the conntrack match module to create stateful firewall rules that track connection state and automatically handle return traffic.
+Description: Use iptables connection tracking (conntrack) and the state module to create stateful firewall rules that track TCP session states and automatically handle return traffic.
 
 Connection tracking is what makes iptables a stateful firewall. Without it, you'd need separate rules for both directions of every connection. With it, you write rules for new connections only - iptables automatically allows established and related packets back.
 

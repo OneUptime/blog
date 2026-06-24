@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Redis, Hash, Memory Optimization, Data Structure, Ziplist, Performance
 
-Description: A comprehensive guide to using Redis hashes for memory-efficient storage, covering compact hash encoding, hash-max-listpack optimizations, and patterns for storing millions of small objects efficiently.
+Description: A comprehensive guide to using Redis hashes for memory-efficient storage, covering ziplist encoding, hash-max-ziplist optimizations, and patterns for storing millions of small objects efficiently.
 
 ---
 

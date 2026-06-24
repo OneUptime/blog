@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GCP, Cloud Profiler, Node.js, Continuous Profiling, Performance
 
-Description: A complete guide to setting up Google Cloud Profiler for continuous wall-time and heap profiling of Node.js applications, with deployment examples for Cloud Run and GKE.
+Description: A complete guide to setting up Google Cloud Profiler for continuous CPU and heap profiling of Node.js applications, with deployment examples for Cloud Run and GKE.
 
 ---
 

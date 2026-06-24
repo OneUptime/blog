@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rancher, Kubernetes, Azure, Cloud Provider
 
-Description: Configure the out-of-tree Azure cloud provider in Rancher-managed clusters to enable Azure Load Balancers and Azure Managed Disks.
+Description: Configure the Azure cloud provider in Rancher-managed clusters to enable Azure Load Balancers, Azure Disks, and Azure Files integration.
 
 ## Introduction
 

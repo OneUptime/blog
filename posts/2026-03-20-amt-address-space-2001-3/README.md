@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: IPv6, AMT, Automatic Multicast Tunneling, 2001:3::/32, RFC 7450, Multicast
 
-Description: Understand the AMT (Automatic Multicast Tunneling) address space 2001:3::/32 (RFC 7450), how AMT uses it for relay discovery, and its role in enabling IPv6 multicast across unicast networks.
+Description: Understand the AMT (Automatic Multicast Tunneling) address space 2001:3::/32 (RFC 7450), how AMT relays use it, and its role in enabling IPv6 multicast across unicast networks.
 
 ## Introduction
 

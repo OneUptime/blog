@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Cilium, Kubernetes, Networking, eBPF, IPAM
 
-Description: Understand how Cilium runs on Kubernetes nodes that use containerd, CRI-O, or Docker through cri-dockerd, with configuration guidance, troubleshooting tips, and compatibility validation.
+Description: Understand how Cilium integrates with different Kubernetes container runtimes including containerd, CRI-O, and Docker, with configuration guidance, troubleshooting tips, and compatibility validation.
 
 ---
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, PagerDuty, Alerting, API, DevOps, Monitoring
 
-Description: Use the Portainer REST API to monitor Docker Swarm service health, then trigger PagerDuty incidents when failures are detected in your Portainer-managed Docker environment.
+Description: Use the Portainer REST API to monitor container and service health, then trigger PagerDuty incidents when failures are detected across your Docker and Kubernetes environments.
 
 ---
 

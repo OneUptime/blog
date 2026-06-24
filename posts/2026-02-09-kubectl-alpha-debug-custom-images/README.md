@@ -1,10 +1,10 @@
-# How to Configure kubectl debug with Custom Container Images
+# How to Configure kubectl alpha debug with Custom Container Images
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, kubectl, Debugging, Ephemeral Container, Image
 
-Description: Learn how to use kubectl debug with custom container images for specialized debugging scenarios.
+Description: Learn how to use kubectl alpha debug with custom container images for specialized debugging scenarios.
 
 ---
 

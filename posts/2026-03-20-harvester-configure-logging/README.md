@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Harvester, Kubernetes, Virtualization, HCI, Logging, Observability
 
-Description: Learn how to configure centralized logging in Harvester to collect, aggregate, and forward logs from cluster Pods and node services.
+Description: Learn how to configure centralized logging in Harvester to collect, aggregate, and forward logs from cluster components and virtual machines.
 
 ## Introduction
 

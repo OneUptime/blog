@@ -1,10 +1,10 @@
-# How to Filter Flux Alerts for Reconciliation Failures
+# How to Filter Flux Alerts by Event Reason ReconciliationFailed
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Flux, Alert, Kubernetes, GitOps, Notification, Event, Reconciliation, Monitoring
 
-Description: Learn how to configure Flux alerts for targeted reconciliation failure notifications.
+Description: Learn how to configure Flux alerts to filter by the ReconciliationFailed event reason for targeted failure notifications.
 
 ---
 

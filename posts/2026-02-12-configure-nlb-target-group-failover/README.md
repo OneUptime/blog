@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: AWS, NLB, Load Balancing, Failover, High Availability, Target Groups
 
-Description: Learn how to configure Network Load Balancer target group failover for high availability using target group health thresholds, DNS failover, routing failover, and health checks.
+Description: Learn how to configure Network Load Balancer target group failover for high availability including primary and secondary target groups with health checks.
 
 ---
 

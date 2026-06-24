@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: BGP, Anycast, DNS, CDN, Load Distribution, Networking
 
-Description: Learn how to implement BGP anycast to route clients to the best available site automatically, enabling geographic load distribution for DNS resolvers and CDN edge nodes.
+Description: Learn how to implement BGP anycast to route clients to the nearest server automatically, enabling geographic load distribution for DNS resolvers and CDN edge nodes.
 
 ## What Is BGP Anycast?
 

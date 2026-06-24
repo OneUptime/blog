@@ -1,10 +1,10 @@
-# How to Configure DNS Provider with OpenTofu
+# How to Configure Dns Provider with OpenTofu
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Infrastructure as Code, Provider, Automation, DevOps
 
-Description: Learn how to configure and use the DNS provider in OpenTofu to manage DNS records as code.
+Description: Learn how to configure and use the Dns provider in OpenTofu to manage Dns resources as code.
 
 ## Introduction
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Docker, Volumes, Storage, DevOps
 
-Description: Learn how to browse the contents of Docker volumes directly in Portainer using the volume browser feature available with Swarm and Agent deployments.
+Description: Learn how to browse and view the contents of Docker volumes directly in Portainer using the volume browser feature available with Swarm and Agent deployments.
 
 ## Introduction
 

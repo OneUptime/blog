@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Azure, Logic Apps, Workflow Automation, Infrastructure as Code, Serverless
 
-Description: Learn how to create Azure Logic Apps Consumption workflows and Standard hosting resources for event-driven automation and integration using OpenTofu.
+Description: Learn how to create Azure Logic Apps Standard and Consumption workflows for event-driven automation and integration using OpenTofu.
 
 ## Introduction
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, FIPS, Bootc, Image Builder, Security, Compliance, Linux
 
-Description: Build FIPS-enabled RHEL bootc container images using bootc-image-builder for environments that require federal cryptographic standards compliance.
+Description: Build FIPS 140-compliant RHEL bootc container images using Image Builder for environments that require federal cryptographic standards compliance.
 
 ---
 

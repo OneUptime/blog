@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: ArgoCD, GitOps, Kubernetes, Sync Operations
 
-Description: Learn when and how to use the ArgoCD Replace sync option to use full-object replacement instead of patching, and when to combine it with Force for destructive recreation.
+Description: Learn when and how to use the ArgoCD Replace sync option to force resource recreation instead of patching, solving immutable field errors and stuck deployments.
 
 ---
 

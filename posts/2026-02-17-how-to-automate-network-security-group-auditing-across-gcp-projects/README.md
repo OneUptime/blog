@@ -1,4 +1,4 @@
-# How to Automate Firewall Rule Auditing Across GCP Projects
+# How to Automate Network Security Group Auditing Across GCP Projects
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

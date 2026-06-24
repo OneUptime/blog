@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Terraform, Azure, Web Apps, App Service, PaaS, Infrastructure as Code
 
-Description: A comprehensive guide to deploying Azure Web Apps with Terraform, including application settings, deployment slots, custom domains, VNet integration, and Key Vault integration.
+Description: A comprehensive guide to deploying Azure Web Apps with Terraform, including application settings, deployment slots, custom domains, and continuous deployment configuration.
 
 ---
 

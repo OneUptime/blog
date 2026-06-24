@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Logging, Correlation, Tracing, Observability
 
-Description: Learn to create log correlation using trace IDs and span IDs across services.
+Description: Learn to create log correlation using trace IDs and request IDs across services.
 
 ---
 

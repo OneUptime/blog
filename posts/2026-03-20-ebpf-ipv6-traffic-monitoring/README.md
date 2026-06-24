@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: eBPF, IPv6, Monitoring, Prometheus, Observability
 
-Description: Monitor IPv6 traffic patterns, connection counts, and bandwidth using eBPF XDP or TC hooks with Prometheus export.
+Description: Monitor IPv6 traffic patterns, connection counts, and bandwidth using eBPF tracepoints and TC hooks with Prometheus export.
 
 ## Overview
 

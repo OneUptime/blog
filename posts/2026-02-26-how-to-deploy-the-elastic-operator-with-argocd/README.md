@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: ArgoCD, GitOps, Kubernetes, Elasticsearch, ECK
 
-Description: Learn how to deploy the Elastic Cloud on Kubernetes (ECK) Operator with ArgoCD for GitOps-managed Elasticsearch, Kibana, and Filebeat deployments.
+Description: Learn how to deploy the Elastic Cloud on Kubernetes (ECK) Operator with ArgoCD for GitOps-managed Elasticsearch, Kibana, and Fleet Server deployments.
 
 ---
 

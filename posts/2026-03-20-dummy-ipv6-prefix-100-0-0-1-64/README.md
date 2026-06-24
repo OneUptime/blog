@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: IPv6, Dummy Prefix, 100::/64, Networking, Testing, Special-Purpose
 
-Description: Understand the 100:0:0:1::/64 Dummy IPv6 Prefix, how it differs from the discard-only 100::/64 block, and where each prefix is appropriate.
+Description: Understand the 100:0:0:1::/64 dummy IPv6 prefix, its relationship to the discard-only 100::/64 block, and appropriate testing use cases.
 
 ## Introduction
 

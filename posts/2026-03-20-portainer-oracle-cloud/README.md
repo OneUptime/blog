@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Oracle Cloud, Free Tier, Docker, ARM
 
-Description: Learn how to deploy Portainer on Oracle Cloud Infrastructure's Always Free tier, including the ARM-based Ampere A1 instances that provide up to 4 OCPUs and 24GB RAM for free.
+Description: Learn how to deploy Portainer on Oracle Cloud Infrastructure's Always Free tier, including the ARM-based Ampere A1 instances that provide up to 4 vCPUs and 24GB RAM for free.
 
 ## Oracle Cloud Free Tier Resources
 

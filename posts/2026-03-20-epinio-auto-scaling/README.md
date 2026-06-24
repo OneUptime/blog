@@ -1,10 +1,10 @@
-# How to Deploy and Scale an Application in Epinio
+# How to Configure Application Auto-Scaling in Epinio
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Epinio, Scaling, Kubernetes, PaaS, Buildpacks
+Tags: Epinio, Auto-Scaling, Kubernetes, HPA, PaaS
 
-Description: Deploy an application to Epinio and scale it by changing the number of instances.
+Description: Set up horizontal pod autoscaling for Epinio applications to automatically handle load variations.
 
 ## Introduction
 

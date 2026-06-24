@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Dapr, OAuth2, Middleware, Security, Authorization
 
-Description: Learn how to configure the Dapr OAuth2 authorization middleware to protect service invocations with the OAuth2 authorization code flow.
+Description: Learn how to configure the Dapr OAuth2 authorization middleware to protect service invocations with OAuth2 authorization code flow and token validation.
 
 ---
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Azure, Batch, Low-Priority, Spot VMs, Cost Optimization, HPC, Cloud Computing
 
-Description: Learn how to use Spot nodes in Azure Batch pools to reduce compute costs while managing preemption gracefully.
+Description: Learn how to use low-priority and spot nodes in Azure Batch pools to reduce compute costs by up to 80% while managing preemption gracefully.
 
 ---
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Auth0, Identity, Authentication, Authorization
 
-Description: Learn how to manage Auth0 applications, APIs, connections, actions, and tenant settings using OpenTofu for reproducible identity management across environments.
+Description: Learn how to manage Auth0 applications, APIs, connections, rules, and tenant settings using OpenTofu for reproducible identity management across environments.
 
 ## Introduction
 

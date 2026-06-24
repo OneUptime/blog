@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Terraform, HCL, Configuration, Backend, Infrastructure as Code
 
-Description: Learn how to configure Terraform behavior using the terraform block, including required version, required providers, backend configuration, and advanced settings.
+Description: Learn how to configure Terraform behavior using the terraform block, including required version, required providers, backend configuration, and experimental features.
 
 ---
 

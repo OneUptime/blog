@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Redis, State Machine, Distributed System, Workflow, Backend
 
-Description: Build a distributed state machine with Redis hashes and Lua scripts to manage workflow states with atomic transitions and conflict-free concurrency across services.
+Description: Build a distributed state machine with Redis strings and Lua scripts to manage workflow states with atomic transitions and conflict-free concurrency across services.
 
 ---
 

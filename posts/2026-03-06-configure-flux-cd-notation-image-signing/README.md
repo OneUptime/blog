@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Flux CD, Notation, Image Signing, Supply Chain Security, Kubernetes, GitOps, Container Security
 
-Description: Learn how to configure Flux CD with Notation for OCI artifact signing and verification to secure your software supply chain in a GitOps workflow.
+Description: Learn how to configure Flux CD with Notation for container image signing and verification to secure your software supply chain in a GitOps workflow.
 
 ---
 

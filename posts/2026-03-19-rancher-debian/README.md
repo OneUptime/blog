@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rancher, Debian, Docker, Kubernetes, Installation
 
-Description: A step-by-step guide to installing Rancher on Debian 12 (Bookworm) using Docker, covering system preparation, Docker installation, and Rancher configuration for a single-node test or development environment.
+Description: A step-by-step guide to installing Rancher on Debian 12 (Bookworm) using Docker, covering system preparation, Docker installation, and Rancher configuration.
 
 Debian is known for its stability, security, and commitment to free software. Debian 12 (Bookworm) remains a solid foundation for running Rancher, although Debian 13 is now the current stable release. Rancher's single-node Docker installation is intended for testing and development only. This guide covers the entire process from preparing a fresh Debian 12 server to deploying a fully functional Rancher instance.
 

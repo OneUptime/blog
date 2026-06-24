@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Docker, Automation, CI/CD, Watchtower, Build Automation
 
-Description: Automate Docker image builds with Buildx, push to a registry, and trigger Portainer stack updates with the API and Watchtower.
+Description: Automate Docker image builds with Buildx, push to a registry, and trigger Portainer deployments using webhooks and Watchtower.
 
 ## Introduction
 

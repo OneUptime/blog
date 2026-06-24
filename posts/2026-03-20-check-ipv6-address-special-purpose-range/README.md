@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: IPv6, Special-Purpose, Address Classification, Python, Networking, Security
 
-Description: Build a comprehensive IPv6 address classifier that checks the current IANA IPv6 special-purpose registry and returns the block name, properties, and appropriate usage guidance.
+Description: Build a comprehensive IPv6 address classifier that checks all IANA special-purpose ranges and returns the block name, properties, and appropriate usage guidance.
 
 ## Introduction
 

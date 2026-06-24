@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Security, Docker, Policies, Hardening
 
-Description: Learn how to configure Docker security controls in Portainer to reduce risky deployment options for non-admin users across connected environments.
+Description: Learn how to configure comprehensive Docker security policies in Portainer to enforce container security standards across all environments and user groups.
 
 ## Introduction
 

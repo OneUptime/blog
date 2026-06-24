@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Caddy, Tracing, OTLP gRPC
 
-Description: Enable OpenTelemetry distributed tracing in Caddy Server using the built-in tracing directive and configure OTLP gRPC export to your Collector.
+Description: Enable OpenTelemetry distributed tracing in Caddy Server using the built-in tracing directive to export spans via OTLP gRPC to your Collector.
 
 Caddy Server has built-in OpenTelemetry tracing support through its `tracing` directive. When enabled, Caddy propagates an existing trace context or initializes a new one, and records HTTP span data for requests handled by that route or site. The examples below configure Caddy to export spans via OTLP gRPC to your OpenTelemetry Collector.
 

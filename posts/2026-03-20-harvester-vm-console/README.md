@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Harvester, VM Console, Virtual Machine, KubeVirt, Kubernetes, SUSE Rancher, HCI
 
-Description: Learn how to access the console of a virtual machine running in Harvester using the web-based console, `virtctl` or the `kubectl virt` plugin, and serial console access for headless VMs.
+Description: Learn how to access the console of a virtual machine running in Harvester using the web-based VNC console, kubectl virt plugin, and serial console for headless VMs.
 
 ---
 

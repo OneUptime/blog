@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: IPv6, Windows Server, Network Configuration, PowerShell, Netsh
 
-Description: Learn how to enable IPv6 on Windows Server through the GUI and PowerShell, and verify it with netsh, including configuring IPv6 for production server roles.
+Description: Learn how to enable and verify IPv6 on Windows Server through the GUI, PowerShell, and netsh, including configuring IPv6 for production server roles.
 
 ## IPv6 Status on Windows Server
 

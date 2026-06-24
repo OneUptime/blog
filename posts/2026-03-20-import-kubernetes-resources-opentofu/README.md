@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Terraform, Kubernetes, Import, Namespace, ConfigMap
 
-Description: Learn how to import existing Kubernetes resources including namespaces, ConfigMaps, Deployments, Services, and RBAC resources into OpenTofu state using the Kubernetes provider.
+Description: Learn how to import existing Kubernetes resources including namespaces, ConfigMaps, Secrets, and Deployments into OpenTofu state using the Kubernetes provider.
 
 ## Introduction
 

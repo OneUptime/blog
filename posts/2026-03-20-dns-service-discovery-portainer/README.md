@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, DNS, Service Discovery, Docker, Networking
 
-Description: Configure DNS-based service discovery for containers in Portainer using Docker's built-in DNS and per-network aliases.
+Description: Configure DNS-based service discovery for containers in Portainer using Docker's built-in DNS and Consul.
 
 ## Introduction
 

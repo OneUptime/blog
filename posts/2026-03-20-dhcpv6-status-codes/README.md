@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: DHCPv6, IPv6, Troubleshooting, Status Code, RFC 9915
+Tags: DHCPv6, IPv6, Troubleshooting, Status Code, RFC 8415
 
 Description: A reference guide to DHCPv6 status codes, what they mean, and how to identify and resolve them during address assignment failures.
 

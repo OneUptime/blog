@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Linux, Network Bonding, Balance-ALB, Mode 6, Adaptive Load Balancing, Networking
 
-Description: Configure Linux balance-ALB bonding (mode 6) for adaptive transmit load balancing and ARP-based IPv4 receive load balancing without requiring switch configuration.
+Description: Configure Linux balance-ALB bonding (mode 6) for adaptive load balancing of both transmit and receive traffic without requiring switch configuration.
 
 ## Introduction
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Output, Preconditions, Validation, Infrastructure as Code, DevOps
 
-Description: A guide to adding precondition checks to OpenTofu output values to validate guarantees before exposing values to consumers.
+Description: A guide to adding precondition checks to OpenTofu output values to validate assumptions before exposing values to consumers.
 
 ## Introduction
 

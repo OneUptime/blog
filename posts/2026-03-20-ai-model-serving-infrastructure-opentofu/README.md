@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Machine Learning, Model Serving, Kubernetes, MLOps, Infrastructure as Code
 
-Description: Learn how to build Kubernetes-based AI model serving infrastructure on EKS using OpenTofu, including GPU node groups, load balancing, and auto-scaling.
+Description: Learn how to build production-grade AI model serving infrastructure on Kubernetes using OpenTofu, including load balancing, auto-scaling, and monitoring.
 
 ## Introduction
 

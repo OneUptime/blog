@@ -2,9 +2,9 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Dapr, Notification, Batch Processing, Pub/Sub, State Management
+Tags: Dapr, Notification, Batch Processing, Pub/Sub, Workflow
 
-Description: Learn how to process large batches of notifications reliably using Dapr pub/sub for queuing and state store for progress tracking.
+Description: Learn how to process large batches of notifications reliably using Dapr pub/sub for queuing and Workflow for ordered delivery.
 
 ---
 

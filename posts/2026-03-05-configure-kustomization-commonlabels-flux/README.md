@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Flux CD, GitOps, Kubernetes, Kustomize, Kustomization, Labels
 
-Description: Learn how the commonLabels field in kustomization.yaml applies consistent labels across Kubernetes resources managed by Flux, and when to prefer the newer labels transformer.
+Description: Learn how to use the commonLabels field in kustomization.yaml to automatically apply consistent labels across all Kubernetes resources managed by Flux.
 
 ---
 

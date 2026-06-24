@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Azure, IPv6, VPN Gateway, Site-to-Site, Point-to-Site, Dual-Stack
 
-Description: Configure Azure VPN Gateway with IPv6 in dual-stack mode for site-to-site and point-to-site VPN connections, enabling IPv6 connectivity between Azure VNets and on-premises networks.
+Description: Configure Azure VPN Gateway with IPv6 for site-to-site VPN connections, enabling dual-stack connectivity between Azure VNets and on-premises networks over IPv6.
 
 ## Introduction
 

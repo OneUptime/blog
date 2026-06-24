@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Pulumi, Infrastructure as Code, DevOps, Automation
 
-Description: Use Pulumi's infrastructure as code platform to automate Portainer deployments, environment management, and stack configurations using TypeScript.
+Description: Use Pulumi's infrastructure as code platform to automate Portainer deployments, environment management, and stack configurations using TypeScript or Python.
 
 ## Introduction
 

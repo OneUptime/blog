@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: ArgoCD, Image Updater, Kubernetes, Container Registry, Automation, GitOps
 
-Description: Learn how to use ArgoCD Image Updater to automatically update container image versions when new images are pushed to your registry.
+Description: Learn how to use ArgoCD Image Updater to automatically update container image versions in your Git repository when new images are pushed to your registry.
 
 ---
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Docker, Filtering, Labels, Operation, DevOps
 
-Description: Learn how to search containers in Portainer and use Docker-compatible filters for running status, labels, and names to quickly find specific workloads.
+Description: Learn how to filter containers by running status, labels, and names in Portainer to quickly find specific containers in environments with many running workloads.
 
 ---
 

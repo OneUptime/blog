@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: IPv6, Migration, Rollout, Phased Deployment, Change Management
 
-Description: Execute a phased IPv6 rollout using canary deployments, segmented AAAA publication, and monitoring-driven progression to minimize risk during production IPv6 enablement.
+Description: Execute a phased IPv6 rollout using canary deployments, traffic percentage splitting, and monitoring-driven progression to minimize risk during production IPv6 enablement.
 
 ## Introduction
 

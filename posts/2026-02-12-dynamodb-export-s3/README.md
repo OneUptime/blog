@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: AWS, DynamoDB, S3, Data Export
 
-Description: Learn how to export DynamoDB table data to S3 using native exports, DynamoDB Streams, and custom scripts for analytics, backup, and data migration use cases.
+Description: Learn how to export DynamoDB table data to S3 using native exports, Data Pipeline, and custom scripts for analytics, backup, and data migration use cases.
 
 ---
 
@@ -349,10 +349,10 @@ Once your data is in S3, you can query it with Amazon Athena without loading it 
 -- Create an Athena table pointing to the DynamoDB export
 CREATE EXTERNAL TABLE orders_export (
   Item struct<
-    orderId: struct<S: string>,
-    customerId: struct<S: string>,
-    amount: struct<N: string>,
-    status: struct<S: string>
+    orderId: struct< S: string >,
+    customerId: struct< S: string >,
+    amount: struct< N: string >,
+    status: struct< S: string >
   >
 )
 ROW FORMAT SERDE 'org.openx.data.jsonserde.JsonSerDe'

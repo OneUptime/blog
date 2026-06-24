@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Azure, NSG, Networking, OpenTofu, Security, Firewall
 
-Description: Learn how to create and configure Azure Network Security Group (NSG) rules with OpenTofu to control inbound and outbound traffic for resources in Azure virtual networks.
+Description: Learn how to create and configure Azure Network Security Group (NSG) rules with OpenTofu to control inbound and outbound traffic for Azure virtual networks and subnets.
 
 ## Overview
 

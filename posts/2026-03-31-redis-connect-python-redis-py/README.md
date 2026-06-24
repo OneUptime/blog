@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Redis, Python, Caching, Backend, Performance
 
-Description: Learn how to connect to Redis from Python using the redis-py library, covering connection pools, pipelining, pub/sub, Lua scripting, and async support with redis.asyncio.
+Description: Learn how to connect to Redis from Python using the redis-py library, covering connection pools, pipelining, pub/sub, Lua scripting, and async support with aioredis.
 
 ---
 

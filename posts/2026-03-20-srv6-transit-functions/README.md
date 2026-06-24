@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: SRv6, Transit Functions, Segment Routing, IPv6, Forwarding, RFC 8986
 
-Description: Understand SRv6 transit forwarding and SR policy headend behaviors for routers that are in the SRv6 path but do not own the current SID, including plain transit, H.Insert, H.Encaps, and H.Encaps.L2.
+Description: Understand SRv6 transit node behaviors for routers that are in the SRv6 path but do not own the current SID, including T, T.Insert, T.Encaps, and T.Encaps.L2.
 
 ## Introduction
 

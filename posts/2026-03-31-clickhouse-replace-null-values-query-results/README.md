@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: ClickHouse, NULL, ifNull, COALESCE, Query, SQL, Analytics
 
-Description: Learn how to replace NULL values in ClickHouse query results using ifNull, COALESCE, and multiIf patterns for clean analytics output.
+Description: Learn how to replace NULL values in ClickHouse query results using ifNull, coalesce, COALESCE, and fillNull patterns for clean analytics output.
 
 ---
 

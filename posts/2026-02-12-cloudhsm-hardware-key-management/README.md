@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: AWS, CloudHSM, Encryption, Key Management, Security
 
-Description: Deploy and configure AWS CloudHSM to manage cryptographic keys in dedicated FIPS 140-3 Level 3 validated hardware security modules.
+Description: Deploy and configure AWS CloudHSM to manage cryptographic keys in dedicated FIPS 140-2 Level 3 validated hardware security modules.
 
 ---
 

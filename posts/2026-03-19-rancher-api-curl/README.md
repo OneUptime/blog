@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rancher, Kubernetes, API, REST API, curl
 
-Description: Practical guide to interacting with Rancher's previous `/v3` API using curl, covering authentication, CRUD operations, error handling, and scripting patterns.
+Description: Practical guide to interacting with the Rancher API using curl, covering authentication, CRUD operations, error handling, and scripting patterns.
 
 curl is the most widely available HTTP client and is perfect for quick API interactions, debugging, and shell scripts. This guide shows you how to use curl effectively with Rancher's previous `/v3` API for common operations. Rancher v2.8.0 introduced the newer Rancher Kubernetes API (RK-API), but the `/v3` API is still available.
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Azure, VPN Gateway, Site-to-Site, IPv4, Hybrid Connectivity, IPsec
 
-Description: Configure an Azure VPN Gateway and site-to-site IPsec/IKE VPN connection to securely connect an on-premises IPv4 network to an Azure Virtual Network.
+Description: Configure an Azure VPN Gateway and site-to-site IPSec/IKE VPN connection to securely connect an on-premises IPv4 network to an Azure Virtual Network.
 
 ## Introduction
 

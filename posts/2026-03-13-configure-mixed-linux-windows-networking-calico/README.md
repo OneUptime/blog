@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Windows, Linux, Networking
+Tags: Calico, Kubernetes, Window, Linux, Networking
 
 Description: Configure Calico to manage networking for both Linux and Windows nodes in a mixed-OS Kubernetes cluster.
 

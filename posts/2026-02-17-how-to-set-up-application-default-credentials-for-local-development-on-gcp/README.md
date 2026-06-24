@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GCP, Application Default Credentials, ADC, Authentication, Local Development
 
-Description: Learn how to set up and manage GCP Application Default Credentials for local development, including user credentials, service account keys, and service account impersonation.
+Description: Learn how to set up and manage GCP Application Default Credentials for local development, including user credentials, service accounts, and workload identity federation.
 
 ---
 

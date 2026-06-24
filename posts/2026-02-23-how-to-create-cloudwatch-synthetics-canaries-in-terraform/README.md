@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Terraform, AWS, CloudWatch, Synthetics, Monitoring, Infrastructure as Code
 
-Description: Learn how to create CloudWatch Synthetics canaries using Terraform to continuously test your APIs and websites from AWS-managed infrastructure.
+Description: Learn how to create CloudWatch Synthetics canaries using Terraform to continuously test your APIs and websites from multiple locations.
 
 ---
 

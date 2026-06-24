@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, Network Policy, RBAC, Policy Tiers, Security
 
-Description: Configure and audit RBAC for Tiered Policies in Calico.
+Description: Configure comprehensive logging and auditing for RBAC for Tiered Policies in Calico.
 
 ---
 

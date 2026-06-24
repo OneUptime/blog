@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, AWS, Aurora, Global Database, Disaster Recovery, Multi-Region, Infrastructure as Code
 
-Description: Learn how to deploy Aurora Global Databases with OpenTofu to achieve typical cross-region replication latency under 1 second and enable fast disaster recovery with RPOs measured in seconds.
+Description: Learn how to deploy Aurora Global Databases with OpenTofu to achieve sub-second cross-region replication and enable fast disaster recovery with RPOs under 1 second.
 
 ## Introduction
 

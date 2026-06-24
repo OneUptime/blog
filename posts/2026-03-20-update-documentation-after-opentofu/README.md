@@ -74,7 +74,7 @@ Required: OpenTofu >= 1.6.0
 
 Replace installation instructions in getting-started docs:
 
-```markdown
+````markdown
 ## Installation
 
 Install OpenTofu using the official installer:
@@ -88,7 +88,7 @@ Or on macOS with Homebrew:
 ```bash
 brew install opentofu
 ```
-```
+````
 
 ## Updating auto-generated Docs with terraform-docs
 

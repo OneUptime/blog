@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Tanzu, VMware, IPv6, Kubernetes, Antrea, Dual-Stack
 
-Description: A guide to configuring VMware Tanzu Kubernetes Grid (TKG) with IPv6 and dual-stack networking using Antrea CNI and Avi Load Balancer (NSX Advanced Load Balancer).
+Description: A guide to configuring VMware Tanzu Kubernetes Grid (TKG) with IPv6 and dual-stack networking using Antrea CNI and NSX-T Advanced Load Balancer.
 
 VMware Tanzu Kubernetes Grid supports dual-stack IPv4/IPv6 networking using Antrea as the CNI plugin. This guide covers TKG cluster configuration for IPv6, VMware NSX integration, and workload verification.
 

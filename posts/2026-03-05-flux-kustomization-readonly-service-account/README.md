@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Flux CD, GitOps, Kubernetes, Security, RBAC, Service Account, Read-Only
 
-Description: Learn how to configure a Flux Kustomization with a read-only service account to verify RBAC boundaries without granting write permissions.
+Description: Learn how to configure a Flux Kustomization with a read-only service account to perform dry-run validations without granting write permissions.
 
 ---
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Flux, Kubernetes, GitOps, Timoni, Distribution, Installation
 
-Description: Learn how to deploy the Flux core distribution as a single Timoni module for simplified cluster bootstrapping.
+Description: Learn how to deploy the complete Flux distribution as a single Timoni module for simplified cluster bootstrapping.
 
 ---
 

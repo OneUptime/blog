@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, OTel Arrow, ClickHouse, Zero-Copy
 
-Description: Integrate OTel Arrow with ClickHouse and other Arrow-native backends to reduce serialization overhead in telemetry ingestion.
+Description: Integrate OTel Arrow with ClickHouse and other Arrow-native backends to achieve zero-copy telemetry ingestion.
 
 The biggest performance win from OTel Arrow is not just the transport compression. It is the possibility of keeping data in Arrow format for more of the path from the Collector to the storage backend, reducing serialization and deserialization steps. ClickHouse, with its native Arrow format support, is one of the best backends for this lower-copy ingestion pattern. This post shows how to wire it up.
 

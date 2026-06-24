@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Bundles, Offline, Air-Gapped, DevOps
 
-Description: Learn how to create a self-contained bundle of OpenTofu, provider plugins, and installed modules for a specific configuration in completely offline or air-gapped environments.
+Description: Learn how to create a self-contained bundle of OpenTofu with all its providers and modules for deployment in completely offline or air-gapped environments.
 
 ## Introduction
 

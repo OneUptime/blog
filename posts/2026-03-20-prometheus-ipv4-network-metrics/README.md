@@ -1,10 +1,10 @@
-# How to Monitor Network Interface Metrics with Prometheus
+# How to Monitor IPv4 Network Metrics with Prometheus
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Prometheus, Network Metrics, Node Exporter, Monitoring, PromQL
+Tags: Prometheus, IPv4, Network Metrics, Node Exporter, Monitoring, PromQL
 
-Description: Collect and query network interface metrics using Prometheus Node Exporter, write PromQL queries for bandwidth and packet rates, and alert on network anomalies.
+Description: Collect and query IPv4 network interface metrics using Prometheus Node Exporter, write PromQL queries for bandwidth and packet rates, and alert on network anomalies.
 
 ## Introduction
 

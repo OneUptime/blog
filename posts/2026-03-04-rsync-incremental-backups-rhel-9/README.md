@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Rsync, Backup, Linux
 
-Description: Use rsync for an efficient incrementally updated backup mirror on RHEL.
+Description: Use rsync for efficient incremental backups on RHEL.
 
 ---
 

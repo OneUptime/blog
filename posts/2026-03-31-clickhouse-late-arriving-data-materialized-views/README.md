@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: ClickHouse, Materialized View, Late Data, Stream Processing, Analytics
 
-Description: Learn strategies for handling late-arriving data in ClickHouse materialized views, including reprocessing, buffer window patterns, and ReplacingMergeTree.
+Description: Learn strategies for handling late-arriving data in ClickHouse materialized views, including reprocessing, watermarks, and buffer window patterns.
 
 ---
 

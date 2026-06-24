@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RADIUS, Framed-IPv6-Prefix, IPv6, RFC 3162, Address Assignment, AAA
 
-Description: Configure and use the RADIUS Framed-IPv6-Prefix attribute (RFC 3162, attribute 97) to assign IPv6 prefixes, including /128 host addresses, to authenticated users.
+Description: Configure and use the RADIUS Framed-IPv6-Prefix attribute (RFC 3162, attribute 97) to assign IPv6 addresses and prefixes to authenticated users.
 
 ## Framed-IPv6-Prefix Overview
 

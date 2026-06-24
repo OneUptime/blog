@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Terraform, AWS, RDS, Import, Database
 
-Description: Learn how to import existing AWS RDS database instances into OpenTofu state, including subnet groups, parameter groups, and engine-specific option groups when applicable.
+Description: Learn how to import existing AWS RDS database instances into OpenTofu state, including subnet groups, parameter groups, and option groups.
 
 ## Introduction
 

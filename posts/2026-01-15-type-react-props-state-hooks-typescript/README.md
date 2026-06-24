@@ -134,14 +134,14 @@ interface ListProps {
 
 // Accept a render function
 interface DataFetcherProps<T> {
-  children: (data: T, loading: boolean) => ReactNode;
+  children: (data: T | null, loading: boolean) => ReactNode;
 }
 
 function DataFetcher<T>({ children }: DataFetcherProps<T>) {
   const [data, setData] = useState<T | null>(null);
   const [loading, setLoading] = useState(true);
   // ... fetch logic
-  return <>{children(data as T, loading)}</>;
+  return <>{children(data, loading)}</>;
 }
 ```
 
@@ -220,8 +220,8 @@ function Button({ variant, isLoading, children, ...rest }: ButtonProps) {
   return (
     <button
       className={`btn btn-${variant}`}
-      disabled={isLoading}
       {...rest}
+      disabled={isLoading || rest.disabled}
     >
       {isLoading ? 'Loading...' : children}
     </button>
@@ -584,7 +584,7 @@ function FormWithRefs() {
   // Mutable value ref - provide initial value
   const renderCount = useRef<number>(0);
   const previousValue = useRef<string>('');
-  const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     renderCount.current += 1;

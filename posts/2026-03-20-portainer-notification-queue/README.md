@@ -1,10 +1,10 @@
-# How to Configure Portainer Alerting and Webhooks for Better Reliability
+# How to Manage Portainer Notification Queue for Better Performance
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Portainer, Docker, Alerting, Webhook, Configuration
+Tags: Portainer, Docker, Performance, Notification, Webhook, Configuration
 
-Description: Configure Portainer alerting channels, webhook receivers, and related instance settings so alerts are delivered reliably and webhook-driven updates stay predictable in busy environments.
+Description: Configure and tune Portainer's notification and webhook queue system to prevent backpressure, handle failures gracefully, and maintain responsiveness in busy environments.
 
 ## Introduction
 

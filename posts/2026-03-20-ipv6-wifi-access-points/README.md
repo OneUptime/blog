@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: IPv6, Wi-Fi, Access Point, SLAAC, DHCPv6, Wireless, 802.11
 
-Description: Configure IPv6 on Wi-Fi access points including bridged RA/DHCPv6 handling, SLAAC, optional DHCPv6 relay, and proper IPv6 management and routed-prefix configuration for wireless clients.
+Description: Configure IPv6 on Wi-Fi access points including enabling router advertisement forwarding, SLAAC, DHCPv6 relay, and proper IPv6 prefix delegation for wireless clients.
 
 ---
 

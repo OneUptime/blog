@@ -57,7 +57,7 @@ First, configure Codegen in your `package.json`:
 
 ### Writing Spec Files
 
-TurboModules require spec files that define the interface:
+TurboModules require spec files that define the interface. Codegen only picks up TurboModule spec files that use the `Native` prefix:
 
 ```typescript
 // src/native/NativeDeviceInfo.ts
@@ -613,6 +613,8 @@ type BluetoothEventName = keyof BluetoothEventMap;
 
 // Native module interface
 interface BluetoothModuleInterface {
+  addListener(eventName: string): void;
+  removeListeners(count: number): void;
   startScan(serviceUuids?: string[]): Promise<void>;
   stopScan(): Promise<void>;
   connect(deviceId: string): Promise<void>;
@@ -813,11 +815,16 @@ Many third-party native libraries lack TypeScript definitions. Here's how to cre
 ```typescript
 // types/react-native-keychain.d.ts
 declare module 'react-native-keychain' {
+  export interface Result {
+    service: string;
+    storage: Storage;
+  }
+
   export interface UserCredentials {
     username: string;
     password: string;
     service: string;
-    storage?: string;
+    storage?: Storage;
   }
 
   export interface SetOptions {
@@ -866,16 +873,17 @@ declare module 'react-native-keychain' {
   }
 
   export enum Storage {
-    SharedPreferences = 'sharedPreferences',
-    KeychainAES = 'keychainAES',
-    RSA = 'RSA',
+    AES_CBC = 'KeystoreAESCBC',
+    AES_GCM_NO_AUTH = 'KeystoreAESGCM_NoAuth',
+    AES_GCM = 'KeystoreAESGCM',
+    RSA = 'KeystoreRSAECB',
   }
 
   export function setGenericPassword(
     username: string,
     password: string,
     options?: SetOptions
-  ): Promise<boolean>;
+  ): Promise<false | Result>;
 
   export function getGenericPassword(
     options?: GetOptions
@@ -887,14 +895,14 @@ declare module 'react-native-keychain' {
 
   export function hasInternetCredentials(
     server: string
-  ): Promise<false | 'credentials'>;
+  ): Promise<boolean>;
 
   export function setInternetCredentials(
     server: string,
     username: string,
     password: string,
     options?: SetOptions
-  ): Promise<boolean>;
+  ): Promise<false | Result>;
 
   export function getInternetCredentials(
     server: string,
@@ -903,10 +911,10 @@ declare module 'react-native-keychain' {
 
   export function resetInternetCredentials(
     server: string
-  ): Promise<boolean>;
+  ): Promise<void>;
 
   export function getSupportedBiometryType(): Promise<
-    null | 'TouchID' | 'FaceID' | 'Fingerprint' | 'Iris'
+    null | 'TouchID' | 'FaceID' | 'Fingerprint' | 'Iris' | 'Face' | 'OpticID'
   >;
 
   export function canImplyAuthentication(
@@ -1001,9 +1009,9 @@ declare global {
   // Native event type helper
   type NativeEvent<T> = import('react-native').NativeSyntheticEvent<T>;
 
-  // Platform-specific type helper
-  type PlatformSpecific<IOS, Android> =
-    typeof import('react-native').Platform.OS extends 'ios' ? IOS : Android;
+  // Platform-specific type helper for APIs with an explicit platform type
+  type PlatformSpecific<TPlatform extends 'ios' | 'android', IOS, Android> =
+    TPlatform extends 'ios' ? IOS : Android;
 }
 
 export {};
@@ -1032,11 +1040,7 @@ export {};
       "@types/*": ["src/types/*"],
       "@modules/*": ["src/modules/*"],
       "@components/*": ["src/components/*"]
-    },
-    "typeRoots": [
-      "./node_modules/@types",
-      "./src/types"
-    ]
+    }
   },
   "include": ["src/**/*"],
   "exclude": ["node_modules", "dist"]

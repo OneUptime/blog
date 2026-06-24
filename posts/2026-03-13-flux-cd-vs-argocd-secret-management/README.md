@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Flux CD, ArgoCD, Secrets Management, SOPS, Vault, External Secrets, GitOps, Kubernetes
 
-Description: Compare secret management approaches in Flux CD and ArgoCD, covering SOPS encryption, External Secrets Operator, and Vault integration patterns.
+Description: Compare secret management approaches in Flux CD and ArgoCD, covering SOPS encryption, Sealed Secrets, and Vault integration patterns.
 
 ---
 

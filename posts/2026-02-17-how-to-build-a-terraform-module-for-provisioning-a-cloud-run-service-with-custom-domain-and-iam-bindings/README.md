@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GCP, Terraform, Cloud Run, IAM, Infrastructure as Code, Google Cloud
 
-Description: Build a reusable Terraform module that provisions a Cloud Run service with custom domain mapping, IAM bindings, and reusable configuration.
+Description: Build a reusable Terraform module that provisions a Cloud Run service with custom domain mapping, IAM bindings, and production-ready configuration.
 
 ---
 

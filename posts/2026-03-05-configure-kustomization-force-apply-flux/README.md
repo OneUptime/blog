@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Flux CD, GitOps, Kubernetes, Kustomize, Force Apply, Immutable Fields
 
-Description: Learn how to use spec.force in a Flux Kustomization to handle immutable field changes by replacing resources during reconciliation.
+Description: Learn how to use spec.force in a Flux Kustomization to handle immutable field changes by deleting and recreating resources during reconciliation.
 
 ---
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, NUMA, Memory Management
 
-Description: Configure Kubernetes Memory Manager to allocate memory from NUMA nodes local to assigned CPUs, reducing cross-NUMA traffic and improving performance for memory-intensive workloads.
+Description: Configure Kubernetes Memory Manager to allocate memory from NUMA nodes local to assigned CPUs, eliminating cross-NUMA traffic and improving performance for memory-intensive workloads.
 
 ---
 

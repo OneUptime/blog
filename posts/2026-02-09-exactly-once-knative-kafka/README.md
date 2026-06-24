@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Knative, Kafka, Kubernetes, Exactly-Once, Event-Processing
 
-Description: Implement effectively exactly-once event effects using Knative Eventing with Kafka, idempotent handlers, and transactional state storage in distributed systems.
+Description: Implement exactly-once semantics for event processing using Knative Eventing with Kafka to ensure reliable message delivery without duplicates in distributed systems.
 
 ---
 

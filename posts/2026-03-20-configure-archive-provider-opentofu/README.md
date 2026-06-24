@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Infrastructure as Code, Provider, Automation, DevOps
 
-Description: Learn how to configure and use the Archive provider in OpenTofu to create archive files as part of your infrastructure as code workflow.
+Description: Learn how to configure and use the Archive provider in OpenTofu to manage Archive resources as code.
 
 ## Introduction
 

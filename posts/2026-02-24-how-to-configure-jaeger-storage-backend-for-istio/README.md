@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Istio, Jaeger, Tracing, Elasticsearch, Storage
 
-Description: Configure production-grade storage backends for Jaeger tracing in Istio including Elasticsearch and Cassandra setups.
+Description: Configure production-grade storage backends for Jaeger tracing in Istio including Elasticsearch, Cassandra, and Kafka setups.
 
 ---
 

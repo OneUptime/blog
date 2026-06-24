@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: C, IPv4, Epoll, Linux, Non-Blocking, Networking
 
-Description: Learn how to use the Linux epoll API to handle thousands of concurrent IPv4 TCP connections in a single-threaded C server with non-blocking sockets and scalable readiness notification.
+Description: Learn how to use the Linux epoll API to handle thousands of concurrent IPv4 TCP connections in a single-threaded C server with O(1) event notification.
 
 ## epoll API Overview
 

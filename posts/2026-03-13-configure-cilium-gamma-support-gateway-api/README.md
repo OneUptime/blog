@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Cilium, Kubernetes, GAMMA, Gateway API, Configuration, Service Mesh
 
-Description: Configure Cilium GAMMA support within the Cilium Gateway API controller to enable sidecar-free service mesh routing through Cilium's per-node Envoy proxy.
+Description: Configure Cilium GAMMA support within the Cilium Gateway API controller to enable sidecar-free service mesh routing using eBPF.
 
 ---
 

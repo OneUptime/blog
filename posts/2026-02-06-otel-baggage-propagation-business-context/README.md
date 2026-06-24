@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Baggage, Context Propagation, Multi-Tenant, Business Context
 
-Description: Use OpenTelemetry baggage to propagate business context like user ID and tenant ID, then add it to traces, metrics, and logs.
+Description: Use OpenTelemetry baggage to propagate business context like user ID and tenant ID across traces, metrics, and logs automatically.
 
 When you are debugging a problem for a specific customer, you need to filter all telemetry, traces, metrics, and logs, by their tenant ID. But if tenant ID is only set at the API gateway and your downstream services do not have it, you end up with incomplete context. OpenTelemetry Baggage solves this by propagating key-value pairs across service boundaries as part of the request context.
 

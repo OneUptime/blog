@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: ArgoCD, GitOps, Kubernetes, Security, Configuration
 
-Description: A detailed breakdown of common keys stored in the ArgoCD argocd-secret Kubernetes Secret, including admin credentials, server keys, SSO secrets, and webhook configurations.
+Description: A detailed breakdown of every key stored in the ArgoCD argocd-secret Kubernetes Secret, including admin credentials, server keys, SSO secrets, and webhook configurations.
 
 ---
 

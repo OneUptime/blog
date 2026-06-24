@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, Molecule, Linting, Code Quality, DevOps
 
-Description: Configure and use linting around Molecule to catch Ansible syntax errors, style issues, and best practice violations before running tests.
+Description: Configure and use linting in Molecule to catch Ansible syntax errors, style issues, and best practice violations before running tests.
 
 ---
 

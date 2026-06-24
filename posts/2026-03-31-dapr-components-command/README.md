@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Dapr, CLI, Component, Configuration, Kubernetes
 
-Description: Learn how to use the dapr components command to list and inspect loaded Dapr components in Kubernetes environments.
+Description: Learn how to use the dapr components command to list and inspect loaded Dapr components in self-hosted and Kubernetes environments.
 
 ---
 

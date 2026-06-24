@@ -49,7 +49,7 @@ module "vpc" {
 
 Some artifact repositories require authentication. For HTTP/HTTPS module sources, OpenTofu reads HTTP Basic credentials from a `.netrc` file in your home directory (override the location with the `NETRC` environment variable):
 
-```
+```text
 machine artifacts.acme-corp.com
   login your-username
   password your-token-here

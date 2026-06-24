@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, WordPress, Azure, App Service, MySQL, Infrastructure as Code
 
-Description: Learn how to deploy a WordPress site on Azure using OpenTofu, with App Service for compute, Azure Database for MySQL, and Azure Files for shared storage.
+Description: Learn how to deploy a production-ready WordPress site on Azure using OpenTofu, with App Service for compute, Azure Database for MySQL, and Azure Files for shared storage.
 
 ## Introduction
 

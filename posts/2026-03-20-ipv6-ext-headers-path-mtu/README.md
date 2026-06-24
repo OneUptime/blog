@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: IPv6, Extension Headers, Path MTU, MTU Discovery, Networking
 
-Description: Understand how IPv6 extension headers and encapsulation overhead reduce the available payload space and interact with Path MTU Discovery, causing connectivity issues when not accounted for.
+Description: Understand how IPv6 extension headers reduce the available payload space and interact with Path MTU Discovery, causing connectivity issues when not accounted for.
 
 ## Introduction
 

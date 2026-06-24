@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: AWS, A/B Testing, CloudFront, Lambda, Evidently
 
-Description: Learn how to implement A/B testing on AWS using Lambda@Edge, CloudFront, and historical CloudWatch Evidently examples to run experiments and measure impact on user behavior.
+Description: Learn how to implement A/B testing on AWS using CloudWatch Evidently, Lambda@Edge, and CloudFront to run experiments and measure impact on user behavior.
 
 ---
 

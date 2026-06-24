@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: AWS, Amazon Location Service, Geolocation, Map, Cloud
 
-Description: A practical guide to using Amazon Location Service for adding maps, geocoding, routing, and geofencing to your applications without wiring up separate third-party map APIs.
+Description: A practical guide to using Amazon Location Service for adding maps, geocoding, routing, and geofencing to your applications without third-party dependencies.
 
 ---
 

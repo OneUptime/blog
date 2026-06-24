@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Custom Processor, Go, Domain Logic, Collector
 
-Description: Build a custom OpenTelemetry Collector processor in Go that applies your domain-specific transformation logic to traces and logs.
+Description: Build a custom OpenTelemetry Collector processor in Go that applies your domain-specific transformation logic to traces, metrics, and logs.
 
 The built-in processors cover common transformations like batching, filtering, and attribute manipulation. But when you need domain-specific logic, such as PII redaction based on your data classification rules, cost estimation, or custom aggregation, you need a custom processor. This post walks through building one in Go.
 

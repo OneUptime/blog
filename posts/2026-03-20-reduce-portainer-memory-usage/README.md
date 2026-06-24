@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Docker, Performance, Memory, Optimization, Resource Management
 
-Description: Reduce Portainer's memory footprint by tuning snapshot intervals, cleaning up stale data, compacting the embedded database, and right-sizing container resources.
+Description: Reduce Portainer's memory footprint by tuning snapshot intervals, cleaning up stale data, optimizing the embedded database, and right-sizing container resources.
 
 ## Introduction
 

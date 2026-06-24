@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Crossplane, Kubernetes, Infrastructure as Code, GitOps
 
-Description: Use Crossplane to manage Portainer environments and stacks as Kubernetes custom resources, enabling GitOps workflows for your container management platform.
+Description: Use Crossplane to manage Portainer environments and configurations as Kubernetes custom resources, enabling GitOps workflows for your container management platform.
 
 ## Introduction
 

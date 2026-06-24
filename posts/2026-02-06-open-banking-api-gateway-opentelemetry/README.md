@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Open Banking, PSD2, API Gateway
 
-Description: Monitor PSD2 and Open Finance API gateway performance with OpenTelemetry to support regulatory availability and performance reporting.
+Description: Monitor PSD2 and Open Finance API gateway performance with OpenTelemetry to ensure compliance with regulatory latency requirements.
 
 Open Banking regulations like PSD2 in Europe and similar frameworks worldwide require banks to expose APIs that let third-party providers access account information and initiate payments on behalf of customers. These APIs have strict availability and performance requirements. If your gateway is slow or unreliable, you face regulatory penalties and lose third-party integrations. OpenTelemetry provides the observability foundation you need to keep these gateways performing well.
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Linkerd, Service Mesh, Kubernetes, mTLS, Helm, Infrastructure as Code
 
-Description: Learn how to deploy Linkerd service mesh on Kubernetes using OpenTofu with automatic mTLS, load balancing, and observability for microservices with lower sidecar resource overhead than heavier meshes.
+Description: Learn how to deploy Linkerd service mesh on Kubernetes using OpenTofu with automatic mTLS, load balancing, and observability for microservices without sidecar resource overhead.
 
 ---
 

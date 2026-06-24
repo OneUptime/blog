@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GCP, Text-to-Speech, Voice Selection, Neural Voice, Speech API
 
-Description: A comprehensive guide to selecting and configuring the right voice type in Google Cloud Text-to-Speech including Standard, WaveNet, Neural2, Studio, and newer voice families.
+Description: A comprehensive guide to selecting and configuring the right voice type in Google Cloud Text-to-Speech including Standard, WaveNet, Neural2, and Studio voices.
 
 ---
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GCP, App Engine, Memorystore, Redis, Caching, Migration
 
-Description: A practical migration guide for moving from the legacy App Engine Memcache service to Cloud Memorystore Redis with code examples and architecture tips.
+Description: A practical migration guide for moving from the deprecated App Engine Memcache service to Cloud Memorystore Redis with code examples and architecture tips.
 
 ---
 

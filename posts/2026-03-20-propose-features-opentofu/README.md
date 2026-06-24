@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Feature Proposals, Open Source, RFC, Community, GitHub
 
-Description: Learn how to propose new features for OpenTofu through GitHub issues, RFCs, and the community process to maximize the chance of your proposal being accepted.
+Description: Learn how to propose new features for OpenTofu through GitHub discussions, RFCs, and the community process to maximize the chance of your proposal being accepted.
 
 ## Introduction
 

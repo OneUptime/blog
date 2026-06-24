@@ -1,10 +1,10 @@
-# How to Configure HelmRelease Failure Remediation in Flux
+# How to Configure HelmRelease Atomic Install in Flux
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, GitOps, Kubernetes, Helm, HelmRelease, Remediation, Rollback
+Tags: Flux CD, GitOps, Kubernetes, Helm, HelmRelease, Atomic Install, Rollback
 
-Description: Learn how to configure failure remediation for Flux HelmRelease resources to clean up failed installs and roll back failed upgrades.
+Description: Learn how to configure atomic installs for Flux HelmRelease resources to ensure all-or-nothing Helm deployments with automatic rollback on failure.
 
 ---
 

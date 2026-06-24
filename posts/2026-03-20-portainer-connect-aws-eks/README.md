@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, AWS, EKS, Kubernetes, Cloud
 
-Description: Connect Portainer to an Amazon EKS cluster for visual Kubernetes management using the legacy kubeconfig import workflow or the Portainer Agent.
+Description: Connect Portainer to an Amazon EKS cluster for visual Kubernetes management using kubeconfig or the Portainer Agent.
 
 ## Introduction
 

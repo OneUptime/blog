@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: AWS, Load Balancing, ALB, NLB, IPv4, High Availability, Networking
 
-Description: Understand cross-zone load balancing on AWS ALB and enable it on NLBs to distribute IPv4 traffic more evenly across targets in all availability zones, improving load distribution.
+Description: Enable cross-zone load balancing on AWS ALB and NLB to distribute IPv4 traffic evenly across targets in all availability zones, improving load distribution.
 
 ## Introduction
 

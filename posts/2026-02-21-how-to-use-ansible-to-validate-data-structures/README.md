@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, Validation, Data Structure, Quality Assurance
 
-Description: Learn how to validate data structures in Ansible using assert module, type checks, schema validation, and reusable roles to ensure data integrity in playbooks.
+Description: Learn how to validate data structures in Ansible using assert module, type checks, schema validation, and custom tests to ensure data integrity in playbooks.
 
 ---
 

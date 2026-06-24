@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: .NET, C#, Elasticsearch, NEST, Full-Text Search, Search, Observability
 
-Description: Learn how to implement full-text search in .NET applications using NEST 7.x, the legacy high-level Elasticsearch .NET client, with indexing, querying, faceted search, and relevance tuning.
+Description: Learn how to implement full-text search in .NET applications using NEST, the official Elasticsearch client, with indexing, querying, faceted search, and relevance tuning.
 
 ---
 

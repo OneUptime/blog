@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Docker, Template, JSON, DevOps
 
-Description: Learn how to build a well-structured Portainer template definition JSON file from scratch to create a custom template catalog.
+Description: Learn how to build a well-structured Portainer template definition JSON file from scratch to create a complete custom template catalog.
 
 ## Introduction
 

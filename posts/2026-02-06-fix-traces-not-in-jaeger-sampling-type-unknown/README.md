@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Jaeger, Sampling, Tracing
 
-Description: Fix traces not appearing in Jaeger caused by missing OpenTelemetry sampling decisions or legacy Jaeger sampler metadata.
+Description: Fix traces not appearing in Jaeger caused by spans being marked with sampling_type unknown due to missing sampling decisions.
 
 You send traces from the OpenTelemetry Collector to Jaeger. The Collector logs confirm spans are being exported. But when you search in the Jaeger UI, the traces are missing. Digging into the Jaeger internals, you find spans tagged with `sampler.type: unknown` and `sampler.param: 0`.
 

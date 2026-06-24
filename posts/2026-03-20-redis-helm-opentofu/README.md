@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Redis, Caching, OpenTofu, Helm, High Availability
 
-Description: Learn how to deploy Redis on Kubernetes using OpenTofu and the Bitnami Helm chart with Sentinel-based high availability, persistent storage, and password authentication.
+Description: Learn how to deploy Redis on Kubernetes using OpenTofu and the Bitnami Helm chart with Sentinel-based high availability, persistent storage, and TLS encryption.
 
 ## Overview
 

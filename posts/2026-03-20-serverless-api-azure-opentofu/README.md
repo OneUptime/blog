@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Azure, Serverless, Azure Function, API Management, OpenTofu, Cosmos DB
 
-Description: Learn how to build a serverless API backend on Azure using OpenTofu with Azure Functions, API Management, Cosmos DB, and Microsoft Entra ID authentication.
+Description: Learn how to build a serverless API backend on Azure using OpenTofu with Azure Functions, API Management, Cosmos DB, and Azure AD authentication.
 
 ## Overview
 

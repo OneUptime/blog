@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Harvester, Logging, Kubernetes, FluentBit, Elasticsearch, Loki, SUSE Rancher
 
-Description: Learn how to enable and configure Harvester's centralized logging system to collect Kubernetes audit logs, system logs, and Kubernetes component logs for compliance and troubleshooting.
+Description: Learn how to enable and configure Harvester's centralized logging system to collect VM audit logs, system logs, and Kubernetes component logs for compliance and troubleshooting.
 
 ---
 

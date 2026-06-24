@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Docker, Exit code 143, SIGTERM, Graceful Shutdown, Signal Handling, Container, Troubleshooting
 
-Description: Understand and fix Docker container exit code 143, which indicates SIGTERM was received during container shutdown.
+Description: Understand and fix Docker container exit code 143, which indicates SIGTERM was received but not handled properly for graceful shutdown.
 
 ---
 

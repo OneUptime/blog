@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: IPv6, Latency, Jitter, Monitoring, Ping, iperf3, Networking
 
-Description: Measure IPv6 network latency and jitter using `ping -6`, iperf3 UDP mode, and custom Python scripts to establish baselines and detect degradation over time.
+Description: Measure IPv6 network latency and jitter using ping6, iperf3 UDP mode, and custom Python scripts to establish baselines and detect degradation over time.
 
 ## Introduction
 

@@ -1,10 +1,10 @@
-# How to Use for_each for SSL Certificate Configuration
+# How to Use Dynamic Blocks for SSL Certificate Configuration
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, for_each, SSL, TLS, ACM, AWS, Infrastructure as Code
+Tags: Terraform, Dynamic Blocks, SSL, TLS, ACM, AWS, Infrastructure as Code
 
-Description: Learn how to manage SSL and TLS certificate configurations dynamically in Terraform using for_each expressions for ACM certificates, load balancers, and CloudFront.
+Description: Learn how to manage SSL and TLS certificate configurations dynamically in Terraform using dynamic blocks for ACM certificates, load balancers, and CloudFront.
 
 ---
 

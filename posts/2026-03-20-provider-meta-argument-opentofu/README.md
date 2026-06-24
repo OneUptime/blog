@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Resource, Provider, Multi-Region, Infrastructure as Code, DevOps
 
-Description: A guide to using the provider meta-argument in OpenTofu resources and data sources to specify which provider configuration to use for multi-region and multi-account deployments.
+Description: A guide to using the provider meta-argument in OpenTofu resources to specify which provider configuration to use for multi-region and multi-account deployments.
 
 ## Introduction
 

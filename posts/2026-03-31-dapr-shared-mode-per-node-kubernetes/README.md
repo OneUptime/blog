@@ -1,10 +1,10 @@
-# How to Use Dapr Shared (Per-Node Deployment) on Kubernetes
+# How to Use Dapr Shared Mode (Per-Node Deployment) on Kubernetes
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Dapr, Kubernetes, Shared Mode, DaemonSet, Performance
 
-Description: Configure Dapr Shared where a single Dapr process runs per node as a DaemonSet, reducing resource overhead in high-density clusters.
+Description: Configure Dapr in shared sidecar mode where a single Dapr process runs per node as a DaemonSet, reducing resource overhead in high-density clusters.
 
 ---
 

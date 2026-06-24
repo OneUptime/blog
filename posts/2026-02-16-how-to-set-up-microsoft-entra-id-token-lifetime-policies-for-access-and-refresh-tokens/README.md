@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Azure, Microsoft Entra ID, Token Lifetime, Access Tokens, Refresh Tokens, Identity Security, OAuth
 
-Description: Step-by-step guide to creating and assigning token lifetime policies in Microsoft Entra ID to control access token and ID token expiration behavior.
+Description: Step-by-step guide to creating and assigning token lifetime policies in Microsoft Entra ID to control access token and refresh token expiration behavior.
 
 ---
 

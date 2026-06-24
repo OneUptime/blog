@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, Networking, Observability
 
-Description: Configure Prometheus alerts for Calico kube-controllers metrics to detect controller health issues early.
+Description: Configure Prometheus alerts for Calico kube-controllers metrics to detect distribution failures early.
 
 ---
 

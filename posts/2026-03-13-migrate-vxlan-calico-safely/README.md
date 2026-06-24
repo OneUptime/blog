@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, VXLAN, Networking, Encapsulation
 
-Description: Safely migrate a Calico cluster from IP-in-IP or BGP to VXLAN encapsulation while minimizing disruption for running workloads.
+Description: Safely migrate a Calico cluster from IP-in-IP or BGP to VXLAN encapsulation with zero-downtime for running workloads.
 
 ---
 

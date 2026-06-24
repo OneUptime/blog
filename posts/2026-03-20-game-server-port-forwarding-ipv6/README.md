@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: IPv6, Port Forwarding, Game Server, Firewall, Networking, Linux
 
-Description: Configure inbound access for game servers using IPv6, covering router settings, firewall rules, and direct IPv6 addressing strategies.
+Description: Configure port forwarding for game servers using IPv6, covering router settings, firewall rules, NAT64 considerations, and direct IPv6 addressing strategies.
 
 ---
 

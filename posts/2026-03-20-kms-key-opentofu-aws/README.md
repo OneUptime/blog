@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, AWS, Infrastructure as Code, IaC, KMS, Security, Encryption
 
-Description: Learn how to create and manage AWS KMS customer-managed keys with key policies, aliases, and grants using OpenTofu for encryption across AWS services.
+Description: Learn how to create and manage AWS KMS customer-managed keys (CMKs) with key policies, aliases, and grants using OpenTofu for encryption across AWS services.
 
 ## Introduction
 

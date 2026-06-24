@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rust, Socket, IPv4, Network Interfaces, Binding, TCP, Std::net
 
-Description: Bind Rust TCP listener and client sockets to specific IPv4 addresses to control listener addresses and source IP selection on multi-homed hosts.
+Description: Bind Rust TCP listener and client sockets to specific IPv4 addresses and network interfaces to control which interface handles incoming and outgoing traffic.
 
 ## Introduction
 

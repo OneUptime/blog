@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: AWS, DynamoDB, Debugging, Serverless
 
-Description: A practical guide to understanding and resolving DynamoDB ConditionalCheckFailedException errors, including condition expressions, transactions, and optimistic locking patterns.
+Description: A practical guide to understanding and resolving DynamoDB ConditionalCheckFailedException errors, including condition expressions, atomic counters, and optimistic locking patterns.
 
 ---
 

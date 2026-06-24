@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: ArgoCD, GitOps, Kubernetes, Security, Auditing
 
-Description: Learn how to implement comprehensive secret access auditing in ArgoCD-managed Kubernetes clusters using audit logs, Falco, Kubernetes RBAC, and secret provider audit trails.
+Description: Learn how to implement comprehensive secret access auditing in ArgoCD-managed Kubernetes clusters using audit logs, Falco, OPA, and secret provider audit trails.
 
 ---
 

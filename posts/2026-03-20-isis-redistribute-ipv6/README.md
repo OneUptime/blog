@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: IS-IS, IPv6, Route Redistribution, Routing, Networking
 
-Description: Learn how to inject IPv6 routes into IS-IS on Cisco, Juniper, and FRRouting, including static, connected, OSPFv3, BGP, and table-based examples.
+Description: Learn how to redistribute IPv6 static, connected, OSPFv3, and BGP routes into IS-IS on Cisco, Juniper, and FRRouting.
 
 ## Overview
 

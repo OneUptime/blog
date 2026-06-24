@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, GitOps, Docker, Security, Authentication
 
-Description: Learn how to configure Portainer to authenticate with private Git repositories using HTTPS authentication and personal access tokens for secure stack deployments.
+Description: Learn how to configure Portainer to authenticate with private Git repositories using personal access tokens and SSH keys for secure stack deployments.
 
 ## Introduction
 

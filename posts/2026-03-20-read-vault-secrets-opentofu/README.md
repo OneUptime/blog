@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Vault, Secret, Security, Secret Management
 
-Description: Learn how to read HashiCorp Vault secrets in OpenTofu configurations using the Vault provider data sources to inject sensitive values while keeping them out of `.tfvars` files and version control.
+Description: Learn how to read HashiCorp Vault secrets in OpenTofu configurations using the Vault provider data sources to inject sensitive values without storing them in state or version control.
 
 ## Introduction
 

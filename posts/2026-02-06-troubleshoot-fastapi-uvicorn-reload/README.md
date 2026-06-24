@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, FastAPI, Python, Uvicorn
 
-Description: Resolve OpenTelemetry instrumentation issues caused by uvicorn's reload mode and multi-worker process management in FastAPI apps.
+Description: Resolve OpenTelemetry instrumentation issues caused by uvicorn's reload mode and multi-worker process forking in FastAPI apps.
 
 FastAPI applications typically run under uvicorn, and two modes can make OpenTelemetry setup confusing: `--reload` (for development) and `--workers N` (for production). Both modes create child processes, so OpenTelemetry setup should happen in the process that actually runs the application.
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Go, Net.ListenConfig, IPv4, Socket Options, Networking, TCP, Syscalls
 
-Description: Use Go's net.ListenConfig with a Control function to set low-level IPv4 socket options like SO_REUSEPORT, TCP_FASTOPEN, and socket buffer sizes before binding a listener.
+Description: Use Go's net.ListenConfig with a Control function to set low-level IPv4 socket options like SO_REUSEPORT, TCP_FASTOPEN, and SO_KEEPALIVE before binding a listener.
 
 ## Introduction
 

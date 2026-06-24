@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Istio, ProxyConfig, Envoy, Performance Tuning, Kubernetes
 
-Description: Guide to ProxyConfig fields in Istio for customizing sidecar proxy behavior including concurrency, image settings, environment variables, and more.
+Description: Complete guide to every ProxyConfig field in Istio for customizing sidecar proxy behavior including concurrency, image settings, environment variables, and more.
 
 ---
 

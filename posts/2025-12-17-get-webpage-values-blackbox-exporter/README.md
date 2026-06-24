@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Prometheus, Blackbox Exporter, Monitoring, Web Scraping, HTTP
 
-Description: Learn how to validate specific values from webpages using Prometheus Blackbox Exporter, including HTTP response body matching, header validation, and JSON response checks.
+Description: Learn how to extract specific values from webpages using Prometheus Blackbox Exporter, including HTTP response body matching, header extraction, and JSON response parsing.
 
 ---
 

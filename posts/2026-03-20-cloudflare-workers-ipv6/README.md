@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Cloudflare, Worker, IPv6, Edge, Serverless, Dual-Stack, Fetch
 
-Description: Build Cloudflare Workers that handle IPv6 client requests and make outbound HTTP requests to IPv6 endpoints.
+Description: Build Cloudflare Workers that handle IPv6 client requests and make outbound IPv6 connections to origin servers.
 
 ## Introduction
 

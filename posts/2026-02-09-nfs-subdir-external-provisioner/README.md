@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, NFS, Storage Provisioner
 
-Description: Deploy and configure NFS Subdir External Provisioner for automated PVC management with subdirectory isolation, custom path patterns, and lifecycle management.
+Description: Deploy and configure NFS Subdir External Provisioner for automated PVC management with subdirectory isolation, custom path patterns, quota enforcement, and lifecycle management.
 
 ---
 

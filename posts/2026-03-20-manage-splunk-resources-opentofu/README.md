@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Splunk, SIEM, Log Management, Infrastructure as Code
 
-Description: Learn how to manage Splunk indexes, saved searches, dashboards, and data inputs using OpenTofu and the official Splunk Enterprise provider.
+Description: Learn how to manage Splunk indexes, saved searches, dashboards, and data inputs using OpenTofu and the official Splunk provider.
 
 ## Introduction
 

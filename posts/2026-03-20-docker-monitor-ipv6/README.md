@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Docker, IPv6, Monitoring, Traffic Analysis, tcpdump, Metric
 
-Description: Monitor IPv6 traffic in Docker containers using tcpdump, ss, and container stats, set up container network monitoring with Prometheus and cAdvisor, and analyze container IPv6 connection patterns.
+Description: Monitor IPv6 traffic in Docker containers using tcpdump, netstat, and container stats, set up IPv6 traffic monitoring with Prometheus and cAdvisor, and analyze container IPv6 connection patterns.
 
 ## Introduction
 

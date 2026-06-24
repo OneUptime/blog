@@ -1,10 +1,10 @@
-# How to Set Up Grafana Dashboards for Database Connection Metrics
+# How to Set Up Grafana Dashboards for Database IPv4 Connection Metrics
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Grafana, Dashboard, PostgreSQL, MySQL, IPv4, Metric, Monitoring, Visualization
 
-Description: Learn how to build Grafana dashboards to visualize PostgreSQL connection-state metrics and MySQL connection metrics, including IPv4 client host breakdowns, using Prometheus data sources.
+Description: Learn how to build Grafana dashboards to visualize database connection metrics by IPv4 client address using Prometheus data sources.
 
 ---
 

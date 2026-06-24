@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, IPAM, Migration, Networking
 
-Description: Configure the migration of pods from one Calico IP pool to another without disrupting existing pod connectivity.
+Description: Configure the migration of pods from one Calico IP pool to another without service disruption.
 
 ---
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Flask, Python, IPv4, Networking, WSGI, Configuration
 
-Description: Learn how to configure Flask to listen on all IPv4 interfaces using 0.0.0.0, understand the security implications, and combine it with production servers like gunicorn or, with an ASGI adapter, uvicorn.
+Description: Learn how to configure Flask to listen on all IPv4 interfaces using 0.0.0.0, understand the security implications, and combine it with production WSGI servers like gunicorn and uvicorn.
 
 ## Basic: app.run with host="0.0.0.0"
 

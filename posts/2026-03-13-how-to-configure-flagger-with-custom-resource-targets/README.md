@@ -1,10 +1,10 @@
-# How to Configure Flagger with Supported Resource Targets
+# How to Configure Flagger with Custom Resource Targets
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flagger, Canary, Kubernetes, DaemonSet, Progressive Delivery
+Tags: Flagger, Canary, Kubernetes, Custom Resources, Progressive Delivery
 
-Description: Learn how to configure Flagger to perform canary deployments on supported Kubernetes workload targets beyond standard Deployments, including DaemonSets.
+Description: Learn how to configure Flagger to perform canary deployments on custom resources beyond standard Deployments, including DaemonSets and custom controllers.
 
 ---
 

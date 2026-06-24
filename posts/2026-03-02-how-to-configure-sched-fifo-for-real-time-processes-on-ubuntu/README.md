@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Ubuntu, Real-Time, SCHED_FIFO, Scheduling, Performance
 
-Description: Learn how to use SCHED_FIFO real-time scheduling policy on Ubuntu to give critical processes predictable scheduling order and priority over normal tasks.
+Description: Learn how to use SCHED_FIFO real-time scheduling policy on Ubuntu to give critical processes guaranteed CPU time and predictable execution order.
 
 ---
 

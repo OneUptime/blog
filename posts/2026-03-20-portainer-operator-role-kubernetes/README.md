@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Kubernetes, Operator, RBAC, Access Control
 
-Description: Configure and use the Operator role in Portainer for Kubernetes environments to manage existing application resources without infrastructure management access.
+Description: Configure and use the Operator role in Portainer for Kubernetes environments to allow application deployment without infrastructure management access.
 
 ## Introduction
 

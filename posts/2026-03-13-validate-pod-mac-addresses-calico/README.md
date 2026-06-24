@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, MAC Address, Networking, CNI
 
-Description: Validate pod interface MAC addresses with Calico and check the host-side Calico veth interfaces.
+Description: Validate that Calico is correctly assigning MAC addresses to pod interfaces and that MAC addresses do not conflict across nodes.
 
 ---
 

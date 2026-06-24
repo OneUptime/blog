@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, Networking, CNI, Plugin, Configuration
 
-Description: A comprehensive guide to configuring the Calico CNI plugin, covering network configuration files, IPAM settings, policy configuration, and container settings.
+Description: A comprehensive guide to configuring the Calico CNI plugin, covering network configuration files, IPAM settings, policy enforcement modes, and container interface naming.
 
 ---
 

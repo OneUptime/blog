@@ -1,10 +1,10 @@
-# How to Filter Flux Alerts for Messages Containing ProgressingWithRetry
+# How to Filter Flux Alerts by Event Reason ProgressingWithRetry
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Flux, Kubernetes, GitOps, Alert, Event Filtering
 
-Description: Learn how to filter Flux alerts for messages containing ProgressingWithRetry to reduce noise and focus on actionable reconciliation issues.
+Description: Learn how to filter Flux alerts by the ProgressingWithRetry event reason to reduce noise and focus on actionable reconciliation issues.
 
 ---
 

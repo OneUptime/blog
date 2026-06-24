@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: ArgoCD, GitOps, Kubernetes, Boundary, Zero Trust
 
-Description: Learn how to integrate ArgoCD with HashiCorp Boundary for secure access management, including session brokering, credential brokering, and identity-based authorization for GitOps workflows.
+Description: Learn how to integrate ArgoCD with HashiCorp Boundary for secure access management, including session brokering, credential injection, and identity-based authorization for GitOps workflows.
 
 ---
 

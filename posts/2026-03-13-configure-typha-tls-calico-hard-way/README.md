@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Typha, Kubernetes, Networking, TLS, Configuration, Hard Way
 
-Description: A guide to configuring Typha TLS parameters including CN verification and certificate identity requirements in a manually installed Calico cluster.
+Description: A guide to configuring Typha TLS parameters including CN verification, cipher suites, and TLS version requirements in a manually installed Calico cluster.
 
 ---
 

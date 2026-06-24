@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Ansible, local-exec, Provisioner, Automation
 
-Description: Learn how to use OpenTofu's local-exec provisioner to trigger Ansible playbooks immediately after infrastructure resources are created or replaced.
+Description: Learn how to use OpenTofu's local-exec provisioner to trigger Ansible playbooks immediately after infrastructure resources are created or modified.
 
 ## Introduction
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Azure AD, Conditional Access, Sign-In, Troubleshooting, Identity, Security
 
-Description: Diagnose and resolve Microsoft Entra ID Conditional Access policies that unexpectedly block legitimate user sign-ins using sign-in logs and what-if analysis.
+Description: Diagnose and resolve Azure AD Conditional Access policies that unexpectedly block legitimate user sign-ins using sign-in logs and what-if analysis.
 
 ---
 

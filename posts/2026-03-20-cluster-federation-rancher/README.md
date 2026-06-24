@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rancher, Cluster Federation, Multi-Cluster, Kubernetes, Fleet, Submariner, High Availability
 
-Description: Learn how to use Rancher, Fleet, and Submariner to deploy workloads across multiple Kubernetes clusters, standardize governance, and enable cross-cluster service connectivity.
+Description: Learn how to implement cluster federation in Rancher to synchronize workloads, policies, and namespaces across multiple Kubernetes clusters for high availability and geographic distribution.
 
 ---
 

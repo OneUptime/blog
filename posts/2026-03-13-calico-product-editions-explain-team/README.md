@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, CNI, Networking, Team Communication, Calico Cloud, Calico Enterprise
 
-Description: A practical guide for explaining the differences between the main Calico product editions - Calico Open Source, Calico Cloud, and Calico Enterprise - to non-technical stakeholders and engineering teams.
+Description: A practical guide for explaining the differences between Calico Open Source, Calico Cloud, and Calico Enterprise to non-technical stakeholders and engineering teams.
 
 ---
 

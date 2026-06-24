@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: WireGuard, OPNsense, VPN, IPv4, Firewall, Networking
 
-Description: Configure a WireGuard IPv4 VPN on OPNsense with firewall rules for remote access.
+Description: Install the WireGuard plugin on OPNsense and configure a WireGuard IPv4 VPN with firewall rules for remote access.
 
 OPNsense supports WireGuard natively in current releases. On older releases, it may still be provided by the `os-wireguard` plugin. The configuration workflow is similar to pfSense but uses OPNsense's Instances and Peers terminology.
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Docker, Docker Scout, Vulnerability Remediation, Security, Base Images, DevOps
 
-Description: Use Docker Scout recommendations and CVE scans to fix vulnerabilities by updating base images, packages, and dependencies in your containers.
+Description: Use Docker Scout recommendations to fix vulnerabilities by updating base images, packages, and dependencies in your containers.
 
 ---
 

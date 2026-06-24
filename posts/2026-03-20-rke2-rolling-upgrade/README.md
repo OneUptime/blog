@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RKE2, Kubernetes, Rolling Upgrade, Zero Downtime, Rancher
 
-Description: Learn how to perform a rolling upgrade of your RKE2 cluster, upgrading nodes one at a time while keeping highly available workloads running.
+Description: Learn how to perform a zero-downtime rolling upgrade of your RKE2 cluster, upgrading nodes one at a time while keeping workloads running.
 
 A rolling upgrade minimizes downtime by upgrading one node at a time, draining workloads before the upgrade and restoring them afterward. Zero downtime depends on having enough replicas, capacity, and Pod Disruption Budgets for workloads to reschedule while nodes are upgraded. This is the recommended approach for production RKE2 clusters where continuous availability is required. This guide provides a detailed, step-by-step process for a safe rolling upgrade.
 

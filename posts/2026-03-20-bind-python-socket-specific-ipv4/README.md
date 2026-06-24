@@ -1,10 +1,10 @@
-# How to Bind a Python Socket to a Specific IPv4 Address
+# How to Bind a Python Socket to a Specific IPv4 Interface
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Python, Socket, IPv4, Binding, Networking, Interface
 
-Description: Learn how to bind a Python socket to a specific local IPv4 address to control which local address the socket sends and receives traffic on.
+Description: Learn how to bind a Python socket to a specific IPv4 address or network interface to control which network traffic the socket sends and receives.
 
 ## Why Bind to a Specific IPv4 Address?
 

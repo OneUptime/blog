@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Terraform, Provider, Infrastructure as Code, IaC, Provider Registry
 
-Description: Learn how to use Terraform-compatible providers from the public OpenTofu Registry with OpenTofu.
+Description: Learn how to use Terraform providers from the public registry with OpenTofu using the provider mirror protocol.
 
 ## Introduction
 

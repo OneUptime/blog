@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Terraform, Kubernetes, Helm, OCI, Container Registry, DevOps
 
-Description: Learn how to use Helm charts stored in OCI-compliant container registries with Terraform, including authentication setup for ECR, ACR, Google Artifact Registry, and private registries.
+Description: Learn how to use Helm charts stored in OCI-compliant container registries with Terraform, including authentication setup for ECR, ACR, GCR, and private registries.
 
 ---
 

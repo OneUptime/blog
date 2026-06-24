@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GCP, GraphQL, Apollo Server, Firestore, Cloud Run, Node.js, Google Cloud
 
-Description: Build a production-ready GraphQL API using Apollo Server 5 with Firestore as the database, deployed to Cloud Run with proper error handling and pagination.
+Description: Build a production-ready GraphQL API using Apollo Server 4 with Firestore as the database, deployed to Cloud Run with proper error handling and pagination.
 
 ---
 

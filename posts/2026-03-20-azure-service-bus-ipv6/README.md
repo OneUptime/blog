@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Azure, IPv6, Service Bus, Messaging, Private Endpoint, Dual-Stack
 
-Description: Configure Azure Service Bus to accept connections over private IPv6 through Private Endpoints in dual-stack VNets. For public endpoints, Service Bus IP filtering remains IPv4-only.
+Description: Configure Azure Service Bus to accept connections over IPv6 through Private Endpoints in dual-stack VNets and configure IP filtering rules for IPv6 client addresses.
 
 ## Introduction
 

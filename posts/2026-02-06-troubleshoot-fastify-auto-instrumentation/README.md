@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Fastify, Node.js, Auto-Instrumentation
 
-Description: Debug and fix Fastify instrumentation issues when OpenTelemetry does not automatically instrument your Fastify app.
+Description: Debug and fix Fastify instrumentation issues when getNodeAutoInstrumentations does not automatically instrument your Fastify app.
 
 Fastify is a popular alternative to Express for building Node.js APIs. Older versions of `getNodeAutoInstrumentations()` included Fastify instrumentation, but current versions of `@opentelemetry/auto-instrumentations-node` removed it after deprecating it in favor of the official `@fastify/otel` package. If you still use `@opentelemetry/instrumentation-fastify`, there are several reasons it may silently fail. This post walks through the common causes and their fixes.
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: MongoDB, WiredTiger, Storage Engine, Collection, Configuration
 
-Description: Learn how to set WiredTiger storage engine options per collection in MongoDB including block compression, prefix compression, and page sizing.
+Description: Learn how to set WiredTiger storage engine options per collection in MongoDB including block compression, prefix compression, and cache settings.
 
 ---
 

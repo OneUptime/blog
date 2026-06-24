@@ -1,10 +1,10 @@
-# Inspecting the Calico BlockAffinity Resource in Kubernetes
+# Creating the Calico BlockAffinity Resource in Kubernetes
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes
 
-Description: Learn how to inspect and validate Calico BlockAffinity resources in your Kubernetes cluster using kubectl and calicoctl.
+Description: Learn how to define and apply a Calico BlockAffinity resource to your Kubernetes cluster using kubectl and calicoctl.
 
 ---
 

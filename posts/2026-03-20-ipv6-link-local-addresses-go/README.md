@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Go, IPv6, Link-Local, Zone ID, Networking, Net/netip
 
-Description: Handle IPv6 link-local addresses in Go, including zone ID management, interface binding, and link-local multicast probing.
+Description: Handle IPv6 link-local addresses in Go, including zone ID management, interface binding, and NDP neighbor discovery.
 
 ## Understanding Link-Local Addresses
 

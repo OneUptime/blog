@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: UDP, Jitter, Latency, Performance, Networking, iperf3, Measurement
 
-Description: Measure UDP round-trip time and jitter using ping, iperf3, and custom scripts to assess network quality for real-time applications.
+Description: Measure UDP one-way latency, round-trip time, and jitter using iperf3, custom scripts, and dedicated tools to assess network quality for real-time applications.
 
 ## Introduction
 

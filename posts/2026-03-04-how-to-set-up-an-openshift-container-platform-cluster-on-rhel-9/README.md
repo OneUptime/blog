@@ -1,10 +1,10 @@
-# How to Set Up an OpenShift Container Platform Cluster with RHEL 9 Compute Nodes
+# How to Set Up an OpenShift Container Platform Cluster on RHEL 9
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Linux, Container, OpenShift
 
-Description: Step-by-step guide on set up an openshift container platform cluster with RHEL 9 compute nodes with practical examples and commands.
+Description: Step-by-step guide on set up an openshift container platform cluster on rhel 9 with practical examples and commands.
 
 ---
 

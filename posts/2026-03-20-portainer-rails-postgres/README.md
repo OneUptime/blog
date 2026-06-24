@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Portainer, Ruby on Rails, PostgreSQL, Ruby, Docker Compose, Web Framework
+Tags: Portainer, Ruby On Rail, PostgreSQL, Ruby, Docker Compose, Web Framework
 
 Description: Deploy a Ruby on Rails application with PostgreSQL using Docker Compose through Portainer, with database migrations, Active Storage, Action Cable WebSocket support, and Sidekiq workers.
 

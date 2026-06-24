@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, Networking, Troubleshooting
 
-Description: Fix Calico IP pool exhaustion by cleaning up leaked IPAM allocations or adding a new non-overlapping IP pool.
+Description: Fix Calico IP pool exhaustion by cleaning up leaked IPAM allocations, expanding the IP pool CIDR, or adding a new non-overlapping IP pool.
 
 ---
 

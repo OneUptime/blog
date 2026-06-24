@@ -2,9 +2,9 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Backstage, IPv6, Scaffolder, Infrastructure, Crossplane
+Tags: Backstage, IPv6, Scaffolder, Infrastructure, IdP
 
-Description: Define the Crossplane resources and Compositions that a Backstage scaffolder template can use to provision IPv6-enabled infrastructure.
+Description: Create Backstage scaffolder templates that provision IPv6-enabled infrastructure through Crossplane or Terraform.
 
 ## Overview
 

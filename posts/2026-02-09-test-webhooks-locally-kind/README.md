@@ -1,10 +1,10 @@
-# How to Test Kubernetes Webhooks Locally with kind and Host Network Access
+# How to Test Kubernetes Webhooks Locally with kind and Port Forwarding
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Webhook, Kind, Testing
 
-Description: Learn how to test admission webhooks locally using kind clusters and host network access, enabling rapid development iteration without deploying to remote clusters.
+Description: Learn how to test admission webhooks locally using kind clusters and port forwarding, enabling rapid development iteration without deploying to remote clusters.
 
 ---
 

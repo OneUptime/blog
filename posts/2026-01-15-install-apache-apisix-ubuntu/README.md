@@ -548,7 +548,7 @@ curl -X PUT http://127.0.0.1:9180/apisix/admin/routes/4 \
   }'
 ```
 
-APISIX can also sign JWTs for you using the built-in endpoint. In APISIX 3.x this endpoint is not exposed by default — you must publish it with the `public-api` plugin by creating a route for it first.
+APISIX can also sign JWTs for you using the built-in endpoint. In APISIX 3.x this endpoint is not exposed by default - you must publish it with the `public-api` plugin by creating a route for it first.
 
 ```bash
 # Expose the JWT sign endpoint via the public-api plugin

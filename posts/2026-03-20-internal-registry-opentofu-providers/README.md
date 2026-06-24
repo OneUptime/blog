@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Internal Registry, Provider Distribution, Enterprise, Self-Hosted
 
-Description: Learn how to set up an internal provider registry for OpenTofu that serves custom providers to your organization using the provider registry protocol.
+Description: Learn how to set up an internal provider registry for OpenTofu that serves custom or mirrored providers to your organization using the Terraform Registry Protocol.
 
 ## Introduction
 

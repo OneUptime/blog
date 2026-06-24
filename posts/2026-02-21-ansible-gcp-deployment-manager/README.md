@@ -1,10 +1,10 @@
-# How to Use Ansible with GCP Resources
+# How to Use Ansible with GCP Deployment Manager
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, GCP, Deployment Manager, Cloud
 
-Description: Manage GCP resources using Ansible and the google.cloud collection.
+Description: Integrate Ansible with Google Cloud Deployment Manager and manage GCP resources using the google.cloud collection.
 
 ---
 

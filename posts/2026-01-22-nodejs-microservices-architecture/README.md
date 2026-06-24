@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: NodeJS, Microservice, Architecture, REST API, gRPC
 
-Description: Learn how to design and build microservices architecture in Node.js including service communication, API gateways, Docker Compose, and best practices.
+Description: Learn how to design and build microservices architecture in Node.js including service communication, API gateways, service discovery, and best practices.
 
 ---
 

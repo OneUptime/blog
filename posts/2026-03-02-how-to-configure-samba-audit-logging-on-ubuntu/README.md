@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Ubuntu, Samba, Security, Auditing, Logging
 
-Description: Set up Samba audit logging on Ubuntu using the full_audit VFS module to track file access, creation, deletion, and other share-level file operations for compliance and security monitoring.
+Description: Set up Samba audit logging on Ubuntu using the full_audit VFS module to track file access, creation, deletion, and authentication events for compliance and security monitoring.
 
 ---
 

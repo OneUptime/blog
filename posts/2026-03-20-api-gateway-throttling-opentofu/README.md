@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, AWS, API Gateway, Throttling, Rate Limiting, Usage Plans, Infrastructure as Code
 
-Description: Learn how to configure API Gateway throttling with OpenTofu to protect backends from traffic spikes and configure per-client throttling and quotas using usage plans and API keys.
+Description: Learn how to configure API Gateway throttling with OpenTofu to protect backends from traffic spikes and enforce rate limits per client using usage plans and API keys.
 
 ## Introduction
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Terraform, Compatibility, Testing, Migration, Infrastructure as Code
 
-Description: Learn how to test and verify that your existing Terraform configurations are compatible with OpenTofu before committing to a migration.
+Description: Learn how to test and verify that your existing Terraform configurations are fully compatible with OpenTofu before committing to a migration.
 
 ## Introduction
 

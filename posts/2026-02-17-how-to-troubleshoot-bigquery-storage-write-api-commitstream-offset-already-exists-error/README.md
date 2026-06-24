@@ -1,10 +1,10 @@
-# Troubleshoot BigQuery Storage Write API AppendRows Offset Already Exists Error
+# Troubleshoot BigQuery Storage Write API CommitStream Offset Already Exists Error
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GCP, BigQuery, Storage Write API, Streaming, Data Ingestion, Troubleshooting
 
-Description: A practical guide to diagnosing and resolving the AppendRows offset already exists error when using BigQuery Storage Write API for data ingestion.
+Description: A practical guide to diagnosing and resolving the CommitStream offset already exists error when using BigQuery Storage Write API for data ingestion.
 
 ---
 

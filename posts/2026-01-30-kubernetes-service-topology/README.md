@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Kubernetes, Service Topology, Traffic Routing, Topology Aware
 
-Description: Learn to implement topology-aware Service routing for locality-aware traffic, zone preference, and traffic optimization.
+Description: Learn to implement service topology for locality-aware routing with topology keys, zone preference, and traffic optimization.
 
 ---
 

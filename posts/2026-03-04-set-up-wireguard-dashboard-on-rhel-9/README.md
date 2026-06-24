@@ -1,10 +1,10 @@
-# How to Set Up WireGuard VPN on RHEL
+# How to Set Up WireGuard Dashboard on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, VPN, Linux
 
-Description: Step-by-step guide on set up WireGuard VPN using Red Hat Enterprise Linux 9.
+Description: Step-by-step guide on set up wireguard dashboard using Red Hat Enterprise Linux 9.
 
 ---
 

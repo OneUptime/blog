@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: ArgoCD, GitOps, Kubernetes, Performance, Troubleshooting
 
-Description: Learn how to manage large application manifests that exceed Kubernetes and etcd size limits in ArgoCD, including splitting strategies, compression, and architectural patterns.
+Description: Learn how to manage large application manifests that exceed the 1MB etcd size limit in ArgoCD, including splitting strategies, compression, and architectural patterns.
 
 ---
 

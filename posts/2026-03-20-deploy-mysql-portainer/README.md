@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, MySQL, Database, Docker, Deployment
 
-Description: Learn how to deploy MySQL via Portainer with persistent data volumes, environment variable management, and proper backup strategies.
+Description: Learn how to deploy MySQL via Portainer with persistent data volumes, secure environment variable management, and proper backup strategies.
 
 ## MySQL via Portainer Stack
 

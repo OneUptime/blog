@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Exim, IPv4, Email, SMTP, Configuration, Linux, Binding
 
-Description: Learn how to configure Exim to listen and send email on a specific IPv4 address using the local_interfaces option and the smtp transport's interface setting.
+Description: Learn how to configure Exim to listen and send email on a specific IPv4 address using the local_interfaces and smtp_bind_address directives.
 
 ---
 

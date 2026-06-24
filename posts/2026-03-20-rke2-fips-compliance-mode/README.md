@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RKE2, FIPS, Compliance, Security, Kubernetes, Government, SUSE Rancher
 
-Description: Learn how to enable FIPS 140-2 compliant mode in RKE2 to meet federal government security requirements, including OS preparation, RKE2 installation, and verification.
+Description: Learn how to enable FIPS 140-2 compliant mode in RKE2 to meet federal government security requirements, including OS preparation, RKE2 FIPS binary installation, and verification.
 
 ---
 

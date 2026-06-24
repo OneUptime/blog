@@ -420,7 +420,7 @@ Navigate to Settings, then Devices & Services, then Add Integration. Search for 
 
 ### MQTT Integration
 
-MQTT is essential for many DIY devices and commercial IoT products. The broker connection is configured through the UI — the `mqtt:` broker and port options were removed from `configuration.yaml` in Home Assistant 2022.6, so the integration must be added via a config flow.
+MQTT is essential for many DIY devices and commercial IoT products. The broker connection is configured through the UI - the `mqtt:` broker and port options were removed from `configuration.yaml` in Home Assistant 2022.6, so the integration must be added via a config flow.
 
 Navigate to Settings, then Devices & Services, then Add Integration, and search for MQTT. Enter the broker connection details when prompted:
 
@@ -440,7 +440,7 @@ Chromecast devices are auto-discovered. Add the integration to control media pla
 
 ### Weather Integration
 
-Add weather data for automations based on conditions. OpenWeatherMap is configured through the UI — the YAML `weather:` platform setup was removed in favor of a config flow.
+Add weather data for automations based on conditions. OpenWeatherMap is configured through the UI - the YAML `weather:` platform setup was removed in favor of a config flow.
 
 Navigate to Settings, then Devices & Services, then Add Integration, search for OpenWeatherMap, and enter your API key when prompted. The integration creates a `weather.openweathermap` entity (plus related sensors) that you can reference in automations and dashboards.
 

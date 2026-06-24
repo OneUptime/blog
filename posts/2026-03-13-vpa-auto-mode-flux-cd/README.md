@@ -1,10 +1,10 @@
-# VPA Recreate Mode with Flux CD
+# VPA Auto Mode with Flux CD
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Flux CD, VPA, Kubernetes, Resource Management, GitOps
 
-Description: Learn how to configure Vertical Pod Autoscaler in Recreate mode with Flux CD, enabling automatic right-sizing of pod resource requests through GitOps-managed VPA objects.
+Description: Learn how to configure Vertical Pod Autoscaler in Auto mode with Flux CD, enabling automatic right-sizing of pod resource requests through GitOps-managed VPA objects.
 
 ---
 

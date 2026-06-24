@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Monitoring, Kube-state-metrics, Prometheus, Custom Metric, Observability
 
-Description: Learn how to extend kube-state-metrics with custom resource metrics, create business-specific metrics from Kubernetes objects, and build comprehensive monitoring dashboards.
+Description: Learn how to extend kube-state-metrics with custom collectors, create business-specific metrics from Kubernetes objects, and build comprehensive monitoring dashboards.
 
 ---
 

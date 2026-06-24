@@ -1,10 +1,10 @@
-# How to Set Up a Basic Monitoring Stack with PCP, Prometheus, and Grafana on RHEL 9
+# How to Set Up a Complete Monitoring Stack with Prometheus and Grafana on RHEL 9
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Prometheus, Grafana, Monitoring
 
-Description: Set up a basic monitoring stack with PCP, Prometheus, and Grafana on RHEL 9.
+Description: Set up a complete monitoring stack with Prometheus and Grafana on RHEL 9.
 
 ---
 

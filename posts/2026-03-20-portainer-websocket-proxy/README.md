@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Docker, WebSocket, Reverse Proxy, Troubleshooting, Nginx
 
-Description: Configure reverse proxies to properly support WebSocket connections required by Portainer for container terminals and Kubernetes shell sessions.
+Description: Configure reverse proxies to properly support WebSocket connections required by Portainer for container terminals, log streaming, and real-time statistics.
 
 ## Introduction
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: IPv6, Traefik, Reverse Proxy, Kubernetes, Docker, Dual-Stack
 
-Description: Configure Traefik as an IPv6-capable reverse proxy with dual-stack entry points, forwarded header trust for IPv6 client IPs, and routing to IPv6-capable backend services.
+Description: Configure Traefik as an IPv6-capable reverse proxy with dual-stack entry points, IPv6 middleware for client IP, and routing to IPv6 backend services.
 
 ## Introduction
 

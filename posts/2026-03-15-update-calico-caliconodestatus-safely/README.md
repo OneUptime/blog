@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, CalicoNodeStatus, Monitoring, Kubernetes, Networking, Operation
 
-Description: Safely update CalicoNodeStatus resources to adjust troubleshooting telemetry without losing visibility into node networking state.
+Description: Safely update CalicoNodeStatus resources to adjust monitoring parameters without losing visibility into node networking state.
 
 ---
 

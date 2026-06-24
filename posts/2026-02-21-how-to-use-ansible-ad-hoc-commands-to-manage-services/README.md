@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, Ad Hoc Commands, Service Management, Systemd
 
-Description: Learn how to start, stop, restart, and manage services across your infrastructure using Ansible ad hoc commands with the service and systemd_service modules.
+Description: Learn how to start, stop, restart, and manage services across your infrastructure using Ansible ad hoc commands with the service and systemd modules.
 
 ---
 

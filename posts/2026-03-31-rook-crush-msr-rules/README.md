@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rook, Ceph, CRUSH, Rule, Storage
 
-Description: Learn how to use Ceph CRUSH multi-step rules to implement complex multi-level placement strategies for advanced topology requirements.
+Description: Learn how to use Ceph CRUSH Multi-Step Replication (MSR) rules to implement complex multi-level placement strategies for advanced topology requirements.
 
 ---
 

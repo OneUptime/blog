@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, DNS, Terraform, Infrastructure as Code, Route53, Cloudflare, AWS
 
-Description: Learn how to create Route53 hosted zones and manage DNS records on AWS Route53 and Cloudflare using OpenTofu, including A, AAAA, CNAME, MX, and TXT records.
+Description: Learn how to create and manage DNS zones and records on AWS Route53 and Cloudflare using OpenTofu, including A, AAAA, CNAME, MX, and TXT records.
 
 ---
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: MongoDB, Notification, Change Stream, Real-Time, SSE
+Tags: MongoDB, Notification, Change Stream, Real-Time, WebSocket
 
 Description: Build a scalable real-time notification system using MongoDB Change Streams to push updates to users as events occur in your application.
 

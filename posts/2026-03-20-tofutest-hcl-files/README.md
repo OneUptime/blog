@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Testing, Tofutest, HCL, Infrastructure as Code, Tofu test
 
-Description: Learn how to use OpenTofu's native test framework with `.tftest.hcl` and `.tofutest.hcl` files, including advanced features like setup runs, module overrides, and state-based assertions.
+Description: Learn how to use OpenTofu's native tofutest framework with HCL test files, including advanced features like setup runs, module overrides, and state-based assertions.
 
 ## Introduction
 

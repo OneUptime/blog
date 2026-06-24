@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Variable, Ephemeral, Security, Infrastructure as Code, DevOps
 
-Description: A guide to using ephemeral variables in OpenTofu to pass secrets that are not stored in state or plan files.
+Description: A guide to using ephemeral variables in OpenTofu to pass secrets that are not stored in state files.
 
 ## Introduction
 

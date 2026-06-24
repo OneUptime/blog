@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: iptables, DNAT, Port Forwarding, NAT, Linux, Networking
 
-Description: Configure iptables DNAT rules to forward incoming connections on one port to a different host or port, enabling port forwarding and traffic redirection scenarios.
+Description: Configure iptables DNAT rules to forward incoming connections on one port to a different host or port, enabling port forwarding and reverse proxy scenarios.
 
 DNAT (Destination Network Address Translation) rewrites the destination IP or port of incoming packets, redirecting traffic to a different host. This is how port forwarding works - external port 8080 becomes internal port 80 on a different server.
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, ZooKeeper, Leader Election, Session Monitoring
 
-Description: Monitor Apache Zookeeper leader election frequency, session count, and active requests using the OpenTelemetry Collector Zookeeper receiver.
+Description: Monitor Apache Zookeeper leader election frequency, session count, and outstanding requests using the OpenTelemetry Collector Zookeeper receiver.
 
 Apache Zookeeper is the coordination service that many distributed systems depend on, including Kafka, HBase, and Solr. When Zookeeper is unhealthy, dependent services lose coordination, leader election fails, and configuration updates stall. The OpenTelemetry Collector's Zookeeper receiver collects metrics directly from Zookeeper's `mntr` and `ruok` four-letter commands.
 

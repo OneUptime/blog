@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, VMware, VMotion, Migration, vSphere
 
-Description: Learn how to automate VMware vMotion migrations with Ansible including compute vMotion and storage vMotion for maintenance and load balancing.
+Description: Learn how to automate VMware vMotion migrations with Ansible including compute vMotion, storage vMotion, and cross-vCenter moves for maintenance and load balancing.
 
 ---
 

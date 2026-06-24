@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, OpenStack, Kubernetes, Networking, Upgrade
 
-Description: Avoid OpenStack-specific Calico upgrade mistakes including networking-calico compatibility and etcd cluster conflicts.
+Description: Avoid OpenStack-specific Calico upgrade mistakes including Neutron ML2 driver incompatibilities and etcd cluster conflicts.
 
 ---
 

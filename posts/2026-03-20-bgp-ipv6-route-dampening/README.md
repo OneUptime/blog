@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: BGP, IPv6, Route Dampening, Stability, FRRouting
 
-Description: Configure BGP route dampening for IPv6 prefixes where your platform supports it, and understand the current limitations in FRRouting and BIRD2.
+Description: Configure BGP route dampening for IPv6 prefixes to suppress flapping routes and improve routing stability.
 
 ## Overview
 

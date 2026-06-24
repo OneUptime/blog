@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Infrastructure as Code, Terraform, IaC, DevOps
 
-Description: Learn how to use OpenTofu's tofu metadata functions subcommand to retrieve function signatures for tooling and integration.
+Description: Learn how to use OpenTofu's tofu metadata subcommands to retrieve information about functions, schemas, and provider capabilities for tooling and integration.
 
 ## Introduction
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, OTTL, Converter Functions, Transform Processor
 
-Description: Use OTTL converter functions like IsMatch, Concat, and Substring for advanced telemetry manipulation in the Collector's transform processor.
+Description: Use OTTL converter functions like IsMatch, Concat, and SpanID for advanced telemetry manipulation in the Collector's transform processor.
 
 OTTL converter functions transform values without modifying the telemetry directly. They are used inside OTTL statements to compute new values, match patterns, or extract information from existing fields. Functions like `IsMatch`, `Concat`, `Int`, `Double`, `Substring`, and ID string accessors give you the building blocks for complex transformations.
 

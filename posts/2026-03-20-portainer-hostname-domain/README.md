@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Docker, Container, Networking, DevOps
 
-Description: Learn how to configure custom hostnames, domain names, and host file entries for Docker containers in Portainer.
+Description: Learn how to configure custom hostnames and domain names for Docker containers in Portainer for service identification and internal DNS resolution.
 
 ## Introduction
 

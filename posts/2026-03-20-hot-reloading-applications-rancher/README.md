@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rancher, Hot Reloading, Developer Experience, Kubernetes, File Sync, Skaffold
 
-Description: Configure hot reloading for Node.js, Python, and Go applications on Rancher-managed Kubernetes clusters using file sync tools, traffic interception, and process managers for near-instant code iteration.
+Description: Configure hot reloading for Node.js, Python, and Go applications deployed on Rancher using file sync tools and process managers for near-instant code iteration.
 
 ## Introduction
 

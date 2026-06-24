@@ -1,10 +1,10 @@
-# How to Investigate Whisker Flow Logs in Calico
+# How to Alert on Whisker in Calico
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, Networking, Observability
 
-Description: Use Calico Whisker flow data to investigate unusual denied traffic patterns, unexpected new connections, and policy enforcement failures.
+Description: Configure alerts based on Calico Whisker flow data to detect unusual denied traffic patterns, unexpected new connections, and policy enforcement failures.
 
 ---
 

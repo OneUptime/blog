@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Linux, Nginx, IPv4, IPv6, Web Server, Networking
 
-Description: Disable IPv6 in Nginx configuration and force it to accept connections only over IPv4 by removing IPv6 listen directives and optionally disabling IPv6 on interfaces at the OS level.
+Description: Disable IPv6 in Nginx configuration and force it to accept connections only over IPv4 by removing IPv6 listen directives and optionally disabling IPv6 at the OS level.
 
 ## Introduction
 

@@ -1,10 +1,10 @@
-# How to Configure Common VirtualService Fields in Istio
+# How to Configure All VirtualService Fields in Istio
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Istio, VirtualService, Traffic Management, Kubernetes, Service Mesh
 
-Description: A practical walkthrough of common VirtualService fields in Istio with YAML examples for traffic routing, retries, timeouts, and more.
+Description: A complete walkthrough of every VirtualService field in Istio with practical YAML examples for traffic routing, retries, timeouts, and more.
 
 ---
 

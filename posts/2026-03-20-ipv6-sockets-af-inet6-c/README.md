@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: C, IPv6, AF_INET6, Socket Programming, POSIX, Systems Programming, Networking
 
-Description: Create and use IPv6 sockets in C using AF_INET6, configure IPv6-only or dual-stack behavior with IPV6_V6ONLY, and implement both TCP and UDP IPv6 servers and clients.
+Description: Create and use IPv6 sockets in C using AF_INET6, configure dual-stack behavior with IPV6_V6ONLY, and implement both TCP and UDP IPv6 servers and clients.
 
 ## Introduction
 

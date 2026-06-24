@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: iptables, FTP, IPv4, Firewall, Active Mode, Passive Mode
 
-Description: Write iptables rules to allow FTP command and data connections for both active and passive modes on IPv4, including the nf_conntrack_ftp module for automatic port tracking when the helper is assigned to the control connection.
+Description: Write iptables rules to allow FTP command and data connections for both active and passive modes on IPv4, including the nf_conntrack_ftp module for automatic port tracking.
 
 ## Introduction
 

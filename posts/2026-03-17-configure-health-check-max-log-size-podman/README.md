@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Podman, Container, DevOps, Health Check, Logging, Storage
 
-Description: Learn how to configure the maximum length of individual health check log entries in Podman to control storage usage.
+Description: Learn how to configure the maximum size of individual health check log entries in Podman to control storage usage.
 
 ---
 

@@ -1,10 +1,10 @@
-# How to Configure Minimum Instances for Cloud Functions to Reduce Cold Starts
+# How to Configure Minimum Instances for Cloud Functions to Eliminate Cold Starts
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GCP, Cloud Function, Cold Start, Performance, Serverless
 
-Description: Learn how to configure minimum instances in Google Cloud Functions to keep warm instances ready and reduce cold start latency for latency-sensitive workloads.
+Description: Learn how to configure minimum instances in Google Cloud Functions to keep warm instances ready and eliminate cold start latency for latency-sensitive workloads.
 
 ---
 

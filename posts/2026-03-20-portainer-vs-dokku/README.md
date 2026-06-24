@@ -1,8 +1,8 @@
-# Portainer vs Dokku: Deployment Platform Comparison for Self-Hosters
+# Portainer vs Dokku: PaaS Comparison for Self-Hosters
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Portainer, Dokku, Self-Hosted, Comparison, Docker
+Tags: Portainer, Dokku, PaaS, Self-Hosted, Comparison
 
 Description: Compare Portainer and Dokku as deployment platforms for self-hosters looking to manage applications with ease.
 

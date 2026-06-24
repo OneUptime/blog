@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Kubernetes, Security, KubeShell, RBAC
 
-Description: Learn how to restrict Portainer's KubeShell terminal access to administrator users only, limiting browser-based shell access to Portainer admins.
+Description: Learn how to restrict Portainer's KubeShell terminal access to administrator users only, preventing non-admin users from bypassing namespace-level access controls.
 
 ## Introduction
 

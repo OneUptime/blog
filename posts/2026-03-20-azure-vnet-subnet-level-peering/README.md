@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Azure, VNet, Peering, IPv4, Networking, Cloud
 
-Description: Set up Azure subnet peering between VNets to enable private IPv4 communication between selected subnets in different VNets without traversing the public internet.
+Description: Set up Azure Virtual Network peering between VNets to enable private IPv4 communication between subnets in different VNets without traversing the public internet.
 
 ## Introduction
 

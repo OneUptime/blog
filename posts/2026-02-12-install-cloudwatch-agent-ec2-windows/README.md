@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, CloudWatch, EC2, Windows, Monitoring
+Tags: AWS, CloudWatch, EC2, Window, Monitoring
 
 Description: Complete walkthrough for installing and configuring the CloudWatch Agent on Windows Server EC2 instances to collect performance counters, event logs, and custom metrics.
 

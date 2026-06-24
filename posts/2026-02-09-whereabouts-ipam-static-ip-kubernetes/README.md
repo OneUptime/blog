@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, IPAM, Networking
 
-Description: Configure Whereabouts IPAM plugin to assign predictable IP addresses to Kubernetes pods from defined IP pools, including requested addresses for applications requiring firewall rules.
+Description: Configure Whereabouts IPAM plugin to assign static IP addresses to Kubernetes pods from defined IP pools, enabling predictable IP addressing for applications requiring firewall rules.
 
 ---
 

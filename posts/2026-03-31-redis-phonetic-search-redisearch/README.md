@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Redis, RediSearch, Phonetic Search, Double Metaphone, Search
+Tags: Redis, RediSearch, Phonetic Search, SOUNDEX, Search
 
 Description: Enable phonetic search in RediSearch to match names that sound alike, using the built-in double metaphone algorithm.
 

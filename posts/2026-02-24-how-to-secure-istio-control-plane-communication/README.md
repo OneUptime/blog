@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Istio, Security, Control Plane, Hardening, Service Mesh
 
-Description: How to secure communication between Istio control plane components and the data plane, including certificate management, RBAC, and network policies.
+Description: How to secure communication between Istio control plane components and the data plane, including certificate pinning, RBAC, and network policies.
 
 ---
 

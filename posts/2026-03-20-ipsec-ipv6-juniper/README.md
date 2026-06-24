@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: IPv6, IPsec, Juniper, Junos, VPN
 
-Description: Learn how to configure IPv6 IPsec site-to-site VPNs on Juniper SRX devices using Junos OS, including IKEv2 policy, security associations, and route-based VPN configuration.
+Description: Learn how to configure IPv6 IPsec site-to-site VPNs on Juniper routers using JunOS, including IKEv2 policy, security associations, and route-based VPN configuration.
 
 ## Overview
 

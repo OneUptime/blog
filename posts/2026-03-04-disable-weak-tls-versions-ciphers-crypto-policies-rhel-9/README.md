@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Crypto Policies, TLS, Ciphers, Security Hardening, Linux
 
-Description: Use RHEL 9 crypto policies to disable weak TLS versions and ciphers for supported system crypto back ends, helping enforce strong encryption system-wide.
+Description: Use RHEL 9 crypto policies to disable weak TLS versions and ciphers across all applications, ensuring only strong encryption is used system-wide.
 
 ---
 

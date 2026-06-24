@@ -2,9 +2,9 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Go, IPv6, Network Automation, SSH, REST API
+Tags: Go, IPv6, Network Automation, SSH, REST API, NETCONF
 
-Description: Use Go for IPv6 network automation tasks including SSH-based configuration, REST API interactions, and IPv6 address validation for IPAM workflows.
+Description: Use Go for IPv6 network automation tasks including SSH-based configuration, REST API interactions, and NETCONF device management.
 
 ## SSH-Based Device Configuration
 

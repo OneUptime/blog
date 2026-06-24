@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: ArgoCD, GitOps, Kubernetes, Image Updater, Container Image
 
-Description: Learn how to use the latest/newest-build update strategy in ArgoCD Image Updater to automatically deploy the most recently built container image based on build timestamps and tag filtering.
+Description: Learn how to use the latest update strategy in ArgoCD Image Updater to automatically deploy the most recently pushed container image based on build timestamps and tag filtering.
 
 ---
 

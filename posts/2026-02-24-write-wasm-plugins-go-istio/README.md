@@ -2,9 +2,9 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, WebAssembly, Go, Envoy
+Tags: Istio, WebAssembly, Go, TinyGo, Envoy
 
-Description: A guide to writing WebAssembly plugins for Istio using Go with the proxy-wasm Go SDK for custom traffic processing.
+Description: A guide to writing WebAssembly plugins for Istio using Go and TinyGo with the proxy-wasm Go SDK for custom traffic processing.
 
 ---
 

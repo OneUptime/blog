@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Podman, Installation, Linux, Container, DevOps, Amazon Linux
 
-Description: Step-by-step instructions for installing Podman on Amazon Linux 2023 for running containers on AWS EC2 instances.
+Description: Step-by-step instructions for installing Podman on Amazon Linux 2 and Amazon Linux 2023 for running containers on AWS EC2 instances.
 
 ---
 

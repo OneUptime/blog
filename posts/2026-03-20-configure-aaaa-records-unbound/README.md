@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: IPv6, DNS, Unbound, AAAA Records, DNS Configuration
 
-Description: Learn how to serve AAAA records from Unbound as local authoritative data or through a stub zone, enabling IPv6 hostname resolution for internal services.
+Description: Learn how to serve AAAA records from Unbound as a local authoritative or stub resolver, enabling IPv6 hostname resolution for internal services.
 
 ## Unbound as a Recursive Resolver vs Local Zones and Stub Zones
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, MetalLB, BGP, Peer, BGPAdvertisement
 
-Description: Learn how to selectively announce MetalLB service routes to specific BGP peers using the peers field in BGPAdvertisement resources.
+Description: Learn how to selectively announce MetalLB service routes to specific BGP peers using peer selectors in BGPAdvertisement resources.
 
 ---
 

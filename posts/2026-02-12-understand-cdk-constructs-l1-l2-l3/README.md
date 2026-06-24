@@ -102,7 +102,8 @@ import * as cdk from 'aws-cdk-lib';
 const bucket = new s3.Bucket(this, 'MyBucket', {
   bucketName: 'my-example-bucket',
   versioned: true,
-  // blockPublicAccess is BLOCK_ALL by default - no need to specify
+  // blockPublicAccess is unset by default (CloudFormation defaults apply, which
+  // block public access for new buckets) - set it explicitly to customize
   lifecycleRules: [
     {
       id: 'ExpireOldObjects',
@@ -123,7 +124,7 @@ bucket.grantRead(myLambdaFunction);      // Grant IAM permissions in one line
 bucket.addEventNotification(/* ... */);  // Set up S3 event notifications
 ```
 
-Look at the differences. The L2 construct uses `versioned: true` instead of `versioningConfiguration: { status: 'Enabled' }`. Duration values use `cdk.Duration.days(90)` instead of raw numbers. Public access is blocked by default. And you get methods like `grantRead()` that handle IAM permissions automatically.
+Look at the differences. The L2 construct uses `versioned: true` instead of `versioningConfiguration: { status: 'Enabled' }`. Duration values use `cdk.Duration.days(90)` instead of raw numbers. Public access isn't allowed by default - CDK leaves `blockPublicAccess` unset, so CloudFormation's own defaults apply and new buckets block public access. And you get methods like `grantRead()` that handle IAM permissions automatically.
 
 Let's see a more complex example - an RDS database.
 

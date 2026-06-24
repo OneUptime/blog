@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Redis, Backup, Script, Automation, Bash
 
-Description: Automate Redis RDB backups with a Bash script that copies dump files to S3 and rotates old backups.
+Description: Automate Redis RDB and AOF backups with a Bash script that copies dump files to S3, rotates old backups, and sends alerts on failure.
 
 ---
 

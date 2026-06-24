@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: IPv4, Network Planning, Subnetting, Office Networks, DHCP
 
-Description: Calculate how many IPv4 addresses a new office needs by inventorying device types, applying a growth buffer, and leaving DHCP/admin reserve inside each subnet.
+Description: Calculate how many IPv4 addresses a new office needs by inventorying device types, applying growth and DHCP overhead factors, and selecting appropriately sized subnets.
 
 ## Introduction
 

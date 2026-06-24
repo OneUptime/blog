@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Flux CD, Cluster Provisioning, GitOps, Kubernetes, Multi-Cluster, Application Deployment
 
-Description: A complete guide to using Flux CD as a single GitOps workflow for both cluster provisioning and application deployment across your infrastructure.
+Description: A complete guide to using Flux CD as the single control plane for both cluster provisioning and application deployment across your infrastructure.
 
 ---
 

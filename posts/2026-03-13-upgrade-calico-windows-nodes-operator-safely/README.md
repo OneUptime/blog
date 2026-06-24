@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Windows, Operator, Networking, CNI, Upgrade
+Tags: Calico, Kubernetes, Window, Operator, Networking, CNI, Upgrade
 
 Description: A guide to safely upgrading Calico on Windows nodes when managed by the Tigera Operator.
 

@@ -488,7 +488,7 @@ data:
     ```
     velero backup get
     velero backup describe <backup-name> --details
-    ```
+    ```text
 
     ## Step 3: Initiate Restore
     ```
@@ -496,13 +496,13 @@ data:
         --from-backup <backup-name> \
         --include-namespaces production,monitoring \
         --restore-volumes=true
-    ```
+    ```text
 
     ## Step 4: Monitor Progress
     ```
     velero restore describe <restore-name> --details
     watch kubectl get pods -n production
-    ```
+    ```text
 
     ## Step 5: Validate Services
     - Check all deployments are running

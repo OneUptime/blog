@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: DHCPv6, IPv6, High Availability, Failover, Networking
 
-Description: Learn how to configure Kea DHCPv6 high availability between two servers to keep IPv6 address assignment available during a server failure.
+Description: Learn how to configure DHCPv6 failover between two servers to ensure uninterrupted IPv6 address assignment in your network.
 
 ## Overview
 

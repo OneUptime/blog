@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Flux CD, GitOps, Kubernetes, Multi-Tenancy, Image Automation, Image Policies
 
-Description: Learn how to set up tenant-specific image policies in Flux CD to control which container image tags Flux selects for each tenant and enable automated image updates.
+Description: Learn how to set up tenant-specific image policies in Flux CD to control which container image tags each tenant can deploy and enable automated image updates.
 
 ---
 

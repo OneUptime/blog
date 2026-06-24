@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, GCP, GKE, Kubernetes, Autopilot, Terraform, Infrastructure as Code
 
-Description: Learn how to deploy a Google Kubernetes Engine Autopilot cluster with OpenTofu, including network configuration, private cluster setup, Workload Identity Federation, and kubectl access.
+Description: Learn how to deploy a Google Kubernetes Engine Autopilot cluster with OpenTofu, including network configuration, node pool settings, workload identity, and kubectl access.
 
 ---
 

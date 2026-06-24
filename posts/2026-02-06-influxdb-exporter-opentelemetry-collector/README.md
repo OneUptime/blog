@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Collector, Exporter, InfluxDB, Time Series, Metric, Monitoring, Observability
 
-Description: Learn how to configure the InfluxDB exporter in the OpenTelemetry Collector for time-series metrics storage and analysis with InfluxDB 2.x and the InfluxDB 3.x v2-compatible write API.
+Description: Learn how to configure the InfluxDB exporter in the OpenTelemetry Collector for time-series metrics storage and analysis with InfluxDB 2.x and 3.x.
 
 InfluxDB is a high-performance time-series database designed for handling large volumes of timestamped data. The OpenTelemetry Collector's InfluxDB exporter enables you to send metrics data to InfluxDB for storage, analysis, and visualization. This integration is ideal for organizations looking to leverage InfluxDB's powerful query language and time-series optimizations.
 

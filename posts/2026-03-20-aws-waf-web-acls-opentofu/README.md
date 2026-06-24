@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, AWS, WAF, Web ACL, IP Allowlist, Custom Rules, Infrastructure as Code
 
-Description: Learn how to create AWS WAF Web ACLs with custom rules using OpenTofu, including IP allowlists, geographic restrictions, and custom header validation.
+Description: Learn how to create AWS WAF Web ACLs with custom rules using OpenTofu, including IP allowlists, geographic restrictions, custom header validation, and bot management rules.
 
 ## Introduction
 

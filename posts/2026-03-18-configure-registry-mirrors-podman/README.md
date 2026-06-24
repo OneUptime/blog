@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Podman, Container, DevOps, Registry, Mirror, Caching
 
-Description: Learn how to set up registry mirrors in Podman to improve pull performance, enable offline access to cached images, and add redundancy to your container workflow.
+Description: Learn how to set up registry mirrors in Podman to improve pull performance, enable offline access, and add redundancy to your container workflow.
 
 ---
 

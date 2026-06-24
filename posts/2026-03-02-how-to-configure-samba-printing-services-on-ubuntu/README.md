@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Samba, Printing, CUPS, Windows
+Tags: Ubuntu, Samba, Printing, CUPS, Window
 
 Description: Configure Samba printing services on Ubuntu to share printers with Windows clients using CUPS as the backend and automatic driver distribution.
 

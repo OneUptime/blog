@@ -343,7 +343,7 @@ Document disaster recovery procedures:
    export VAULT_ADDR='https://vault.secondary.company.com:8200'
    vault write sys/replication/dr/secondary/promote \
      dr_operation_token="<DR_OPERATION_TOKEN>"
-   ```
+   ```text
 
 2. **Update DNS**
    - Change vault.company.com to point to secondary cluster

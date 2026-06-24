@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Azure SQL, Failover Groups, High Availability, Disaster Recovery, Azure, Database, Replication
 
-Description: Learn how to configure failover groups in Azure SQL Database to support disaster recovery and stable listener endpoints across Azure regions.
+Description: Learn how to configure failover groups in Azure SQL Database to achieve automatic failover and seamless high availability across Azure regions.
 
 ---
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: IPv6, IPv4, Benchmarking, Performance, iperf3, Networking
 
-Description: Systematically benchmark and compare IPv6 versus IPv4 network throughput, latency, and jitter using iperf3 and ping on Linux systems.
+Description: Systematically benchmark and compare IPv6 versus IPv4 network throughput, latency, and jitter using iperf3, ping, and netperf on Linux systems.
 
 ## Introduction
 

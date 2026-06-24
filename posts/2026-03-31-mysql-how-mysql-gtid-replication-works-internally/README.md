@@ -142,9 +142,9 @@ SHOW VARIABLES LIKE 'enforce_gtid_consistency';
 ```
 
 With `enforce_gtid_consistency = ON`, these are forbidden:
-- `CREATE TABLE ... SELECT` (use CREATE then INSERT INTO ... SELECT instead)
-- Transactions that mix transactional and non-transactional tables
-- `CREATE TEMPORARY TABLE` inside transactions
+- Updates that mix transactional and non-transactional storage engines (for example, InnoDB and MyISAM) in the same statement or transaction.
+- `CREATE TEMPORARY TABLE` / `DROP TEMPORARY TABLE` inside a transaction, procedure, function, or trigger **when `binlog_format = STATEMENT`**. With the default `binlog_format = ROW` (or `MIXED`), these are allowed inside transactions since MySQL 8.0.13 (the statements are simply not written to the binary log).
+- `CREATE TABLE ... SELECT` was disallowed prior to MySQL 8.0.21. From 8.0.21 onward it is permitted on storage engines that support atomic DDL (such as InnoDB), where it is logged as a single transaction with one GTID. On older versions, use `CREATE TABLE` followed by `INSERT INTO ... SELECT` instead.
 
 ## Monitoring GTID Lag
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Grafana Loki, Kubernetes, Log Collection, Promtail, Pod Logs, Cloud Native, Observability
 
-Description: A comprehensive guide to collecting Kubernetes logs with Grafana Loki, covering pod logs, system logs, audit logs, and event collection with legacy Promtail configurations.
+Description: A comprehensive guide to collecting Kubernetes logs with Grafana Loki, covering pod logs, system logs, audit logs, and event collection with production-ready configurations.
 
 ---
 

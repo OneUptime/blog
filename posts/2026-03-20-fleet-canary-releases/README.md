@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rancher, Fleet, Canary, Kubernetes, GitOps
 
-Description: Guide to implementing canary-style cluster rollouts using Rancher Fleet rollout partitions.
+Description: Guide to implementing canary release deployments using Rancher Fleet for gradual traffic shifting.
 
 ## Introduction
 

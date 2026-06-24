@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Istio, Error Handling, Kubernetes, Resilience, Envoy
 
-Description: A complete guide to configuring graceful error handling in Istio service mesh including retries, timeouts, circuit breakers, and fault injection for production systems.
+Description: A complete guide to configuring graceful error handling in Istio service mesh including retries, timeouts, circuit breakers, and custom error responses for production systems.
 
 ---
 

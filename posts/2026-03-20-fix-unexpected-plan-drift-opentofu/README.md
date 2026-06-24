@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Troubleshooting, Drift, Plan Changes, State Management, Infrastructure as Code
 
-Description: Learn how to diagnose and fix unexpected plan changes in OpenTofu caused by infrastructure drift, changing data source values, provider attribute normalization, and provider version changes.
+Description: Learn how to diagnose and fix unexpected plan changes in OpenTofu caused by infrastructure drift, provider attribute normalization, and out-of-band modifications.
 
 ## Introduction
 

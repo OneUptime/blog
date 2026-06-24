@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, CRD, Operator, Custom Resources, Extensibility
 
-Description: A guide to building Kubernetes custom resources and operators using Kopf for extending Kubernetes functionality.
+Description: A guide to building Kubernetes custom resources and operators using the Operator SDK for extending Kubernetes functionality.
 
 ---
 

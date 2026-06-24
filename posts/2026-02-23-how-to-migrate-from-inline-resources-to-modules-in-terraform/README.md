@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Terraform, Module, Migration, Refactoring, Infrastructure as Code
 
-Description: Step-by-step guide to migrating existing inline Terraform resources into reusable modules using state moves, moved blocks, and careful refactoring techniques.
+Description: Step-by-step guide to migrating existing inline Terraform resources into reusable modules using state moves, imports, and careful refactoring techniques.
 
 ---
 

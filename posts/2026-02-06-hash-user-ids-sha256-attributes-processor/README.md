@@ -2,9 +2,9 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Attributes Processor, Hashing, SHA-1, Privacy
+Tags: OpenTelemetry, Attributes Processor, Hashing, SHA-256, Privacy
 
-Description: Configure the OpenTelemetry Collector attributes processor to hash sensitive user IDs with SHA-1 so you can correlate without exposing PII.
+Description: Configure the OpenTelemetry Collector attributes processor to hash sensitive user IDs with SHA-256 so you can correlate without exposing PII.
 
 Hashing user IDs before they leave your infrastructure gives you the best of both worlds: you can still correlate traces and logs for a specific user across services, but you never expose the actual user identity to your observability backend. SHA-1 hashing is deterministic, meaning the same user ID always produces the same hash, preserving your ability to group and filter data.
 

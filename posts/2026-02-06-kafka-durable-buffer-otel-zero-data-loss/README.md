@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Kafka, Data Durability, Pipeline Architecture
 
-Description: Use Apache Kafka as a durable buffer between OpenTelemetry Collector tiers to reduce telemetry data loss during outages.
+Description: Use Apache Kafka as a durable buffer between OpenTelemetry Collector tiers to guarantee zero telemetry data loss during outages.
 
 The OpenTelemetry Collector's built-in queues are good for handling short bursts and brief backend outages. But if your backend goes down for hours, or you need to reprocess telemetry data, in-process queues fall short. Kafka solves this by acting as a durable, replayable buffer between your edge Collectors and your backend-facing Collectors. This post shows how to set it up.
 

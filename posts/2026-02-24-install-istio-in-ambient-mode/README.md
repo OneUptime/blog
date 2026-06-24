@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Istio, Ambient Mode, Installation, Kubernetes, Service Mesh
 
-Description: Complete installation guide for Istio ambient mode using istioctl, Helm, and the legacy Istio Operator with verification steps and troubleshooting tips.
+Description: Complete installation guide for Istio ambient mode using istioctl, Helm, and the Istio Operator with verification steps and troubleshooting tips.
 
 ---
 

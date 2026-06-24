@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, DevEx, Development
 
-Description: Learn how to use Garden to create fast, automated local development workflows for Kubernetes applications with code synchronization, dependency management, and integrated testing.
+Description: Learn how to use Garden to create fast, automated local development workflows for Kubernetes applications with hot-reloading, dependency management, and integrated testing.
 
 ---
 

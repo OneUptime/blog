@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, TPM, LUKS, Auto-Unlock, Linux
 
-Description: Configure TPM 2.0-based automatic LUKS volume unlocking on RHEL using Clevis, so encrypted disks unlock only when the selected TPM policy matches.
+Description: Configure TPM 2.0-based automatic LUKS volume unlocking on RHEL using Clevis, so encrypted disks unlock only when the system's boot chain is trusted.
 
 ---
 

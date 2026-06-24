@@ -1,10 +1,10 @@
-# How to Use Ansible for Compliance Assessment
+# How to Use Ansible with CIS-CAT for Compliance Assessment
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Compliance, Benchmark, Security
+Tags: Ansible, CIS-CAT, Compliance, Benchmark, Security
 
-Description: Automate compliance assessments with Ansible for benchmark validation and remediation.
+Description: Automate CIS-CAT compliance assessments with Ansible for CIS benchmark scoring and remediation.
 
 ---
 

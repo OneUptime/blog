@@ -1,8 +1,8 @@
-# How to Use argMin and argMax Aggregate Functions in ClickHouse
+# How to Use -ArgMin and -ArgMax Combinators in ClickHouse
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: ClickHouse, Aggregate Function, argMin, argMax, Performance
+Tags: ClickHouse, Aggregate Function, Combinator, argMin, argMax, Performance
 
 Description: Learn how argMin and argMax return the value of one column at the row where another column reaches its minimum or maximum - with practical analytics examples.
 

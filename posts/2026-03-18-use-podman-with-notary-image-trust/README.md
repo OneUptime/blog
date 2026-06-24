@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Podman, Notary, Image Trust, Content Trust, Container Security
 
-Description: Learn how to use Podman's native image trust controls alongside Notary's TUF metadata workflow, so only trusted images are deployed.
+Description: Learn how to use Notary with Podman to establish image trust through content signing and verification, ensuring only trusted images are deployed.
 
 ---
 

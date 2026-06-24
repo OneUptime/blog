@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: IPv6, Linksys, Velop, Home Router, DHCPv6
 
-Description: Configure IPv6 on Linksys WRT, EA, and Velop mesh routers including DHCPv6-PD support, native IPv6 setup, and troubleshooting common connectivity problems.
+Description: Configure IPv6 on Linksys WRT, EA, and Velop mesh routers including DHCPv6-PD setup, LAN SLAAC, and troubleshooting common connectivity problems.
 
 ## Supported Linksys Models
 

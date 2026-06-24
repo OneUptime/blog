@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, firewalld, IPv4, Linux, Firewall, Security, Automation
 
-Description: Use Ansible's ansible.posix.firewalld module to manage firewalld rules and IPv4-specific policies on Linux hosts running firewalld, covering zone configuration, service allowances, port rules, and rich rules.
+Description: Use Ansible's ansible.posix.firewalld module to manage IPv4 firewall rules on Linux hosts running firewalld, covering zone configuration, service allowances, port rules, and rich rules.
 
 ## Introduction
 

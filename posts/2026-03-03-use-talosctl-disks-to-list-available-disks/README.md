@@ -1,10 +1,10 @@
-# How to Use talosctl get disks to List Available Disks
+# How to Use talosctl disks to List Available Disks
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Talos Linux, Talosctl, Disk Management, Storage, Infrastructure
 
-Description: Learn how to use the talosctl get disks command to list and inspect available disks on Talos Linux nodes for storage planning
+Description: Learn how to use the talosctl disks command to list and inspect available disks on Talos Linux nodes for storage planning
 
 ---
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rook, Ceph, CephFS, Performance, Optimization
 
-Description: Optimize CephFS in Rook for sequential access workloads by tuning readahead, object layout, and BlueStore cache settings for maximum streaming throughput.
+Description: Optimize CephFS in Rook for sequential access workloads by tuning readahead, object layout, and OSD journal settings for maximum streaming throughput.
 
 ---
 

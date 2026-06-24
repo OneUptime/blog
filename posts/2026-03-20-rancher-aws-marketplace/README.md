@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rancher, Kubernetes, AWS, Marketplace
 
-Description: Learn how to deploy and manage Rancher through AWS Marketplace, including subscription, EKS deployment, and billing integration.
+Description: Learn how to deploy and manage Rancher through AWS Marketplace, including subscription activation, EKS deployment, and billing integration.
 
 ## Introduction
 

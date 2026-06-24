@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, AWS, IAM Roles, Authentication, Security
 
-Description: Learn how to configure OpenTofu to authenticate with AWS using IAM roles via assume_role, EC2 instance profiles, and ECS task roles for secure deployments without hard-coded credentials.
+Description: Learn how to configure OpenTofu to authenticate with AWS using IAM roles via assume_role, EC2 instance profiles, and ECS task roles for secure, credential-free deployments.
 
 ## Introduction
 

@@ -330,4 +330,4 @@ kubectl get secret argocd-notifications-secret -n argocd -o yaml
 argocd admin notifications template notify app-deployed my-app
 ```
 
-Keep this cheat sheet handy as you build out your notification pipeline. For a deeper dive into building custom templates, see our post on [ArgoCD notification templates with custom Lua scripts](https://oneuptime.com/blog/post/2026-02-09-argocd-notification-lua-scripts/view).
+Keep this cheat sheet handy as you build out your notification pipeline.

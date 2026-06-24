@@ -1,10 +1,10 @@
-# How to configure AppArmor profiles per container
+# How to configure AppArmor annotations for per-container profiles
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Security, AppArmor, Container Security, MAC
 
-Description: Learn how to apply AppArmor profiles to individual containers in Kubernetes using per-container security contexts, implementing mandatory access control policies tailored to each container's requirements.
+Description: Learn how to apply AppArmor profiles to individual containers in Kubernetes using per-container annotations, implementing mandatory access control policies tailored to each container's requirements.
 
 ---
 

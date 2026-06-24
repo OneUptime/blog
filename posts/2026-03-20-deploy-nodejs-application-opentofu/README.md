@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Node.js, ECS, Fargate, AWS, Infrastructure as Code
 
-Description: Learn how to deploy a Node.js application on AWS using OpenTofu, with ECS Fargate for containers, an Application Load Balancer, and ECR for container image storage.
+Description: Learn how to deploy a Node.js application on AWS using OpenTofu, with ECS Fargate for containers, an Application Load Balancer, and RDS for the database.
 
 ## Introduction
 

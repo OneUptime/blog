@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Docker, Pi-hole, DNS, Ad Blocking, Self-Hosted, Privacy
 
-Description: Deploy Pi-hole via Portainer as a network-wide DNS ad blocker that helps block ads, trackers, and malware domains for devices on your network.
+Description: Deploy Pi-hole via Portainer as a network-wide DNS ad blocker that eliminates ads, trackers, and malware domains for all devices on your network.
 
 ## Introduction
 

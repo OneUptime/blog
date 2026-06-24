@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Postfix, IPv6, SMTP, Email Delivery, Mail Configuration, Linux
 
-Description: Configure Postfix smtp_address_preference to control whether outbound SMTP connections try IPv4 or IPv6 first when both are available with equal MX preference.
+Description: Configure Postfix smtp_address_preference to control whether outbound SMTP connections prefer IPv4 or IPv6 when both are available for a destination.
 
 ## Introduction
 

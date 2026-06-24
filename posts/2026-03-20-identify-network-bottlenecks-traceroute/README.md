@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Traceroute, Networking, Bottlenecks, Latency, IPv4, Performance
 
-Description: Use traceroute output patterns to identify where latency spikes occur along a network path and narrow down which segment may be causing performance degradation.
+Description: Use traceroute output patterns to identify where latency spikes occur along a network path and pinpoint the specific link causing performance degradation.
 
 A network bottleneck often appears as a sudden jump in latency that then persists in later hops. Understanding how to read this pattern helps you narrow down where added delay starts, while remembering that traceroute measures probe responses rather than application traffic directly.
 

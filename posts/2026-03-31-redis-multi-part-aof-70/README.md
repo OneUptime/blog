@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Redis, AOF, Persistence, Durability, Configuration
 
-Description: Learn how Redis 7.0's multi-part AOF format works, how to configure it, and how it improves persistence reliability by reducing rewrite overhead.
+Description: Learn how Redis 7.0's multi-part AOF format works, how to configure it, and how it improves persistence reliability by eliminating blocking AOF rewrites.
 
 ---
 

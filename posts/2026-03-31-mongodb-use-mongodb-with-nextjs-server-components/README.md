@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: MongoDB, Next.js, Server Component, App Router
+Tags: MongoDB, Next.js, Server Component, Mongoose, App Router
 
 Description: Learn how to fetch MongoDB data directly inside Next.js App Router Server Components for zero-client-bundle database access with built-in caching.
 

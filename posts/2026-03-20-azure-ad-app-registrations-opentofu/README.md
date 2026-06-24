@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Azure, Azure AD, App Registration, OAuth2, Infrastructure as Code
 
-Description: Learn how to create and configure Microsoft Entra ID app registrations for web apps, APIs, and service principals using OpenTofu.
+Description: Learn how to create and configure Azure Active Directory App Registrations for web apps, APIs, and service principals using OpenTofu.
 
 ## Introduction
 

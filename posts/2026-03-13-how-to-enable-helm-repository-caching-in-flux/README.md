@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Flux, Kubernetes, GitOps, Performance, Caching, Helm, Source Controller
 
-Description: Enable Helm repository index caching in Flux to avoid repeatedly loading repository indexes and speed up HelmChart reconciliations.
+Description: Enable Helm repository index caching in Flux to avoid redundant downloads and speed up HelmChart reconciliations.
 
 ---
 

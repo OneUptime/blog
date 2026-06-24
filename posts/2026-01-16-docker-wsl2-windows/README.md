@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, WSL2, Windows, Linux, DevOps
+Tags: Docker, WSL2, Window, Linux, DevOps
 
 Description: Learn how to set up Docker with WSL2 on Windows for optimal performance, configure integration with Linux distributions, and troubleshoot common issues.
 

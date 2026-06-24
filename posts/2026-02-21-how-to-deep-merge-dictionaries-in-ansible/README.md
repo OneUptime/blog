@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, Dictionary, Deep Merge, Configuration Management
 
-Description: Learn how to deep merge dictionaries in Ansible using combine with recursive option and list_merge strategies for nested configurations.
+Description: Learn how to deep merge dictionaries in Ansible using combine with recursive option, list_merge parameter, and custom merge strategies for nested configurations.
 
 ---
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: ICMP, Networking, Timestamp, IPv4, Time Synchronization, Security
 
-Description: Understand ICMP Timestamp Request and Reply messages, how they can estimate clock offset and transit times, and why they are typically disabled for security reasons.
+Description: Understand ICMP Timestamp Request and Reply messages, how they measure one-way network delay, and why they are typically disabled for security reasons.
 
 ## Introduction
 

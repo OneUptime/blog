@@ -1,10 +1,10 @@
-# How to Alert on Calico Felix Metrics
+# How to Alert on the Calico Flow Logs API
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, Networking, Observability
 
-Description: Configure alerts based on Calico Felix metrics to detect dataplane update failures and policy calculation latency.
+Description: Configure alerts based on Calico Flow Logs API data to detect sustained denied traffic patterns, unusual cross-namespace connection attempts, and policy enforcement failures.
 
 ---
 

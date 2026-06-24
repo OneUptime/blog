@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Hyper-V, Disk Resize, LVM, Storage, Virtualization, Linux
 
-Description: Expand RHEL virtual hard disks (VHDX) in Hyper-V and grow the filesystem inside the guest without losing data or requiring downtime when online resize requirements are met.
+Description: Expand RHEL virtual hard disks (VHDX) in Hyper-V and grow the filesystem inside the guest without losing data or requiring downtime.
 
 ---
 

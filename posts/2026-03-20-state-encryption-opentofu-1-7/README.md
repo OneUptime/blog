@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, State Encryption, Security, OpenTofu 1.7, Infrastructure as Code
 
-Description: Learn how to enable and configure native state encryption introduced in OpenTofu 1.7 to protect sensitive values in your OpenTofu state files.
+Description: Learn how to enable and configure native state encryption introduced in OpenTofu 1.7 to protect sensitive values in your Terraform state files.
 
 ## Introduction
 

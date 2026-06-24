@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubewarden, Kubernetes, OCI, Policy, Distribution
 
-Description: Learn how to package, annotate, and publish custom Kubewarden policies to OCI registries that support OCI artifacts for distribution and reuse across your organization.
+Description: Learn how to package, annotate, and publish custom Kubewarden policies to OCI-compatible container registries for distribution and reuse across your organization.
 
 ## Introduction
 
@@ -48,7 +48,7 @@ ls -lh "${WASM_FILE}"
 
 The `metadata.yml` file describes your policy and becomes embedded in the OCI artifact:
 
-```yaml
+````yaml
 # metadata.yml - Complete policy metadata
 rules:
   - apiGroups: [""]
@@ -100,7 +100,7 @@ annotations:
         - cost-center
     ```
 
-```
+````
 
 ## Step 3: Annotate the Wasm Module
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: AWS, Amplify, Terraform, Infrastructure as Code, IaC, DevOps, CI/CD
 
-Description: Use Terraform to provision and manage AWS Amplify hosting resources including apps, branches, domains, webhooks, and environment configuration
+Description: Use Terraform to provision and manage AWS Amplify backend resources including hosting, branches, and environment configuration
 
 ---
 

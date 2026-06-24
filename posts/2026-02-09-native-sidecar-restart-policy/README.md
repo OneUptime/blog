@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Native Sidecars, RestartPolicy, Container Lifecycle, Init Container
 
-Description: Master native sidecar containers enabled by default in Kubernetes 1.29, using restartPolicy to create sidecars with proper lifecycle management and startup ordering.
+Description: Master native sidecar containers introduced in Kubernetes 1.29, using restartPolicy to create sidecars with proper lifecycle management and startup ordering.
 
 ---
 

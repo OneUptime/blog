@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Node.js, ESM, Loader Hook
 
-Description: Resolve the problem of missing spans in Node.js ESM applications by correctly configuring the loader hook.
+Description: Resolve the problem of missing spans in Node.js ESM applications by correctly configuring the experimental loader hook.
 
 If you have migrated your Node.js application from CommonJS (`require`) to ES Modules (`import`) and your OpenTelemetry auto-instrumented spans have disappeared, the issue is that the ESM loader does not trigger the CommonJS require hooks that many auto-instrumentations depend on. You need the loader hook to intercept ESM imports.
 

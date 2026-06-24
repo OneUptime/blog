@@ -2,9 +2,9 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Windows, Upgrade
+Tags: Kubernetes, Window, Upgrade
 
-Description: Step-by-step guide to performing rolling upgrades of Windows nodes in Kubernetes clusters while minimizing downtime using cordoning, draining, and gradual rollout strategies.
+Description: Step-by-step guide to performing rolling upgrades of Windows nodes in Kubernetes clusters with zero downtime using cordoning, draining, and gradual rollout strategies.
 
 ---
 

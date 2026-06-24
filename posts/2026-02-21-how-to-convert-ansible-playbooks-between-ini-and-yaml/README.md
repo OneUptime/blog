@@ -1,4 +1,4 @@
-# How to Convert Ansible Inventories Between INI and YAML
+# How to Convert Ansible Playbooks Between INI and YAML
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

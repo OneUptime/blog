@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: IPv6, Cisco, IOS-XE, Router, Networking, Configuration
 
-Description: Configure IPv6 on Cisco IOS-XE routers with features such as RA-based DNS advertisement, DHCPv6 prefix delegation, OSPFv3 address families, and YANG/RESTCONF-based configuration.
+Description: Configure IPv6 on Cisco IOS-XE routers with modern features including segment routing, RDNSS in RA, and YANG/RESTCONF-based configuration.
 
 ## Introduction
 

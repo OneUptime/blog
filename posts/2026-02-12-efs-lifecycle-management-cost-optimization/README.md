@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: AWS, EFS, Cost Optimization, Lifecycle Management, Storage
 
-Description: Set up EFS lifecycle management to automatically move infrequently accessed files to cheaper storage classes and save up to 95% on storage costs.
+Description: Set up EFS lifecycle management to automatically move infrequently accessed files to cheaper storage classes and save up to 92% on storage costs.
 
 ---
 

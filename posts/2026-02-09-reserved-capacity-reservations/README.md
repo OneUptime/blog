@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Resource Reservation, Capacity Planning, Cost Optimization, Cloud Economics
 
-Description: Use resource reservations and reserved capacity options to improve capacity availability for critical workloads while optimizing cloud infrastructure costs.
+Description: Use resource reservations and reserved instances to guarantee capacity for critical workloads while optimizing cloud infrastructure costs.
 
 ---
 

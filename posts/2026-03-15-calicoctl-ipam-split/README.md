@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Calicoctl, IPAM, Kubernetes, Networking, IP Address Management, Scaling
 
-Description: Learn how to use calicoctl ipam split to divide IP pools into smaller pools for better distribution across cluster nodes.
+Description: Learn how to use calicoctl ipam split to divide IP pools into smaller blocks for better distribution across cluster nodes.
 
 ---
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: IPv6, Window, PowerShell, Network Configuration, Disable IPv6
 
-Description: Learn how to disable IPv6 on Windows using PowerShell commands, covering adapter binding, registry methods, and how to disable IPv6 on specific or all visible network adapters.
+Description: Learn how to disable IPv6 on Windows using PowerShell commands, covering adapter binding, registry methods, and how to disable IPv6 on specific or all network adapters.
 
 ## Disable IPv6 Adapter Binding
 

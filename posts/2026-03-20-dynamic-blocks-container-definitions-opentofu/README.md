@@ -1,10 +1,10 @@
-# How to Use Structured Data for Container Definitions in OpenTofu
+# How to Use Dynamic Blocks for Container Definitions in OpenTofu
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Terraform, AWS, ECS, Container, Dynamic Blocks, Fargate
 
-Description: Learn how to use structured data in OpenTofu to build ECS task definition container definitions, using `jsonencode` for container definitions and dynamic blocks for repeatable nested blocks like volumes.
+Description: Learn how to use dynamic blocks in OpenTofu to build ECS task definition container definitions from structured variable data, supporting sidecars and multi-container tasks.
 
 ## Introduction
 

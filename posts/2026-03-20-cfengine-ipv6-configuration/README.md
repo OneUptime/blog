@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: CFEngine, IPv6, Configuration Management, Policy, Automation
 
-Description: A guide to configuring IPv6 network settings using the CFEngine policy language, including sysctl parameters, file management, and command execution for IPv6 setup.
+Description: A guide to configuring IPv6 network settings using CFEngine policy language (CFScript/cf3), including sysctl parameters, file management, and command execution for IPv6 setup.
 
 CFEngine is one of the oldest configuration management tools, designed for high scalability and convergence. Its policy language (based on promise theory) is well-suited for maintaining consistent IPv6 configuration across large server fleets.
 

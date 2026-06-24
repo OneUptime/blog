@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Terraform, State Management, DevOps, Infrastructure as Code, DynamoDB
 
-Description: Learn how to implement state locking in Terraform to prevent concurrent modifications and state corruption. Covers S3 lockfiles for AWS, Blob leases for Azure, and HCP Terraform locking.
+Description: Learn how to implement state locking in Terraform to prevent concurrent modifications and state corruption. Covers DynamoDB for AWS, Blob leases for Azure, and Terraform Cloud locking.
 
 ---
 

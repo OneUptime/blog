@@ -53,7 +53,7 @@ groups:
 - **expr**: PromQL expression to evaluate
 - **labels**: Optional additional labels
 
-The evaluation interval is set on the rule **group** (via the group's `interval` field), not on individual rules — all rules in a group share the group's interval.
+The evaluation interval is set on the rule **group** (via the group's `interval` field), not on individual rules - all rules in a group share the group's interval.
 
 ## Naming Conventions
 

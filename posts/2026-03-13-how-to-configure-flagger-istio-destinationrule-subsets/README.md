@@ -1,10 +1,10 @@
-# How to Configure Flagger Istio DestinationRules
+# How to Configure Flagger Istio DestinationRule Subsets
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flagger, Istio, DestinationRule, Canary, Kubernetes, Progressive Delivery, Traffic Policy
+Tags: Flagger, Istio, DestinationRule, Subset, Canary, Kubernetes, Progressive Delivery, Traffic Policy
 
-Description: Learn how Flagger manages Istio DestinationRules during canary deployments and how to configure traffic policies for primary and canary workloads.
+Description: Learn how Flagger manages Istio DestinationRule subsets during canary deployments and how to configure traffic policies for primary and canary workloads.
 
 ---
 

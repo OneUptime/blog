@@ -2,9 +2,9 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, OpenTelemetry, Distributed Tracing, Multi-Cluster, Gateway
+Tags: Kubernetes, OpenTelemetry, Distributed Tracing, Multi-Cluster, Federation
 
-Description: Learn how to implement multi-cluster trace collection using a tiered OpenTelemetry Collector deployment to aggregate traces from multiple Kubernetes clusters into a centralized observability platform.
+Description: Learn how to implement multi-cluster trace collection using OpenTelemetry Collector federation to aggregate traces from multiple Kubernetes clusters into a centralized observability platform.
 
 ---
 

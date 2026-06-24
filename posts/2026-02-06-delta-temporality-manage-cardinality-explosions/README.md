@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Metric, Delta Temporality, Cardinality, Performance
 
-Description: Master delta temporality in OpenTelemetry to reduce metric state and storage costs. Practical examples show how delta aggregation can help ephemeral time series expire sooner compared to cumulative metrics.
+Description: Master delta temporality in OpenTelemetry to reduce metric cardinality and storage costs. Practical examples show how delta aggregation can cut time series by 60% compared to cumulative metrics.
 
 Metric temporality is one of the most misunderstood aspects of OpenTelemetry, yet it has a massive impact on cardinality and costs. The choice between cumulative and delta temporality can mean the difference between manageable metrics and a cardinality explosion that destroys your observability budget.
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Container Registry, Portainer Business Edition, Image Management, DevOps
 
-Description: Learn how to use Portainer Business Edition's registry browser to view repositories and tags without using the CLI.
+Description: Learn how to use Portainer Business Edition's registry browser to view repositories, tags, and image details without using the CLI.
 
 ## Overview
 

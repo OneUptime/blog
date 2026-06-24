@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, CoreDNS, Performance, DNS
 
-Description: Learn how to configure the CoreDNS autopath plugin to reduce DNS query latency in Kubernetes by optimizing search path resolution and reducing unnecessary queries.
+Description: Learn how to configure the CoreDNS autopath plugin to dramatically reduce DNS query latency in Kubernetes by optimizing search path resolution and eliminating unnecessary queries.
 
 ---
 

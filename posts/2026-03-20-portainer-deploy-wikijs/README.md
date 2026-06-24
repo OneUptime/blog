@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Docker, Wikijs, Wiki, Documentation, Self-Hosted
 
-Description: Deploy Wiki.js via Portainer as a powerful, modern wiki platform with external storage sync options, rich editing options, and extensive authentication methods.
+Description: Deploy Wiki.js via Portainer as a powerful, modern wiki platform with multiple storage backends, rich editing options, and extensive authentication methods.
 
 ## Introduction
 

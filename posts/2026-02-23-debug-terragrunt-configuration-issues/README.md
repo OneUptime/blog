@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Terraform, Terragrunt, Debugging, Troubleshooting, Infrastructure as Code, DevOps
 
-Description: A practical guide to debugging common Terragrunt configuration issues, covering log levels, render, dependency errors, and the most frequent mistakes teams encounter.
+Description: A practical guide to debugging common Terragrunt configuration issues, covering log levels, render-json, dependency errors, and the most frequent mistakes teams encounter.
 
 ---
 

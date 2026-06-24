@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Podman, Containerfile, Shell, Container Build, DevOps
 
-Description: Learn how to use the SHELL instruction in Containerfiles for Podman to change the default shell used for shell-form build instructions.
+Description: Learn how to use the SHELL instruction in Containerfiles for Podman to change the default shell used for RUN, CMD, and ENTRYPOINT instructions in shell form.
 
 ---
 

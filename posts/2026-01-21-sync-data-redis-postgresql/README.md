@@ -2,9 +2,9 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Redis, PostgreSQL, Data Sync, PostgreSQL Triggers, Dual-Write, Caching, Database
+Tags: Redis, PostgreSQL, Data Sync, Change Data Capture, Dual-Write, Caching, Database
 
-Description: A comprehensive guide to synchronizing data between Redis and PostgreSQL using dual-write patterns, trigger-based notifications, and event-driven synchronization strategies.
+Description: A comprehensive guide to synchronizing data between Redis and PostgreSQL using dual-write patterns, change data capture, and event-driven synchronization strategies.
 
 ---
 

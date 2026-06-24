@@ -1,10 +1,10 @@
-# How to Use toTimezone() in ClickHouse for Timezone Conversion
+# How to Use toTimezone() and toUTC() in ClickHouse
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: ClickHouse, Date Function, Timezone, Analytics, DateTime
 
-Description: Learn how toTimezone() converts DateTime values to any IANA timezone and how toTimezone(dt, 'UTC') normalizes them back to UTC for consistent storage and display.
+Description: Learn how toTimezone() converts DateTime values to any IANA timezone and toUTC() normalizes them back to UTC for consistent storage and display.
 
 ---
 

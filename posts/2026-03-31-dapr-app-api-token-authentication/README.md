@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Dapr, Security, Authentication, Application, Token
 
-Description: Learn how to configure App API token authentication in Dapr so the sidecar includes a secret token with every request it forwards to your application, which your app validates before processing.
+Description: Learn how to configure App API token authentication in Dapr so the sidecar validates a secret token before forwarding requests to your application.
 
 ---
 

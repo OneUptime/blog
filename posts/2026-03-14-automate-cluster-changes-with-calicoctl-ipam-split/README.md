@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Calicoctl, IPAM, Automation, Kubernetes, CI/CD
 
-Description: Integrate calicoctl ipam split into approved automation workflows for planned IPAM maintenance across your Kubernetes clusters.
+Description: Integrate calicoctl ipam split into automated workflows for proactive IPAM management and monitoring across your Kubernetes clusters.
 
 ---
 

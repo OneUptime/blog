@@ -1,10 +1,10 @@
-# How to Set Up Microsoft Sentinel with OpenTofu
+# How to Set Up Azure Sentinel with OpenTofu
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Azure, Sentinel, SIEM, OpenTofu, Security, Threat Detection
 
-Description: Learn how to deploy and configure Microsoft Sentinel with OpenTofu for cloud-native SIEM and SOAR capabilities including data connectors and analytics rules.
+Description: Learn how to deploy and configure Microsoft Sentinel (Azure Sentinel) with OpenTofu for cloud-native SIEM and SOAR capabilities including data connectors and analytics rules.
 
 ## Overview
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, Network Policy, Logging, Audit, Security
 
-Description: Implement zero trust security using Calico log rules.
+Description: Implement zero trust security using Calico Policy Log Rules in Calico.
 
 ---
 

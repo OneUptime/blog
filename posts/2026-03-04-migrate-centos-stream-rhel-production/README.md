@@ -1,10 +1,10 @@
-# How to Migrate from a Supported RHEL-Derived Linux Distribution to RHEL in Production
+# How to Migrate from CentOS Stream to RHEL in Production
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, Alma Linux, CentOS Linux, Oracle Linux, Rocky Linux, Migration, Convert2RHEL, Production, Linux
+Tags: RHEL, CentOS Stream, Migration, Convert2RHEL, Production, Linux
 
-Description: Migrate supported production RHEL-derived Linux systems to RHEL using Convert2RHEL, ensuring a smooth transition with minimal downtime.
+Description: Migrate production CentOS Stream systems to RHEL using Convert2RHEL, ensuring a smooth transition with minimal downtime.
 
 ---
 

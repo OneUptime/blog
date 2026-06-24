@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Contour, Rate Limiting
 
-Description: Learn how to implement rate limiting with HTTPProxy resources and circuit breaker limits for Contour-managed services to protect your Kubernetes services from overload and cascading failures.
+Description: Learn how to implement rate limiting and circuit breaking in Contour Ingress Controller using HTTPProxy resources to protect your Kubernetes services from overload and cascading failures.
 
 ---
 

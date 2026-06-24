@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, LDAP, Team, Automation, Business Edition, RBAC
 
-Description: Configure Portainer Business Edition to automatically synchronize users into existing Portainer teams based on LDAP group membership at user login.
+Description: Configure Portainer Business Edition to automatically create and populate teams based on LDAP group membership at user login.
 
 ## Introduction
 

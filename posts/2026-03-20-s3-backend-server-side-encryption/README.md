@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Infrastructure as Code, Terraform, IaC, DevOps, AWS, Security, Encryption
 
-Description: Learn how to configure the OpenTofu S3 backend with server-side encryption using SSE-S3, SSE-KMS, and bucket-level DSSE-KMS to protect state files at rest in Amazon S3.
+Description: Learn how to configure the OpenTofu S3 backend with server-side encryption using SSE-S3, SSE-KMS, and DSSE-KMS to protect state files at rest in Amazon S3.
 
 ## Introduction
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Grafana Loki, Kubernetes, Helm, Log Management, Observability, Promtail, Cloud Native
 
-Description: A comprehensive guide to deploying Grafana Loki on Kubernetes using Helm charts, covering the legacy loki-stack, monolithic, and distributed deployments with production-ready configurations.
+Description: A comprehensive guide to deploying Grafana Loki on Kubernetes using Helm charts, covering the loki-stack, single binary, and distributed deployments with production-ready configurations.
 
 ---
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: IPv6, Windows, PowerShell, Network Configuration, Automation
+Tags: IPv6, Window, PowerShell, Network Configuration, Automation
 
 Description: A comprehensive reference for PowerShell cmdlets used to manage IPv6 network configuration on Windows, covering addresses, routes, DNS, and network adapter settings.
 

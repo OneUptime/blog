@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, AWS, SageMaker, Machine Learning, MLOps, IAM, Infrastructure as Code
 
-Description: Learn how to provision AWS SageMaker domains, user profiles, and model endpoints using OpenTofu for reproducible machine learning infrastructure.
+Description: Learn how to provision AWS SageMaker domains, user profiles, notebook instances, and model endpoints using OpenTofu for reproducible machine learning infrastructure.
 
 ---
 

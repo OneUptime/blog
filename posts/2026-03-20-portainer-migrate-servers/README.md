@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Docker, Migration, Backup, Infrastructure
 
-Description: Migrate Portainer configuration and data between servers with minimal downtime, including environment connectivity checks and Edge Agent redeployment when needed.
+Description: Migrate Portainer configuration and data between servers with minimal downtime, including environment re-registration and agent reconnection procedures.
 
 ## Introduction
 

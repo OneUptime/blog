@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rook, Ceph, RBD, Caching, Performance
 
-Description: Set up RBD persistent write-back cache in Rook to accelerate workloads by caching recently written block data on local NVMe or PMEM storage, reducing write latency and serving subsequent reads from the local cache.
+Description: Set up RBD persistent write log cache in Rook to accelerate read-heavy workloads by caching frequently accessed block data on local NVMe or PMEM storage.
 
 ---
 

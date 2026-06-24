@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: MTU, Ping, DF Flag, Linux, macOS, Windows, Networking
+Tags: MTU, Ping, DF Flag, Linux, macOS, Window, Networking
 
 Description: Test the maximum transmission unit by sending ping packets of varying sizes with the Don't Fragment bit set to discover the path MTU between hosts.
 

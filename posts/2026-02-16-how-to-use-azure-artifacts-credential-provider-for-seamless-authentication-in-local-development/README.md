@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Azure Artifacts, Credential Provider, NuGet, Npm, Authentication, Local Development, DevOps
 
-Description: Learn how to install and configure the Azure Artifacts Credential Provider for seamless NuGet authentication, with notes for npm and pip Azure Artifacts feeds.
+Description: Learn how to install and configure the Azure Artifacts Credential Provider for seamless package authentication in NuGet, npm, pip, and other package managers.
 
 ---
 

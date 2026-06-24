@@ -1,10 +1,10 @@
-# How to Deploy Istio with Helm via Flux
+# How to Deploy Istio with IstioOperator CRD via Flux
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Kubernetes, GitOps, Istio, Service Mesh, Helm, mTLS
+Tags: Flux CD, Kubernetes, GitOps, Istio, Service Mesh, IstioOperator, mTLS
 
-Description: Deploy and manage Istio using the official Istio Helm charts with Flux CD for declarative, GitOps-driven service mesh lifecycle management.
+Description: Deploy and manage Istio using the IstioOperator CRD with Flux CD for declarative, GitOps-driven service mesh lifecycle management.
 
 ---
 

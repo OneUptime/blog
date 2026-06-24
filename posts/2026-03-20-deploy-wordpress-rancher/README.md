@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rancher, WordPress, CMS, Kubernetes, Helm
 
-Description: Complete guide to deploying WordPress with MariaDB on Rancher for scalable web content management.
+Description: Complete guide to deploying WordPress with MySQL on Rancher for scalable web content management.
 
 ## Introduction
 

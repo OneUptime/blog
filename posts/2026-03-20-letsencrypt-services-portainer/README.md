@@ -1,10 +1,10 @@
-# How to Set Up Secure Service Networks via Portainer
+# How to Set Up Let's Encrypt for Services via Portainer - Letsencrypt
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Portainer, Docker, Networking, Swarm, Containers
+Tags: Portainer, Lets encrypt, SSL, Certificate, Docker
 
-Description: Plan and manage secure Docker networks for services deployed via Portainer.
+Description: Automate free SSL certificate provisioning with Let's Encrypt for services deployed via Portainer.
 
 ## Introduction
 

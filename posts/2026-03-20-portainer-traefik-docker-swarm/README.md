@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Traefik, Docker Swarm, Reverse Proxy, Clustering
 
-Description: Learn how to deploy Portainer and Traefik on Docker Swarm mode for a cluster-aware container management and routing setup with automatic service discovery.
+Description: Learn how to deploy Portainer and Traefik on Docker Swarm mode for a highly available container management and routing setup with automatic service discovery.
 
 ## Introduction
 

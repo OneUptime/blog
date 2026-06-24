@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Cilium, Kubernetes, Rate Limiting, API, Performance, Configuration
 
-Description: Configure Cilium Kubernetes API client rate limiting to control API server calls made by Cilium agents, and tune Cilium agent API rate limits for endpoint operations.
+Description: Configure Cilium API rate limiting to control the rate of Kubernetes API server calls made by Cilium agents, preventing API server overload in large clusters.
 
 ---
 

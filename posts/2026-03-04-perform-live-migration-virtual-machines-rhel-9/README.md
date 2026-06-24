@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: RHEL, KVM, Live Migration, Virtualization, High Availability, Linux
 
-Description: Learn how to perform live migration of KVM virtual machines between RHEL 9 hosts with minimal downtime.
+Description: Learn how to perform live migration of KVM virtual machines between RHEL 9 hosts with zero downtime.
 
 ---
 

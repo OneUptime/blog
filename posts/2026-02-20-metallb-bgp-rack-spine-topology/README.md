@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, MetalLB, BGP, Rack and Spine, Data Center
 
-Description: Learn how to configure MetalLB BGP for rack-and-spine (leaf-spine) network topologies with per-rack peering and ECMP load balancing.
+Description: Learn how to configure MetalLB BGP for rack-and-spine (leaf-spine) network topologies with multi-hop peering and ECMP load balancing.
 
 ---
 

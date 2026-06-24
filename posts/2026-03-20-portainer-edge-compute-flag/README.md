@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Docker, Edge Computing, CLI, Configuration
 
-Description: Enable Portainer's Edge Computing features using the --edge-compute flag, allowing management of remote and air-gapped Docker environments through outbound Edge Agent connections.
+Description: Enable Portainer's Edge Computing features using the --edge-compute flag, allowing management of remote and air-gapped Docker environments via reverse tunnel connections.
 
 ## Introduction
 

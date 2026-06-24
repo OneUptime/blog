@@ -1,10 +1,10 @@
-# How to Fix BLUESTORE_SLOW_OPS Health Check in Ceph
+# How to Fix BLUESTORE_SLOW_OP_ALERT Health Check in Ceph
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ceph, Rook, BlueStore, Storage, Health Check
 
-Description: Learn how to diagnose and fix the BLUESTORE_SLOW_OPS health warning in Ceph, caused by slow disk I/O operations in the BlueStore backend.
+Description: Learn how to diagnose and fix the BLUESTORE_SLOW_OP_ALERT health warning in Ceph, caused by slow disk I/O operations in the BlueStore backend.
 
 ---
 

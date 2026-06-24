@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, IPv6, Validation, Assertions, Testing, Compliance
 
-Description: A guide to using Ansible's assert module to validate IPv6 configuration compliance on Linux hosts.
+Description: A guide to using Ansible's assert module to validate IPv6 configuration compliance on Linux hosts and network devices.
 
 Ansible's `assert` module transforms configuration checks into auditable validation tasks. Using assertions for IPv6 configuration ensures every host meets your networking standards before services go live.
 

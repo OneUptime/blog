@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Redis, R, Data Science, Caching
+Tags: Redis, R, Data Science, Caching, RediSearch
 
 Description: Learn how to use Redis in R with the redux package to cache model outputs, share data between processes, and speed up expensive computations.
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: MongoDB, Health Check, Monitoring
 
-Description: Learn how to run comprehensive MongoDB health checks covering connectivity, replication status, connection pool health, and storage engine metrics.
+Description: Learn how to run comprehensive MongoDB health checks covering connectivity, replication status, index health, and storage engine metrics.
 
 ---
 

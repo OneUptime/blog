@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: SI6 Networks, ICMP6, IPv6, ICMPv6, Security Testing, Network Testing
 
-Description: A guide to using the SI6 Networks icmp6 tool to craft and send ICMPv6 error messages and raw Type:Code probes for testing IPv6 network behavior and security controls in authorized environments.
+Description: A guide to using the SI6 Networks icmp6 tool to craft and send ICMPv6 messages for testing IPv6 network behavior and security controls in authorized environments.
 
 The `icmp6` tool from the SI6 Networks IPv6 toolkit provides fine-grained control over ICMPv6 error-message packet construction. Unlike standard ping6, `icmp6` lets you set raw ICMPv6 Type:Code values and payload fields, making it useful for testing how hosts and firewalls respond to unreachable conditions, Packet Too Big messages, Time Exceeded messages, and Parameter Problem messages.
 

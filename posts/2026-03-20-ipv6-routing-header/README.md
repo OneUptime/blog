@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: IPv6, Routing Header, Source Routing, Extension Headers, Security
 
-Description: Understand the IPv6 Routing Header extension header, common routing header types, why Type 0 was deprecated for security reasons, and active types such as Type 2 for Mobile IPv6 and Type 4 for Segment Routing.
+Description: Understand the IPv6 Routing Header extension header, routing header types, why Type 0 was deprecated for security reasons, and the currently used Type 2 for Mobile IPv6.
 
 ## Introduction
 

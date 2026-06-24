@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: ArgoCD, GitOps, Kubernetes, CLI, TLS Security
 
-Description: Learn how to use argocd cert commands to manage TLS certificates and SSH known hosts for secure Git repository and Helm repository connections in ArgoCD.
+Description: Learn how to use argocd cert commands to manage TLS certificates and SSH known hosts for secure Git repository and cluster connections in ArgoCD.
 
 ---
 

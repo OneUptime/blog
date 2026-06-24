@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, Cisco IOS, IPv4, Network Automation, Playbook
 
-Description: Learn how to write an Ansible playbook using the cisco.ios collection to configure IPv4 addresses on Cisco IOS router interfaces and Layer 3 switch interfaces.
+Description: Learn how to write an Ansible playbook using the cisco.ios collection to configure IPv4 addresses on Cisco IOS router and switch interfaces.
 
 ## Step 1: Install Ansible and Cisco IOS Collection
 

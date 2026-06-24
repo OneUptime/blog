@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Windows, Networking, Ipconfig, DNS, Cache, Troubleshooting
+Tags: Window, Networking, Ipconfig, DNS, Cache, Troubleshooting
 
 Description: Flush the Windows DNS resolver cache using ipconfig /flushdns to clear stale DNS records and force fresh lookups, resolving hostname resolution issues after DNS changes.
 

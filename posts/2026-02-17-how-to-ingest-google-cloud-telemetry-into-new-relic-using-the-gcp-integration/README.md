@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GCP, New Relic, Telemetry, Cloud Monitoring, Observability, Google Cloud
 
-Description: Configure the New Relic Google Cloud integration to ingest metrics and forward logs from your GCP environment for unified observability.
+Description: Configure the New Relic Google Cloud integration to ingest metrics, logs, and traces from your GCP environment for unified observability.
 
 ---
 

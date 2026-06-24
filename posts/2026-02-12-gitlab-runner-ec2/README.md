@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: AWS, EC2, GitLab, CI/CD, DevOps
 
-Description: Learn how to install and configure GitLab Runner on EC2 for running CI/CD pipelines with Docker and shell executors.
+Description: Learn how to install and configure GitLab Runner on EC2 for running CI/CD pipelines with Docker, shell, and autoscaling executors.
 
 ---
 

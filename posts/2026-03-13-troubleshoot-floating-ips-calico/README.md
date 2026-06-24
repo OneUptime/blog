@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, IPAM, Floating IP, Networking
 
-Description: Diagnose floating IP configuration issues in Calico, including missing CNI feature flags and IPPool mismatches.
+Description: Diagnose floating IP routing failures in Calico including stale routes and ARP cache issues.
 
 ---
 

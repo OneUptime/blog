@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rancher, Ansible, Automation, Infrastructure as Code, DevOps, Kubernetes
 
-Description: Automate Rancher cluster management, user provisioning, and application deployments using Ansible playbooks with Rancher and Kubernetes APIs.
+Description: Automate Rancher cluster management, user provisioning, and application deployments using Ansible playbooks with the Rancher API.
 
 ## Introduction
 

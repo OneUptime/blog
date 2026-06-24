@@ -2,9 +2,9 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, IPv6, Front Door, CDN, Global Load Balancer
+Tags: Azure, IPv6, Front Door, CDN, Global Load Balancer, Anycast
 
-Description: Configure Azure Front Door to accept IPv6 client connections, enabling global IPv6 delivery for web applications and APIs.
+Description: Configure Azure Front Door to accept IPv6 client connections, enabling global IPv6 anycast distribution of web applications and APIs.
 
 ## Introduction
 

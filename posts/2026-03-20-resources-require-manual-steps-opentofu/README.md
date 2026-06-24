@@ -2,9 +2,9 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTofu, Manual Steps, Terraform_data, Provisioner, Infrastructure as Code, Best Practice
+Tags: OpenTofu, Manual Steps, Null_resource, Provisioner, Infrastructure as Code, Best Practice
 
-Description: Learn how to handle resources that require out-of-band manual steps using terraform_data, local-exec provisioners, and preconditions in OpenTofu.
+Description: Learn how to handle resources that require out-of-band manual steps using null_resource, local-exec provisioners, and preconditions in OpenTofu.
 
 ## Introduction
 

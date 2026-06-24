@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GCP, Cloud DLP, Data Classification, Data Security, Sensitive Data
 
-Description: Build automated data classification pipelines using Google Cloud DLP to scan, classify, and tag sensitive data across BigQuery and Cloud Storage.
+Description: Build automated data classification pipelines using Google Cloud DLP to scan, classify, and tag sensitive data across BigQuery, Cloud Storage, and Datastore.
 
 ---
 

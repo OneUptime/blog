@@ -1,10 +1,10 @@
-# How to Use the Flux Operator Web UI with Flux 2.8 for Kustomization Monitoring
+# How to Use Flux 2.8 Web UI for Kustomization Monitoring
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Flux, Fluxcd, Kustomization, Web-Ui, Monitoring, GitOps, Kubernetes
 
-Description: Learn how to monitor Kustomization resources using the Flux Operator Web UI with Flux 2.8 for real-time visibility into your GitOps reconciliation pipeline.
+Description: Learn how to monitor Kustomization resources using the Flux 2.8 Web UI for real-time visibility into your GitOps reconciliation pipeline.
 
 ---
 

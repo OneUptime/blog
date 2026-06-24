@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rook, Ceph, Canonical, Charmed Kubernetes, Juju, Storage, Ubuntu
 
-Description: Deploy Rook-Ceph on Canonical Charmed Kubernetes clusters managed with Juju, using charm integration and Kubernetes storage classes.
+Description: Deploy Rook-Ceph on Canonical Charmed Kubernetes clusters managed with Juju, using snap-based paths and charm integration.
 
 ---
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, SOPS, Secrets Management, Security, Encryption
 
-Description: Integrate SOPS with Ansible for encrypted secrets management, enabling safe storage of sensitive data in version control.
+Description: Integrate Mozilla SOPS with Ansible for encrypted secrets management, enabling safe storage of sensitive data in version control.
 
 ---
 

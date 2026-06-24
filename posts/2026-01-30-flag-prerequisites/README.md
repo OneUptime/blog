@@ -1182,7 +1182,7 @@ ml_ranking_model
 search_infra_v2
     |
 ai_search <-- YOU ARE HERE
-```
+```text
 
 ### Rollout Plan
 1. Enable `search_infra_v2` for all users (done)

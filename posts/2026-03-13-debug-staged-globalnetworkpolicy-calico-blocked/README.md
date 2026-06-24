@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, Network Policy, Staged Policies, Global Policy
 
-Description: Diagnose and fix Staged GlobalNetworkPolicy issues in Calico when policy previews show traffic would be blocked.
+Description: Diagnose and fix Staged GlobalNetworkPolicy failures in Calico when traffic is unexpectedly blocked.
 
 ---
 

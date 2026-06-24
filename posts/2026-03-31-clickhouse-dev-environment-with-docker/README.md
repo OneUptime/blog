@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: ClickHouse, Docker, Development, Local Setup, Dev Environment, Docker Compose
 
-Description: Set up a complete ClickHouse development environment with Docker including sample data and optional Grafana for visualization.
+Description: Set up a complete ClickHouse development environment with Docker including sample data, a SQL client, and optional Grafana for visualization.
 
 ---
 

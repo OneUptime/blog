@@ -1,10 +1,10 @@
-# How to Use Ansible microsoft.ad.domain_controller Module
+# How to Use Ansible win_domain_controller Module
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Windows, Active Directory, Domain Controller, Automation
+Tags: Ansible, Window, Active Directory, Domain Controller, Automation
 
-Description: Promote and demote Windows servers as domain controllers using the Ansible microsoft.ad.domain_controller module for AD infrastructure automation.
+Description: Promote and demote Windows servers as domain controllers using the Ansible win_domain_controller module for AD infrastructure automation.
 
 ---
 

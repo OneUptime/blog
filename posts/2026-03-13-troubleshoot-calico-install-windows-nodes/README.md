@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Windows, Networking, CNI, Troubleshooting
+Tags: Calico, Kubernetes, Window, Networking, CNI, Troubleshooting
 
 Description: A diagnostic guide for resolving Calico installation failures specific to Windows Server nodes in Kubernetes clusters.
 

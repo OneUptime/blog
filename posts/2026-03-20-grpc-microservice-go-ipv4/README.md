@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: gRPC, Go, IPv4, Microservice, Networking, Kubernetes
 
-Description: Learn how to build a gRPC microservice in Go that binds to an IPv4 address, with health checking, graceful shutdown, reflection, and Kubernetes deployment configuration.
+Description: Learn how to build a production-ready gRPC microservice in Go that binds to an IPv4 address, with health checking, graceful shutdown, metrics, and Kubernetes deployment configuration.
 
 ## Project Structure
 

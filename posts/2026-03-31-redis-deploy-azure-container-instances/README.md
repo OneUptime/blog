@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Redis, Azure, Container, Deployment, Cloud
 
-Description: Deploy Redis on Azure Container Instances with persistent Azure Files storage, secure parameters, and virtual network integration.
+Description: Deploy Redis on Azure Container Instances with persistent Azure Files storage, Key Vault secrets, and virtual network integration.
 
 ---
 

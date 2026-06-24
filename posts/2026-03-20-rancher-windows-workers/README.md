@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Rancher, Windows, Kubernetes, Worker Nodes, Hybrid Cluster
+Tags: Rancher, Window, Kubernetes, Worker Nodes, Hybrid Cluster
 
 Description: Add Windows Server worker nodes to Rancher-managed Kubernetes clusters to run Windows containers alongside Linux workloads in a hybrid cluster configuration.
 

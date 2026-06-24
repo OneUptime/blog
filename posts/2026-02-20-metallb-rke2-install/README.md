@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, MetalLB, RKE2, Rancher, Load Balancing
 
-Description: A guide to installing MetalLB on RKE2 clusters. Learn how to handle RKE2 networking, avoid conflicts with its optional ServiceLB controller, and configure MetalLB for production use.
+Description: A guide to installing MetalLB on RKE2 clusters. Learn how to handle RKE2 defaults, disable its built-in load balancer, and configure MetalLB for production use.
 
 ---
 

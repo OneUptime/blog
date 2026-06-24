@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ping, ICMP, Linux, MTU, Networking, Diagnostic
 
-Description: Control ping packet size, count, and interval on Linux to test specific network conditions and diagnose MTU issues.
+Description: Control ping packet size, count, and interval on Linux to test specific network conditions, measure throughput potential, and diagnose MTU issues.
 
 For IPv4, the default ping packet (56 bytes of data + 28 bytes ICMP/IP header = 84 bytes) is too small to reveal many real-world network problems. Controlling size and count lets you simulate different traffic patterns and expose issues that small pings miss.
 

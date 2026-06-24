@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, Networking, Troubleshooting, Automation
 
-Description: Automate Calico diagnostic command execution with scripts that collect BGP state, IPAM usage, Felix configuration, and policy resources across all cluster nodes for rapid incident triage.
+Description: Automate Calico diagnostic command execution with scripts that collect BGP state, IPAM usage, Felix status, and policy counts across all cluster nodes for rapid incident triage.
 
 ---
 

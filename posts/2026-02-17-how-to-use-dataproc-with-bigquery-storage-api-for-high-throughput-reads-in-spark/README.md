@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GCP, Dataproc, BigQuery, Storage API, Apache Spark
 
-Description: Learn how to use the BigQuery Storage API with Spark on Dataproc for dramatically faster reads from BigQuery.
+Description: Learn how to use the BigQuery Storage API with Spark on Dataproc for dramatically faster reads from BigQuery compared to the standard export-based connector.
 
 ---
 

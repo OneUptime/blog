@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: BGP, IPv6, Blackhole, DDoS, Security
 
-Description: Configure the BLACKHOLE BGP community (65535:666) on IPv6 prefixes so upstreams that honor RFC 7999 can discard traffic during a DDoS event.
+Description: Configure BGP blackhole community (65535:666) for IPv6 prefixes to trigger upstream DDoS mitigation at provider networks.
 
 ## Overview
 

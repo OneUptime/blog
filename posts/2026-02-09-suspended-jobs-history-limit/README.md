@@ -1,10 +1,10 @@
-# How to Configure Job History Limits for Paused CronJob Tracking
+# How to Configure suspendedJobsHistoryLimit for Paused Job Tracking
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, CronJob, Job Management
 
-Description: Learn how to use Kubernetes CronJob history limits to control how many completed job instances are retained for tracking and debugging paused batch processing workloads.
+Description: Learn how to use suspendedJobsHistoryLimit in Kubernetes CronJobs to control how many suspended job instances are retained for tracking and debugging paused batch processing workloads.
 
 ---
 

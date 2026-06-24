@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: MySQL, Connection Pool, PHP, PDO, Performance
 
-Description: Learn how to implement MySQL connection pooling in PHP using PDO persistent connections, ProxySQL for connection multiplexing, and PHP-FPM pool management.
+Description: Learn how to implement MySQL connection pooling in PHP using PDO persistent connections, PgBouncer-style proxies, and framework-level pool management.
 
 ---
 

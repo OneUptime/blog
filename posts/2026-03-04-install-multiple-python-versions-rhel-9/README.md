@@ -1,10 +1,10 @@
-# How to Install Multiple Python Versions on RHEL 9 Using AppStream
+# How to Install Multiple Python Versions on RHEL Using Software Collections
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, Python, AppStream, Linux, Development
+Tags: RHEL, Python, Software Collections, Linux, Development
 
-Description: Learn how to install and manage multiple Python versions side by side on RHEL 9 using AppStream RPM packages.
+Description: Learn how to install and manage multiple Python versions side by side on RHEL using Software Collections and the AppStream module system.
 
 ---
 

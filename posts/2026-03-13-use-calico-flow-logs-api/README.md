@@ -1,10 +1,10 @@
-# How to Monitor Calico Felix Metrics
+# How to Use the Calico Flow Logs API
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, Networking, Observability
 
-Description: Enable and scrape Calico Felix Prometheus metrics to monitor dataplane health, policy calculation, and Calico node behavior.
+Description: Query the Calico Flow Logs API to retrieve network connection records for specific pods, namespaces, or time windows for security investigation and compliance reporting.
 
 ---
 

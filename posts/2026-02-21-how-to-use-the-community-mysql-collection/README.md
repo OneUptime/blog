@@ -1,10 +1,10 @@
-# How to Use the ansible.mysql Collection
+# How to Use the community.mysql Collection
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, MySQL, MariaDB, Database, DevOps
 
-Description: Manage MySQL and MariaDB databases, users, permissions, replication, and configuration using the ansible.mysql Ansible collection.
+Description: Manage MySQL and MariaDB databases, users, permissions, replication, and configuration using the community.mysql Ansible collection.
 
 ---
 

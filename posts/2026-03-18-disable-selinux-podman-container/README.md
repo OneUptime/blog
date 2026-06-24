@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Podman, Container, DevOps, Linux, Security, SELinux, Troubleshooting
 
-Description: Learn how to disable SELinux label separation for individual Podman containers when mandatory access control policies interfere with your workload.
+Description: Learn how to disable SELinux enforcement for individual Podman containers when mandatory access control policies interfere with your workload.
 
 ---
 

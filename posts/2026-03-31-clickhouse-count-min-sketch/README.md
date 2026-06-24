@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: ClickHouse, Count-Min Sketch, Approximate Query, Streaming Analytics, Heavy Hitter
 
-Description: Learn how to use Count-Min Sketch in ClickHouse to estimate column value frequencies with bounded error for better query planning on skewed data.
+Description: Learn how to use the Count-Min Sketch in ClickHouse to estimate item frequencies with bounded error using constant memory.
 
 ---
 

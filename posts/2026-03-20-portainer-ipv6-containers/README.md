@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, IPv6, Docker Networking, Network Configuration, Container Networking
 
-Description: Learn how to enable and configure IPv6 for Docker containers in Portainer, including default bridge daemon settings and per-network IPv6 configuration.
+Description: Learn how to enable and configure IPv6 for Docker containers in Portainer, including global daemon settings and per-network IPv6 configuration.
 
 ---
 

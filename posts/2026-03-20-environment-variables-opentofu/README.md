@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Environment Variable, TF_VAR, TF_LOG, TF_WORKSPACE, Configuration, Infrastructure as Code
 
-Description: Learn about common OpenTofu environment variables including TF_VAR_, TF_LOG, TF_WORKSPACE, TF_CLI_ARGS, and TF_DATA_DIR, and how to use them effectively in local development and CI/CD pipelines.
+Description: Learn about all OpenTofu environment variables including TF_VAR_, TF_LOG, TF_WORKSPACE, TF_CLI_ARGS, and TF_DATA_DIR, and how to use them effectively in local development and CI/CD pipelines.
 
 ---
 

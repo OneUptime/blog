@@ -1,4 +1,4 @@
-# How to Configure BGP Local Preference for Outbound Traffic Control
+# How to Configure BGP Local Preference for Inbound Traffic Control
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

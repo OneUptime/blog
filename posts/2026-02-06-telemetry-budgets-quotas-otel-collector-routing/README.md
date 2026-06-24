@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Collector, Cost Management, Platform Engineering
 
-Description: Implement per-team telemetry budgets and quotas using OpenTelemetry Collector routing connectors to control observability costs at scale.
+Description: Implement per-team telemetry budgets and quotas using OpenTelemetry Collector routing processors to control observability costs at scale.
 
 Telemetry costs scale with data volume, and without guardrails, a single team can generate more spans in a day than the rest of the organization combined. This usually happens by accident - a retry loop that creates a span per attempt, a debug-level log statement left in production, or a batch job that traces every row in a million-row table.
 

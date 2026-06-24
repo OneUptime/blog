@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: AWS, Step Functions, Lambda, S3, Data Engineering
 
-Description: Build a scalable batch data processing pipeline on AWS using Step Functions, Lambda, S3, and DynamoDB with scheduling, error handling, and monitoring.
+Description: Build a scalable batch data processing pipeline on AWS using Step Functions, Lambda, S3, and Glue with scheduling, error handling, and monitoring.
 
 ---
 

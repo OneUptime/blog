@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Networking, Routing, IPv4, Cisco, FRRouting
 
-Description: Learn what administrative distance is, how it determines which route is installed in the routing table when the same prefix is learned from multiple sources, and how to view and modify it.
+Description: Learn what administrative distance is, how it determines which routing protocol's routes are installed in the routing table, and how to view and modify it.
 
 ## What Is Administrative Distance?
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Kubernetes, kubeconfig, Import, Environment
 
-Description: Import an existing Kubernetes cluster into Portainer Business Edition using a self-contained kubeconfig file so Portainer can deploy and configure the Portainer Agent.
+Description: Import an existing Kubernetes cluster into Portainer using a kubeconfig file for immediate visual management without deploying an agent.
 
 ## Introduction
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, Squid, Proxy, Networking, Security
 
-Description: Deploy a Squid forward proxy server with ACLs, caching, and authentication using Ansible for controlled and cached internet access.
+Description: Deploy a Squid forward proxy server with ACLs, caching, authentication, and SSL bump using Ansible for controlled and cached internet access.
 
 ---
 

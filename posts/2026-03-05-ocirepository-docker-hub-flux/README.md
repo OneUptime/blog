@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Flux CD, GitOps, Kubernetes, OCI, OCIRepository, Docker Hub, Container Registry
 
-Description: Learn how to configure Flux CD OCIRepository to pull OCI artifacts from Docker Hub using personal access tokens and organization access tokens for authentication.
+Description: Learn how to configure Flux CD OCIRepository to pull OCI artifacts from Docker Hub using personal access tokens and robot accounts for authentication.
 
 ---
 

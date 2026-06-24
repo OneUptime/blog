@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Provider Registry, Terraform, Migration, Infrastructure as Code
 
-Description: Learn how OpenTofu's provider registry (registry.opentofu.org) differs from Terraform's (registry.terraform.io) - what providers are available, how to handle providers not yet available, and how to...
+Description: Learn how OpenTofu's provider registry (registry.opentofu.org) differs from Terraform's (registry.terraform.io) - what providers are available, how to handle providers not yet mirrored, and how to...
 
 ## Introduction
 

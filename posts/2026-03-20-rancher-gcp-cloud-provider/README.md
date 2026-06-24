@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rancher, Kubernetes, GCP, Google Cloud, Cloud Provider
 
-Description: Configure the Google Cloud external cloud provider in Rancher-managed clusters to enable GCP Load Balancers, Persistent Disks, and Filestore integration.
+Description: Configure the Google Cloud cloud provider in Rancher-managed clusters to enable GCP Load Balancers, Persistent Disks, and Filestore integration.
 
 ## Introduction
 

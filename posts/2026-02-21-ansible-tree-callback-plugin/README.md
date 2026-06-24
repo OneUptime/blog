@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, Callback Plugins, Logging, Reporting
 
-Description: Use the Ansible tree callback plugin to save each host's latest task result as an individual JSON file in a directory tree for later analysis and auditing.
+Description: Use the Ansible tree callback plugin to save per-host task results as individual JSON files in a directory tree for later analysis and auditing.
 
 ---
 

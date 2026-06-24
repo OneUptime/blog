@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, Networking, Observability
 
-Description: Enable Calico Enterprise or Calico Cloud file flow logs to capture flow metadata including source pod, destination, bytes transferred, and policy decision for network observability and security audit use cases.
+Description: Enable Calico flow logs to capture per-connection metadata including source pod, destination, bytes transferred, and policy decision for network observability and security audit use cases.
 
 ---
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, SSL, Certificate Renewal, Zero Downtime, DevOps
 
-Description: Learn how to renew SSL certificates for Portainer with zero or minimal downtime using file replacement, reverse proxies, and automation.
+Description: Learn how to renew SSL certificates for Portainer with zero or minimal downtime using certificate hot-swapping and automation.
 
 ---
 

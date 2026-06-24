@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Node.js, MongoDB, Express, Docker Compose, REST API
 
-Description: Deploy a Node.js API server with MongoDB using Docker Compose through Portainer, covering connection retry logic, Mongoose ODM, and Mongo Express administration.
+Description: Deploy a production-ready Node.js API server with MongoDB using Docker Compose through Portainer, covering connection retry logic, Mongoose ODM, replica sets, and Mongo Express administration.
 
 ## Introduction
 

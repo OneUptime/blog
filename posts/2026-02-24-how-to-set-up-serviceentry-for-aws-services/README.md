@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Istio, ServiceEntry, AWS, Kubernetes, Cloud Services
 
-Description: Configure Istio ServiceEntry for AWS services like S3, SQS, DynamoDB, and others to get mesh visibility and connection-level traffic management for AWS API calls.
+Description: Configure Istio ServiceEntry for AWS services like S3, SQS, DynamoDB, and others to get mesh observability and traffic management for AWS API calls.
 
 ---
 

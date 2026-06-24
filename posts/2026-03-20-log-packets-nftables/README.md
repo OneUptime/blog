@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: nftables, Linux, Firewall, Logging, Security, Networking, Monitoring
 
-Description: Configure nftables packet logging to capture firewall events in the kernel log, journald, or syslog for security auditing and troubleshooting.
+Description: Configure nftables packet logging to capture firewall events in the kernel log and syslog for security auditing and troubleshooting.
 
 ## Introduction
 

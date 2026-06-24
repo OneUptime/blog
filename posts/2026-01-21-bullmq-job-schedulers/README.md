@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: BullMQ, Node.js, Redis, Job Scheduling, Cron, Task Automation, Background Job
 
-Description: A comprehensive guide to advanced job scheduling patterns in BullMQ, including delayed jobs, recurring schedules, dynamic scheduling, timezone handling, and building a complete job scheduling system.
+Description: A comprehensive guide to advanced job scheduling patterns in BullMQ, including delayed jobs, repeatable schedules, dynamic scheduling, timezone handling, and building a complete job scheduling system.
 
 ---
 

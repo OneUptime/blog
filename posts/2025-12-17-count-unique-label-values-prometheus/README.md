@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Prometheus, PromQL, Metric, Monitoring, Labels, Cardinality, Observability
 
-Description: Learn how to count unique label values in Prometheus using PromQL aggregation operators like count and group.
+Description: Learn how to count unique label values in Prometheus using PromQL functions like count, group, and label_values.
 
 ---
 

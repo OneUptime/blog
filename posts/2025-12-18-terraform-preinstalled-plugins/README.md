@@ -1,10 +1,10 @@
-# How to Use Pre-Installed Terraform Plugins Without Internet Downloads
+# How to Use Pre-Installed Terraform Plugins Without terraform init
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Terraform, Plugin, Provider, Offline, Air-Gapped, CI/CD
 
-Description: Learn how to configure Terraform to use pre-installed plugins and providers without downloading them from the internet during terraform init, essential for air-gapped environments, CI/CD optimization, and custom provider management.
+Description: Learn how to configure Terraform to use pre-installed plugins and providers without running terraform init, essential for air-gapped environments, CI/CD optimization, and custom provider management.
 
 By default, `terraform init` downloads providers from the internet, which can be problematic in air-gapped environments, slow CI/CD pipelines, or situations where you need strict control over provider versions. This guide shows you how to use pre-installed Terraform plugins while still running `terraform init` to initialize the working directory.
 

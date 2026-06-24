@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Portainer, WSL2, Windows, Docker-desktop, Installation
+Tags: Portainer, WSL2, Window, Docker-desktop, Installation
 
 Description: A guide to installing and running Portainer CE on Windows using WSL2 and Docker Desktop for local container development and management.
 

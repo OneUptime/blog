@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, SSH, SSHFP, DNS, Security
 
-Description: Configure SSHFP DNS records with DNSSEC to automatically verify SSH host keys with Ansible, eliminating manual host key verification prompts.
+Description: Configure SSHFP DNS records to automatically verify SSH host keys with Ansible, eliminating manual host key verification prompts.
 
 ---
 

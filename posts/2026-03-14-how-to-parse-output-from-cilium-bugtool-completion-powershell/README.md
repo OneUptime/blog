@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Cilium, Bugtool, PowerShell, Parsing, Scripting
 
-Description: Extract registration details from cilium-bugtool PowerShell completion scripts for documentation and tooling.
+Description: Extract command and parameter definitions from cilium-bugtool PowerShell completion scripts for documentation and tooling.
 
 ---
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: AKS, Pod Priority, Preemption, Kubernetes, Scheduling, Workload Management, Azure
 
-Description: Learn how to use Kubernetes PriorityClasses in AKS so critical workloads are scheduled before lower-priority workloads when cluster resources are tight.
+Description: Learn how to use Kubernetes PriorityClasses in AKS to guarantee that critical workloads always get scheduled, even when cluster resources are tight.
 
 ---
 

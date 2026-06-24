@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Podman, Log Management, Logging, Loki, Grafana, Container
 
-Description: Learn how to set up centralized log management using Podman containers with tools like Grafana Loki, Promtail for existing deployments, and the ELK stack for aggregating and analyzing container and application logs.
+Description: Learn how to set up centralized log management using Podman containers with tools like Grafana Loki, Promtail, and the ELK stack for aggregating and analyzing container and application logs.
 
 ---
 

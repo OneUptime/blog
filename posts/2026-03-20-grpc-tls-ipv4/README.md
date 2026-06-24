@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: gRPC, TLS, IPv4, Security, Python, Go
 
-Description: Learn how to secure gRPC connections with TLS over IPv4 in Python and Go, covering self-signed certificates, server-only TLS, mutual TLS (mTLS), and production certificate rotation considerations.
+Description: Learn how to secure gRPC connections with TLS over IPv4 in Python and Go, covering self-signed certificates, server-only TLS, mutual TLS (mTLS), and certificate rotation.
 
 ## Generate Self-Signed Certificates
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Docker, Rust, Development, Cargo, Systems Programming
 
-Description: Build a complete Rust development environment with cargo-watch and dependency caching using Docker and Portainer.
+Description: Build a complete Rust development environment with cargo-watch, debugging support, and dependency caching using Docker and Portainer.
 
 ## Introduction
 

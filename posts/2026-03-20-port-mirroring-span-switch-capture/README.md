@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Span, Port Mirroring, Switch, Packet Capture, Network Monitoring
 
-Description: Learn how to configure Switched Port Analyzer (SPAN) port mirroring on Cisco, Arista, and Linux systems using tc to copy traffic from monitored ports to a capture device running Wireshark or tcpdump.
+Description: Learn how to configure Switched Port Analyzer (SPAN) port mirroring on Cisco, Arista, and Linux bridge switches to copy traffic from monitored ports to a capture device running Wireshark or tcpdump.
 
 ## What Is SPAN/Port Mirroring?
 

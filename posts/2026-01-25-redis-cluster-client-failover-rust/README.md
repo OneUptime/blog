@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rust, Redis, Cluster, Failover, High Availability
 
-Description: A practical guide to building a Redis cluster client in Rust that handles node failures gracefully, with automatic failover, connection reuse, and retry logic.
+Description: A practical guide to building a Redis cluster client in Rust that handles node failures gracefully, with automatic failover, connection pooling, and retry logic.
 
 ---
 

@@ -1,10 +1,10 @@
-# How to Deploy a GPT-4.1 Model in Azure OpenAI Service Using the Azure Portal
+# How to Deploy GPT-4 Model in Azure OpenAI Service Using the Azure Portal
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, OpenAI, GPT-4.1, AI, Cloud, Deployment, Machine Learning
+Tags: Azure, OpenAI, GPT-4, AI, Cloud, Deployment, Machine Learning
 
-Description: Step-by-step guide to deploying a GPT-4.1 model in Azure OpenAI Service through the Azure Portal with configuration tips and best practices.
+Description: Step-by-step guide to deploying a GPT-4 model in Azure OpenAI Service through the Azure Portal with configuration tips and best practices.
 
 ---
 

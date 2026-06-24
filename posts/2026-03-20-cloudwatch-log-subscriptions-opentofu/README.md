@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, AWS, CloudWatch, Log Subscriptions, Kinesis, Lambda, Infrastructure as Code
 
-Description: Learn how to configure CloudWatch Log Subscription Filters with OpenTofu to stream log events in real-time to Lambda, Kinesis Data Streams, or Amazon Data Firehose for processing and archival.
+Description: Learn how to configure CloudWatch Log Subscription Filters with OpenTofu to stream log events in real-time to Lambda, Kinesis Data Streams, or Kinesis Firehose for processing and archival.
 
 ## Introduction
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Financial Services, PCI-DSS, Compliance, Security
 
-Description: Deploy container infrastructure for financial services applications using Portainer's enterprise features for security, audit logging, and access control to support PCI-DSS and SOX control objectives.
+Description: Deploy PCI-DSS compliant container infrastructure for financial services applications using Portainer's enterprise features for security, audit logging, and access control.
 
 ## Introduction
 

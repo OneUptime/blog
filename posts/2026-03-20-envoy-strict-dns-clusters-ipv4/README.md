@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Envoy, Strict DNS, IPv4, Cluster, Service Discovery, Dynamic
 
-Description: Configure Envoy strict DNS discovery to continuously resolve hostnames to IPv4 endpoint addresses, automatically updating the load balancing pool on each DNS refresh when records change.
+Description: Configure Envoy STRICT_DNS clusters to continuously resolve hostnames to IPv4 endpoint addresses, automatically updating the load balancing pool when DNS records change.
 
 ## Introduction
 

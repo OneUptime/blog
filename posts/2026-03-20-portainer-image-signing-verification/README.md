@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Image Signing, Docker Content Trust, Cosign, Container Security, Supply Chain
 
-Description: Learn how to sign Docker images and verify signatures before deployment in Portainer workflows using Docker Content Trust and Cosign.
+Description: Learn how to sign Docker images and verify signatures before deployment via Portainer using Docker Content Trust and Cosign.
 
 ---
 

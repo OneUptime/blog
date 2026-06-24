@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, AWS ECR, OCI Registry, Provider Distribution, AWS
 
-Description: Learn how to use AWS Elastic Container Registry as an OCI registry for storing and distributing OpenTofu provider mirrors and modules within AWS-centric organizations.
+Description: Learn how to use AWS Elastic Container Registry as an OCI registry for storing and distributing OpenTofu providers and modules within AWS-centric organizations.
 
 ## Introduction
 

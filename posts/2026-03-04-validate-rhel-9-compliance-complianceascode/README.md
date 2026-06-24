@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, ComplianceAsCode, Compliance, Security, Linux
 
-Description: Use the ComplianceAsCode project to validate RHEL against multiple security frameworks including CIS, STIG, PCI-DSS, and OSPP.
+Description: Use the ComplianceAsCode project to validate RHEL against multiple security frameworks including CIS, STIG, PCI-DSS, and NIST 800-53.
 
 ---
 

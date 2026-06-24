@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, ARK, Game Server, Docker, Self-Hosted
 
-Description: Run a dedicated ARK: Survival Evolved server using Portainer.
+Description: Run a dedicated ARK Survival Evolved or ARK Survival Ascended server using Portainer.
 
 ## Introduction
 

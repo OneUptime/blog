@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Flux CD, GitOps, Kubernetes, Image Automation, ImageUpdateAutomation, Path Filtering
 
-Description: Learn how to use Flux ImageUpdateAutomation update paths to control which files are updated during automated image updates.
+Description: Learn how to configure include and exclude paths in Flux ImageUpdateAutomation to control which files are updated during automated image updates.
 
 ---
 

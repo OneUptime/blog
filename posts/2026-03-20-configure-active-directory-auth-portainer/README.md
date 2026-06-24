@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Portainer, Active Directory, LDAP, Authentication, Windows
+Tags: Portainer, Active Directory, LDAP, Authentication, Window
 
 Description: Configure Portainer to authenticate users against Microsoft Active Directory using LDAP with the proper AD-specific settings.
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Networking, Multicast, iperf, Network Testing, Linux, Performance
 
-Description: Use iperf2 to test multicast UDP connectivity, measure throughput, and verify that packets are being delivered to all group members on your network.
+Description: Use iperf and iperf3 to test multicast UDP connectivity, measure throughput, and verify that packets are being delivered to all group members on your network.
 
 ## Introduction
 

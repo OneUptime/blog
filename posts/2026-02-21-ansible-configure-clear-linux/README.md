@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, Clear Linux, Intel, Performance, Linux
 
-Description: Configure legacy Intel Clear Linux systems with Ansible using swupd package management and performance-optimized system tuning for Intel hardware.
+Description: Configure Intel Clear Linux with Ansible using swupd package management and performance-optimized system tuning for Intel hardware.
 
 ---
 

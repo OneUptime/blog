@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Talos Linux, Akamai, Linode, Cloud, Kubernetes
 
-Description: Step-by-step instructions for deploying Talos Linux on Akamai (formerly Linode) cloud instances for self-managed Kubernetes clusters.
+Description: Step-by-step instructions for deploying Talos Linux on Akamai (formerly Linode) cloud instances for managed Kubernetes clusters.
 
 ---
 

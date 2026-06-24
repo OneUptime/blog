@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Podman, Container, DevOps, Podman Desktop, Minikube, Kubernetes, Local Development
 
-Description: Learn how to set up and use Minikube with Podman as the driver and Podman Desktop for local Kubernetes development and testing.
+Description: Learn how to set up and use Minikube with Podman Desktop as the container runtime for local Kubernetes development and testing.
 
 ---
 

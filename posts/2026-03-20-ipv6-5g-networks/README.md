@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: IPv6, 5G, Mobile Networks, 3GPP, PDU Session, NR, SA, NSA
+Tags: IPv6, 5G, Mobile Networks, 3GPP, PDU Session, NR, SAS, NSA
 
 Description: Understand IPv6 addressing in 5G standalone and non-standalone networks, PDU session types, 5G network slicing with IPv6, and how UE devices receive IPv6 addresses over 5G.
 

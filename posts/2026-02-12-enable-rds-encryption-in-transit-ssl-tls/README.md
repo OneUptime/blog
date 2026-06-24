@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: AWS, RDS, Security, SSL, Database
 
-Description: Complete guide to enabling and enforcing SSL/TLS encryption for connections to Amazon RDS databases including MySQL and PostgreSQL.
+Description: Complete guide to enabling and enforcing SSL/TLS encryption for connections to Amazon RDS databases including MySQL, PostgreSQL, and SQL Server.
 
 ---
 

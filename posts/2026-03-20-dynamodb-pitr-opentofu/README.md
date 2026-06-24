@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, AWS, DynamoDB, PITR, Backup, Disaster Recovery, Terraform
 
-Description: Learn how to enable and manage DynamoDB Point-in-Time Recovery (PITR) using OpenTofu to protect your data with continuous backups and restore to any point within a configurable 1 to 35 day recovery window.
+Description: Learn how to enable and manage DynamoDB Point-in-Time Recovery (PITR) using OpenTofu to protect your data with continuous backups and restore to any point within 35 days.
 
 ---
 

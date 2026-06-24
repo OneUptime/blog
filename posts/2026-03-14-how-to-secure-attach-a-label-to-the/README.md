@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Cilium, Kubernetes, Network Security, Node Management
 
-Description: Learn how to secure Cilium host policies that select Kubernetes nodes by label. This guide covers practical hardening measures with real examples and commands.
+Description: Learn how to secure node labeling in Cilium for Kubernetes. This guide covers practical hardening measures with real examples and commands.
 
 ---
 

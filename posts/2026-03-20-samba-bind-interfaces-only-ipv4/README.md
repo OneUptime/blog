@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Samba, IPv4, Bind interfaces only, SMB, Security, Network Isolation
 
-Description: Configure Samba's bind interfaces only directive to ensure smbd listens only on specified IPv4 interfaces, preventing unintended exposure on other network interfaces or IPv6.
+Description: Configure Samba's bind interfaces only directive to ensure it only listens on specified IPv4 interfaces, preventing unintended exposure on other network interfaces or IPv6.
 
 ## Introduction
 

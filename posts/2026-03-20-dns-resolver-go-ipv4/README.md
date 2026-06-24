@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Go, DNS, IPv4, Networking, Resolver, Net package
 
-Description: Learn how to build a DNS resolver in Go that performs IPv4 lookups, with caching, custom DNS servers, and timeout handling.
+Description: Learn how to build a DNS resolver in Go that performs IPv4 A record lookups, with caching, custom DNS servers, and timeout handling.
 
 ## Simple DNS Resolver
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rancher, Kubernetes, API, REST API, Automation
 
-Description: Practical guide to automating common Rancher operations using the API, including user onboarding, namespace provisioning, health monitoring, scheduled cleanup, and CI/CD integration.
+Description: Practical guide to automating common Rancher operations using the API, including cluster provisioning, user onboarding, backup scheduling, and CI/CD integration.
 
 Automating Rancher tasks through the API saves time, reduces human error, and ensures consistent operations across your infrastructure. This guide provides ready-to-use scripts for the most common automation scenarios.
 

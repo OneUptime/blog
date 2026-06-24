@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: AWS, DynamoDB, S3, Data Migration, Serverless
 
-Description: Learn how to import data from Amazon S3 into DynamoDB using the native import feature, AWS Glue, and custom Lambda-based solutions for bulk data loading.
+Description: Learn how to import data from Amazon S3 into DynamoDB using the native import feature, AWS Data Pipeline, and custom Lambda-based solutions for bulk data loading.
 
 ---
 

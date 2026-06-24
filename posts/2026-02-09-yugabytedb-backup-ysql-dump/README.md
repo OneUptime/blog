@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, YugabyteDB, Backup, Disaster Recovery, YSQL
 
-Description: Implement automated backup and restore strategies for YugabyteDB on Kubernetes using ysql_dump and ysqlsh, including scheduled dumps, application-level change exports, and disaster recovery procedures.
+Description: Implement automated backup and restore strategies for YugabyteDB on Kubernetes using ysql_dump and ysqlsh, including point-in-time recovery, incremental backups, and disaster recovery procedures.
 
 ---
 

@@ -2,9 +2,9 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Kubernetes, GitOps, Knative, Serverless, Knative Serving, Kustomization
+Tags: Flux CD, Kubernetes, GitOps, Knative, Serverless, Knative Serving, HelmRelease
 
-Description: Deploy Knative Serving for serverless workloads using Flux CD Kustomization to enable scale-to-zero and traffic-splitting for containerized applications.
+Description: Deploy Knative Serving for serverless workloads using Flux CD HelmRelease to enable scale-to-zero and traffic-splitting for containerized applications.
 
 ---
 

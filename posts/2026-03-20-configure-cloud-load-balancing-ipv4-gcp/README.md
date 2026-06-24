@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GCP, Cloud Load Balancing, IPv4, HTTP, Networking, Compute Engine
 
-Description: Configure GCP global external HTTP(S) Load Balancing with global anycast IPv4 frontend, URL map, backend service, and health checks to distribute traffic across Compute Engine instances.
+Description: Configure GCP external HTTP(S) Load Balancing with global anycast IPv4 frontend, URL map, backend service, and health checks to distribute traffic across Compute Engine instances.
 
 ## Introduction
 

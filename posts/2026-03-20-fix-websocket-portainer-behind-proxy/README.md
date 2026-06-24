@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Troubleshooting, WebSocket, Reverse Proxy, Nginx, Traefik, Networking
 
-Description: Learn how to fix WebSocket connection failures in Portainer when deployed behind Nginx, Traefik, or Caddy, enabling the container console and other interactive shell features.
+Description: Learn how to fix WebSocket connection failures in Portainer when deployed behind Nginx, Traefik, or Caddy, enabling the container console and log streaming features.
 
 ---
 

@@ -1,10 +1,10 @@
-# How to Deploy Applications in Epinio
+# How to Bind Services to Applications in Epinio
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Epinio, Kubernetes, PaaS, Buildpacks, Deployment
+Tags: Epinio, Service, Kubernetes, PaaS, Database
 
-Description: Deploy applications to Kubernetes with Epinio using its simple push workflow and buildpack-based staging.
+Description: Connect databases and other services to Epinio applications using service bindings for seamless integration.
 
 ## Introduction
 

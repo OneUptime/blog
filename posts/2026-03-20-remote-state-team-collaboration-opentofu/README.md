@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Remote State, S3, Team Collaboration, State Management, Infrastructure as Code
 
-Description: Learn how to configure OpenTofu remote state with S3 and DynamoDB to enable safe team collaboration, prevent state file conflicts, and share infrastructure outputs across separate configurations.
+Description: Learn how to configure OpenTofu remote state with S3 and DynamoDB to enable safe team collaboration, prevent state file conflicts, and share infrastructure outputs across modules.
 
 ---
 

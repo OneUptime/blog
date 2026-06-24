@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Java, IPv4, Parsing, InetAddress, String Processing, Networking
 
-Description: Parse IPv4 addresses from various string formats in Java including dotted-decimal, packed integers, CIDR notation, and URL hosts using InetAddress, URI, and manual parsing.
+Description: Parse IPv4 addresses from various string formats in Java including dotted-decimal, integer, CIDR notation, and URL hostnames using InetAddress and manual parsing.
 
 ## Introduction
 

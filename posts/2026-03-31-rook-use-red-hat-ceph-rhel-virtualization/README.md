@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rook, Ceph, Red Hat, Virtualization, KVM, Storage
 
-Description: Configure Red Hat Ceph Storage as a backend for RHEL virtualization using libvirt and QEMU, providing shared block storage for VMs.
+Description: Configure Red Hat Ceph Storage as a backend for RHEL virtualization using libvirt and QEMU, providing shared block and object storage for VMs.
 
 ---
 

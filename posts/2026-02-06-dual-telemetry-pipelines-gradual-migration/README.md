@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Migration, Telemetry Pipeline, Observability, Prometheus, Collector
 
-Description: Learn how to run parallel telemetry pipelines during a migration from legacy monitoring to OpenTelemetry, reducing the risk of data loss and maintaining observability throughout the transition.
+Description: Learn how to run parallel telemetry pipelines during a migration from legacy monitoring to OpenTelemetry, ensuring zero data loss and continuous observability throughout the transition.
 
 ---
 

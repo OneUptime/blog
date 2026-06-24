@@ -1,8 +1,8 @@
-# How to Use terraform-docs to Generate Documentation for OpenTofu
+# How to Use Terradocs to Generate Documentation for OpenTofu
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTofu, terraform-docs, Documentation, Infrastructure as Code, IaC, Automation, Developer Experience
+Tags: OpenTofu, Documentation, Infrastructure as Code, IaC, Automation, Developer Experience
 
 Description: Learn how to use terraform-docs to automatically generate documentation from OpenTofu module inputs and outputs.
 

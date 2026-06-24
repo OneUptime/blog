@@ -1,10 +1,10 @@
-# How to Use Execution Environments with AWX/Automation Controller
+# How to Use Execution Environments with AWX/Tower
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, AWX, Ansible Automation Platform, Execution Environments, Automation
+Tags: Ansible, AWX, Ansible Tower, Execution Environments, Automation
 
-Description: Configure AWX and Ansible Automation Platform to use custom Execution Environments for job templates, workflows, and project defaults.
+Description: Configure AWX and Ansible Automation Platform to use custom Execution Environments for job templates, workflows, and project updates.
 
 ---
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: ClickHouse, SQL, Aggregate Function, boundingRatio, Slope
 
-Description: Compute a slope approximation for any (x, y) dataset using boundingRatio() in ClickHouse, which returns the slope of the line between the leftmost (min x) and rightmost (max x) points in a group.
+Description: Compute a slope approximation for any (x, y) dataset using boundingRatio() in ClickHouse, which returns (max_y - min_y) / (max_x - min_x) over a group.
 
 ---
 

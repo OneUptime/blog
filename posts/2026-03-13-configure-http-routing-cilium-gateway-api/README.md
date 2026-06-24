@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Cilium, Kubernetes, HTTP, Gateway API, Routing, Ingress
 
-Description: Configure HTTP routing in Cilium's Gateway API using HTTPRoute resources with path matching, header matching, and traffic splitting.
+Description: Configure HTTP routing in Cilium's Gateway API using HTTPRoute resources with path matching, header filtering, and traffic splitting.
 
 ---
 

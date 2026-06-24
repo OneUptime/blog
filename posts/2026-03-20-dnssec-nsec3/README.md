@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: DNSSEC, NSEC3, DNS, IPv6, Zone Enumeration Prevention, Security
 
-Description: Configure DNSSEC NSEC3 authenticated denial of existence to make trivial zone walking harder for IPv6 DNS zones, with correct parameter selection and operational considerations.
+Description: Configure DNSSEC NSEC3 authenticated denial of existence to prevent zone enumeration of IPv6 DNS zones, with correct parameter selection and operational considerations.
 
 ## NSEC vs NSEC3
 

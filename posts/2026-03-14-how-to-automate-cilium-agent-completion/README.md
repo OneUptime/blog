@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Cilium, Automation, CLI
 
-Description: A practical guide covering how to automate cilium-agent completion with step-by-step instructions and real-world examples for Kubernetes operators.
+Description: A practical guide covering how to automate cilium-agent completion with step-by-step instructions and real-world examples for production Kubernetes clusters.
 
 ---
 

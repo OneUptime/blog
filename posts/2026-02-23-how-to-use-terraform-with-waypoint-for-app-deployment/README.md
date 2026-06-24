@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Terraform, Waypoint, Application Deployment, HashiCorp, DevOps, CI/CD
 
-Description: Learn how to use Terraform with HashiCorp Waypoint Community Edition for application deployment, including building, deploying, and releasing apps across platforms.
+Description: Learn how to use Terraform with HashiCorp Waypoint for streamlined application deployment, including building, deploying, and releasing apps across platforms.
 
 ---
 

@@ -2,9 +2,9 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Chronosphere, GRPC OTLP, Gzip Compression
+Tags: OpenTelemetry, Chronosphere, GRPC OTLP, Snappy Compression
 
-Description: Configure the OpenTelemetry OTLP gRPC exporter to send metrics to Chronosphere with API token authentication and gzip compression.
+Description: Configure the OpenTelemetry OTLP gRPC exporter to send metrics to Chronosphere with API token authentication and Snappy compression.
 
 Chronosphere is a cloud-native observability platform focused on metrics management at scale. It accepts OpenTelemetry data through OTLP endpoints and supports compression methods such as gzip, Snappy, and zstd for efficient data transfer. This post covers how to configure your application to send metrics directly to Chronosphere using compression supported by the standard OpenTelemetry SDK exporters.
 

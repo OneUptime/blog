@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, MicroShift, Zero-Touch, Edge
 
-Description: Set up zero-touch provisioning for edge devices running MicroShift on RHEL 9.6.
+Description: Set up zero-touch provisioning for edge devices running MicroShift on RHEL 9.
 
 ---
 

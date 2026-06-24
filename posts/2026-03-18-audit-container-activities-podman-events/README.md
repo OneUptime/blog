@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Podman, Container, DevOps, Security, Auditing, Event, Compliance
 
-Description: Learn how to audit container activities using Podman events to maintain security compliance and track container operations.
+Description: Learn how to audit container activities using Podman events to maintain security compliance and track all container operations.
 
 ---
 

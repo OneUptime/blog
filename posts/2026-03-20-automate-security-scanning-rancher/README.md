@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rancher, Security Scanning, Trivy, Falco, CIS, Kubernetes, Vulnerability Management
 
-Description: Automate security scanning in Rancher using Trivy for container image vulnerabilities, CIS benchmark scanning for cluster hardening, Falco for runtime threat detection, and integrate findings into...
+Description: Automate security scanning in Rancher using Trivy for container image vulnerabilities, CIS benchmark scanning for cluster hardening, NeuVector for runtime scanning, and integrate findings into...
 
 ## Introduction
 

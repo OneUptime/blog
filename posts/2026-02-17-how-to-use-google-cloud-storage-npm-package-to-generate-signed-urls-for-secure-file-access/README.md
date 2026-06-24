@@ -1,10 +1,10 @@
-# How to Use the @google-cloud/storage npm Package to Generate Signed URLs
+# How to Use the google-cloud/storage npm Package to Generate Signed URLs
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GCP, Cloud Storage, Node.js, Signed URLs, Security
 
-Description: Learn how to generate signed URLs using the @google-cloud/storage npm package for temporary and secure file access without exposing your Cloud Storage bucket publicly.
+Description: Learn how to generate signed URLs using the google-cloud/storage npm package for temporary and secure file access without exposing your Cloud Storage bucket publicly.
 
 ---
 

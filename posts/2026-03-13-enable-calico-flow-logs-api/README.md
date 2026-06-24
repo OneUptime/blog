@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, Networking, Observability
 
-Description: Enable the Calico Flow Logs API to query aggregated network flow data programmatically for security auditing, compliance reporting, and custom observability integrations.
+Description: Enable the Calico Flow Logs API endpoint to query historical network flow data programmatically for security auditing, compliance reporting, and custom observability integrations.
 
 ---
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, iperf3, Network Performance, Linux
 
-Description: Learn how to use iperf3 on RHEL to measure network throughput, jitter, and performance between two hosts, including TCP and UDP testing, bidirectional tests, and interpreting results.
+Description: Learn how to use iperf3 on RHEL to measure network throughput, latency, and performance between two hosts, including TCP and UDP testing, bidirectional tests, and interpreting results.
 
 ---
 

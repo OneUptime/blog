@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Docker, Shared Memory, Performance, Container
 
-Description: Increase the shared memory (/dev/shm) size for containers in Portainer to support applications that require large shared memory allocations.
+Description: Increase the shared memory (dev/shm) size for containers in Portainer to support applications that require large shared memory allocations.
 
 ---
 

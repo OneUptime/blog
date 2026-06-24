@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, GlassFlow, Kafka, ClickHouse
 
-Description: Learn to use GlassFlow as a stream processor to transform OpenTelemetry data between Kafka and ClickHouse.
+Description: Learn to use GlassFlow as a serverless stream processor to transform OpenTelemetry data between Kafka and ClickHouse.
 
 GlassFlow is an open-source streaming ETL platform for moving data from sources such as Kafka or OTLP into ClickHouse. It sits naturally between a Kafka topic (where your OpenTelemetry Collector exports data) and ClickHouse (where you want to store processed telemetry). This approach gives you the power of stream filtering, deduplication, and field mapping without the operational burden of running Flink or Spark Streaming.
 

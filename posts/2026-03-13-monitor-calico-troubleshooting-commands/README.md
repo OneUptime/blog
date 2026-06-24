@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, Networking, Troubleshooting, Monitoring
 
-Description: Build a continuous monitoring approach using Calico troubleshooting commands as health checks, running them periodically to detect operator health issues, pod failures, and IPAM exhaustion...
+Description: Build a continuous monitoring approach using Calico troubleshooting commands as health checks, running them periodically to detect BGP peer failures, IPAM exhaustion, and policy count anomalies...
 
 ---
 

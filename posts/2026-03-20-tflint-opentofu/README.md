@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, TFLint, Linting, Code Quality, Validation
 
-Description: Learn how to set up and use tflint to lint Terraform-compatible OpenTofu configurations, catching errors, enforcing conventions, and validating provider-specific resource attributes beyond what tofu validate provides.
+Description: Learn how to set up and use tflint to lint OpenTofu configurations, catching errors, enforcing conventions, and validating provider-specific resource attributes beyond what tofu validate provides.
 
 ## Introduction
 

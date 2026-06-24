@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Dead Letter Queue, Export Failures, Data Recovery, Reliability
 
-Description: Learn how to set up dead letter queue patterns for OpenTelemetry export failures so you can reduce permanent telemetry loss, with file-based, Kafka, and S3 implementations.
+Description: Learn how to set up dead letter queues for OpenTelemetry export failures so you never permanently lose telemetry data, with file-based, Kafka, and S3 implementations.
 
 ---
 

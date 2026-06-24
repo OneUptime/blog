@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, AWS, Infrastructure as Code, IaC, CloudWatch, Monitoring
 
-Description: Learn how to create AWS CloudWatch alarms for EC2, Lambda, and RDS metrics using OpenTofu to enable proactive monitoring and automated responses.
+Description: Learn how to create AWS CloudWatch alarms for EC2, Lambda, and custom metrics using OpenTofu to enable proactive monitoring and automated responses.
 
 ## Introduction
 

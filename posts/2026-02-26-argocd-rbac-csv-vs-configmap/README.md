@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: ArgoCD, GitOps, Kubernetes, RBAC, Configuration
 
-Description: Understand the differences between the main RBAC CSV policy and additional ConfigMap policy fragments in ArgoCD, and learn which approach works best for your team.
+Description: Understand the differences between inline RBAC CSV policies and ConfigMap-based RBAC configuration in ArgoCD, and learn which approach works best for your team.
 
 ---
 

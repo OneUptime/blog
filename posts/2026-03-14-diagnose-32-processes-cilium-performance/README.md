@@ -1,10 +1,10 @@
-# Diagnosing 32-Stream Performance Bottlenecks in Cilium
+# Diagnosing 32-Process Performance Bottlenecks in Cilium
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, Performance, Multi-Stream, Scaling
+Tags: Cilium, Kubernetes, Performance, Multi-Process, Scaling
 
-Description: Learn how to diagnose performance issues when running 32 parallel iperf3 streams through Cilium's eBPF datapath, focusing on CPU scaling, map pressure, and resource distribution.
+Description: Learn how to diagnose performance issues when running 32 parallel processes through Cilium's eBPF datapath, focusing on CPU scaling, lock contention, and resource distribution.
 
 ---
 

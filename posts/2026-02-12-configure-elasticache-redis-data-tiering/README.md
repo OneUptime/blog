@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: AWS, ElastiCache, Redis, Data Tiering, Cost Optimization, Caching
 
-Description: Learn how to use ElastiCache Redis data tiering to store more data per node by automatically moving less-accessed data to SSD storage.
+Description: Learn how to use ElastiCache Redis data tiering to store up to 20 times more data per node by automatically moving less-accessed data to SSD storage.
 
 ---
 

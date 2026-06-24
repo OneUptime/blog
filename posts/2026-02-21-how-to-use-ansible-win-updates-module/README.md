@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, Window, Update, Patch Management, Security
 
-Description: Automate Windows Update patching with the Ansible win_updates module including filtering, reboots, and controlled rollouts.
+Description: Automate Windows Update patching with the Ansible win_updates module including scheduling, filtering, and controlled rollouts.
 
 ---
 

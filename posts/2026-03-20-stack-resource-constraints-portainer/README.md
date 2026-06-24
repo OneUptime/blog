@@ -1,10 +1,10 @@
-# How to Set Up Service-Level Resource Constraints in Portainer Stacks - A Practical Guide
+# How to Set Up Stack-Level Resource Constraints in Portainer - A Practical Guide
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Docker Compose, Resource Limit, Performance, Stack
 
-Description: Apply CPU and memory resource constraints to services in Portainer stacks to ensure fair resource allocation.
+Description: Apply CPU and memory resource constraints at the stack level in Portainer to ensure fair resource allocation.
 
 ## Introduction
 

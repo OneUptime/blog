@@ -1,10 +1,10 @@
-# How to Monitor IPv6 Traffic with eBPF XDP
+# How to Monitor IPv6 Traffic with eBPF Tracepoints
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: eBPF, IPv6, XDP, Linux Kernel, Monitoring
+Tags: eBPF, IPv6, Tracepoints, Linux Kernel, Monitoring
 
-Description: Use an eBPF XDP program to inspect IPv6 packets and monitor packet processing in the Linux kernel.
+Description: Use eBPF tracepoints and kprobes to monitor IPv6 socket operations, connection events, and packet processing in the Linux kernel.
 
 ## Overview
 

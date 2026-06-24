@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Collector, MongoDB, NoSQL, Database Monitoring, Metric, Performance
 
-Description: Learn how to configure the MongoDB receiver in OpenTelemetry Collector to monitor NoSQL database performance with practical YAML examples for standalone, replica set, and sharded deployments.
+Description: Learn how to configure the MongoDB receiver in OpenTelemetry Collector to monitor NoSQL database performance with practical YAML examples, replication tracking, and sharding metrics.
 
 The MongoDB receiver enables the OpenTelemetry Collector to collect performance metrics directly from MongoDB instances. This receiver provides insights into database operations, collection statistics, connections, and resource utilization, making it essential for maintaining healthy MongoDB deployments at scale.
 

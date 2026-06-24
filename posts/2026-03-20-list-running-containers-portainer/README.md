@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Docker, Container, Management, DevOps
 
-Description: View and filter running containers in connected Docker, Swarm, or Podman environments from Portainer's central interface.
+Description: View and filter all running containers across multiple environments and Docker hosts from Portainer's central interface.
 
 ## Introduction
 

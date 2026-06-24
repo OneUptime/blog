@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kafka, IPv6, Message Broker, Streaming, Cluster, KRaft, ZooKeeper
 
-Description: Configure an Apache Kafka broker cluster to use IPv6 for listeners, inter-broker communication, and client connections in KRaft mode, and in ZooKeeper-based deployments on Kafka 3.x and earlier.
+Description: Configure an Apache Kafka broker cluster to use IPv6 for listeners, inter-broker communication, and client connections in both ZooKeeper and KRaft modes.
 
 ---
 

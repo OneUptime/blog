@@ -1,10 +1,10 @@
-# How to Use the Ansible syslog_json Callback Plugin
+# How to Use the Ansible syslog Callback Plugin
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, Callback Plugins, Syslog, Logging, Monitoring
 
-Description: Configure the Ansible syslog_json callback plugin to send playbook events to syslog for centralized logging and integration with log management systems.
+Description: Configure the Ansible syslog callback plugin to send playbook events to syslog for centralized logging and integration with log management systems.
 
 ---
 

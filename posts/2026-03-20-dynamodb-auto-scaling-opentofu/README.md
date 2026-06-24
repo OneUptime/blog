@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, AWS, DynamoDB, Auto Scaling, Terraform, Infrastructure as Code, NoSQL
 
-Description: Learn how to configure DynamoDB table auto scaling for read and write capacity using OpenTofu, including target tracking policies and the CloudWatch alarms created by Application Auto Scaling.
+Description: Learn how to configure DynamoDB table auto scaling for read and write capacity using OpenTofu, including target tracking policies and CloudWatch alarms.
 
 ---
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Password, Security, Setup, Automation
 
-Description: A guide to setting a custom admin password for Portainer on first launch using multiple methods including the UI, CLI flags, files, and the Portainer API.
+Description: A guide to setting a custom admin password for Portainer on first launch using multiple methods including the UI, CLI flags, and environment variables.
 
 ## Overview
 

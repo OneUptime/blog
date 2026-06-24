@@ -1,10 +1,10 @@
-# How to Configure Azure DDoS Network Protection for Internet-Facing Workloads
+# How to Configure Azure DDoS Protection Standard for Internet-Facing Workloads
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Azure, DDoS Protection, Network Security, Internet-Facing, Azure Networking, Security, Infrastructure Protection
 
-Description: Configure Azure DDoS Network Protection to defend internet-facing workloads against volumetric and protocol DDoS attacks, and pair it with WAF for application-layer protection.
+Description: Configure Azure DDoS Protection Standard to defend internet-facing workloads against volumetric, protocol, and application-layer DDoS attacks.
 
 ---
 

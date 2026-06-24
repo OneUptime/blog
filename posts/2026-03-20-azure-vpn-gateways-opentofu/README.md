@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Azure, VPN Gateway, Networking, Hybrid Cloud, Infrastructure as Code
 
-Description: Learn how to create Azure VPN Gateways for site-to-site connectivity using OpenTofu.
+Description: Learn how to create Azure VPN Gateways for site-to-site and point-to-site connectivity using OpenTofu.
 
 ## Introduction
 

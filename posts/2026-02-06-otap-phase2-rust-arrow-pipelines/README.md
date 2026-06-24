@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, OTAP, Rust, Apache Arrow
 
-Description: Use the OTAP Phase 2 Rust libraries to build end-to-end Arrow-native telemetry pipelines with lower-copy processing.
+Description: Use the OTAP Phase 2 Rust libraries to build end-to-end Arrow-native telemetry pipelines with zero-copy performance.
 
 The OTel Arrow Protocol (OTAP) Phase 2 introduces Rust libraries for working with Arrow-encoded telemetry data natively. Instead of converting between protobuf objects and Arrow at every hop, these libraries let you build pipelines where data can stay in OTAP records from ingestion through processing. This reduces serialization overhead and enables lower-copy processing, which is a significant performance improvement for high-throughput telemetry systems.
 

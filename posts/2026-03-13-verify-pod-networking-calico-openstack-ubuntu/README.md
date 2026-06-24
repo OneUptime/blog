@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, OpenStack, Ubuntu, Networking, Verification
 
-Description: A guide to verifying that Calico is correctly providing instance networking for virtual machines in an Ubuntu-based OpenStack deployment.
+Description: A guide to verifying that Calico is correctly providing networking for virtual machines in an Ubuntu-based OpenStack deployment.
 
 ---
 

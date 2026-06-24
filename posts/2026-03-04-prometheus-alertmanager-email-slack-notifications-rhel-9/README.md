@@ -1,10 +1,10 @@
-# How to Set Up Basic Monitoring Tools on RHEL 9
+# How to Set Up Prometheus Alertmanager for Notifications on RHEL 9
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, Prometheus, Monitoring
+Tags: RHEL, Prometheus, Alertmanager, Notification
 
-Description: Configure basic monitoring tools on RHEL 9.
+Description: Configure Prometheus Alertmanager on RHEL 9 for email and Slack alert notifications.
 
 ---
 

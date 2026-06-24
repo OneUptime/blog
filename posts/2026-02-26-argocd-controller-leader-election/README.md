@@ -1,10 +1,10 @@
-# How to Handle ArgoCD Controller Sharding
+# How to Handle ArgoCD Controller Leader Election
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: ArgoCD, GitOps, Kubernetes, High Availability, Leader Election
 
-Description: Learn how ArgoCD application controller sharding works, how to configure it properly, and how to troubleshoot common scaling issues in HA deployments.
+Description: Learn how ArgoCD application controller leader election works, how to configure it properly, and how to troubleshoot common leader election issues in HA deployments.
 
 ---
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: IPv6, HAProxy, Kubernetes, Ingress, Load Balancer, Dual-Stack
 
-Description: Configure HAProxy Ingress Controller in Kubernetes to accept IPv6 connections, configure dual-stack load balancer services, and handle IPv6 client IP forwarding with HAProxy headers or PROXY protocol.
+Description: Configure HAProxy Ingress Controller in Kubernetes to accept IPv6 connections, configure dual-stack load balancer services, and handle IPv6 client IP forwarding with trusted proxy configuration.
 
 ## Introduction
 

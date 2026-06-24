@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: IPv6, Compliance Testing, Operating System, Linux, Windows, macOS
+Tags: IPv6, Compliance Testing, Operating System, Linux, Window, macOS
 
 Description: Test operating system IPv6 stack compliance including address assignment, ICMPv6 behavior, SLAAC, DHCPv6, privacy extensions, and socket API support.
 

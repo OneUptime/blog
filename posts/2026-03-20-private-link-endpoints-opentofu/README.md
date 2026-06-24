@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: AWS, OpenTofu, PrivateLink, VPC Endpoints, Security, Networking
 
-Description: Learn how to create and manage AWS VPC endpoints using OpenTofu, including PrivateLink-powered interface endpoints and gateway endpoints, to access AWS services and third-party APIs without traversing the public internet.
+Description: Learn how to create and manage AWS PrivateLink VPC endpoints using OpenTofu to access AWS services and third-party APIs without traversing the public internet.
 
 ## What is AWS PrivateLink?
 

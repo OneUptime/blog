@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GitLab CI, Compliance, Security, CI/CD, DevOps
 
-Description: Learn how to enforce compliance in GitLab CI using compliance pipelines, compliance frameworks, and protected branches.
+Description: Learn how to enforce compliance in GitLab CI using compliance pipelines, templates, and protected branches.
 
 ---
 

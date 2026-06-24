@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Terraform, Testing, Unit Test, Infrastructure as Code, HCL
 
-Description: Learn how to write unit tests for Terraform using the native test framework introduced in Terraform 1.6, including test file structure, assertions, and plan-mode tests.
+Description: Learn how to write unit tests for Terraform using the native test framework introduced in Terraform 1.6, including test file structure, assertions, and mock providers.
 
 ---
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, Filter, Template, Jinja2, Configuration Management
 
-Description: Learn how to use the comment filter in Ansible to wrap text in language-specific comment syntax for configuration files.
+Description: Learn how to use the comment filter in Ansible to automatically wrap text in language-specific comment syntax for any configuration format.
 
 ---
 

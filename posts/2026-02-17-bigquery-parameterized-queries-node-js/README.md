@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GCP, BigQuery, Node.js, SQL, Google Cloud
 
-Description: A practical guide to running parameterized queries in BigQuery from Node.js using the @google-cloud/bigquery library to prevent SQL injection and improve maintainability.
+Description: A practical guide to running parameterized queries in BigQuery from Node.js using the google-cloud/bigquery library to prevent SQL injection and improve performance.
 
 ---
 

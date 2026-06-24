@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Windows, Networking, CNI, Verification
+Tags: Calico, Kubernetes, Window, Networking, CNI, Verification
 
 Description: A guide to verifying Calico pod networking on Windows nodes, including cross-OS connectivity between Windows and Linux pods.
 

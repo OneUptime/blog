@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, Python, Microservice, Deployment
 
-Description: Deploy Python microservices with Ansible including system dependencies, systemd service setup, and health checks.
+Description: Deploy multiple Python microservices with Ansible including service discovery, health checks, and coordinated rolling updates.
 
 ---
 

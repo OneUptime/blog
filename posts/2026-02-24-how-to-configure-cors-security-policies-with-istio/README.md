@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Istio, CORS, Security, Kubernetes, Service Mesh
 
-Description: Learn how to configure Cross-Origin Resource Sharing (CORS) policies using Istio VirtualService to control which browser-based cross-origin responses are exposed to frontend applications.
+Description: Learn how to configure Cross-Origin Resource Sharing (CORS) security policies using Istio VirtualService to protect your microservices from unauthorized cross-origin requests.
 
 ---
 

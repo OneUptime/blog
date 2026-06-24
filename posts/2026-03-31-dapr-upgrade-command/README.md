@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Dapr, CLI, Upgrade, Kubernetes, Version Management
 
-Description: Learn how to use the dapr upgrade command to upgrade the Dapr control plane on Kubernetes to a newer version.
+Description: Learn how to use the dapr upgrade command to upgrade the Dapr runtime on Kubernetes or in self-hosted mode to a newer version.
 
 ---
 

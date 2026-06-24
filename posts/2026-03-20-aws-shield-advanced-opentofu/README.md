@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, AWS, Shield Advanced, DDoS Protection, Route 53, CloudFront, Infrastructure as Code
 
-Description: Learn how to configure AWS Shield Advanced with OpenTofu to protect applications against large DDoS attacks with automatic mitigation, cost protection options, and optional Shield Response Team access.
+Description: Learn how to configure AWS Shield Advanced with OpenTofu to protect applications against large DDoS attacks with automatic mitigation, cost protection, and 24/7 DDoS Response Team access.
 
 ## Introduction
 

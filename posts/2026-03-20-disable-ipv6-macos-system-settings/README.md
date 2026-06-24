@@ -1,10 +1,10 @@
-# How to Set IPv6 to Link-local Only on macOS via System Settings
+# How to Disable IPv6 on macOS via System Settings
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: IPv6, macOS, System Settings, Network Configuration, Link-local only
+Tags: IPv6, macOS, System Settings, Network Configuration, Disable IPv6
 
-Description: Step-by-step guide to limiting IPv6 to the local network on macOS using the System Settings GUI for both Wi-Fi and Ethernet connections.
+Description: Step-by-step guide to disabling IPv6 on macOS using the System Settings GUI for both Wi-Fi and Ethernet connections.
 
 ## Set IPv6 to Link-local Only via System Settings (macOS Ventura/Sonoma)
 

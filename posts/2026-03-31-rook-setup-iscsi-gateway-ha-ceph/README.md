@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ceph, iSCSI, High Availability, Gateway
+Tags: Rook, Ceph, iSCSI, High Availability, Gateway
 
 Description: Learn how to set up high-availability iSCSI gateways for Ceph using multiple gateway nodes with shared configuration and automatic failover.
 

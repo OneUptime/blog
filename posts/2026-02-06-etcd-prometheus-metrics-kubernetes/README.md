@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, etcd, Prometheus, Kubernetes, Metrics Scraping
 
-Description: Configure the OpenTelemetry Collector to scrape the etcd Prometheus metrics endpoint in Kubernetes with proper TLS and scheduling setup.
+Description: Configure the OpenTelemetry Collector to scrape the etcd Prometheus metrics endpoint in Kubernetes with proper TLS and RBAC setup.
 
 Scraping etcd metrics in Kubernetes requires special attention to TLS certificates, network access, and scheduling. etcd does not expose its metrics endpoint openly since it holds the entire cluster state. This post walks through the complete setup for getting the OpenTelemetry Collector to scrape etcd metrics in a Kubernetes environment.
 

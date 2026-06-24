@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Azure, Bastion, Kerberos, Active Directory, Authentication, RDP, Security
 
-Description: Configure Azure Bastion to use Kerberos authentication for RDP access to domain-joined Windows VMs using UPN-based domain sign-in.
+Description: Configure Azure Bastion to use Kerberos authentication for single sign-on RDP access to domain-joined Windows VMs without entering credentials manually.
 
 ---
 

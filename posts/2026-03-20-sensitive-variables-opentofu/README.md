@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Variable, Sensitive, Security, Infrastructure as Code, DevOps
 
-Description: A guide to marking OpenTofu variables as sensitive to redact secrets from normal CLI output and protect state files appropriately.
+Description: A guide to marking OpenTofu variables as sensitive to prevent secrets from appearing in logs, plan output, and state files.
 
 ## Introduction
 

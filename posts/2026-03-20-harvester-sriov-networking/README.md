@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Harvester, SR-IOV, Networking, High Performance, HCI, KubeVirt, SUSE Rancher
 
-Description: Learn how to configure SR-IOV (Single Root I/O Virtualization) in Harvester to provide VMs with near-native network performance by exposing NIC virtual functions through Harvester's PCI passthrough workflow.
+Description: Learn how to configure SR-IOV (Single Root I/O Virtualization) in Harvester to provide VMs with near-native network performance by bypassing the software switching layer.
 
 ---
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: MySQL, SQL, Date Function, Database, Query
 
-Description: Learn how to accurately calculate a person's age in MySQL using TIMESTAMPDIFF(), handling birthday edge cases correctly.
+Description: Learn how to accurately calculate a person's age in MySQL using TIMESTAMPDIFF() and DATEDIFF(), handling birthday edge cases correctly.
 
 ---
 

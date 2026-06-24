@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ceph, Rook, CephFS
 
-Description: Learn how to use ceph fs swap to exchange two CephFS filesystems, enabling blue-green filesystem deployments and easy rollbacks.
+Description: Learn how to use ceph fs swap to atomically exchange two CephFS filesystems, enabling zero-downtime migrations and blue-green filesystem deployments.
 
 ---
 

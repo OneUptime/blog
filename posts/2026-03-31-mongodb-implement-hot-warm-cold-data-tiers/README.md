@@ -113,7 +113,7 @@ In MongoDB Atlas, use Online Archive to automate cold tiering:
 
 ```javascript
 // Atlas Admin API - create online archive rule
-// POST /api/atlas/v1.0/groups/{groupId}/clusters/{clusterName}/onlineArchives
+// POST /api/atlas/v2/groups/{groupId}/clusters/{clusterName}/onlineArchives
 {
   "collName": "events",
   "criteria": {

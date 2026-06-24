@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ceph, Rook, MDS, CephFS, Autoscaling
 
-Description: Learn how to use the Ceph Manager MDS Autoscaler module to automatically manage MDS daemon deployment through the orchestrator based on file system configuration.
+Description: Learn how to use the Ceph Manager MDS Autoscaler module to automatically adjust the number of active MDS daemons based on file system workload.
 
 ---
 

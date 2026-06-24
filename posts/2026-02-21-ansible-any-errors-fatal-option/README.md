@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, Error Handling, Playbook, Deployment Safety
 
-Description: Learn how to use any_errors_fatal in Ansible to stop later playbook execution when any host fails, reducing the risk of unsafe partial deployments.
+Description: Learn how to use any_errors_fatal in Ansible to stop playbook execution immediately when any host fails, preventing partial deployments.
 
 ---
 

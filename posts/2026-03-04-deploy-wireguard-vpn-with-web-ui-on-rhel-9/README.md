@@ -1,10 +1,10 @@
-# How to Deploy WireGuard VPN on RHEL
+# How to Deploy WireGuard VPN with Web UI on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, VPN, Linux
 
-Description: Step-by-step guide on deploy wireguard vpn using Red Hat Enterprise Linux 9.
+Description: Step-by-step guide on deploy wireguard vpn with web ui using Red Hat Enterprise Linux 9.
 
 ---
 

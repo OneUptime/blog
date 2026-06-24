@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: AWS, CloudFront, S3, Multi-Region, High Availability, Content Delivery
 
-Description: Learn how to configure CloudFront with S3 Multi-Region Access Points for lowest-latency routing and failover controls with replicated S3 buckets.
+Description: Learn how to configure CloudFront with S3 Multi-Region Access Points for automatic failover and lowest-latency routing to replicated S3 buckets.
 
 ---
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: AWS, Route 53, Disaster Recovery, High Availability
 
-Description: Learn how to configure Route 53 Application Recovery Controller for readiness checks, routing controls, and controlled failover across AWS regions.
+Description: Learn how to configure Route 53 Application Recovery Controller for readiness checks, routing controls, and automated failover across AWS regions.
 
 ---
 

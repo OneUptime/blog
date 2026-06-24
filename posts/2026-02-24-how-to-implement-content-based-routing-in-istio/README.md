@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Istio, Content Routing, Traffic Management, Service Mesh, VirtualService
 
-Description: Implement content-based routing in Istio to route requests based on headers, URI paths, query parameters, and HTTP methods using VirtualService rules.
+Description: Implement content-based routing in Istio to route requests based on headers, URI paths, query parameters, and request body attributes using VirtualService rules.
 
 ---
 

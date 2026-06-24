@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Dapr, Binding, Redis, Cache, Output
 
-Description: Configure the Dapr Redis output binding to execute Redis commands from microservices for cache operations and distributed counters without the Redis client library.
+Description: Configure the Dapr Redis output binding to execute Redis commands from microservices for cache operations, distributed counters, and list management without the Redis client library.
 
 ---
 

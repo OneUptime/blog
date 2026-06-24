@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rancher, k3s, High Availability, Kubernetes, Lightweight, Edge
 
-Description: Deploy Rancher in HA mode on K3s using embedded etcd, a load balancer or VIP, and the built-in Traefik ingress controller.
+Description: Deploy Rancher in HA mode on K3s for resource-constrained environments using embedded etcd, minimal node requirements, and a simple load balancer.
 
 ## Introduction
 

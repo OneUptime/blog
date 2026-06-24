@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: IPv6, URL, HTTP, Networking, Web Development
 
-Description: Learn the correct syntax for including IPv6 addresses in URLs using square brackets as originally defined in RFC 2732 and standardized in RFC 3986, with examples across common tools and languages.
+Description: Learn the correct syntax for including IPv6 addresses in URLs using square brackets as required by RFC 2732 and RFC 3986, with examples across common tools and languages.
 
 ## Introduction
 

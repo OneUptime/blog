@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Testing, Filter, CI/CD, Infrastructure as Code
 
-Description: Learn how to use the `-filter` flag in OpenTofu to run specific test files instead of the full test suite.
+Description: Learn how to use the `-filter` flag in OpenTofu to run specific test files or individual test cases instead of the full test suite.
 
 ## Introduction
 

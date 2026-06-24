@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Cilium, Network Security, Access Logging, L7 Proxy, Observability
 
-Description: Implement secure access logging in Cilium L7 parsers that captures audit-relevant events without exposing sensitive data, with structured formatting and careful field selection.
+Description: Implement secure access logging in Cilium L7 parsers that captures audit-relevant events without exposing sensitive data, with proper log rotation, structured formatting, and tamper detection.
 
 ---
 

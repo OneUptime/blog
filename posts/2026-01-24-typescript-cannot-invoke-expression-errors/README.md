@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: TypeScript, JavaScript, Error Handling, Type Safety, Function, Debugging
 
-Description: A practical guide to understanding and fixing TypeScript errors for expressions that lack a call signature.
+Description: A practical guide to understanding and fixing 'Cannot invoke an expression whose type lacks a call signature' errors in TypeScript.
 
 ---
 

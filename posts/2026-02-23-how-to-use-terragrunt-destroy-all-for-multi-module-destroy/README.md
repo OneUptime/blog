@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Terraform, Terragrunt, Infrastructure as Code, DevOps, Teardown, Multi-Module, Automation
 
-Description: Learn how to use Terragrunt destroy-all, run-all destroy, and run --all destroy to safely tear down multi-module infrastructure in the correct reverse dependency order.
+Description: Learn how to use Terragrunt destroy-all and run-all destroy to safely tear down multi-module infrastructure in the correct reverse dependency order.
 
 ---
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, AWS, Reserved Instances, Cost Optimization, Infrastructure as Code
 
-Description: Learn how to purchase and manage AWS Reserved Instances with OpenTofu for RDS, ElastiCache, and related AWS reservation controls to reduce costs with 1 or 3-year commitments.
+Description: Learn how to purchase and manage AWS Reserved Instances with OpenTofu for RDS, ElastiCache, and other services to reduce costs with 1 or 3-year commitments.
 
 Reserved Instances (RIs) and reserved nodes provide discounted pricing for services like RDS, ElastiCache, Redshift, and Amazon OpenSearch Service in exchange for one- or three-year commitments. AWS also offers Savings Plans, including Database Savings Plans for several managed data services, but RDS and ElastiCache still have service-specific RI purchase flows you can manage with OpenTofu.
 

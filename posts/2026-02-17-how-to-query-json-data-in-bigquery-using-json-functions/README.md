@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GCP, BigQuery, JSON, SQL, Data Analysis
 
-Description: A comprehensive guide to querying JSON data in BigQuery using native JSON functions including JSON_VALUE, JSON_QUERY, JSON_VALUE_ARRAY, JSON_QUERY_ARRAY, and more with practical examples.
+Description: A comprehensive guide to querying JSON data in BigQuery using native JSON functions including JSON_VALUE, JSON_QUERY, JSON_EXTRACT, and more with practical examples.
 
 ---
 

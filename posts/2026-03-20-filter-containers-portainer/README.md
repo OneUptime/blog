@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Docker, Container, Filtering, Management
 
-Description: Use Portainer's container list and API access to quickly find containers by state, name, image, or custom labels.
+Description: Use Portainer's filtering capabilities to quickly find containers by status, name, image, or custom labels.
 
 ## Introduction
 

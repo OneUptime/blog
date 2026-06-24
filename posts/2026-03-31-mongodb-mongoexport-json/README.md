@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: MongoDB, Mongoexport, JSON, Export, Data Pipeline
 
-Description: Learn how to use mongoexport to export MongoDB collections to JSON files, including field selection, query filters, and Extended JSON types.
+Description: Learn how to use mongoexport to export MongoDB collections to JSON files, including field selection, query filters, aggregation output, and Extended JSON types.
 
 ---
 

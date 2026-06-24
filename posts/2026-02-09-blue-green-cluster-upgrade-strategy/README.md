@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Upgrade, Zero-Downtime
 
-Description: Master blue-green cluster upgrade strategies for Kubernetes with complete implementation guide including traffic shifting, DNS updates, and fast rollback procedures for zero-downtime upgrades.
+Description: Master blue-green cluster upgrade strategies for Kubernetes with complete implementation guide including traffic shifting, DNS updates, and automated rollback procedures for zero-downtime upgrades.
 
 ---
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Cloudflare Workers, Edge Computing, Serverless, Tracing, Observability, JavaScript
 
-Description: A practical guide to instrumenting Cloudflare Workers with OpenTelemetry for distributed tracing at the edge.
+Description: A practical guide to instrumenting Cloudflare Workers with OpenTelemetry for distributed tracing and metrics collection at the edge.
 
 ---
 

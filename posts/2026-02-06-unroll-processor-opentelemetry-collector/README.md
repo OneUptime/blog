@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Collector, Processor, Unroll, Array Attributes, Data Transformation
 
-Description: Master the Unroll processor in OpenTelemetry Collector to expand array log bodies into multiple log records for easier querying and analysis.
+Description: Master the Unroll processor in OpenTelemetry Collector to flatten array attributes into multiple telemetry records for easier querying and analysis.
 
 The Unroll processor addresses a common challenge in log data: handling array-valued log bodies. Some log receivers or transform rules can produce a single log record whose body is a list. The Unroll processor expands each element of that list into a separate log record, transforming one log record with an array body into multiple log records with scalar or structured bodies.
 

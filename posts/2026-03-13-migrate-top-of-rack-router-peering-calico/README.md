@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, BGP, ToR, Networking
 
-Description: Safely plan a Calico cluster migration to top-of-rack BGP peering while minimizing workload disruption.
+Description: Safely migrate a Calico cluster to top-of-rack BGP peering from overlay networking without workload disruption.
 
 ---
 

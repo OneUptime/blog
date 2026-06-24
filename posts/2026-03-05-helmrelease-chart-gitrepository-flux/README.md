@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Flux CD, GitOps, Kubernetes, Helm, HelmRelease, GitRepository, Chart Source
 
-Description: Learn how to configure a HelmRelease to source Helm charts directly from a GitRepository in Flux CD using a chart template.
+Description: Learn how to configure a HelmRelease to source Helm charts directly from a GitRepository in Flux CD using the chartRef field.
 
 ---
 

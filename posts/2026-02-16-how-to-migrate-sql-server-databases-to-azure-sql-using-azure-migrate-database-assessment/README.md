@@ -2,9 +2,9 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure Migrate, SQL Server, Azure SQL, Database Migration, Cloud Migration, SSMS, Assessment
+Tags: Azure Migrate, SQL Server, Azure SQL, Database Migration, Cloud Migration, DMA, Assessment
 
-Description: Learn how to assess and migrate on-premises SQL Server databases to Azure SQL using Azure Migrate database assessment tools and SQL Server Management Studio.
+Description: Learn how to assess and migrate on-premises SQL Server databases to Azure SQL using Azure Migrate database assessment tools and Data Migration Assistant.
 
 ---
 

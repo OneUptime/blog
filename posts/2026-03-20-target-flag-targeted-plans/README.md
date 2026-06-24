@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Infrastructure as Code, Terraform, IaC, DevOps
 
-Description: Learn how to use the OpenTofu -target flag to focus plan and apply operations on specific resources or modules and their dependencies, and understand when this is appropriate.
+Description: Learn how to use the OpenTofu -target flag to limit plan and apply operations to specific resources or modules, and understand when this is appropriate.
 
 ## Introduction
 

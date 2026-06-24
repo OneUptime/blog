@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Secrets Management, Security, Infrastructure as Code, Best Practice
 
-Description: Learn the key strategies for keeping secrets out of OpenTofu configuration files and routine plan/apply output, and for handling state safely - including environment variables, secret managers, and sensitive variable marking.
+Description: Learn the key strategies for keeping secrets out of OpenTofu configuration files, plan output, and state - including environment variables, secret managers, and sensitive variable marking.
 
 ## Introduction
 

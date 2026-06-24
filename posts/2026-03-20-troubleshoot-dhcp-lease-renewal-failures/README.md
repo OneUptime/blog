@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: DHCP, Troubleshooting, Networking, Lease Renewal, Sysadmin
 
-Description: DHCP lease renewal failures occur when the client cannot renew or rebind before expiry, leading to address loss and network loss, resolved by diagnosing connectivity, firewall rules, and server...
+Description: DHCP lease renewal failures occur when the client cannot reach the server at T1 or T2, leading to address expiry and network loss, resolved by diagnosing connectivity, firewall rules, and server...
 
 ## Understanding the Renewal Timeline
 

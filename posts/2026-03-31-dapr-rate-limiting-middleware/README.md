@@ -62,7 +62,7 @@ The token bucket refills at `maxRequestsPerSecond` tokens per second. Each reque
 
 Example response when rate limit is exceeded:
 
-```
+```text
 HTTP/1.1 429 Too Many Requests
 X-Rate-Limit-Limit: 100
 X-Rate-Limit-Duration: 1

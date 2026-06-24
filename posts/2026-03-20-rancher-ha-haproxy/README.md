@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rancher, High Availability, HAProxy, Load Balancing
 
-Description: Configure HAProxy as the load balancer for Rancher HA deployments with Rancher's recommended Layer 4 forwarding, optional external TLS termination, and support for long-lived WebSocket connections.
+Description: Configure HAProxy as the load balancer for Rancher HA deployments with health checks, SSL passthrough, and WebSocket support for reliable cluster management.
 
 ## Introduction
 

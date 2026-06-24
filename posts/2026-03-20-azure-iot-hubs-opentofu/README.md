@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Azure, IoT Hub, IoT, Device Management, Infrastructure as Code
 
-Description: Learn how to create Azure IoT Hubs, configure shared access policies and consumer groups on the built-in Event Hubs-compatible endpoint, and set up message routing to Storage using OpenTofu.
+Description: Learn how to create Azure IoT Hubs, configure device endpoints, and set up message routing to Event Hubs and Storage using OpenTofu.
 
 ## Introduction
 

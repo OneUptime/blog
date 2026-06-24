@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, Network Policy, Encryption, WireGuard, Security
 
-Description: Log Audit Calico WireGuard encrypted pod traffic to ensure inter-node pod communication is encrypted in transit.
+Description: Log Audit Calico WireGuard encrypted pod traffic to ensure all inter-pod communication is encrypted in transit.
 
 ---
 

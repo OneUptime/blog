@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: DHCP, pfSense, Networking, Firewall, Sysadmin
 
-Description: pfSense's built-in DHCP service provides a web UI for configuring address pools, static mappings, and options per interface, making it easy to manage DHCP alongside firewall and routing...
+Description: pfSense's built-in DHCP server (based on ISC dhcpd) provides a web UI for configuring scopes, reservations, and options per interface, making it easy to manage DHCP alongside firewall and routing...
 
 ## Enabling DHCP via the Web UI
 

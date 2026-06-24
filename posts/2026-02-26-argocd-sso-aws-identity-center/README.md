@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: ArgoCD, GitOps, Kubernetes, AWS, SSO
 
-Description: Step-by-step guide to configuring AWS Identity Center (formerly AWS SSO) as the SAML identity provider for ArgoCD on EKS and other Kubernetes clusters.
+Description: Step-by-step guide to configuring AWS Identity Center (formerly AWS SSO) as the OIDC identity provider for ArgoCD on EKS and other Kubernetes clusters.
 
 ---
 

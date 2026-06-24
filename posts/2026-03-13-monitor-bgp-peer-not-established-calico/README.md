@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, Networking, Troubleshooting
 
-Description: Monitor BGP peer session state in Calico using calicoctl or BIRD checks and Prometheus alerts for non-Established peer sessions.
+Description: Monitor BGP peer session state in Calico using BIRD metrics, calicoctl status checks, and Prometheus alerts for non-Established peer sessions.
 
 ---
 

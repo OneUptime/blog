@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: AWS, Cognito, Security, Authentication
 
-Description: Configure strong password policies in Amazon Cognito User Pools including complexity requirements, temporary passwords, and custom validation.
+Description: Configure strong password policies in Amazon Cognito User Pools including complexity requirements, temporary passwords, and custom validation with Lambda triggers.
 
 ---
 

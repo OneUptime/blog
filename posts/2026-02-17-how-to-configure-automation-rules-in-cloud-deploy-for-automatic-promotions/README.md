@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GCP, Cloud Deploy, Automation, CI/CD, DevOps
 
-Description: Set up automation rules in Google Cloud Deploy to automatically promote releases through pipeline stages, repair failed rollouts, and advance canary phases.
+Description: Set up automation rules in Google Cloud Deploy to automatically promote releases through pipeline stages, approve rollouts, and advance canary phases.
 
 ---
 

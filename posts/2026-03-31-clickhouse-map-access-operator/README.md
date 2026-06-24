@@ -1,4 +1,4 @@
-# How to Use the [] Operator for Map Access in ClickHouse
+# How to Use the -> Operator for Map Access in ClickHouse
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

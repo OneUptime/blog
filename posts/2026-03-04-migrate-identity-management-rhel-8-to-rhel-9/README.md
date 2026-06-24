@@ -1,10 +1,10 @@
-# How to Migrate Identity Management from RHEL 8 to RHEL 9
+# How to Migrate Identity Management from RHEL 8 to RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, IdM, Migration, FreeIPA, Linux
 
-Description: A practical guide to migrating your Identity Management (IdM/FreeIPA) deployment from RHEL 8 to RHEL 9, covering replica promotion, data verification, and rollback planning.
+Description: A practical guide to migrating your Identity Management (IdM/FreeIPA) deployment from RHEL 8 to RHEL, covering replica promotion, data verification, and rollback planning.
 
 ---
 

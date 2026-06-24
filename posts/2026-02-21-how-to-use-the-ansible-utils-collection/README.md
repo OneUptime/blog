@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, Utils, Data Manipulation, IP Address, DevOps
 
-Description: How to use the ansible.utils collection for data validation, IP address manipulation, path queries, and CLI output parsing in Ansible.
+Description: How to use the ansible.utils collection for data validation, IP address manipulation, JSON path queries, and CLI output parsing in Ansible.
 
 ---
 

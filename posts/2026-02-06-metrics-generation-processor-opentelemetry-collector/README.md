@@ -1,10 +1,10 @@
-# How to Configure the Span Metrics Connector in the OpenTelemetry Collector
+# How to Configure the Metrics Generation Processor in the OpenTelemetry Collector
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Collector, Connector, Metric, Trace, Observability, RED Metrics, Aggregation
+Tags: OpenTelemetry, Collector, Processor, Metric, Trace, Observability, RED Metrics, Aggregation
 
-Description: Learn how to configure the Span Metrics Connector in OpenTelemetry Collector to automatically derive RED metrics from trace spans for comprehensive observability.
+Description: Learn how to configure the Metrics Generation Processor in OpenTelemetry Collector to automatically derive RED metrics from trace spans for comprehensive observability.
 
 Traces provide detailed request-level visibility, but metrics give you the aggregated view needed for dashboards and alerts. The Span Metrics Connector bridges this gap by automatically generating metrics from trace spans. This gives you the best of both worlds: detailed traces for debugging and aggregated metrics for monitoring, without instrumenting twice.
 

@@ -1,4 +1,4 @@
-# How to Remove Roles with ansible-galaxy role remove
+# How to Remove Roles with ansible-galaxy remove
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

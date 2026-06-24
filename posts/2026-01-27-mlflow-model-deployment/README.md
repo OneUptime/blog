@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: MLflow, Machine Learning, Model Deployment, MLOps, Docker, Kubernetes, SageMaker, Python
 
-Description: Learn how to deploy machine learning models with MLflow, covering the Model Registry, deployment aliases, Docker containers, Kubernetes, and AWS SageMaker integration.
+Description: Learn how to deploy machine learning models with MLflow, covering the Model Registry, deployment stages, Docker containers, Kubernetes, and AWS SageMaker integration.
 
 ---
 

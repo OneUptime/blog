@@ -826,7 +826,7 @@ import { Controller } from "@hotwired/stimulus"
 export default class extends Controller {
   static targets = ["submit"]
 
-  // Note: avoid naming this `initialize` — that is a reserved Stimulus
+  // Note: avoid naming this `initialize` - that is a reserved Stimulus
   // lifecycle callback invoked once (with no event) when the controller is
   // constructed, which would crash when destructuring the event.
   prepare(event) {

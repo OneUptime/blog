@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, Cost Management, Anomaly Detection, SNS, Monitoring
+Tags: AWS, Cost Management, Anomaly Detection, CloudWatch, Monitoring
 
 Description: Set up AWS Cost Anomaly Detection to automatically find unexpected spending spikes, with custom monitors, alert thresholds, and integration with SNS and Slack.
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: ClickHouse, UDF, Aggregate Function, User-Defined Function, Analytics
 
-Description: Learn how to create aggregate user-defined functions in ClickHouse using C++ source extensions and combinators to build custom aggregations beyond built-in functions.
+Description: Learn how to create aggregate user-defined functions in ClickHouse using C++ plugins and combinators to build custom aggregations beyond built-in functions.
 
 ---
 

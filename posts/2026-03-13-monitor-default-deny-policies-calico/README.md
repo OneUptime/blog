@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, Network Policy, Monitoring, Prometheus, Security
 
-Description: Monitor the operational impact of Calico default deny policies using Prometheus metrics and Grafana dashboards.
+Description: Monitor the real-world impact of Calico default deny policies using Prometheus metrics, Grafana dashboards, and flow log analysis.
 
 ---
 

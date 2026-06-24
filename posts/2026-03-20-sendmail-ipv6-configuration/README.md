@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Sendmail, IPv6, Email, SMTP, Mail Server, Linux
 
-Description: Configure Sendmail to listen on and send mail over IPv6 by modifying sendmail.mc, enabling DAEMON_OPTIONS for IPv6, and updating access map settings.
+Description: Configure Sendmail to listen on and send mail over IPv6 by modifying sendmail.mc, enabling DAEMON_OPTIONS for IPv6, and updating address class settings.
 
 ## Introduction
 

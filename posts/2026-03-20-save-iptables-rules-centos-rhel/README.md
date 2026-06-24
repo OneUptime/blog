@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: iptables, CentOS, RHEL, Linux, Firewall, Persistence
 
-Description: Save iptables rules on CentOS and RHEL so they persist across reboots using the iptables service from the iptables-services or iptables-nft-services package.
+Description: Save iptables rules on CentOS and RHEL so they persist across reboots using the iptables service or iptables-services package.
 
 CentOS and RHEL handle iptables persistence differently from Ubuntu. They use the `iptables` systemd service with configuration files in `/etc/sysconfig/`, and require the `iptables-services` package on RHEL/CentOS 7 and 8 where firewalld is the default. On RHEL 9 and CentOS Stream 9, use `iptables-nft-services` for the compatibility service; Red Hat recommends firewalld or nftables for new firewall configurations.
 

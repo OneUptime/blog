@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Cisco, IPv6, Static Routes, IOS, Routing
 
-Description: Configure IPv6 static routes on Cisco IOS routers and verify them with standard show and debug commands.
+Description: Configure IPv6 static and summary routes on Cisco IOS routers including recursive and directly connected static routes.
 
 ## Overview
 

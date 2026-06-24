@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GCP, Cloud SQL, Django, PostgreSQL, Python Connector
 
-Description: Learn how to connect a Django application to Cloud SQL for PostgreSQL using the Cloud SQL Python Connector for secure, IAM-authorized database connections without IP allowlists.
+Description: Learn how to connect a Django application to Cloud SQL for PostgreSQL using the Cloud SQL Python Connector for secure, IAM-based database connections without IP allowlists.
 
 ---
 

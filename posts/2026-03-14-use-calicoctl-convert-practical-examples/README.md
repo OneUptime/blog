@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, Migration, Calicoctl, Network Policy
 
-Description: Master calicoctl convert with practical examples for converting Kubernetes NetworkPolicy to Calico format, converting to the Calico v3 API, and batch-converting resources.
+Description: Master calicoctl convert with practical examples for converting Kubernetes NetworkPolicy to Calico format, migrating between API versions, and batch-converting resources.
 
 ---
 

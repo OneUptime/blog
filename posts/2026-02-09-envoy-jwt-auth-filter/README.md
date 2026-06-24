@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Envoy, JWT, Authentication
 
-Description: Learn how to configure Envoy's JWT authentication filter to validate JSON Web Tokens issued by OAuth2/OIDC identity providers at the edge.
+Description: Learn how to configure Envoy's JWT authentication filter to validate JSON Web Tokens and implement OAuth2/OIDC authentication at the edge.
 
 ---
 

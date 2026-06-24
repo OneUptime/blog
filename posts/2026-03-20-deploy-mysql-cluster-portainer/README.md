@@ -2,9 +2,9 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Portainer, MySQL, Database Cluster, Docker Swarm, Replication, ProxySQL
+Tags: Portainer, MySQL, Database Cluster, Docker Swarm, High Availability, Replication
 
-Description: Learn how to deploy a MySQL primary-replica setup via Portainer stacks.
+Description: Learn how to deploy a highly available MySQL cluster using Group Replication or primary-replica setup via Portainer stacks.
 
 ---
 

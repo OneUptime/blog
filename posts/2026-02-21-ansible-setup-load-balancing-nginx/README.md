@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, Nginx, Load Balancing, High Availability, DevOps
 
-Description: Configure Nginx load balancing with Ansible including round-robin, least connections, IP hash, passive health checks, and session affinity.
+Description: Configure Nginx load balancing with Ansible including round-robin, least connections, IP hash, health checks, and sticky sessions.
 
 ---
 

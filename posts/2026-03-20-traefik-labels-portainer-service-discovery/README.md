@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Traefik, Service Discovery, Docker Labels, Routing
 
-Description: Learn how to use Docker labels to configure Traefik routing rules for containers deployed via Portainer, enabling automatic service discovery without per-service configuration files.
+Description: Learn how to use Docker labels to configure Traefik routing rules for containers deployed via Portainer, enabling automatic service discovery without any configuration files.
 
 ## How Traefik Label-Based Discovery Works
 

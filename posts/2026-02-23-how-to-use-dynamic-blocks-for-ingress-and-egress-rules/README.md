@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Terraform, Dynamic Blocks, Ingresses, Egress, Networking, AWS, Infrastructure as Code
 
-Description: Learn how to use Terraform dynamic blocks to manage ingress and egress rules across security groups and NACLs.
+Description: Learn how to use Terraform dynamic blocks to manage ingress and egress rules across security groups, NACLs, and load balancer listeners.
 
 ---
 

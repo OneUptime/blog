@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Troubleshooting, Variable, Error, Backend Configuration, Infrastructure as Code
 
-Description: Learn which OpenTofu settings require constant values, where input variables are allowed, and how to work around these restrictions.
+Description: Learn why OpenTofu prohibits input variables in certain contexts like backend blocks and provider meta-arguments, and how to work around these restrictions.
 
 ## Introduction
 

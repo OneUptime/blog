@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: AWS, Lambda, Serverless, Performance
 
-Description: Reduce cold start latency in AWS Lambda functions using SnapStart to capture and restore initialization snapshots for faster invocations.
+Description: Eliminate cold starts in AWS Lambda functions using SnapStart to capture and restore initialization snapshots for near-instant invocations.
 
 ---
 

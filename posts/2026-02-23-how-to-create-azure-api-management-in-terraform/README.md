@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Terraform, Azure, API Management, APIM, Infrastructure as Code, API Gateway
 
-Description: A hands-on guide to provisioning Azure API Management with Terraform, including APIs, products, policies, subscriptions, and diagnostics.
+Description: A hands-on guide to provisioning Azure API Management with Terraform, including APIs, products, policies, subscriptions, and developer portal configuration.
 
 ---
 

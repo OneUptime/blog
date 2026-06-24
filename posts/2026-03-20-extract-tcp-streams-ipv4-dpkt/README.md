@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Dpkt, TCP, IPv4, Packet Analysis, Python, Network Forensics, PCAP
 
-Description: Use the Python dpkt library to parse Ethernet PCAP files, rebuild TCP payloads from IPv4 traffic, and extract application-layer data from raw packet captures.
+Description: Use the Python dpkt library to parse PCAP files, reassemble TCP streams from IPv4 traffic, and extract application-layer data from raw packet captures.
 
 ## Introduction
 

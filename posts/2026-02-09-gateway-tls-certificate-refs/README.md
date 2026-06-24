@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Gateway API, TLS
 
-Description: Configure TLS termination in Kubernetes Gateway API with certificate references from Kubernetes Secrets, including cert-manager-managed Secrets, SNI-based routing, and multiple certificates.
+Description: Configure TLS termination in Kubernetes Gateway API with certificate references from Secrets, ConfigMaps, and cert-manager, including SNI-based routing, multiple certificates.
 
 ---
 

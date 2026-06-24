@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Terraform, Infrastructure Patterns, FedRAMP, Government, Compliance, Security, GovCloud
 
-Description: A practical guide to building FedRAMP-aligned government infrastructure with Terraform using AWS GovCloud, FIPS-validated cryptography, continuous monitoring, and NIST controls.
+Description: A practical guide to building FedRAMP-compliant government infrastructure with Terraform using AWS GovCloud, FIPS encryption, continuous monitoring, and NIST controls.
 
 ---
 

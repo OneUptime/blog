@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Redis, Set, Social Graph, Recommendation
 
-Description: Use Redis SINTER to find mutual friends between users in O(N*M) time - enable people you may know features, connection counts, and batch mutual-friend lookups.
+Description: Use Redis SINTER to find mutual friends between users in O(N) time - enable people you may know features, connection counts, and batch mutual-friend lookups.
 
 ---
 

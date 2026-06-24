@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: MikroTik, RouterOS, Static Routing, IPv4, Networking
 
-Description: Configure static IPv4 routes on MikroTik RouterOS including default gateway, specific network routes, floating static routes with distance, check-gateway failover, and policy routing.
+Description: Configure static IPv4 routes on MikroTik RouterOS including default gateway, specific network routes, floating static routes with distance, and recursive next-hops.
 
 ## Introduction
 

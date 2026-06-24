@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, Networking, Profiles, Configuration, Security
 
-Description: How to configure Calico Profile resources to define reusable labels and legacy policy rule sets applied to workload endpoints, enabling policy inheritance patterns for consistent security postures across...
+Description: How to configure Calico Profile resources to define reusable policy rule sets and labels applied to workload endpoints, enabling policy inheritance patterns for consistent security postures across...
 
 ---
 

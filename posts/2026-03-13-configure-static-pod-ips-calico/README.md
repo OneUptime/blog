@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, IPAM, Static-ip, Kubernetes, Stateful, Networking
 
-Description: Learn how to configure static IP addresses for Kubernetes pods using Calico IPAM, ensuring workloads can request the same IP when they are recreated.
+Description: Learn how to configure static, persistent IP addresses for Kubernetes pods using Calico IPAM, ensuring workloads maintain the same IP across restarts and rescheduling.
 
 ---
 

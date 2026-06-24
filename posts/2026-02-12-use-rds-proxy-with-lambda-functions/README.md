@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: AWS, RDS Proxy, Lambda, Serverless, Database
 
-Description: Learn how to use RDS Proxy with AWS Lambda to solve connection exhaustion, improve performance, and enable IAM-based proxy authentication.
+Description: Learn how to use RDS Proxy with AWS Lambda to solve connection exhaustion, improve performance, and enable IAM-based database authentication.
 
 ---
 

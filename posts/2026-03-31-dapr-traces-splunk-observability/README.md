@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Dapr, Tracing, Splunk, OpenTelemetry, Observability
 
-Description: Configure Dapr to send distributed traces to Splunk Observability Cloud using the OpenTelemetry Collector with the SAPM or OTLP/HTTP exporter.
+Description: Configure Dapr to send distributed traces to Splunk Observability Cloud using the OpenTelemetry Collector with Splunk HEC or OTLP SAPM exporter.
 
 ---
 

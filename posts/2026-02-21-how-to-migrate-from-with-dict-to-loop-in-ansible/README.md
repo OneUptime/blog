@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, Migration, Dictionaries, Automation
 
-Description: Learn how to migrate from the older with_dict syntax to the modern loop keyword with dict2items filter in Ansible playbooks.
+Description: Learn how to migrate from the legacy with_dict syntax to the modern loop keyword with dict2items filter in Ansible playbooks.
 
 ---
 

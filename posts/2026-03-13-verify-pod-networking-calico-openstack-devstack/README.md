@@ -1,4 +1,4 @@
-# How to Verify VM Networking with Calico on OpenStack DevStack
+# How to Verify Pod Networking with Calico on OpenStack DevStack
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 

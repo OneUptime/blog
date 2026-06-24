@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Terraform, Terragrunt, Infrastructure as Code, DevOps, Planning, Multi-Module
 
-Description: Learn how to use Terragrunt plan-all, run-all plan, and run --all plan to generate execution plans across multiple modules with proper dependency ordering and output management.
+Description: Learn how to use Terragrunt plan-all and run-all plan to generate execution plans across multiple modules with proper dependency ordering and output management.
 
 ---
 

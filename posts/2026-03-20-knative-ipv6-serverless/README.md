@@ -2,9 +2,9 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Knative, IPv6, Kubernetes, Serverless, Dual-Stack
+Tags: Knative, IPv6, Kubernetes, Serverless, Eventing, Dual-Stack
 
-Description: Configure Knative Serving on an IPv6-enabled Kubernetes cluster for serverless workloads.
+Description: Configure Knative Serving and Eventing on an IPv6-enabled Kubernetes cluster for serverless workloads.
 
 ## Introduction
 

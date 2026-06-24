@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: BGP, IPv6, Conditional Advertisement, Policy, BIRD
 
-Description: Implement conditional BGP advertisement for IPv6 prefixes that only announces routes when specific conditions in the BGP table are met.
+Description: Implement conditional BGP advertisement for IPv6 prefixes that only announces routes when specific conditions are met.
 
 ## Overview
 

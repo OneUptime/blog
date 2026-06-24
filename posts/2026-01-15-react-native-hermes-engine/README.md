@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: React Native, Hermes, Performance, JavaScript Engine, Mobile Development, Optimization
 
-Description: Learn how to enable and optimize the Hermes JavaScript engine in React Native for improved performance and smaller app sizes.
+Description: Learn how to enable and optimize the Hermes JavaScript engine in React Native for improved performance and smaller bundle sizes.
 
 ---
 

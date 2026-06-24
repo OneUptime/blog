@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Flux CD, GitOps, Kubernetes, Kustomize, Timeout, Reconciliation
 
-Description: Learn how to configure the spec.timeout field in a Flux Kustomization to control how long Flux waits for reconciliation operations to complete.
+Description: Learn how to configure the spec.timeout field in a Flux Kustomization to control how long Flux waits for apply and health check operations to complete.
 
 ---
 

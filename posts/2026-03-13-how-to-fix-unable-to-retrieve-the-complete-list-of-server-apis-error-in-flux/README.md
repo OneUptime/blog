@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Flux, Kubernetes, GitOps, Troubleshooting, Error Messages, API Server, CRD, API Discovery
 
-Description: Learn how to diagnose and fix the 'unable to retrieve the complete list of server APIs' error in Flux caused by broken APIService registrations or related API discovery issues.
+Description: Learn how to diagnose and fix the 'unable to retrieve the complete list of server APIs' error in Flux caused by broken API service registrations or missing CRDs.
 
 ---
 

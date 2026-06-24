@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Azure, Batch, HPC, Infrastructure as Code, Compute
 
-Description: Learn how to create Azure Batch accounts, pools, and applications for large-scale parallel batch processing workloads using OpenTofu.
+Description: Learn how to create Azure Batch accounts, pools, and jobs for large-scale parallel batch processing workloads using OpenTofu.
 
 ## Introduction
 

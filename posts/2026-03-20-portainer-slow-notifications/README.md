@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Docker, Performance, Troubleshooting, Notification
 
-Description: Resolve Portainer performance issues by clearing notification history, reviewing activity logs, and using CLI or API workarounds when the UI is slow.
+Description: Resolve Portainer performance issues where slow notification loading blocks or delays bulk container operations, stack deployments, and UI interactions.
 
 ## Introduction
 

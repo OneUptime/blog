@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Epinio, Rancher, Kubernetes, PaaS, Apps
 
-Description: Install and configure Epinio directly from the Rancher UI using Apps and Charts for a seamless developer platform setup.
+Description: Install and configure Epinio directly from the Rancher UI using the Apps & Marketplace for a seamless developer platform setup.
 
 ## Introduction
 

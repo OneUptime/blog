@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Rust, Musl, Static Linking, Development, Linux
 
-Description: Build fully static Rust binaries on RHEL using the musl libc target, producing self-contained executables that run on compatible Linux systems.
+Description: Build fully static Rust binaries on RHEL using the musl libc target, producing self-contained executables that run on any Linux distribution.
 
 ---
 

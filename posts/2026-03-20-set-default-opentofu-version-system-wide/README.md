@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Version Management, tofuenv, Asdf, Linux, macOS, Infrastructure as Code
 
-Description: Learn how to configure a default OpenTofu version with version managers or a true system-wide installation that applies when there is no local version override.
+Description: Learn how to configure a system-wide default OpenTofu version that applies to all users and projects without a local version override.
 
 ---
 

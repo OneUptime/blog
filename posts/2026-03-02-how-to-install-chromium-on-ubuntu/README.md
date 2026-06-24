@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Ubuntu, Chromium, Browser, Open Source, Desktop
 
-Description: Learn how to install Chromium browser on Ubuntu using Snap, APT, or ungoogled builds, with tips for configuration and managing the Snap vs APT versions.
+Description: Learn how to install Chromium browser on Ubuntu using APT, Snap, or by building from source, with tips for configuration and managing the Snap vs APT versions.
 
 ---
 

@@ -1,10 +1,10 @@
-# How to Use quantile() in ClickHouse
+# How to Use quantileApprox() in ClickHouse
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: ClickHouse, SQL, Aggregate Function, Quantile, Statistics
 
-Description: Learn how to use quantile() in ClickHouse to compute fast approximate quantiles using reservoir sampling, with a fixed reservoir size of 8192 for memory-bounded estimation.
+Description: Learn how to use quantileApprox() in ClickHouse to compute fast approximate quantiles using reservoir sampling, with configurable sample size for accuracy control.
 
 ---
 

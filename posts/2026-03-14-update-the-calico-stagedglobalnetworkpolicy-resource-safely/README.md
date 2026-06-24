@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, Network Policy, Staged Policy
 
-Description: A step-by-step guide to modifying Calico StagedGlobalNetworkPolicy resources in production without corrupting staged policy previews or creating risky policies for later enforcement.
+Description: A step-by-step guide to modifying Calico StagedGlobalNetworkPolicy resources in production without causing downtime or connectivity issues.
 
 ---
 

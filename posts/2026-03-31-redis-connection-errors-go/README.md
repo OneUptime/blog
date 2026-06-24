@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Redis, Go, Error Handling
 
-Description: Learn how to detect, handle, and recover from Redis connection errors in Go applications using go-redis with retries and graceful degradation.
+Description: Learn how to detect, handle, and recover from Redis connection errors in Go applications using go-redis with retries and circuit breakers.
 
 ---
 

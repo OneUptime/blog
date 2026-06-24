@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Juniper, IPv6, Traceoptions, Debugging, Junos
 
-Description: Use Juniper Junos traceoptions to debug IPv6 Neighbor Discovery and router advertisement issues with structured log output.
+Description: Use Juniper Junos traceoptions to debug IPv6 routing, NDP, and forwarding issues with structured log output.
 
 ## Overview
 

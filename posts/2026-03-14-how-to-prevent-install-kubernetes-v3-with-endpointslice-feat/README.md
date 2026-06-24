@@ -1,10 +1,10 @@
-# How to Prevent Issues with Kubernetes EndpointSlice Feature Enabled
+# How to Prevent Install Kubernetes v3 with EndpointSlice feature enabled
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Cilium, Kubernetes, Performance, Networking
 
-Description: A practical guide covering how to prevent issues with Kubernetes EndpointSlice enabled in Cilium performance with step-by-step instructions and real-world examples for production Kubern...
+Description: A practical guide covering how to prevent install kubernetes v3 with endpointslice feature enabled in cilium performance with step-by-step instructions and real-world examples for production Kubern...
 
 ---
 

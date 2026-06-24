@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubewarden, OPA, Gatekeeper, Migration, Policy as Code, Kubernetes, Admission Control, SUSE Rancher
 
-Description: Learn how to migrate Kubernetes admission policies from OPA Gatekeeper to Kubewarden, including mapping ConstraintTemplates to ClusterAdmissionPolicies and reusing or rewriting Rego logic for...
+Description: Learn how to migrate Kubernetes admission policies from OPA Gatekeeper to Kubewarden, including mapping ConstraintTemplates to ClusterAdmissionPolicies and translating Rego logic to supported...
 
 ---
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: ClickHouse, SQL, DDL, ALTER TABLE, Partition, Data Management
 
-Description: Learn how to move and replace partitions between ClickHouse tables using MOVE PARTITION TO TABLE and REPLACE PARTITION for fast, atomic data transfers.
+Description: Learn how to move and replace partitions between ClickHouse tables using MOVE PARTITION TO TABLE and REPLACE PARTITION for fast, zero-copy data transfers.
 
 ---
 

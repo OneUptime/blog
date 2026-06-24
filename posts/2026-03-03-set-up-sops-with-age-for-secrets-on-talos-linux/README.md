@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Talos Linux, SOPS, Age, Secrets Management, GitOps, Encryption
 
-Description: A practical guide to using SOPS with Age encryption for managing Kubernetes secrets on Talos Linux clusters.
+Description: A practical guide to using Mozilla SOPS with Age encryption for managing Kubernetes secrets on Talos Linux clusters.
 
 ---
 

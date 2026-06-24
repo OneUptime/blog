@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: IPv6, MTU, Windows, Network Configuration, Netsh
+Tags: IPv6, MTU, Window, Network Configuration, Netsh
 
 Description: Configure and verify IPv6 MTU settings on Windows network interfaces using netsh and PowerShell, understand MTU inheritance, and troubleshoot MTU-related issues.
 

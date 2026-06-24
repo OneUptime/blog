@@ -1,10 +1,10 @@
-# How to Install and Configure Cockpit File Manager on RHEL
+# How to Install and Configure Cockpit-Navigator File Manager on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Cockpit, Linux
 
-Description: Step-by-step guide on installing and configuring the Cockpit file manager using Red Hat Enterprise Linux 9.
+Description: Step-by-step guide on install and configure cockpit-navigator file manager using Red Hat Enterprise Linux 9.
 
 ---
 

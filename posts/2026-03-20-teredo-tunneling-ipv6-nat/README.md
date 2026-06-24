@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Teredo, IPv6, NAT, Tunneling, IPv4, Transition
 
-Description: Understand how Teredo tunneling encapsulates IPv6 packets in IPv4 UDP to traverse NAT devices, configure Teredo on Linux with miredo where a working Teredo server is available, and understand its use cases and limitations.
+Description: Understand how Teredo tunneling encapsulates IPv6 packets in IPv4 UDP to traverse NAT devices, configure Teredo on Linux with miredo, and understand its use cases and limitations.
 
 ## Introduction
 

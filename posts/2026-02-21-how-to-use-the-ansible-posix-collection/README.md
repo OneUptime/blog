@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, POSIX, Linux, System Administration, DevOps
 
-Description: Practical guide to the ansible.posix collection covering SELinux, firewalld, mount, at, sysctl, ACLs, and other POSIX system management modules.
+Description: Practical guide to the ansible.posix collection covering SELinux, firewalld, mount, cron, sysctl, ACLs, and other POSIX system management modules.
 
 ---
 

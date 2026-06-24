@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: tc, IPv4, Linux, Ingress Policing, QoS, Rate Limiting
 
-Description: Use tc ingress qdiscs and police actions to drop incoming IPv4 packets that exceed a defined rate limit, or pass them to later actions for further handling, implementing inbound traffic policing on Linux.
+Description: Use tc ingress qdiscs and police actions to drop or mark incoming IPv4 packets that exceed a defined rate limit, implementing inbound traffic policing on Linux.
 
 Ingress policing drops incoming packets that exceed a configured rate, or can pass them to later actions or filters, without buffering them (unlike shaping). It is used to enforce inbound rate limits at the earliest possible point in tc processing.
 

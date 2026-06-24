@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Troubleshooting, Lock File, Dependency, Error, Infrastructure as Code
 
-Description: Learn how to diagnose and fix the inconsistent dependency lock file error in OpenTofu, which occurs when the provider selections recorded in .terraform.lock.hcl no longer match the current configuration.
+Description: Learn how to diagnose and fix the inconsistent dependency lock file error in OpenTofu, which occurs when installed providers do not match the versions recorded in .terraform.lock.hcl.
 
 ## Introduction
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Container, Containerd, Docker, Kubernetes, DevOps, Container Runtime
 
-Description: Learn what containerd is, how it differs from Docker, why Kubernetes uses CRI-compatible runtimes directly, and when you should care about container runtimes.
+Description: Learn what containerd is, how it differs from Docker, why Kubernetes adopted it as the default runtime, and when you should care about container runtimes.
 
 ---
 

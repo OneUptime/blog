@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Azure Maps, Weather Service, Map Overlays, Real-Time Weather, Tile Layers, JavaScript, Geospatial Visualization
 
-Description: Learn how to display real-time weather overlays including radar and satellite data on Azure Maps using Weather Service tile layers.
+Description: Learn how to display real-time weather overlays including radar, satellite, and temperature data on Azure Maps using the Weather Service tile layers.
 
 ---
 

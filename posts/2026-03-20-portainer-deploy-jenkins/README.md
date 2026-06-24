@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Docker, Jenkins, CI/CD, DevOps, Self-Hosted
 
-Description: Deploy Jenkins via Portainer with persistent storage, Docker socket access for building images, and plugin installation via the setup wizard or CLI for a ready-to-use CI/CD platform.
+Description: Deploy Jenkins via Portainer with persistent storage, Docker-in-Docker support for building images, and pre-installed plugins for a ready-to-use CI/CD platform.
 
 ## Introduction
 

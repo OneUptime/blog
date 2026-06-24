@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Collector, Processor, Interval, Metric, Aggregation, Observability
 
-Description: Learn how to configure the Interval Processor in OpenTelemetry Collector to aggregate and downsample metrics at configurable intervals for reduced data volume and storage costs.
+Description: Learn how to configure the Interval Processor in OpenTelemetry Collector to aggregate and downsample metrics at configurable intervals for reduced cardinality and storage costs.
 
 High-frequency metrics can overwhelm your observability backend and drive up storage costs. The Interval Processor addresses this by aggregating metrics over configurable time windows, reducing metric export frequency while preserving the latest cumulative values for supported metric streams. This processor is particularly valuable for high-volume metrics that don't require second-by-second granularity.
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Docker, Alpine Linux, Image Optimization, Security
 
-Description: Use Alpine Linux-based Docker images in Portainer to reduce container sizes and help reduce attack surface.
+Description: Use Alpine Linux-based Docker images in Portainer to significantly reduce container sizes and improve security.
 
 ## Introduction
 

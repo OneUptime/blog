@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Secret, Configuration, AWS, Infrastructure as Code
 
-Description: Learn how to reference secrets from AWS Secrets Manager and SSM Parameter Store in OpenTofu configurations by passing secret identifiers instead of reading secret values into state.
+Description: Learn how to reference secrets from AWS Secrets Manager and SSM Parameter Store in OpenTofu configurations without storing sensitive values in state.
 
 Referencing secrets properly in OpenTofu means the secret value flows from a secrets store to its destination without appearing in your code, version control, or OpenTofu state. OpenTofu can wire the ARN, name, or ID of a secret to a service without needing the value itself.
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, Networking, Operation
 
-Description: Monitor Calico datastore migration export health by alerting on failed export jobs, tracking export file size trends, and verifying export recency meets recovery time objectives.
+Description: Monitor Calico datastore backup health by alerting on failed export CronJobs, tracking backup file size trends, and verifying backup recency meets recovery time objectives.
 
 ---
 

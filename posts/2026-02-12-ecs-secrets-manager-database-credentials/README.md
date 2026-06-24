@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: AWS, ECS, Secrets Manager, Database, Security, Credential
 
-Description: Securely inject database credentials into ECS tasks using AWS Secrets Manager with automatic rotation and no plaintext credentials in task definitions
+Description: Securely inject database credentials into ECS tasks using AWS Secrets Manager with automatic rotation and zero plaintext exposure
 
 ---
 

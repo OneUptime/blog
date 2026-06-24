@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rancher, Kubernetes, Service Mesh, Istio, Linkerd, Consul, Architecture
 
-Description: Compare common service mesh options for Rancher-managed clusters-Istio, Linkerd, Consul Connect, and the now-archived OSM-to choose the right one for your needs.
+Description: Compare the leading service mesh options for Rancher-managed clusters-Istio, Linkerd, Consul Connect, and OSM-to choose the right one for your needs.
 
 ## Introduction
 

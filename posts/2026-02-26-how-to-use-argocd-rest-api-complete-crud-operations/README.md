@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: ArgoCD, GitOps, Kubernetes, API, Automation
 
-Description: A practical guide to ArgoCD's REST API covering common create, read, update, delete, and sync operations for applications, projects, repositories, and clusters with curl examples.
+Description: A complete guide to ArgoCD's REST API covering create, read, update, and delete operations for applications, projects, repositories, and clusters with practical curl examples.
 
 ---
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: ArgoCD, GitOps, Kubernetes, VPA, Autoscaling
 
-Description: Learn how to deploy VerticalPodAutoscalers with ArgoCD to automatically right-size pod resource requests, and optionally limits, based on actual usage patterns.
+Description: Learn how to deploy VerticalPodAutoscalers with ArgoCD to automatically right-size pod resource requests and limits based on actual usage patterns.
 
 ---
 

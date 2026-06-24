@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Docker, Performance, Troubleshooting, Database Optimization
 
-Description: Reduce oversized DockerSnapshotRaw payloads stored in Portainer's database that cause large database files and UI performance degradation.
+Description: Reduce oversized DockerSnapshotRaw payloads stored in Portainer's database that cause slow API responses, large database files, and UI performance degradation.
 
 ## Introduction
 

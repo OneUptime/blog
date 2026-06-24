@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: iptables, Firewall, Linux, Security, Default Deny, IPv4
 
-Description: Configure iptables with a default deny policy for the built-in filter chains and then progressively add allow rules for required traffic, implementing a secure firewall baseline.
+Description: Configure iptables with a default deny policy for all chains and then progressively add allow rules for required traffic, implementing a secure firewall baseline.
 
 A default deny firewall policy denies all traffic unless explicitly permitted. This is the security-first approach to firewall design.
 

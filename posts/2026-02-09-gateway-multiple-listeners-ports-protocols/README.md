@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Gateway API, Networking
 
-Description: Configure a single Kubernetes Gateway with multiple listeners supporting different ports and protocols including HTTP, HTTPS, TLS passthrough, TCP, UDP, and gRPC over HTTP/HTTPS.
+Description: Configure a single Kubernetes Gateway with multiple listeners supporting different ports and protocols including HTTP, HTTPS, TLS passthrough, TCP.
 
 ---
 

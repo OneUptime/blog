@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, WireGuard, VPN, Docker, Networking, Self-Hosting, Security
 
-Description: Learn how to deploy a WireGuard VPN server via Portainer using the LinuxServer WireGuard image, which auto-generates peer configurations and QR codes for easy client setup.
+Description: Learn how to deploy a WireGuard VPN server via Portainer using the linuxserver image, which auto-generates peer configurations and QR codes for easy client setup.
 
 ---
 

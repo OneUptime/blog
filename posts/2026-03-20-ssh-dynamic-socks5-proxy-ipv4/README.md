@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: SSH, SOCKS5, Dynamic Port Forwarding, IPv4, Proxy, Tunneling
 
-Description: Configure SSH dynamic port forwarding (-D) to create a SOCKS5 proxy that routes supported application TCP connections through an IPv4 SSH server, enabling secure browsing and application proxying.
+Description: Configure SSH dynamic port forwarding (-D) to create a SOCKS5 proxy that routes all traffic through an IPv4 SSH server, enabling secure browsing and application proxying.
 
 ## Introduction
 

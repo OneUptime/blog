@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Infrastructure as Code, Terraform, IaC, DevOps, Testing
 
-Description: Learn how to use lifecycle postconditions on OpenTofu resources to validate resource attributes and state after a resource is created or modified.
+Description: Learn how to use lifecycle postconditions on OpenTofu resources to validate outputs and state after a resource is created or modified.
 
 ## Introduction
 

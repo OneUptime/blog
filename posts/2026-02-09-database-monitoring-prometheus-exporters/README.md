@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Prometheus, Database, Monitoring, Observability
 
-Description: Set up comprehensive database monitoring using Prometheus exporters on Kubernetes, including PostgreSQL, MySQL, MongoDB, and Redis metrics collection, alerting rules, and verification steps.
+Description: Set up comprehensive database monitoring using Prometheus exporters on Kubernetes, including PostgreSQL, MySQL, MongoDB, and Redis metrics collection, alerting rules, and Grafana dashboards.
 
 ---
 

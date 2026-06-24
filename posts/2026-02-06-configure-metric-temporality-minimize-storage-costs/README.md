@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Metric, Storage Optimization, Cost Optimization, Temporality
 
-Description: Reduce metric storage costs by understanding and configuring OpenTelemetry metric temporality. Learn the differences between cumulative and delta temporality and when to use each.
+Description: Reduce metric storage costs by up to 50% by understanding and configuring OpenTelemetry metric temporality. Learn the differences between cumulative and delta temporality and when to use each.
 
 Metrics are the most expensive component of observability from a storage perspective. Unlike traces, which are sampled and expire quickly, metrics accumulate continuously and are retained for extended periods. A single application emitting 1,000 time series with 1-minute resolution generates over 43 million data points monthly.
 

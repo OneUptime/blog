@@ -1,10 +1,10 @@
-# How to Install Ruby 3.3 on RHEL Using AppStream
+# How to Install Ruby 3.2 on RHEL Using AppStream
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Ruby, AppStream, Development, Linux
 
-Description: Install Ruby 3.3 on RHEL using the AppStream module system for a supported, easily maintainable Ruby installation.
+Description: Install Ruby 3.2 on RHEL using the AppStream module system for a supported, easily maintainable Ruby installation.
 
 ---
 

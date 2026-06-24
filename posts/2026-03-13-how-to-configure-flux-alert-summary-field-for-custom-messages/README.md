@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Flux, Kubernetes, GitOps, Alert, Notification, Custom Messages
 
-Description: Learn how to use the Flux Alert eventMetadata.summary field to add custom contextual messages to your notifications for faster incident response.
+Description: Learn how to use the Flux Alert summary field to add custom contextual messages to your notifications for faster incident response.
 
 ---
 

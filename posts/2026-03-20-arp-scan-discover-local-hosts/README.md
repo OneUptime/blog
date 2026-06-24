@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Arp-scan, ARP, Linux, Network Discovery, LAN, Security
 
-Description: Use arp-scan to discover active IPv4 hosts on a local network segment by sending ARP requests and collecting responses, revealing hosts that don't respond to ping.
+Description: Use arp-scan to discover all devices on a local IPv4 network segment by sending ARP requests and collecting responses, revealing hosts that don't respond to ping.
 
 arp-scan discovers hosts at Layer 2 using ARP, making it more reliable than ping-based discovery. Hosts with ICMP blocked by firewalls still respond to ARP requests, so arp-scan finds devices that appear invisible to ping sweeps.
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, IPv6, DNS, AAAA Records, BIND, Automation
 
-Description: A guide to deploying IPv6 AAAA DNS records using Ansible, covering both BIND zone file management and DNS provider APIs.
+Description: A guide to deploying IPv6 AAAA DNS records using Ansible, covering both BIND zone file management and dynamic DNS APIs.
 
 Managing IPv6 DNS records with Ansible ensures AAAA records are created, updated, and verified consistently across your DNS infrastructure. This guide covers BIND zone file management, provider modules, and dynamic DNS updates.
 

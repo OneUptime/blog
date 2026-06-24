@@ -1,10 +1,10 @@
-# How to Pull Docker Hub Images in Portainer - Images
+# How to Search Docker Hub for Images in Portainer - Images
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Portainer, Docker Hub, Image, Pull, Registry
+Tags: Portainer, Docker Hub, Image, Search, Registry
 
-Description: Pull Docker Hub images directly from the Portainer web interface.
+Description: Search Docker Hub for available images directly from the Portainer web interface.
 
 ---
 

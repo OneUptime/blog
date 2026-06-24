@@ -1,10 +1,10 @@
-# Create a Power Apps Model-Driven App with Microsoft Entra Conditional Access Policies
+# Create a Power Apps Model-Driven App with Azure AD Conditional Access Policies
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Power Apps, Model-Driven App, Microsoft Entra ID, Conditional Access, Security, Power Platform, Dataverse
+Tags: Power Apps, Model-Driven App, Azure AD, Conditional Access, Security, Power Platform, Dataverse
 
-Description: Build a Power Apps model-driven app secured with Microsoft Entra Conditional Access policies to enforce MFA, device compliance, and location-based restrictions.
+Description: Build a Power Apps model-driven app secured with Azure AD Conditional Access policies to enforce MFA, device compliance, and location-based restrictions.
 
 ---
 

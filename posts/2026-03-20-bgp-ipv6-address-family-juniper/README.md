@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: BGP, IPv6, Juniper, Junos, Routing
 
-Description: Learn how to configure BGP IPv6 unicast routing on Juniper routers using Junos OS, including neighbor configuration, prefix advertisement, and verification.
+Description: Learn how to configure BGP IPv6 unicast routing on Juniper routers using JunOS, including neighbor configuration, prefix advertisement, and verification.
 
 ## Overview
 

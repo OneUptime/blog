@@ -64,7 +64,7 @@ flowchart TB
     Internet <-->|"6to4 Encapsulated Traffic"| Gateway_B
 ```
 
-> **Important — the 6to4 anycast relay is deprecated.** RFC 7526 (2015) formally deprecated the 6to4 anycast prefix `192.88.99.0/24` and the relay address `192.88.99.1`, and IANA has marked the prefix as deprecated. The basic unicast 6to4 mechanism and the `2002::/16` prefix (RFC 3056) are *not* deprecated, but most public anycast relays have been shut down, so reaching the native IPv6 internet via `192.88.99.1` is unreliable today. Treat the relay-based examples below as suitable for lab/testing or for connecting two 6to4 sites directly (which does not need a relay), and prefer native IPv6 or a managed tunnel broker for production.
+> **Important - the 6to4 anycast relay is deprecated.** RFC 7526 (2015) formally deprecated the 6to4 anycast prefix `192.88.99.0/24` and the relay address `192.88.99.1`, and IANA has marked the prefix as deprecated. The basic unicast 6to4 mechanism and the `2002::/16` prefix (RFC 3056) are *not* deprecated, but most public anycast relays have been shut down, so reaching the native IPv6 internet via `192.88.99.1` is unreliable today. Treat the relay-based examples below as suitable for lab/testing or for connecting two 6to4 sites directly (which does not need a relay), and prefer native IPv6 or a managed tunnel broker for production.
 
 ## Prerequisites
 

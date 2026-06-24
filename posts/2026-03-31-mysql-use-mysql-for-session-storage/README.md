@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: MySQL, Session, Authentication, Security, Performance
 
-Description: Learn how to implement server-side session storage in MySQL with an optimized schema, expiry cleanup, and application integration for Node.js web frameworks.
+Description: Learn how to implement server-side session storage in MySQL with an optimized schema, expiry cleanup, and application integration for Node.js and Python web frameworks.
 
 ---
 

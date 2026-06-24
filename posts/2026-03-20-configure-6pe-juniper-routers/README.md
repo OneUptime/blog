@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: IPv6, 6PE, Juniper, Junos, MPLS, BGP, LDP
 
-Description: Configure 6PE (IPv6 Provider Edge) on Juniper routers running Junos OS, including MPLS LDP configuration, MP-BGP inet6 address family, and verification commands.
+Description: Configure 6PE (IPv6 Provider Edge) on Juniper routers running JunOS, including MPLS LDP configuration, MP-BGP inet6 address family, and verification commands.
 
 ---
 

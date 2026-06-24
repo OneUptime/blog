@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GCP, Cloud Batch, Spot VMs, Cost Optimization, Preemptible, Batch Processing, Google Cloud
 
-Description: Use Spot VMs with Google Cloud Batch to reduce batch processing costs by up to 91% while handling preemption gracefully with automatic retries.
+Description: Use Spot VMs with Google Cloud Batch to reduce batch processing costs by up to 60-91% while handling preemption gracefully with automatic retries.
 
 ---
 

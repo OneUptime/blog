@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: IPv4, DF Bit, Fragmentation, MTU, PMTUD, Linux, Networking
 
-Description: Control the Don't Fragment bit in IPv4 packets using socket options and ping, and use routing policy to test PMTUD, discover path MTU, and prevent fragmentation.
+Description: Control the Don't Fragment bit in IPv4 packets using socket options, ping, and iptables to test PMTUD, discover path MTU, and prevent fragmentation.
 
 ## Introduction
 

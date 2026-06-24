@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Flux CD, Kubernetes, GitOps, Drone CI, CI/CD, Continuous Integration
 
-Description: Deploy Drone CI runners on Kubernetes using Flux CD so your pipeline workloads run in ephemeral pods fully managed through Git.
+Description: Deploy Drone CI runners on Kubernetes using Flux CD so your pipeline workloads run in autoscaling pods fully managed through Git.
 
 ---
 

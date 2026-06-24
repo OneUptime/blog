@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Cilium, Hubble, Exporter, Security, Data Protection
 
-Description: Learn how to secure the Cilium Hubble exporter by protecting exported flow data, restricting file access, applying field masks to omit sensitive information, and encrypting data at rest.
+Description: Learn how to secure the Cilium Hubble exporter by protecting exported flow data, restricting file access, applying field masks to redact sensitive information, and encrypting data at rest.
 
 ---
 

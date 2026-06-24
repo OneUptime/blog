@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Cilium, Hubble, Exporter, Configuration, Observability
 
-Description: Learn how to configure the Cilium Hubble exporter to write flow data for external systems, including file export, filters, field masks, and rotation settings.
+Description: Learn how to configure the Cilium Hubble exporter to send flow data to external systems, including setting up export targets, configuring filters, and tuning output formats.
 
 ---
 

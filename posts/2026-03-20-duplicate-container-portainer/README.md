@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Docker, Duplicate, Clone, Container
 
-Description: Create a copy of an existing container in Portainer by duplicating its configuration and adjusting any conflicting host bindings.
+Description: Create a copy of an existing container in Portainer with the same configuration for testing or scaling.
 
 ---
 

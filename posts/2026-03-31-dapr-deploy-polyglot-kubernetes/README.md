@@ -2,9 +2,9 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Dapr, Kubernetes, Polyglot, Deployment
+Tags: Dapr, Kubernetes, Polyglot, Deployment, Helm
 
-Description: Deploy a polyglot Dapr microservices system on Kubernetes with Node.js, Python, Go, and Java services using shared component definitions.
+Description: Deploy a polyglot Dapr microservices system on Kubernetes with Node.js, Python, Go, and Java services using Helm charts and shared component definitions.
 
 ---
 

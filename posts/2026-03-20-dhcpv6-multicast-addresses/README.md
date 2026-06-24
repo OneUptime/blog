@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: DHCPv6, IPv6, Multicast, Networking, RFC 9915
+Tags: DHCPv6, IPv6, Multicast, Networking, RFC 8415
 
 Description: Understand the roles of the two DHCPv6 multicast addresses - ff02::1:2 (link-scoped) and ff05::1:3 (site-scoped) - and when each is used.
 

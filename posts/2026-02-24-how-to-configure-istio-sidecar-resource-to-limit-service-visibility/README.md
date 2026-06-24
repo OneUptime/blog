@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Istio, Sidecar, Service Mesh, Kubernetes, Security, Performance
 
-Description: Use the Istio Sidecar resource to limit which services each workload can see, reducing Envoy memory usage and supporting a least-privilege mesh design.
+Description: Use the Istio Sidecar resource to limit which services each workload can see, reducing Envoy memory usage and improving security posture.
 
 ---
 

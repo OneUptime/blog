@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, IPv6, Kubernetes, Control Plane, Networking, Troubleshooting
 
-Description: A guide to diagnosing and resolving IPv6 control plane issues in Calico, covering BGP IPv6 peering, Typha connectivity, and Kubernetes API server IPv6 communication.
+Description: A guide to diagnosing and resolving IPv6 control plane issues in Calico, covering BGP IPv6 peering, etcd IPv6 connectivity, and Kubernetes API server IPv6 communication.
 
 ---
 

@@ -1,10 +1,10 @@
-# How to Use polygonAreaCartesian() and polygonPerimeterCartesian() in ClickHouse
+# How to Use polygonArea() and polygonPerimeter() in ClickHouse
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: ClickHouse, Geospatial, polygonAreaCartesian, polygonPerimeterCartesian, Polygon, Spatial Measurement
+Tags: ClickHouse, Geospatial, polygonArea, polygonPerimeter, Polygon, Spatial Measurement
 
-Description: Learn how to compute the area and perimeter of polygons in ClickHouse using polygonAreaCartesian() and polygonPerimeterCartesian() for spatial measurement and zone analysis.
+Description: Learn how to compute the area and perimeter of polygons in ClickHouse using polygonArea() and polygonPerimeter() for spatial measurement and zone analysis.
 
 ---
 

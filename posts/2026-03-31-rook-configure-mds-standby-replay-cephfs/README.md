@@ -59,7 +59,7 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
 
 You should see output similar to:
 
-```
+```text
 myfs - 0 clients
 ====
 RANK  STATE             MDS       ACTIVITY     DNS    INOS   DIRS   CAPS

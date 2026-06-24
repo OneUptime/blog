@@ -1,10 +1,10 @@
-# How to Use Human-Readable and Machine-Readable Output in OpenTofu CLI
+# How to Use Machine and Human Readable Output Introduced in OpenTofu 1.11
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTofu, Output Format, CLI, Automation, Infrastructure as Code
+Tags: OpenTofu, Output Format, OpenTofu 1.11, CLI, Automation, Infrastructure as Code
 
-Description: Learn how to use OpenTofu's human-readable CLI output and machine-readable JSON interfaces for better CI/CD integration and operator experience.
+Description: Learn how to use the improved machine and human readable output formats introduced in OpenTofu 1.11 for better CI/CD integration and operator experience.
 
 ## Introduction
 

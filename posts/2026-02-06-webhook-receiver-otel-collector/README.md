@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Collector, Webhook, Event Ingestion
 
-Description: Configure the OpenTelemetry Collector webhook receiver to accept external event data via HTTP and convert it into logs.
+Description: Configure the OpenTelemetry Collector webhook receiver to accept external event data via HTTP and convert it into logs and traces.
 
 Many external services send notifications through webhooks, including GitHub, Stripe, PagerDuty, and countless others. The OpenTelemetry Collector can act as a webhook endpoint, receiving these events and converting them into structured telemetry data. This gives you a single pipeline for all your observability data, whether it originates from your own services or from external systems.
 

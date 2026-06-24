@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Networking, Linux, Netplan, DNS, Ubuntu, Network Configuration
 
-Description: Learn how to configure custom DNS servers and search domains on Ubuntu servers and other Linux systems that use Netplan.
+Description: Learn how to configure custom DNS servers and search domains on Ubuntu and Debian systems using Netplan.
 
 ---
 

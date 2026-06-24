@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Dapr, Agent, Multi-Agent, Coordination, Pub/Sub
 
-Description: Learn how to coordinate multiple Dapr Agents using pub/sub messaging and workflow orchestration for building scalable multi-agent AI systems.
+Description: Learn how to coordinate multiple Dapr Agents using pub/sub messaging and Dapr's actor model for building scalable multi-agent AI systems.
 
 ---
 

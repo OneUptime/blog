@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rancher, Kubernetes, Namespace, Resource Quota
 
-Description: Learn how to set Rancher project defaults and Kubernetes LimitRange policies so workloads get sensible CPU and memory defaults.
+Description: Learn how to set default container resource limits per namespace in Rancher so every pod gets sensible defaults automatically.
 
 When developers deploy workloads without specifying resource requests and limits, pods can consume unbounded resources and cause problems for other workloads. Rancher can manage project-level container defaults, and Kubernetes LimitRange objects can enforce namespace defaults so containers get sensible requests and limits. This guide shows how to set up and manage these defaults.
 

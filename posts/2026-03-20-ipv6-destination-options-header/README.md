@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: IPv6, Destination Options, Extension Headers, Networking, Protocol
 
-Description: Understand the IPv6 Destination Options extension header, its two positional meanings in the header chain, and practical options it carries including Home Address and Tunnel Encapsulation Limit.
+Description: Understand the IPv6 Destination Options extension header, its two positional meanings in the header chain, and practical options it carries including Home Address and CALIPSO.
 
 ## Introduction
 

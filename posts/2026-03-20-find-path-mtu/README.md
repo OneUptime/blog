@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: MTU, PMTUD, Networking, Linux, Tracepath, Troubleshooting
 
-Description: Discover the Path MTU (PMTU) between two hosts using tracepath, ping with DF bit, and the kernel's socket-level PMTU estimate to determine the maximum packet size.
+Description: Discover the Path MTU (PMTU) between two hosts using tracepath, ping with DF bit, and socket-level PMTU discovery to determine the maximum packet size.
 
 ## Introduction
 

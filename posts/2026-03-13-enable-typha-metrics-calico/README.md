@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, Networking, Observability
 
-Description: Enable Calico typha Prometheus metrics to monitor distribution performance and health.
+Description: Enable Calico typha Prometheus metrics on port 9093 to monitor distribution performance and health.
 
 ---
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: AWS, EKS, Kubernetes
 
-Description: Learn how to safely upgrade Amazon EKS clusters using managed node group rolling updates with automated instance replacement, graceful pod eviction, and low-disruption upgrade strategies.
+Description: Learn how to safely upgrade Amazon EKS clusters using managed node group rolling updates with automated instance replacement, graceful pod eviction, and zero-downtime upgrade strategies.
 
 ---
 

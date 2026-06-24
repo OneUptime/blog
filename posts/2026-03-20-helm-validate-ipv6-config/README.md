@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Helm, IPv6, Validation, JSON Schema, Testing
 
-Description: Add a `values.schema.json` schema and use `helm lint` to ensure IPv6 configuration in Helm charts is correct before deployment.
+Description: Add JSON schema validation and helm lint rules to ensure IPv6 configuration in Helm charts is correct before deployment.
 
 ## Overview
 

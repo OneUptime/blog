@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Shell Script, Automation, Bash, DevOps, Infrastructure as Code
 
-Description: Learn how to write shell scripts to automate repetitive OpenTofu tasks like multi-environment deployments, state manipulation, and environment bootstrapping.
+Description: Learn how to write shell scripts to automate repetitive OpenTofu tasks like multi-workspace deployments, state manipulation, and environment bootstrapping.
 
 ## Introduction
 

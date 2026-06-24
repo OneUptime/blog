@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, IPv6, Dual-Stack, Networking
 
-Description: Safely migrate a Calico cluster from IPv4-only to dual-stack by enabling IPv6 allocation and adding IPv6 pools without disrupting existing IPv4 connectivity.
+Description: Safely migrate a Calico cluster from IPv4-only to dual-stack by adding IPv6 pools without disrupting existing pods.
 
 ---
 

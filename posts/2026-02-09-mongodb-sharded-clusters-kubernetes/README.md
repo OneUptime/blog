@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, MongoDB, Database Sharding
 
-Description: Deploy and manage MongoDB sharded clusters on Kubernetes using MongoDB Controllers for Kubernetes for horizontal scaling of large datasets across multiple shard servers.
+Description: Deploy and manage MongoDB sharded clusters on Kubernetes using the Community Operator for horizontal scaling of large datasets across multiple shard servers.
 
 ---
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: iptables, Ubuntu, Linux, Firewall, Security, Installation
 
-Description: Install iptables and iptables-persistent on Ubuntu, understand the default state, and set up a basic working IPv4 firewall configuration from scratch.
+Description: Install iptables and iptables-persistent on Ubuntu, understand the default state, and set up a basic working firewall configuration from scratch.
 
 Ubuntu uses nftables as its default firewall backend on modern versions, but iptables remains widely used and available. This guide shows how to install, verify, and start using iptables on Ubuntu. If your host uses IPv6, apply equivalent rules with `ip6tables` as well because `iptables` manages IPv4 rules only.
 

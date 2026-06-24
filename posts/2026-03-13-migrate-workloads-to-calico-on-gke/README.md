@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, Networking, Migration, GKE, Google Cloud
 
-Description: Learn how to enable Calico network policy on Google Kubernetes Engine (GKE) and migrate workloads to use Kubernetes NetworkPolicy enforcement.
+Description: Learn how to enable Calico network policy on Google Kubernetes Engine (GKE) and migrate workloads to benefit from advanced network policy enforcement beyond GKE's default Calico integration.
 
 ---
 

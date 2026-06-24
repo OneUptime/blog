@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: ArgoCD, GitOps, Kubernetes, Testing, Deployment
 
-Description: Learn how to configure ArgoCD PostSync hooks to run smoke tests automatically after successful deployments, catching critical failures before they reach users.
+Description: Learn how to configure ArgoCD PostSync hooks to run smoke tests automatically after every deployment, catching critical failures before they reach users.
 
 ---
 

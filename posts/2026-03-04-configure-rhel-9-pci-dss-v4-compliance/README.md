@@ -1,10 +1,10 @@
-# How to Configure RHEL for PCI-DSS v4.0.1 Compliance
+# How to Configure RHEL for PCI-DSS v4.0 Compliance
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, PCI-DSS, Compliance, Security, Linux
 
-Description: Configure RHEL to meet PCI-DSS v4.0.1 requirements, covering encryption, access control, logging, and network security controls.
+Description: Configure RHEL to meet PCI-DSS v4.0 requirements, covering encryption, access control, logging, and network security controls.
 
 ---
 

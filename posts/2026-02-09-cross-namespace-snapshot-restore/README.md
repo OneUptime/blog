@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Storage, VolumeSnapshot, Multi-Tenancy
 
-Description: Learn how to restore volume snapshots across Kubernetes namespaces for data sharing, environment promotion, and disaster recovery scenarios using VolumeSnapshot resources.
+Description: Learn how to restore volume snapshots across Kubernetes namespaces for data sharing, environment promotion, and disaster recovery scenarios using VolumeSnapshotContent resources.
 
 ---
 

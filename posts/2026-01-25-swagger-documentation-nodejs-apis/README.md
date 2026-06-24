@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: NodeJS, Swagger, OpenAPI, Documentation, REST API
 
-Description: Generate interactive API documentation for your Node.js Express applications using Swagger UI and OpenAPI specifications generated from JSDoc annotations.
+Description: Generate interactive API documentation for your Node.js Express applications using Swagger UI and OpenAPI specification with automatic schema generation.
 
 ---
 

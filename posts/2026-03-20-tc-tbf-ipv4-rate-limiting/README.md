@@ -1,10 +1,10 @@
-# How to Set Up tc tbf (Token Bucket Filter) for Outbound Rate Limiting
+# How to Set Up tc tbf (Token Bucket Filter) for IPv4 Rate Limiting
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: tc, TBF, Linux, Rate Limiting, QoS
+Tags: tc, TBF, IPv4, Linux, Rate Limiting, QoS
 
-Description: Use the Linux tc Token Bucket Filter (TBF) qdisc to apply simple and effective outbound rate limiting on a network interface.
+Description: Use the Linux tc Token Bucket Filter (TBF) qdisc to apply simple and effective rate limiting to IPv4 traffic on a network interface.
 
 The Token Bucket Filter (TBF) is the simplest tc qdisc for rate limiting. It allows a configured rate with controlled bursting, making it suitable for applying a flat rate cap to an interface.
 

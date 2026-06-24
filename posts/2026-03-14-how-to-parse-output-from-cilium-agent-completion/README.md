@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Cilium, CLI
 
-Description: A practical guide covering how to parse output from cilium-agent completion with step-by-step instructions and real-world examples.
+Description: A practical guide covering how to parse output from cilium-agent completion with step-by-step instructions and real-world examples for production Kubernetes clusters.
 
 ---
 

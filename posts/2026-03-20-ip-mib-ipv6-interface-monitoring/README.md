@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: IP-MIB, SNMP, IPv6, Network Monitoring, RFC 4293, OID, MIB
 
-Description: Use the IP-MIB (RFC 4293) to monitor IPv6 addresses, neighbor mappings, and IP statistics on network devices and servers via SNMP.
+Description: Use the IP-MIB (RFC 4293) to monitor IPv6 addresses, routing table entries, and IP statistics on network devices and servers via SNMP.
 
 ---
 

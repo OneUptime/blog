@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Windows, Linux, Networking
+Tags: Calico, Kubernetes, Window, Linux, Networking
 
 Description: Diagnose connectivity failures between Linux and Windows pods in Calico mixed-OS deployments.
 

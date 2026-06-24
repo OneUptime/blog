@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Flux CD, GitOps, Kubernetes, Google Cloud, GKE, Cloud Source Repositories, CI/CD
 
-Description: A guide to bootstrapping Flux CD with Google Cloud Source Repositories, including SSH key configuration.
+Description: A guide to bootstrapping Flux CD with Google Cloud Source Repositories, including GKE Workload Identity integration and SSH key configuration.
 
 ---
 

@@ -1,10 +1,10 @@
-# How to Apply Tolerations to Cilium on EKS
+# How to Apply Tolerations to the Cilium EKS Add-On
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Cilium, Kubernetes, EKS, Toleration, AWS, Operation
 
-Description: Configure custom tolerations for Cilium on EKS to allow Cilium agents to schedule on tainted Linux nodes including GPU nodes, spot instances, and dedicated node groups.
+Description: Configure custom tolerations for the Cilium EKS add-on to allow Cilium agents to schedule on tainted nodes including Windows nodes, GPU nodes, and spot instances.
 
 ---
 

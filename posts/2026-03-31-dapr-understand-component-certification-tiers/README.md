@@ -1,10 +1,10 @@
-# How to Understand Dapr Component Certification Levels
+# How to Understand Dapr Component Certification Tiers
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Dapr, Component, Certification, Stability, Production
 
-Description: Learn the difference between Dapr component certification levels - Alpha, Beta, and Stable - and what each level means for production use and support guarantees.
+Description: Learn the difference between Dapr component certification tiers - Alpha, Beta, and Stable - and what each tier means for production use and support guarantees.
 
 ---
 

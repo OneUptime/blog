@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rust, Redis, Distributed Lock, Concurrency, Microservice
 
-Description: A practical guide to implementing distributed locks using Redis and Rust, covering safe lock ownership, handling edge cases, and building a production-ready locking service for your microservices.
+Description: A practical guide to implementing distributed locks using Redis and Rust, covering the Redlock algorithm, handling edge cases, and building a production-ready locking service for your microservices.
 
 ---
 

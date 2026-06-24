@@ -1,10 +1,10 @@
-# How to Fix Port-Security Filters Blocking MetalLB L2 Traffic
+# How to Fix Anti-MAC Spoofing Blocking MetalLB L2 Traffic
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, MetalLB, MAC Spoofing, Virtualization, Layer 2, Networking
 
-Description: Learn how to troubleshoot MetalLB Layer 2 traffic being blocked by virtualization port-security and anti-spoofing features.
+Description: Learn how to fix MetalLB Layer 2 traffic being blocked by anti-MAC spoofing features on hypervisors like VMware, Hyper-V, and cloud platforms.
 
 ---
 

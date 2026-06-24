@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Business Edition, S3, Backup, Automation, AWS, Data Protection
 
-Description: Learn how to configure Portainer Business Edition's built-in S3 backup scheduling to automatically store optionally encrypted backups in AWS S3 or compatible object storage.
+Description: Learn how to configure Portainer Business Edition's built-in S3 backup scheduling to automatically store encrypted backups in AWS S3 or compatible object storage.
 
 ---
 

@@ -1,10 +1,10 @@
-# Understanding ArgoCD application.yaml: Key Fields Explained
+# Understanding ArgoCD application.yaml: Every Field Explained
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: ArgoCD, GitOps, Kubernetes, YAML, Configuration
 
-Description: A comprehensive reference guide to the key fields in the ArgoCD Application YAML specification, with explanations, default values, and practical examples for common settings.
+Description: A comprehensive reference guide to every field in the ArgoCD Application YAML specification, with explanations, default values, and practical examples for each setting.
 
 ---
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: API, Rate Limiting, HTTP Headers, Node.js, Python, Express, Flask, REST API
 
-Description: A practical guide to implementing common API rate limit headers that help clients understand their usage limits, remaining quota, and when limits reset.
+Description: A practical guide to implementing standardized API rate limit headers that help clients understand their usage limits, remaining quota, and when limits reset.
 
 ---
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, L2, Networking, VXLAN, IP-in-IP, Production, Decision Framework
 
-Description: A decision framework for selecting the right Calico encapsulation mode (VXLAN, IP-in-IP, or CrossSubnet variants) for production deployments.
+Description: A decision framework for selecting the right L2 interconnect mode (VXLAN, IP-in-IP, CrossSubnet) for production Calico deployments.
 
 ---
 

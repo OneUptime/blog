@@ -2,9 +2,9 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Node.js, IPv6, Testing, Jest, Integration Test
+Tags: Node.js, IPv6, Testing, Jest, Mocha, Integration Test
 
-Description: Test IPv6 networking code in Node.js using Jest with in-process servers, parameterized tests, and conditional availability checks.
+Description: Test IPv6 networking code in Node.js using Jest and Mocha with in-process servers, parameterized tests, and conditional test skipping.
 
 ## Testing IPv6 Validation Logic
 

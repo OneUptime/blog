@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Storage, RawBlock, Database
 
-Description: Learn how to configure and use raw block volumes in Kubernetes for high-performance database workloads, bypassing the filesystem layer for lower overhead when the application supports direct block access.
+Description: Learn how to configure and use raw block volumes in Kubernetes for high-performance database workloads, bypassing the filesystem layer for maximum IOPS and lowest latency.
 
 ---
 

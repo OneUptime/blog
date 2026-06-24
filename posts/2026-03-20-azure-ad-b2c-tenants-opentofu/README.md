@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Azure, Azure AD B2C, Identity, Authentication, Infrastructure as Code
 
-Description: Learn how existing Azure Active Directory B2C customers can provision B2C tenants and configure them for customer identity and access management using OpenTofu.
+Description: Learn how to provision Azure Active Directory B2C tenants and configure them for customer identity and access management using OpenTofu.
 
 ## Introduction
 

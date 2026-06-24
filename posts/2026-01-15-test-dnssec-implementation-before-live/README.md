@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: DNSSEC, Testing, DNS, Security, QA, DevOps
 
-Description: A comprehensive guide to validating your DNSSEC configuration using industry-standard tools and procedures to prevent outages before publishing DNSSEC delegation records in production.
+Description: A comprehensive guide to validating your DNSSEC configuration using industry-standard tools and procedures to prevent outages before enabling signature validation in production.
 
 ---
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Azure, Firewall, Threat Intelligence, Security, Networking, Cyber Defense, Traffic Filtering
 
-Description: A guide to enabling and configuring Azure Firewall threat intelligence-based filtering to alert on or block traffic from known malicious IP addresses and domains.
+Description: A guide to enabling and configuring Azure Firewall threat intelligence-based filtering to automatically block traffic from known malicious IP addresses and domains.
 
 ---
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Linux, Network Bridge, STP, Spanning Tree Protocol, KVM, Networking, Performance
 
-Description: Disable Spanning Tree Protocol on a Linux bridge to eliminate STP-related forwarding delay and improve network startup time in loop-free topologies.
+Description: Disable Spanning Tree Protocol on a Linux bridge to eliminate the 30-second forwarding delay and improve network startup time in loop-free topologies.
 
 ## Introduction
 

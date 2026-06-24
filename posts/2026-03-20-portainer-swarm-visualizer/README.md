@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Docker Swarm, Visualizer, Monitoring, DevOps
 
-Description: Learn how to use Portainer's cluster visualizer to get a graphical view of task distribution across your Docker Swarm nodes.
+Description: Learn how to use Portainer's Swarm Visualizer to get a graphical view of task distribution across your Docker Swarm nodes.
 
 ## Introduction
 

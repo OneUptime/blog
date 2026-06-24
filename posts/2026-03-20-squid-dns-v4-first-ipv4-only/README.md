@@ -1,10 +1,10 @@
-# How to Configure Squid to Prefer IPv4 Connections (dns_v4_first)
+# How to Configure Squid DNS Lookups to Return IPv4 Only (dns_v4_first)
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Squid, DNS, IPv4, Dns_v4_first, Configuration, Proxy, Networking
 
-Description: Learn when Squid's `dns_v4_first` directive applies, how to prefer IPv4 on older Squid releases, and how to prevent IPv6 connections on dual-stack networks.
+Description: Learn how to configure Squid to prefer or exclusively use IPv4 DNS resolution, preventing connections to IPv6 addresses on dual-stack networks.
 
 ---
 

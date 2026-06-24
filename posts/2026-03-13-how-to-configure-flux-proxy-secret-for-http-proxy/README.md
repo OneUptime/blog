@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux, Kubernetes, GitOps, Source Controller, Authentication, Secret, Proxy, HTTP Proxy, Networking, OCI
+Tags: Flux, Kubernetes, GitOps, Source Controller, Authentication, Secret, Proxy, HTTP Proxy, Networking
 
 Description: Learn how to configure Flux CD to route source controller traffic through an HTTP proxy using a proxy secret.
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Azure, Bastion Host, Secure Access, RDP, SSH, Zero Trust, Infrastructure as Code
 
-Description: Learn how to deploy Azure Bastion Host with OpenTofu to provide secure browser-based RDP and SSH access to VMs without exposing public IPs or opening RDP/SSH to the public internet.
+Description: Learn how to deploy Azure Bastion Host with OpenTofu to provide secure browser-based RDP and SSH access to VMs without exposing public IPs or opening inbound ports.
 
 ## Introduction
 

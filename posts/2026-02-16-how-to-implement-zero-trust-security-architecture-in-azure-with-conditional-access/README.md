@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Zero Trust, Conditional Access, Security, Identity, Microsoft Entra ID, Cloud Security
+Tags: Azure, Zero Trust, Conditional Access, Security, Identity, Azure AD, Cloud Security
 
 Description: Step-by-step guide to implementing Zero Trust security architecture in Azure using Conditional Access policies, identity verification, and network controls.
 

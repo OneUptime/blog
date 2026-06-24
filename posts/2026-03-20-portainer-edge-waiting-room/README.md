@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Edge Agent, Waiting Room, Onboarding, Security
 
-Description: Manage the Portainer Edge Waiting Room to review and associate new edge devices before they become active managed environments.
+Description: Manage the Portainer Edge Waiting Room to review and approve new edge devices before they become active managed environments.
 
 ## Introduction
 

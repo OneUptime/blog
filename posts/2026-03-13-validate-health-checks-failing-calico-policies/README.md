@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, Networking, Troubleshooting
 
-Description: Validation steps to confirm health check probes are working correctly after fixing Calico host endpoint or GlobalNetworkPolicy rules including pod readiness confirmation and probe event monitoring.
+Description: Validation steps to confirm health check probes are working correctly after fixing Calico NetworkPolicy ingress rules including pod readiness confirmation and probe event monitoring.
 
 ---
 

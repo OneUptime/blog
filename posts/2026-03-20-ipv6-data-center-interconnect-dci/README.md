@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: IPv6, DCI, Data Center Interconnect, BGP, MPLS, Network Design
 
-Description: Learn how to configure IPv6 for Data Center Interconnect using MP-BGP and SRv6 to connect geographically separated data centers.
+Description: Learn how to configure IPv6 for Data Center Interconnect using BGP, MPLS, and EVPN to connect geographically separated data centers.
 
 ## What is Data Center Interconnect?
 

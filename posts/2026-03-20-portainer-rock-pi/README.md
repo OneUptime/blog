@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Rock Pi, Rockchip, ARM64, Docker, Self-Hosted, Home Lab
 
-Description: Install Docker and Portainer on Rock Pi and ROCK single-board computers powered by Rockchip processors for a capable and affordable home lab platform.
+Description: Install Docker and Portainer on Rock Pi single-board computers powered by Rockchip processors for a capable and affordable home lab platform.
 
 ## Introduction
 

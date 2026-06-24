@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, AWS, DynamoDB, Backup, PITR, Disaster Recovery, Infrastructure as Code
 
-Description: Learn how to enable DynamoDB point-in-time recovery and configure AWS Backup backup plans for DynamoDB tables using OpenTofu for comprehensive data protection.
+Description: Learn how to enable DynamoDB point-in-time recovery and configure AWS Backup for DynamoDB tables using OpenTofu for comprehensive data protection.
 
 ## Introduction
 

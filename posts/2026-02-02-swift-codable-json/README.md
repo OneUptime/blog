@@ -910,7 +910,7 @@ struct Default<Source: DefaultValue>: Codable {
 // Returning the source's default when the key is absent requires overriding
 // `decode(_:forKey:)` so the synthesized decoder does not throw on a missing key.
 extension KeyedDecodingContainer {
-    func decode<S: DefaultValue>(_ type: Default<S>.Type, forKey key: Key) throws -> Default<S> {
+    func decode<Src: DefaultValue>(_ type: Default<Src>.Type, forKey key: Key) throws -> Default<Src> {
         try decodeIfPresent(type, forKey: key) ?? Default()
     }
 }

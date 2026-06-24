@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: IBM Cloud, IPv6, VPC, Classic Infrastructure, Dual-Stack
 
-Description: Configure IPv6 on IBM Cloud classic infrastructure for dual-stack server deployments, and understand the current VPC limitation.
+Description: Configure IPv6 on IBM Cloud VPC and classic infrastructure for dual-stack server deployments.
 
 ## Introduction
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Flux, Kubernetes, GitOps, Security, Network Policies, Container Registry, OCI
 
-Description: Configure Kubernetes NetworkPolicies to restrict Flux registry egress to only your container registries and OCI artifact repositories.
+Description: Configure Kubernetes NetworkPolicies to restrict the Flux source-controller egress to only your container registries and OCI artifact repositories.
 
 ---
 

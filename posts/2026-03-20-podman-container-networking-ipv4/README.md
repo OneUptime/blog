@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Podman, Networking, IPv4, Container, Linux
+Tags: Podman, Networking, IPv4, Container, CNI, Linux
 
 Description: Configure custom IPv4 subnets for Podman containers using Podman networks to isolate workloads and control address allocation.
 

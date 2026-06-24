@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Cilium, Kubernetes, Networking, eBPF, IPAM
 
-Description: Learn how Cilium's CRD-backed cluster-pool IPAM mode uses Kubernetes Custom Resources to store and manage node PodCIDR assignments, with configuration guidance, troubleshooting, and operational monitoring.
+Description: Learn how Cilium's CRD-backed IPAM mode uses Kubernetes Custom Resources to store and manage IP address allocations, with configuration guidance, troubleshooting, and operational monitoring.
 
 ---
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Cilium, Kubernetes, Policy Language, Security, Network Policy
 
-Description: How to use advanced CiliumNetworkPolicy language features including entity selectors, service accounts, CIDR groups, and L7-aware rules for comprehensive security.
+Description: How to use advanced CiliumNetworkPolicy language features including entity selectors, service accounts, CIDR groups, and conditional rules for comprehensive security.
 
 ---
 

@@ -12,7 +12,7 @@ TypeScript has become the de facto standard for building robust React Native app
 
 ## Understanding Default vs Strict TypeScript
 
-When you initialize a new React Native project with TypeScript, you get a basic `tsconfig.json` that provides minimal type checking. This default configuration is permissive, allowing many patterns that could lead to runtime errors.
+Current React Native projects use TypeScript by default and extend React Native's shared TypeScript configuration. If your project was created with an older or custom permissive `tsconfig.json`, many patterns that could lead to runtime errors may still be allowed.
 
 ### Default TypeScript Behavior
 
@@ -94,13 +94,8 @@ Here's a comprehensive `tsconfig.json` configuration optimized for React Native 
 
 ```json
 {
+  "extends": "@react-native/typescript-config",
   "compilerOptions": {
-    // Target and Module Settings
-    "target": "esnext",
-    "module": "commonjs",
-    "lib": ["es2022"],
-    "jsx": "react-native",
-
     // Strict Type-Checking Options
     "strict": true,
     "noUncheckedIndexedAccess": true,
@@ -111,7 +106,6 @@ Here's a comprehensive `tsconfig.json` configuration optimized for React Native 
     "noPropertyAccessFromIndexSignature": true,
 
     // Module Resolution Options
-    "moduleResolution": "node",
     "allowSyntheticDefaultImports": true,
     "esModuleInterop": true,
     "resolveJsonModule": true,
@@ -129,17 +123,9 @@ Here's a comprehensive `tsconfig.json` configuration optimized for React Native 
       "@navigation/*": ["src/navigation/*"]
     },
 
-    // Output Options
-    "declaration": true,
-    "declarationMap": true,
-    "sourceMap": true,
-    "outDir": "./dist",
-
     // Additional Options
     "skipLibCheck": true,
-    "forceConsistentCasingInFileNames": true,
     "isolatedModules": true,
-    "allowJs": false,
     "noEmit": true
   },
   "include": ["src/**/*", "App.tsx", "index.js"],
@@ -329,7 +315,7 @@ const LoginForm: React.FC<FormProps> = ({ onSubmit }) => {
   const [email, setEmail] = useState<string>('');
   const [password, setPassword] = useState<string>('');
 
-  // Without noImplicitAny, 'e' would be 'any'
+  // Without noImplicitAny, 'text' would be 'any'
   // With noImplicitAny, we must specify the type
   const handleEmailChange = (text: string): void => {
     setEmail(text);
@@ -470,7 +456,7 @@ Combining TypeScript strict mode with ESLint provides an additional layer of cod
 ### Installing Dependencies
 
 ```bash
-npm install --save-dev eslint @typescript-eslint/parser @typescript-eslint/eslint-plugin eslint-plugin-react eslint-plugin-react-hooks eslint-plugin-react-native
+npm install --save-dev eslint @eslint/js typescript-eslint eslint-plugin-react eslint-plugin-react-hooks eslint-plugin-react-native
 ```
 
 ### ESLint Configuration (.eslintrc.js)
@@ -497,7 +483,7 @@ module.exports = {
     'eslint:recommended',
     'plugin:@typescript-eslint/recommended',
     'plugin:@typescript-eslint/recommended-type-checked',
-    'plugin:@typescript-eslint/strict',
+    'plugin:@typescript-eslint/strict-type-checked',
     'plugin:react/recommended',
     'plugin:react-hooks/recommended',
   ],

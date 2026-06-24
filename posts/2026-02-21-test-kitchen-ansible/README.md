@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, Testing, Test Kitchen, Chef, Integration
 
-Description: Use Test Kitchen with the Ansible provisioner to test playbooks and roles in disposable VM environments.
+Description: Use Test Kitchen with the Ansible provisioner to test playbooks and roles in disposable VM and container environments.
 
 ---
 

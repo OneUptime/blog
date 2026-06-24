@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Podman, CRIU, Live Migration, Container, DevOps
 
-Description: A comprehensive guide to live-migrating running Podman containers between hosts using CRIU, with practical workflows for low-downtime host maintenance and failover.
+Description: A comprehensive guide to live-migrating running Podman containers between hosts using CRIU, with practical workflows for zero-downtime host maintenance and failover.
 
 ---
 

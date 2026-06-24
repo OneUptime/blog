@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, SSH, Access Control, Security, Linux
 
-Description: Multiple methods to restrict SSH access on RHEL, including sshd directives, PAM access controls, and firewall rules for layered security.
+Description: Multiple methods to restrict SSH access on RHEL, including sshd directives, PAM access controls, firewall rules, and TCP wrappers for layered security.
 
 ---
 

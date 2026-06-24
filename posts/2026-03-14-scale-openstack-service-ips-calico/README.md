@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: OpenStack, Calico, Service IPs, Scaling, Networking
 
-Description: A guide to scaling OpenStack service IP management with Calico for large deployments, covering Neutron pool sizing, address allocation optimization, and service endpoint management.
+Description: A guide to scaling OpenStack service IP management with Calico for large deployments, covering IP pool sizing, address allocation optimization, and service endpoint management.
 
 ---
 

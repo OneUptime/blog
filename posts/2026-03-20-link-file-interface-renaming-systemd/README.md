@@ -1,10 +1,10 @@
-# How to Create a .link File for Interface Renaming with systemd
+# How to Create a .link File for Interface Renaming in systemd-networkd
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: systemd-networkd, .link file, Interface Renaming, Udev, Linux, Predictable Names, Networking
 
-Description: Learn how to create systemd .link files to rename network interfaces from predictable names (like ens3) to custom names (like lan0 or wan0) based on MAC address or other properties.
+Description: Learn how to create systemd-networkd .link files to rename network interfaces from predictable names (like ens3) to custom names (like eth0 or wan0) based on MAC address or other properties.
 
 ---
 

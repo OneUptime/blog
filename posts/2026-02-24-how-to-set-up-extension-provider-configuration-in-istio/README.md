@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Istio, Extension Providers, Envoy, Observability, Kubernetes
 
-Description: How to configure extension providers in Istio for custom telemetry backends and external authorization.
+Description: How to configure extension providers in Istio for custom telemetry backends, external authorization, and rate limiting.
 
 ---
 

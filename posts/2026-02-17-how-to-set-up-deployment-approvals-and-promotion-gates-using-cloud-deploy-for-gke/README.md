@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GCP, Cloud Deploy, GKE, Deployment Approvals, CI/CD, DevOps
 
-Description: Step-by-step guide to configuring Cloud Deploy delivery pipelines with approval gates, promotion workflows, and rollback for GKE deployments.
+Description: Step-by-step guide to configuring Cloud Deploy delivery pipelines with approval gates, promotion workflows, and automated rollback for GKE deployments.
 
 ---
 

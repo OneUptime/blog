@@ -1,10 +1,10 @@
-# How to Fix BLUESTORE_FREE_FRAGMENTATION Health Check in Ceph
+# How to Fix BLUESTORE_FRAGMENTATION Health Check in Ceph
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ceph, Rook, BlueStore, Fragmentation, Performance
 
-Description: Learn how to diagnose and resolve the BLUESTORE_FREE_FRAGMENTATION health warning in Ceph when BlueStore block device allocation becomes heavily fragmented.
+Description: Learn how to diagnose and resolve the BLUESTORE_FRAGMENTATION health warning in Ceph when BlueStore block device allocation becomes heavily fragmented.
 
 ---
 

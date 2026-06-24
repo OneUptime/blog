@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, Fedora, Linux, Server Configuration, Automation
 
-Description: Automate Fedora Server configuration with Ansible covering dnf5, cockpit, SELinux, firewalld, and cutting-edge package management.
+Description: Automate Fedora Server configuration with Ansible covering dnf5, cockpit, modularity streams, and cutting-edge package management.
 
 ---
 

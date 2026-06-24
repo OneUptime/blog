@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Go, Redis, Rate Limiting, API, Distributed System
 
-Description: Build a distributed rate limiter in Go using Redis with fixed window, sliding window, and token bucket algorithms for API protection.
+Description: Build a distributed rate limiter in Go using Redis with sliding window, token bucket, and leaky bucket algorithms for API protection.
 
 ---
 

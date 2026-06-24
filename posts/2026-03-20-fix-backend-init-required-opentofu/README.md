@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Troubleshooting, Backend, Initialization, Error, Infrastructure as Code
 
-Description: Learn how to resolve the 'backend initialization required' error in OpenTofu, which occurs when a backend is added or its configuration changes and requires re-initialization before OpenTofu can continue.
+Description: Learn how to resolve the 'backend initialization required' error in OpenTofu, which occurs when the backend configuration changes and requires re-initialization to migrate state.
 
 ## Introduction
 

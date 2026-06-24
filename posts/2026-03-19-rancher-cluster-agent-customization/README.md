@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rancher, Kubernetes, Cluster Templates
 
-Description: Learn how to customize Rancher cluster agent configuration for resource management, tolerations, scheduling, and related agent settings.
+Description: Learn how to customize Rancher cluster and node agent configurations for resource management, tolerations, and scheduling.
 
 Rancher deploys a cluster agent to managed clusters for communication and management. On older RKE clusters, Rancher also deploys a node agent, while Rancher-provisioned RKE2 and K3s clusters use `rancher-system-agent` for node lifecycle operations. This guide covers the supported cluster agent customization options in Rancher.
 

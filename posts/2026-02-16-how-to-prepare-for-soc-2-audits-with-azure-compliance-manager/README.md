@@ -1,10 +1,10 @@
-# How to Prepare for SOC 2 Audits with Microsoft Purview Compliance Manager
+# How to Prepare for SOC 2 Audits with Azure Compliance Manager
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Azure, SOC 2, Compliance, Audit, Security, Trust Services, Governance
 
-Description: Prepare for SOC 2 audits using Microsoft Purview Compliance Manager to assess your compliance posture, gather evidence, and implement required controls across your Azure environment.
+Description: Prepare for SOC 2 audits using Azure Compliance Manager to assess your compliance posture, gather evidence, and implement required controls across your Azure environment.
 
 ---
 

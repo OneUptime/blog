@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Azure, SQL, Failover, OpenTofu, High Availability, Disaster Recovery
 
-Description: Learn how to configure Azure SQL Failover Groups with OpenTofu for geo-replication and listener-based failover between primary and secondary SQL servers.
+Description: Learn how to configure Azure SQL Failover Groups with OpenTofu for automatic geo-replication and seamless failover between primary and secondary SQL servers.
 
 ## Overview
 

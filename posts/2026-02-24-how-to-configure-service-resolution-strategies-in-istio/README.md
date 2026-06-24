@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Istio, Service Resolution, ServiceEntry, DNS, Kubernetes
 
-Description: How to configure different service resolution strategies in Istio including DNS, DNS_ROUND_ROBIN, STATIC, and NONE modes for internal and external services.
+Description: How to configure different service resolution strategies in Istio including DNS, STATIC, and NONE modes for internal and external services.
 
 ---
 

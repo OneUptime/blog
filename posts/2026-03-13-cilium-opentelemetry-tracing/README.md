@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Cilium, Kubernetes, OpenTelemetry, Tracing, Observability
 
-Description: Export Cilium Hubble flow data with the experimental Hubble OpenTelemetry adapter to correlate network-level events with distributed traces, enabling end-to-end visibility from eBPF to application spans.
+Description: Export Cilium Hubble flow data to OpenTelemetry collectors to correlate network-level events with distributed traces, enabling end-to-end visibility from eBPF to application spans.
 
 ---
 

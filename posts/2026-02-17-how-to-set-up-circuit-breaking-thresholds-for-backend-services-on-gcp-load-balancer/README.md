@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GCP, Load Balancer, Circuit Breaking, Reliability, Backend Service
 
-Description: Learn how to configure circuit breaking thresholds on Google Cloud backend services to prevent backend overload and cascading failures in your microservices architecture.
+Description: Learn how to configure circuit breaking thresholds on GCP Load Balancer to prevent backend overload and cascading failures in your microservices architecture.
 
 ---
 

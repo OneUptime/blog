@@ -1,10 +1,10 @@
-# How to Use SELinux Deny Rules Introduced in RHEL 9.4
+# How to Use SELinux Deny Rules Introduced in RHEL.4
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, SELinux, Deny Rules, Security, Linux
 
-Description: Explore the new SELinux deny rules feature introduced in RHEL 9.4 that removes matching permissions from allow rules in the policy.
+Description: Explore the new SELinux deny rules feature introduced in RHEL.4 that provides explicit denial capabilities, overriding any allow rules in the policy.
 
 ---
 

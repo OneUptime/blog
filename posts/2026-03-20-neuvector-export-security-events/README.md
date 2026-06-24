@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: NeuVector, Security Events, Export, SIEM, Compliance
 
-Description: Learn how to export NeuVector security events using the REST API for SIEM integration, compliance reporting, and forensic analysis.
+Description: Learn how to export NeuVector security events using the REST API, syslog, and webhooks for SIEM integration, compliance reporting, and forensic analysis.
 
 ## Introduction
 

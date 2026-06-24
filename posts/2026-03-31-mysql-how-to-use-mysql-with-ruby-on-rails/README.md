@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: MySQL, Ruby on Rails, ActiveRecord, Database Configuration, Web Development
+Tags: MySQL, Ruby On Rail, ActiveRecord, Database Configuration, Web Development
 
 Description: Learn how to set up MySQL with Ruby on Rails, configure database.yml, manage schema migrations, and use ActiveRecord with MySQL-specific features.
 

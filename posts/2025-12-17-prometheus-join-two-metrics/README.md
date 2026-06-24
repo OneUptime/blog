@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Prometheus, PromQL, Vector Matching, Joins, Metric, Monitoring, Label Matching, Observability
 
-Description: Learn how to join two metrics in Prometheus using vector matching with on(), group_left(), and group_right(). This guide covers one-to-one, many-to-one, and one-to-many joins with practical examples.
+Description: Learn how to join two metrics in Prometheus using vector matching with on(), group_left(), and group_right(). This guide covers one-to-one, many-to-one, and many-to-many joins with practical examples.
 
 ---
 

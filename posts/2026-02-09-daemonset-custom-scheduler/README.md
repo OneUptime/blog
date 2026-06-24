@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, DaemonSet, Scheduler
 
-Description: Explore how to use custom schedulers with DaemonSets while keeping the DaemonSet node-per-eligible-node placement model.
+Description: Explore how to use custom schedulers with DaemonSets for advanced pod placement strategies beyond the default node-per-pod pattern.
 
 ---
 

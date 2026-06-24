@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Ephemeral Resources, Connection Blocks, SSH, WinRM, HCL, Infrastructure as Code
 
-Description: Learn how to use ephemeral values in connection blocks in OpenTofu so SSH keys and passwords are not stored in plan or state data.
+Description: Learn how to use ephemeral values in connection blocks in OpenTofu to securely pass SSH keys and passwords without storing them in state.
 
 ---
 

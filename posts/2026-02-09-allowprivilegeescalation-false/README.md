@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Security, Container Security, Privilege Escalation, Pod Security
 
-Description: Understand how to use allowPrivilegeEscalation: false in Kubernetes to prevent processes from gaining more privileges than their parent, blocking common exec-based privilege escalation paths.
+Description: Understand how to use allowPrivilegeEscalation: false in Kubernetes to prevent processes from gaining more privileges than their parent, blocking a critical container escape technique.
 
 ---
 

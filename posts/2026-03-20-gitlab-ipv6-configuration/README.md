@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GitLab, IPv6, DevOps, Git, Nginx, Linux, Self-Hosted
 
-Description: Configure GitLab to serve web UI, Git operations, and APIs over IPv6 by updating bundled Nginx listener settings, external URLs, and SSH listener configuration.
+Description: Configure GitLab to serve web UI, Git operations, and APIs over IPv6 by updating the Nginx listener configuration and external URL settings.
 
 ---
 

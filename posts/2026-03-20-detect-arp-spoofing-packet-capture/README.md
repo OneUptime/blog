@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: ARP Spoofing, Security, Scapy, Packet Capture, IPv4, Network Security, Python
 
-Description: Detect ARP spoofing (ARP poisoning) attacks on your IPv4 network by monitoring ARP traffic with Scapy and identifying conflicting IP-to-MAC mappings.
+Description: Detect ARP spoofing (ARP poisoning) attacks on your IPv4 network by monitoring ARP traffic with Scapy and identifying conflicting MAC-to-IP mappings.
 
 ## Introduction
 

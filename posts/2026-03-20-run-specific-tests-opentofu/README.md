@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Infrastructure as Code, Testing, IaC, DevOps, Terraform
 
-Description: Learn how to run specific test files and test directories in OpenTofu using the tofu test command flags and filters.
+Description: Learn how to run specific test cases, test files, and test directories in OpenTofu using the tofu test command flags and filters.
 
 ## Introduction
 

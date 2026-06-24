@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Cilium, Kubernetes, Network Policy, Kafka, eBPF
 
-Description: Enforce topic-level access control for Kafka using Cilium network policies that allow produce and consume operations per-topic without Kafka ACLs on Cilium versions that still include Kafka L7 support.
+Description: Enforce topic-level access control for Kafka using Cilium network policies that allow or deny produce and consume operations per-topic without Kafka ACLs.
 
 ---
 

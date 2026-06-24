@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: DHCP, Networking, Reservation, Static IP, Sysadmin, MAC Address
 
-Description: DHCP reservations (also called static DHCP or DHCP binding) typically assign a specific IP address to a device based on its MAC address, combining the convenience of DHCP with the predictability of a static IP.
+Description: DHCP reservations (also called static DHCP or DHCP binding) assign a specific IP address to a device based on its MAC address, combining the convenience of DHCP with the predictability of a static IP.
 
 ## What Is a DHCP Reservation?
 

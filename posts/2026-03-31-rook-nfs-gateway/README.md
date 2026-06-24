@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rook, Ceph, Kubernetes, NFS, Storage, Gateway
 
-Description: Configure the Rook-Ceph NFS gateway to expose CephFS as NFS shares accessible from Kubernetes pods and external clients.
+Description: Configure the Rook-Ceph NFS gateway to expose CephFS or RGW buckets as NFS shares accessible from Kubernetes pods and external clients.
 
 ---
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: DHCP, macOS, Networking, Network Diagnostics, Sysadmin
 
-Description: Renewing a DHCP lease on macOS can be done through System Settings, the `scutil` or `ipconfig` command line tools, or by using `networksetup` to set the target network service to DHCP.
+Description: Renewing a DHCP lease on macOS can be done through System Settings, the ipconfig command, or by using networksetup to toggle DHCP off and on for the target interface.
 
 ## Method 1: System Settings (GUI)
 

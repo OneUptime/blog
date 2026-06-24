@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rancher, Autoscaling, Cluster-autoscaler, Kubernetes, Automation
 
-Description: A guide to automating cluster scaling in Rancher using the Cluster Autoscaler, machine pool scaling through the Rancher Kubernetes API, and HPA for workload scaling.
+Description: A guide to automating cluster scaling in Rancher using the Cluster Autoscaler, node pool scaling via the API, and HPA for workload scaling.
 
 ## Overview
 

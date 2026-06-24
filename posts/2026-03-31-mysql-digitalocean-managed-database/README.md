@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: MySQL, DigitalOcean, Managed, Database, Cloud
 
-Description: Create and configure a DigitalOcean Managed MySQL database with trusted sources and read replicas using the DigitalOcean control panel or API.
+Description: Create and configure a DigitalOcean Managed MySQL database with connection pooling, trusted sources, and read replicas using the DigitalOcean control panel or API.
 
 ---
 

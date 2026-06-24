@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Windows, IPv4, Networking, Network Configuration, Static IP, Sysadmin
+Tags: Window, IPv4, Networking, Network Configuration, Static IP, Sysadmin
 
 Description: On Windows, static IPv4 addresses can be set through the GUI Network Adapter settings, via the netsh command-line tool, or using PowerShell's New-NetIPAddress cmdlet.
 

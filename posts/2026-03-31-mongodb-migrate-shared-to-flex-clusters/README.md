@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: MongoDB, Atlas, Migration, Flex Cluster, Upgrade
 
-Description: Migrate a MongoDB Atlas shared M2 or M5 cluster to a Flex cluster with minimal downtime using the Atlas in-place upgrade or mongodump/mongorestore.
+Description: Migrate a MongoDB Atlas shared M2 or M5 cluster to a Flex cluster with live data migration and minimal downtime using Atlas Live Migrate or mongodump.
 
 ---
 

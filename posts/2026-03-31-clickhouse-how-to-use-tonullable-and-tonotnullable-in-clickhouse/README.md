@@ -1,10 +1,10 @@
-# How to Use toNullable() and assumeNotNull() in ClickHouse
+# How to Use toNullable() and toNotNullable() in ClickHouse
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: ClickHouse, Nullable, toNullable, assumeNotNull, Type System, SQL
+Tags: ClickHouse, Nullable, toNullable, toNotNullable, Type System, SQL
 
-Description: Learn how to use toNullable() and assumeNotNull() in ClickHouse to convert between Nullable and non-Nullable column types for type compatibility and performance.
+Description: Learn how to use toNullable() and toNotNullable() in ClickHouse to convert between Nullable and non-Nullable column types for type compatibility and performance.
 
 ---
 

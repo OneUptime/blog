@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, HPA, Autoscaling, OpenTofu, Infrastructure, Performance
 
-Description: Learn how to create Kubernetes Horizontal Pod Autoscalers (HPA) with OpenTofu using CPU, memory, and external metrics to automatically scale deployments.
+Description: Learn how to create Kubernetes Horizontal Pod Autoscalers (HPA) with OpenTofu using CPU, memory, and custom metrics to automatically scale deployments.
 
 ## Overview
 

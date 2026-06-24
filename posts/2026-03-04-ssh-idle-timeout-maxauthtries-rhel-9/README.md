@@ -1,10 +1,10 @@
-# How to Set SSH Client Alive Timeout and MaxAuthTries on RHEL
+# How to Set SSH Idle Timeout and MaxAuthTries on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, SSH, Timeout, Security, Linux
 
-Description: Configure SSH client-alive timeout and maximum authentication attempts on RHEL to reduce the attack surface and meet compliance requirements.
+Description: Configure SSH idle session timeout and maximum authentication attempts on RHEL to reduce the attack surface and meet compliance requirements.
 
 ---
 

@@ -10,7 +10,7 @@ Description: Define VolumeReplicationClass resources with custom scheduling inte
 
 ## Introduction
 
-The `VolumeReplicationClass` is a cluster-scoped Kubernetes custom resource provided by the Volume Replication Operator (VRO). It defines the replication driver and scheduling parameters used by `VolumeReplication` objects. For Rook-based RBD mirroring, the scheduling interval in the VolumeReplicationClass controls how often snapshot-based replication syncs data to the peer cluster, directly affecting your Recovery Point Objective (RPO).
+The `VolumeReplicationClass` is a cluster-scoped Kubernetes custom resource provided by CSI-Addons, which absorbed the former standalone Volume Replication Operator (VRO). It defines the replication driver and scheduling parameters used by `VolumeReplication` objects. For Rook-based RBD mirroring, the scheduling interval in the VolumeReplicationClass controls how often snapshot-based replication syncs data to the peer cluster, directly affecting your Recovery Point Objective (RPO).
 
 ## VolumeReplicationClass Architecture
 
@@ -29,19 +29,23 @@ flowchart TD
 - Rook CephBlockPool with mirroring enabled in snapshot mode
 - CSI addons deployed (required by VRO for snapshot scheduling)
 
-## Step 1: Install the Volume Replication Operator
+## Step 1: Install the CSI-Addons Controller (Volume Replication Operator)
+
+The standalone `volume-replication-operator` repository was archived in December 2024; the `VolumeReplicationClass` and `VolumeReplication` CRDs and their controller are now shipped by [kubernetes-csi-addons](https://github.com/csi-addons/kubernetes-csi-addons). Install the CRDs, RBAC, and controller from a release:
 
 ```bash
-# Install via operator hub or directly
-kubectl apply -f https://raw.githubusercontent.com/csi-addons/volume-replication-operator/main/config/crd/bases/replication.storage.openshift.io_volumereplicationclasses.yaml
-kubectl apply -f https://raw.githubusercontent.com/csi-addons/volume-replication-operator/main/config/crd/bases/replication.storage.openshift.io_volumereplications.yaml
+# Install the CSI-Addons CRDs (includes VolumeReplicationClass and VolumeReplication)
+kubectl create -f https://github.com/csi-addons/kubernetes-csi-addons/releases/download/v0.14.0/crds.yaml
 
-# Install the operator itself
-kubectl apply -f https://raw.githubusercontent.com/csi-addons/volume-replication-operator/main/config/manager/manager.yaml
+# Install the controller RBAC and the controller itself
+kubectl create -f https://github.com/csi-addons/kubernetes-csi-addons/releases/download/v0.14.0/rbac.yaml
+kubectl create -f https://github.com/csi-addons/kubernetes-csi-addons/releases/download/v0.14.0/setup-controller.yaml
 
-# Verify the operator is running
-kubectl get pods -n volume-replication-operator-system
+# Verify the controller is running
+kubectl get pods -n csi-addons-system
 ```
+
+The CSI-Addons sidecar must also be enabled in the Rook operator by setting `CSI_ENABLE_CSIADDONS: "true"` in the `rook-ceph-operator-config` ConfigMap so the `csi-addons` container runs in the RBD provisioner and nodeplugin pods.
 
 ## Step 2: Create a VolumeReplicationClass with a Specific Interval
 
@@ -223,8 +227,8 @@ kubectl describe volumereplication db-volume-replication -n production | grep -A
 # VolumeReplication stuck in unknown state
 kubectl describe volumereplication db-volume-replication -n production
 
-# Check VRO operator logs
-kubectl logs -n volume-replication-operator-system deploy/volume-replication-operator-controller-manager | tail -30
+# Check CSI-Addons controller logs
+kubectl logs -n csi-addons-system deploy/csi-addons-controller-manager | tail -30
 
 # Verify CSI addon supports scheduling
 kubectl get csiaddon -A

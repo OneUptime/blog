@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, Networking, CNI, Installation, EKS, AWS
 
-Description: Step-by-step guide to installing Calico on Amazon EKS as a network policy engine while keeping the AWS VPC CNI for pod networking.
+Description: Step-by-step guide to installing Calico on Amazon EKS, covering both Calico as a full CNI replacement for the VPC CNI and as a network policy engine.
 
 ---
 

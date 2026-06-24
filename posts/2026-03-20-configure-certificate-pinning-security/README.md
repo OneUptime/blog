@@ -2,9 +2,9 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Certificate Pinning, TLS, Security, HTTPS, Mobile Security, API Security
+Tags: Certificate Pinning, TLS, HPKP, Security, HTTPS, Mobile Security, API Security
 
-Description: Learn how to implement certificate pinning in mobile apps, HTTP clients, and APIs when you control both ends of the connection, binding clients to specific certificates or public keys.
+Description: Learn how to implement certificate pinning in mobile apps, HTTP clients, and APIs to prevent man-in-the-middle attacks by binding connections to specific certificates or public keys.
 
 ---
 

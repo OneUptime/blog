@@ -1,10 +1,10 @@
-# How to Use GKE Gateway API for Advanced Ingress Routing
+# How to Use Traffic Director with GKE Gateway API for Advanced Ingress Routing
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Gateway API, GKE, Ingress Routing, Google Cloud
+Tags: GCP, Traffic Director, Gateway API, GKE, Ingress Routing, Google Cloud
 
-Description: Set up the GKE Gateway API for advanced ingress routing including path-based routing, header matching, and traffic splitting on GCP.
+Description: Set up Traffic Director with the GKE Gateway API for advanced ingress routing including path-based routing, header matching, and traffic splitting on GCP.
 
 ---
 

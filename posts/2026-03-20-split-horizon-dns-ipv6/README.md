@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Split-Horizon DNS, IPv6, BIND, Unbound, Internal DNS, View
 
-Description: Configure split-horizon DNS to return different AAAA records for internal and external clients, using BIND views, Unbound views, or the CoreDNS view plugin.
+Description: Configure split-horizon DNS to return different AAAA records for internal and external clients, using BIND views or Unbound stub/forward zones.
 
 ## Introduction
 

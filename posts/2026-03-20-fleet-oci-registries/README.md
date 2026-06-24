@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Fleet, GitOps, Rancher, Kubernetes, OCI
 
-Description: Learn how to configure Fleet to use OCI registries for Helm charts and bundle storage, enabling registry-based workflows alongside Git-managed bundles.
+Description: Learn how to configure Fleet to deploy applications from OCI (Open Container Initiative) registries, enabling GitOps workflows based on container registries instead of Git.
 
 ## Introduction
 

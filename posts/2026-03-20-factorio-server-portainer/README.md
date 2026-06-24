@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Factorio, Game Server, Docker, Self-Hosted
 
-Description: Set up a dedicated Factorio server using Portainer with persistent saves and optional mod updates on start.
+Description: Set up a dedicated Factorio server using Portainer with automatic updates and save game persistence.
 
 ## Introduction
 

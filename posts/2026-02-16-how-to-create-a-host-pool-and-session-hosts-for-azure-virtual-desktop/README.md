@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Virtual Desktop, Host Pool, Session Hosts, VDI, Remote Work, Windows
+Tags: Azure, Virtual Desktop, Host Pool, Session Hosts, VDI, Remote Work, Window
 
 Description: Step-by-step guide to creating a host pool and deploying session hosts for Azure Virtual Desktop to deliver virtual desktops to your users.
 

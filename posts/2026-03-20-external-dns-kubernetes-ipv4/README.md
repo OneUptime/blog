@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: ExternalDNS, Kubernetes, IPv4, DNS, Automation, Networking
 
-Description: Deploy ExternalDNS to automatically create and manage DNS records for Kubernetes Services and Ingresses in Route53, Cloudflare, or other DNS providers.
+Description: Deploy ExternalDNS to automatically create and manage IPv4 DNS records in Route53, Cloudflare, or other DNS providers when Kubernetes services and Ingresses are created.
 
 ExternalDNS watches Kubernetes Services and Ingresses and automatically creates DNS records from their published load balancer targets. For IPv4-backed Services, this typically means A records pointing to the external IPv4 address. This eliminates manual DNS management.
 

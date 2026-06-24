@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Terraform, Production, Infrastructure as Code, AWS, DevOps
 
-Description: Learn how to build a complete production-ready infrastructure with Terraform, including networking, compute, databases, monitoring, and security patterns that meet enterprise standards.
+Description: Learn how to build a complete production-ready infrastructure with Terraform, including networking, compute, databases, monitoring, security, and CI/CD pipelines that meet enterprise standards.
 
 ---
 

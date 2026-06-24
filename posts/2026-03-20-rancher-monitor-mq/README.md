@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rancher, Kubernetes, Message Queue, Monitoring, Prometheus, Grafana
 
-Description: Set up comprehensive monitoring for RabbitMQ and Apache Kafka in Rancher using Prometheus and Grafana dashboards.
+Description: Set up comprehensive monitoring for RabbitMQ, Kafka, and other message queues in Rancher using Prometheus and Grafana dashboards.
 
 ## Introduction
 

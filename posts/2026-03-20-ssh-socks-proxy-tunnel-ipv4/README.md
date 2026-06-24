@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: SSH, SOCKS Proxy, IPv4, Tunneling, Port Forwarding, Security
 
-Description: Use SSH dynamic port forwarding to create a SOCKS5 proxy that tunnels TCP application traffic to IPv4 destinations through an SSH connection to a remote server, bypassing network restrictions.
+Description: Use SSH dynamic port forwarding to create a SOCKS5 proxy that tunnels IPv4 traffic through an SSH connection to a remote server, bypassing network restrictions.
 
 ## Introduction
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, Networking, Observability
 
-Description: Use Felix Prometheus metrics to monitor policy calculation performance, detect dataplane programming failures, and track Calico state across all Calico-managed nodes.
+Description: Use Felix Prometheus metrics to monitor policy enforcement performance, detect iptables programming failures, and track BGP peer state changes across all Calico-managed nodes.
 
 ---
 

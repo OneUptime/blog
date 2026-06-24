@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: IPv4, Subnetting, Networking, Host Count, CIDR
 
-Description: For most IPv4 subnets, the number of usable hosts is 2 to the power of the host bits minus 2, reserving the network address and broadcast address which cannot be assigned to devices.
+Description: The number of usable hosts in an IPv4 subnet is 2 to the power of the host bits minus 2, reserving the network address and broadcast address which cannot be assigned to devices.
 
 ## The Formula
 

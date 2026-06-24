@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Go, Saga Pattern, Distributed System, Microservice, Transaction
 
-Description: Learn how to implement the Saga pattern in Go to manage distributed transactions across microservices, with practical code examples for an orchestration approach.
+Description: Learn how to implement the Saga pattern in Go to manage distributed transactions across microservices, with practical code examples for both choreography and orchestration approaches.
 
 ---
 

@@ -2,9 +2,9 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, Ruby on Rails, Deployment, ECS, Elastic Beanstalk
+Tags: AWS, Ruby On Rail, Deployment, ECS, Elastic Beanstalk
 
-Description: A comprehensive guide to deploying Ruby on Rails applications on AWS using Elastic Beanstalk and ECS with database, caching, and background job configurations.
+Description: A comprehensive guide to deploying Ruby on Rails applications on AWS using Elastic Beanstalk, ECS, and EC2 with database, caching, and background job configurations.
 
 ---
 

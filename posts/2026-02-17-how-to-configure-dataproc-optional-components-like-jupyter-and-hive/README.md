@@ -2,9 +2,9 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Google Cloud Dataproc, Jupyter, Hive, Trino, Optional Components
+Tags: GCP, Google Cloud Dataproc, Jupyter, Hive, Optional Components
 
-Description: Configure Dataproc optional components including Jupyter, Hive WebHCat, Trino, and Zeppelin to extend cluster functionality with minimal setup effort.
+Description: Configure Dataproc optional components including Jupyter, Hive, Presto, and Zeppelin to extend cluster functionality with minimal setup effort.
 
 ---
 

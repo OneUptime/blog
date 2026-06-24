@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Fastly, IPv6, CDN, Edge Computing, VCL, Content Delivery
 
-Description: A guide to configuring Fastly CDN for IPv6 delivery, including dual-stack service configuration, origin IPv6 connectivity, and VCL for IPv6-aware caching and routing.
+Description: A guide to configuring Fastly CDN for IPv6 delivery, including service configuration, origin IPv6 connectivity, and VCL for IPv6-aware caching and routing.
 
 Fastly's edge network supports IPv6 natively, providing dual-stack delivery from its global POPs. IPv6 configuration involves enabling dualstack DNS for client connections, configuring origins to prefer IPv6 where appropriate, and using VCL (Varnish Configuration Language) for IPv6-aware logic.
 

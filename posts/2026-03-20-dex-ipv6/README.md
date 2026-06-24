@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Dex, IPv6, OIDC, Authentication, Kubernetes
 
-Description: Configure Dex OIDC provider to bind to IPv6 interfaces and account for IPv6-aware identity workflows.
+Description: Configure Dex OIDC provider to bind to IPv6 interfaces and handle identity federation over IPv6 networks.
 
 ## Overview
 

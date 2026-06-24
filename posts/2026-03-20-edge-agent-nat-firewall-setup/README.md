@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Edge Agent, NAT, Firewall, Networking
 
-Description: Configure Edge Agents to work through NAT and firewalls by using outbound connections back to Portainer.
+Description: Configure Edge Agents to work through NAT and firewalls by using the Portainer tunnel server for outbound connections.
 
 ---
 

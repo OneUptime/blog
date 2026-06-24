@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Epinio, Custom Domain, Kubernetes, SSL, PaaS
 
-Description: Configure custom domains and TLS certificates for Epinio applications by assigning routes and ensuring DNS and cert-manager are in place.
+Description: Configure custom domains and SSL certificates for Epinio applications using ingress and cert-manager.
 
 ## Introduction
 

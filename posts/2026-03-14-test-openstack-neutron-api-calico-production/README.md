@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: OpenStack, Calico, Neutron, API, Testing
 
-Description: A testing guide for the Neutron API integration with Calico, covering API endpoint validation, security group policy translation testing, and integration stress testing.
+Description: A testing guide for the Neutron API integration with Calico, covering API endpoint validation, security group translation testing, and integration stress testing.
 
 ---
 

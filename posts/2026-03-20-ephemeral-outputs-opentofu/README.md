@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Output, Ephemeral, Security, Infrastructure as Code, DevOps
 
-Description: A guide to using ephemeral outputs in OpenTofu child modules to pass temporary values that are never stored in state or plan data.
+Description: A guide to using ephemeral outputs in OpenTofu to expose temporary values that are never stored in the state file.
 
 ## Introduction
 

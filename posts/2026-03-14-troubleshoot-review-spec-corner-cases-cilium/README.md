@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Cilium, Network Security, Protocol Specification, Corner Cases, Troubleshooting
 
-Description: Diagnose and resolve issues caused by protocol specification corner cases in legacy Cilium proxylib L7 parsers, including client/server disagreements, encoding ambiguities, and state machine conflicts.
+Description: Diagnose and resolve issues caused by protocol specification corner cases in Cilium L7 parsers, including client/server disagreements, encoding ambiguities, and state machine conflicts.
 
 ---
 

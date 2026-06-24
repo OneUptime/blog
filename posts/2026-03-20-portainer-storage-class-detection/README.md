@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Docker, Kubernetes, Troubleshooting, Storage, PersistentVolume
 
-Description: Resolve storage class detection errors in Portainer's Kubernetes environment view, including storage API availability, permission issues, and cluster configuration problems.
+Description: Resolve storage class detection errors in Portainer's Kubernetes environment view, including missing storage class CRDs, permission issues, and cluster configuration problems.
 
 ## Introduction
 

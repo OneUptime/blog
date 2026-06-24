@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Epinio, .NET, Kubernetes, PaaS, CSharp
 
-Description: Build and deploy an ASP.NET Core application to Kubernetes using Epinio and Paketo buildpacks.
+Description: Build and deploy a .NET Core application to Kubernetes using Epinio's .NET buildpack.
 
 ## Introduction
 

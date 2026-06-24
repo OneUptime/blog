@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, HAProxy, Health Check, Load Balancing, Linux
 
-Description: Learn how to set up TCP and HTTP health checks in HAProxy on RHEL to automatically detect and route around failed backend servers.
+Description: Learn how to set up TCP, HTTP, and custom health checks in HAProxy on RHEL to automatically detect and route around failed backend servers.
 
 ---
 

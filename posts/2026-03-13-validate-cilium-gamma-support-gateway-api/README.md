@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Cilium, Kubernetes, GAMMA, Gateway API, Validation
 
-Description: Validate that Cilium's Gateway API controller is correctly processing GAMMA HTTPRoutes and enforcing mesh routing rules through the Cilium L7 proxy.
+Description: Validate that Cilium's GAMMA controller is correctly processing HTTPRoutes and enforcing mesh routing rules in the eBPF datapath.
 
 ---
 

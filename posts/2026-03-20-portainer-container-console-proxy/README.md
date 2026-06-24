@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Docker, Troubleshooting, Console, Terminal, Reverse Proxy
 
-Description: Resolve issues where Portainer's container console (terminal) fails to load or connect when accessed through a reverse proxy, including WebSocket configuration and proxy/backend scheme requirements.
+Description: Resolve issues where Portainer's container console (terminal) fails to load or connect when accessed through a reverse proxy, including WebSocket configuration and HTTPS requirements.
 
 ## Introduction
 

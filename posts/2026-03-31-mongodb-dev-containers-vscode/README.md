@@ -132,7 +132,7 @@ After the container starts, connect to MongoDB through the extension:
 1. Open the MongoDB extension sidebar (click the MongoDB leaf icon).
 2. Click **Add Connection** and enter the connection string:
 
-```
+```text
 mongodb://admin:devpass@mongo:27017/?authSource=admin
 ```
 

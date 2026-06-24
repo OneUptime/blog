@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, ASUSTOR, NAS, Docker, Self-Hosted, Home Lab
 
-Description: Install Portainer on an ASUSTOR NAS to manage Docker containers with a full-featured web interface beyond what ASUSTOR's native Docker Engine app provides.
+Description: Install Portainer on an ASUSTOR NAS to manage Docker containers with a full-featured web interface beyond what ASUSTOR's native Docker app provides.
 
 ## Introduction
 

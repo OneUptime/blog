@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: MongoDB, CMS, API, Node.js, Content
 
-Description: Learn how to build a headless CMS API with MongoDB, covering content types, flexible schemas, and a content delivery API.
+Description: Learn how to build a headless CMS API with MongoDB, covering content types, flexible schemas, media management, and a content delivery API.
 
 ---
 

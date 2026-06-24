@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rancher, Kubernetes, PCI-DSS, Compliance, Payment Security, Security
 
-Description: Learn how to configure Rancher-managed RKE2 Kubernetes clusters to meet PCI DSS requirements for protecting cardholder data environments.
+Description: Learn how to configure Rancher-managed Kubernetes clusters to meet PCI DSS requirements for protecting cardholder data environments.
 
 PCI DSS (Payment Card Industry Data Security Standard) is a mandatory security standard for organizations that handle credit card payments. Running payment processing workloads on Rancher-managed RKE2 clusters requires careful security configuration to meet the 12 PCI DSS requirements. This guide covers the most relevant technical controls for Kubernetes environments.
 

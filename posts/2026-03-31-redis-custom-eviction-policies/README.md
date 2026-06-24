@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Redis, Eviction, Memory
 
-Description: Learn how to implement custom eviction logic in Redis using keyspace notifications and sorted sets, and choose the right built-in policy for your workload.
+Description: Learn how to implement custom eviction logic in Redis using keyspace notifications and Lua scripts, and choose the right built-in policy for your workload.
 
 ---
 

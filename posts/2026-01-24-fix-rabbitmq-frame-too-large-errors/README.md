@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RabbitMQ, Message Queue, Troubleshooting, AMQP, Backend, Distributed System, Configuration
 
-Description: Learn how to diagnose and fix RabbitMQ frame too large errors caused by AMQP frames exceeding the negotiated frame size limit.
+Description: Learn how to diagnose and fix RabbitMQ frame too large errors caused by oversized messages exceeding the configured frame size limit.
 
 ---
 

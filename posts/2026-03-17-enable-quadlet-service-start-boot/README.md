@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Podman, Container, DevOps, Quadlet, Systemd, Boot, Startup
 
-Description: Learn how to configure Quadlet container services to start automatically at boot using the `[Install]` section and linger.
+Description: Learn how to configure Quadlet container services to start automatically at boot using systemd enable and linger.
 
 ---
 

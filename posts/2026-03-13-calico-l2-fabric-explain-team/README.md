@@ -2,9 +2,9 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Networking, VXLAN, IP-in-IP, Team Communication, Overlay
+Tags: Calico, Kubernetes, L2, Networking, VXLAN, Team Communication, Overlay
 
-Description: A practical guide for explaining Calico's overlay networking (VXLAN, IP-in-IP) to engineering teams, using analogies to make encapsulation intuitive.
+Description: A practical guide for explaining Calico's L2 overlay networking (VXLAN, IP-in-IP) to engineering teams, using analogies to make encapsulation intuitive.
 
 ---
 

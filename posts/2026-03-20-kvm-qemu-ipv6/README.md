@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: IPv6, KVM, QEMU, Linux, Virtualization, Virtual Networking
 
-Description: Configure IPv6 networking in KVM/QEMU virtual machines using bridge, libvirt virtual networks, and macvtap network modes, with cloud-init and manual guest OS IPv6 configuration.
+Description: Configure IPv6 networking in KVM/QEMU virtual machines using bridge, NAT, and macvtap network modes, with cloud-init and manual guest OS IPv6 configuration.
 
 ## Introduction
 

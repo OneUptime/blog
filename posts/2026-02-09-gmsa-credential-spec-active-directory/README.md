@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Windows, GMSA, Active Directory, Credential Spec, Security
+Tags: Kubernetes, Window, GMSA, Active Directory, Credential Spec, Security
 
 Description: Learn how to create and configure gMSA credential specifications for seamless Active Directory integration with Windows containers running on Kubernetes.
 

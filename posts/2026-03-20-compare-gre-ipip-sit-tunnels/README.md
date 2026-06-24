@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Linux, GRE, IPIP, SIT, Tunnel, Comparison, Networking
 
-Description: Compare three common Linux tunnel types - GRE, IPIP, and SIT - to choose the right encapsulation protocol based on your use case, overhead, and protocol requirements.
+Description: Compare the three main Linux tunnel types - GRE, IPIP, and SIT - to choose the right encapsulation protocol based on your use case, overhead, and protocol requirements.
 
 ## Introduction
 

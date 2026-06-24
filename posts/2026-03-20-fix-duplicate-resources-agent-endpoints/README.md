@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Troubleshooting, Agent, Docker, Duplicate Containers, Endpoint
 
-Description: Learn how to fix duplicate containers, volumes, or networks appearing in Portainer when the same Docker environment has been added more than once or when stale environment details remain after an address change.
+Description: Learn how to fix duplicate containers, volumes, or networks appearing in Portainer when using Agent endpoints, caused by multiple agent registrations or snapshot conflicts.
 
 ---
 

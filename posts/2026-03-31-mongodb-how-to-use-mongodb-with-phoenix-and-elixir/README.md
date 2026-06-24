@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: MongoDB, Elixir, Phoenix, Mongodb Driver, Database
 
-Description: Learn how to integrate MongoDB into a Phoenix web application using the MongoDB Elixir driver, with practical CRUD and query examples.
+Description: Learn how to integrate MongoDB into a Phoenix web application using the official MongoDB Elixir driver, with practical CRUD and query examples.
 
 ---
 

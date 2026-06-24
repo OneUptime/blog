@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GCP, Vertex AI, GPU Reservations, Training, Cost Optimization
 
-Description: Learn how to use Vertex AI Training with reserved GPU clusters to improve capacity assurance and reduce costs for predictable ML training workloads.
+Description: Learn how to use Vertex AI Training with reserved GPU clusters to guarantee capacity and reduce costs for predictable ML training workloads.
 
 ---
 

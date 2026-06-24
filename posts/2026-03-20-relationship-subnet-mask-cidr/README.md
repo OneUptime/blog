@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: IPv4, CIDR, Subnet Mask, Subnetting, Networking
 
-Description: CIDR prefix length and dotted-decimal subnet mask are two representations of the same concept - the number of leading 1-bits in a contiguous 32-bit IPv4 netmask - and they are directly interconvertible.
+Description: CIDR prefix length and dotted-decimal subnet mask are two representations of the same concept - the number of leading 1-bits in a 32-bit mask - and they are directly interconvertible.
 
 ## Two Representations, One Concept
 

@@ -1,10 +1,10 @@
-# How to Use Flux Operator ResourceSets for Dynamic Resource Generation
+# How to Use Flux CD ResourceSets for Dynamic Resource Generation
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux Operator, Flux CD, ResourceSets, Dynamic Resources, GitOps, Kubernetes, Templating, Automation
+Tags: Flux CD, ResourceSets, Dynamic Resources, GitOps, Kubernetes, Templating, Automation
 
-Description: Learn how to use Flux Operator ResourceSets to dynamically generate Kubernetes resources from templates and data sources, reducing repetitive manifests across environments.
+Description: Learn how to use Flux CD ResourceSets to dynamically generate Kubernetes resources from templates and data sources, reducing repetitive manifests across environments.
 
 ---
 

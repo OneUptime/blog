@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTofu, Resource, Lifecycle, Prevent_destroy, Infrastructure as Code, DevOps
+Tags: OpenTofu, Resource, Lifecycle, Protect_destroy, Infrastructure as Code, DevOps
 
 Description: A guide to using prevent_destroy lifecycle in OpenTofu to protect critical resources from accidental deletion.
 

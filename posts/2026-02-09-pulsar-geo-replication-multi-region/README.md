@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Pulsar, Geo-Replication, Multi-Region
 
-Description: Learn how to configure Apache Pulsar geo-replication for multi-region deployments with client-side failover, low-latency local reads, and eventual cross-region message delivery.
+Description: Learn how to configure Apache Pulsar geo-replication for multi-region deployments with automatic failover, low-latency local reads, and globally consistent message delivery.
 
 ---
 

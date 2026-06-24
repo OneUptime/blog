@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, AWS, WAF, Web Application Firewall, Security, DDoS Protection, Infrastructure as Code
 
-Description: Learn how to configure AWS WAF v2 with OpenTofu to protect web applications from common exploits, SQL injection, and XSS attacks using managed rule groups.
+Description: Learn how to configure AWS WAF v2 with OpenTofu to protect web applications from common exploits, SQL injection, XSS attacks, and bot traffic using managed rule groups.
 
 ## Introduction
 

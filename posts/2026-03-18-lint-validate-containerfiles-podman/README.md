@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Podman, Containerfile, Linting, Hadolint, DevOps
 
-Description: Learn how to lint and validate your Containerfiles for Podman using tools like Hadolint, Skopeo, Trivy, and custom validation scripts to catch errors before they reach production.
+Description: Learn how to lint and validate your Containerfiles for Podman using tools like Hadolint, container-diff, and custom validation scripts to catch errors before they reach production.
 
 ---
 

@@ -1,10 +1,10 @@
-# How to Use toYear(), toMonth(), toDayOfMonth() in ClickHouse
+# How to Use toYear(), toMonth(), toDay() in ClickHouse
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: ClickHouse, Date Function, toYear, toMonth, toDayOfMonth, Time Series
+Tags: ClickHouse, Date Function, toYear, toMonth, toDay, Time Series
 
-Description: Learn how to use toYear(), toMonth(), and toDayOfMonth() functions in ClickHouse to extract date components for grouping, filtering, and time-based analytics.
+Description: Learn how to use toYear(), toMonth(), and toDay() functions in ClickHouse to extract date components for grouping, filtering, and time-based analytics.
 
 ---
 

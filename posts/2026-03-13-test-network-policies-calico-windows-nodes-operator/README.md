@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Windows, Operator, Networking, Network Policies
+Tags: Calico, Kubernetes, Window, Operator, Networking, Network Policies
 
 Description: A guide to testing network policy enforcement on Windows nodes managed by the Tigera Operator in a mixed Linux/Windows Kubernetes cluster.
 

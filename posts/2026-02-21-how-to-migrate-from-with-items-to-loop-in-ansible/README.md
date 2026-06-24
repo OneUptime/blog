@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, Migration, Best Practice, Automation
 
-Description: Learn how to migrate your Ansible playbooks from the older with_items syntax to the modern loop keyword with practical before-and-after examples.
+Description: Learn how to migrate your Ansible playbooks from the deprecated with_items syntax to the modern loop keyword with practical before-and-after examples.
 
 ---
 

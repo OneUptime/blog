@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Redis, Message Queue, List, BRPOP, LPUSH, Background Job, Task Processing
 
-Description: Learn how to build reliable message queues using Redis Lists. This guide covers producer-consumer patterns, blocking operations, reliable delivery with BLMOVE, and implementing priority queues.
+Description: Learn how to build reliable message queues using Redis Lists. This guide covers producer-consumer patterns, blocking operations, reliable delivery with RPOPLPUSH, and implementing priority queues.
 
 ---
 

@@ -1,10 +1,10 @@
-# How TLS Works for Portainer Agent Communication
+# How to Configure TLS for Portainer Agent Communication
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Agent, TLS, Security, Certificate, Encryption
 
-Description: Understand how the standard Portainer Agent secures port 9001 by default, and when to use Docker API TLS or Edge Agent mTLS instead.
+Description: Secure the communication channel between the Portainer server and Portainer Agent using mutual TLS (mTLS) with custom certificates.
 
 ## Introduction
 

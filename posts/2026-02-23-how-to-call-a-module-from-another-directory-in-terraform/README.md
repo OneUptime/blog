@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Terraform, Module, Infrastructure as Code, DevOps, Local Modules
 
-Description: Learn how to reference and call Terraform modules from local directories using relative paths, including best practices for project organization.
+Description: Learn how to reference and call Terraform modules from local directories using relative and absolute paths, including best practices for project organization.
 
 ---
 

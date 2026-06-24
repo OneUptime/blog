@@ -1,10 +1,10 @@
-# How to Install and Configure GlusterFS on RHEL-Compatible Systems
+# How to Install and Configure GlusterFS on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL-Compatible, GlusterFS, Storage, Distributed File Systems, Linux
+Tags: RHEL, GlusterFS, Storage, Distributed File Systems, Linux
 
-Description: Step-by-step guide to installing and configuring GlusterFS on RHEL-compatible systems, including server setup, volume creation, and client mounting.
+Description: Step-by-step guide to installing and configuring GlusterFS on RHEL, including server setup, volume creation, and client mounting.
 
 ---
 

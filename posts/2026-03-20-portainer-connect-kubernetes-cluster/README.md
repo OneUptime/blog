@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Kubernetes, Cluster Management, DevOps
 
-Description: Learn how to connect an existing Kubernetes cluster to Portainer using the Portainer Agent, Edge Agent, or kubeconfig import for centralized management.
+Description: Learn how to connect an existing Kubernetes cluster to Portainer using the Portainer Agent or kubeconfig for centralized management.
 
 ## Introduction
 

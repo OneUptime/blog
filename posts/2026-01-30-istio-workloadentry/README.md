@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Istio, Service Mesh, Kubernetes, DevOps
 
-Description: A practical guide to creating and managing Istio WorkloadEntry resources for integrating VMs, bare-metal services, and legacy systems into your service mesh.
+Description: A practical guide to creating and managing Istio WorkloadEntry resources for integrating external services, VMs, and legacy systems into your service mesh.
 
 ---
 

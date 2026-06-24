@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Cockpit, Linux
 
-Description: Step-by-step guide on installing cockpit-machines for virtual machine management using Red Hat Enterprise Linux 9.
+Description: Step-by-step guide on install cockpit-machines for virtual machine management using Red Hat Enterprise Linux 9.
 
 ---
 

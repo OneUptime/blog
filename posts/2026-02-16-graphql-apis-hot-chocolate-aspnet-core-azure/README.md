@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Azure, GraphQL, Hot Chocolate, ASP.NET Core, C#, App Service, API
 
-Description: Build a GraphQL API using Hot Chocolate in ASP.NET Core with queries and mutations, and deploy it to Azure App Service.
+Description: Build a GraphQL API using Hot Chocolate in ASP.NET Core with queries, mutations, subscriptions, and deploy it to Azure App Service.
 
 ---
 

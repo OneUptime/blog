@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: IPv6, Wi-Fi, Guest Network, SSID, VLAN, Isolation, Firewall
 
-Description: Configure IPv6 for Wi-Fi guest networks with proper VLAN isolation, separate IPv6 prefixes, guest-specific firewall policies that prevent access to internal IPv6 resources, and DHCPv6 where required.
+Description: Configure IPv6 for Wi-Fi guest networks with proper VLAN isolation, separate prefix delegation, guest-specific firewall policies, and DHCPv6 to prevent access to internal IPv6 resources.
 
 ---
 

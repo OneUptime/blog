@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Flagger, Canary, Blue-Green, Iteration, Kubernetes, Progressive Delivery
 
-Description: Learn how to configure Flagger's iterations parameter for blue-green deployments where the new version is validated before promotion.
+Description: Learn how to configure Flagger's iterations parameter for blue-green deployments where traffic switches entirely from the old version to the new version after validation.
 
 ---
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: MongoDB, Mongoose, Middleware, Hook, Node.js
 
-Description: Learn how to use Mongoose pre and post middleware hooks to run logic before and after document operations like save, validate, and deleteOne.
+Description: Learn how to use Mongoose pre and post middleware hooks to run logic before and after document operations like save, validate, and remove.
 
 ---
 

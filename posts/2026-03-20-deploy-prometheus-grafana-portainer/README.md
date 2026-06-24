@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Prometheus, Grafana, Monitoring, Docker, Observability
 
-Description: Learn how to deploy Prometheus and Grafana with Portainer using a simple stack and persistent Docker volumes.
+Description: Learn how to deploy a complete Prometheus and Grafana monitoring stack using Portainer stacks for containerized infrastructure observability.
 
 ---
 

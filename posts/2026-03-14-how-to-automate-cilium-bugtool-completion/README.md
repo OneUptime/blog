@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Cilium, Bugtool, Shell Completion, Automation, DevOps
 
-Description: Automate the generation and installation of cilium-bugtool shell completions across development machines.
+Description: Automate the generation and installation of cilium-bugtool shell completions across development machines and CI environments.
 
 ---
 

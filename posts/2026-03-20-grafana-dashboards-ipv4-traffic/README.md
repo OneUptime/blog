@@ -1,10 +1,10 @@
-# How to Build Grafana Dashboards for Network Traffic Monitoring
+# How to Build Grafana Dashboards for IPv4 Network Traffic Monitoring
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Grafana, Network Traffic, Dashboard, Prometheus, Node Exporter, Visualization
+Tags: Grafana, IPv4, Network Traffic, Dashboard, Prometheus, Visualization
 
-Description: Build Grafana dashboards to visualize network interface traffic metrics from Prometheus, including bandwidth graphs, packet rates, and per-host network utilization panels.
+Description: Build Grafana dashboards to visualize IPv4 network traffic metrics from Prometheus, including bandwidth graphs, packet rates, and per-host network utilization panels.
 
 ## Introduction
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Infrastructure as Code, Provider, Automation, DevOps
 
-Description: Learn how to configure and use the Random provider in OpenTofu to generate random values as part of your infrastructure as code.
+Description: Learn how to configure and use the Random provider in OpenTofu to manage Random resources as code.
 
 ## Introduction
 

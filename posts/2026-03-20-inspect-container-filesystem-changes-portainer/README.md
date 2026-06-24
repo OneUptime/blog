@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Docker, Debugging, Filesystem, Container Inspection, Diff
 
-Description: Inspect what files have been added, modified, or deleted inside a container since it was created, using Docker's diff command alongside Portainer's container details.
+Description: Inspect what files have been added, modified, or deleted inside a running container since it was started, using Docker's diff command and Portainer's container interface.
 
 ---
 

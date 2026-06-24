@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: NodeJS, Filesystem, Permission, ErrorHandling, Windows
+Tags: NodeJS, Filesystem, Permission, ErrorHandling, Window
 
 Description: Learn how to diagnose and fix the EPERM operation not permitted error in Node.js, common on Windows when files are locked or permissions are insufficient.
 

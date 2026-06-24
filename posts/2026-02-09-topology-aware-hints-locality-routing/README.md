@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Networking, Performance
 
-Description: Enable topology-aware hints in Kubernetes to automatically route service traffic to endpoints in the same zone.
+Description: Enable topology-aware hints in Kubernetes to automatically route service traffic to endpoints in the same zone or region.
 
 ---
 

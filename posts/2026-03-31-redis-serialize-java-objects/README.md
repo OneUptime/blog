@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Redis, Java, Serialization
 
-Description: Learn how to serialize Java objects for Redis using Jackson JSON and Kryo with Spring Data Redis examples.
+Description: Learn how to serialize Java objects for Redis using Jackson JSON, Kryo, and Protocol Buffers with Spring Data Redis and Lettuce examples.
 
 ---
 

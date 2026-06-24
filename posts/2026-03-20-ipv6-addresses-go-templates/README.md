@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Go, IPv6, Template, HTML, text/template, html/template
+Tags: Go, IPv6, Template, HTML, Text/template, Html/template
 
 Description: Handle IPv6 addresses in Go templates including proper formatting, URL generation, and custom template functions.
 

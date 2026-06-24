@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Terraform, Logging, Infrastructure as Code, Observability, AWS, CloudWatch
 
-Description: Learn how to build a complete log aggregation infrastructure using Terraform, including centralized logging with CloudWatch, Kinesis Firehose, and S3 storage.
+Description: Learn how to build a complete log aggregation infrastructure using Terraform, including centralized logging with CloudWatch, Elasticsearch, and S3 storage.
 
 ---
 

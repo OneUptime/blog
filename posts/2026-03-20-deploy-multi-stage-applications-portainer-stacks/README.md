@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Docker Compose, Multi-Stage, Stack, Microservice, DevOps
 
-Description: Deploy complex multi-stage applications using Portainer stacks where initialization, migrations, and serving happen in coordinated Docker Compose service groups.
+Description: Deploy complex multi-stage applications using Portainer stacks where builds, migrations, and serving happen in coordinated Docker Compose service groups.
 
 ---
 

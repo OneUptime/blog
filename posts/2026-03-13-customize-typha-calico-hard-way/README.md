@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Typha, Kubernetes, Networking, Customization, Hard Way
 
-Description: A guide to customizing Typha's deployment for specific infrastructure requirements including custom ports, node placement, priority classes, and logging behavior.
+Description: A guide to customizing Typha's deployment for specific infrastructure requirements including custom ports, node placement, priority classes, and log format.
 
 ---
 

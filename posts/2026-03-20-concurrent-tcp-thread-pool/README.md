@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: TCP, IPv4, Thread Pool, Python, Java, Go, Networking
 
-Description: Learn how to build a concurrent TCP server for IPv4 using thread pools in Python and Java, and a worker pool in Go, to handle many simultaneous connections efficiently without creating a thread per connection.
+Description: Learn how to build a concurrent TCP server for IPv4 using thread pools in Python, Java, and Go to handle many simultaneous connections efficiently without creating a thread per connection.
 
 ## Python: ThreadPoolExecutor
 

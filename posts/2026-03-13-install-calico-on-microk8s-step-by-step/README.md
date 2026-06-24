@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, Networking, CNI, Installation, MicroK8s
 
-Description: A step-by-step guide to installing MicroK8s with Calico as the default CNI and verifying the Calico deployment.
+Description: A step-by-step guide to enabling and installing Calico as the CNI on a MicroK8s cluster.
 
 ---
 

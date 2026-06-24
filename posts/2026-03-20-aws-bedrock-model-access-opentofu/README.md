@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, AWS, Bedrock, Generative AI, LLM, Infrastructure as Code
 
-Description: Learn how to configure AWS Bedrock IAM access, knowledge bases, and guardrails for generative AI applications using OpenTofu.
+Description: Learn how to configure AWS Bedrock model access, knowledge bases, and guardrails for generative AI applications using OpenTofu.
 
 ## Introduction
 

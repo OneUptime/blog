@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Talos Linux, BIOS, Boot Process, Partition, Legacy Boot, Disk Management
 
-Description: A guide to understanding the BIOS boot partition in Talos Linux, how legacy BIOS boot works, and when and why this partition is used.
+Description: A guide to understanding the BIOS boot partition in Talos Linux, how legacy BIOS boot works, and when and why this partition is used instead of EFI.
 
 ---
 

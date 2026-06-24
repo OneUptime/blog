@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ethernet, Windows, IP Configuration, Troubleshooting, DHCP
+Tags: Ethernet, Window, IP Configuration, Troubleshooting, DHCP
 
 Description: Learn how to fix the 'Ethernet doesn't have a valid IP configuration' error in Windows, which causes complete loss of network connectivity despite the cable being connected.
 

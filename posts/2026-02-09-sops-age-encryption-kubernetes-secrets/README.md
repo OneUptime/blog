@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Encryption, GitOps
 
-Description: Learn how to use SOPS with Age encryption to securely store Kubernetes secrets in Git repositories, enabling GitOps workflows with encrypted configuration files.
+Description: Learn how to use Mozilla SOPS with Age encryption to securely store Kubernetes secrets in Git repositories, enabling GitOps workflows with encrypted configuration files.
 
 ---
 

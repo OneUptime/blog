@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Laravel, Laravel Scout, Full-Text Search, Algolia, Meilisearch, PHP, Typesense
+Tags: Laravel, Laravel Scout, Full-Text Search, Algolia, Meilisearch, PHP, Elasticsearch
 
 Description: A practical guide to implementing fast, full-text search in Laravel applications using Scout with various search drivers.
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: AWS, Lambda, Serverless, Event-Driven, SQS, SNS, EventBridge
 
-Description: Learn how to use Lambda Destinations to route function execution results to SQS, SNS, EventBridge, S3, or other Lambda functions for robust event-driven architectures.
+Description: Learn how to use Lambda Destinations to route function execution results to SQS, SNS, EventBridge, or other Lambda functions for robust event-driven architectures.
 
 ---
 

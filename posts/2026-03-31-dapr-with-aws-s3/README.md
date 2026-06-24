@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Dapr, AWS, S3, Binding, Object Storage
 
-Description: Use Dapr output bindings to interact with AWS S3 for object uploads, downloads, and listing without the AWS SDK.
+Description: Use Dapr output and input bindings to interact with AWS S3 for object uploads, downloads, and event-triggered processing without the AWS SDK.
 
 ---
 

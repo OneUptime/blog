@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Podman, Container, DevOps, podman-compose, CONFIG, Configuration
 
-Description: Learn how to use the Compose configs directive with Podman and a Compose provider that supports configs.
+Description: Learn how to use the Compose configs directive with Podman to mount configuration files into containers.
 
 ---
 

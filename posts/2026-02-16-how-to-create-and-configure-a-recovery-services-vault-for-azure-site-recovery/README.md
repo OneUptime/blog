@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Azure Site Recovery, Recovery Services Vault, Disaster Recovery, Azure, Business Continuity, Backup, Infrastructure
 
-Description: Learn how to create and configure an Azure Recovery Services vault for Site Recovery, including vault redundancy, access policies, and network settings.
+Description: Learn how to create and configure an Azure Recovery Services vault for Site Recovery, including storage replication, access policies, and network settings.
 
 ---
 

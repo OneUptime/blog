@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Azure IoT Edge, IoT Central, Gateway Devices, Downstream Devices, Edge Computing, IoT Architecture, Device Connectivity
 
-Description: Learn how to connect downstream IoT devices to Azure IoT Central through an IoT Edge transparent gateway for secure message forwarding and local buffering.
+Description: Learn how to connect downstream IoT devices to Azure IoT Central through an IoT Edge gateway for protocol translation and local processing.
 
 ---
 

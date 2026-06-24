@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GCP, Compute Engine, Machine Image, Disaster Recovery, Backup
 
-Description: Learn how to create machine images of your Compute Engine instances and use them to restore VMs after accidental deletion, preserving persistent disks, metadata, and most configuration.
+Description: Learn how to create machine images of your Compute Engine instances and use them to restore VMs after accidental deletion, preserving all disks, metadata, and configuration.
 
 ---
 

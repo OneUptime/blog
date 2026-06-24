@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Istio, Locality Priority, Load Balancing, Kubernetes, Multi-Zone
 
-Description: Configure regional failover and weighted zone preferences in Istio when local service endpoints are unavailable.
+Description: Configure region and zone priority ordering in Istio to control the exact failover chain when local service endpoints are unavailable.
 
 ---
 

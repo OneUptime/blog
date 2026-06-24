@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Istio, Google Anthos, GKE, Kubernetes, Service Mesh
 
-Description: How to install and configure Istio on Google Anthos clusters including Cloud Service Mesh and manual installation options.
+Description: How to install and configure Istio on Google Anthos clusters including Anthos Service Mesh and manual installation options.
 
 ---
 

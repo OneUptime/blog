@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, DevOps, Infrastructure as Code, Terraform Functions, Collection Functions
+Tags: Terraform, DevOps, Infrastructure as Code, Terraform Functions, Type Conversion Functions
 
 Description: Learn how to use the coalesce function in Terraform to return the first non-null and non-empty argument, with practical examples for default values and fallback logic.
 

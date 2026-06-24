@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Redis, ASP.NET Core, Output Caching, Distributed Cache, C#
 
-Description: Configure Redis as the output cache store in ASP.NET Core 8+ to cache full HTTP responses at the middleware level with fine-grained policies.
+Description: Configure Redis as the output cache store in ASP.NET Core 7+ to cache full HTTP responses at the middleware level with fine-grained policies.
 
 ---
 

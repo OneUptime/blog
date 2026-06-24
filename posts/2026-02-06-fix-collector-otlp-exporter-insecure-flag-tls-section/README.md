@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Collector, OTLP, TLS Configuration
 
-Description: Fix Collector configuration errors caused by OTLP exporter TLS settings being configured as top-level fields instead of under the tls section.
+Description: Fix Collector configuration errors caused by the OTLP exporter insecure flag moving from a top-level field to the tls section.
 
 You upgrade the Collector and your configuration that worked perfectly before now produces an error:
 

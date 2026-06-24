@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: ClickHouse, Lambda, Higher-Order Function, Array, SQL
 
-Description: Learn how to write lambda expressions in ClickHouse to use with higher-order array functions like arrayMap, arrayFilter, and arrayFold.
+Description: Learn how to write lambda expressions in ClickHouse to use with higher-order array functions like arrayMap, arrayFilter, and arrayReduce.
 
 ---
 

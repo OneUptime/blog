@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Cilium, Kubernetes, ClusterMesh, Troubleshooting, Multi-Cluster
 
-Description: How to diagnose and resolve global service flapping between Cilium ClusterMesh clusters, including connectivity oscillation, identity state synchronization, and stale endpoint data.
+Description: How to diagnose and resolve global service flapping between Cilium ClusterMesh clusters, including connectivity oscillation, identity conflicts, and synchronization issues.
 
 ---
 

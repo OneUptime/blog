@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, AWS, S3, Access Logging, Audit, Compliance, Infrastructure as Code
 
-Description: Learn how to enable S3 server access logging using OpenTofu to capture detailed records of requests made to an S3 bucket for auditing, security analysis, and compliance.
+Description: Learn how to enable S3 server access logging using OpenTofu to capture detailed records of all requests made to an S3 bucket for auditing, security analysis, and compliance.
 
 ## Introduction
 

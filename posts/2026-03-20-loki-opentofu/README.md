@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Loki, Grafana, Log Aggregation, Kubernetes, Helm, Infrastructure as Code
 
-Description: Learn how to deploy Grafana Loki on Kubernetes using OpenTofu for cost-effective log aggregation with S3 backend storage, Grafana Alloy for log collection, and Grafana integration.
+Description: Learn how to deploy Grafana Loki on Kubernetes using OpenTofu for cost-effective log aggregation with S3 backend storage, Promtail for log collection, and Grafana integration.
 
 ---
 

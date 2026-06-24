@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: MongoDB, Schema Analysis, Key, Aggregation, Database
 
-Description: Learn multiple methods to extract all unique field names from a MongoDB collection including aggregation pipelines and JavaScript approaches for schema discovery.
+Description: Learn multiple methods to extract all unique field names from a MongoDB collection including aggregation pipelines, MapReduce, and JavaScript approaches for schema discovery.
 
 ---
 

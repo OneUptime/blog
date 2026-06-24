@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Cisco, IP Source Guard, IPSG, IPv4, Switching, Security, IOS
 
-Description: Configure IP Source Guard on Cisco IOS switches to prevent IP address spoofing by restricting traffic to only the IP addresses, or IP and MAC address pairs, recorded in the IP source binding table.
+Description: Configure IP Source Guard on Cisco IOS switches to prevent IP address spoofing by restricting traffic to only the IP and MAC addresses recorded in the DHCP snooping binding table.
 
 ## Introduction
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Terraform, Docker, Infrastructure as Code, Automation
 
-Description: Learn how to manage Docker networks and volumes in Portainer environments using the Terraform provider, and deploy container workloads with stacks.
+Description: Learn how to manage Docker containers, networks, and volumes in Portainer environments using the Terraform provider.
 
 ## Overview
 

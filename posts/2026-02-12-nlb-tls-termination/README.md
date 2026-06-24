@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: AWS, NLB, TLS, Load Balancing, Security
 
-Description: A complete guide to configuring Network Load Balancer TLS termination with ACM certificates, security policies, and TLS passthrough.
+Description: A complete guide to configuring Network Load Balancer TLS termination with ACM certificates, security policies, and mutual TLS authentication.
 
 ---
 

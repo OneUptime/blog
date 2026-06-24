@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Azure, Infrastructure as Code, IaC, Azure Function, Serverless
 
-Description: Learn how to provision Azure Function App infrastructure on Consumption and Elastic Premium plans, along with storage accounts and Application Insights using OpenTofu.
+Description: Learn how to deploy Azure Functions with consumption and premium plans, storage accounts, and application insights using OpenTofu.
 
 ## Introduction
 

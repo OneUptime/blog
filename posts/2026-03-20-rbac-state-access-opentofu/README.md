@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, RBAC, State Access, IAM, S3, Security, Infrastructure as Code
 
-Description: Learn how to implement role-based access control for OpenTofu state files using IAM policies, IAM roles, and path-based permissions to prevent unauthorized state access.
+Description: Learn how to implement role-based access control for OpenTofu state files using S3 bucket policies, IAM roles, and path-based permissions to prevent unauthorized state access.
 
 ---
 

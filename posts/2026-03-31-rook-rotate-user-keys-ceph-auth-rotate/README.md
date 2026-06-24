@@ -1,10 +1,10 @@
-# How to Rotate User Keys in Ceph
+# How to Rotate User Keys with ceph auth rotate
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ceph, Rook, Authentication
 
-Description: Learn how to rotate Ceph user authentication keys using ceph-authtool and ceph auth import to meet security requirements without losing user capabilities.
+Description: Learn how to rotate Ceph user authentication keys using ceph auth rotate to meet security requirements without losing user capabilities.
 
 ---
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Core Web Vitals, Frontend Performance, Browser SDK, RUM
 
-Description: Track Core Web Vitals like LCP, INP, and CLS using OpenTelemetry Browser SDK and build a frontend performance dashboard.
+Description: Track Core Web Vitals like LCP, FID, and CLS using OpenTelemetry Browser SDK and build a frontend performance dashboard.
 
 Core Web Vitals are the metrics Google uses to evaluate user experience on the web - Largest Contentful Paint (LCP), Interaction to Next Paint (INP, which replaced First Input Delay - FID), and Cumulative Layout Shift (CLS). Most teams rely on third-party RUM tools to track these, but you can collect them directly with OpenTelemetry's Browser SDK and pipe them into your existing observability stack.
 

@@ -1,10 +1,10 @@
-# How to Configure Fleet for Multi-Environment Deployments
+# How to Configure Fleet for Blue-Green Deployments
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Rancher, Fleet, Helm, Kubernetes, GitOps
+Tags: Rancher, Fleet, Blue-Green, Kubernetes, GitOps
 
-Description: Guide to deploying a Helm-based application to staging and production clusters using Rancher Fleet.
+Description: Guide to implementing blue-green deployment strategy using Rancher Fleet for zero-downtime releases.
 
 ## Introduction
 

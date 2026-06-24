@@ -1,10 +1,10 @@
-# How to Use Ansible for Security Compliance
+# How to Use Ansible with OpenSCAP for Security Compliance
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Security, Compliance
+Tags: Ansible, OpenSCAP, SCAP, Security, Compliance
 
-Description: Use Ansible playbooks for automated security compliance validation and remediation.
+Description: Integrate OpenSCAP security scanning with Ansible for automated SCAP content evaluation and remediation.
 
 ---
 

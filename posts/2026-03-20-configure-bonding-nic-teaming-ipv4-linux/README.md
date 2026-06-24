@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Linux, Networking, Bonding, NIC Teaming, IPv4, High Availability
 
-Description: Configure Linux NIC bonding to aggregate or failover multiple physical interfaces into a single logical bond interface with an IPv4 address for redundancy or higher aggregate throughput.
+Description: Configure Linux NIC bonding to aggregate or failover multiple physical interfaces into a single logical bond interface with an IPv4 address for redundancy or increased throughput.
 
 ## Introduction
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GCP, IPv6, Load Balancing, Google Cloud, Dual-Stack, HTTP Load Balancer
 
-Description: Configure Google Cloud classic HTTP(S) load balancers to accept IPv6 client connections and route them to IPv4 backends, and configure backend service-based regional external passthrough Network Load Balancers with IPv6 frontends.
+Description: Configure Google Cloud HTTP(S), TCP, and Network load balancers to accept IPv6 client connections and route traffic to IPv4 backends using GCP's built-in IPv6 termination.
 
 ## Introduction
 

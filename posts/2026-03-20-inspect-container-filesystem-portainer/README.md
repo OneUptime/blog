@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Docker, Container, Filesystem, Debugging
 
-Description: Inspect and analyze filesystem changes made by running Docker containers using Portainer for context and Docker filesystem inspection tools for the actual change list.
+Description: Inspect and analyze filesystem changes made by running containers using Portainer and Docker inspection tools.
 
 ## Introduction
 

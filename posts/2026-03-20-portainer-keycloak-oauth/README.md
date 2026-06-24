@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Keycloak, OAuth, OpenID Connect, Enterprise SSO, Self-Hosted
 
-Description: Configure Keycloak as an OIDC provider for Portainer with client creation, claim mapping, and group-based access control.
+Description: Configure Keycloak as an OIDC provider for Portainer with client creation, role mapping, and group-based access control.
 
 ## Introduction
 

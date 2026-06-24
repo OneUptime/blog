@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Istio, Kubernetes, ServiceMesh, ExternalServices
 
-Description: Master Istio ServiceEntry patterns for integrating external services with DNS resolution, TLS origination, and outlier detection.
+Description: Master Istio ServiceEntry patterns for integrating external services with DNS resolution, TLS origination, and health checking.
 
 ---
 

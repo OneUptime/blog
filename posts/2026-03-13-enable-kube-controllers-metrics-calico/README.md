@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, Networking, Observability
 
-Description: Collect Calico kube-controllers Prometheus metrics on port 9094 to monitor controller health and IPAM metrics.
+Description: Enable Calico kube-controllers Prometheus metrics on port 9094 to monitor distribution performance and health.
 
 ---
 

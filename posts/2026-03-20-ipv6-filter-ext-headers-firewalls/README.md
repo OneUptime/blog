@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: IPv6, Firewall, Extension Headers, Security, Ip6tables
 
-Description: Learn how to correctly filter IPv6 extension headers in firewalls, balancing security requirements with operational necessity by following RFC 7045, RFC 4890, and RFC 9288 guidelines.
+Description: Learn how to correctly filter IPv6 extension headers in firewalls, balancing security requirements with operational necessity by following RFC 7045 and RFC 4890 guidelines.
 
 ## Introduction
 

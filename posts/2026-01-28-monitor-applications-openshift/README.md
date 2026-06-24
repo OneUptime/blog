@@ -2,9 +2,9 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenShift, Monitoring, Observability, Prometheus
+Tags: OpenShift, Monitoring, Observability, Prometheus, Grafana
 
-Description: Learn how to monitor applications on OpenShift using built-in Prometheus, OpenShift console dashboards, custom metrics endpoints, and alerting for production workloads.
+Description: Learn how to monitor applications on OpenShift using built-in Prometheus and Grafana, custom metrics endpoints, and alerting for production workloads.
 
 ---
 

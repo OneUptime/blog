@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rook, Ceph, Encryption, KMIP, Security
 
-Description: Configure Rook-Ceph to use a KMIP-compliant key management server for CSI volume encryption in enterprise environments.
+Description: Configure Rook-Ceph to use a KMIP-compliant key management server for OSD and CSI volume encryption in enterprise environments.
 
 ---
 

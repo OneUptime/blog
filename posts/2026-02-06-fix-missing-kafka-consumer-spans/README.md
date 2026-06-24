@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Java, Kafka, Consumer Instrumentation
 
-Description: Fix the issue where the OpenTelemetry Java agent does not produce or connect spans for Kafka consumer operations despite active instrumentation.
+Description: Fix the issue where the OpenTelemetry Java agent does not produce spans for Kafka consumer operations despite active instrumentation.
 
 The OpenTelemetry Java agent instruments Apache Kafka producers and consumers to create spans for message publishing and consumption. However, consumer-side spans can appear to be missing or disconnected when the Kafka client version is unsupported, an instrumentation is disabled, processing happens outside an instrumented callback, or trace context is not propagated in headers.
 

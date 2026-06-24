@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: DHCPv6, IPv6, Networking, Options, ISC DHCP, Kea, Configuration
 
-Description: A comprehensive reference for DHCPv6 options including DNS servers, domain search, NTP, SNTP, SIP, and custom and vendor-specific options - with configuration examples for ISC DHCP and Kea.
+Description: A comprehensive reference for DHCPv6 options including DNS servers, domain search, NTP, SNTP, SIP, and custom vendor options - with configuration examples for ISC DHCP and Kea.
 
 ---
 

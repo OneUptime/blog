@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Terraform Cloud, OTLP, Environment Variable, CI/CD
 
-Description: Configure Terraform Cloud agents to export OpenTelemetry telemetry data via OTLP using agent environment variables for plan and apply monitoring.
+Description: Configure Terraform Cloud agents to export OpenTelemetry telemetry data via OTLP using environment variables for plan and apply monitoring.
 
 Terraform Cloud and Terraform Enterprise agents run plans and applies in isolated agent environments. Getting observability into these operations helps you track plan durations, detect drift patterns, and monitor provisioning failures. You can configure OTLP export from Terraform Cloud agents using agent environment variables.
 

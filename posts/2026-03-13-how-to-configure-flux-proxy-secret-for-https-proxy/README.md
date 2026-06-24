@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Flux, Kubernetes, GitOps, Source Controller, Authentication, Secret, Proxy, HTTPS Proxy, TLS, Networking
 
-Description: A practical guide to routing Flux CD source controller traffic through an HTTPS proxy with authentication and certificate configuration.
+Description: A practical guide to routing Flux CD source controller traffic through an HTTPS proxy with TLS termination and certificate configuration.
 
 ---
 

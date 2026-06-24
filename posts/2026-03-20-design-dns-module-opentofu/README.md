@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Terraform, Route53, DNS, AWS, Module
 
-Description: Learn how to design a reusable DNS module for OpenTofu that manages Route53 zones and records, and can associate records with optional health checks from structured configuration data.
+Description: Learn how to design a reusable DNS module for OpenTofu that manages Route53 zones, records, and health checks from structured configuration data.
 
 ## Introduction
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: IPv6, SSH, Ip6tables, Access Control, Security
 
-Description: Learn how to restrict SSH access on IPv6 to specific prefixes using ip6tables, nftables, and OpenSSH `AllowUsers`/`Match Address` configuration, preventing unauthorized access while maintaining management access.
+Description: Learn how to restrict SSH access on IPv6 to specific prefixes using ip6tables, nftables, and sshd AllowFrom configuration, preventing unauthorized access while maintaining management access.
 
 ## Overview
 

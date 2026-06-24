@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Docker, MinIO, Google Cloud Storage, GCS, Cloud Emulation, S3, Docker Compose
 
-Description: Use MinIO in Docker as a local S3-compatible stand-in for Google Cloud Storage development and testing workflows
+Description: Use MinIO in Docker as a local Google Cloud Storage emulator for development and testing workflows
 
 ---
 

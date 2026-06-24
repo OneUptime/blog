@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Windows-server, Docker, Installation, Enterprise
 
-Description: A guide to installing Portainer CE on Windows Server with Docker Engine and Windows containers, covering enterprise deployment scenarios.
+Description: A guide to installing Portainer CE on Windows Server with Docker Engine (Linux containers via Hyper-V), covering enterprise deployment scenarios.
 
 ## Overview
 

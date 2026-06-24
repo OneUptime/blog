@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Azure, SQL, Managed Instance, OpenTofu, Database, Infrastructure
 
-Description: Learn how to deploy Azure SQL Managed Instance with OpenTofu, including VNet integration, subnet delegation, and managed database configuration.
+Description: Learn how to deploy Azure SQL Managed Instance with OpenTofu, including VNet integration, subnet delegation, and high availability configuration.
 
 ## Overview
 

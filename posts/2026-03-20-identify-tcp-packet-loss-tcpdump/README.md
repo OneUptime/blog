@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: TCP, tcpdump, Packet Loss, Networking, Troubleshooting, Analysis
 
-Description: Use tcpdump to capture TCP traffic and investigate packet loss through sequence numbers, duplicate ACKs, and retransmission patterns.
+Description: Use tcpdump to capture TCP traffic and identify packet loss through sequence number gaps, duplicate ACKs, and retransmission patterns.
 
 ## Introduction
 

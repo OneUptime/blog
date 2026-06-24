@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Infrastructure as Code, Provider, Automation, DevOps
 
-Description: Learn how to configure and use the Local provider in OpenTofu to manage files on the local filesystem as code.
+Description: Learn how to configure and use the Local provider in OpenTofu to manage Local resources as code.
 
 ## Introduction
 

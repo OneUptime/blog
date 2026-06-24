@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, OpenShift, Hosted Control Planes, HyperShift, Kubernetes, Networking, Migration
 
-Description: A guide to migrating workloads from an OVN-Kubernetes hosted cluster to a Calico-backed OpenShift Hosted Control Plane cluster.
+Description: A guide to migrating workloads from OVN-Kubernetes to Calico on OpenShift Hosted Control Plane clusters.
 
 ---
 

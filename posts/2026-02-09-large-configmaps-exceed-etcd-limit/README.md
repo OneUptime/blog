@@ -1,10 +1,10 @@
-# How to Handle Large ConfigMaps That Exceed the Kubernetes 1MiB Size Limit
+# How to Handle Large ConfigMaps That Exceed the 1MB etcd Size Limit
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, ConfigMap, Performance
 
-Description: Learn strategies for managing large configuration data in Kubernetes when ConfigMaps exceed the Kubernetes 1MiB size limit, including splitting, compression, and alternative storage approaches.
+Description: Learn strategies for managing large configuration data in Kubernetes when ConfigMaps exceed the 1MB etcd size limit, including splitting, compression, and alternative storage approaches.
 
 ---
 

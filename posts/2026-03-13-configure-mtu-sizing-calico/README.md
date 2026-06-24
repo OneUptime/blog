@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, MTU, Networking, CNI
 
-Description: Configure MTU settings in Calico to match your network infrastructure and avoid packet fragmentation or drops that degrade performance and cause mysterious connectivity failures.
+Description: Configure MTU settings in Calico to match your network infrastructure and avoid packet fragmentation that degrades performance and causes mysterious connectivity failures.
 
 ---
 

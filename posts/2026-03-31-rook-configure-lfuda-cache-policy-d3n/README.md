@@ -1,10 +1,10 @@
-# How to Configure Cache Eviction Policy for D3N
+# How to Configure LFUDA Cache Policy for D3N
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Rook, Ceph, D3N, LRU, Cache, Eviction, RGW
+Tags: Rook, Ceph, D3N, LFUDA, Cache, Eviction, RGW
 
-Description: Configure the cache eviction policy for D3N in Ceph RGW to optimize cache efficiency for your workloads. D3N supports LRU (default) and Random eviction strategies.
+Description: Configure the LFUDA (Least Frequently Used with Dynamic Aging) cache eviction policy for D3N in Ceph RGW to maximize cache efficiency for mixed workloads.
 
 ---
 

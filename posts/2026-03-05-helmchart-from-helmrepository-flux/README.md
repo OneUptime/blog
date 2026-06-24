@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Flux CD, GitOps, Kubernetes, Helm, HelmChart, HelmRepository, Source Controller
 
-Description: Learn how to create a HelmChart source that pulls charts from a HelmRepository in Flux CD, including version pinning, values files, and reconciliation configuration.
+Description: Learn how to create a HelmChart source that pulls charts from a HelmRepository in Flux CD, including version pinning, value overrides, and reconciliation configuration.
 
 ---
 

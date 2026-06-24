@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: IPv6, Apache, Logging, Access Logs, CustomLog
 
-Description: Learn how to log IPv6 client addresses in Apache access logs, customize log formats for IPv6 analysis, and handle dual-stack client address logging.
+Description: Learn how to log IPv6 client addresses in Apache access logs, customize log formats for IPv6 analysis, and handle IPv4-mapped addresses from dual-stack configurations.
 
 ## Default Apache Logging for IPv6
 

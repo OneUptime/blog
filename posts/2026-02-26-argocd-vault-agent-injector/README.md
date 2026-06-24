@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: ArgoCD, GitOps, Kubernetes, Vault, Secret Injection
 
-Description: Learn how to use the HashiCorp Vault Agent Injector with ArgoCD to automatically inject secrets into pods as files and load them into your application environment at startup.
+Description: Learn how to use the HashiCorp Vault Agent Injector with ArgoCD to automatically inject secrets into pods as files or environment variables at runtime.
 
 ---
 

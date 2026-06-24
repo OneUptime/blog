@@ -1,10 +1,10 @@
-# How to Validate Calico Felix Metrics in Production
+# How to Validate the Calico Flow Logs API in Production
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, Networking, Observability
 
-Description: Validate that Calico Felix Prometheus metrics are exposed, scraped, and useful for detecting data plane failures and policy calculation latency.
+Description: Validate that the Calico Flow Logs API returns accurate and complete data by querying known test connections and verifying API results match actual traffic.
 
 ---
 

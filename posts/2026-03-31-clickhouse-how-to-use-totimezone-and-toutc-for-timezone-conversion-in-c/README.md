@@ -1,10 +1,10 @@
-# How to Use toTimezone() for Timezone Conversion in ClickHouse
+# How to Use toTimezone() and toUTC() for Timezone Conversion in ClickHouse
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: ClickHouse, Timezone, Date Function, SQL, Data Engineering
 
-Description: Learn how to use toTimezone() in ClickHouse to convert DateTime values between timezones accurately and efficiently.
+Description: Learn how to use toTimezone() and toUTC() in ClickHouse to convert DateTime values between timezones accurately and efficiently.
 
 ---
 

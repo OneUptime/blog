@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Redis, Deduplication, Filter
 
-Description: Build a deduplication filter with Redis using SET NX and content hashing to prevent processing duplicate events, messages, or API requests.
+Description: Build a deduplication filter with Redis using SET NX and Bloom filter-like patterns to prevent processing duplicate events, messages, or API requests.
 
 ---
 

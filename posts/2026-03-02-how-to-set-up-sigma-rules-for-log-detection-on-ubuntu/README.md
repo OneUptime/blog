@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Ubuntu, Sigma, Security, SIEM, Log Analysis
 
-Description: Learn how to use Sigma rules on Ubuntu for threat detection in log files, converting rules to Elasticsearch and Splunk query formats with the sigma-cli converter tool.
+Description: Learn how to use Sigma rules on Ubuntu for threat detection in log files, converting rules to grep, jq, and SIEM query formats with the sigmac converter tool.
 
 ---
 

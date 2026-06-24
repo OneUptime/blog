@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: AWS, NLB, IPv6, Network Load Balancer, Dual-Stack, Cloud
 
-Description: A guide to configuring AWS Network Load Balancer with IPv6 support, including dual-stack load balancers and IPv6 target registration.
+Description: A guide to configuring AWS Network Load Balancer with IPv6 support, including dual-stack listeners and IPv6 target registration.
 
 AWS Network Load Balancer (NLB) supports IPv6 through dual-stack mode, enabling it to accept connections from IPv6 clients and forward traffic to IPv6 targets. NLB operates at Layer 4 and can preserve the client source IP for same-family connections, including IPv6 clients reaching IPv6 targets.
 

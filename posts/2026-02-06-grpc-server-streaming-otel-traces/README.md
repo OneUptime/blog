@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, gRPC, Server Streaming, Stream Metrics
 
-Description: Trace gRPC server streaming RPCs with OpenTelemetry capturing stream duration, message counts, and time-to-first-message timing data.
+Description: Trace gRPC server streaming RPCs with OpenTelemetry capturing stream duration, message counts, and per-message timing data.
 
 Server streaming RPCs are common in gRPC. The client sends one request and the server responds with a stream of messages. Think of it like subscribing to a real-time feed: stock prices, log tails, or search results that arrive incrementally. Tracing these streams means capturing the full duration, the number of messages sent, and optionally timing stream milestones like the first message.
 

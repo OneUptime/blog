@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: ClickHouse, String Function, Fuzzy Matching, Search, SQL
 
-Description: Learn how ngramDistance() measures string similarity using n-gram overlap and how ngramSearch() performs non-symmetric fuzzy matching, for fuzzy search and typo detection.
+Description: Learn how ngramDistance() measures string similarity using n-gram overlap and how ngramSearch() finds the closest match in an array, for fuzzy search and typo detection.
 
 ---
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: AWS, S3, Data Analytics, Cost Optimization
 
-Description: For existing S3 Select customers, use S3 Select to run SQL queries directly on CSV, JSON, and Parquet files stored in S3, retrieving only the data you need without downloading entire objects.
+Description: Use S3 Select to run SQL queries directly on CSV, JSON, and Parquet files stored in S3, retrieving only the data you need without downloading entire objects.
 
 ---
 

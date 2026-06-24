@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: MongoDB, Collection, Administration, Database, Cleanup
 
-Description: Learn how to drop a MongoDB collection safely using drop(), the drop command, and best practices for irreversible deletion in development and production.
+Description: Learn how to drop a MongoDB collection safely using drop(), dropCollection(), and best practices for irreversible deletion in development and production.
 
 ---
 

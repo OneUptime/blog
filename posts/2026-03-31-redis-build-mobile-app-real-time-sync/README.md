@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Redis, Mobile, Real-Time, Pub/Sub, Sync
 
-Description: Learn how to use Redis Pub/Sub to synchronize data in real time across mobile app clients.
+Description: Learn how to use Redis Pub/Sub and keyspace notifications to synchronize data in real time across mobile app clients.
 
 ---
 

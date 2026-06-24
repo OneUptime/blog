@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: IPv6, NDP, Gratuitous NDP, Unsolicited NA, High Availability, Networking
 
-Description: Understand and implement Gratuitous NDP (Unsolicited Neighbor Advertisements) for IPv6 high availability, failover, and neighbor cache refresh.
+Description: Understand and implement Gratuitous NDP (Unsolicited Neighbor Advertisements) for IPv6 high availability, failover, and cache invalidation.
 
 ## What is Gratuitous NDP?
 

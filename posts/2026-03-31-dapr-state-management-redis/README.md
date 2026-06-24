@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Dapr, State Management, Redis, Microservice, Key-Value Store
 
-Description: Configure Dapr state management with Redis as the backing store and learn how to save, get, and delete state using the Dapr HTTP and SDK APIs.
+Description: Configure Dapr state management with Redis as the backing store and learn how to save, get, delete, and query state using the Dapr HTTP and SDK APIs.
 
 ---
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, Loki, Logging, Grafana, DevOps
 
-Description: Deploy Grafana Loki and Promtail for lightweight log management using Ansible playbooks.
+Description: Deploy Grafana Loki and Promtail for lightweight log management using Ansible playbooks with production-ready configuration.
 
 ---
 

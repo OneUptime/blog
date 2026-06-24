@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure Digital Twins, Twin Graph, REST API, Graph Queries, Digital Twin SDK, IoT Modeling
+Tags: Azure Digital Twins, Twin Graph, REST API, Graph Queries, Digital Twin SDK, IoT Modeling, Kusto Query
 
 Description: A practical guide to creating digital twins, establishing relationships, and querying the twin graph in Azure Digital Twins using the REST API and SDKs.
 

@@ -1,10 +1,10 @@
-# Enable Microsoft Defender for Azure Cosmos DB to Detect SQL Injection Attempts
+# Enable Microsoft Defender for Azure Cosmos DB to Detect NoSQL Injection Attacks
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Microsoft Defender, Cosmos DB, SQL Injection, Database Security, Threat Detection, Cloud Security
+Tags: Azure, Microsoft Defender, Cosmos DB, NoSQL Injection, Database Security, Threat Detection, Cloud Security
 
-Description: Learn how to enable and configure Microsoft Defender for Azure Cosmos DB to detect SQL injection attempts and other database threats in real time.
+Description: Learn how to enable and configure Microsoft Defender for Azure Cosmos DB to detect NoSQL injection attempts and other database threats in real time.
 
 ---
 

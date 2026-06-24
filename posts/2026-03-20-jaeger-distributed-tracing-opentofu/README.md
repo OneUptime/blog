@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Jaeger, Distributed Tracing, OpenTelemetry, Kubernetes, Helm, Infrastructure as Code
 
-Description: Learn how to deploy Jaeger on Kubernetes using OpenTofu for distributed tracing, including Elasticsearch backend, ingress configuration, and Jaeger remote sampling strategies.
+Description: Learn how to deploy Jaeger on Kubernetes using OpenTofu for distributed tracing, including Elasticsearch backend, ingress configuration, and sampling strategies.
 
 ---
 

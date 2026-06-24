@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, Networking, CNI, nftables, Installation
 
-Description: A step-by-step guide to installing Calico with the nftables dataplane instead of the traditional iptables dataplane.
+Description: A step-by-step guide to installing Calico with the nftables dataplane backend instead of the traditional iptables dataplane.
 
 ---
 

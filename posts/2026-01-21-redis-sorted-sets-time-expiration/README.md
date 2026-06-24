@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Redis, Sorted Set, TTL, Data Structure, Time-Based Expiration, ZRANGE BYSCORE
+Tags: Redis, Sorted Set, TTL, Data Structure, Time-Based Expiration, ZRANGEBYSCORE
 
 Description: A comprehensive guide to implementing custom time-based expiration patterns using Redis sorted sets, including sliding windows, scheduled cleanup.
 

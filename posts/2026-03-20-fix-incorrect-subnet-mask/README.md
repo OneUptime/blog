@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Networking, Subnet Mask, IPv4, Linux, Windows, Troubleshooting, CIDR
+Tags: Networking, Subnet Mask, IPv4, Linux, Window, Troubleshooting, CIDR
 
 Description: Learn how to diagnose and fix incorrect subnet mask configurations on Linux and Windows that cause connectivity failures, wrong routing, and hosts being unreachable.
 

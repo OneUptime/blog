@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Data Warehouse, SCD, Dimensional Modeling, Data Engineering
 
-Description: Learn how to implement slowly changing dimensions (SCD Types 1, 2, 3, 4, 6) for historical tracking.
+Description: Learn how to implement slowly changing dimensions (SCD Types 1, 2, 3) for historical tracking.
 
 ---
 

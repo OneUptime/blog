@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Flux CD, GitOps, Kubernetes, Deployment Windows, Scheduling, Automation
 
-Description: Schedule deployment windows by automating Flux CD suspend and resume so that targeted cluster changes only happen during approved time windows.
+Description: Schedule deployment windows by automating Flux CD suspend and resume so that cluster changes only happen during approved time windows.
 
 ---
 

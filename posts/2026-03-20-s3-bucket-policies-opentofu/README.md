@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, AWS, S3, Bucket Policy, IAM, Access Control, Infrastructure as Code
 
-Description: Learn how to write and apply S3 bucket policies using OpenTofu to control access, require SSE-KMS for uploads, require TLS, and scope access to a specific VPC endpoint.
+Description: Learn how to write and apply S3 bucket policies using OpenTofu to control access, enforce encryption, require TLS, and restrict access to specific VPCs or IP ranges.
 
 ## Introduction
 

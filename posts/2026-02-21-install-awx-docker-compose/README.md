@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, AWX, Docker Compose, Installation, DevOps
 
-Description: Deploy AWX using Docker Compose for development and testing environments with step-by-step configuration.
+Description: Deploy AWX using Docker Compose for development and small-scale production environments with step-by-step configuration.
 
 ---
 

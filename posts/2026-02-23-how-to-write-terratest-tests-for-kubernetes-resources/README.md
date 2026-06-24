@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Terraform, Terratest, Kubernetes, Testing, Go, Infrastructure as Code
 
-Description: Learn how to write Terratest tests that validate Kubernetes resources deployed by Terraform, including pods, services, deployments, and NetworkPolicies.
+Description: Learn how to write Terratest tests that validate Kubernetes resources deployed by Terraform, including pods, services, deployments, and ingress configurations.
 
 ---
 

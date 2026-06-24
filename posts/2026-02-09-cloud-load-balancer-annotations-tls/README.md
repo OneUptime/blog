@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Load Balancer, TLS, Cloud
 
-Description: Master cloud-specific load balancer annotations for TLS termination, client IP preservation, and proxy protocol configuration on AWS, GCP, and Azure Kubernetes clusters.
+Description: Master cloud-specific load balancer annotations for TLS termination and proxy protocol configuration on AWS, GCP, and Azure Kubernetes clusters.
 
 ---
 

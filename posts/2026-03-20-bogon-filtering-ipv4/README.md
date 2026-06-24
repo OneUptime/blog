@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Bogon, IPv4, Security, iptables, Firewall, Linux
 
-Description: Implement bogon filtering on Linux to drop packets with source IP addresses from common IPv4 special-use ranges that should never appear on the public internet.
+Description: Implement bogon filtering on Linux to drop packets with source IP addresses that should never appear on the public internet, including private, reserved, and unallocated ranges.
 
 For a static filter, bogon filtering typically starts with IPv4 special-use ranges that should never appear as packet sources on the public internet. Packets with these source IPs are usually spoofed or misconfigured, and filtering them is a fast, effective way to drop obvious garbage traffic before it reaches applications.
 

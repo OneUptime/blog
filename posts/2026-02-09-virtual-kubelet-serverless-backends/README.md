@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Virtual Kubelet, Serverless, AWS Fargate, Azure Container Instances
 
-Description: Learn how to extend Kubernetes clusters with serverless compute capacity using Virtual Kubelet and native serverless integrations to run pods on Azure Container Instances, AWS Fargate, and other serverless platforms.
+Description: Learn how to extend Kubernetes clusters with serverless compute capacity using Virtual Kubelet to run pods on AWS Fargate, Azure Container Instances, and other serverless platforms.
 
 ---
 

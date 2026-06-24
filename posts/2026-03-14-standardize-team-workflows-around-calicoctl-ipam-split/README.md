@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Calicoctl, IPAM, Team Workflows, Best Practice
 
-Description: Establish consistent team procedures for using calicoctl ipam split as part of planned IPAM maintenance.
+Description: Establish consistent team procedures for using calicoctl ipam split as part of regular IPAM operations and maintenance.
 
 ---
 

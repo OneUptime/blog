@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RDP, IPv6, Remote Desktop, Windows, Linux, Networking
+Tags: RDP, IPv6, Remote Desktop, Window, Linux, Networking
 
 Description: Configure Windows Remote Desktop Protocol and xrdp on Linux to accept and establish connections over IPv6 addresses.
 

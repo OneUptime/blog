@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: BGP, IPv6, Communities, No-Export, Policy
 
-Description: Use the BGP no-export community to prevent IPv6 prefixes from being advertised beyond the local AS or BGP confederation boundary.
+Description: Use the BGP no-export community to prevent IPv6 prefixes from being advertised beyond the local AS boundary.
 
 ## Overview
 

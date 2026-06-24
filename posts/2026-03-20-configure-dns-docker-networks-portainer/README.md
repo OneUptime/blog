@@ -1,10 +1,10 @@
-# How to Configure Docker Networks in Portainer
+# How to Configure DNS for Docker Networks in Portainer
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Portainer, Docker, Network, Networking
+Tags: Portainer, Docker, DNS, Network, Networking
 
-Description: Create and manage Docker networks in Portainer, with Docker CLI examples for network configuration and troubleshooting.
+Description: Set custom DNS servers and options for Docker networks in Portainer to control container name resolution.
 
 ---
 

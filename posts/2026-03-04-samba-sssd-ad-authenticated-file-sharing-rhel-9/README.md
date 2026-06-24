@@ -1,10 +1,10 @@
-# How to Configure Samba with Winbind for AD-Authenticated File Sharing on RHEL
+# How to Configure Samba with SSSD for AD-Authenticated File Sharing on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, Samba, Winbind, Active Directory, Linux
+Tags: RHEL, Samba, SSSD, Active Directory, Linux
 
-Description: Set up Samba file sharing on RHEL using Winbind for Active Directory authentication, the supported configuration for AD-integrated Samba file servers.
+Description: Set up Samba file sharing on RHEL using SSSD for Active Directory authentication, providing an alternative to Winbind for AD-integrated environments.
 
 ---
 

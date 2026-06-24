@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Go, Metric, Cardinality
 
-Description: Identify and fix memory growth in Go applications caused by high cardinality OpenTelemetry metric attributes.
+Description: Identify and fix unbounded memory growth in Go applications caused by high cardinality OpenTelemetry metric attributes.
 
 Your Go application's memory usage keeps climbing. It does not crash immediately, but over hours or days, the RSS grows until the container gets OOM-killed. The culprit is often OpenTelemetry metrics with unexpectedly high attribute cardinality, especially in older SDK versions or configurations without a cardinality limit.
 

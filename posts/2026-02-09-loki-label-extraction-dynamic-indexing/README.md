@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Loki, Kubernetes, Logging
 
-Description: Discover how to extract labels from log content in Loki to query Kubernetes logs flexibly while keeping label cardinality under control.
+Description: Discover how to extract labels dynamically from log content in Loki to create flexible indexes for Kubernetes logs without predefined label schemas.
 
 ---
 

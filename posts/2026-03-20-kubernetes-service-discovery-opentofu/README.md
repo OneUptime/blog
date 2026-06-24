@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Kubernetes, Service Discovery, DNS, Microservice, Infrastructure as Code
 
-Description: Learn how to configure Kubernetes Services, EndpointSlices, and ExternalName resources for service discovery using OpenTofu's Kubernetes provider.
+Description: Learn how to configure Kubernetes Services, Endpoints, and ExternalName resources for service discovery using OpenTofu's Kubernetes provider.
 
 ## Introduction
 

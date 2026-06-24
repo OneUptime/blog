@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: iptables, FTP, Passive Mode, Nf_conntrack_ftp, Connection Tracking, IPv4
 
-Description: Configure the nf_conntrack_ftp kernel module to track FTP passive data connections through iptables, eliminating the need to open a wide port range.
+Description: Configure the nf_conntrack_ftp kernel module to automatically track FTP passive data connections through iptables, eliminating the need to open a wide port range.
 
 ## Introduction
 

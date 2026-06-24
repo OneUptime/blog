@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OSPF, Static Routes, Redistribution, Cisco IOS, Routing
 
-Description: Learn how to redistribute static routes into OSPF so that non-dynamic network segments can be reached by other OSPF routers.
+Description: Learn how to redistribute static routes into OSPF so that non-dynamic network segments can be reached by OSPF routers throughout your network.
 
 ## When to Redistribute Static Routes
 

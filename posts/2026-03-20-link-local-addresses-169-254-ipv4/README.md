@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: IPv4, Networking, Link-Local, APIPA, Network Diagnostics, RFC 3927
 
-Description: IPv4 link-local addresses (169.254.0.0/16) are self-assigned by hosts that cannot obtain an IP via DHCP, allowing limited local-network communication without a DHCP server, as defined in RFC 3927.
+Description: IPv4 link-local addresses (169.254.0.0/16) are self-assigned by hosts that cannot obtain an IP via DHCP, allowing limited local-network communication without a DHCP server, defined in RFC 3927.
 
 ## What Are Link-Local Addresses?
 

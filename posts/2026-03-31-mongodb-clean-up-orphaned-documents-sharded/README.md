@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: MongoDB, Sharding, Administration, Cleanup, Maintenance
 
-Description: Learn how orphaned documents occur in sharded MongoDB clusters and how to clean them up using cleanupOrphaned and the rangeDeleter.
+Description: Learn how orphaned documents occur in sharded MongoDB clusters and how to clean them up using cleanupOrphaned, cleanupReshardCollection, and rangeDeleter settings.
 
 ---
 

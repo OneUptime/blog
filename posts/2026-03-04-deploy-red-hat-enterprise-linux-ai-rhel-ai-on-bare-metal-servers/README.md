@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, RHEL AI, AI, Bare Metal, Granite
 
-Description: Install and deploy RHEL AI on bare-metal servers to run IBM Granite foundation models with InstructLab for enterprise AI workloads.
+Description: Install and deploy RHEL AI on bare-metal servers to run IBM Granite foundation models with integrated InstructLab for enterprise AI workloads.
 
 ---
 

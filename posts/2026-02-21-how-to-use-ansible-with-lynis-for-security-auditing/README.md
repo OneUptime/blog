@@ -1,10 +1,10 @@
-# How to Use Ansible for Compliance Validation
+# How to Use Ansible with Lynis for Security Auditing
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Compliance, Security Audit, Hardening, Linux
+Tags: Ansible, Lynis, Security Audit, Hardening, Linux
 
-Description: Deploy and run compliance checks with Ansible for automated system hardening assessment and reporting.
+Description: Deploy and run Lynis security audits with Ansible for automated system hardening assessment and reporting.
 
 ---
 

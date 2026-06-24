@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Gateway API, Reliability
 
-Description: Configure HTTPRoute and gateway retry policies to handle transient failures automatically with exponential backoff and retry conditions.
+Description: Configure retry policies in Kubernetes Gateway API HTTPRoute to handle transient failures automatically with exponential backoff, retry conditions.
 
 ---
 

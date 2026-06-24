@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: DHCPv6, IPv6, Address Assignment, RFC 9915, DUID, IAID
+Tags: DHCPv6, IPv6, Address Assignment, RFC 8415, DUID, IAID
 
 Description: Understand the DHCPv6 protocol, its message types, how it differs from DHCPv4, and when to use DHCPv6 for IPv6 address assignment and configuration.
 

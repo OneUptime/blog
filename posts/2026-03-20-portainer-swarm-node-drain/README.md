@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Docker Swarm, Node Management, Maintenance, Operation
 
-Description: Drain Docker Swarm nodes for maintenance in Portainer, manage node availability, and safely remove nodes from the cluster.
+Description: Drain Docker Swarm nodes for maintenance, manage node availability, and safely remove nodes using Portainer.
 
 ## Introduction
 

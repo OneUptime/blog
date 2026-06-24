@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, MAC Address, Networking, CNI
 
-Description: Test pod MAC address behavior in Calico with live workloads, verifying pod and host-side interface behavior.
+Description: Test pod MAC address behavior in Calico with live workloads, verifying correct assignment, uniqueness, and behavior during pod rescheduling.
 
 ---
 

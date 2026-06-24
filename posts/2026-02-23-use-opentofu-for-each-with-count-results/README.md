@@ -1,10 +1,10 @@
-# How to Use OpenTofu and Terraform for_each with Count Results
+# How to Use OpenTofu for_each with Count Results
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: OpenTofu, Terraform, for_each, Count, Infrastructure as Code, HCL
 
-Description: Learn how to use for_each with resources created with count by keeping for_each keys known at plan time in OpenTofu and Terraform.
+Description: Learn how to use OpenTofu's feature that allows for_each to reference resources created with count, solving a common limitation in Terraform HCL configuration patterns.
 
 ---
 

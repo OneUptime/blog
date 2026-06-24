@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Networking, ARP, Proxy ARP, Linux, Routing
 
-Description: Learn how to use proxy ARP on a Linux router to provide connectivity when end hosts cannot be updated with the right subnet masks or routing information.
+Description: Learn how to use proxy ARP on a Linux router to provide connectivity to subnets that cannot be reached by standard routing.
 
 ## What Is Proxy ARP?
 

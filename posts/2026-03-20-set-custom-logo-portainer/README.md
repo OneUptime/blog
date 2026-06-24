@@ -2,9 +2,9 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Portainer, Customization, Branding, UI
+Tags: Portainer, Customization, Branding, Business Edition, UI
 
-Description: Learn how to replace the default Portainer logo with your own organization's branding in Portainer.
+Description: Learn how to replace the default Portainer logo with your own organization's branding in Portainer Business Edition.
 
 ---
 

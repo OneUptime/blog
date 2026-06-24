@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, Networking, Troubleshooting
 
-Description: Validation steps to confirm a Kubernetes node is fully Ready after resolving Calico issues including pod startup tests and BGP state verification.
+Description: Validation steps to confirm a Kubernetes node is fully Ready after resolving Calico issues including pod scheduling tests and BGP state verification.
 
 ---
 

@@ -1,10 +1,10 @@
-# How to Trace Kustomization Resource Trees with flux tree in Flux
+# How to Trace Kustomization Dependencies with flux tree in Flux
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Flux CD, GitOps, Kubernetes, Kustomize, Troubleshooting, Dependencies, CLI
 
-Description: Learn how to use the flux tree command to visualize and trace Kustomization resource trees in your Flux CD managed clusters.
+Description: Learn how to use the flux tree command to visualize and trace Kustomization dependency chains in your Flux CD managed clusters.
 
 ---
 

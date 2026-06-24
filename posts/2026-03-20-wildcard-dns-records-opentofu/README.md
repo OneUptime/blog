@@ -129,13 +129,13 @@ resource "aws_route53_record" "dev_wildcard" {
 ## Cloudflare Wildcard Record
 
 ```hcl
-resource "cloudflare_record" "wildcard" {
+resource "cloudflare_dns_record" "wildcard" {
   zone_id = data.cloudflare_zone.main.id
   name    = "*"       # Cloudflare uses * without the domain
-  value   = var.origin_ip
+  content = var.origin_ip
   type    = "A"
   proxied = true      # Wildcard records can be proxied
-  ttl     = 1
+  ttl     = 1         # 1 means "automatic" (required when proxied)
 }
 ```
 

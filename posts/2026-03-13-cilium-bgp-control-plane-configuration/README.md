@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Cilium, Kubernetes, Networking, BGP, eBPF
 
-Description: Configure Cilium's BGP Control Plane to advertise Kubernetes service IPs and pod CIDRs to upstream routers using Cilium's BGP control plane resources.
+Description: Configure Cilium's BGP Control Plane to advertise Kubernetes service IPs and pod CIDRs to upstream routers using the CiliumBGPPeeringPolicy CRD.
 
 ---
 

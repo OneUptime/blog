@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Harvester, Kubernetes, Storage, Longhorn, CSI, PVC, SUSE Rancher
 
-Description: Learn how to configure Harvester's built-in Longhorn storage for Kubernetes clusters running on Harvester, including StorageClasses, PVC provisioning, and host-cluster storage access.
+Description: Learn how to configure Harvester's built-in Longhorn storage for Kubernetes clusters running on Harvester, including StorageClasses, PVC provisioning, and cross-cluster storage access.
 
 ---
 

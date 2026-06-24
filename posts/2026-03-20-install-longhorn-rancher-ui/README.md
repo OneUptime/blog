@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Longhorn, Kubernetes, Rancher, Storage, Installation
 
-Description: A complete walkthrough of installing Longhorn distributed storage directly from the Rancher UI using Rancher's built-in Apps feature.
+Description: A complete walkthrough of installing Longhorn distributed storage directly from the Rancher UI using the built-in Apps & Marketplace feature.
 
 ## Introduction
 

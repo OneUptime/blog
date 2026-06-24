@@ -1,10 +1,10 @@
-# How to Use API Gateway Models for Request Validation and Response Modeling
+# How to Use API Gateway Models for Request/Response Validation
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: AWS, API Gateway, Serverless
 
-Description: Learn how to define API Gateway models using JSON Schema to validate request bodies before they reach your backend and describe response payloads.
+Description: Learn how to define API Gateway models using JSON Schema to validate request bodies and response payloads before they reach your backend.
 
 ---
 

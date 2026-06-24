@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenEBS, Kubernetes, Storage, CSI, DevOps
 
-Description: A practical guide to deploying OpenEBS for container-native storage in Kubernetes, covering Replicated PV Mayastor and LocalPV engines, with installation steps and use case recommendations.
+Description: A practical guide to deploying OpenEBS for container-native storage in Kubernetes, covering Mayastor, cStor, and LocalPV engines, with installation steps and use case recommendations.
 
 ---
 

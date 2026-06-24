@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Terraform, Infrastructure Patterns, Blue-Green Deployment, Zero Downtime, AWS, ALB
 
-Description: A step-by-step guide to building blue-green deployment infrastructure with Terraform using ALB weighted target groups and automated rollback.
+Description: A step-by-step guide to building blue-green deployment infrastructure with Terraform using ALB weighted target groups, DNS switching, and automated rollback.
 
 ---
 

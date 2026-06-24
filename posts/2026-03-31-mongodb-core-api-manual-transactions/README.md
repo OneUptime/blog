@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: MongoDB, Transaction, Core API, Manual Control, Node.js
 
-Description: Learn how to use MongoDB's Core API for full manual transaction control, including custom retry logic, conditional commits, and fine-grained error handling in Node.js.
+Description: Learn how to use MongoDB's Core API for full manual transaction control, including custom retry logic, savepoints, and fine-grained error handling in Node.js.
 
 ---
 

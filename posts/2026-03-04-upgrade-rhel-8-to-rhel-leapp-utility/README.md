@@ -1,10 +1,10 @@
-# How to Upgrade from RHEL 8 to RHEL 9 Using the Leapp Utility
+# How to Upgrade from RHEL 8 to RHEL Using the Leapp Utility
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Leapp, Upgrade, Migration, System Administration, Linux
 
-Description: Perform an in-place upgrade from RHEL 8 to RHEL 9 using the Leapp utility, including pre-upgrade assessment, remediation, and the upgrade process.
+Description: Perform an in-place upgrade from RHEL 8 to RHEL using the Leapp utility, including pre-upgrade assessment, remediation, and the upgrade process.
 
 ---
 

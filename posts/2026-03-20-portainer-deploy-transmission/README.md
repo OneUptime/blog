@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Docker, Transmission, BitTorrent, Downloading, Self-Hosted
 
-Description: Deploy Transmission via Portainer as a lightweight BitTorrent client with a clean web interface and easy integration into self-hosted media workflows.
+Description: Deploy Transmission via Portainer as a lightweight BitTorrent client with a clean web interface and RSS-based auto-downloading capabilities.
 
 ## Introduction
 

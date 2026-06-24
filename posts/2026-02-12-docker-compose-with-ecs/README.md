@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: AWS, ECS, Docker, Docker Compose, Container
 
-Description: Learn how Docker Compose applications were deployed to Amazon ECS using the retired Docker ECS integration and the legacy ecs-cli, with practical examples and migration tips.
+Description: Learn how to deploy Docker Compose applications to Amazon ECS using the Docker ECS integration and the ecs-cli, with practical examples and migration tips.
 
 ---
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Simple Content Access, SCA, Red Hat, Linux
 
-Description: A practical guide to using Simple Content Access (SCA) for RHEL, simplifying subscription management by removing the need for per-system entitlement attachment.
+Description: A practical guide to enabling and configuring Simple Content Access (SCA) for RHEL, simplifying subscription management by removing the need for per-system entitlement attachment.
 
 ---
 

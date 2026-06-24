@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Docker, Docker Swarm, Portainer, Container Management, DevOps
 
-Description: Learn how to view, inspect, and handle common Docker Swarm node tasks in Portainer, with equivalent Docker CLI commands where needed.
+Description: Learn how to view, inspect, and manage Docker Swarm nodes directly from the Portainer UI.
 
 ## Overview
 

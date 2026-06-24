@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: TCP, Networking, Retransmission, Packet Loss, Wireshark, Performance
 
-Description: Detect TCP retransmissions using kernel counters, tcpdump, and Wireshark, then diagnose whether the cause is packet loss, congestion, or delayed/lost ACKs.
+Description: Detect TCP retransmissions using kernel counters, tcpdump, and Wireshark, then diagnose whether the cause is packet loss, congestion, or receiver-side delays.
 
 ## Introduction
 

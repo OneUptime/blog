@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Upgrade, Cluster Administration
 
-Description: Learn how to perform rolling upgrades of Kubernetes cluster nodes with minimal downtime using drain and uncordon operations, helping pod migration and service continuity during maintenance.
+Description: Learn how to perform rolling upgrades of Kubernetes cluster nodes with minimal downtime using drain and uncordon operations, ensuring pod migration and service continuity during maintenance.
 
 ---
 

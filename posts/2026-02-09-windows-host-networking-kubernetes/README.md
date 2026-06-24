@@ -1,10 +1,10 @@
-# How to Configure Windows HostProcess Pods for Host Network Access
+# How to Configure Windows Host Networking Mode for Kubernetes Pods
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Windows, Networking
+Tags: Kubernetes, Window, Networking
 
-Description: Learn how to configure Windows HostProcess pods in Kubernetes when a workload needs access to the Windows node's host network namespace.
+Description: Learn how to configure host networking mode for Windows pods in Kubernetes to achieve direct host network access without NAT overhead.
 
 ---
 

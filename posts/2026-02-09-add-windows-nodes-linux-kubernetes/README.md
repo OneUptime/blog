@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Windows, Mixed OS, Hybrid Cluster, Windows Containers
+Tags: Kubernetes, Window, Mixed OS, Hybrid Cluster, Windows Containers
 
 Description: Learn how to add Windows worker nodes to an existing Linux-based Kubernetes cluster for running Windows containers alongside Linux workloads in a mixed OS environment.
 

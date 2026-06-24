@@ -174,7 +174,7 @@ exporters:
 service:
   pipelines:
     # Traces pipeline with full processing
-    # Note: batch runs AFTER tail_sampling — batching before tail sampling can
+    # Note: batch runs AFTER tail_sampling - batching before tail sampling can
     # split spans of the same trace across batches and skew sampling decisions.
     traces:
       receivers: [otlp]

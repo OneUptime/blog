@@ -2,9 +2,9 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Windows, Networking, Tracert, IPv4, Route Tracing, Diagnostic
+Tags: Window, Networking, Tracert, IPv4, Route Tracing, Diagnostic
 
-Description: Use tracert on Windows to trace the IPv4 path to a destination, interpret each hop's latency and IP address, and identify where responses time out or delays appear.
+Description: Use tracert on Windows to trace the IPv4 path to a destination, interpret each hop's latency and IP address, and identify where packet loss or delays occur.
 
 ## Introduction
 

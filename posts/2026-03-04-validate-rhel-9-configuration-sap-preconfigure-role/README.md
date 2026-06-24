@@ -1,10 +1,10 @@
-# How to Validate RHEL Configuration for SAP with SAP Preconfigure Roles
+# How to Validate RHEL Configuration for SAP with sap_preconfigure Role
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, SAP, Ansible, Validation, Linux
 
-Description: Use the RHEL System Roles for SAP preconfigure roles in assert mode to validate that your RHEL system meets SAP requirements.
+Description: Use the RHEL sap_preconfigure Ansible role in check mode to validate that your RHEL system meets all SAP requirements.
 
 ---
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Filtering, For Expressions, HCL, Collection, Infrastructure as Code
 
-Description: Learn how to filter resources and collections in OpenTofu using for expressions with conditions, data source filters, and the try() function - selecting only the resources you need.
+Description: Learn how to filter resources and collections in OpenTofu using for expressions with conditions, data source filters, and the can() function - selecting only the resources you need.
 
 ## Introduction
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Prometheus, IPv4, TCP, Connection States, Node Exporter, PromQL
 
-Description: Monitor IPv4 TCP health with Prometheus using Node Exporter netstat metrics and, for detailed state counts (ESTABLISHED, TIME_WAIT, CLOSE_WAIT, etc.), an `ss`-based textfile collector.
+Description: Monitor TCP connection states (ESTABLISHED, TIME_WAIT, CLOSE_WAIT, etc.) on IPv4 interfaces using Prometheus Node Exporter netstat collector and PromQL queries.
 
 ## Introduction
 

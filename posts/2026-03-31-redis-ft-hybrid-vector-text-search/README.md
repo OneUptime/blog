@@ -1,4 +1,4 @@
-# How to Use FT.SEARCH for Hybrid Vector and Text Search in Redis
+# How to Use FT.HYBRID in Redis for Combined Vector and Text Search
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

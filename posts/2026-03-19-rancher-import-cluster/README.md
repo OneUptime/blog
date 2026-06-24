@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rancher, Kubernetes, Cluster Management
 
-Description: Learn how to import an existing Kubernetes cluster into Rancher for centralized management and monitoring.
+Description: Learn how to import any existing Kubernetes cluster into Rancher for centralized management and monitoring.
 
 If you already have Kubernetes clusters running outside of Rancher, you can import them into Rancher for centralized management without disrupting existing workloads. This guide shows you how to import existing Kubernetes clusters into Rancher, whether they are managed cloud services, self-hosted clusters, or distributions like K3s or Kubeadm, subject to provider-specific support requirements.
 

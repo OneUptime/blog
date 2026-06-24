@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ambassador, Authentication, Kubernetes
 
-Description: Learn how to implement custom authentication and authorization logic using Emissary-ingress's External Auth Service.
+Description: Learn how to implement custom authentication and authorization logic using Ambassador's External Auth Service.
 
 ---
 

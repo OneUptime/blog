@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: ArgoCD, GitOps, Kubernetes, OPA, Gatekeeper
 
-Description: Use Open Policy Agent Gatekeeper with ArgoCD to enforce resource request and limit policies across Kubernetes namespaces via GitOps.
+Description: Use Open Policy Agent Gatekeeper with ArgoCD to enforce resource quotas, limit ranges, and resource request policies across Kubernetes namespaces via GitOps.
 
 ---
 

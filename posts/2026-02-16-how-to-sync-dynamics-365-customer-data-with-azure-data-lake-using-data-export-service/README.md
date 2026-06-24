@@ -2,9 +2,9 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Dynamics 365, Azure Data Lake, Azure Synapse Link, Dataverse, Data Sync, Analytics, ETL
+Tags: Dynamics 365, Azure Data Lake, Data Export Service, Dataverse, Data Sync, Analytics, ETL
 
-Description: Sync Dynamics 365 customer data to Azure Data Lake Storage using Azure Synapse Link for Dataverse for analytics, reporting, and machine learning workloads.
+Description: Sync Dynamics 365 customer data to Azure Data Lake Storage using the Data Export Service for analytics, reporting, and machine learning workloads.
 
 ---
 

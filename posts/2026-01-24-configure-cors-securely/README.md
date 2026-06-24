@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Security, CORS, Web Development, API, Node.js, Python, Go, Header, Cross-Origin
 
-Description: Learn how to configure Cross-Origin Resource Sharing (CORS) securely to control which browser-based origins can read your API responses while enabling legitimate access.
+Description: Learn how to configure Cross-Origin Resource Sharing (CORS) securely to protect your APIs from unauthorized cross-origin requests while enabling legitimate access.
 
 ---
 

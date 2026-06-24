@@ -185,7 +185,7 @@ kubectl -n kube-system edit configmap coredns
 
 Then add a block alongside the existing `.:53 { ... }` server:
 
-```
+```text
 corp.internal:53 {
     forward . 10.0.0.2 10.0.0.3
 }

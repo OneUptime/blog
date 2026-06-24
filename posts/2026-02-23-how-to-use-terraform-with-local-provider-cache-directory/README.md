@@ -2,9 +2,9 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Provider Cache, Provider Installation, CI/CD, Performance
+Tags: Terraform, Provider Cache, Offline Mode, CI/CD, Performance
 
-Description: Set up and manage a local provider cache directory in Terraform to enable faster initialization, fewer repeated downloads, and shared caching.
+Description: Set up and manage a local provider cache directory in Terraform to enable faster initialization, offline operation, and shared caching.
 
 ---
 

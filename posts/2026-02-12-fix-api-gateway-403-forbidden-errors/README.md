@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: AWS, API Gateway, IAM, Security, Troubleshooting
 
-Description: Debug and resolve API Gateway 403 Forbidden errors caused by missing API keys, WAF rules, resource policies, IAM authorization, and usage plan configuration.
+Description: Debug and resolve API Gateway 403 Forbidden errors caused by missing API keys, WAF rules, resource policies, IAM authorization, and usage plan throttling.
 
 ---
 

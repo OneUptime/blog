@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: DoQ, DNS over QUIC, IPv6, AdGuard, Dnsdist, Privacy, RFC 9250
 
-Description: Configure DNS over QUIC (DoQ) on port 853 with IPv6 support using AdGuard Home or dnsdist, enabling fast, encrypted DNS with 0-RTT resumption for returning IPv6 clients.
+Description: Configure DNS over QUIC (DoQ) on port 853 with IPv6 support using AdGuard Home or dnsdist, enabling fast, encrypted DNS with 0-RTT connections for IPv6 clients.
 
 ## Introduction
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Nginx Proxy Manager, Proxy, Configuration, Networking
 
-Description: Learn how to configure Nginx Proxy Manager proxy hosts to route traffic to Portainer correctly, including WebSocket support, the correct upstream scheme, and troubleshooting connection issues.
+Description: Learn how to configure Nginx Proxy Manager proxy hosts to route traffic to Portainer correctly, including WebSocket support, custom headers, and troubleshooting connection issues.
 
 ## Introduction
 

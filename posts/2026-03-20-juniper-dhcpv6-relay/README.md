@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Juniper, DHCPv6, Relay, Junos, DHCP
 
-Description: Set up DHCPv6 relay on supported Junos devices to forward DHCPv6 requests from clients to a remote DHCPv6 server.
+Description: Set up DHCPv6 relay on Juniper devices to forward DHCPv6 requests from clients to a remote DHCPv6 server.
 
 ## Overview
 

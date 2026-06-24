@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Data Mesh, BigQuery, Data Products, Knowledge Catalog, Data Engineering
+Tags: GCP, Data Mesh, BigQuery, Data Products, Data Catalog, Data Engineering
 
 Description: A practical guide to implementing data mesh principles on Google Cloud using BigQuery datasets as autonomous data products with domain ownership and self-serve infrastructure.
 

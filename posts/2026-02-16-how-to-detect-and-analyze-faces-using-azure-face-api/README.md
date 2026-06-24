@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Azure, Face API, Computer Vision, AI, Facial Detection, Cognitive Services
 
-Description: Use Azure Face API to detect faces in images and extract attributes like head pose, blur, and accessories with practical Python examples.
+Description: Use Azure Face API to detect faces in images and extract attributes like age, head pose, and accessories with practical Python examples.
 
 ---
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: IPv6, Windows, Static Routes, Netsh, PowerShell
+Tags: IPv6, Window, Static Routes, Netsh, PowerShell
 
 Description: Learn how to add, verify, and persist IPv6 static routes on Windows using netsh and PowerShell New-NetRoute cmdlet.
 

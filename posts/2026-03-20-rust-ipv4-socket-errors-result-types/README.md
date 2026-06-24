@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Rust, Error Handling, IPv4, TCP, Result, std::io::Error, Networking
+Tags: Rust, Error Handling, IPv4, TCP, Result, Std::io::Error, Networking
 
 Description: Handle IPv4 TCP socket errors idiomatically in Rust using Result types, the ? operator, pattern matching on error kinds, and custom error types.
 

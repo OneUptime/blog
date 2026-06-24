@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Docker, Container, DevOps, Reliability, Monitoring
 
-Description: Implement HEALTHCHECK instructions using curl, custom scripts, and proper thresholds so Docker can report real container health and orchestrators or external monitors can recover unhealthy services.
+Description: Implement HEALTHCHECK instructions using curl, custom scripts, and proper thresholds so Docker, Swarm, and Compose can auto-heal your services.
 
 A container can be running but completely broken. The process might be alive but stuck in a loop, out of memory, or unable to connect to dependencies. Health checks give Docker visibility into actual application health, enabling monitoring and, with an orchestrator or external monitor, automatic recovery without human intervention.
 

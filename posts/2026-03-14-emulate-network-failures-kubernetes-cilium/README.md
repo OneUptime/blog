@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Cilium, Kubernetes, Chaos Engineering, Network Failures, Testing
 
-Description: Learn how to emulate network failures in a Kubernetes cluster running Cilium using CiliumNetworkPolicies and chaos engineering techniques to test application resilience.
+Description: Learn how to emulate network failures in a Kubernetes cluster running Cilium using CiliumNetworkPolicies, traffic control, and chaos engineering techniques to test application resilience.
 
 ---
 

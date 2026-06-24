@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Confluent Cloud, Kafka, Streaming, Infrastructure as Code, Data Engineering, Managed Service
 
-Description: Learn how to provision Confluent Cloud Kafka clusters, topics, service accounts, and API keys using OpenTofu for fully managed Kafka deployments.
+Description: Learn how to provision Confluent Cloud Kafka clusters, topics, service accounts, and API keys using OpenTofu for fully managed, serverless Kafka deployments.
 
 ---
 

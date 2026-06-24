@@ -253,4 +253,4 @@ Always keep at least one local admin account that can log in without SAML. If yo
 
 SAML integration in Terraform Enterprise centralizes authentication and makes life easier for both users and administrators. The setup involves configuring your IdP with TFE's metadata, then configuring TFE with your IdP's metadata. When SCIM is not enabled, team mapping through SAML groups keeps permissions in sync automatically. Test thoroughly before enforcing SSO, and always keep a backdoor admin account in case your IdP has an outage.
 
-For other authentication options, see [How to Configure Terraform Enterprise OIDC Authentication](https://oneuptime.com/blog/post/2026-02-23-configure-terraform-enterprise-oidc-authentication/view) and [How to Configure Terraform Enterprise LDAP Authentication](https://oneuptime.com/blog/post/2026-02-23-configure-terraform-enterprise-ldap-authentication/view).
+For another authentication option, see [How to Configure Terraform Enterprise LDAP Authentication](https://oneuptime.com/blog/post/2026-02-23-configure-terraform-enterprise-ldap-authentication/view).

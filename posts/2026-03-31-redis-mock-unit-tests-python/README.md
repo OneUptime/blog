@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Redis, Python, Testing, Mock, Unit Test
 
-Description: Mock Redis in Python unit tests using fakeredis and unittest.mock to test Redis-dependent code without a running server, covering strings, hashes, and lists.
+Description: Mock Redis in Python unit tests using fakeredis and unittest.mock to test Redis-dependent code without a running server, covering strings, lists, and pub/sub.
 
 ---
 

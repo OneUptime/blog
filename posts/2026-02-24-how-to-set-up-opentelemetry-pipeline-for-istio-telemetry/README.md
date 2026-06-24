@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Istio, OpenTelemetry, Telemetry Pipeline, Observability, Kubernetes
 
-Description: End-to-end guide for building a complete OpenTelemetry pipeline that handles scraped metrics, traces, and logs from an Istio service mesh in production.
+Description: End-to-end guide for building a complete OpenTelemetry pipeline that handles metrics, traces, and logs from an Istio service mesh in production.
 
 ---
 

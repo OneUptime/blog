@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: BGP, Troubleshooting, OpenSent, Cisco IOS, Networking
 
-Description: Learn how to diagnose BGP sessions stuck in the OpenSent state by identifying OPEN message problems like remote AS mismatches, unacceptable hold times, and router ID conflicts.
+Description: Learn how to diagnose BGP sessions stuck in the OpenSent state by identifying mismatched OPEN message parameters like hold time, BGP version, and router ID conflicts.
 
 ## What Is the OpenSent State?
 

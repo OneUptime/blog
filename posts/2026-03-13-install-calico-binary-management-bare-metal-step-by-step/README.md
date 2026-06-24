@@ -1,10 +1,10 @@
-# How to Install Calico with Ansible on Bare Metal Step by Step
+# How to Install Calico with Binary Management on Bare Metal Step by Step
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Networking, CNI, Bare Metal, Ansible, Installation
+Tags: Calico, Kubernetes, Networking, CNI, Bare Metal, Binary Management, Installation
 
-Description: A step-by-step guide to installing Calico on bare metal Kubernetes nodes using Ansible to manage the official Calico manifest.
+Description: A step-by-step guide to installing Calico on bare metal using an automated binary management system such as Ansible or a package manager.
 
 ---
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: MySQL, Magento, Database
 
-Description: Set up and tune MySQL for Magento 2, covering database creation, env.php configuration, log table maintenance, and InnoDB tuning.
+Description: Set up and tune MySQL for Magento 2, covering database creation, env.php configuration, split database patterns, and InnoDB tuning.
 
 ---
 

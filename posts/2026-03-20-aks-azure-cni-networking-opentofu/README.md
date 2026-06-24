@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Azure, AKS, Azure CNI, Kubernetes Networking, VNet Integration, Infrastructure as Code
 
-Description: Learn how to configure AKS with Azure CNI networking using OpenTofu, including flat networking that assigns VNet IP addresses directly to pods and Azure CNI Overlay to reduce VNet IP consumption.
+Description: Learn how to configure AKS with Azure CNI networking using OpenTofu to assign VNet IP addresses directly to pods for native Azure network integration and Network Policy enforcement.
 
 ## Introduction
 

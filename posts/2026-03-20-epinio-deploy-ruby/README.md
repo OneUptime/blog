@@ -2,9 +2,9 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Epinio, Ruby, Kubernetes, PaaS, Sinatra
+Tags: Epinio, Ruby, Kubernetes, PaaS, Rails
 
-Description: Deploy a Ruby application to Kubernetes using Epinio with Bundler dependency management.
+Description: Deploy a Ruby on Rails application to Kubernetes using Epinio with Bundler dependency management.
 
 ## Introduction
 

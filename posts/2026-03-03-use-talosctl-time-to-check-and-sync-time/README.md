@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Talos Linux, Talosctl, Time Synchronization, NTP, Cluster Administration
 
-Description: Learn how to use the talosctl time command to check time across Talos Linux nodes for cluster reliability
+Description: Learn how to use the talosctl time command to check and synchronize time across Talos Linux nodes for cluster reliability
 
 ---
 

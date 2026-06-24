@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Exclude Flag, OpenTofu 1.9, CLI, Infrastructure as Code
 
-Description: Learn how to use the -exclude flag introduced in OpenTofu 1.9 to skip specific resources and anything that depends on them during plan and apply operations.
+Description: Learn how to use the -exclude flag introduced in OpenTofu 1.9 to skip specific resources during plan and apply operations.
 
 ## Introduction
 

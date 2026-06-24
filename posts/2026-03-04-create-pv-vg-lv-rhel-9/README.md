@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, LVM, PV, VG, LV, Linux
+Tags: RHEL, LVM, PV, VG, LVS, Linux
 
 Description: Step-by-step guide to creating and managing LVM physical volumes, volume groups, and logical volumes on RHEL with practical examples.
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Calico, DNS
 
-Description: Configure Calico Enterprise or Calico Cloud network policies using FQDN matching to control egress traffic based on domain names instead of IP addresses.
+Description: Configure Calico network policies using FQDN matching to control egress traffic based on domain names instead of IP addresses.
 
 ---
 

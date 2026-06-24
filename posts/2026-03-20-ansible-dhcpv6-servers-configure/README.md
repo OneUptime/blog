@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, DHCPv6, IPv6, Linux, Network Services, Automation
 
-Description: A guide to deploying and configuring ISC DHCPv6 servers on Debian- and Red Hat-family Linux using Ansible playbooks and templates.
+Description: A guide to deploying and configuring ISC DHCPv6 servers on Linux using Ansible playbooks and templates.
 
 DHCPv6 provides stateful IPv6 address assignment and DNS configuration to clients, complementing SLAAC for networks that require centralized address tracking. This guide uses Ansible to deploy and configure ISC DHCP for DHCPv6 on Debian- and Red Hat-family Linux hosts.
 

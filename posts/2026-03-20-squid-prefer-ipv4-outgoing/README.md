@@ -1,10 +1,10 @@
-# How to Configure Squid 4 and Older to Prefer IPv4 Over IPv6 for Outgoing Connections
+# How to Configure Squid to Prefer IPv4 Over IPv6 for Outgoing Connections
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Squid, IPv4, IPv6, Dns_v4_first, Outgoing, Networking
 
-Description: Configure Squid 4 and older to prefer IPv4 connections to origin servers using dns_v4_first, and understand the alternatives for newer Squid releases.
+Description: Configure Squid to prefer IPv4 connections to origin servers using the dns_v4_first and related directives, avoiding IPv6 connectivity issues on dual-stack hosts.
 
 ## Introduction
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTofu, Terraform, Licensing, Open Source, BSL, MPL
+Tags: OpenTofu, Terraform, Licensing, Open Source, BSL, MPLS
 
 Description: Learn the key differences between OpenTofu's Mozilla Public License and HashiCorp Terraform's Business Source License, and what each means for your organization.
 

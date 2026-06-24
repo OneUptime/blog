@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Terraform, Azure, Azure Monitor, Diagnostic Settings, Logging, Infrastructure as Code
 
-Description: Learn how to create Azure Monitor diagnostic settings using Terraform to route platform logs and metrics to Log Analytics and Storage.
+Description: Learn how to create Azure Monitor diagnostic settings using Terraform to route platform logs and metrics to Log Analytics, Storage, and Event Hubs.
 
 ---
 

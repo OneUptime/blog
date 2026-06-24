@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: ArgoCD, GitOps, Kubernetes, Security, Compliance
 
-Description: A comprehensive guide to running ArgoCD in FIPS 140 compliance mode for government and regulated environments requiring cryptographic standards.
+Description: A comprehensive guide to running ArgoCD in FIPS 140-2 compliance mode for government and regulated environments requiring cryptographic standards.
 
 ---
 

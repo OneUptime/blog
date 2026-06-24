@@ -41,7 +41,7 @@ When forwarding to a Service, `kubectl` resolves the Service to one of its backi
 kubectl port-forward svc/payments-api 9000:80 -n dev
 ```
 
-Note that `port-forward` does not go through the Service's load balancing — it picks one endpoint and sends all traffic to that single Pod for the life of the session, so it won't exercise round-robin or sticky-session behavior across Pods. It's still handy for inspecting HTTP headers or responses locally without exposing the Service to the internet.
+Note that `port-forward` does not go through the Service's load balancing - it picks one endpoint and sends all traffic to that single Pod for the life of the session, so it won't exercise round-robin or sticky-session behavior across Pods. It's still handy for inspecting HTTP headers or responses locally without exposing the Service to the internet.
 
 ## 3. Port-Forward to Databases/Queues
 

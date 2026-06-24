@@ -2,9 +2,9 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTofu, AWS, Azure, API Gateway, Rate Limiting, Throttling, Infrastructure as Code
+Tags: OpenTofu, AWS, Azure, GCP, API Gateway, Rate Limiting, Throttling, Infrastructure as Code
 
-Description: Learn how to configure API throttling and rate limiting across AWS API Gateway and Azure API Management using OpenTofu to protect backends from traffic spikes.
+Description: Learn how to configure API throttling and rate limiting across AWS API Gateway, Azure API Management, and GCP API Gateway using OpenTofu to protect backends from traffic spikes.
 
 API throttling prevents abuse, protects backend services from traffic spikes, and ensures fair usage across clients. Each cloud provider has distinct mechanisms - AWS API Gateway uses usage plans and stage-level throttling, while Azure APIM uses rate-limit policies. Managing throttling in OpenTofu ensures limits are consistently applied and documented.
 

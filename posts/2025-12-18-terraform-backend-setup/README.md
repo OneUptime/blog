@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Terraform, Infrastructure as Code, AWS, S3, Backend
+Tags: Terraform, Infrastructure as Code, AWS, S3, DynamoDB, Backend
 
 Description: Learn how to bootstrap your Terraform backend infrastructure using Terraform itself, solving the chicken-and-egg problem of creating remote state storage before you can use it.
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Istio, MicroK8s, Kubernetes, Service Mesh, Canonical, Ubuntu
 
-Description: A complete guide to enabling and configuring Istio service mesh on Canonical MicroK8s with community add-on support and custom configurations.
+Description: A complete guide to enabling and configuring Istio service mesh on Canonical MicroK8s with built-in add-on support and custom configurations.
 
 ---
 

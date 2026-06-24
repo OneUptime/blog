@@ -2,9 +2,9 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, Vaultwarden, Linux
+Tags: RHEL, HashiCorp, Linux
 
-Description: Step-by-step guide on install and configure Vaultwarden using Red Hat Enterprise Linux 9.
+Description: Step-by-step guide on install and configure vaultwarden using Red Hat Enterprise Linux 9.
 
 ---
 

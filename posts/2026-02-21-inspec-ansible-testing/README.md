@@ -1,10 +1,10 @@
-# How to Use Molecule for Ansible Testing
+# How to Use InSpec for Ansible Testing
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Testing, Molecule, Testinfra, CI/CD
+Tags: Ansible, Testing, InSpec, Compliance, Chef
 
-Description: Validate Ansible playbook results using Molecule, Ansible verification playbooks, and Testinfra.
+Description: Validate Ansible playbook results using Chef InSpec compliance profiles for security and configuration auditing.
 
 ---
 

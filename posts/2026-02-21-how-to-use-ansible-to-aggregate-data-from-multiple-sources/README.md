@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, Data Aggregation, Automation, Integration
 
-Description: Learn how to use Ansible to aggregate data from multiple sources including APIs, files, environment variables, and host facts into unified data structures for automation.
+Description: Learn how to use Ansible to aggregate data from multiple sources including APIs, files, databases, and host facts into unified data structures for automation.
 
 ---
 

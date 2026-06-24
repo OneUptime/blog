@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: ArgoCD, GitOps, Kubernetes, CLI, Resource Management
 
-Description: Learn how to use argocd app resources to list Kubernetes resources tracked by an ArgoCD application, and use JSON output from argocd app get for filtering and automation.
+Description: Learn how to use argocd app resources to list, inspect, and manage all Kubernetes resources tracked by an ArgoCD application with filtering and output options.
 
 ---
 

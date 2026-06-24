@@ -136,7 +136,7 @@ interface RenderToPipeableStreamOptions {
   onShellReady?: () => void;
   onShellError?: (error: Error) => void;
   onAllReady?: () => void;
-  onError?: (error: Error, errorInfo: ErrorInfo) => string | void;
+  onError?: (error: Error) => void;
 }
 
 interface PipeableStream {
@@ -166,10 +166,10 @@ interface RenderToReadableStreamOptions {
   bootstrapModules?: string[];
   progressiveChunkSize?: number;
   signal?: AbortSignal;
-  onError?: (error: Error, errorInfo: ErrorInfo) => string | void;
+  onError?: (error: Error) => void;
 }
 
-const stream: ReadableStream = await renderToReadableStream(
+const stream: ReadableStream & { allReady: Promise<void> } = await renderToReadableStream(
   reactNode,
   options
 );
@@ -195,7 +195,7 @@ const html: string = renderToString(<App />);
 // Cons:
 // - Blocks until complete
 // - Higher TTFB
-// - No Suspense support on server
+// - Limited Suspense support: suspended content renders its fallback immediately
 // - All or nothing hydration
 ```
 
@@ -337,7 +337,7 @@ app.listen(PORT, () => {
 ```typescript
 // src/server/render.ts
 import { Request, Response } from 'express';
-import { renderToPipeableStream, RenderToPipeableStreamOptions } from 'react-dom/server';
+import { renderToPipeableStream } from 'react-dom/server';
 import React from 'react';
 import App from '../client/App';
 
@@ -358,26 +358,23 @@ export async function streamingRender(
   };
 
   let didError = false;
-  let shellError: Error | null = null;
 
   const { pipe, abort } = renderToPipeableStream(
     <App context={context} />,
     {
       bootstrapScripts: ['/static/js/client.js'],
-      bootstrapModules: ['/static/js/client.mjs'],
 
       onShellReady() {
         // Shell is ready - start streaming
         // This includes everything outside Suspense boundaries
         res.statusCode = didError ? 500 : context.statusCode;
         res.setHeader('Content-Type', 'text/html; charset=utf-8');
-        res.setHeader('Transfer-Encoding', 'chunked');
         pipe(res);
       },
 
       onShellError(error: Error) {
         // Shell failed to render - send fallback
-        shellError = error;
+        console.error('Shell render error:', error);
         res.statusCode = 500;
         res.setHeader('Content-Type', 'text/html');
         res.send(`
@@ -401,17 +398,19 @@ export async function streamingRender(
       onError(error: Error) {
         didError = true;
         console.error('Streaming error:', error);
-        // Return error message for client-side display
-        return error.message;
       },
     }
   );
 
   // Set timeout for slow responses
   const ABORT_TIMEOUT = 10000; // 10 seconds
-  setTimeout(() => {
+  const timeout = setTimeout(() => {
     abort(new Error('Server render timeout'));
   }, ABORT_TIMEOUT);
+
+  res.on('close', () => {
+    clearTimeout(timeout);
+  });
 }
 ```
 
@@ -423,16 +422,12 @@ import React from 'react';
 import { hydrateRoot } from 'react-dom/client';
 import App from './App';
 
-const container = document.getElementById('root');
-
-if (container) {
-  hydrateRoot(
-    container,
-    <React.StrictMode>
-      <App context={{ url: window.location.pathname }} />
-    </React.StrictMode>
-  );
-}
+hydrateRoot(
+  document,
+  <React.StrictMode>
+    <App context={{ url: window.location.pathname }} />
+  </React.StrictMode>
+);
 ```
 
 ## Using Suspense for Streaming Boundaries
@@ -501,6 +496,7 @@ export default App;
 ```typescript
 // src/client/components/Dashboard.tsx
 import React, { Suspense } from 'react';
+import { getDashboardSummary } from '../../shared/data';
 
 interface DashboardData {
   summary: SummaryData;
@@ -531,9 +527,9 @@ const Dashboard: React.FC = () => {
   );
 };
 
-// Data fetching component using use() hook (React 18.3+)
+// Data fetching component using a Suspense-enabled resource
 const DashboardSummary: React.FC = () => {
-  const data = use(fetchDashboardSummary());
+  const data = getDashboardSummary();
 
   return (
     <div className="summary-cards">
@@ -554,6 +550,10 @@ export default Dashboard;
 
 // Cache for deduplication
 const cache = new Map<string, Promise<any>>();
+const API_BASE_URL =
+  typeof window === 'undefined'
+    ? process.env.API_BASE_URL ?? 'http://localhost:3000'
+    : '';
 
 export function createStreamableResource<T>(
   key: string,
@@ -588,10 +588,18 @@ export function createStreamableResource<T>(
 }
 
 // Usage
+export const getDashboardSummary = createStreamableResource(
+  'dashboardSummary',
+  async () => {
+    const response = await fetch(`${API_BASE_URL}/api/dashboard/summary`);
+    return response.json();
+  }
+);
+
 export const getUserProfile = createStreamableResource(
   'userProfile',
   async () => {
-    const response = await fetch('/api/user/profile');
+    const response = await fetch(`${API_BASE_URL}/api/user/profile`);
     return response.json();
   }
 );
@@ -599,7 +607,7 @@ export const getUserProfile = createStreamableResource(
 export const getDashboardData = createStreamableResource(
   'dashboard',
   async () => {
-    const response = await fetch('/api/dashboard');
+    const response = await fetch(`${API_BASE_URL}/api/dashboard`);
     return response.json();
   }
 );
@@ -662,9 +670,6 @@ const { pipe } = renderToPipeableStream(<App />, {
   progressiveChunkSize: CHUNK_SIZE,
 
   onShellReady() {
-    // Enable streaming with chunked transfer
-    res.setHeader('Transfer-Encoding', 'chunked');
-
     // Pipe with transformation for monitoring
     const transform = new Transform({
       transform(chunk, encoding, callback) {
@@ -752,19 +757,16 @@ const App: React.FC = () => {
 // React will prioritize hydrating Navigation immediately
 ```
 
-### Manual Hydration Control
+### Multiple Hydration Roots
 
 ```typescript
-// For fine-grained control over hydration priority
+// React handles selective hydration automatically for a single server-rendered root.
+// If you intentionally render separate SSR islands, hydrate each island with
+// the same component that produced that island's HTML.
 
-import { createRoot, hydrateRoot } from 'react-dom/client';
+import { hydrateRoot } from 'react-dom/client';
 
-// Option 1: Delayed hydration for below-fold content
-const container = document.getElementById('root');
-const root = hydrateRoot(container, <App />);
-
-// Option 2: Intersection Observer for lazy hydration
-function lazyHydrate(
+function hydrateIsland(
   elementId: string,
   component: React.ReactElement
 ): void {
@@ -786,8 +788,8 @@ function lazyHydrate(
   observer.observe(element);
 }
 
-// Usage
-lazyHydrate('comments-section', <CommentsSection />);
+// Usage for a separately server-rendered comments island
+hydrateIsland('comments-section', <CommentsSection />);
 ```
 
 ## Error Handling in Streaming
@@ -841,23 +843,18 @@ export async function streamingRender(
         res.send(renderErrorPage(error));
       },
 
-      onError(error: Error, errorInfo: { componentStack?: string }) {
+      onError(error: Error) {
         errors.push(error);
 
         // Log detailed error information
         console.error('Streaming error:', {
           message: error.message,
           stack: error.stack,
-          componentStack: errorInfo.componentStack,
           url: req.url,
           timestamp: new Date().toISOString(),
         });
 
-        // Return sanitized error message for client
-        if (process.env.NODE_ENV === 'development') {
-          return error.message;
-        }
-        return 'An error occurred';
+        // Recoverable server errors are retried on the client.
       },
     }
   );
@@ -1015,7 +1012,9 @@ export const AppShell: React.FC<AppShellProps> = ({ children }) => {
           rel="stylesheet"
           href="/styles/main.css"
           media="print"
-          onLoad="this.media='all'"
+          onLoad={(event) => {
+            event.currentTarget.media = 'all';
+          }}
         />
       </head>
       <body>
@@ -1558,20 +1557,9 @@ export async function cachedStreamingRender(
 
   // Stream and cache
   res.setHeader('X-Cache', 'MISS');
+  res.setHeader('Content-Type', 'text/html');
 
   const chunks: string[] = [];
-
-  const { pipe } = renderToPipeableStream(<App />, {
-    onAllReady() {
-      // Cache complete HTML after streaming finishes
-      const html = chunks.join('');
-      cache.set(cacheKey, {
-        html,
-        timestamp: Date.now(),
-        headers: { 'Content-Type': 'text/html' },
-      });
-    },
-  });
 
   // Transform to capture chunks while streaming
   const transform = new Transform({
@@ -1579,9 +1567,21 @@ export async function cachedStreamingRender(
       chunks.push(chunk.toString());
       callback(null, chunk);
     },
+    final(callback) {
+      cache.set(cacheKey, {
+        html: chunks.join(''),
+        timestamp: Date.now(),
+        headers: { 'Content-Type': 'text/html' },
+      });
+      callback();
+    },
   });
 
-  pipe(transform).pipe(res);
+  const { pipe } = renderToPipeableStream(<App />, {
+    onShellReady() {
+      pipe(transform).pipe(res);
+    },
+  });
 }
 ```
 
@@ -1677,7 +1677,7 @@ By following these patterns and best practices, you can build React applications
 
 ## Further Reading
 
-- [React 18 Server Components Documentation](https://react.dev/reference/react-dom/server)
-- [Suspense for Data Fetching](https://react.dev/reference/react/Suspense)
+- [React Server APIs Documentation](https://18.react.dev/reference/react-dom/server)
+- [Suspense Reference](https://18.react.dev/reference/react/Suspense)
 - [Selective Hydration Architecture](https://github.com/reactwg/react-18/discussions/37)
 - [Streaming SSR Performance Guide](https://web.dev/articles/rendering-on-the-web)

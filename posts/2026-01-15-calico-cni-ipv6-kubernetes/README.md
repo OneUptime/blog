@@ -726,7 +726,7 @@ spec:
   # bpfEnabled: true
   # bpfDataIfacePattern: "^(eth|ens|enp).*"
 
-  # MTU is not a FelixConfiguration field — configure it on the Installation
+  # MTU is not a FelixConfiguration field - configure it on the Installation
   # resource (calicoNetwork.mtu) or per-tunnel (vxlanMTU, wireguardMTU).
   # IPv6 minimum MTU is 1280; 1500 is typical for native routing.
 

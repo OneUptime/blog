@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Keycloak, IPv6, OAuth2, SSO, Authentication
 
-Description: Configure Keycloak for dual-stack or IPv6-preferred networking, connect to PostgreSQL over IPv6, and preserve IPv6 client addresses through trusted proxy headers.
+Description: Configure Keycloak identity server to listen on IPv6, connect to PostgreSQL over IPv6, and handle IPv6 client addresses in tokens.
 
 ## Overview
 

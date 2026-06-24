@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, CI/CD, Syntax Checking, Code Quality
 
-Description: Configure Ansible syntax checking in CI/CD pipelines to catch YAML errors, missing includes, unknown modules, and some variable issues before deployment.
+Description: Configure Ansible syntax checking in CI/CD pipelines to catch YAML errors, undefined variables, and module issues before deployment.
 
 ---
 

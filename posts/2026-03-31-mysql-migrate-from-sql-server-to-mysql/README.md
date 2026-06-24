@@ -2,9 +2,9 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: MySQL, SQL Server, Migration, MySQL Workbench, Database
+Tags: MySQL, SQL Server, Migration, SSMA, Database
 
-Description: Migrate a Microsoft SQL Server database to MySQL by converting schema with MySQL Workbench Migration Wizard, handling T-SQL differences, and transferring data reliably.
+Description: Migrate a Microsoft SQL Server database to MySQL by converting schema with SSMA, handling T-SQL differences, and transferring data reliably.
 
 ---
 

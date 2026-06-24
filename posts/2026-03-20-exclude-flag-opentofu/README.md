@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Infrastructure as Code, Terraform, IaC, DevOps
 
-Description: Learn how to use the OpenTofu -exclude flag to skip specific resources during plan and apply operations, the negative-targeting counterpart to the -target flag.
+Description: Learn how to use the OpenTofu -exclude flag to skip specific resources during plan and apply operations, the inverse of the -target flag.
 
 ## Introduction
 

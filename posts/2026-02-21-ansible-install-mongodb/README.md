@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, MongoDB, Database, NoSQL
 
-Description: Automate MongoDB installation on Ubuntu, Debian, and RHEL systems using Ansible with official repository setup and initial security configuration.
+Description: Automate MongoDB installation on Ubuntu and RHEL systems using Ansible with official repository setup and initial security configuration.
 
 ---
 

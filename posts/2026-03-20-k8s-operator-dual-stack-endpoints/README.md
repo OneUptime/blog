@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Operator, IPv6, Dual-Stack, Controller-runtime
 
-Description: Manage Kubernetes services with both IPv4 and IPv6 endpoints in custom operators using controller-runtime, dual-stack Service fields, and EndpointSlices.
+Description: Manage Kubernetes services with both IPv4 and IPv6 endpoints in custom operators using controller-runtime and the Endpoints API.
 
 ## Overview
 

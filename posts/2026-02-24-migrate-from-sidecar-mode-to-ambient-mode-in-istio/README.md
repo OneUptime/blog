@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Istio, Ambient Mode, Sidecar, Migration, Kubernetes
 
-Description: A step-by-step migration guide for moving Istio workloads from sidecar mode to ambient mode with low-risk strategies and rollback plans.
+Description: A step-by-step migration guide for moving Istio workloads from sidecar mode to ambient mode with zero-downtime strategies and rollback plans.
 
 ---
 

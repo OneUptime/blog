@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Linode, Akamai, Cloud, Docker, Self-Hosted, DevOps
 
-Description: Deploy Portainer on a Linode (now Akamai Cloud) instance with firewall configuration, block storage, and backup considerations for production use.
+Description: Deploy Portainer on a Linode (now Akamai Cloud) instance with firewall configuration, block storage, and optional NodeBalancer for production use.
 
 ## Introduction
 

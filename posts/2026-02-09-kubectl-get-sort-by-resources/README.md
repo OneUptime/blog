@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, kubectl, Resource Management
 
-Description: Learn how to sort kubectl output by age, restart counts, resource capacity, and custom fields using JSONPath expressions to quickly identify problem resources and trends.
+Description: Learn how to sort kubectl output by age, restart counts, resource usage, and custom fields using JSONPath expressions to quickly identify problem resources and trends.
 
 ---
 

@@ -12,10 +12,10 @@ Searching filenames in Elasticsearch requires special handling because filenames
 
 ## The Challenge with Filenames
 
-Standard text analyzers fail with filenames:
+Standard text analyzers are not optimized for filenames:
 
-- `report_2024_final.pdf` becomes `[report, 2024, final, pdf]`
-- Searching `report.pdf` will not match
+- Filename punctuation, underscores, and extensions may not be tokenized the way users expect
+- Searching exact fragments like `report.pdf` can be unreliable without filename-specific fields
 - Path components get mixed together
 - Extensions are not easily searchable
 
@@ -116,6 +116,9 @@ curl -X PUT "https://localhost:9200/files" \
             }
           }
         },
+        "directory": {
+          "type": "keyword"
+        },
         "extension": {
           "type": "keyword"
         },
@@ -155,11 +158,18 @@ Response shows edge n-grams for autocomplete:
     { "token": "qu", "position": 0 },
     { "token": "qua", "position": 0 },
     { "token": "quar", "position": 0 },
+    { "token": "quart", "position": 0 },
+    { "token": "quarte", "position": 0 },
+    { "token": "quarter", "position": 0 },
+    { "token": "quarterl", "position": 0 },
     { "token": "quarterly", "position": 0 },
     { "token": "re", "position": 1 },
     { "token": "rep", "position": 1 },
+    { "token": "repo", "position": 1 },
+    { "token": "repor", "position": 1 },
     { "token": "report", "position": 1 },
     { "token": "20", "position": 2 },
+    { "token": "202", "position": 2 },
     { "token": "2024", "position": 2 },
     { "token": "pd", "position": 3 },
     { "token": "pdf", "position": 3 }
@@ -178,6 +188,7 @@ curl -X POST "https://localhost:9200/files/_doc" \
   -d '{
     "filename": "quarterly_report_2024.pdf",
     "path": "/documents/reports/finance/quarterly_report_2024.pdf",
+    "directory": "/documents/reports/finance",
     "extension": "pdf",
     "size": 1048576,
     "modified_date": "2024-03-15T10:30:00Z",
@@ -189,18 +200,18 @@ curl -X POST "https://localhost:9200/files/_doc" \
 
 ```bash
 curl -X POST "https://localhost:9200/files/_bulk" \
-  -H "Content-Type: application/json" \
+  -H "Content-Type: application/x-ndjson" \
   -u elastic:password \
-  -d '
+  --data-binary @- <<'EOF'
 {"index":{}}
-{"filename":"project_proposal.docx","path":"/documents/projects/project_proposal.docx","extension":"docx","size":524288}
+{"filename":"project_proposal.docx","path":"/documents/projects/project_proposal.docx","directory":"/documents/projects","extension":"docx","size":524288}
 {"index":{}}
-{"filename":"budget_2024.xlsx","path":"/documents/finance/budget_2024.xlsx","extension":"xlsx","size":262144}
+{"filename":"budget_2024.xlsx","path":"/documents/finance/budget_2024.xlsx","directory":"/documents/finance","extension":"xlsx","size":262144}
 {"index":{}}
-{"filename":"team_photo.jpg","path":"/images/team/team_photo.jpg","extension":"jpg","size":2097152}
+{"filename":"team_photo.jpg","path":"/images/team/team_photo.jpg","directory":"/images/team","extension":"jpg","size":2097152}
 {"index":{}}
-{"filename":"README.md","path":"/code/myproject/README.md","extension":"md","size":4096}
-'
+{"filename":"README.md","path":"/code/myproject/README.md","directory":"/code/myproject","extension":"md","size":4096}
+EOF
 ```
 
 ## Search Queries
@@ -314,6 +325,7 @@ curl -X GET "https://localhost:9200/files/_search" \
 
 ```python
 from elasticsearch import Elasticsearch
+from datetime import datetime, timezone
 from pathlib import Path
 import os
 import mimetypes
@@ -327,13 +339,15 @@ es = Elasticsearch(
 def index_file(filepath):
     """Index a file by its path."""
     path = Path(filepath)
+    stat = path.stat() if path.exists() else None
 
     doc = {
         "filename": path.name,
         "path": str(path),
+        "directory": str(path.parent),
         "extension": path.suffix.lstrip('.').lower() if path.suffix else "",
-        "size": path.stat().st_size if path.exists() else 0,
-        "modified_date": path.stat().st_mtime if path.exists() else None,
+        "size": stat.st_size if stat else 0,
+        "modified_date": datetime.fromtimestamp(stat.st_mtime, timezone.utc).isoformat().replace("+00:00", "Z") if stat else None,
         "content_type": mimetypes.guess_type(filepath)[0] or "application/octet-stream"
     }
 
@@ -349,14 +363,17 @@ def index_directory(directory, recursive=True):
             for filename in files:
                 filepath = os.path.join(root, filename)
                 path = Path(filepath)
+                stat = path.stat()
 
                 yield {
                     "_index": "files",
                     "_source": {
                         "filename": path.name,
                         "path": str(path),
+                        "directory": str(path.parent),
                         "extension": path.suffix.lstrip('.').lower() if path.suffix else "",
-                        "size": path.stat().st_size,
+                        "size": stat.st_size,
+                        "modified_date": datetime.fromtimestamp(stat.st_mtime, timezone.utc).isoformat().replace("+00:00", "Z"),
                         "content_type": mimetypes.guess_type(filepath)[0] or "application/octet-stream"
                     }
                 }
@@ -486,9 +503,8 @@ curl -X GET "https://localhost:9200/files/_search" \
     "aggs": {
       "by_path": {
         "terms": {
-          "field": "path",
-          "size": 20,
-          "include": "/[^/]+/[^/]+/"
+          "field": "directory",
+          "size": 20
         }
       }
     }
@@ -503,11 +519,20 @@ Add a pattern analyzer for camelCase:
 
 ```json
 {
-  "analyzer": {
-    "camelcase_analyzer": {
-      "type": "pattern",
-      "pattern": "([a-z]+|[A-Z][a-z]+|[0-9]+)",
-      "lowercase": true
+  "analysis": {
+    "analyzer": {
+      "camelcase_analyzer": {
+        "type": "custom",
+        "tokenizer": "camelcase_tokenizer",
+        "filter": ["lowercase"]
+      }
+    },
+    "tokenizer": {
+      "camelcase_tokenizer": {
+        "type": "pattern",
+        "pattern": "([A-Z]?[a-z]+|[A-Z]+(?=[A-Z]|$)|[0-9]+)",
+        "group": 0
+      }
     }
   }
 }

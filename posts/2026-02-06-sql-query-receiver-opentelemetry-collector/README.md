@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Collector, SQL, Database Monitoring, Metric, Observability
 
-Description: Learn how to configure the SQL Query receiver in OpenTelemetry Collector to monitor supported SQL databases through custom queries, track performance metrics.
+Description: Learn how to configure the SQL Query receiver in OpenTelemetry Collector to monitor any SQL database through custom queries, track performance metrics.
 
 The SQL Query receiver is one of the most flexible receivers in the OpenTelemetry Collector ecosystem. Unlike database-specific receivers that are limited to particular database types, the SQL Query receiver works with many SQL databases through its supported drivers. This makes it invaluable when you need custom metrics from databases that don't have dedicated receivers, or when you want to track business-specific metrics stored in your database.
 

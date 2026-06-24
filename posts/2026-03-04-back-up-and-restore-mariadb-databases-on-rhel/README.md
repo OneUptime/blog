@@ -2,9 +2,9 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, MariaDB, Backup, Restore, mariadb-dump, Mariabackup
+Tags: RHEL, MariaDB, Backup, Restore, mysqldump, Mariabackup
 
-Description: Back up and restore MariaDB databases on RHEL using mariadb-dump for logical backups and mariabackup for hot physical backups without downtime.
+Description: Back up and restore MariaDB databases on RHEL using mysqldump for logical backups and mariabackup for hot physical backups without downtime.
 
 ---
 

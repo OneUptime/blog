@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Infrastructure as Code, Provider, Automation, DevOps
 
-Description: Learn how to configure and use the Cloudflare provider in OpenTofu to manage Cloudflare Tunnel resources as code.
+Description: Learn how to configure and use the Cloudflare Tunnels provider in OpenTofu to manage Cloudflare Tunnels resources as code.
 
 ## Introduction
 

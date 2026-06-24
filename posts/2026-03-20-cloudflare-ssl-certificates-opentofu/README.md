@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Infrastructure as Code, Provider, Automation, DevOps
 
-Description: Learn how to configure and use the Cloudflare provider in OpenTofu to manage Cloudflare SSL certificate resources as code.
+Description: Learn how to configure and use the Cloudflare Ssl Certificates provider in OpenTofu to manage Cloudflare Ssl Certificates resources as code.
 
 ## Introduction
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, IPv6, Network Automation, Cisco IOS, Junos, Network Devices
 
-Description: A guide to configuring IPv6 addresses, routing, and interfaces on network devices (Cisco IOS, Juniper Junos, Arista EOS) using Ansible network modules.
+Description: A guide to configuring IPv6 addresses, routing, and interfaces on network devices (Cisco IOS, Juniper Junos) using Ansible network modules.
 
 Ansible provides dedicated collections for automating network device configuration. This guide shows how to enable IPv6 on Cisco IOS, Juniper Junos, and Arista EOS devices, including interface addressing, static routes, OSPFv3, and BGP neighbors.
 

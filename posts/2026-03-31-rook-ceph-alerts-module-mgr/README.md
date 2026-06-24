@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rook, Ceph, Alert, Monitoring, Manager
 
-Description: Configure the Ceph Manager alerts module to send email notifications when cluster health changes, OSDs go down, or capacity thresholds are breached.
+Description: Configure the Ceph Manager alerts module to send email or webhook notifications when cluster health changes, OSDs go down, or capacity thresholds are breached.
 
 ---
 

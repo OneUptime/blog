@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, AWS, EKS, Pod Identity, IAM, Kubernetes, Security, Infrastructure as Code
 
-Description: Learn how to configure EKS Pod Identity using OpenTofu as a simpler alternative to IRSA for supported EKS workloads, providing simplified IAM role assignment to Kubernetes service accounts.
+Description: Learn how to configure EKS Pod Identity using OpenTofu as the modern replacement for IRSA, providing simplified IAM role assignment to Kubernetes service accounts.
 
 ## Introduction
 

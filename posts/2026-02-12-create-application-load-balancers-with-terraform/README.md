@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: AWS, Terraform, ALB, Networking, Load Balancing
 
-Description: Complete guide to creating and configuring AWS Application Load Balancers with Terraform, including listeners, target groups, path-based routing, SSL, and redirect rules.
+Description: Complete guide to creating and configuring AWS Application Load Balancers with Terraform, including listeners, target groups, path-based routing, SSL, and WAF integration.
 
 ---
 

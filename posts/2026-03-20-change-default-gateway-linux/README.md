@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Linux, Default Gateway, Routing, iproute2, Networking, Network Configuration
 
-Description: Change the existing default gateway on Linux using ip route commands to redirect outbound traffic through a new gateway.
+Description: Change the existing default gateway on Linux using ip route commands to redirect all outbound traffic through a new gateway without disrupting active connections.
 
 ## Introduction
 

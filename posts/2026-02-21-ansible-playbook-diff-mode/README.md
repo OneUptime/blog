@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, Playbook, Diff Mode, Configuration Management
 
-Description: Learn how to use Ansible diff mode to see what supported modules will change on remote hosts before and after execution.
+Description: Learn how to use Ansible diff mode to see exactly what changes your playbook will make to files on remote hosts before and after execution.
 
 ---
 

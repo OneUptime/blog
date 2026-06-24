@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rancher, Webhook, Automation, Alerting, Integration
 
-Description: A guide to using Rancher Monitoring alert webhooks and custom webhook integrations to automate responses to cluster events and alerts.
+Description: A guide to using Rancher alerting webhooks and custom webhook integrations to automate responses to cluster events and alerts.
 
 ## Overview
 

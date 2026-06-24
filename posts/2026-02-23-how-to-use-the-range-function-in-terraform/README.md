@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, DevOps, Infrastructure as Code, Terraform Functions, Collection Function
+Tags: Terraform, DevOps, Infrastructure as Code, Terraform Functions, Numeric Function
 
 Description: Learn how to use the range function in Terraform to generate sequences of numbers, with practical examples for resource creation, CIDR calculation, and iteration.
 

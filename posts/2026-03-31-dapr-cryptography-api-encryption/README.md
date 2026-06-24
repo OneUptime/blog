@@ -114,7 +114,7 @@ curl -X PUT \
 ```
 
 The response body is the raw encrypted bytes (`application/octet-stream`). Use `-o` to save to a file.
-```
+```text
 
 ### Via Go SDK
 

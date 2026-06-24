@@ -173,7 +173,7 @@ kubectl -n kube-system edit configmap coredns
 
 Add a new server block alongside the existing `.:53` block:
 
-```
+```text
 home.lab:53 {
     hosts {
         192.168.1.200 jellyfin.home.lab

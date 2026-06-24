@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Docker, V Language, Containerization, DevOps, Compiled Languages, Web Development
 
-Description: A practical guide to containerizing V language applications with Docker, covering Veb servers, static compilation, and lightweight production images.
+Description: A practical guide to containerizing V language applications with Docker, covering Vweb servers, static compilation, and lightweight production images.
 
 ---
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: ClickHouse, Docker Desktop, macOS, Windows, Local Development, Setup
+Tags: ClickHouse, Docker Desktop, macOS, Window, Local Development, Setup
 
 Description: A beginner-friendly guide to running ClickHouse on Docker Desktop for macOS and Windows, with tips for resource allocation and GUI client access.
 

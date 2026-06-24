@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Flux CD, GitOps, Kubernetes, Helm, HelmRelease, Bucket, S3, GCS, MinIO, Chart Source
 
-Description: Learn how to configure a HelmRelease to source Helm charts from a Bucket source in Flux CD.
+Description: Learn how to configure a HelmRelease to source Helm charts from an S3-compatible Bucket source in Flux CD.
 
 ---
 

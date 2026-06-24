@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: IPv4, Subnetting, Networking, Host Ranges, CIDR
 
-Description: For most IPv4 subnets (/0 through /30), the valid host range spans from the first address after the network address to the last address before the broadcast address. `/31` and `/32` are special cases, and Python can calculate these ranges directly from the network...
+Description: The valid host range in an IPv4 subnet spans from the first address after the network address to the last address before the broadcast address, and can be calculated directly from the network...
 
 ## Host Range Formula
 

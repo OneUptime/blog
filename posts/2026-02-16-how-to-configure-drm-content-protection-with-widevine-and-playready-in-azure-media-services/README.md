@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Azure, Media Services, DRM, Widevine, PlayReady, Content Protection, Video Streaming
 
-Description: Learn how legacy Azure Media Services environments configured DRM content protection using Widevine and PlayReady to secure video content from unauthorized access.
+Description: Learn how to configure DRM content protection using Widevine and PlayReady in Azure Media Services to secure your video content from unauthorized access.
 
 ---
 

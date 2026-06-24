@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, CRD, IPv6, Validation, CEL
 
-Description: Add CEL validation rules and validating webhooks to Kubernetes CRDs to enforce IPv6 address and CIDR format.
+Description: Add CEL validation rules and webhook validators to Kubernetes CRDs to enforce IPv6 address format and CIDR constraints.
 
 ## Overview
 

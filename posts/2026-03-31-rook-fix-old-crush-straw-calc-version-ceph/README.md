@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ceph, Rook, CRUSH, Upgrade, Map
 
-Description: Learn how to resolve the OLD_CRUSH_STRAW_CALC_VERSION warning in Ceph by recompiling the CRUSH map to use the corrected straw calculation for better data distribution.
+Description: Learn how to resolve the OLD_CRUSH_STRAW_CALC_VERSION warning in Ceph by recompiling the CRUSH map to use the modern straw2 algorithm for better data distribution.
 
 ---
 

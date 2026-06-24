@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Cilium, Kubernetes, GAMMA, Gateway API, Troubleshooting
 
-Description: Diagnose issues with producer, consumer, and mixed GAMMA configuration types in Cilium including unsupported consumer routes, ReferenceGrant failures for backend references, and route ownership conflicts.
+Description: Diagnose issues with producer, consumer, and mixed GAMMA configuration types in Cilium including ReferenceGrant failures and route ownership conflicts.
 
 ---
 

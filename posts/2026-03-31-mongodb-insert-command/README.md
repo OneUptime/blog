@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: MongoDB, Insert, Write, Document
 
-Description: Learn how to insert documents in MongoDB using insertOne and insertMany with ordered and unordered modes, write concerns, and error handling patterns.
+Description: Learn how to insert documents in MongoDB using insertOne, insertMany, and bulkWrite with ordered and unordered modes, write concerns, and error handling patterns.
 
 ---
 

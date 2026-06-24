@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Istio, Health Check, Service Discovery, Kubernetes, Envoy
 
-Description: Understand how health checks drive service discovery in Istio, from Kubernetes endpoints to Envoy's passive outlier detection mechanisms.
+Description: Understand how health checks drive service discovery in Istio, from Kubernetes endpoints to Envoy's active and passive health checking mechanisms.
 
 ---
 

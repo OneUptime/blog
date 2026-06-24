@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Docker, Device, USB, SERIAL, IoT, Hardware
 
-Description: Configure Docker containers to access host hardware devices - USB peripherals, serial ports, and other device files - through Portainer's container creation interface and Compose-based stack YAML.
+Description: Configure Docker containers to access host hardware devices - USB peripherals, serial ports, and other device files - through Portainer's container creation interface and stack YAML.
 
 ---
 

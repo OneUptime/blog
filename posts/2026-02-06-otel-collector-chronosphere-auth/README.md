@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Collector, Chronosphere, Service Account Auth
 
-Description: Set up the OpenTelemetry Collector to export to Chronosphere using service account authentication with exporter routing per signal type.
+Description: Set up the OpenTelemetry Collector to export to Chronosphere using service account authentication with endpoint routing per signal type.
 
 Chronosphere uses service accounts for machine-to-machine authentication. When configuring the OpenTelemetry Collector to send data to Chronosphere, you authenticate using a service account token and can route different signal types through separate exporter instances.
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Monitoring, Linux
 
-Description: Step-by-step guide on install and configure the Splunk Universal Forwarder using Red Hat Enterprise Linux 9.
+Description: Step-by-step guide on install and configure the splunk universal forwarder using Red Hat Enterprise Linux 9.
 
 ---
 

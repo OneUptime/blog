@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Windows, Operator, Networking, CNI, Performance, Production
+Tags: Calico, Kubernetes, Window, Operator, Networking, CNI, Performance, Production
 
 Description: A guide to tuning operator-managed Calico on Windows nodes for production performance in mixed Linux/Windows Kubernetes clusters.
 

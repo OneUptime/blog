@@ -114,7 +114,7 @@ After DISCARD, the WATCH on `account:balance` is cleared. The key can be watched
 
 A typical pattern in application code when using Redis transactions:
 
-```
+```text
 MULTI
 
 # Build the transaction

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Juniper, IPv6, Static Routes, Junos, Routing
 
-Description: Add IPv6 static routes in Juniper Junos for network reachability.
+Description: Add IPv6 static routes and aggregate routes in Juniper Junos routing instances for network reachability.
 
 ## Overview
 

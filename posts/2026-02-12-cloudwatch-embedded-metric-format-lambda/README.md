@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: AWS, CloudWatch, Lambda, Serverless, Monitoring
 
-Description: Learn how to use the CloudWatch Embedded Metric Format to publish custom metrics directly from Lambda function logs without calling PutMetricData yourself.
+Description: Learn how to use the CloudWatch Embedded Metric Format to publish custom metrics directly from Lambda function logs without extra API calls or costs.
 
 ---
 

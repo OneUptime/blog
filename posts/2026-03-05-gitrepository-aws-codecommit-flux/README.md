@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Flux CD, GitOps, Kubernetes, AWS, CodeCommit, EKS
 
-Description: Learn how to configure Flux CD GitRepository resources to pull Kubernetes manifests from AWS CodeCommit using HTTPS and SSH authentication.
+Description: Learn how to configure Flux CD GitRepository resources to pull Kubernetes manifests from AWS CodeCommit using HTTPS, SSH, and IAM-based authentication.
 
 ---
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: AWS, RDS, DMS, Migration, Database
 
-Description: Complete guide to using AWS Database Migration Service to migrate databases to RDS with continuous replication, data validation, and minimal downtime.
+Description: Complete guide to using AWS Database Migration Service to migrate databases to RDS with continuous replication, schema conversion, and minimal downtime.
 
 ---
 

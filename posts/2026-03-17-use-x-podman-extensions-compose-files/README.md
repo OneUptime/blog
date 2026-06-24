@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Podman, Container, DevOps, podman-compose, Extension, Configuration
 
-Description: Learn how to use x-podman extension fields in Compose files to access Podman-specific features like pod settings and no-hosts mode.
+Description: Learn how to use x-podman extension fields in Compose files to access Podman-specific features like pods and rootful mode.
 
 ---
 

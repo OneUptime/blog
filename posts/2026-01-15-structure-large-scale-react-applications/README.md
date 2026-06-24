@@ -298,7 +298,7 @@ export const IncidentList: React.FC<IncidentListProps> = ({
   maxItems = 50
 }) => {
   const {
-    incidents,
+    data: incidents = [],
     isLoading,
     error,
     refetch
@@ -380,7 +380,8 @@ import { incidentService } from '../services/incidentService';
 import type {
   Incident,
   IncidentFilters,
-  CreateIncidentPayload
+  CreateIncidentPayload,
+  UpdateIncidentPayload
 } from '../types/incident.types';
 
 const INCIDENTS_KEY = 'incidents';
@@ -419,7 +420,7 @@ export function useUpdateIncident() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: ({ id, payload }: { id: string; payload: Partial<Incident> }) =>
+    mutationFn: ({ id, payload }: { id: string; payload: UpdateIncidentPayload }) =>
       incidentService.updateIncident(id, payload),
     onSuccess: (updatedIncident, { id }) => {
       // Update the specific incident in cache
@@ -504,6 +505,7 @@ import { z } from 'zod';
 import { useCreateIncident, useUpdateIncident } from './useIncidents';
 
 const incidentFormSchema = z.object({
+  projectId: z.string().min(1, 'Project is required'),
   title: z.string().min(1, 'Title is required').max(200),
   description: z.string().max(5000).optional(),
   severity: z.enum(['critical', 'major', 'minor', 'informational']),
@@ -515,12 +517,13 @@ type IncidentFormData = z.infer<typeof incidentFormSchema>;
 
 interface UseIncidentFormOptions {
   incidentId?: string;
+  projectId?: string;
   defaultValues?: Partial<IncidentFormData>;
   onSuccess?: () => void;
 }
 
 export function useIncidentForm(options: UseIncidentFormOptions = {}) {
-  const { incidentId, defaultValues, onSuccess } = options;
+  const { incidentId, projectId, defaultValues, onSuccess } = options;
   const isEditing = Boolean(incidentId);
 
   const createIncident = useCreateIncident();
@@ -529,6 +532,7 @@ export function useIncidentForm(options: UseIncidentFormOptions = {}) {
   const form = useForm<IncidentFormData>({
     resolver: zodResolver(incidentFormSchema),
     defaultValues: {
+      projectId: projectId ?? '',
       title: '',
       description: '',
       severity: 'minor',
@@ -541,7 +545,8 @@ export function useIncidentForm(options: UseIncidentFormOptions = {}) {
   const onSubmit = form.handleSubmit(async (data) => {
     try {
       if (isEditing && incidentId) {
-        await updateIncident.mutateAsync({ id: incidentId, payload: data });
+        const { projectId: _projectId, ...payload } = data;
+        await updateIncident.mutateAsync({ id: incidentId, payload });
       } else {
         await createIncident.mutateAsync(data);
       }
@@ -788,7 +793,7 @@ import axios, { AxiosInstance, AxiosError, AxiosRequestConfig } from 'axios';
 import { getAuthToken, refreshToken, clearAuth } from '@/features/auth';
 import type { ApiError } from '@/shared/types/api.types';
 
-const BASE_URL = process.env.REACT_APP_API_URL || '/api';
+const BASE_URL = process.env.REACT_APP_API_URL || '';
 
 class ApiClient {
   private client: AxiosInstance;
@@ -985,7 +990,9 @@ const SuspenseLayout: React.FC = () => (
 const ProtectedLayout: React.FC = () => (
   <AuthGuard>
     <MainLayout>
-      <SuspenseLayout />
+      <ErrorBoundary>
+        <SuspenseLayout />
+      </ErrorBoundary>
     </MainLayout>
   </AuthGuard>
 );
@@ -1003,7 +1010,6 @@ const router = createBrowserRouter([
   // Protected routes
   {
     element: <ProtectedLayout />,
-    errorElement: <ErrorBoundary />,
     children: [
       { path: '/', element: <Navigate to={ROUTES.DASHBOARD} replace /> },
       { path: ROUTES.DASHBOARD, element: <Dashboard /> },
@@ -1085,11 +1091,6 @@ function createTestQueryClient() {
         retry: false,
       },
     },
-    logger: {
-      log: console.log,
-      warn: console.warn,
-      error: () => {}, // Silence error logs in tests
-    },
   });
 }
 
@@ -1144,15 +1145,16 @@ export { renderWithProviders as render };
 
 import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { rest } from 'msw';
+import { http, HttpResponse } from 'msw';
 import { setupServer } from 'msw/node';
+import { vi } from 'vitest';
 import { render } from '@/shared/test-utils/testUtils';
 import { IncidentList } from './IncidentList';
 import { mockIncidents } from '../../__mocks__/incidentMocks';
 
 const server = setupServer(
-  rest.get('/api/v1/incidents', (req, res, ctx) => {
-    return res(ctx.json({ data: mockIncidents, total: mockIncidents.length }));
+  http.get('/api/v1/incidents', () => {
+    return HttpResponse.json({ data: mockIncidents, total: mockIncidents.length });
   })
 );
 
@@ -1199,8 +1201,8 @@ describe('IncidentList', () => {
 
   it('renders empty state when no incidents', async () => {
     server.use(
-      rest.get('/api/v1/incidents', (req, res, ctx) => {
-        return res(ctx.json({ data: [], total: 0 }));
+      http.get('/api/v1/incidents', () => {
+        return HttpResponse.json({ data: [], total: 0 });
       })
     );
 
@@ -1213,8 +1215,8 @@ describe('IncidentList', () => {
 
   it('renders error state and retry button on failure', async () => {
     server.use(
-      rest.get('/api/v1/incidents', (req, res, ctx) => {
-        return res(ctx.status(500));
+      http.get('/api/v1/incidents', () => {
+        return new HttpResponse(null, { status: 500 });
       })
     );
 

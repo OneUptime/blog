@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GCP, Shared VPC, IAM, Subnet Access, Networking
 
-Description: Learn how to grant fine-grained subnet-level access to service project administrators in GCP Shared VPC using subnet-level IAM bindings and best practices for least privilege.
+Description: Learn how to grant fine-grained subnet-level access to service project administrators in GCP Shared VPC using IAM conditions and best practices for least privilege.
 
 ---
 

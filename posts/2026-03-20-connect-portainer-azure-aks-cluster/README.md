@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Azure, AKS, Kubernetes, Cloud
 
-Description: Add an Azure Kubernetes Service cluster to Portainer using the Portainer agent deployed via the official YAML manifest for centralized K8s management.
+Description: Add an Azure Kubernetes Service cluster to Portainer using the Helm-based agent deployment for centralized K8s management.
 
 ---
 

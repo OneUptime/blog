@@ -1647,7 +1647,7 @@ Echo.private(`chat.${roomId}`)
 
 Client events must be enabled before they can be used. For the hosted Pusher
 Channels service, toggle "Enable client events" in your app's settings on the
-Pusher dashboard — there is no `config/broadcasting.php` option that turns them
+Pusher dashboard - there is no `config/broadcasting.php` option that turns them
 on. (Laravel Reverb supports client events through its own app configuration.)
 
 ---

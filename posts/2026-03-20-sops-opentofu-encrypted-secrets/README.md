@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, SOPS, Encrypted Secrets, Security, Infrastructure as Code, GitOps
 
-Description: Learn how to use SOPS to encrypt secret variable files and decrypt them at apply time in OpenTofu, enabling secrets to be safely committed to version control.
+Description: Learn how to use Mozilla SOPS to encrypt secret variable files and decrypt them at apply time in OpenTofu, enabling secrets to be safely committed to version control.
 
 ## Introduction
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Troubleshooting, CSRF, Origin, Security, Upgrade, Reverse Proxy
 
-Description: Learn how to fix 'Origin Invalid' or 'CSRF check failed' errors that can appear after upgrading Portainer, especially behind reverse proxies, and how to use Portainer's trusted origins setting when needed.
+Description: Learn how to fix 'Origin Invalid' or 'CSRF check failed' errors that appear after upgrading Portainer, caused by stricter origin validation introduced in newer versions.
 
 ---
 

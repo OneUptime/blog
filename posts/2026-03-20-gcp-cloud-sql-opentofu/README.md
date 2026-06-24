@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, GCP, Google Cloud, Infrastructure as Code, IaC, Cloud SQL, Database
 
-Description: Learn how to create a highly available Cloud SQL instance with a read replica, backups, and private IP using OpenTofu.
+Description: Learn how to create a highly available Cloud SQL instance with read replicas, backups, and private IP using OpenTofu.
 
 ## Introduction
 

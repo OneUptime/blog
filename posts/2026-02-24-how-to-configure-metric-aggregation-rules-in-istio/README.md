@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Istio, Metric, Aggregation, Prometheus, Recording Rules
 
-Description: How to configure metric aggregation rules in Istio using Prometheus recording rules, Telemetry API tag overrides, and the OpenTelemetry Collector to reduce cardinality and improve query performance.
+Description: How to configure metric aggregation rules in Istio using Prometheus recording rules, Telemetry API tag overrides, and EnvoyFilter to reduce cardinality and improve query performance.
 
 ---
 

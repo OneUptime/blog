@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Azure, Bicep, Front Door, WAF, Infrastructure as Code, Security, DevOps
 
-Description: Step-by-step guide to deploying Azure Front Door Premium with Web Application Firewall policies using Bicep templates.
+Description: Step-by-step guide to deploying Azure Front Door Standard or Premium with Web Application Firewall policies using Bicep templates.
 
 ---
 

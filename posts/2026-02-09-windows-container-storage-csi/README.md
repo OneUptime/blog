@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Windows, Storage
+Tags: Kubernetes, Window, Storage
 
 Description: Comprehensive guide to setting up Container Storage Interface (CSI) drivers for persistent storage on Windows nodes in Kubernetes clusters.
 

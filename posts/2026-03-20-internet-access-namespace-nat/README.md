@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Linux, Network Namespaces, NAT, iptables, nftables, Internet Access, Networking
 
-Description: Give a Linux network namespace internet access by enabling IP forwarding on the host and configuring NAT masquerade and forwarding rules so namespace traffic can reach the internet.
+Description: Give a Linux network namespace internet access by enabling IP forwarding on the host and configuring NAT masquerade rules to forward and translate namespace traffic.
 
 ## Introduction
 

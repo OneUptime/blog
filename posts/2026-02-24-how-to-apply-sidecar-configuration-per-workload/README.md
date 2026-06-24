@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Istio, Sidecar, Kubernetes, Service Mesh, Envoy
 
-Description: Learn how to apply Istio Sidecar resource configurations on a per-workload basis to scope egress configuration and reduce proxy memory usage.
+Description: Learn how to apply Istio Sidecar resource configurations on a per-workload basis to control egress traffic and reduce proxy memory usage.
 
 ---
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: IPv6, OpenWrt, Privacy, RFC4941, Router, Networking
 
-Description: Enable and configure IPv6 privacy extensions on OpenWrt routers to generate temporary addresses that help reduce passive address-based tracking.
+Description: Enable and configure IPv6 privacy extensions on OpenWrt routers to generate temporary addresses that prevent cross-network device tracking.
 
 ## Introduction
 

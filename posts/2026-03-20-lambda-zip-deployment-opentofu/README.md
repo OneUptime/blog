@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, AWS, Lambda, Serverless, ZIP Deployment, Infrastructure as Code, Python
 
-Description: Learn how to create and deploy AWS Lambda functions using ZIP file deployment with OpenTofu, including IAM roles, environment variables, tracing, and log retention.
+Description: Learn how to create and deploy AWS Lambda functions using ZIP file deployment with OpenTofu, including IAM roles, environment variables, and VPC configuration.
 
 ## Introduction
 

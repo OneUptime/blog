@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Azure, IPv6, Load Balancer, Dual-Stack, Standard Load Balancer, Cloud
 
-Description: Configure Azure Standard Load Balancer with IPv6 frontend configurations, load balancing rules, and backend pools to enable dual-stack load balancing for applications.
+Description: Configure Azure Standard Load Balancer with IPv6 frontend configurations, load balancing rules, and backend pool to enable dual-stack load balancing for applications.
 
 ## Introduction
 

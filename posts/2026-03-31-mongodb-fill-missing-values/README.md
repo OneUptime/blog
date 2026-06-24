@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: MongoDB, Aggregation, Fill, Time-Series, Pipeline
 
-Description: Learn how to use MongoDB's $fill aggregation stage to populate null and missing field values using forward-fill (locf), linear interpolation, or fixed values.
+Description: Learn how to use MongoDB's $fill aggregation stage to populate null and missing field values using forward-fill, backward-fill, linear interpolation, or fixed values.
 
 ---
 

@@ -1,10 +1,10 @@
-# How to Implement Operational Best Practices in Rancher - A Practical Guide
+# How to Implement Logging Best Practices in Rancher - A Practical Guide
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Rancher, Kubernetes, RKE2, Fleet, Best-practices
+Tags: Rancher, Logging, Fluentd, Elasticsearch, Best-practices
 
-Description: Guide to Rancher operational best practices for declarative configuration, security hardening, monitoring, and audits.
+Description: Guide to logging best practices in Rancher for centralized log management and efficient troubleshooting.
 
 ## Introduction
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: SharePoint Framework, SPFx, Azure Cosmos DB, Web Part, React, Azure Function
+Tags: SharePoint Framework, SPFx, Azure Cosmos DB, Web Part, React, Microsoft Graph, Azure Function
 
 Description: Build a SharePoint Framework web part that displays data from Azure Cosmos DB using an Azure Function as the backend API layer.
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Epinio, Buildpacks, Kubernetes, PaaS, Configuration
 
-Description: Use Epinio's buildpack-based deployment workflow to detect, build, and package applications for Kubernetes.
+Description: Configure and manage buildpacks in Epinio to control how applications are detected, built, and packaged.
 
 ## Introduction
 

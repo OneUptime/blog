@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Istio, Multi-Tenancy, Kubernetes, Control Plane, Service Mesh
 
-Description: How to run multiple revisioned Istio control planes in a single Kubernetes cluster for canary upgrades, team separation, and scoped mesh management.
+Description: How to run multiple independent Istio control planes in a single Kubernetes cluster for multi-tenancy, canary upgrades, and team isolation.
 
 ---
 

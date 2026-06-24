@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, HAProxy, Stick Tables, Session Persistence, Linux
 
-Description: Learn how to use HAProxy stick tables on RHEL for session persistence, rate limiting, and connection tracking without relying only on load-balancer-inserted cookies.
+Description: Learn how to use HAProxy stick tables on RHEL for session persistence, rate limiting, and connection tracking without relying on cookies.
 
 ---
 

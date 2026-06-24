@@ -1,10 +1,10 @@
-# How to Manage DNSSEC DS Records for DNS Zones
+# How to Manage DNSSEC DS Records for IPv6 Zones
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: DNSSEC, DS Records, Delegation Signer, DNS, Key Management
+Tags: DNSSEC, DS Records, Delegation Signer, DNS, IPv6, Key Management
 
-Description: Generate, publish, and manage DNSSEC DS (Delegation Signer) records for DNS zones to establish a complete chain of trust from root to authoritative zone.
+Description: Generate, publish, and manage DNSSEC DS (Delegation Signer) records for IPv6 DNS zones to establish a complete chain of trust from root to authoritative zone.
 
 ## What Are DS Records?
 

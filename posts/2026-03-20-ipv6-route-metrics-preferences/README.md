@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: IPv6, Routing, Metric, Administrative Distance, Linux
 
-Description: Understand how IPv6 route metrics, route preferences, and administrative distance influence which route is selected when multiple paths exist to the same destination.
+Description: Understand how IPv6 route metrics and administrative distances control which route is selected when multiple paths exist to the same destination.
 
 ## Overview
 

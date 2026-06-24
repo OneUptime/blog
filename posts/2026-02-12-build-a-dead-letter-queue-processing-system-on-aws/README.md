@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: AWS, SQS, Dead Letter Queue, Lambda, Error Handling
 
-Description: Build a robust dead letter queue processing system on AWS using SQS and Lambda to handle failed messages with automated retry and alerting.
+Description: Build a robust dead letter queue processing system on AWS using SQS, Lambda, and Step Functions to handle failed messages with automated retry and alerting.
 
 ---
 

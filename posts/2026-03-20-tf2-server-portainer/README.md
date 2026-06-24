@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Team Fortress 2, Game Server, Docker, Self-Hosted
 
-Description: Deploy a dedicated Team Fortress 2 game server using Portainer with persistent storage and backups.
+Description: Deploy a dedicated Team Fortress 2 game server using Portainer with custom plugins and map management.
 
 ## Introduction
 

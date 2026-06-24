@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rook, Ceph, MDS, Health Probe, CephFS
 
-Description: Learn how to configure startup and liveness health probes for MDS daemons in Rook-Ceph to improve CephFS reliability and Kubernetes pod management.
+Description: Learn how to configure liveness and readiness health probes for MDS daemons in Rook-Ceph to improve CephFS reliability and Kubernetes pod management.
 
 ---
 

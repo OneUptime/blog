@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: AKS, Private Cluster, Azure Private Link, Private DNS, Kubernetes, Security, Networking
 
-Description: How to deploy a private AKS cluster with Private Link and Private DNS zones to keep API server traffic off the public internet.
+Description: How to deploy a fully private AKS cluster with Private Link and Private DNS zones to keep the API server and cluster traffic off the public internet.
 
 ---
 

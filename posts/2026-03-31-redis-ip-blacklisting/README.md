@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Redis, Security, Rate Limiting, Firewall
 
-Description: Build a dynamic IP blacklisting system with Redis - block abusive IPs instantly, support auto-expiring bans, manage bulk IP lists, and check incoming requests in under 1ms.
+Description: Build a dynamic IP blacklisting system with Redis - block abusive IPs instantly, support auto-expiring bans, manage CIDR ranges, and check incoming requests in under 1ms.
 
 ---
 

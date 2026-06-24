@@ -42,7 +42,8 @@ CREATE TABLE sessions (
   PRIMARY KEY (id)
 ) ENGINE=NDB;
 
--- Tables without PRIMARY KEY are not supported in NDB
+-- Tables without an explicit PRIMARY KEY get a hidden one added automatically
+-- (but you cannot have an AUTO_INCREMENT column with no key), so explicit PKs are recommended
 ```
 
 ## Architecture Differences
@@ -81,7 +82,7 @@ NDB Cluster has significant restrictions compared to InnoDB:
 
 ```sql
 -- NDB limitations
--- Foreign keys supported since NDB 7.3 but with restrictions (e.g., no CASCADE across different data nodes)
+-- Foreign keys supported since NDB 7.3 but with restrictions (e.g., ON UPDATE CASCADE is not allowed when referencing the parent table's primary key)
 -- Text/BLOB columns cannot be primary key or indexed
 -- Transactions are limited in size and scope
 -- Complex joins across NDB tables are slow

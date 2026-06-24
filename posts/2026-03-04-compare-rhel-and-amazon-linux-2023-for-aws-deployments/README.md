@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Comparison, Linux
 
-Description: Step-by-step guide on comparing RHEL and Amazon Linux 2023 for AWS deployments.
+Description: Step-by-step guide on compare rhel and amazon linux 2023 for aws deployments using Red Hat Enterprise Linux 9.
 
 ---
 

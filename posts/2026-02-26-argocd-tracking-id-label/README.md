@@ -1,10 +1,10 @@
-# How to Use argocd.argoproj.io/tracking-id Annotation
+# How to Use argocd.argoproj.io/tracking-id Label
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: ArgoCD, GitOps, Kubernetes, Labels, Resource Tracking
 
-Description: Learn how the argocd.argoproj.io/tracking-id annotation works in ArgoCD for resource ownership tracking and how to configure annotation-based tracking.
+Description: Learn how the argocd.argoproj.io/tracking-id label works in ArgoCD for resource ownership tracking and how to configure annotation-based tracking.
 
 ---
 

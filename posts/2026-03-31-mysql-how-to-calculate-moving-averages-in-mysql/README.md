@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: MySQL, Window Function, Moving Average, Analytics, SQL
 
-Description: Learn how to calculate simple, centered, and cumulative moving averages in MySQL using window functions like AVG() OVER and SUM() OVER with ROWS BETWEEN.
+Description: Learn how to calculate simple, weighted, and exponential moving averages in MySQL using window functions like AVG() OVER and SUM() OVER with ROWS BETWEEN.
 
 ---
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Machine Learning, MLOps, Portainer, Docker, Pipeline, Airflow, MLflow
 
-Description: Build an end-to-end machine learning pipeline using Portainer stacks, connecting data ingestion, training, evaluation, and experiment tracking components into a managed workflow.
+Description: Build an end-to-end machine learning pipeline using Portainer stacks, connecting data ingestion, training, evaluation, and model serving components into a managed workflow.
 
 ---
 

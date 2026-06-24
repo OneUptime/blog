@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Docker, Image Management, Container Commit, DevOps, Container
 
-Description: Use Portainer's option to create an image from a deployed container or docker commit on the Docker host to snapshot a container's writable layer into a new Docker image for debugging, migration, or creating a reusable base image.
+Description: Use docker commit via Portainer's console to snapshot a running container's state into a new Docker image for debugging, migration, or creating a reproducible base image.
 
 ---
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Terraform, Azure, NSG, Network Security Group, IPv4, Infrastructure as Code
 
-Description: Configure Azure Network Security Groups (NSGs) for IPv4 using Terraform, covering inbound security rules, subnet and NIC associations, and priority management.
+Description: Configure Azure Network Security Groups (NSGs) for IPv4 using Terraform, covering inbound and outbound security rules, subnet and NIC associations, and priority management.
 
 ## Introduction
 

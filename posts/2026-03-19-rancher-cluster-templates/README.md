@@ -1,10 +1,10 @@
-# How to Create RKE Templates in Rancher
+# How to Create Cluster Templates in Rancher
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Rancher, Kubernetes, RKE Templates, RBAC
+Tags: Rancher, Kubernetes, Cluster Templates, RBAC
 
-Description: Learn how to create and manage RKE templates in Rancher for standardized Kubernetes cluster provisioning across your organization.
+Description: Learn how to create and manage cluster templates in Rancher for standardized Kubernetes cluster provisioning across your organization.
 
 RKE templates in Rancher allow administrators to define standardized configurations for Rancher-provisioned RKE1 clusters. By using templates, you ensure consistency across environments and reduce the chance of misconfigurations. This guide walks you through creating, managing, and sharing RKE templates in Rancher.
 

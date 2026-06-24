@@ -1,10 +1,10 @@
-# How to Configure Ansible Core on RHEL
+# How to Configure Ansible Automation Platform with Red Hat Satellite
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, Ansible, Automation
+Tags: RHEL, Ansible, Red Hat Satellite, Integration
 
-Description: Configure Ansible Core on RHEL for basic host management.
+Description: Integrate Ansible Automation Platform with Red Hat Satellite for unified management.
 
 ---
 

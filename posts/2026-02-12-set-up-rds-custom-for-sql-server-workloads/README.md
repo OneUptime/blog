@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, RDS, SQL Server, Database, RDS Custom, Windows
+Tags: AWS, RDS, SQL Server, Database, RDS Custom, Window
 
 Description: Deploy SQL Server on RDS Custom to get managed database automation with OS-level access for custom configurations and third-party tools.
 

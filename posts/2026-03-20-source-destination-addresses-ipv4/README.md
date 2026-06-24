@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: IPv4, Networking, IP Addresses, Packet Analysis, TCP/IP
 
-Description: The Source and Destination Address fields in the IPv4 header each occupy 32 bits and identify the originating and target hosts, forming a basis for routing and filtering decisions.
+Description: The Source and Destination Address fields in the IPv4 header each occupy 32 bits and identify the originating and target hosts, forming the basis for all routing and filtering decisions.
 
 ## Address Fields in the IPv4 Header
 

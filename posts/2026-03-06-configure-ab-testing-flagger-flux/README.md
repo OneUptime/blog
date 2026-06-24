@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Flagger, Flux CD, A/B Testing, Progressive Delivery, Kubernetes, GitOps, Traffic Routing, Feature Flag
 
-Description: Learn how to configure A/B testing with Flagger and Flux CD to route traffic based on HTTP headers, cookies, and other supported request attributes.
+Description: Learn how to configure A/B testing with Flagger and Flux CD to route traffic based on HTTP headers, cookies, and other request attributes.
 
 ---
 

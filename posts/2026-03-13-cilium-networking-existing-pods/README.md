@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Cilium, Kubernetes, Networking, eBPF, IPAM
 
-Description: Learn how Cilium manages networking for existing Cilium-managed pods after agent restarts or upgrades, handling endpoint restoration, policy application, and connectivity restoration for already-running workloads.
+Description: Learn how Cilium manages networking for existing pods after installation or upgrade, handling endpoint regeneration, policy application, and connectivity restoration for already-running workloads.
 
 ---
 

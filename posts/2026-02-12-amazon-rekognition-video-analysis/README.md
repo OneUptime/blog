@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: AWS, Amazon Rekognition, Video Analysis, Computer Vision
 
-Description: Learn how to analyze video content with Amazon Rekognition for label detection, face detection, content moderation, and text extraction from stored videos.
+Description: Learn how to analyze video content with Amazon Rekognition for label detection, face tracking, content moderation, and text extraction from video streams.
 
 ---
 

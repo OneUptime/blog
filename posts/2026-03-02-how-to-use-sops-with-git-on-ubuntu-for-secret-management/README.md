@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Ubuntu, Security, SOPS, Secrets Management, GitOps
 
-Description: Learn how to use SOPS on Ubuntu to encrypt secrets and commit them safely to Git repositories, with support for AWS KMS, GCP KMS, Azure Key Vault, and GPG keys.
+Description: Learn how to use Mozilla SOPS on Ubuntu to encrypt secrets and commit them safely to Git repositories, with support for AWS KMS, GCP KMS, Azure Key Vault, and GPG keys.
 
 ---
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, Networking, Troubleshooting
 
-Description: Monitor Calico IP pool utilization using calicoctl IPAM output, Prometheus alerts, and automated utilization checks to prevent exhaustion before it causes pod failures.
+Description: Monitor Calico IP pool utilization using calicoctl metrics, Prometheus alerts, and automated utilization checks to prevent exhaustion before it causes pod failures.
 
 ---
 

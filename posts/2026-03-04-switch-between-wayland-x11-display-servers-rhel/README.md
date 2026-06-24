@@ -1,10 +1,10 @@
-# How to Switch Between Wayland and X11 Display Servers on RHEL 8 and 9
+# How to Switch Between Wayland and X11 Display Servers on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Wayland, X11, GNOME, Display Server, Linux
 
-Description: Switch between Wayland and X11 display servers on RHEL 8 and 9 to resolve compatibility issues or meet specific application requirements.
+Description: Switch between Wayland and X11 display servers on RHEL to resolve compatibility issues or meet specific application requirements.
 
 ---
 

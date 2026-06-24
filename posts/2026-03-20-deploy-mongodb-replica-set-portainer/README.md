@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, MongoDB, Replica Set, High Availability, Database, Docker
 
-Description: Learn how to deploy a MongoDB replica set with three nodes via Portainer for automatic failover and data redundancy.
+Description: Learn how to deploy a MongoDB replica set with three nodes via Portainer for automatic failover and read scaling.
 
 ---
 

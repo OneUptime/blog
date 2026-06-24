@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Docker, Nextcloud, Cloud Storage, Self-Hosted, Privacy
 
-Description: Deploy Nextcloud via Portainer with PostgreSQL and Redis for a complete self-hosted cloud storage and collaboration platform.
+Description: Deploy Nextcloud via Portainer with PostgreSQL, Redis, and an Nginx frontend for a complete self-hosted Google Drive and Docs alternative.
 
 ## Introduction
 

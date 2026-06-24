@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, MCP, Traceloop, IDE Integration, Production Debugging
 
-Description: Set up the OpenTelemetry MCP server with Traceloop to query production OpenTelemetry traces directly from Cursor, VS Code, or Claude Code.
+Description: Set up the Traceloop MCP server to query production OpenTelemetry traces directly from Cursor, VS Code, or Claude Code.
 
 The Model Context Protocol (MCP) lets AI coding assistants interact with external tools and data sources. Traceloop maintains an OpenTelemetry MCP server that connects your IDE to production OpenTelemetry traces. This means you can ask your AI assistant questions like "show me the slowest traces from the checkout service" without leaving your editor. This post shows you how to set it up.
 

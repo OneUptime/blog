@@ -1,10 +1,10 @@
-# How to Configure Container Networking in Portainer - A Practical Guide
+# How to Set Up Load Balancing Across Containers in Portainer - A Practical Guide
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Portainer, Networking, Nginx, Traefik, Docker
+Tags: Portainer, Load Balancing, Nginx, Traefik, Docker
 
-Description: Configure container networks in Portainer for reverse proxies, isolation, and secure service-to-service communication.
+Description: Configure load balancing across multiple container replicas in Portainer for high availability and performance.
 
 ## Introduction
 

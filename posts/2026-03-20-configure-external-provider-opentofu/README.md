@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Infrastructure as Code, Provider, Automation, DevOps
 
-Description: Learn how to configure and use the `external` provider in OpenTofu to query external programs as data sources.
+Description: Learn how to configure and use the External provider in OpenTofu to manage External resources as code.
 
 ## Introduction
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: IPv6, Flux CD, GitOps, Kubernetes, Source Controller, DevOps
 
-Description: Configure Flux CD source controllers to sync from Git repositories and Helm repositories accessible over IPv6, including GitRepository and HelmRepository resources with IPv6 URLs.
+Description: Configure Flux CD source controllers to sync from Git repositories and Helm registries accessible over IPv6, including GitRepository and HelmRepository resources with IPv6 URLs.
 
 ## Introduction
 

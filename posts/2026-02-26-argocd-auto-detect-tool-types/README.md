@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: ArgoCD, GitOps, Kubernetes, Tool Detection, Configuration
 
-Description: Understand how ArgoCD automatically detects whether an application uses Helm, Kustomize, a config management plugin, or plain YAML and how the detection logic works.
+Description: Understand how ArgoCD automatically detects whether an application uses Helm, Kustomize, Jsonnet, or plain YAML and how the detection logic works.
 
 ---
 

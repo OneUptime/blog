@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Raspberry Pi, Docker Swarm, Cluster, Self-Hosted, Home Lab
 
-Description: Set up a Raspberry Pi cluster running Docker Swarm and deploy Portainer to manage multi-node container workloads from a single web UI.
+Description: Set up a Raspberry Pi cluster running Docker Swarm and deploy Portainer to manage multi-node container workloads with high availability.
 
 ## Introduction
 

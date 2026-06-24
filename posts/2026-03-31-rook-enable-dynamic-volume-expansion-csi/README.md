@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rook, Ceph, Kubernetes, CSI, Storage
 
-Description: Enable and use dynamic volume expansion with the Rook-Ceph CSI driver to resize PersistentVolumeClaims online. CephFS volumes expand without pod restarts; RBD volumes require a pod restart for filesystem resize.
+Description: Enable and use dynamic volume expansion with the Rook-Ceph CSI driver to resize PersistentVolumeClaims online without pod restarts.
 
 ---
 

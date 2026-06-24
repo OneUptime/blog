@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rancher, Migration, Docker-swarm, Kubernetes
 
-Description: Step-by-step guide to migrating containerized workloads from Docker Swarm to a Rancher-managed Kubernetes cluster.
+Description: Step-by-step guide to migrating containerized workloads from Docker Swarm to Rancher Kubernetes.
 
 ## Introduction
 

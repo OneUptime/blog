@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rancher Desktop, Networking, DNS, Configuration, Local Development
 
-Description: Configure the Rancher Desktop settings that affect local networking, including the Kubernetes API port, port forwarding, Traefik, and platform-specific behavior.
+Description: Customize network configuration in Rancher Desktop including DNS, host networking, and service discovery.
 
 ## Introduction
 

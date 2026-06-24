@@ -1,10 +1,10 @@
-# How to Use Podman with Istio Service Mesh Patterns
+# How to Use Podman with Istio Service Mesh
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Podman, Istio, Service Mesh, Microservice, Networking
 
-Description: Learn how to use Podman and Envoy to apply Istio service mesh concepts for traffic management, security, and observability in containerized microservices.
+Description: Learn how to use Podman with Istio service mesh concepts to implement traffic management, security, and observability for containerized microservices.
 
 ---
 

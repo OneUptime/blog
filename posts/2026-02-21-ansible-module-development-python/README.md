@@ -1,10 +1,10 @@
-# How to Use Ansible for Python Application Deployment
+# How to Use Ansible Module Development with Python
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Python, Deployment, Automation, Playbook
+Tags: Ansible, Python, Module, Development, Plugin
 
-Description: Deploy Python applications with Ansible playbooks, service management, reverse proxy configuration, and operational automation.
+Description: Write custom Ansible modules in Python with proper argument handling, check mode support, and documentation integration.
 
 ---
 

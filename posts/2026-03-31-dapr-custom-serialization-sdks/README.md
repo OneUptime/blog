@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Dapr, Serialization, SDK, Custom, State Management
 
-Description: Implement custom serialization in Dapr SDKs for .NET, Go, and Python to handle special types, encryption, compression, and non-standard formats.
+Description: Implement custom serialization in Dapr SDKs for .NET, Go, Python, and Node.js to handle special types, encryption, compression, and non-standard formats.
 
 ---
 

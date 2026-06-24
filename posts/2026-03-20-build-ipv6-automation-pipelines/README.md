@@ -2,9 +2,9 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: IPv6, Python, YAML, curl, Automation
+Tags: IPv6, Pipeline, CI/CD, Ansible, Python, GitOps, Automation
 
-Description: Build IPv6 automation checks for address validation, policy evaluation, and deployment verification using Python and CLI tooling.
+Description: Build end-to-end IPv6 network automation pipelines from code commit to deployment verification using GitLab CI or GitHub Actions.
 
 ## Introduction
 

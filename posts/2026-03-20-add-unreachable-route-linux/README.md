@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Linux, Routing, iproute2, ICMP, Networking, Security
 
-Description: Add an unreachable route on Linux to drop traffic to specific destinations while sending ICMP host unreachable messages back to the sender.
+Description: Add an unreachable route on Linux to drop traffic to specific destinations while sending ICMP network unreachable messages back to the sender.
 
 ## Introduction
 

@@ -2,9 +2,9 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Duplicate IP, ARP, DHCP, Windows, Troubleshooting
+Tags: Duplicate IP, ARP, DHCP, Window, Troubleshooting
 
-Description: Learn how to detect and resolve duplicate IPv4 address errors where Windows marks an IPv4 address unusable after detecting that it may already be in use.
+Description: Learn how to detect and resolve duplicate IPv4 address errors where Windows disables the adapter after detecting another device using the same IP address.
 
 ## What Is Duplicate Address Detection?
 

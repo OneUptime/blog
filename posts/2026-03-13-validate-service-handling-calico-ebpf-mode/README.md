@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, eBPF, Service Handling, Networking
 
-Description: Validate that dataplane-forwarded Kubernetes Service traffic works correctly in Calico eBPF mode with direct connectivity tests.
+Description: Validate that all Kubernetes service types work correctly in Calico eBPF mode with direct connectivity tests.
 
 ---
 

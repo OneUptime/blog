@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Compliance, SOC2, Policy as Code, Security, OPA
 
-Description: Map SOC2 Trust Service Criteria controls to Kubernetes policies using OPA Gatekeeper.
+Description: Map SOC2 Trust Service Criteria controls to Kubernetes policies using OPA Gatekeeper and Kyverno.
 
 ---
 

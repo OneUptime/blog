@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rook, Ceph, Multus, Auto-Discovery, Networking
 
-Description: Learn how to use Multus networking with Rook-Ceph, including auto-discovery of network CIDRs and manual addressRanges configuration for Ceph traffic.
+Description: Learn how to enable and use Multus auto-discovery in Rook-Ceph to automatically detect correct network interfaces for Ceph traffic without manual NAD configuration.
 
 ---
 

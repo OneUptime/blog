@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Terraform, Function, HCL, Infrastructure as Code, DevOps
 
-Description: Learn how to use the decode_tfvars provider function in Terraform to parse tfvars-formatted strings into usable object values for dynamic configuration management.
+Description: Learn how to use the decode_tfvars provider function in Terraform to parse tfvars-formatted strings into usable map values for dynamic configuration management.
 
 ---
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Cilium, Kubernetes, Networking, eBPF, Service
 
-Description: Understand how Cilium manages Kubernetes service endpoints using eBPF maps, replacing kube-proxy for service load balancing at kernel speed.
+Description: Understand how Cilium manages Kubernetes service endpoints using eBPF maps, replacing kube-proxy for load balancing and connection tracking at kernel speed.
 
 ---
 

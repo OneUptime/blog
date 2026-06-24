@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: SSH, SOCKS5, DNS Leak, IPv4, Privacy, Security, Proxy
 
-Description: Configure an SSH SOCKS5 proxy that prevents DNS leaks by routing proxied DNS queries through the proxy, ensuring configured IPv4 traffic including name resolution goes through the SSH server.
+Description: Configure an SSH SOCKS5 proxy that prevents DNS leaks by routing DNS queries through the proxy, ensuring all IPv4 traffic including name resolution goes through the SSH server.
 
 ## Introduction
 

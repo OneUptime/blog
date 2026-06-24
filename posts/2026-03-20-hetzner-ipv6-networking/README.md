@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Hetzner, IPv6, Cloud, Dual-Stack, VPS, Networking
 
-Description: Configure public IPv6 on Hetzner Cloud servers and combine it with IPv4-only private networks for dual-stack application deployments.
+Description: Configure IPv6 on Hetzner Cloud servers and private networks for dual-stack application deployments.
 
 ## Introduction
 

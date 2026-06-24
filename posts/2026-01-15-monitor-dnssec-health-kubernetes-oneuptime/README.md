@@ -629,7 +629,7 @@ data:
 > (configured in `/etc/resolv.conf` or an explicit forward target), so point it
 > at a DNSSEC-validating resolver. CoreDNS's own `dnssec` plugin is for
 > *on-the-fly signing* of zones CoreDNS is authoritative for and requires a
-> `key file` directive — it is not an upstream-validation switch.
+> `key file` directive - it is not an upstream-validation switch.
 
 ### CoreDNS Metrics Monitor
 

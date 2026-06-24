@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Deno, Custom Metric, Trace, JavaScript, TypeScript
 
-Description: Learn how to implement custom metrics and traces in Deno applications using the OpenTelemetry API for deeper observability insights.
+Description: Learn how to implement custom metrics and traces in Deno applications using the OpenTelemetry SDK for deeper observability insights.
 
 While Deno's automatic tracing handles HTTP requests and fetch calls, production applications need custom instrumentation to track business-specific operations. This includes monitoring database queries, cache hits, background job processing, and domain-specific metrics that automatic tracing cannot capture.
 

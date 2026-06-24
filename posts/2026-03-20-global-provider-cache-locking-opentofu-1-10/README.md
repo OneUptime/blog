@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Provider Cache, OpenTofu 1.10, Performance, Infrastructure as Code
 
-Description: Learn how to use global provider cache locking introduced in OpenTofu 1.10 to share a provider cache across concurrent OpenTofu invocations.
+Description: Learn how to use global provider cache locking introduced in OpenTofu 1.10 to safely share a provider cache across concurrent OpenTofu invocations.
 
 ## Introduction
 

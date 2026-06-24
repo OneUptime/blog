@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Stack, Orphaned, Recovery, Troubleshooting
 
-Description: Re-associate orphaned stacks in Portainer after an environment is deleted and recreated on the same node, then manage them with Portainer's stack workflows.
+Description: Recover stacks that appear as orphaned in Portainer after database loss or migration issues.
 
 ---
 

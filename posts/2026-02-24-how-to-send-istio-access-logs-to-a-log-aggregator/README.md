@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Access Logs, Log Aggregation, Fluent Bit, OpenTelemetry, Observability
+Tags: Istio, Access Logs, Log Aggregation, Fluentd, OpenTelemetry, Observability
 
 Description: How to ship Istio access logs from sidecar proxies to centralized log aggregation systems like Elasticsearch, Loki, and cloud logging services.
 

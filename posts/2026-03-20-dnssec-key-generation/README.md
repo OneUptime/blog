@@ -1,10 +1,10 @@
-# How to Generate DNSSEC Keys for Zones with IPv6 Records
+# How to Generate DNSSEC Keys for IPv6 Zones
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: DNSSEC, Key Generation, BIND, OpenDNSSEC, DNS Security, IPv6
 
-Description: Generate DNSSEC Zone Signing Keys (ZSK) and Key Signing Keys (KSK) for DNS zones that contain IPv6 (AAAA) records using dnssec-keygen and OpenDNSSEC with modern algorithm selection.
+Description: Generate DNSSEC Zone Signing Keys (ZSK) and Key Signing Keys (KSK) for IPv6 DNS zones using dnssec-keygen and OpenDNSSEC with modern algorithm selection.
 
 ## Key Types and Roles
 

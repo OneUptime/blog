@@ -1,10 +1,10 @@
-# How to Configure MetalLB BGP with FRR-K8s Mode
+# How to Configure MetalLB BGP with the Experimental FRR-K8s Mode
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, MetalLB, BGP, FRR-K8s
+Tags: Kubernetes, MetalLB, BGP, FRR-K8s, Experimental
 
-Description: Learn how to configure MetalLB with FRR-K8s mode for native Kubernetes integration of FRR routing capabilities.
+Description: Learn how to configure MetalLB with the experimental FRR-K8s mode for native Kubernetes integration of FRR routing capabilities.
 
 ---
 

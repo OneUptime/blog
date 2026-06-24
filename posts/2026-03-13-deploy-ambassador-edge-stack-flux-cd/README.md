@@ -1,10 +1,10 @@
-# How to Deploy Emissary-ingress with Flux CD
+# How to Deploy Ambassador Edge Stack with Flux CD
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Flux CD, Kubernetes, GitOps, Ambassador, Emissary-ingress, API Gateway, HelmRelease
 
-Description: Deploy Emissary-ingress API Gateway using Flux CD HelmRelease for production-grade API management built on Envoy proxy.
+Description: Deploy Ambassador Edge Stack (Emissary-ingress) API Gateway using Flux CD HelmRelease for production-grade API management built on Envoy proxy.
 
 ---
 

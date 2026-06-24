@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, AWS, EKS, Network Policies, Kubernetes, Security, VPC CNI, Infrastructure as Code
 
-Description: Learn how to enable and configure Kubernetes Network Policies on EKS using the Amazon VPC CNI add-on with OpenTofu to restrict pod-to-pod communication.
+Description: Learn how to enable and configure Kubernetes Network Policies on EKS using the VPC CNI network policy controller with OpenTofu to restrict pod-to-pod communication.
 
 ## Introduction
 

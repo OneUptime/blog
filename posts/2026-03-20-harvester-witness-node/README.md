@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Harvester, Kubernetes, Virtualization, HCI, Witness Node, High Availability
 
-Description: Learn how to configure a Harvester witness node to maintain etcd quorum in multi-datacenter deployments without adding a third full management node.
+Description: Learn how to configure a Harvester witness node to maintain etcd quorum in multi-datacenter deployments without adding full compute nodes.
 
 ## Introduction
 

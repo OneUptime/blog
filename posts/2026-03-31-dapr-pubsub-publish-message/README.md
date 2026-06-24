@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Dapr, Pub/Sub, Messaging, Event-Driven, Microservice
 
-Description: Publish messages to a Dapr pub/sub topic using the HTTP API and language SDKs with real CloudEvent payloads and component configuration examples.
+Description: Publish messages to a Dapr pub/sub topic using the HTTP API, gRPC, and language SDKs with real CloudEvent payloads and component configuration examples.
 
 ---
 

@@ -92,7 +92,7 @@ The following HTML snippet embeds the badge with an `<img>` tag. Place this code
 />
 ```
 
-The badge URL also works anywhere an image does — for example, in Markdown for a GitHub README:
+The badge URL also works anywhere an image does - for example, in Markdown for a GitHub README:
 
 ```markdown
 ![Status](https://oneuptime.com/status-page/badge/your-status-page-id?token=your-token)

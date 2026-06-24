@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: MySQL, InnoDB ReplicaSet, Replication, MySQL Shell, High Availability
 
-Description: Learn how to create and manage a MySQL InnoDB ReplicaSet using MySQL Shell for simplified asynchronous replication with manual failover support.
+Description: Learn how to create and manage a MySQL InnoDB ReplicaSet using MySQL Shell for simplified asynchronous replication with automated failover support.
 
 ---
 

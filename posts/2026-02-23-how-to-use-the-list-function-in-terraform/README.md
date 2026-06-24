@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Terraform, DevOps, Infrastructure as Code, Terraform Functions, Collection Functions
 
-Description: Learn about the list function in Terraform, its removal in favor of tolist and list/tuple expressions, and how to construct lists properly in modern Terraform.
+Description: Learn about the list function in Terraform, its deprecation in favor of tolist and list expressions, and how to construct lists properly in modern Terraform.
 
 ---
 

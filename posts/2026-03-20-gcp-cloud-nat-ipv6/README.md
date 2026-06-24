@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GCP, IPv6, Cloud NAT, NAT, Google Cloud, VPC, Outbound
 
-Description: Configure Google Cloud NAT NAT64 so IPv6-only VMs with internal IPv6 (ULA) addresses can reach IPv4 destinations on the internet.
+Description: Configure Google Cloud NAT to provide outbound IPv6 internet access for VMs with internal IPv6 (ULA) addresses, including NAT64 for IPv6-only VMs to reach IPv4 destinations.
 
 ## Introduction
 

@@ -1,10 +1,10 @@
-# How to Use HelmRelease with Values References in Flux
+# How to Use HelmRelease with Values References Across Namespaces in Flux
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, GitOps, Kubernetes, Helm, HelmRelease, ValuesFrom, ConfigMap, Secret
+Tags: Flux CD, GitOps, Kubernetes, Helm, HelmRelease, Cross-Namespace, ValuesFrom, ConfigMap, Secret
 
-Description: Learn how to configure HelmRelease to reference values from ConfigMaps and Secrets in Flux CD.
+Description: Learn how to configure HelmRelease to reference values from ConfigMaps and Secrets across different namespaces in Flux CD.
 
 ---
 

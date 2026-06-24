@@ -102,7 +102,7 @@ max_connections = 2048 / 4 = 512
 
 Instead of increasing `max_connections` indefinitely, use a connection pooler like ProxySQL:
 
-```
+```text
 # ProxySQL config (simplified)
 mysql_servers =
 (

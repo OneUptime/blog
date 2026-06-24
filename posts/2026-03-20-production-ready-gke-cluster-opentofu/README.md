@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, GKE, Google Kubernetes Engine, Production, Kubernetes, Infrastructure as Code
 
-Description: Learn how to build a production-ready GKE cluster on GCP with OpenTofu, including private cluster configuration, Workload Identity Federation for GKE, node auto-provisioning, and Binary Authorization.
+Description: Learn how to build a production-ready GKE cluster on GCP with OpenTofu, including private cluster configuration, Workload Identity, node auto-provisioning, and Binary Authorization.
 
 ## Introduction
 

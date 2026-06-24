@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Cilium, Kubernetes, IPAM, Azure, Cloud Networking
 
-Description: How to understand and monitor the cache of interfaces, subnets, and virtual networks in Cilium IPAM for cloud-provider deployments on Azure.
+Description: How to configure and optimize the cache of interfaces, subnets, and virtual networks in Cilium IPAM for cloud-provider deployments on Azure.
 
 ---
 

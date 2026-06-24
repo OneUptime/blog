@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: IPv4, SD-WAN, Network Design, VPN, Cisco Viptela, VMware VeloCloud
 
-Description: Design an IPv4 addressing plan for SD-WAN overlays covering transport (underlay), overlay/system IDs, optional tunnel subnets, service-side subnets, and management networks.
+Description: Design an IPv4 addressing plan for SD-WAN overlays covering transport (underlay), overlay tunnels, loopback IDs, service-side subnets, and management networks.
 
 ## Introduction
 

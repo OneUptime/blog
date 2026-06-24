@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Windows, Rancher, Networking, CNI, Performance, Production
+Tags: Calico, Kubernetes, Window, Rancher, Networking, CNI, Performance, Production
 
 Description: A guide to performance-tuning Calico on Windows nodes in a Rancher-managed cluster for production workloads.
 

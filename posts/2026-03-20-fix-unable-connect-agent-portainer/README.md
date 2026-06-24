@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Troubleshooting, Agent, Docker, Networking, Connectivity
 
-Description: Learn how to diagnose and fix 'Unable to Connect to Agent' errors in Portainer by checking network connectivity, HTTPS connectivity, and agent secret configuration.
+Description: Learn how to diagnose and fix 'Unable to Connect to Agent' errors in Portainer by checking network connectivity, TLS certificates, and agent secret configuration.
 
 ---
 

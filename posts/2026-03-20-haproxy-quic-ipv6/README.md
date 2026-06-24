@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: HAProxy, QUIC, HTTP/3, IPv6, Load Balancer
 
-Description: Configure HAProxy 2.7+ to terminate QUIC/HTTP3 connections on IPv6 and load balance traffic to backend servers.
+Description: Configure HAProxy 2.6+ to terminate QUIC/HTTP3 connections on IPv6 and load balance traffic to backend servers.
 
 ## Prerequisites
 

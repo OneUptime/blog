@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RabbitMQ, Federation, IPv4, Messaging, AMQP, Configuration, Distributed System
 
-Description: Learn how to configure RabbitMQ exchange federation between brokers on different IPv4 networks.
+Description: Learn how to configure RabbitMQ federation to replicate exchanges and queues between RabbitMQ brokers on different IPv4 networks.
 
 ---
 

@@ -1,10 +1,10 @@
-# How to Send OpenTelemetry Data to Observe Inc via OTLP HTTP
+# How to Send OpenTelemetry Data to Observe Inc via the Observe Agent OTLP gRPC
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Observe Inc, OTLP, Data Ingestion
 
-Description: Send OpenTelemetry traces, metrics, and logs to Observe Inc using their OTLP-compatible HTTP ingestion endpoint.
+Description: Send OpenTelemetry traces, metrics, and logs to Observe Inc using their OTLP-compatible gRPC and HTTP ingestion endpoints.
 
 Observe Inc provides a cloud-native observability platform built on a data lake architecture. It accepts OpenTelemetry data through standard OTLP HTTP endpoints, making integration straightforward. You can send data directly from your applications or through the OpenTelemetry Collector.
 

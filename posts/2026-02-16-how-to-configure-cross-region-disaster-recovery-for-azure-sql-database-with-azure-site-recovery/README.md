@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure SQL Database, Disaster Recovery, Geo-Replication, Failover, Business Continuity, High Availability
+Tags: Azure SQL Database, Disaster Recovery, Azure Site Recovery, Geo-Replication, Failover, Business Continuity, High Availability
 
 Description: Learn how to set up cross-region disaster recovery for Azure SQL Database using geo-replication and failover groups for business continuity.
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Docker, CLI, Database, Performance, Maintenance
 
-Description: Use the --compact-db flag to compact Portainer's BoltDB database, reclaiming disk space after heavy usage or large event accumulation.
+Description: Use the --compact-db flag to compact Portainer's BoltDB database, reclaiming disk space and improving performance after heavy usage or large event accumulation.
 
 ## Introduction
 

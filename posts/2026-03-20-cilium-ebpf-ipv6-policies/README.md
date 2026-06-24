@@ -1,10 +1,10 @@
-# How to Inspect IPv6 Traffic with eBPF XDP Programs
+# How to Use Cilium eBPF for IPv6 Network Policies
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: eBPF, XDP, IPv6, Linux, Networking
+Tags: Cilium, eBPF, IPv6, Network Policy, Kubernetes
 
-Description: Inspect IPv6 traffic with an XDP eBPF program, including header parsing, loading, tracing, and bpftool inspection.
+Description: Configure Cilium's eBPF-based network policies for IPv6 traffic in Kubernetes clusters, including L3, L4, and L7 policies.
 
 ## Overview
 

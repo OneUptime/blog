@@ -1,10 +1,10 @@
-# How to Use Reduce Patterns in Ansible
+# How to Use the reduce Filter in Ansible
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, Filter, Jinja2, Data Aggregation
 
-Description: Learn how to use reduce-style patterns in Ansible to aggregate list data into single values, build dictionaries from lists, and perform cumulative computations.
+Description: Learn how to use the reduce filter in Ansible to aggregate list data into single values, build dictionaries from lists, and perform cumulative computations.
 
 ---
 

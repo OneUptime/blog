@@ -1,4 +1,4 @@
-# How to Run SQL Server in Docker Containers
+# How to Run SQL Server in a Windows Docker Container
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 

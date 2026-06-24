@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Priority, Preemption, Scheduling, Resource Management
 
-Description: Learn how to use PriorityClasses and pod preemption to help critical workloads get scheduled in Kubernetes.
+Description: Learn how to use PriorityClasses and pod preemption to ensure critical workloads always have resources in Kubernetes.
 
 ---
 

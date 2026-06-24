@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Audit Trail, Compliance, Security
 
-Description: Use OpenTelemetry span events to build a structured security audit trail that supports compliance requirements like SOC 2 and HIPAA.
+Description: Use OpenTelemetry span events to build a structured security audit trail that satisfies compliance requirements like SOC 2 and HIPAA.
 
 Compliance frameworks like SOC 2, HIPAA, and PCI DSS often require organizations to maintain detailed audit trails of security-relevant actions. Who accessed what data, when, and from where. Traditionally, audit logging is implemented as a separate system with its own SDK, database, and retention policies. But if you are already using OpenTelemetry for observability, you can leverage span events to build your audit trail directly within your existing telemetry pipeline.
 

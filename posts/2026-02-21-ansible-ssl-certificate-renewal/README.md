@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, SSL, TLS, Certificate, Security
 
-Description: Automate SSL certificate renewal and deployment across your infrastructure using Ansible with Let's Encrypt.
+Description: Automate SSL certificate renewal and deployment across your infrastructure using Ansible with Let's Encrypt and custom CA support.
 
 ---
 

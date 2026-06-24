@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Orange Pi, ARM, Docker, Self-Hosted, Home Lab
 
-Description: Install Docker and Portainer on an Orange Pi single-board computer running Ubuntu to create an affordable home lab container platform.
+Description: Install Docker and Portainer on an Orange Pi single-board computer running Ubuntu or Debian to create an affordable home lab container platform.
 
 ## Introduction
 

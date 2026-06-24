@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, QEMU, Virtualization, Linux
 
-Description: Learn how to create and manage QEMU disk images with qemu-img on RHEL with step-by-step instructions, command examples, and best practices.
+Description: Learn how to create and Manage QEMU Disk Images with qemu-img on RHEL with step-by-step instructions, configuration examples, and best practices.
 
 ---
 

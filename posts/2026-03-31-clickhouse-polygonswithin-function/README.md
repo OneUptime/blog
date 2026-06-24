@@ -1,10 +1,10 @@
-# How to Use polygonsWithinCartesian() and polygonsWithinSpherical() in ClickHouse
+# How to Use polygonsWithin() in ClickHouse
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: ClickHouse, Geospatial, Polygon, polygonsWithinCartesian, polygonsWithinSpherical, Geo Function
+Tags: ClickHouse, Geospatial, Polygon, polygonsWithin, Geo Function
 
-Description: Learn how to use polygonsWithinCartesian() and polygonsWithinSpherical() in ClickHouse to check if one polygon is fully contained within another for geospatial containment queries.
+Description: Learn how to use polygonsWithin() in ClickHouse to check if one polygon is fully contained within another for geospatial containment queries.
 
 ---
 

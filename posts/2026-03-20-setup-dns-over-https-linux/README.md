@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: DNS, DoH, HTTPS, Privacy, Security, Linux, Systemd-resolved
 
-Description: Configure encrypted DNS on Linux using systemd-resolved for DNS over TLS (DoT) or dnscrypt-proxy for DNS over HTTPS (DoH) to encrypt DNS queries and prevent eavesdropping.
+Description: Configure DNS over HTTPS on Linux using systemd-resolved, dnscrypt-proxy, or cloudflared to encrypt DNS queries and prevent eavesdropping.
 
 ## Introduction
 

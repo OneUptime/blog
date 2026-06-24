@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, API, Docker API, Gateway, Security
 
-Description: Learn how to use Portainer as a secure gateway to the Docker API, adding authentication and access control without exposing the Docker socket directly.
+Description: Learn how to use Portainer as a secure gateway to the Docker API, adding authentication and RBAC without exposing the Docker socket directly.
 
 ## Why Use Portainer as a Docker API Gateway?
 

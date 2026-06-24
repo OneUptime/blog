@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, DHCP, Networking, Linux, Infrastructure
 
-Description: Automate legacy ISC DHCP server deployment with subnet configuration, static leases, and failover using Ansible playbooks for reliable network management.
+Description: Automate ISC DHCP server deployment with subnet configuration, static leases, and failover using Ansible playbooks for reliable network management.
 
 ---
 

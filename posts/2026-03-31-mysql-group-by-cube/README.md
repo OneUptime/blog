@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: MySQL, SQL, GROUP BY, CUBE, Aggregation, Analytics
 
-Description: Learn how to use GROUP BY WITH ROLLUP and UNION ALL to simulate CUBE-style cross-tabulated subtotals in MySQL 8.0, generating all combinations of dimension aggregations.
+Description: Learn how to use GROUP BY WITH ROLLUP to simulate CUBE-style cross-tabulated subtotals in MySQL 8.0, generating all combinations of dimension aggregations.
 
 ---
 

@@ -1,10 +1,10 @@
-# How to Troubleshoot Cilium Configuration Issues
+# How to Troubleshoot Automatic Adjustment in Cilium configuration
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Cilium, Troubleshooting, Configuration, Automation
 
-Description: A practical guide covering how to troubleshoot cilium configuration issues with step-by-step instructions and real-world examples for production Kubernetes clusters.
+Description: A practical guide covering how to troubleshoot automatic adjustment in cilium configuration with step-by-step instructions and real-world examples for production Kubernetes clusters.
 
 ---
 

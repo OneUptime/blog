@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Windows, Networking, Netsh, DNS, IPv4, Network Configuration
+Tags: Window, Networking, Netsh, DNS, IPv4, Network Configuration
 
 Description: Set, change, and remove DNS server addresses on a Windows network adapter using netsh interface ipv4 commands from an elevated command prompt.
 

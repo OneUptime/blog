@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Docker, Host Network, Networking, Performance
 
-Description: Use host network mode for containers in Portainer to reduce NAT overhead for latency-sensitive workloads.
+Description: Use host network mode for containers in Portainer to maximize network performance for latency-sensitive workloads.
 
 ## Introduction
 

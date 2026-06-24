@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: ArgoCD, GitOps, Kubernetes, Azure ACR, Image Updater
 
-Description: Learn how to configure ArgoCD Image Updater with Azure Container Registry for automatic image updates using workload identity, service principal authentication, and update strategies.
+Description: Learn how to configure ArgoCD Image Updater with Azure Container Registry for automatic image updates using managed identity, service principal authentication, and update strategies.
 
 ---
 

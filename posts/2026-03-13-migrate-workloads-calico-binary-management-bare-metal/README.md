@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, Networking, CNI, Bare Metal, Binary Management, Migration
 
-Description: A guide to using Ansible to orchestrate migration of bare metal Kubernetes workloads from an existing CNI to binary-managed Calico CNI plugins.
+Description: A guide to using Ansible to orchestrate migration of bare metal Kubernetes workloads from an existing CNI to binary-managed Calico.
 
 ---
 

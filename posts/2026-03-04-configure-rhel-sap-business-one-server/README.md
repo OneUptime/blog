@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, SAP, Business One, HANA, Configuration, Linux
 
-Description: Prepare RHEL for SAP HANA workloads used with SAP Business One environments, including OS preparation, required packages, and system tuning.
+Description: Configure RHEL to host SAP Business One with SAP HANA, including OS preparation, required packages, and system tuning for the B1 platform.
 
 ---
 

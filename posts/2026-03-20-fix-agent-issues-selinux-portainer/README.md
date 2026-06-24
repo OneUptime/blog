@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Troubleshooting, SELinux, Docker, Security, CentOS, RHEL
 
-Description: Learn how to fix Portainer Agent failures caused by SELinux enforcement on RHEL, CentOS, and Fedora systems using Portainer's supported deployment flags and SELinux troubleshooting tools.
+Description: Learn how to fix Portainer Agent failures caused by SELinux enforcement on RHEL, CentOS, and Fedora systems by applying correct SELinux labels and policies.
 
 ---
 

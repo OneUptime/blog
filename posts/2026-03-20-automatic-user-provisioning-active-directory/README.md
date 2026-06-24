@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Active Directory, User Provisioning, LDAP, Automation
 
-Description: Configure Portainer Business Edition to automatically create user accounts on first login when authenticating via Active Directory, eliminating manual user management.
+Description: Configure Portainer to automatically create user accounts on first login when authenticating via Active Directory, eliminating manual user management.
 
 ---
 

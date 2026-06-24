@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: MongoDB, findOne, Query, CRUD, Document
 
-Description: Learn how to retrieve a single document from a MongoDB collection using findOne(), with filter expressions and projections.
+Description: Learn how to retrieve a single document from a MongoDB collection using findOne(), with filter expressions, projections, and sort options.
 
 ---
 

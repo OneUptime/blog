@@ -1,10 +1,10 @@
-# How to Deploy Applications to Epinio with epinio push
+# How to Set Up Epinio Git Push Deployments
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Epinio, Kubernetes, PaaS, Buildpacks
+Tags: Epinio, Git, CI/CD, Kubernetes, PaaS
 
-Description: Deploy applications to Epinio with the epinio CLI using Epinio's source-to-URL workflow.
+Description: Configure automated deployments in Epinio triggered by Git pushes using webhooks and CI/CD pipelines.
 
 ## Introduction
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Flagger, PagerDuty, Alerting, Kubernetes, Incident Management
 
-Description: Learn how to configure Flagger failed canary alerts to trigger PagerDuty incidents for immediate incident response.
+Description: Learn how to configure Flagger to trigger PagerDuty incidents when canary deployments fail for immediate incident response.
 
 ---
 

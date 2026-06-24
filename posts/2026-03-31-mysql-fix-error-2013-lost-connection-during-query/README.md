@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: MySQL, Connection, Error, Timeout, Configuration
 
-Description: Fix MySQL ERROR 2013 by tuning net_read_timeout, net_write_timeout, and max_allowed_packet to prevent dropped connections during long-running queries.
+Description: Fix MySQL ERROR 2013 by tuning net_read_timeout, max_allowed_packet, and wait_timeout to prevent dropped connections during long-running queries.
 
 ---
 

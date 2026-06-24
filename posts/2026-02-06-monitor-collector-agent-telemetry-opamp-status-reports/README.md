@@ -1,10 +1,10 @@
-# How to Monitor Collector Agent Telemetry via OpAMP Own Telemetry
+# How to Monitor Collector Agent Telemetry via OpAMP Status Reports
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, OpAMP, Agent Telemetry, Resource Monitoring
 
-Description: Monitor your OpenTelemetry Collector fleet resource usage including CPU, memory, and data throughput using OpAMP agent self-telemetry.
+Description: Monitor your OpenTelemetry Collector fleet resource usage including CPU, memory, and data throughput using OpAMP agent self-telemetry reports.
 
 Your OpenTelemetry Collectors are the backbone of your observability pipeline. If a collector starts consuming too much memory, its throughput drops, or its CPU usage spikes, you need to know about it before it starts dropping telemetry data. OpAMP includes a mechanism for the server to tell agents where to send their own telemetry.
 

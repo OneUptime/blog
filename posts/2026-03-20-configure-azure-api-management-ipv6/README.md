@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Azure, API Management, IPv6, Networking, VNet, Terraform
 
-Description: Configure Azure API Management to accept IPv6 traffic by fronting it with Azure Front Door or an IPv6-enabled Application Gateway.
+Description: Configure Azure API Management to accept IPv6 traffic by deploying it behind an IPv6-enabled Application Gateway or configuring dual-stack VNet integration.
 
 ## Introduction
 

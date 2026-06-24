@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: IPv6, AS112, DNS, Reverse DNS, RFC 7534, Networking
 
-Description: Understand the AS112 project's IPv6 service prefixes and nameserver addresses used to sink misdirected reverse DNS queries.
+Description: Understand the AS112 project's IPv6 service addresses used to sink reverse DNS queries for private address ranges that would otherwise flood the root DNS servers.
 
 ## Introduction
 

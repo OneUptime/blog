@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Redis, CSharp, Testing, Unit Test, Mock
 
-Description: Learn how to mock Redis in C# unit tests using Moq and StackExchange.Redis to test Redis-dependent code without a live server.
+Description: Learn how to mock Redis in C# unit tests using FakeItEasy, Moq, or the dedicated MockRedis package to test Redis-dependent code without a live server.
 
 ---
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, Networking, Troubleshooting
 
-Description: Fix Kubernetes node NotReady status caused by Calico issues by restoring calico-node pod health, reinstalling CNI binaries, and resolving node resource pressure.
+Description: Fix Kubernetes node NotReady status caused by Calico issues by restoring calico-node pod health, reinstalling CNI binaries, and resolving Felix connectivity problems.
 
 ---
 

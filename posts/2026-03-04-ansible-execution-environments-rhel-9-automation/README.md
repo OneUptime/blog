@@ -1,10 +1,10 @@
-# How to Set Up Ansible Core for RHEL Automation
+# How to Set Up Ansible Execution Environments for RHEL Automation
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, Ansible, Automation
+Tags: RHEL, Ansible, Execution Environments, Container
 
-Description: Install and use Ansible Core on RHEL for consistent automation.
+Description: Build and use Ansible execution environments on RHEL for consistent automation.
 
 ---
 

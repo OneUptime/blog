@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Redis, Licensing, SSPL, Open Source, Legal
 
-Description: Understand the Redis licensing changes from BSD to SSPL and RSALv2 - what changed in 2024, what it means for your deployment, and how to evaluate your compliance obligations.
+Description: Understand the Redis licensing changes from BSD to SSPL and AGPLv3 - what changed in 2024, what it means for your deployment, and how to evaluate your compliance obligations.
 
 ---
 

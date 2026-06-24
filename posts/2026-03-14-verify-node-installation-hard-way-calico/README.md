@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, Node, Verification, Installation
 
-Description: A detailed guide to verifying that Calico components are correctly installed and functioning on every node in a manually deployed cluster, covering Felix, BIRD when BGP is enabled, CNI plugin, and interface validation.
+Description: A detailed guide to verifying that Calico components are correctly installed and functioning on every node in a manually deployed cluster, covering Felix, BIRD, CNI plugin, and interface validation.
 
 ---
 

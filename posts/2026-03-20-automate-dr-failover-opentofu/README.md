@@ -2,9 +2,9 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Disaster Recovery, Automation, OpenTofu, Failover, CloudWatch, Lambda, Step Functions
+Tags: Disaster Recovery, Automation, OpenTofu, Failover, EventBridge, Lambda
 
-Description: Learn how to automate disaster recovery failover using OpenTofu with event-driven triggers, Lambda automation, and Route 53 DNS switching for hands-free DR execution.
+Description: Learn how to automate disaster recovery failover using OpenTofu with event-driven triggers, Lambda automation, and Route53 DNS switching for hands-free DR execution.
 
 ## Overview
 

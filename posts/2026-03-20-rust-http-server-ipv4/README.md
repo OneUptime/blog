@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Rust, HTTP, IPv4, TCP, Server, Networking, std::net
+Tags: Rust, HTTP, IPv4, TCP, Server, Networking, Std::net
 
 Description: Build a multithreaded HTTP/1.0 server in Rust using std::net TcpListener, manually parsing HTTP requests and generating responses over IPv4.
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rook, Ceph, RGW, Kubernetes, Observability
 
-Description: Learn how to configure startup and readiness health probes for Rook RGW gateway pods to enable proper traffic routing and automatic pod recovery.
+Description: Learn how to configure liveness and readiness health probes for Rook RGW gateway pods to enable proper traffic routing and automatic pod recovery.
 
 ---
 

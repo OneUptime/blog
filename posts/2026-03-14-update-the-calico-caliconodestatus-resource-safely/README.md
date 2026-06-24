@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes
 
-Description: A step-by-step guide to modifying Calico CalicoNodeStatus resources in production without adding unnecessary control-plane load.
+Description: A step-by-step guide to modifying Calico CalicoNodeStatus resources in production without causing downtime or connectivity issues.
 
 ---
 

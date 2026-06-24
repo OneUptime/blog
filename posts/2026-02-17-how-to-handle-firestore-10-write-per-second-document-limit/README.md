@@ -1,4 +1,4 @@
-# How to Handle Firestore Single-Document Write Limits
+# How to Handle Firestore 10-Write-Per-Second Document Limit
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GCP, VPC, Routing, IPv4, Cloud Networking, Static Routes
 
-Description: Create and manage custom IPv4 static routes in a GCP VPC to direct traffic to specific next-hops, including instances, gateways, and Classic VPN tunnels.
+Description: Create and manage custom IPv4 static routes in a GCP VPC to direct traffic to specific next-hops, including instances, gateways, and VPN tunnels.
 
 ## Introduction
 

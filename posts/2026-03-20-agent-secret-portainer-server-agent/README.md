@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Agent, Security, TLS, Authentication
 
-Description: Set up the same shared secret on the Portainer server and Portainer Agent to authenticate agent connections.
+Description: Set up a shared secret between the Portainer server and Portainer Agent to secure agent communications.
 
 ---
 

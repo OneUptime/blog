@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, AWS, RDS, PostgreSQL, Database, Infrastructure as Code
 
-Description: Learn how to provision a PostgreSQL RDS instance with a custom parameter group, `pg_stat_statements`, and enhanced monitoring using OpenTofu.
+Description: Learn how to provision a PostgreSQL RDS instance with extensions, parameter groups, and enhanced monitoring using OpenTofu.
 
 ---
 

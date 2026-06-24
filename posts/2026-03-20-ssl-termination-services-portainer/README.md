@@ -1,10 +1,10 @@
-# How to Configure Network Segmentation for Services in Portainer
+# How to Configure SSL Termination for Services in Portainer
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Portainer, Docker, Networking, Nginx, Security
+Tags: Portainer, SSL, TLS, Nginx, Security
 
-Description: Set up segmented Docker networks for containerized services in Portainer to reduce exposed traffic paths.
+Description: Set up SSL/TLS termination for containerized services in Portainer to secure HTTP traffic with HTTPS.
 
 ## Introduction
 

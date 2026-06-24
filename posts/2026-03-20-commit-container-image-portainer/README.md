@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Docker, Image, Container, DevOps
 
-Description: Create a new Docker image from a deployed container using Portainer.
+Description: Create a new Docker image from a running or stopped container's current state using Portainer.
 
 ## Introduction
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rancher, Kubernetes, Terraform, Infrastructure as Code, Automation
 
-Description: Use Terraform with the Rancher2 provider to manage Rancher clusters, projects, users, and applications as infrastructure code for reproducible environments.
+Description: Use Terraform with the Rancher2 provider to manage Rancher clusters, projects, users, and workloads as infrastructure code for reproducible environments.
 
 ## Introduction
 

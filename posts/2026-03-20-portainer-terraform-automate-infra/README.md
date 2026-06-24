@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Terraform, Automation, Infrastructure, DevOps
 
-Description: Learn how to automate Portainer infrastructure provisioning using Terraform, integrating it with cloud infrastructure provisioning for end-to-end automated deployments.
+Description: Learn how to fully automate Portainer infrastructure provisioning using Terraform, integrating it with cloud infrastructure provisioning for end-to-end automated deployments.
 
 ## Introduction
 

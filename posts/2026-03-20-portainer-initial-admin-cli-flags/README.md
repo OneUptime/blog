@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Docker, Administration, Automation, CLI, Initial Setup
 
-Description: Automate Portainer's initial admin account setup using CLI flags to bypass the initial password creation step and enable unattended deployments.
+Description: Automate Portainer's initial admin account setup using CLI flags to bypass the interactive setup wizard and enable unattended deployments.
 
 ## Introduction
 

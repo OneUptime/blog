@@ -2,9 +2,9 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Dapr, Actor, Rate Limiting, Token Bucket
+Tags: Dapr, Actor, Rate Limiting, Token Bucket, Sliding Window
 
-Description: Implement distributed per-key rate limiting using Dapr actors with the token bucket algorithm, without external Redis Lua scripts.
+Description: Implement distributed per-key rate limiting using Dapr actors with token bucket and sliding window algorithms, without external Redis Lua scripts.
 
 ---
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GCP, Vertex AI Search, Search API, Custom Search, Application Development
 
-Description: Build a custom search application using the Vertex AI Search API with features like autocomplete, faceted search, pagination, and result boosting.
+Description: Build a custom search application using the Vertex AI Search API with features like autocomplete, faceted search, pagination, and personalized ranking.
 
 ---
 

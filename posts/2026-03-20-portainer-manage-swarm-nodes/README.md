@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Docker Swarm, Node, Cluster Management, DevOps
 
-Description: Learn how to add, inspect, configure, drain, and remove Docker Swarm nodes with Portainer for visibility and the Docker CLI for structural changes.
+Description: Learn how to add, configure, drain, and remove Docker Swarm nodes using Portainer's node management interface.
 
 ## Introduction
 

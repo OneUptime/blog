@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Collector, Extension, HTTP Headers, Authentication, Security
 
-Description: Learn how to configure the Headers Setter Extension in OpenTelemetry Collector to inject authentication tokens and metadata headers.
+Description: Learn how to configure the Headers Setter Extension in OpenTelemetry Collector to dynamically inject authentication tokens, metadata headers.
 
 ---
 

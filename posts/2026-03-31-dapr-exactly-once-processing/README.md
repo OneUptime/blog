@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Dapr, Pub/Sub, Idempotency, Messaging, State
 
-Description: Learn how to achieve exactly-once message processing in Dapr by combining idempotency keys, state store deduplication, and transactional state operations.
+Description: Learn how to achieve exactly-once message processing in Dapr by combining idempotency keys, state store deduplication, and the transactional outbox pattern.
 
 ---
 

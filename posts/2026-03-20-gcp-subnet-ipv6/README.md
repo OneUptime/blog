@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GCP, IPv6, Subnets, Dual-Stack, Google Cloud, VPC
 
-Description: Create and configure Google Cloud VPC subnets with IPv6 support, choose between external and internal IPv6 access types, and understand GCP's `/64` subnet and `/96` VM allocation.
+Description: Create and configure Google Cloud VPC subnets with IPv6 support, choose between external and internal IPv6 access types, and understand GCP's /96 subnet allocation.
 
 ## Introduction
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: ArgoCD, GitOps, Kubernetes, OCI, Security
 
-Description: Learn how to configure authentication for OCI container registries in ArgoCD, covering token-based auth, service accounts, cloud identity, and automated token refresh strategies.
+Description: Learn how to configure authentication for OCI container registries in ArgoCD, covering token-based auth, service accounts, credential helpers, and automated token refresh strategies.
 
 ---
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: gRPC, IPv4, Deadlines, Timeout, Go, Python, Error Handling
 
-Description: Implement gRPC deadlines and timeouts for gRPC calls to IPv4 endpoints in Go and Python, handle DeadlineExceeded errors, and propagate deadlines across service chains.
+Description: Implement gRPC deadlines and timeouts for IPv4 connections in Go and Python, handle DeadlineExceeded errors, and propagate deadlines across service chains.
 
 ## Introduction
 

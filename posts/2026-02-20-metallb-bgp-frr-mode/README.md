@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, MetalLB, BGP, FRR, Free Range Routing
 
-Description: Learn how to configure MetalLB with FRR mode for BGP support including BFD, VRF, and BGP route attributes.
+Description: Learn how to configure MetalLB with FRR mode for full-featured BGP support including BFD, VRF, and advanced route policies.
 
 ---
 

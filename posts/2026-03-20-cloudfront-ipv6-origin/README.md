@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: CloudFront, AWS, IPv6, CDN, Origin, Cloud
 
-Description: A guide to configuring AWS CloudFront to accept IPv6 requests from clients and connect to IPv6-capable custom origins, enabling end-to-end IPv6 content delivery.
+Description: A guide to configuring AWS CloudFront to accept IPv6 requests from clients and connect to IPv6-capable origins, enabling end-to-end IPv6 content delivery.
 
 AWS CloudFront supports IPv6 in two ways: accepting connections from IPv6 clients (viewer-facing) and, for custom origins except Amazon S3 and VPC origins, connecting to origins over IPv6 (origin-facing). This guide covers both configurations.
 

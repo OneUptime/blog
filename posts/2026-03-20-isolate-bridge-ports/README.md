@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Bridge, Port Isolation, Linux, Ebtables, Private VLAN, Networking, Security
 
-Description: Learn how to isolate Linux bridge ports from communicating with each other while still allowing all ports to reach a non-isolated uplink, using ebtables, nftables, or the bridge isolated port flag.
+Description: Learn how to isolate Linux bridge ports from communicating with each other while still allowing all ports to reach the upstream gateway, using ebtables or VLAN-based private isolation.
 
 ---
 

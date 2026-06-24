@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, AWS, Inspector, Vulnerability Management, Container Security, Infrastructure as Code
 
-Description: Learn how to enable AWS Inspector v2 with OpenTofu to automatically scan EC2 instances, Lambda functions, and ECR container images for software vulnerabilities, plus EC2 instances for unintended network exposure.
+Description: Learn how to enable AWS Inspector v2 with OpenTofu to automatically scan EC2 instances, Lambda functions, and ECR container images for software vulnerabilities and unintended network exposure.
 
 ## Introduction
 

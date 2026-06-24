@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, MongoDB, Performance, Monitoring, Linux
 
-Description: Step-by-step guide on monitoring MongoDB performance with mongostat using Red Hat Enterprise Linux 9.
+Description: Step-by-step guide on monitor mongodb performance with mongostat using Red Hat Enterprise Linux 9.
 
 ---
 

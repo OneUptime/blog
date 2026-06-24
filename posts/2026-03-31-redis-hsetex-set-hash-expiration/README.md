@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Redis, HSETEX, Hash, Expiration, TTL, Field, Command
 
-Description: Learn how to use the Redis HSETEX command (Redis 8.0+) to set hash field values with per-field TTLs in a single atomic operation, combining HSET and HEXPIRE.
+Description: Learn how to use the Redis HSETEX command (Redis 7.4+) to set hash field values with per-field TTLs in a single atomic operation, combining HSET and HEXPIRE.
 
 ---
 

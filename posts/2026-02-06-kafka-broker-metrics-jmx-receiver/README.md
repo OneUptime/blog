@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Kafka, JMX Receiver, Broker Metrics
 
-Description: Monitor Kafka broker health metrics including under-replicated partitions, ISR shrink counts, and active controller count using the OpenTelemetry JMX receiver.
+Description: Monitor Kafka broker health metrics including under-replicated partitions, ISR shrink rate, and active controller count using the OpenTelemetry JMX receiver.
 
 Apache Kafka exposes its metrics through JMX (Java Management Extensions). The OpenTelemetry Collector's JMX receiver connects to Kafka brokers via JMX and collects critical health metrics like under-replicated partitions, ISR shrink/expand counts, and active controller count. These metrics are essential for detecting cluster health issues before they impact consumers.
 

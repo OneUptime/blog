@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: AWS, Cognito, Lambda, Email, Serverless
 
-Description: Implement the Cognito Custom Message Lambda trigger to customize verification emails, password reset messages, MFA codes, and admin invitation emails.
+Description: Implement the Cognito Custom Message Lambda trigger to fully customize verification emails, password reset messages, MFA codes, and admin invitation emails.
 
 ---
 

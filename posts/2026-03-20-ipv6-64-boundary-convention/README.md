@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: IPv6, Subnetting, SLAAC, Networking, Addressing
 
-Description: Understand why IPv6 conventionally uses a /64 prefix length for host subnets, how it enables SLAAC, and the implications for address planning.
+Description: Understand why IPv6 mandates a /64 prefix length for individual subnets, how it enables SLAAC, and the implications for address planning.
 
 ## Introduction
 

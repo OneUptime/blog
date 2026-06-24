@@ -2,9 +2,9 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Rancher Desktop, Microservice, Kubernetes, Local Development
+Tags: Rancher Desktop, Microservice, Kubernetes, Local Development, Service Mesh
 
-Description: Build and test microservices locally using Rancher Desktop with Kubernetes and Helm.
+Description: Build and test microservices architectures locally using Rancher Desktop with service meshes and API gateways.
 
 ## Introduction
 

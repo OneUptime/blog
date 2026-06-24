@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, Ingress, Gateway, Networking
 
-Description: Safely migrate from an existing ingress solution to a Calico-secured ingress gateway.
+Description: Safely migrate from an existing ingress solution to Calico's ingress gateway with blue-green cutover.
 
 ---
 

@@ -1,10 +1,10 @@
-# How to Understand Overlay Interconnect Fabric with Calico
+# How to Understand L2 Interconnect Fabric with Calico
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Networking, VXLAN, IP-in-IP, Overlay, CNI
+Tags: Calico, Kubernetes, L2, Networking, VXLAN, IP-in-IP, Overlay, CNI
 
-Description: A comprehensive guide to overlay networking with Calico, covering VXLAN overlay, IP-in-IP tunneling, and when encapsulation is appropriate for Kubernetes cluster interconnect.
+Description: A comprehensive guide to Layer 2 networking with Calico, covering VXLAN overlay, IP-in-IP tunneling, and when L2 fabric is appropriate for Kubernetes cluster interconnect.
 
 ---
 

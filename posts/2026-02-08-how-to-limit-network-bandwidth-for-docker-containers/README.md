@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Docker, Networking, Bandwidth, Traffic Shaping, DevOps, Container
 
-Description: Learn how to limit and control network bandwidth for Docker containers using tc, Wondershaper, netem, and Pumba.
+Description: Learn how to limit and control network bandwidth for Docker containers using tc, Docker plugins, and proxy-based throttling approaches.
 
 ---
 

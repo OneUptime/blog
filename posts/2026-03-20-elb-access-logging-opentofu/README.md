@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, AWS, ELB, ALB, NLB, Access Logging, Observability, Infrastructure as Code
 
-Description: Learn how to enable access logging for AWS Application Load Balancers and Network Load Balancers using OpenTofu to capture detailed ALB request records and NLB TLS connection records for troubleshooting and compliance.
+Description: Learn how to enable access logging for AWS Application Load Balancers and Network Load Balancers using OpenTofu to capture detailed request records for troubleshooting and compliance.
 
 ALB access logs capture detailed request information including client IP, request paths, response codes, latency, and target responses. NLB access logs capture TLS connection details. Managing log configuration in OpenTofu ensures every load balancer in your environment has logging enabled consistently.
 

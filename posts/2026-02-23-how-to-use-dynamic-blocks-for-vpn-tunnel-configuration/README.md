@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Terraform, Dynamic Blocks, AWS, VPN, Networking, Infrastructure as Code
 
-Description: Learn how to configure AWS Site-to-Site VPN tunnels dynamically with Terraform using expressions and `for_each` for scalable and consistent VPN management.
+Description: Learn how to configure AWS Site-to-Site VPN tunnels dynamically with Terraform using dynamic blocks for scalable and consistent VPN management.
 
 ---
 

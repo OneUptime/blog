@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Dapr, Actor, Metric, Monitoring, Prometheus
 
-Description: Monitor Dapr virtual actor runtime state, pending actor calls, timer and reminder counts, and deactivation metrics using Prometheus and the Dapr metadata API.
+Description: Monitor Dapr virtual actor runtime state, active actor counts, method call rates, and timer metrics using Prometheus and the Dapr metadata API.
 
 ---
 

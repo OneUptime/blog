@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Azure, VPN, Point-to-Site, Remote Access, Infrastructure as Code
 
-Description: Learn how to configure Azure Point-to-Site VPN for individual remote user access to Azure VNets using certificate or Microsoft Entra ID authentication with OpenTofu.
+Description: Learn how to configure Azure Point-to-Site VPN for individual remote user access to Azure VNets using certificate or Azure AD authentication with OpenTofu.
 
 ## Introduction
 

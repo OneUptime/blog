@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, IPAM, IP Reservation, Networking, Troubleshooting
 
-Description: A guide to diagnosing and resolving issues with IP address reservation in Calico IPAM, covering reserved IP ranges, specific IP requests, and conflicts with reserved addresses.
+Description: A guide to diagnosing and resolving issues with IP address reservation in Calico IPAM, covering reserved IP ranges, annotation-based reservations, and conflicts with reserved addresses.
 
 ---
 

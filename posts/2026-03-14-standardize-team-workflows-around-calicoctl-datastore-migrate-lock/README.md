@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Calicoctl, Datastore Migration, Team Workflows, Best Practice
 
-Description: Establish team-wide procedures for the Calico datastore migration lock step using calicoctl datastore migrate lock with proper planning, execution, and verification.
+Description: Establish team-wide procedures for Calico datastore migration operations using calicoctl datastore migrate lock with proper planning, execution, and verification.
 
 ---
 

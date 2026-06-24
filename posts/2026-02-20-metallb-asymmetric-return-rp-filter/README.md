@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, MetalLB, Rp_filter, Asymmetric Routing, Troubleshooting
 
-Description: Learn how to fix MetalLB traffic issues caused by Linux reverse path filtering (rp_filter) dropping packets due to asymmetric routing.
+Description: Learn how to fix MetalLB traffic issues caused by Linux reverse path filtering (rp_filter) dropping return packets due to asymmetric routing.
 
 ---
 

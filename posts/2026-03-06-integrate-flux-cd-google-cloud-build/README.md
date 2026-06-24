@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Google Cloud Build, CI/CD, GitOps, Kubernetes, GKE, Artifact Registry
+Tags: Flux CD, Google Cloud Build, CI/CD, GitOps, Kubernetes, GKE, GCR, Artifact Registry
 
 Description: A step-by-step guide to integrating Google Cloud Build with Flux CD for automated container image builds and GitOps deployments on GKE.
 
