@@ -42,3 +42,23 @@ Tutorial / Guide
 - All fenced YAML snippets parse successfully with PyYAML.
 - Ruby was not installed in the review environment, so YAML validation was performed with PyYAML instead of Ruby.
 - The custom span helper intentionally remains a lightweight OTLP/JSON example. Production use should handle JSON escaping for arbitrary step names and should prefer an OpenTelemetry SDK or a maintained CI tracing tool where practical.
+
+## Re-review 2026-06-25 (issue #146)
+
+A reader (issue #146) followed the post but could not get the "project-level configuration" working, and asked two specific questions: (1) is this feature Ultimate-tier only, as some other GitLab docs seemed to imply, and (2) is editing `gitlab.rb` mandatory to get project-level functionality? Re-verified against current official GitLab documentation and made targeted, body-only edits to address the confusion.
+
+### Facts verified (official sources)
+- CI/CD pipeline telemetry for GitLab Observability is documented as `Tier: Free, Premium, Ultimate`, `Offering: GitLab.com, GitLab Self-Managed`, `Status: Experiment`. It is NOT Ultimate-only in the current (GitLab 18.1+) docs. Source: https://docs.gitlab.com/operations/observability/ci_cd/
+- GitLab Observability itself carries the same tier badge (`Free, Premium, Ultimate`) and `Status: Experiment`, and is described as available for all tiers. Source: https://docs.gitlab.com/operations/observability/observability/
+- The reporter's "Ultimate-only" impression matches the older (GitLab 16.x/17.x) implementation, where observability/distributed tracing required Ultimate and the `observability_features` feature flag (flags introduced around 16.2, beta in 17.x). That earlier model was reworked. Sources: https://docs.gitlab.com/operations/observability/observability/ and the GitLab feature-flag history (`observability_features`, formerly `observability_tracing`).
+- On GitLab.com, GitLab Observability is enabled per group in the UI (Settings > Observability > Setup > Enable Observability) by a user with Developer/Maintainer/Owner role; no `gitlab.rb` edit. Source: https://docs.gitlab.com/operations/observability/setup_gitlab_com/
+- On GitLab Self-Managed (18.1+), GitLab Observability runs as a separate deployed backend (Docker/Docker Compose host, OTLP ports 4317/4318) and is connected to a group via the Rails console object `Observability::GroupO11ySetting` (fields: `group_id`, `o11y_service_url`, `o11y_service_user_email`, `o11y_service_password`, `o11y_service_post_message_encryption_key`). It is NOT enabled by editing `gitlab.rb`. Source: https://docs.gitlab.com/operations/observability/setup_self_managed/
+
+### Changes made to README.md
+- Added an H3 "Tier and Availability (Read This First)" under "GitLab's Built-in OpenTelemetry Support" stating the current Free/Premium/Ultimate tier and Experiment status, and explaining that the Ultimate-only impression comes from the older 16.x/17.x implementation that has since been reworked.
+- Added a new H2 "Prerequisite: Set Up GitLab Observability First" that explains the export targets GitLab Observability (not an arbitrary OTLP endpoint), documents the GitLab.com UI enablement path, documents the Self-Managed path (separate backend plus `Observability::GroupO11ySetting` via Rails console), and explicitly answers the two reader questions (not Ultimate-only; `gitlab.rb` editing is not how you enable it).
+- Updated the "Enabling OpenTelemetry in GitLab" section so it now depends on the prerequisite and adds a troubleshooting note that missing data usually means Observability is not set up/connected for the group.
+
+### Notes / caveats
+- The feature remains an Experiment, so tier, feature flags, and setup steps can change between releases. The post now points readers to the official docs to re-verify.
+- Self-managed setup specifics (instance sizing, ports, exact Rails fields) are summarized from the official setup page and may evolve; the post links to that page for the authoritative steps.
