@@ -12,6 +12,19 @@ Longhorn is a lightweight, reliable distributed block storage system for Kuberne
 
 Deploying Longhorn through ArgoCD gives you a GitOps-managed storage layer that is easy to configure and maintain.
 
+If you would rather install Longhorn directly with Helm instead of GitOps, see the companion article [How to Deploy Longhorn Distributed Storage with Helm on Kubernetes](https://oneuptime.com/blog/post/2026-01-17-helm-longhorn-distributed-storage/view).
+
+## How the pieces fit together (read this first)
+
+The steps below mix two very different kinds of action, and the difference is the most common source of confusion. Keep this distinction in mind for every step:
+
+- **Node-level prerequisites** are installed on the operating system of *every* worker node that will run Longhorn (Step 1). These are host packages and services such as `open-iscsi`/`iscsid` and the NFSv4 client. You install them with your OS package manager or configuration management (apt, yum, Ansible, cloud-init, etc.), not with `kubectl`. Longhorn cannot run if a node is missing them.
+- **Cluster-level resources** are Kubernetes objects (the ArgoCD `Application`, `StorageClass`, `Secret`, `RecurringJob`, and so on). You never run these on individual nodes. They are submitted to the Kubernetes API server once, and the cluster schedules the resulting pods onto nodes for you. In this guide they are applied in one of two ways:
+  - **Committed to Git and synced by ArgoCD** - the ArgoCD `Application` and anything you choose to manage via GitOps. You commit the YAML to your repository and ArgoCD applies it to the cluster on your behalf.
+  - **Applied directly with `kubectl apply -f`** - convenient for one-off or bootstrap resources (for example a credentials `Secret`). Each step below states which method it uses.
+
+In short: Step 1 runs on the nodes; every other step targets the cluster API server, either through ArgoCD's sync or through a direct `kubectl apply`.
+
 ## Why Longhorn
 
 Longhorn stands out for several reasons:
@@ -41,15 +54,49 @@ graph TD
     J --> K[S3 / NFS Backup Target]
 ```
 
-## Step 1: Prerequisites Check
+## Step 1: Node prerequisites (runs on every node)
 
-Before deploying Longhorn, verify nodes meet the requirements:
+This step is node-level. Longhorn relies on the host operating system, so the following must be true on *every* node that will store Longhorn replicas:
+
+- `open-iscsi` is installed and the `iscsid` daemon is running on all nodes (Longhorn uses `iscsiadm` on the host to attach volumes to Kubernetes).
+- An NFSv4 client is installed on every node if you plan to use ReadWriteMany (RWX) volumes; the backup feature also requires NFSv4.
+
+Install these with your OS package manager or configuration management before deploying Longhorn. For example, on Debian/Ubuntu nodes:
+
+```bash
+sudo apt-get update
+sudo apt-get install -y open-iscsi nfs-common
+sudo systemctl enable --now iscsid
+```
+
+Then verify the prerequisites across the whole cluster. The environment check script deploys a short-lived privileged DaemonSet (one pod per node) that inspects each host for iSCSI, NFS, mount propagation, and the required packages, then prints a per-node report:
 
 ```bash
 curl -sSfL https://raw.githubusercontent.com/longhorn/longhorn/v1.6.0/scripts/environment_check.sh | bash
 ```
 
-## Step 2: Deploy Longhorn with ArgoCD
+Expected output (one block per node; all checks should pass before you continue):
+
+```text
+[INFO]  Required dependencies 'kubectl jq mktemp sort printf' are installed.
+[INFO]  All nodes have unique hostnames.
+[INFO]  Waiting for longhorn-environment-check pods to become ready (0/3)...
+[INFO]  All longhorn-environment-check pods are ready (3/3).
+[INFO]  MountPropagation is enabled!
+[INFO]  Checking iscsid...
+[INFO]  Checking multipathd...
+[INFO]  Checking nfs client...
+[INFO]  Cleaning up longhorn-environment-check pods...
+[INFO]  Cleanup completed.
+```
+
+If any node reports a missing package or a stopped `iscsid` service, fix that node before moving on. Cleanly passing this step is what makes the cluster-level steps that follow safe to apply.
+
+## Step 2: Deploy Longhorn with ArgoCD (cluster-level, synced from Git)
+
+This is the heart of the GitOps workflow. The manifest below is a single ArgoCD `Application` that points at the Longhorn Helm chart. You do not run it on any node. Instead you **commit this file to the Git repository ArgoCD watches**, and ArgoCD renders the chart and applies the resulting Kubernetes objects to the cluster's API server for you. ArgoCD then creates the Longhorn pods (manager, driver, UI) and schedules them onto the nodes that passed Step 1.
+
+Save the following as something like `apps/longhorn.yaml` in your GitOps repository and commit it:
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -135,9 +182,62 @@ spec:
       - ServerSideApply=true
 ```
 
-## Step 3: Configure Backup Credentials
+Because `syncPolicy.automated` is set, you do not need to click anything in the ArgoCD UI: once the file is committed and pushed, ArgoCD detects the new `Application`, syncs it, and (thanks to `selfHeal: true`) reverts any drift back to the state in Git.
 
-Create the backup target secret (store this in a sealed secret or external secrets manager):
+### Confirm the Application is Synced and Healthy
+
+ArgoCD reports two independent statuses for every Application: a **Sync** status (`Synced` means the live cluster matches Git, `OutOfSync` means it does not) and a **Health** status (`Healthy`, `Progressing`, or `Degraded`). Check both:
+
+```bash
+kubectl get application longhorn -n argocd
+```
+
+Expected output once the chart has rolled out:
+
+```text
+NAME       SYNC STATUS   HEALTH STATUS
+longhorn   Synced        Healthy
+```
+
+Then confirm the Longhorn pods came up in the `longhorn-system` namespace (these were created by ArgoCD on the cluster, not by you on a node):
+
+```bash
+kubectl get pods -n longhorn-system
+```
+
+Expected output (abbreviated; exact pod counts scale with the number of nodes):
+
+```text
+NAME                                          READY   STATUS    RESTARTS   AGE
+csi-attacher-5f9d8b6c7d-7m2qz                 1/1     Running   0          3m
+csi-provisioner-7c5d9f4b8c-4kx9p              1/1     Running   0          3m
+engine-image-ei-1b8e2c3a-2pj4n                1/1     Running   0          3m
+instance-manager-0a1b2c3d4e5f6789            1/1     Running   0          3m
+longhorn-driver-deployer-6b7c8d9e0f-qz5wt     1/1     Running   0          3m
+longhorn-manager-7h8j9k                       1/1     Running   0          3m
+longhorn-ui-5c6d7e8f9a-1b2c3                  1/1     Running   0          3m
+```
+
+Finally, verify the default StorageClass that the chart created (because `persistence.defaultClass: true` was set):
+
+```bash
+kubectl get storageclass
+```
+
+Expected output (the `(default)` marker confirms Longhorn is the cluster's default StorageClass):
+
+```text
+NAME                 PROVISIONER          RECLAIMPOLICY   VOLUMEBINDINGMODE   ALLOWVOLUMEEXPANSION   AGE
+longhorn (default)   driver.longhorn.io   Delete          Immediate           true                   3m
+```
+
+If the Application shows `Progressing` for more than a few minutes, run `kubectl get pods -n longhorn-system` and `kubectl describe` the pending pods; the usual cause is a node that failed the Step 1 prerequisites.
+
+## Step 3: Configure Backup Credentials (cluster-level)
+
+This is another cluster-level resource. Because it contains raw credentials, this example applies it **directly with `kubectl apply -f`** rather than committing plaintext to Git. In production you should instead manage it through a Sealed Secret or an external secrets operator and let ArgoCD sync that.
+
+Save the manifest as `longhorn-backup-secret.yaml`:
 
 ```yaml
 apiVersion: v1
@@ -152,7 +252,21 @@ stringData:
   AWS_ENDPOINTS: "https://s3.us-east-1.amazonaws.com"
 ```
 
-## Step 4: Create Additional StorageClasses
+Apply it to the cluster API server (not to a node):
+
+```bash
+kubectl apply -f longhorn-backup-secret.yaml
+```
+
+Expected output:
+
+```text
+secret/longhorn-backup-secret created
+```
+
+## Step 4: Create Additional StorageClasses (cluster-level, manage in Git)
+
+`StorageClass` objects are cluster-scoped Kubernetes resources, so like the `Application` they belong in Git and are best synced by ArgoCD. Commit the manifest below alongside your other GitOps resources; ArgoCD will apply it to the cluster. (For a quick test you can also `kubectl apply -f storageclasses.yaml` directly.)
 
 ```yaml
 # High-performance StorageClass with more replicas
@@ -201,9 +315,25 @@ parameters:
   recurringJobSelector: '[{"name":"backup-daily","isGroup":false}]'
 ```
 
-## Step 5: Configure Recurring Jobs
+After the resource syncs, confirm the new classes exist next to the default one:
 
-Set up automated snapshots and backups:
+```bash
+kubectl get storageclass
+```
+
+Expected output:
+
+```text
+NAME                 PROVISIONER          RECLAIMPOLICY   VOLUMEBINDINGMODE   ALLOWVOLUMEEXPANSION   AGE
+longhorn (default)   driver.longhorn.io   Delete          Immediate           true                   10m
+longhorn-backup      driver.longhorn.io   Retain          Immediate           true                   1m
+longhorn-ha          driver.longhorn.io   Retain          Immediate           true                   1m
+longhorn-single      driver.longhorn.io   Delete          Immediate           true                   1m
+```
+
+## Step 5: Configure Recurring Jobs (cluster-level, manage in Git)
+
+`RecurringJob` is a Longhorn custom resource in the `longhorn-system` namespace. Commit these manifests to Git so ArgoCD syncs them, and Longhorn's controller (already running in the cluster from Step 2) will schedule the snapshots and backups. Set up automated snapshots and backups:
 
 ```yaml
 # Daily snapshot
@@ -258,6 +388,8 @@ spec:
 ```
 
 ## Custom Health Checks
+
+By default ArgoCD does not know how to read Longhorn's `Volume` status, so it may report a healthy volume as `Progressing`. The patch below teaches the ArgoCD controller a custom health check. This edits the cluster-level `argocd-cm` ConfigMap in the `argocd` namespace (apply it with `kubectl apply -f`, or fold it into how you already manage ArgoCD's own configuration); restart or let the `argocd-server` pick up the change:
 
 ```yaml
 apiVersion: v1
@@ -386,4 +518,6 @@ spec:
 
 ## Summary
 
-Longhorn provides a simpler alternative to Ceph for Kubernetes block storage, and deploying it through ArgoCD gives you full GitOps control over your storage layer. Configure default settings, replica counts, and backup targets through Helm values, manage StorageClasses and recurring jobs as Git resources, and monitor health through Prometheus. Longhorn's built-in backup and DR capabilities make it an excellent choice for teams that want reliable distributed storage without the operational complexity of running Ceph.
+Longhorn provides a simpler alternative to Ceph for Kubernetes block storage, and deploying it through ArgoCD gives you full GitOps control over your storage layer. Remember the one distinction that makes the whole workflow click: the node prerequisites in Step 1 (`open-iscsi`, the NFSv4 client) are installed on every node's operating system, while everything else is a cluster-level Kubernetes resource that you either commit to Git for ArgoCD to sync or apply once with `kubectl apply`. Configure default settings, replica counts, and backup targets through Helm values, manage StorageClasses and recurring jobs as Git resources, and confirm each step with the `kubectl get` checks shown above. Longhorn's built-in backup and DR capabilities make it an excellent choice for teams that want reliable distributed storage without the operational complexity of running Ceph.
+
+If you prefer a plain Helm installation without ArgoCD, the companion guide [How to Deploy Longhorn Distributed Storage with Helm on Kubernetes](https://oneuptime.com/blog/post/2026-01-17-helm-longhorn-distributed-storage/view) walks through the same storage layer step by step.
