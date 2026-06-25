@@ -8,14 +8,14 @@ Description: A practical comparison of the best Sentry alternatives for error tr
 
 Sentry is the default answer when someone asks "what should I use for error tracking?" And for good reason - it's battle-tested, has SDKs for everything, and the free tier is generous enough to get started.
 
-But Sentry has real limitations that push teams to look elsewhere:
+Sentry is a capable, broad product today: beyond error tracking it offers distributed tracing, profiling, session replay, cron monitoring, structured logs, and metrics, with errors correlated to the traces, replays, and logs around them. Its SDKs are open source under permissive licenses (MIT/BSD), and it accepts OpenTelemetry data, so instrumentation is not necessarily locked to Sentry. Even so, teams have legitimate reasons to evaluate alternatives:
 
-- **Pricing gets unpredictable.** Sentry's event-based pricing means a single deployment with a logging bug can blow through your budget overnight. The Team plan starts at $26/month but scales with errors, transactions, replays, and attachments - each billed separately.
-- **It's error tracking, not observability.** Sentry added performance monitoring and logs, but it's still primarily an error tracker bolted onto other features. If you need traces, metrics, and logs correlated together, you're stitching tools.
-- **Self-hosting is painful.** Sentry is technically open source, but self-hosting requires Kafka, Redis, PostgreSQL, ClickHouse, Snuba, and a dozen other services. The minimum footprint is around 8GB RAM and it's not trivial to maintain.
-- **Vendor lock-in via SDKs.** Sentry's SDKs are proprietary. If you instrument your code with `@sentry/node`, you're locked into Sentry's ecosystem. Migrating means re-instrumenting everything.
+- **Pricing can be hard to predict.** Sentry's pricing is largely volume-based across errors, spans, replays, and attachments, so a noisy deployment can drive usage up quickly. Sentry does provide guardrails for this - spike protection, per-project spend allocation, and an on-demand budget with a configurable spending cap - but teams that prefer simpler, more predictable pricing models still shop around.
+- **Breadth vs. a single correlated stack.** Sentry covers errors, traces, profiling, replay, crons, logs, and metrics. Some teams still prefer a platform where every signal (including infrastructure monitoring, uptime, on-call, and status pages) lives in one place, rather than combining Sentry with separate monitoring and incident tools.
+- **Self-hosting is heavy.** Self-hosting Sentry requires Kafka, Redis, PostgreSQL, ClickHouse, Snuba, and several other services, with a minimum footprint around 8GB RAM. This is a real consideration, though most full-featured observability platforms have comparable infrastructure needs when self-hosted - the lightweight options below are the exception, not the rule.
+- **SDK ecosystem and portability.** Sentry's SDKs are open source (for example, `@sentry/node` and `sentry-python` are MIT-licensed), and Sentry supports OpenTelemetry ingestion. If portability is a priority, instrumenting with vendor-neutral OpenTelemetry - which several tools below also accept - keeps your options open regardless of which backend you choose.
 
-Here are 10 alternatives worth considering, ranked by how well they solve these problems.
+Here are 10 alternatives worth considering, depending on which of these trade-offs matters most to you.
 
 ## 1. OneUptime
 
@@ -203,6 +203,6 @@ The right choice depends on what problem you're actually solving:
 | Maximum flexibility, build your own | Grafana stack |
 | Simple error tracking, nothing more | Airbrake or Rollbar |
 
-The bigger question is whether you want error tracking as a standalone tool or as part of your observability platform. The industry is clearly moving toward the latter - errors without trace context, log correlation, and metric correlation are just stack traces in a database.
+The bigger question is whether you want a narrow, dedicated error tracker, a broad application-monitoring suite like Sentry (which now correlates errors with traces, profiles, replays, and logs), or a single platform that also covers infrastructure monitoring, uptime, on-call, and status pages. The industry has clearly moved toward correlated signals over isolated stack traces, and most of the tools here - Sentry included - reflect that.
 
-If you're evaluating alternatives because Sentry's pricing surprised you, the answer isn't usually "cheaper Sentry." It's rethinking whether error tracking should be a separate product at all, or part of the observability platform you're already building toward.
+If you're evaluating alternatives because Sentry's pricing or scope surprised you, it's worth deciding first what you actually need: a lighter-weight or more predictably priced error tracker, or a wider observability platform that consolidates tools you are paying for separately today.
