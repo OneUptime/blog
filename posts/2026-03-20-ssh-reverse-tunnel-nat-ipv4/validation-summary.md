@@ -49,3 +49,23 @@ Tutorial
 - The example address `203.0.113.10` is in TEST-NET-3, which is reserved for documentation and should be replaced with a real public server address in actual deployments.
 - `NoHostAuthenticationForLocalhost yes` is syntactically valid, but it disables host authentication for the loopback connection. A future improvement would be to show a `HostKeyAlias`-based approach for preserving host-key checks through the tunnel.
 - The `iptables` rule is technically valid, but it may not persist across reboot and may not match systems using nftables, firewalld, or ufw as the primary firewall frontend.
+
+## Re-review 2026-06-25 (issue #139)
+
+Issue #139 reported that the autossh systemd unit references `/home/tunnel-user/.ssh/reverse_tunnel_key` without explaining how to create it, leaving less-experienced readers stuck.
+
+### Added
+- New `## Creating the Tunnel Key` section placed immediately before `## Persistent Reverse Tunnel with autossh` (where the key is first used), with four sub-steps:
+  1. Generate a dedicated keypair matching the post's path/user: `ssh-keygen -t ed25519 -f /home/tunnel-user/.ssh/reverse_tunnel_key -N ""`.
+  2. Set ownership (`tunnel-user:tunnel-user`) and permissions (`.ssh` 700, private key 600, public key 644).
+  3. Install the public key into the remote `tunnel@203.0.113.10` account's `authorized_keys` via `ssh-copy-id` or manual append, with restrictive options `restrict,port-forwarding,permitlisten="127.0.0.1:2222",command="/usr/sbin/nologin"` (matching the post's reverse port 2222 and existing `nologin` hardening).
+  4. Pre-seed the public server's host key into `tunnel-user`'s `known_hosts` (one interactive `ssh` connection, or `ssh-keyscan -H` after out-of-band fingerprint verification) so `StrictHostKeyChecking=yes` succeeds when the unattended service starts.
+
+### Facts verified
+- `ssh-keygen -t ed25519 -f <file> -N ""` generates an ed25519 key with no passphrase; private key is created mode 600 by default. Source: https://man.openbsd.org/ssh-keygen.1
+- OpenSSH requires `~/.ssh` not writable by others (700 recommended) and `authorized_keys` not accessible by others (600 recommended), or sshd refuses the key under StrictModes. Source: https://man.openbsd.org/sshd.8
+- `restrict` disables PTY/agent/X11/port-forwarding; adding `port-forwarding` re-enables forwarding and `permitlisten` limits the reverse listener. Source: https://man.openbsd.org/sshd.8
+- `ssh-keyscan -H host >> known_hosts` records a host key but must be verified out of band to avoid MITM. Source: https://man.openbsd.org/ssh-keyscan.1
+
+### Format
+- Body-only edit; title, Tags, and Description lines untouched. All new fenced blocks declare a language (`bash` for shell, `text` for the authorized_keys snippet). No em dashes, no smart quotes, single H1.

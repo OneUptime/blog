@@ -58,6 +58,103 @@ From any machine after binding the tunnel to the public address as shown in the 
 ssh -p 2222 private-user@203.0.113.10
 ```
 
+## Creating the Tunnel Key
+
+The systemd service below authenticates with a dedicated SSH key at `/home/tunnel-user/.ssh/reverse_tunnel_key`. That file does not exist yet, so create it before enabling the service. A dedicated key keeps the tunnel's credentials separate from any human login key and lets you lock the key down to reverse-forwarding only.
+
+### 1. Generate the keypair
+
+Run this on the private host as `root` (or with `sudo`), then hand ownership back to `tunnel-user`:
+
+```bash
+# Create the .ssh directory for the local tunnel-user if it does not exist
+sudo -u tunnel-user mkdir -p /home/tunnel-user/.ssh
+
+# Generate a dedicated ed25519 keypair with no passphrase
+# (no passphrase is required because the service starts unattended)
+sudo -u tunnel-user ssh-keygen -t ed25519 \
+  -f /home/tunnel-user/.ssh/reverse_tunnel_key \
+  -N "" \
+  -C "reverse-tunnel@private-host"
+```
+
+This writes the private key to `/home/tunnel-user/.ssh/reverse_tunnel_key` and the public key to `/home/tunnel-user/.ssh/reverse_tunnel_key.pub`.
+
+### 2. Fix ownership and permissions
+
+OpenSSH refuses to use a private key or an `authorized_keys` file that is readable or writable by other users. Confirm the directory and key have the correct ownership and modes:
+
+```bash
+# Everything under .ssh must be owned by tunnel-user
+sudo chown -R tunnel-user:tunnel-user /home/tunnel-user/.ssh
+
+# .ssh directory: read/write/execute for owner only
+sudo chmod 700 /home/tunnel-user/.ssh
+
+# Private key: read/write for owner only
+sudo chmod 600 /home/tunnel-user/.ssh/reverse_tunnel_key
+
+# Public key may be world-readable
+sudo chmod 644 /home/tunnel-user/.ssh/reverse_tunnel_key.pub
+```
+
+`ssh-keygen` already creates the private key with mode `600`, but setting it explicitly avoids surprises if the file was copied around.
+
+### 3. Install the public key on the public server
+
+The reverse forward authenticates as `tunnel@203.0.113.10`, so the public key must be added to that remote account's `~/.ssh/authorized_keys`. Print the public key on the private host:
+
+```bash
+sudo cat /home/tunnel-user/.ssh/reverse_tunnel_key.pub
+```
+
+If the remote `tunnel` account currently allows password login, you can push the key with `ssh-copy-id`:
+
+```bash
+# Run on the private host; -i points at the matching public key
+sudo -u tunnel-user ssh-copy-id \
+  -i /home/tunnel-user/.ssh/reverse_tunnel_key.pub \
+  tunnel@203.0.113.10
+```
+
+Otherwise, log in to the public server through another route and append the line manually. Restrict the key to reverse forwarding only by prefixing it with `authorized_keys` options. The `restrict` option disables everything (PTY, agent, X11, and port forwarding), then `port-forwarding` re-enables forwarding and `permitlisten` limits it to the single tunnel port:
+
+```text
+# /home/tunnel/.ssh/authorized_keys on the public server (203.0.113.10)
+# Paste the contents of reverse_tunnel_key.pub after the options, on one line.
+
+restrict,port-forwarding,permitlisten="127.0.0.1:2222",command="/usr/sbin/nologin" ssh-ed25519 AAAA...reverse-tunnel@private-host
+```
+
+These options pair with the server-side `Match User tunnel` block in the hardening section: even if that block were missing, the key itself could only open the reverse forward on port 2222 and could not get a shell. Make sure the remote `~/.ssh` is mode `700` and `authorized_keys` is mode `600`, both owned by `tunnel`.
+
+### 4. Pre-seed the public server's host key
+
+The service runs with `StrictHostKeyChecking=yes`, which means the connection fails if the public server's host key is not already trusted by `tunnel-user`. Because the service runs unattended as `tunnel-user`, there is no interactive prompt to accept the key the first time. Seed it ahead of time.
+
+The safest option is one interactive connection so you can verify and accept the fingerprint:
+
+```bash
+# Connect once as tunnel-user; accept the host key after verifying the fingerprint
+sudo -u tunnel-user ssh \
+  -i /home/tunnel-user/.ssh/reverse_tunnel_key \
+  tunnel@203.0.113.10
+```
+
+That records the host key in `/home/tunnel-user/.ssh/known_hosts`. The login itself will be closed immediately by the `command="/usr/sbin/nologin"` restriction, which is expected; the goal is only to record the host key.
+
+If you have verified the public server's host key fingerprint through a trusted channel and prefer a non-interactive step, use `ssh-keyscan` instead:
+
+```bash
+# Append the public server's host key to tunnel-user's known_hosts
+sudo -u tunnel-user sh -c \
+  'ssh-keyscan -H 203.0.113.10 >> /home/tunnel-user/.ssh/known_hosts'
+```
+
+Only trust a `ssh-keyscan` result after confirming the fingerprint out of band; otherwise you are exposed to a man-in-the-middle on first connect.
+
+With the key generated, permissioned, authorized on the remote account, and the host key trusted, the service below can start cleanly.
+
 ## Persistent Reverse Tunnel with autossh
 
 On the private host, create a systemd service:
