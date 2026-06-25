@@ -16,6 +16,14 @@ This guide walks through enabling GitLab's automatic CI/CD telemetry support, ad
 
 GitLab Observability has experimental support for automatic CI/CD pipeline telemetry. When enabled, GitLab captures pipeline execution data after pipelines complete, converts it to OpenTelemetry format, and makes it available in GitLab Observability.
 
+### Tier and Availability (Read This First)
+
+There is a lot of confusion about which GitLab edition you need, so let us be precise. As of GitLab 18.1, the GitLab documentation lists CI/CD pipeline telemetry and GitLab Observability with `Tier: Free, Premium, Ultimate` and `Offering: GitLab.com, GitLab Self-Managed`, and both carry `Status: Experiment`. In other words, the current feature is not gated behind the Ultimate tier.
+
+If you read older documentation (GitLab 16.x and 17.x), you likely saw that observability and distributed tracing required the Ultimate tier and an `observability_features` feature flag. That earlier implementation was reworked. The version covered in this guide (GitLab 18.1 and later) is the one documented for all tiers. Always check the tier badge at the top of the page you are reading, because an experiment can change tier or behavior between releases.
+
+Because this is an experiment, treat it as subject to change and verify the current state against the official docs at https://docs.gitlab.com/operations/observability/ci_cd/ before relying on it in production.
+
 ```mermaid
 graph LR
     A[GitLab Runner] --> B[Pipeline Execution]
@@ -36,9 +44,39 @@ graph LR
 
 The trace hierarchy maps naturally to GitLab's pipeline structure. The pipeline is the root operation, with telemetry for job dependencies, timing, and execution flow.
 
+## Prerequisite: Set Up GitLab Observability First
+
+The `GITLAB_OBSERVABILITY_EXPORT` variable exports telemetry to GitLab Observability, not to an arbitrary OTLP endpoint. So before the CI/CD variable does anything, GitLab Observability has to exist and be connected to your project's group. How you do that depends on where GitLab runs, and this is the step most people miss.
+
+On GitLab.com, there is no `gitlab.rb` to edit and no separate backend to host. You enable it per group in the UI. With the Developer, Maintainer, or Owner role on the group, open the group, go to Settings, then Observability, then Setup, and select Enable Observability. GitLab then generates and displays the OpenTelemetry endpoint URL for that group. See https://docs.gitlab.com/operations/observability/setup_gitlab_com/ for the current steps.
+
+On GitLab Self-Managed, you do not enable this purely by editing `gitlab.rb` either. The current model (GitLab 18.1 and later) runs GitLab Observability as a separate application that you deploy alongside GitLab, then connect to. At a high level the documented steps are:
+
+- Provision a separate host for the Observability backend (the docs reference a `t3.large` or larger virtual machine, at least 100 GB of storage, and Docker plus Docker Compose).
+- Deploy the GitLab Observability backend on that host and open the required ports (for example, 4317 and 4318 for OTLP).
+- Connect your GitLab instance to it by configuring the group's Observability settings.
+
+The group connection is configured through the GitLab Rails console, not through `gitlab.rb`. The documented object is `Observability::GroupO11ySetting`:
+
+```ruby
+# Run on your GitLab Self-Managed instance:
+#   gitlab-rails console
+# Replace the placeholder values with your deployed Observability backend details.
+group = Group.find_by_path('your-group-name')
+Observability::GroupO11ySetting.create!(
+  group_id: group.id,
+  o11y_service_url: 'https://your-o11y-instance.example.com',
+  o11y_service_user_email: 'observability@example.com',
+  o11y_service_password: 'your-secure-password',
+  o11y_service_post_message_encryption_key: 'your-32-char-minimum-encryption-key'
+)
+```
+
+So to answer the two questions that come up most often: this is not an Ultimate-only feature in current GitLab (the docs list Free, Premium, and Ultimate), and on Self-Managed you do not flip it on by editing `gitlab.rb`. You stand up the separate Observability backend and connect the group to it. For the authoritative, version-specific steps, follow https://docs.gitlab.com/operations/observability/setup_self_managed/.
+
 ## Enabling OpenTelemetry in GitLab
 
-To enable automatic pipeline telemetry in GitLab Observability, add the `GITLAB_OBSERVABILITY_EXPORT` CI/CD variable at the project or group level.
+Once GitLab Observability is set up and connected to your group, enable automatic pipeline telemetry by adding the `GITLAB_OBSERVABILITY_EXPORT` CI/CD variable at the project or group level.
 
 For GitLab.com or self-managed projects, set this as a CI/CD variable in your project or group settings under Settings, then CI/CD, then Variables.
 
@@ -52,7 +90,7 @@ For GitLab.com or self-managed projects, set this as a CI/CD variable in your pr
 # GITLAB_OBSERVABILITY_EXPORT: traces,metrics,logs
 ```
 
-Once this variable is set, GitLab automatically captures pipeline execution data after each pipeline completes and exports the selected telemetry types to your GitLab Observability instance.
+Once this variable is set, GitLab automatically captures pipeline execution data after each pipeline completes and exports the selected telemetry types to your connected GitLab Observability instance. If you set the variable but see no data, the most common cause is that GitLab Observability has not been set up and connected for the group, as described in the prerequisite section above.
 
 ## Understanding the Automatic Trace Structure
 
