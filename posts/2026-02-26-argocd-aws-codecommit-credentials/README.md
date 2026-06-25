@@ -26,7 +26,7 @@ graph TD
     D --> D2[IAM roles, IRSA]
 ```
 
-For ArgoCD, HTTPS Git Credentials are the simplest, while IAM roles with the credential helper offer the best security on EKS.
+For ArgoCD, HTTPS Git Credentials are the simplest to set up. On EKS, IAM Roles for Service Accounts (IRSA) avoid static secrets, but ArgoCD does not authenticate to Git through the system credential helper the way a normal shell does, so IRSA needs extra wiring to work (explained in Method 3).
 
 ## Method 1: HTTPS Git Credentials (Simplest)
 
@@ -179,9 +179,18 @@ data:
     github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl
 ```
 
-## Method 3: IAM Role with Credential Helper (Best for EKS)
+## Method 3: IAM Roles for Service Accounts (IRSA)
 
-If ArgoCD runs on EKS, you can use IAM Roles for Service Accounts (IRSA) to authenticate with CodeCommit without static credentials.
+If ArgoCD runs on EKS, you can use IAM Roles for Service Accounts (IRSA) to authenticate with CodeCommit without storing static credentials. This is attractive for security, but it needs more care than the other methods - and it is important to understand why a Git credential helper alone is usually not enough.
+
+### How ArgoCD Authenticates to Git (Read This First)
+
+ArgoCD's repo-server does not authenticate Git the way your interactive shell does. Two behaviors trip people up:
+
+- **ArgoCD runs Git with `HOME=/dev/null`.** A per-user config such as `/home/argocd/.gitconfig` (`~/.gitconfig`) is therefore never read. ArgoCD's documentation states this directly: "Argo CD runs Git with the HOME environment variable set to /dev/null. As a result, global Git configuration is not supported." Only system Git configuration at `/etc/gitconfig` is honored.
+- **ArgoCD injects credentials through `GIT_ASKPASS`, not through a `credential.helper`.** When a repository matches a `repo` or `repo-creds` Secret, ArgoCD hands the username and password to Git through its built-in askpass helper. When no Secret matches the repository URL, ArgoCD provides no credentials at all - and because `GIT_TERMINAL_PROMPT` is disabled, Git fails immediately. CodeCommit answers an unauthenticated request with `authentication required ... SPNEGO token required`.
+
+Git does consult `credential.helper` entries before falling back to askpass, so a helper placed in `/etc/gitconfig` can still run - but only for a repository that has no matching `repo-creds` Secret (otherwise askpass supplies the credentials first and the helper is never reached). This is the narrow window the credential-helper approach depends on, and it is not an officially supported ArgoCD feature. For a reliable IRSA setup, prefer the credential-refresh CronJob in Method 4.
 
 ### Step 1: Create the IAM Role
 
@@ -208,7 +217,9 @@ aws iam create-policy \
   --policy-name ArgoCD-CodeCommit-ReadOnly \
   --policy-document file://codecommit-policy.json
 
-# Create the IRSA role
+# Attach the IRSA role to the repo-server service account.
+# Use the service account name your repo-server deployment actually runs as
+# (the default for the official manifests/Helm chart is argocd-repo-server).
 eksctl create iamserviceaccount \
   --name argocd-repo-server \
   --namespace argocd \
@@ -218,11 +229,9 @@ eksctl create iamserviceaccount \
   --approve
 ```
 
-### Step 2: Configure the Credential Helper
+### Step 2: Configure the Credential Helper as System Git Config
 
-The AWS credential helper generates temporary credentials. You need to configure ArgoCD's repo-server to use it:
-
-The repo-server container must also have the AWS CLI installed, either through a custom ArgoCD image or by mounting the binary as custom tooling.
+Because ArgoCD runs Git with `HOME=/dev/null`, the helper must be mounted as the system config at `/etc/gitconfig` - not at `/home/argocd/.gitconfig`. The repo-server container must also have the AWS CLI available, either through a custom ArgoCD image or by copying the binary in with an init container; the stock `argocd-repo-server` image does not include `aws`, and `helper = !aws codecommit credential-helper $@` fails silently without it.
 
 ```yaml
 # argocd-repo-server patch
@@ -242,8 +251,8 @@ spec:
               value: us-east-1
           volumeMounts:
             - name: git-config
-              mountPath: /home/argocd/.gitconfig
-              subPath: .gitconfig
+              mountPath: /etc/gitconfig
+              subPath: gitconfig
       volumes:
         - name: git-config
           configMap:
@@ -255,13 +264,104 @@ metadata:
   name: argocd-git-config
   namespace: argocd
 data:
-  .gitconfig: |
+  gitconfig: |
     [credential "https://git-codecommit.us-east-1.amazonaws.com"]
         helper = !aws codecommit credential-helper $@
         UseHttpPath = true
 ```
 
-This approach means no static credentials are stored anywhere. The credential helper uses the IRSA role to generate short-lived tokens automatically.
+For this to work end to end, all of the following must hold:
+
+- The `aws` CLI is present on the repo-server `PATH` (custom image or init-container copy).
+- The repo-server service account has the IRSA role from Step 1 with `codecommit:GitPull`, and the pod has the `AWS_ROLE_ARN` / `AWS_WEB_IDENTITY_TOKEN_FILE` environment that IRSA injects.
+- You do **not** also create a `repo` or `repo-creds` Secret for that CodeCommit URL. If a Secret matches, ArgoCD authenticates through askpass and the `/etc/gitconfig` helper is never consulted.
+
+This approach stores no static credentials, but note the caveats: it is undocumented and unsupported upstream (it relies on ArgoCD falling through to "no credentials" for unmatched repositories, an implementation detail that can change between versions), and CodeCommit credential-helper tokens are short-lived (about 15 minutes). The helper re-mints a token on each fetch, so on-demand fetches are usually fine, but this is a fragility. If you want a supported, robust IRSA setup, use Method 4 instead.
+
+## Method 4: IRSA with a Credential-Refresh CronJob (Recommended for EKS)
+
+This pattern uses IRSA without depending on ArgoCD's credential-helper behavior. A small CronJob assumes the IAM role, mints short-lived CodeCommit HTTPS credentials with the AWS credential helper, and writes them into a standard `repo-creds` Secret. ArgoCD then authenticates through its normal, fully supported askpass path. Because CodeCommit helper passwords expire after about 15 minutes, the job refreshes them every 10 minutes.
+
+### Step 1: IAM Role and RBAC
+
+Create an IRSA role (as in Method 3, Step 1) bound to a dedicated service account - for example `codecommit-creds-refresh` in the `argocd` namespace - with `codecommit:GitPull`. Then allow that service account to manage the credential Secret:
+
+```yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: codecommit-creds-refresh
+  namespace: argocd
+rules:
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get", "create", "update", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: codecommit-creds-refresh
+  namespace: argocd
+subjects:
+  - kind: ServiceAccount
+    name: codecommit-creds-refresh
+    namespace: argocd
+roleRef:
+  kind: Role
+  name: codecommit-creds-refresh
+  apiGroup: rbac.authorization.k8s.io
+```
+
+### Step 2: The Refresh CronJob
+
+```yaml
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: codecommit-creds-refresh
+  namespace: argocd
+spec:
+  schedule: "*/10 * * * *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          serviceAccountName: codecommit-creds-refresh
+          restartPolicy: OnFailure
+          containers:
+            # Use an image that contains both the aws CLI and kubectl.
+            - name: refresh
+              image: your-registry/aws-kubectl:latest
+              env:
+                - name: AWS_REGION
+                  value: us-east-1
+                - name: CODECOMMIT_HOST
+                  value: git-codecommit.us-east-1.amazonaws.com
+                - name: REPO_URL
+                  value: https://git-codecommit.us-east-1.amazonaws.com
+              command:
+                - /bin/sh
+                - -c
+                - |
+                  set -euo pipefail
+                  CREDS=$(printf 'protocol=https\nhost=%s\npath=/v1/repos\n' "$CODECOMMIT_HOST" \
+                    | aws codecommit credential-helper get)
+                  USERNAME=$(printf '%s\n' "$CREDS" | sed -n 's/^username=//p')
+                  PASSWORD=$(printf '%s\n' "$CREDS" | sed -n 's/^password=//p')
+                  kubectl create secret generic codecommit-repo-creds \
+                    --namespace argocd \
+                    --from-literal=type=git \
+                    --from-literal=url="$REPO_URL" \
+                    --from-literal=username="$USERNAME" \
+                    --from-literal=password="$PASSWORD" \
+                    --dry-run=client -o yaml \
+                    | kubectl label --local -f - argocd.argoproj.io/secret-type=repo-creds -o yaml \
+                    | kubectl apply -f -
+```
+
+ArgoCD re-reads `repo` and `repo-creds` Secrets when they change, so each sync picks up freshly minted credentials and authenticates through its standard mechanism. No static long-lived secrets are stored, and the setup does not rely on any undocumented behavior.
+
+If you are on the AWS-managed EKS ArgoCD capability (add-on), it provides native IRSA-based CodeCommit access through a capability role - check the [Amazon EKS documentation](https://docs.aws.amazon.com/eks/latest/userguide/argocd-considerations.html) for the managed option.
 
 ## Using the ArgoCD CLI
 
@@ -321,6 +421,20 @@ sequenceDiagram
 ```
 
 ## Troubleshooting
+
+### "SPNEGO token required" / "authentication required" with IRSA
+
+If ArgoCD fails with `failed to list refs: authentication required: ... NotAuthorizedException ... SPNEGO token required` even though `aws codecommit credential-helper` and `git ls-remote` work when you run them manually inside the repo-server container, ArgoCD is sending no credentials at all. This is the expected outcome when the credential helper is not actually reachable by ArgoCD's Git invocation. Work through this checklist:
+
+- **Mount path.** The helper must be at `/etc/gitconfig`, not `/home/argocd/.gitconfig`. ArgoCD runs Git with `HOME=/dev/null`, so the per-user config is ignored. Verify it is loaded:
+
+  ```bash
+  kubectl exec -n argocd deployment/argocd-repo-server -- git config --system --get-all credential.helper
+  ```
+
+- **AWS CLI present.** Confirm `aws` is on the repo-server `PATH` (`kubectl exec ... which aws`); the stock image does not include it.
+- **IRSA injected.** Check the pod has `AWS_ROLE_ARN` and `AWS_WEB_IDENTITY_TOKEN_FILE` set and the role grants `codecommit:GitPull`.
+- **No conflicting Secret.** If a `repo` or `repo-creds` Secret matches the CodeCommit URL, ArgoCD authenticates through askpass and never calls the helper. Either remove it, or switch to the Method 4 CronJob pattern, which is the recommended IRSA approach.
 
 ### "Unable to negotiate key exchange" Error
 
