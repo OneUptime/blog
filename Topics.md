@@ -4,6 +4,7 @@
 - 3-2-1 Rule
 - ABAC
 - Access Control
+- ACID
 - ACR
 - Active Directory
 - Active-Active
@@ -14,6 +15,7 @@
 - Admission Controllers
 - Admission Webhooks
 - ADRs
+- Aerospike
 - Affinity
 - Agent Observability
 - AgentOps
@@ -28,13 +30,18 @@
 - Akeyless
 - Akri
 - AKS
+- Alembic
 - Alert Fatigue
 - Alert Routing
 - Alerting
 - Alertmanager
 - Alibaba Cloud
+- AlloyDB
+- AlloyDB Omni
 - AlmaLinux
 - Alpine Linux
+- Amazon Aurora
+- Amazon DocumentDB
 - Amazon EBS
 - Amazon EC2
 - Amazon ECR
@@ -43,11 +50,16 @@
 - Amazon EKS
 - Amazon ElastiCache
 - Amazon Fargate
+- Amazon Keyspaces
 - Amazon Kinesis
+- Amazon MemoryDB
+- Amazon Neptune
 - Amazon RDS
+- Amazon Redshift
 - Amazon S3
 - Amazon SNS
 - Amazon SQS
+- Amazon Timestream
 - Ambassador
 - Anchore
 - Anomaly Detection
@@ -55,14 +67,30 @@
 - Ansible AWX
 - Antrea
 - Anycast
+- Apache Accumulo
 - Apache APISIX
+- Apache Arrow
+- Apache CarbonData
 - Apache Cassandra
 - Apache CloudStack
+- Apache Derby
+- Apache Doris
+- Apache Drill
+- Apache Druid
 - Apache Flink
+- Apache Geode
+- Apache Hadoop
+- Apache HBase
 - Apache HTTPD
+- Apache Hudi
+- Apache Iceberg
+- Apache Ignite
 - Apache Kafka
+- Apache Kudu
 - Apache NiFi
+- Apache Pinot
 - Apache Pulsar
+- Apache Solr
 - Apache Spark
 - Apdex
 - API Gateways
@@ -81,6 +109,7 @@
 - Apptio
 - APT
 - Aqua Security
+- ArangoDB
 - Arch Linux
 - Argo
 - Argo CD
@@ -97,26 +126,31 @@
 - Artillery
 - async-profiler
 - AsyncAPI
+- Asynchronous Replication
 - At-Least-Once
 - At-Most-Once
 - At-Rest Encryption
 - Atlantis
+- Atlas
 - Atmos
 - Attack Surface
 - Audit Evidence
 - Audit Logging
 - Audit Logs
 - auditd
+- Aurora
 - Authentication
 - Authorization
 - Auto Scaling
 - Auto-Instrumentation
 - Automation
 - Autoscaling
+- Autovacuum
 - Availability
 - Availability Nines
 - Availability SLIs
 - Availability Targets
+- Avro
 - AWS CodeBuild
 - AWS CodePipeline
 - AWS Organizations
@@ -133,21 +167,27 @@
 - Azure Functions
 - Azure Key-Vault
 - Azure Monitor
+- Azure MySQL
 - Azure Pipelines
 - Azure Policy
+- Azure PostgreSQL
+- Azure SQL
 - Azure VMs
+- B-Tree Indexes
 - Backoff
 - Backpressure
 - Backstage
 - Backup
 - Backup Testing
 - Bacula
+- BadgerDB
 - Baggage
 - Bamboo
 - Bandwidth
 - Bare Metal
 - Bare-Metal Operator
 - Bareos
+- BASE
 - Baselines
 - Bash
 - Bastion Hosts
@@ -155,14 +195,19 @@
 - Bazel
 - Benchmarking
 - BentoML
+- Berkeley DB
 - Better Stack
 - Better Uptime
 - BFD
 - BGP
 - bhyve
+- BigchainDB
 - BigQuery
+- Bigtable
 - Binary Authorization
+- Binary Logs
 - BIND
+- Binlog
 - BIRD
 - Bit Rot
 - Bitbucket
@@ -188,6 +233,7 @@
 - Btrfs
 - Buck2
 - Buddy
+- Buffer Cache
 - Bugsnag
 - Build Automation
 - Build Caching
@@ -218,8 +264,10 @@
 - Carvel
 - Cascading Failures
 - Cassandra
+- Cassandra Operator
 - CAST AI
 - Catchpoint
+- CDC
 - CDK
 - CDKTF
 - CDN
@@ -249,6 +297,7 @@
 - Checkmk
 - Checkov
 - Chef
+- Chroma
 - Chronosphere
 - CI/CD
 - CIDR
@@ -257,16 +306,19 @@
 - CircleCI
 - Circuit Breakers
 - CIS Benchmarks
+- Citus
 - Clair
 - ClickHouse
 - Cloud Architecture
 - Cloud Automation
+- Cloud Bigtable
 - Cloud Build
 - Cloud Buildpacks
 - Cloud Computing
 - Cloud Controller
 - Cloud Costs
 - Cloud Custodian
+- Cloud Databases
 - Cloud Deploy
 - Cloud Egress
 - Cloud FinOps
@@ -313,6 +365,7 @@
 - CNI
 - Cobbler
 - CockroachDB
+- CockroachDB Operator
 - Code Coverage
 - Code Review
 - Code-Based Instrumentation
@@ -320,6 +373,8 @@
 - CodeQL
 - Colima
 - Colocation
+- Columnar Databases
+- Columnar Storage
 - Compass
 - Compliance Automation
 - Concourse
@@ -330,8 +385,10 @@
 - Conftest
 - Conjur
 - Connection Pooling
+- Connection Pools
 - Connection Tracking
 - Consensus
+- Constraints
 - Consul
 - Consumer Lag
 - Container Images
@@ -367,6 +424,7 @@
 - Correlation IDs
 - Cortex
 - Cosign
+- Cosmos DB
 - Cost Allocation
 - Cost Optimization
 - Couchbase
@@ -376,6 +434,7 @@
 - Crane
 - Crash Reporting
 - CrashLoopBackOff
+- CrateDB
 - CRDs
 - CRI-O
 - Cron
@@ -385,6 +444,7 @@
 - CrowdStrike
 - Cruise Control
 - crun
+- Crunchy Postgres
 - CSI
 - CSI Snapshots
 - CSPM
@@ -411,8 +471,10 @@
 - Data Durability
 - Data Freshness
 - Data Integrity
+- Data Lake
 - Data Lineage
 - Data Locality
+- Data Modeling
 - Data Observability
 - Data Pipelines
 - Data Plane
@@ -423,25 +485,54 @@
 - Data Sampling
 - Data Sovereignty
 - Data Volume
+- Data Warehouse
+- Database Auditing
 - Database Backups
+- Database Benchmarking
+- Database Capacity
+- Database Clustering
+- Database Connections
+- Database Encryption
+- Database Failover
+- Database Locks
+- Database Migration
 - Database Monitoring
+- Database Operators
+- Database Partitioning
+- Database Performance
+- Database Proxy
+- Database Recovery
 - Database Reliability
 - Database Replication
+- Database Scaling
+- Database Security
 - Database Sharding
 - Database SRE
+- Database Transactions
+- Database Tuning
+- Database Upgrades
+- Database Vacuuming
+- Databend
+- Databricks
+- Databricks SQL
 - Datadog
 - DataOps
 - Datree
+- DB2
 - DBRE
+- dbt
 - DCGM
 - DCGM Exporter
 - Dead-Letter Queues
+- Deadlocks
 - Debezium
 - Debian
 - DeepEval
 - Delivery Semantics
+- Delta Lake
 - Delta Metrics
 - Demand Forecasting
+- Denormalization
 - Dependabot
 - Dependency Management
 - Dependency Maps
@@ -463,12 +554,14 @@
 - Device Plugins
 - DevOps
 - DevSecOps
+- Dgraph
 - DHCP
 - Differential Backups
 - dig
 - DigitalOcean
 - Direct Connect
 - Disaster Recovery
+- Distributed Databases
 - Distributed Systems
 - Distribution
 - Distroless
@@ -485,6 +578,7 @@
 - Docker Hub
 - Docker Swarm
 - Dockerfile
+- Document Databases
 - Documentation
 - DoH
 - Dokku
@@ -495,10 +589,14 @@
 - DPDK
 - DRA
 - Dragonfly
+- DragonflyDB
 - DRBD
+- Dremio
 - Drift Detection
 - Drone
+- Druid
 - Dual-Stack
+- DuckDB
 - Duplicacy
 - Duplicati
 - Durable Workflows
@@ -512,9 +610,11 @@
 - ECMP
 - ECR
 - ECS
+- EDB
 - Edge Computing
 - Edge Kubernetes
 - Edge Operations
+- EdgeDB
 - EdgeX Foundry
 - EFS
 - EKS
@@ -522,6 +622,7 @@
 - Elastic Beats
 - Elastic Stack
 - Elasticsearch
+- Embedded Databases
 - Embedded SRE
 - Emergency Response
 - Emissary-Ingress
@@ -529,6 +630,7 @@
 - Encryption
 - Encryption Rotation
 - End-to-End Testing
+- Endee
 - Endpoint Monitoring
 - EndpointSlices
 - Energy Efficiency
@@ -539,6 +641,7 @@
 - Ephemeral Containers
 - Ephemeral Environments
 - Ephemeral Volumes
+- Epsilla
 - EPSS
 - Erasure Coding
 - Error Budgets
@@ -551,6 +654,7 @@
 - Event-Driven Architecture
 - EventBridge
 - Events
+- Eventual Consistency
 - Eviction
 - Evidently
 - Exactly-Once
@@ -566,9 +670,11 @@
 - Failure Isolation
 - Fairwinds Insights
 - Falco
+- FalkorDB
 - Fault Domains
 - Fault Injection
 - Fault Tolerance
+- Fauna
 - Feast
 - Feature Flags
 - Feature Management
@@ -582,8 +688,12 @@
 - Finch
 - FinOps
 - Finout
+- Firebase RTDB
+- Firebird
+- Firebolt
 - Firecracker
 - FireHydrant
+- Firestore
 - Firewall
 - Firmware Management
 - Fission
@@ -604,6 +714,7 @@
 - Flux CD
 - Flyte
 - Flyway
+- Foreign Keys
 - Foreman
 - Forgejo
 - Forward Proxy
@@ -626,6 +737,7 @@
 - GCP
 - GCR
 - GDPR
+- Gel
 - GHCR
 - Git
 - Git Hooks
@@ -668,11 +780,14 @@
 - Grafana SLO
 - Grafana Tempo
 - Grafeas
+- Graph Databases
 - Graphite
 - GraphQL
+- GraphScope
 - Graylog
 - Green Software
 - GreenOps
+- Greenplum
 - Gremlin
 - GreptimeDB
 - Groundcover
@@ -682,6 +797,7 @@
 - GUAC
 - Guardrails
 - gVisor
+- H2
 - HAMi
 - HAProxy
 - HAProxy Ingress
@@ -690,8 +806,11 @@
 - Hardware RAID
 - Harness
 - Harvester
+- Hash Indexes
 - HashiCorp Nomad
 - HashiCorp Vault
+- Hazelcast IMDG
+- HBase
 - HCL
 - Head Sampling
 - Headlamp
@@ -717,6 +836,7 @@
 - Host Monitoring
 - HPA
 - HSM
+- HTAP
 - HTTP
 - HTTP/2
 - HTTP/3
@@ -732,11 +852,13 @@
 - IAM Policies
 - IAST
 - IBM Cloud
+- IBM Db2
 - Icinga
 - Idempotence
 - Idempotency
 - Identity Federation
 - IDP
+- Iguazio
 - Image Attestations
 - Image Layers
 - Image Promotion
@@ -748,6 +870,7 @@
 - ImagePullSecrets
 - Immutable Backups
 - Immutable Infrastructure
+- In-Memory Databases
 - in-toto
 - In-Transit Encryption
 - Incident Automation
@@ -762,9 +885,12 @@
 - incident.io
 - Incremental Backups
 - Index Tuning
+- Indexing
 - InfiniBand
+- Infinispan
 - Infisical
 - InfluxDB
+- Informix
 - Infracost
 - Infrastructure Automation
 - Infrastructure Metrics
@@ -784,6 +910,7 @@
 - Internal Developer-Platform
 - Internal Platforms
 - Internet Monitoring
+- InterSystems IRIS
 - IOMMU
 - IOPS
 - IoT Operations
@@ -800,6 +927,7 @@
 - ISO 27001
 - Istio
 - Jaeger
+- JanusGraph
 - Jenkins
 - Jenkins X
 - JFR
@@ -836,7 +964,9 @@
 - KEV
 - Key Management
 - Key Rotation
+- Key-Value Databases
 - Keycloak
+- KeyDB
 - Keystone
 - Kibana
 - kind
@@ -862,10 +992,12 @@
 - Kube-state-metrics
 - Kubeadm
 - KubeArmor
+- KubeBlocks
 - Kubebuilder
 - Kubeconfig
 - Kubecost
 - kubectl
+- KubeDB
 - KubeDownscaler
 - KubeEdge
 - KubeFed
@@ -883,9 +1015,12 @@
 - Kuma
 - Kured
 - Kustomize
+- Kuzu
 - KVM
 - Kyverno
 - LACP
+- Lakehouse
+- LanceDB
 - Langfuse
 - LangSmith
 - Latency
@@ -895,9 +1030,11 @@
 - Layer 7
 - Lead Time
 - Leader Election
+- Leaderless Replication
 - Least Privilege
 - Lens
 - Let's Encrypt
+- LevelDB
 - libvirt
 - Lightstep
 - Lima
@@ -912,6 +1049,7 @@
 - Linux Networking
 - Linux Security
 - Liqo
+- Liquibase
 - Litmus
 - LitmusChaos
 - Live Migration
@@ -922,6 +1060,7 @@
 - LLM Observability
 - LLM Tracing
 - LLMOps
+- LMDB
 - Load Balancing
 - Load Shedding
 - Load Testing
@@ -945,26 +1084,35 @@
 - Log-Based Metrics
 - Logging
 - Logical Clocks
+- Logical Replication
 - LogicMonitor
 - LogQL
 - Logs
 - Logstash
 - Loki
 - Longhorn
+- LSM Trees
 - Lustre
 - LVM
 - LXC
 - LXD
+- M3DB
 - MAAS
 - MAAS Provisioning
 - MACVLAN
+- Managed Databases
 - Manual Instrumentation
 - MariaDB
+- MariaDB Operator
+- Marqo
 - Materialize
 - Mayastor
 - MCP Monitoring
 - mdadm
+- Meilisearch
+- Mem0
 - Memcached
+- Memgraph
 - Memory Profiling
 - Meshery
 - Message Ordering
@@ -984,6 +1132,7 @@
 - Microcks
 - MicroK8s
 - Microservices
+- Milvus
 - Mimir
 - Minikube
 - MinIO
@@ -1001,13 +1150,17 @@
 - Model Versioning
 - ModelMesh
 - Modular Monoliths
+- MogDB
 - Molecule
 - MongoDB
+- MongoDB Atlas
+- MongoDB Operator
 - Monit
 - Monitoring
 - Monoliths
 - Monorepos
 - Mosquitto
+- MotherDuck
 - MPLS
 - MQTT
 - MTBF
@@ -1020,7 +1173,10 @@
 - Multi-Arch Images
 - Multi-Architecture
 - Multi-Cloud
+- Multi-Cloud Databases
 - Multi-Cluster
+- Multi-Master
+- Multi-Model Databases
 - Multi-Region
 - Multi-Region DR
 - Multi-Stage Builds
@@ -1030,7 +1186,9 @@
 - Munin
 - Mutating Webhooks
 - Mutation Testing
+- MVCC
 - MySQL
+- MySQL Operator
 - Nagios
 - NALSD
 - Namespaces
@@ -1040,7 +1198,9 @@
 - NATS JetStream
 - Nautobot
 - Nebula
+- NebulaGraph
 - Neo4j
+- Neon
 - nerdctl
 - NetBird
 - NetBox
@@ -1084,6 +1244,7 @@
 - nslookup
 - NSX
 - NUMA
+- NuoDB
 - Nutanix
 - NVIDIA DCGM
 - NVMe
@@ -1093,6 +1254,7 @@
 - Observability
 - Observability Costs
 - Observability Pipelines
+- OceanBase
 - OCI
 - OCI Images
 - OCI Runtimes
@@ -1101,7 +1263,9 @@
 - Octopus Deploy
 - OIDC
 - OKD
+- OLAP
 - Ollama
+- OLTP
 - On-Call
 - OneUptime
 - OOMKilled
@@ -1113,9 +1277,12 @@
 - OpenCensus
 - OpenCost
 - OpenEBS
+- OpenEverest
 - OpenFaaS
 - OpenFeature
 - OpenFGA
+- openGauss
+- openGemini
 - OpenGitOps
 - OpenID Connect
 - OpenKruise
@@ -1135,6 +1302,7 @@
 - OpenTelemetry Collector
 - OpenTofu
 - OpenTracing
+- OpenTSDB
 - OpenVPN
 - OpenVZ
 - OpenYurt
@@ -1147,10 +1315,13 @@
 - OPNsense
 - Opsgenie
 - Oracle Cloud
+- Oracle Database
 - ORAS
 - OrbStack
+- ORC
 - Orca Security
 - Orchestrator
+- OrientDB
 - OS Hardening
 - OSM
 - OSPF
@@ -1174,13 +1345,17 @@
 - Packet Loss
 - Packetbeat
 - Pact
+- Page Cache
 - Pager Load
 - PagerDuty
 - Paging Policies
 - PAM
 - Pants
+- PanWeiDB
 - Parallels
 - Parca
+- Parquet
+- Partitioning
 - Patroni
 - Paved Roads
 - Paxos
@@ -1191,20 +1366,32 @@
 - PDU
 - Peering
 - Percona
+- Percona MongoDB
+- Percona Monitoring
+- Percona Operator
+- Percona Server
 - Perf
 - Performance Engineering
 - Performance Monitoring
 - Persistent Volumes
 - PersistentVolumeClaims
 - pfSense
+- pganalyze
+- pgAudit
 - pgBackRest
+- pgBadger
 - PgBouncer
+- Pgpool-II
 - pgvector
+- pgwatch2
 - Photon OS
+- Physical Replication
+- Pinecone
 - Pingdom
 - PITR
 - Pixie
 - PKI
+- PlanetScale
 - Platform Adoption
 - Platform APIs
 - Platform Contracts
@@ -1229,13 +1416,20 @@
 - PodMonitors
 - Pods
 - Polar Signals
+- PolarDB
 - Polaris
 - Policy Enforcement
 - Policy-as-Code
 - Port
 - Portainer
 - Portworx
+- Postgres
+- Postgres HA
+- Postgres Operator
+- Postgres Replication
+- Postgres Tuning
 - PostgreSQL
+- PostgreSQL Operator
 - Postmortem Culture
 - Postmortems
 - Power Management
@@ -1246,6 +1440,7 @@
 - Predictive Scaling
 - Preemption
 - Prefect
+- Presto
 - Preventive Actions
 - PriorityClasses
 - Prisma Cloud
@@ -1292,12 +1487,18 @@
 - PXE
 - Pyroscope
 - Python Automation
+- Qdrant
 - QEMU
 - QoS Classes
 - Qovery
 - Quality Gates
 - Quay
+- Qubole
+- Query Cache
 - Query Optimization
+- Query Plans
+- Query Profiling
+- QuestDB
 - Queue Depth
 - Queueing Theory
 - QUIC
@@ -1311,6 +1512,7 @@
 - Rancher Desktop
 - RASP
 - Rate Limiting
+- RavenDB
 - Ray
 - RBAC
 - RCA
@@ -1320,6 +1522,7 @@
 - Readiness Gates
 - Readiness Probes
 - Real-User Monitoring
+- Realm
 - Receivers
 - Recording Rules
 - Recovery Drills
@@ -1329,6 +1532,12 @@
 - RED Method
 - Redfish
 - Redis
+- Redis Cluster
+- Redis Insight
+- Redis Operator
+- Redis Persistence
+- Redis Replication
+- Redis Sentinel
 - Redpanda
 - Redpanda Connect
 - Registry Distribution
@@ -1336,6 +1545,7 @@
 - Rego
 - Regression Testing
 - Rekor
+- Relational Databases
 - Release Automation
 - Release Engineering
 - Release Freezes
@@ -1352,6 +1562,7 @@
 - Repair Automation
 - ReplicaSets
 - Replication
+- Replication Lag
 - Repository Management
 - Request IDs
 - Request Rate
@@ -1366,15 +1577,18 @@
 - REST
 - Restic
 - Restore Testing
+- RethinkDB
 - Retries
 - Reverse Proxy
 - RHEL
+- Riak
 - Rightsizing
 - Risk Analysis
 - Risk Management
 - RKE2
 - Roadie
 - Robusta
+- RocksDB
 - Rocky Linux
 - RoleBindings
 - Rollbacks
@@ -1387,6 +1601,7 @@
 - Rootly
 - Route 53
 - RouterOS
+- Row Storage
 - RPO
 - RTO
 - Runbook Automation
@@ -1404,24 +1619,31 @@
 - Salt
 - SAML
 - Sampling
+- SAP HANA
 - SAST
 - Savings Plans
 - SBOM
 - SCA
 - Scalability
 - Scalability Law
+- ScalarDB
 - Scaleway
 - Scaling
 - Scalr
 - Scaphandre
 - Scheduler
+- Schema Design
+- Schema Evolution
 - Schema Migrations
 - Schema Registry
+- SchemaHero
 - SCIM
 - Scratch Images
+- Scylla
 - ScyllaDB
 - SDN
 - Sealed Secrets
+- Search Databases
 - SeaweedFS
 - Seccomp
 - Seccomp Profiles
@@ -1446,9 +1668,11 @@
 - Sensu
 - Sentinel
 - Sentry
+- Serializability
 - Server Monitoring
 - Server-Side Apply
 - Serverless
+- Serverless Databases
 - Serverless Framework
 - Service Accounts
 - Service Catalog
@@ -1465,6 +1689,7 @@
 - Services
 - Session Replay
 - Sharding
+- ShardingSphere
 - Shared Responsibility
 - Shell Scripting
 - Showback
@@ -1476,6 +1701,8 @@
 - Sigstore Policy-Controller
 - Simplicity
 - Single Sign-On
+- Single-Leader
+- SingleStore
 - Site Reliability
 - Skaffold
 - Skopeo
@@ -1487,13 +1714,16 @@
 - SLO Documents
 - SLO Engineering
 - SLOs
+- Slow Queries
 - SLSA
 - SLSA Provenance
 - SMART
 - SMB
 - Smoke Testing
 - Snap
+- Snapshot Isolation
 - Snapshots
+- Snowflake
 - Snyk
 - SOA
 - Soak Testing
@@ -1503,6 +1733,7 @@
 - Software RAID
 - Software Supply-Chain
 - SolarWinds
+- Solr
 - SonarQube
 - SOPS
 - Sovereign Cloud
@@ -1515,8 +1746,10 @@
 - Span Naming
 - Spans
 - Spark
+- Spatial Databases
 - SPDX
 - SpeedCurve
+- SpiceDB
 - SPIFFE
 - Spin
 - Spinnaker
@@ -1527,7 +1760,10 @@
 - Splunk Observability
 - Splunk On-Call
 - Spot Instances
+- Sqitch
 - SQL Monitoring
+- SQL Server
+- SQLite
 - Squadcast
 - Squid
 - SR-IOV
@@ -1538,12 +1774,14 @@
 - SSL Monitoring
 - SSO
 - StackStorm
+- StarRocks
 - StatefulSets
 - Static Thresholds
 - StatsD
 - Status Pages
 - Statuspage
 - Step Functions
+- Stolon
 - Storage Capacity
 - Storage Encryption
 - Storage Monitoring
@@ -1561,10 +1799,13 @@
 - sudo
 - Summaries
 - Sumo Logic
+- Supabase
 - Supply-Chain Security
+- SurrealDB
 - SUSE Linux
 - Swift
 - Syft
+- Synchronous Replication
 - Synthetic Monitoring
 - sysctl
 - Sysdig
@@ -1572,13 +1813,16 @@
 - Syslog
 - systemd
 - Systems Manager
+- Table Formats
 - Tail Sampling
 - Tailscale
 - Taints
 - Talos Linux
 - Tanzu
+- Tarantool
 - TCP
 - TCP/IP
+- TDengine
 - Team Topologies
 - TeamCity
 - Tekton
@@ -1597,6 +1841,7 @@
 - Tempo
 - Temporal
 - Tencent Cloud
+- Teradata
 - Terraform
 - Terraform Drift
 - Terraform Import
@@ -1616,6 +1861,7 @@
 - Throttling
 - Thundering Herd
 - TiDB
+- TigerGraph
 - TiKV
 - Tilt
 - Time-Series Databases
@@ -1639,10 +1885,14 @@
 - Traefik
 - Traffic Management
 - Traffic Shaping
+- Transaction Isolation
+- Transaction Logs
 - Transactional Outbox
+- Transactions
 - Transit Gateway
 - Travis CI
 - Trilio
+- Trino
 - Triton
 - Trivy
 - Trivy Operator
@@ -1653,6 +1903,7 @@
 - TUF
 - Two-Phase Commit
 - Tyk
+- Typesense
 - Ubuntu
 - udev
 - UDP
@@ -1668,9 +1919,12 @@
 - UptimeRobot
 - Uptrace
 - USE Method
+- Vacuuming
 - Vagrant
+- Vald
 - Valgrind
 - Validating Webhooks
+- Valkey
 - Value Streams
 - Value-Stream Mapping
 - Vantage
@@ -1680,12 +1934,15 @@
 - vCluster
 - Vector
 - Vector Clocks
+- Vector Databases
 - Veeam
 - Vegeta
 - Velero
 - Version Control
+- Vertica
 - Vertical Autoscaling
 - Vertical Scaling
+- Vespa
 - VEX
 - VictoriaLogs
 - VictoriaMetrics
@@ -1701,6 +1958,7 @@
 - VMware vSAN
 - VNet
 - Volcano
+- VoltDB
 - Volume Cloning
 - Volume Health
 - Volume Snapshots
@@ -1713,12 +1971,14 @@
 - VXLAN
 - W&B
 - WAF
+- WAL
 - WAL-G
 - WASI
 - wasmCloud
 - WasmEdge
 - Wasmtime
 - Weave Net
+- Weaviate
 - Web Vitals
 - WebAssembly
 - Webhooks
@@ -1735,17 +1995,22 @@
 - Workload Identity
 - Workloads
 - WORM
+- Write-Ahead Logging
 - XCP-ng
 - Xen
 - XFS
 - xMatters
+- XTDB
 - YAML
+- YDB
+- Yellowbrick
 - youki
 - yq
 - ytt
 - YugabyteDB
 - YUM
 - Zabbix
+- Zalando Postgres
 - Zarf
 - Zenduty
 - Zero Downtime
