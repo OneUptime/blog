@@ -2,7 +2,6 @@
 
 ## Showback
 
-10. Showback by Team, Product, or Customer: Choosing the Right Allocation Unit
 11. Turning Kubernetes Pod Labels and Shared RDS Costs into Application-Level Showback
 12. How to Combine On-Premises and Cloud Costs in One Showback Model
 13. How to Allocate Shared Cloud Services for Customer-Level Profitability
