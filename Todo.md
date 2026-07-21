@@ -2,7 +2,6 @@
 
 ## Groundcover
 
-5. How Groundcover Correlates eBPF and OpenTelemetry Traces Across One Request
 6. What Does Groundcover Cost at Scale? Modeling Nodes, Storage, and BYOC Infrastructure
 7. Groundcover Pricing with Karpenter and Spot Nodes: What Autoscaling Teams Should Know
 8. Does Groundcover BYOC Lower TCO or Shift More Work to Your Platform Team?
