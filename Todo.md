@@ -2,7 +2,6 @@
 
 ## Showback
 
-2. Showback vs. Chargeback: When Should Teams Start Paying Their Allocated Cloud Costs?
 3. How to Allocate Shared Kubernetes Cluster Costs Fairly in Showback Reports
 4. Untagged Resources in Cloud Showback: Estimate, Quarantine, or Leave Unallocated?
 5. How to Design a Cloud Tagging Policy Engineers Will Actually Follow
