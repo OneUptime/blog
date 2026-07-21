@@ -2,7 +2,6 @@
 
 ## Groundcover
 
-12. How to Keep PII, Credentials, and Sensitive Payloads Out of Groundcover
 13. Running Groundcover Across EKS, AKS, GKE, and On-Premises Clusters
 14. Can Groundcover Monitor VMs and Standalone Hosts Outside Kubernetes?
 15. Planning Groundcover Retention with ClickHouse, VictoriaMetrics, and Object Storage
