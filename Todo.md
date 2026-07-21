@@ -2,7 +2,6 @@
 
 ## Showback
 
-4. Untagged Resources in Cloud Showback: Estimate, Quarantine, or Leave Unallocated?
 5. How to Design a Cloud Tagging Policy Engineers Will Actually Follow
 6. Allocating Support, Networking, and Platform Costs Across Cloud Teams
 7. How to Allocate Savings Plans and Reserved Instance Discounts Without Distorting Team Costs
