@@ -2,7 +2,6 @@
 
 ## Groundcover
 
-1. Groundcover vs. Datadog for Kubernetes: Comparing Features, Workflows, and Cost
 2. Groundcover vs. Prometheus, Grafana, and Loki: When Does an Integrated Platform Win?
 3. Is Groundcover Really Zero-Instrumentation? What eBPF Captures and What It Misses
 4. Groundcover eBPF vs. OpenTelemetry: When You Still Need Application Instrumentation
