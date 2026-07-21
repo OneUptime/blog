@@ -2,7 +2,6 @@
 
 ## Groundcover
 
-16. Groundcover at Scale: ClickHouse Failures, Backpressure, and Telemetry Loss
 17. Migrating from Datadog to Groundcover Without Losing Dashboards, Alerts, or Coverage
 18. How Hard Is It to Leave Groundcover? Data Formats, Schemas, and Vendor Lock-In
 19. How Groundcover Smart Sampling Works and When to Force-Sample Traces
