@@ -2,7 +2,6 @@
 
 ## Showback
 
-6. Allocating Support, Networking, and Platform Costs Across Cloud Teams
 7. How to Allocate Savings Plans and Reserved Instance Discounts Without Distorting Team Costs
 8. How to Reconcile Showback Reports with the Cloud Provider Invoice
 9. Multi-Cloud Showback: Normalizing AWS, Azure, and GCP Costs with FOCUS
