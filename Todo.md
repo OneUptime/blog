@@ -2,7 +2,6 @@
 
 ## Groundcover
 
-6. What Does Groundcover Cost at Scale? Modeling Nodes, Storage, and BYOC Infrastructure
 7. Groundcover Pricing with Karpenter and Spot Nodes: What Autoscaling Teams Should Know
 8. Does Groundcover BYOC Lower TCO or Shift More Work to Your Platform Team?
 9. How Much CPU and Memory Does Groundcover Add to a Kubernetes Cluster?
