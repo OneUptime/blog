@@ -2,7 +2,6 @@
 
 ## At-Least-Once
 
-4. Deduplicating Messages with Idempotency Keys and Unique Database Constraints
 5. Where Should Deduplication State Live: SQL, Redis, or the Message Broker?
 6. How Long Should You Retain Message IDs for Deduplication?
 7. The Deduplication Race: Should You Record a Message Before or After Processing?
