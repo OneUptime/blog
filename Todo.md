@@ -2,7 +2,6 @@
 
 ## Showback
 
-16. How to Preserve Historical Showback Accuracy When Resource Ownership Changes
 17. How to Resolve Showback Disputes When Engineering Teams Do Not Trust the Numbers
 18. Does Showback Change Engineering Behavior? How to Measure Its Impact
 19. Showback for AI and LLM Spend: From Token Usage to Cost per Feature
