@@ -34,10 +34,12 @@ resource "helm_release" "cert_manager" {
   version          = "1.14.0"
 
   # Most Helm charts include CRDs by default
-  set {
-    name  = "installCRDs"
-    value = "true"
-  }
+  set = [
+    {
+      name  = "installCRDs"
+      value = "true"
+    }
+  ]
 
   # Wait for the release to be fully deployed
   wait = true
@@ -48,16 +50,30 @@ When the Helm chart installs CRDs as part of the release, Terraform waits for th
 
 ## Installing CRDs Separately from the Operator
 
-Some teams prefer to manage CRDs independently from the operator deployment. This avoids the risk of CRDs being deleted when the Helm release is destroyed (which would cascade-delete all custom resources).
+Some teams prefer to manage CRDs independently from the operator deployment. This avoids the risk of CRDs being deleted when the Helm release is destroyed (which would cascade-delete all custom resources). You can render the CRDs from the same pinned chart rather than maintaining a separate download URL.
 
 ```hcl
-# Install CRDs separately using kubectl provider
-data "http" "cert_manager_crds" {
-  url = "https://github.com/cert-manager/cert-manager/releases/download/v1.14.0/cert-manager.crds.yaml"
+# Render only the CRD template from the pinned cert-manager chart
+data "helm_template" "cert_manager_crds" {
+  name         = "cert-manager"
+  repository   = "https://charts.jetstack.io"
+  chart        = "cert-manager"
+  namespace    = "cert-manager"
+  version      = "1.14.0"
+  kube_version = "1.29.0" # Match the target cluster version
+
+  show_only = ["templates/crds.yaml"]
+
+  set = [
+    {
+      name  = "installCRDs"
+      value = "true"
+    }
+  ]
 }
 
 data "kubectl_file_documents" "cert_manager_crds" {
-  content = data.http.cert_manager_crds.response_body
+  content = data.helm_template.cert_manager_crds.manifest
 }
 
 # Apply each CRD individually
@@ -79,16 +95,20 @@ resource "helm_release" "cert_manager" {
   version          = "1.14.0"
 
   # Do not install CRDs through Helm since we manage them separately
-  set {
-    name  = "installCRDs"
-    value = "false"
-  }
+  set = [
+    {
+      name  = "installCRDs"
+      value = "false"
+    }
+  ]
 
   depends_on = [
     kubectl_manifest.cert_manager_crds
   ]
 }
 ```
+
+The [`helm_template` data source](https://registry.terraform.io/providers/hashicorp/helm/latest/docs/data-sources/template) renders locally, so set `kube_version` to the target cluster version for the chart's compatibility check. The cert-manager 1.14 chart stores its CRDs in `templates/crds.yaml`, gated by the `installCRDs` value, rather than in Helm's special `crds/` directory. For this chart, `helm_template.crds` would therefore be empty and `skip_crds` would not disable the templated CRDs. Rendering that one template with `installCRDs = true`, while leaving it disabled on the release, keeps the CRD source and operator version aligned without giving Helm ownership of the CRDs.
 
 ## Creating Custom Resources After CRD Installation
 

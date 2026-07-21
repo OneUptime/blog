@@ -110,28 +110,40 @@ changeStream.on("change", (event) => {
 });
 ```
 
-## Incremental Sync Pattern
+## Reliable Incremental Sync
 
-A common pattern for syncing data to another system:
+An `updatedAt` range is useful for ad hoc or best-effort polling, but it is not a lossless sync cursor. BSON dates have millisecond precision, so multiple documents can have the same timestamp. More importantly, a concurrent write can become visible after a scan even though its application-supplied `updatedAt` value is less than or equal to the scan's new checkpoint. The next query's `$gt` filter would skip that write permanently.
+
+No read and write concern combination fixes this multi-document watermark. A [`"majority"` read](https://www.mongodb.com/docs/manual/reference/read-concern-majority/) returns durable data, but MongoDB notes that it may not reflect the most recent data. [`"linearizable"` read concern](https://www.mongodb.com/docs/manual/reference/read-concern-linearizable/) is also not a solution: its guarantees apply to queries that uniquely identify a single document, not a range scan over many documents.
+
+For reliable incremental processing on a replica set or sharded cluster, use a [change stream](https://www.mongodb.com/docs/manual/changestreams/) and persist its resume token:
 
 ```javascript
-async function syncChanges(lastSyncTime) {
-  const cursor = db.collection("products").find(
-    { updatedAt: { $gt: lastSyncTime } },
-    { sort: { updatedAt: 1 } }
-  );
+async function consumeChanges(resumeToken) {
+  const products = db.collection("products");
+  const options = resumeToken ? { startAfter: resumeToken } : {};
+  const changeStream = products.watch([], options);
 
-  const changes = await cursor.toArray();
-  // process changes...
+  try {
+    for await (const change of changeStream) {
+      // Make this operation idempotent because an event can be replayed if
+      // processing succeeds but saving the resume token fails.
+      await applyChangeIdempotently(change);
 
-  const newSyncTime = changes.length > 0
-    ? changes[changes.length - 1].updatedAt
-    : lastSyncTime;
-
-  return newSyncTime;
+      // Every change event's _id is its resume token. Save it only after the
+      // destination has accepted the event.
+      await saveResumeToken(change._id);
+    }
+  } finally {
+    await changeStream.close();
+  }
 }
+
+await consumeChanges(await loadResumeToken());
 ```
+
+Change streams emit only majority-committed, durable changes and can restart after the saved event with `startAfter`. Unlike `resumeAfter`, `startAfter` also accepts an `invalidate` event's token after a collection is dropped or renamed. The consumer must still handle that invalidation explicitly, which commonly means resetting the destination and performing a new initial sync. The oplog must contain the event represented by any saved token; if it does not, perform a new initial sync. Opening a stream without a token watches future changes only, so coordinate the initial data copy with creation of the first change-stream checkpoint.
 
 ## Summary
 
-For querying documents updated after a specific time, maintain an explicit `updatedAt` field that your application updates on every write. Always use BSON `Date` objects in comparisons and index the `updatedAt` field. For real-time change notification, use change streams instead of periodic polling queries.
+For querying documents updated after a specific time, maintain an explicit `updatedAt` field that your application updates on every write. Always use BSON `Date` objects in comparisons and index the `updatedAt` field. For reliable incremental processing, use change streams with persisted resume tokens instead of treating an `updatedAt` polling watermark as lossless.
