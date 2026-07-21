@@ -2,7 +2,6 @@
 
 ## At-Least-Once
 
-9. What Happens When a Consumer Crashes After the Side Effect but Before Acknowledgement?
 10. Kafka Offset Commits: Before or After Processing?
 11. Why Kafka Consumer Rebalances Cause Duplicate Processing
 12. Producer Retries vs. Consumer Reprocessing: Finding the Source of Duplicate Kafka Messages
