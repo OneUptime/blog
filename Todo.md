@@ -2,7 +2,6 @@
 
 ## Showback
 
-15. Which Metrics Belong in a Cloud Showback Dashboard?
 16. How to Preserve Historical Showback Accuracy When Resource Ownership Changes
 17. How to Resolve Showback Disputes When Engineering Teams Do Not Trust the Numbers
 18. Does Showback Change Engineering Behavior? How to Measure Its Impact
