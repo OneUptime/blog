@@ -2,7 +2,6 @@
 
 ## Groundcover
 
-9. How Much CPU and Memory Does Groundcover Add to a Kubernetes Cluster?
 10. Groundcover Security Review: Privileged eBPF Sensors, Host Access, and Payload Visibility
 11. Does Groundcover Data Ever Leave Your VPC? Understanding Its Control and Data Planes
 12. How to Keep PII, Credentials, and Sensitive Payloads Out of Groundcover
