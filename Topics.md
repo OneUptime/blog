@@ -1,88 +1,194 @@
 # Topics
 
+- 1Password
+- 3-2-1 Rule
+- ABAC
 - Access Control
+- ACR
+- Active Directory
 - Active-Active
 - Active-Passive
+- ActiveMQ
+- Adaptive Sampling
 - Admission Control
+- Admission Controllers
 - Admission Webhooks
+- ADRs
 - Affinity
+- Agent Observability
+- AgentOps
+- Agile
+- Agile Delivery
+- AI Agents
+- AIOps
+- Air-Gapped Backups
 - Airflow
+- Airship
 - Akamai
+- Akeyless
+- Akri
 - AKS
 - Alert Fatigue
 - Alert Routing
 - Alerting
 - Alertmanager
+- Alibaba Cloud
 - AlmaLinux
 - Alpine Linux
 - Amazon EBS
 - Amazon EC2
+- Amazon ECR
 - Amazon ECS
 - Amazon EFS
 - Amazon EKS
+- Amazon ElastiCache
+- Amazon Fargate
+- Amazon Kinesis
 - Amazon RDS
 - Amazon S3
+- Amazon SNS
+- Amazon SQS
 - Ambassador
+- Anchore
 - Anomaly Detection
 - Ansible
 - Ansible AWX
 - Antrea
+- Anycast
 - Apache APISIX
 - Apache Cassandra
 - Apache CloudStack
+- Apache Flink
+- Apache HTTPD
 - Apache Kafka
+- Apache NiFi
 - Apache Pulsar
+- Apache Spark
+- Apdex
 - API Gateways
 - API Management
 - API Monitoring
 - API Security
+- API Server
 - API Testing
+- API Versioning
+- APK
+- APM
 - AppArmor
 - AppDynamics
 - Application Metrics
 - Application Performance
+- Apptio
+- APT
+- Aqua Security
+- Arch Linux
+- Argo
 - Argo CD
 - Argo Events
 - Argo Rollouts
 - Argo Workflows
+- Arize Phoenix
+- ARM Templates
+- Artifact Hub
 - Artifact Management
+- Artifact Promotion
+- Artifact Provenance
 - Artifactory
+- Artillery
+- async-profiler
+- AsyncAPI
+- At-Least-Once
+- At-Most-Once
+- At-Rest Encryption
 - Atlantis
+- Atmos
+- Attack Surface
+- Audit Evidence
 - Audit Logging
+- Audit Logs
+- auditd
 - Authentication
 - Authorization
+- Auto Scaling
+- Auto-Instrumentation
+- Automation
 - Autoscaling
 - Availability
+- Availability Nines
+- Availability SLIs
+- Availability Targets
+- AWS CodeBuild
+- AWS CodePipeline
+- AWS Organizations
+- AWS SAM
+- AWS SSM
 - Azure
+- Azure ACI
+- Azure AppService
 - Azure Arc
 - Azure Bicep
+- Azure ContainerApps
 - Azure DevOps
+- Azure Event-Hubs
 - Azure Functions
+- Azure Key-Vault
 - Azure Monitor
+- Azure Pipelines
+- Azure Policy
+- Azure VMs
+- Backoff
 - Backpressure
 - Backstage
 - Backup
 - Backup Testing
+- Bacula
 - Baggage
+- Bamboo
+- Bandwidth
+- Bare Metal
+- Bare-Metal Operator
+- Bareos
+- Baselines
 - Bash
 - Bastion Hosts
 - Batch Processing
 - Bazel
+- Benchmarking
 - BentoML
+- Better Stack
+- Better Uptime
+- BFD
 - BGP
+- bhyve
+- BigQuery
+- Binary Authorization
+- BIND
+- BIRD
+- Bit Rot
 - Bitbucket
+- Bitbucket Pipelines
 - Blackbox Exporter
+- Blackbox Monitoring
+- Blameless
 - Blameless Postmortems
+- Blast Radius
+- Bloat Management
 - Block Storage
 - Blue-Green Deployment
 - BMC
 - BorgBackup
+- BOSH
+- BotKube
 - Bottlerocket
 - Boundary
 - Branch Protection
 - Branching Strategies
+- Brownouts
 - Browser Monitoring
 - Btrfs
+- Buck2
+- Buddy
+- Bugsnag
 - Build Automation
 - Build Caching
 - Buildah
@@ -91,21 +197,63 @@
 - Buildpacks
 - Bulkheads
 - Burn Rates
+- Burp Suite
 - Business Continuity
+- Cabot
+- Cache Invalidation
+- Cachet
+- Caching
 - Caddy
 - cAdvisor
 - Calico
+- CALMS
+- Canal
 - Canary Deployment
+- CAP Theorem
 - Capacity Planning
+- Carbon Footprint
+- Carbon Intensity
+- Carbon-Aware Computing
 - Cardinality
+- Carvel
+- Cascading Failures
 - Cassandra
+- CAST AI
+- Catchpoint
 - CDK
+- CDKTF
+- CDN
+- Celery
 - Ceph
+- Ceph RADOS
+- Ceph RBD
+- Ceph RGW
+- CephFS
+- cert-manager
 - Certificate Management
+- Certificate Rotation
+- CFEngine
+- Chainguard
+- Change Data-Capture
+- Change Failure-Rate
+- Change Lead-Time
+- Change Management
+- Change Risk
 - Chaos Engineering
 - Chaos Mesh
+- Chaos Testing
+- Chaos Toolkit
+- Chargeback
+- ChatOps
+- Checkly
+- Checkmk
+- Checkov
 - Chef
+- Chronosphere
+- CI/CD
+- CIDR
 - Cilium
+- Cilium Hubble
 - CircleCI
 - Circuit Breakers
 - CIS Benchmarks
@@ -116,600 +264,1496 @@
 - Cloud Build
 - Cloud Buildpacks
 - Cloud Computing
+- Cloud Controller
 - Cloud Costs
+- Cloud Custodian
+- Cloud Deploy
+- Cloud Egress
 - Cloud FinOps
 - Cloud Foundry
+- Cloud Functions
 - Cloud Governance
+- Cloud Interconnect
+- Cloud Logging
 - Cloud Migration
 - Cloud Monitoring
 - Cloud Native
 - Cloud Networking
+- Cloud Portability
+- Cloud Profiler
+- Cloud Quotas
+- Cloud Repatriation
 - Cloud Run
 - Cloud Security
+- Cloud Spanner
+- Cloud SQL
 - Cloud Storage
+- Cloud Trace
+- Cloud-Init
+- Cloudability
+- CloudEvents
+- Cloudflare Tunnel
 - CloudFormation
 - CloudFront
+- CloudHealth
+- CloudNativePG
 - CloudStack
 - CloudTrail
 - CloudWatch
+- CloudZero
 - Cluster API
 - Cluster Autoscaler
+- Cluster Autoscaling
+- Cluster DNS
 - Cluster Management
+- ClusterIP
+- Clusterpedia
+- ClusterRoleBindings
+- ClusterRoles
 - CNI
+- Cobbler
 - CockroachDB
 - Code Coverage
 - Code Review
+- Code-Based Instrumentation
 - Codefresh
+- CodeQL
+- Colima
 - Colocation
+- Compass
 - Compliance Automation
+- Concourse
+- Confidential Containers
 - ConfigMaps
 - Configuration Drift
 - Configuration Management
+- Conftest
+- Conjur
+- Connection Pooling
+- Connection Tracking
+- Consensus
 - Consul
+- Consumer Lag
 - Container Images
+- Container Lifecycle
 - Container Networking
 - Container Registries
+- Container Runtime
+- Container Runtimes
+- Container Scanning
 - Container Security
 - Container Storage
 - containerd
 - Containers
+- Content Delivery
 - Context Propagation
 - Continuous Delivery
 - Continuous Deployment
+- Continuous Improvement
 - Continuous Integration
 - Continuous Profiling
+- Contour
+- Contract Testing
 - Control Planes
+- Controller Manager
+- Controllers
+- Coolify
+- Coralogix
+- Core Web-Vitals
 - CoreDNS
 - CoreOS
+- Coroot
+- Corrective Actions
+- Correlation IDs
 - Cortex
 - Cosign
 - Cost Allocation
 - Cost Optimization
+- Couchbase
+- CouchDB
+- Counters
 - CPU Profiling
+- Crane
+- Crash Reporting
+- CrashLoopBackOff
 - CRDs
 - CRI-O
 - Cron
 - CronJobs
 - Crossplane
+- Crossplane Compositions
 - CrowdStrike
+- Cruise Control
+- crun
 - CSI
+- CSI Snapshots
+- CSPM
+- CubeFS
+- CUDA
 - Cue
+- Cumulative Metrics
 - cURL
+- Custom Metrics
+- CVE
+- CVSS
+- CWE
+- CyberArk
 - CycloneDX
 - DaemonSets
 - Dagger
+- Dagster
+- Dapr
 - Dashboards
 - DAST
+- Data Consistency
+- Data Corruption
+- Data Drift
 - Data Durability
+- Data Freshness
+- Data Integrity
 - Data Lineage
 - Data Locality
 - Data Observability
 - Data Pipelines
+- Data Plane
 - Data Quality
+- Data Replication
+- Data Residency
+- Data Retention
+- Data Sampling
+- Data Sovereignty
+- Data Volume
+- Database Backups
 - Database Monitoring
 - Database Reliability
+- Database Replication
+- Database Sharding
+- Database SRE
 - Datadog
+- DataOps
+- Datree
+- DBRE
+- DCGM
+- DCGM Exporter
+- Dead-Letter Queues
 - Debezium
 - Debian
+- DeepEval
+- Delivery Semantics
+- Delta Metrics
+- Demand Forecasting
 - Dependabot
 - Dependency Management
+- Dependency Maps
+- Dependency Scanning
+- Dependency-Track
 - Deployment
 - Deployment Automation
+- Deployment Frequency
+- Deployment Rework
+- Deployments
 - Descheduler
 - Dev Containers
 - Developer Experience
 - Developer Portals
+- Developer Self-Service
+- DevEx
+- Devfile
+- Device Identity
+- Device Plugins
 - DevOps
 - DevSecOps
 - DHCP
+- Differential Backups
+- dig
 - DigitalOcean
+- Direct Connect
 - Disaster Recovery
 - Distributed Systems
+- Distribution
+- Distroless
+- DNF
 - DNS
 - DNS Monitoring
+- DNS-over-HTTPS
+- DNS-over-TLS
+- DNSSEC
 - Docker
+- Docker Buildx
 - Docker Compose
+- Docker Desktop
 - Docker Hub
 - Docker Swarm
 - Dockerfile
 - Documentation
+- DoH
+- Dokku
+- Doppler
+- DORA
 - DORA Metrics
+- DoT
+- DPDK
+- DRA
+- Dragonfly
+- DRBD
+- Drift Detection
 - Drone
+- Dual-Stack
+- Duplicacy
+- Duplicati
 - Durable Workflows
+- DVC
+- Dynamic Provisioning
+- Dynamic Thresholds
 - DynamoDB
+- Dynatrace
+- Earthly
 - eBPF
 - ECMP
+- ECR
 - ECS
 - Edge Computing
 - Edge Kubernetes
+- Edge Operations
+- EdgeX Foundry
+- EFS
 - EKS
+- Elastic APM
+- Elastic Beats
 - Elastic Stack
 - Elasticsearch
+- Embedded SRE
+- Emergency Response
+- Emissary-Ingress
+- EMQX
 - Encryption
+- Encryption Rotation
+- End-to-End Testing
 - Endpoint Monitoring
 - EndpointSlices
+- Energy Efficiency
+- Entra ID
+- env0
 - Envoy
+- Envoy Gateway
+- Ephemeral Containers
 - Ephemeral Environments
+- Ephemeral Volumes
+- EPSS
+- Erasure Coding
 - Error Budgets
 - Error Tracking
 - ESXi
 - etcd
+- Event Logs
 - Event Sourcing
 - Event Streaming
 - Event-Driven Architecture
+- EventBridge
+- Events
+- Eviction
+- Evidently
+- Exactly-Once
 - Exemplars
+- Exporters
+- ExpressRoute
+- ext4
 - External Secrets
 - ExternalDNS
+- ExternalName
+- Failed-Deployment Recovery
 - Failover
+- Failure Isolation
+- Fairwinds Insights
 - Falco
 - Fault Domains
 - Fault Injection
 - Fault Tolerance
+- Feast
 - Feature Flags
+- Feature Management
+- Feature Store
 - Fedora CoreOS
+- FedRAMP
+- Fiddler
 - File Storage
+- Filebeat
 - Finalizers
+- Finch
 - FinOps
+- Finout
+- Firecracker
+- FireHydrant
 - Firewall
+- Firmware Management
+- Fission
 - Flagger
+- Flagsmith
+- Flame Graphs
+- Flannel
 - Flatcar Linux
+- Flatpak
 - Fleet
+- Fleet Management
+- Flipt
+- Flow Metrics
 - Fluent Bit
 - Fluentd
+- Fluid
+- Flux
 - Flux CD
+- Flyte
 - Flyway
-- Four Golden-Signals
+- Foreman
+- Forgejo
+- Forward Proxy
+- FoundationDB
+- FreeBSD
+- FRRouting
+- Fulcio
+- Full Backups
 - Fuzz Testing
+- Galera
 - Game Days
 - Ganglia
+- Garbage Collection
+- Garden
 - Gateway API
 - Gatling
+- Gatus
+- Gauges
+- GCE
 - GCP
+- GCR
+- GDPR
+- GHCR
 - Git
 - Git Hooks
 - Gitea
 - GitFlow
 - GitHub
 - GitHub Actions
+- GitHub Releases
 - GitLab
 - GitLab CI
 - Gitleaks
 - GitOps
 - Gitpod
 - GKE
+- Glance
 - GlusterFS
+- GoCD
 - Golden Images
 - Golden Paths
+- Golden Signals
+- Goldilocks
 - Google Anthos
 - Google Cloud
+- Google Pub/Sub
+- GPU Monitoring
+- GPU Operator
+- GPU Scheduling
+- GPUs
+- Graceful Degradation
 - Grafana
 - Grafana Alloy
+- Grafana Beyla
+- Grafana Faro
+- Grafana Incident
+- Grafana k6
 - Grafana Loki
+- Grafana Mimir
+- Grafana OnCall
+- Grafana Pyroscope
+- Grafana SLO
+- Grafana Tempo
+- Grafeas
 - Graphite
 - GraphQL
 - Graylog
 - Green Software
+- GreenOps
+- Gremlin
+- GreptimeDB
+- Groundcover
 - gRPC
+- GRUB
+- Grype
+- GUAC
+- Guardrails
 - gVisor
+- HAMi
 - HAProxy
+- HAProxy Ingress
 - Harbor
 - Hardware Monitoring
+- Hardware RAID
+- Harness
+- Harvester
 - HashiCorp Nomad
 - HashiCorp Vault
+- HCL
 - Head Sampling
+- Headlamp
+- Headless Services
+- Headscale
 - Health Checks
+- Healthchecks.io
+- Heap Profiling
+- Heat
+- Helicone
 - Helm
+- Helm Charts
+- Helmfile
 - Hermetic Builds
 - Hetzner
 - High Availability
 - HIPAA
+- Histogram Buckets
+- Histograms
 - Honeycomb
+- Horizontal Autoscaling
 - Horizontal Scaling
 - Host Monitoring
 - HPA
+- HSM
 - HTTP
 - HTTP/2
 - HTTP/3
+- Hubble
+- HugePages
+- Humanitec
+- Hybrid Cloud
 - Hyper-V
 - Hyperconverged Infrastructure
+- HyperDX
+- I/O Profiling
 - IAM
+- IAM Policies
 - IAST
+- IBM Cloud
 - Icinga
+- Idempotence
 - Idempotency
 - Identity Federation
+- IDP
+- Image Attestations
+- Image Layers
 - Image Promotion
+- Image Provenance
+- Image Registries
 - Image Scanning
+- Image Signing
+- Image Vulnerabilities
+- ImagePullSecrets
+- Immutable Backups
 - Immutable Infrastructure
+- in-toto
+- In-Transit Encryption
+- Incident Automation
+- Incident Commander
 - Incident Communication
+- Incident Drills
 - Incident Management
+- Incident Metrics
 - Incident Response
+- Incident Severity
+- Incident Timeline
+- incident.io
+- Incremental Backups
+- Index Tuning
+- InfiniBand
+- Infisical
 - InfluxDB
 - Infracost
 - Infrastructure Automation
+- Infrastructure Metrics
 - Infrastructure Monitoring
 - Infrastructure Security
 - Infrastructure Testing
 - Infrastructure-as-Code
 - Ingress
+- Ingress Controllers
 - Init Containers
 - InnerSource
+- InSpec
 - Inspektor Gadget
+- Instatus
+- Instrumentation Scope
 - Integration Testing
+- Internal Developer-Platform
+- Internal Platforms
 - Internet Monitoring
+- IOMMU
+- IOPS
+- IoT Operations
 - IPAM
 - IPMI
+- IPsec
+- IPTables
 - IPv4
 - IPv6
+- IPVLAN
+- iPXE
+- Ironic
+- IS-IS
+- ISO 27001
 - Istio
 - Jaeger
 - Jenkins
 - Jenkins X
+- JFR
+- Jib
+- Jitter
+- JMeter
+- Jobs
 - Journald
 - Jsonnet
+- JuiceFS
+- Juju
 - JUnit
 - JVM Monitoring
+- k0s
+- k3d
 - K3s
 - k6
+- k8gb
+- k9s
 - Kafka
 - Kafka Connect
+- Kafka MirrorMaker
+- Kafka Streams
+- Kaniko
+- Kanister
+- Karmada
 - Karpenter
+- Kasten K10
 - Kata Containers
 - KEDA
 - Keepalived
+- Kepler
+- Keptn
+- KEV
 - Key Management
+- Key Rotation
 - Keycloak
+- Keystone
 - Kibana
 - kind
 - KMS
 - Knative
+- Knative Eventing
+- Knative Serving
+- ko
 - Kong
 - Kopia
+- kOps
+- KRaft
+- Kratix
+- KServe
+- kube-apiserver
 - Kube-bench
+- kube-controller-manager
 - Kube-hunter
+- kube-monkey
+- Kube-proxy
+- Kube-router
+- Kube-scheduler
 - Kube-state-metrics
 - Kubeadm
+- KubeArmor
 - Kubebuilder
+- Kubeconfig
+- Kubecost
 - kubectl
+- KubeDownscaler
 - KubeEdge
+- KubeFed
 - Kubeflow
+- KubeGreen
 - Kubelet
 - KubeLinter
 - Kubernetes
-- KubeScape
+- Kubescape
 - Kubespray
+- KubeStellar
+- KubeVela
 - KubeVirt
+- Kubewarden
+- Kuma
+- Kured
 - Kustomize
+- KVM
 - Kyverno
+- LACP
+- Langfuse
+- LangSmith
 - Latency
+- Launch Readiness
+- LaunchDarkly
 - Layer 4
 - Layer 7
+- Lead Time
+- Leader Election
 - Least Privilege
+- Lens
 - Let's Encrypt
 - libvirt
+- Lightstep
+- Lima
 - LimitRanges
 - Linkerd
+- LINSTOR
 - Linux
 - Linux Capabilities
 - Linux Containers
+- Linux Kernel
+- Linux Namespaces
 - Linux Networking
 - Linux Security
+- Liqo
+- Litmus
 - LitmusChaos
+- Live Migration
+- Liveness Probes
+- LLM Evaluation
+- LLM Gateways
+- LLM Monitoring
+- LLM Observability
+- LLM Tracing
+- LLMOps
 - Load Balancing
 - Load Shedding
 - Load Testing
+- LoadBalancer
 - LocalStack
+- Lock Profiling
+- Locust
+- Loft
 - Log Aggregation
+- Log Analytics
 - Log Correlation
+- Log Enrichment
+- Log Indexing
+- Log Levels
 - Log Management
+- Log Parsing
+- Log Redaction
+- Log Retention
 - Log Rotation
 - Log Sampling
+- Log-Based Metrics
 - Logging
+- Logical Clocks
+- LogicMonitor
 - LogQL
+- Logs
+- Logstash
 - Loki
 - Longhorn
+- Lustre
+- LVM
 - LXC
 - LXD
 - MAAS
+- MAAS Provisioning
+- MACVLAN
+- Manual Instrumentation
 - MariaDB
+- Materialize
+- Mayastor
+- MCP Monitoring
+- mdadm
 - Memcached
 - Memory Profiling
+- Meshery
+- Message Ordering
 - Message Queues
+- Metacontroller
+- Metaflow
+- Metal3
 - MetalLB
+- Metric Aggregation
+- Metric Exporters
+- Metric Overflow
+- Metric Temporality
+- Metricbeat
 - Metrics
+- MetricsQL
+- MFA
+- Microcks
 - MicroK8s
 - Microservices
 - Mimir
 - Minikube
 - MinIO
 - Mirrord
+- MITRE ATT&CK
+- MLflow
+- MLOps
+- Mobile Monitoring
+- Model Drift
+- Model Monitoring
+- Model Registry
+- Model Rollouts
+- Model Routing
+- Model Serving
+- Model Versioning
+- ModelMesh
+- Modular Monoliths
 - Molecule
 - MongoDB
+- Monit
 - Monitoring
 - Monoliths
 - Monorepos
+- Mosquitto
+- MPLS
+- MQTT
+- MTBF
 - mTLS
+- MTR
+- MTTA
+- MTTD
+- MTTF
+- MTTR
+- Multi-Arch Images
 - Multi-Architecture
 - Multi-Cloud
 - Multi-Cluster
 - Multi-Region
+- Multi-Region DR
+- Multi-Stage Builds
 - Multi-Tenancy
+- Multiwindow Alerting
 - Multus
+- Munin
+- Mutating Webhooks
+- Mutation Testing
 - MySQL
 - Nagios
+- NALSD
 - Namespaces
 - NAT
+- Native Histograms
 - NATS
+- NATS JetStream
+- Nautobot
+- Nebula
+- Neo4j
+- nerdctl
+- NetBird
+- NetBox
+- netcat
+- Netdata
+- Netmaker
 - Network Automation
 - Network Monitoring
+- Network Namespaces
 - Network Policies
 - Network Security
+- Network Troubleshooting
 - Networking
+- NetworkPolicy
+- NeuVector
 - New Relic
 - Nexus
+- NFS
 - nftables
 - NGINX
+- NGINX Ingress
+- NIST
 - Nix
 - NixOS
+- Node Affinity
 - Node Exporter
 - Node Monitoring
+- Node Pools
+- Node Pressure
+- Node Selectors
 - Node.js Monitoring
+- NodePort
+- Nodes
 - Nomad
+- NoOps
+- Northflank
+- Notary
+- Notary Project
+- Notation
+- Nova
+- nslookup
+- NSX
 - NUMA
+- Nutanix
+- NVIDIA DCGM
+- NVMe
 - OAuth
+- Object Lock
 - Object Storage
 - Observability
 - Observability Costs
 - Observability Pipelines
+- OCI
+- OCI Images
+- OCI Runtimes
+- OCM
+- Octavia
+- Octopus Deploy
+- OIDC
+- OKD
+- Ollama
 - On-Call
 - OneUptime
+- OOMKilled
 - OPA
-- Open Policy-Agent
+- OPA Gatekeeper
+- OpAMP
 - Open Source
+- OpenBao
+- OpenCensus
 - OpenCost
 - OpenEBS
+- OpenFaaS
+- OpenFeature
+- OpenFGA
+- OpenGitOps
 - OpenID Connect
+- OpenKruise
+- OpenLineage
 - OpenLIT
+- OpenMetrics
+- OpenNebula
+- OpenObserve
 - OpenSearch
+- OpenSearch Dashboards
+- OpenSearch Observability
 - OpenShift
+- OpenSSF Scorecard
 - OpenStack
+- OpenStatus
 - OpenTelemetry
 - OpenTelemetry Collector
 - OpenTofu
+- OpenTracing
 - OpenVPN
 - OpenVZ
+- OpenYurt
+- Operational Excellence
 - Operational Readiness
+- Operational Reviews
+- Operator Framework
 - Operator SDK
 - Operators
+- OPNsense
 - Opsgenie
 - Oracle Cloud
+- ORAS
+- OrbStack
+- Orca Security
+- Orchestrator
 - OS Hardening
+- OSM
+- OSPF
+- OSV
+- OTA Updates
 - OTel
 - OTLP
+- OTLP Exporters
+- OTTL
+- Outage Tracking
 - Outbox Pattern
+- OVHcloud
+- OVN
+- OVS
+- OWASP
+- OWASP ZAP
+- Owner References
+- P2P Distribution
 - Packer
+- Packet Capture
+- Packet Loss
+- Packetbeat
+- Pact
+- Pager Load
 - PagerDuty
+- Paging Policies
 - PAM
+- Pants
+- Parallels
 - Parca
+- Patroni
+- Paved Roads
+- Paxos
+- PBAC
 - PCI DSS
+- PCI Passthrough
+- PDB
+- PDU
+- Peering
+- Percona
+- Perf
 - Performance Engineering
 - Performance Monitoring
 - Persistent Volumes
+- PersistentVolumeClaims
+- pfSense
+- pgBackRest
 - PgBouncer
+- pgvector
+- Photon OS
+- Pingdom
+- PITR
+- Pixie
+- PKI
+- Platform Adoption
+- Platform APIs
+- Platform Contracts
 - Platform Engineering
+- Platform Governance
+- Platform Metrics
+- Platform Orchestration
+- Platform Product
 - Platform Security
+- Platform Teams
+- Playbooks
+- Pod Affinity
 - Pod Disruption
+- Pod Lifecycle
+- Pod Monitoring
+- Pod Overhead
+- Pod Priority
+- Pod Scheduling
 - Pod Security
+- PodDisruptionBudgets
 - Podman
+- PodMonitors
 - Pods
+- Polar Signals
+- Polaris
 - Policy Enforcement
+- Policy-as-Code
+- Port
+- Portainer
+- Portworx
 - PostgreSQL
+- Postmortem Culture
 - Postmortems
+- Power Management
+- PowerDNS
+- PowerfulSeal
 - PowerShell
 - Pre-commit
 - Predictive Scaling
+- Preemption
+- Prefect
+- Preventive Actions
+- PriorityClasses
+- Prisma Cloud
 - Private Cloud
+- PrivateLink
+- Probabilistic Sampling
 - Probes
 - Process Monitoring
+- procfs
+- Product Metrics
 - Production Readiness
 - Profiles
+- Profiling
 - Progressive Delivery
+- Projected Volumes
 - Prometheus
+- Prometheus Exporters
 - Prometheus Federation
+- Prometheus Operator
+- Prometheus Rules
+- Prompt Observability
+- Promptfoo
 - PromQL
 - Promtail
+- Propagators
+- Property-Based Testing
+- ProsperOps
 - Proxmox
+- Proxmox Backup
+- Proxmox Ceph
+- Proxmox Clustering
+- Proxmox HA
+- Proxmox Networking
+- Proxmox VE
+- Proxy
 - ProxySQL
+- PSI
+- Pub/Sub
 - Public Cloud
 - Pulumi
+- Pulumi ESC
+- Pumba
 - Puppet
+- PXE
 - Pyroscope
 - Python Automation
 - QEMU
+- QoS Classes
+- Qovery
 - Quality Gates
+- Quay
+- Query Optimization
+- Queue Depth
+- Queueing Theory
 - QUIC
 - Quotas
 - RabbitMQ
+- RabbitMQ Quorum
+- Raft
+- RAG Observability
+- Ragas
 - Rancher
+- Rancher Desktop
+- RASP
 - Rate Limiting
+- Ray
 - RBAC
+- RCA
 - Rclone
+- RDMA
+- Read Replicas
+- Readiness Gates
+- Readiness Probes
 - Real-User Monitoring
+- Receivers
 - Recording Rules
+- Recovery Drills
+- Recovery Engineering
+- Recovery Time
 - Red Hat
+- RED Method
+- Redfish
 - Redis
 - Redpanda
+- Redpanda Connect
+- Registry Distribution
+- Registry Mirrors
+- Rego
+- Regression Testing
+- Rekor
 - Release Automation
 - Release Engineering
+- Release Freezes
 - Release Management
+- Release Risk
+- Release Trains
 - Reliability
 - Reliability Engineering
+- Reliability Testing
 - Remote Development
+- Remote Diagnostics
+- Remote Write
 - Renovate
+- Repair Automation
 - ReplicaSets
 - Replication
 - Repository Management
+- Request IDs
+- Request Rate
+- Request SLIs
+- Reserved Instances
 - Resilience
+- Resource Attributes
 - Resource Limits
 - Resource Quotas
+- Resource Requests
+- Resources
+- REST
 - Restic
+- Restore Testing
 - Retries
+- Reverse Proxy
+- RHEL
+- Rightsizing
+- Risk Analysis
+- Risk Management
 - RKE2
+- Roadie
+- Robusta
 - Rocky Linux
+- RoleBindings
+- Rollbacks
+- Rollbar
+- Rollouts
 - Rook
+- Rook Ceph
+- Root-Cause Analysis
 - Rootless Containers
+- Rootly
 - Route 53
+- RouterOS
 - RPO
 - RTO
+- Runbook Automation
 - Runbooks
+- runc
 - Rundeck
+- Runtime Metrics
 - Runtime Security
+- RuntimeClasses
 - S3
+- S3 Versioning
+- SaaS
 - SaaS Monitoring
+- Saga Pattern
 - Salt
 - SAML
 - Sampling
 - SAST
+- Savings Plans
+- SBOM
+- SCA
 - Scalability
+- Scalability Law
+- Scaleway
 - Scaling
+- Scalr
+- Scaphandre
+- Scheduler
+- Schema Migrations
 - Schema Registry
+- SCIM
+- Scratch Images
 - ScyllaDB
+- SDN
+- Sealed Secrets
+- SeaweedFS
 - Seccomp
+- Seccomp Profiles
 - Secret Management
 - Secret Rotation
 - Secret Scanning
 - Secrets
+- Secure Boot
+- Security Context
 - Security Monitoring
+- SecurityContext
+- Seldon
+- Seldon Core
+- Self-Healing
+- Self-Hosted Runners
 - SELinux
+- SELinux Policies
 - Semantic Conventions
 - Semantic Versioning
+- Semaphore
+- Semgrep
 - Sensu
+- Sentinel
 - Sentry
 - Server Monitoring
+- Server-Side Apply
 - Serverless
+- Serverless Framework
+- Service Accounts
 - Service Catalog
+- Service Connectivity
 - Service Discovery
+- Service Levels
+- Service Maps
 - Service Mesh
 - Service Monitoring
 - Service Ownership
+- Service-Level Objectives
+- ServiceMonitors
 - ServiceNow
 - Services
+- Session Replay
 - Sharding
+- Shared Responsibility
 - Shell Scripting
+- Showback
 - Sidecars
 - SIEM
+- Signal Correlation
+- SigNoz
 - Sigstore
+- Sigstore Policy-Controller
+- Simplicity
+- Single Sign-On
+- Site Reliability
 - Skaffold
+- Skopeo
+- SlackOps
 - SLAs
 - SLIs
+- SLO Alerting
+- SLO Burn-Rates
+- SLO Documents
+- SLO Engineering
 - SLOs
 - SLSA
+- SLSA Provenance
+- SMART
+- SMB
 - Smoke Testing
+- Snap
+- Snapshots
+- Snyk
+- SOA
+- Soak Testing
 - SOAR
 - SOC 2
 - Software Delivery
+- Software RAID
 - Software Supply-Chain
+- SolarWinds
 - SonarQube
 - SOPS
+- Sovereign Cloud
+- SOX
 - Spacelift
+- Span Attributes
+- Span Events
 - Span Links
 - Span Metrics
+- Span Naming
 - Spans
+- Spark
 - SPDX
+- SpeedCurve
 - SPIFFE
+- Spin
+- Spinnaker
 - SPIRE
+- Split Brain
 - Splunk
+- Splunk APM
 - Splunk Observability
+- Splunk On-Call
 - Spot Instances
 - SQL Monitoring
+- Squadcast
+- Squid
+- SR-IOV
+- SRE
+- SRE Consulting
+- SRE Engagement
 - SSH
 - SSL Monitoring
+- SSO
 - StackStorm
 - StatefulSets
+- Static Thresholds
 - StatsD
 - Status Pages
+- Statuspage
+- Step Functions
+- Storage Capacity
+- Storage Encryption
 - Storage Monitoring
+- Storage Replication
+- Storage Tiering
 - StorageClass
+- strace
+- Stratified Sampling
+- Stress Testing
 - Strimzi
+- Strong Consistency
 - Structured Logging
+- Submariner
 - Subnetting
+- sudo
+- Summaries
+- Sumo Logic
 - Supply-Chain Security
+- SUSE Linux
+- Swift
+- Syft
 - Synthetic Monitoring
+- sysctl
 - Sysdig
+- sysfs
 - Syslog
 - systemd
+- Systems Manager
 - Tail Sampling
+- Tailscale
 - Taints
 - Talos Linux
+- Tanzu
 - TCP
+- TCP/IP
 - Team Topologies
+- TeamCity
 - Tekton
+- Telegraf
 - Telemetry
+- Telemetry Backend
+- Telemetry Correlation
+- Telemetry Enrichment
+- Telemetry Governance
+- Telemetry Redaction
+- Telemetry Retention
+- Telemetry Routing
+- Telemetry Sampling
+- Telemetry Schemas
+- Telemetry Signals
 - Tempo
 - Temporal
+- Tencent Cloud
 - Terraform
+- Terraform Drift
+- Terraform Import
+- Terraform Stacks
+- Terraform Tests
 - Terragrunt
+- Terramate
 - Terrascan
 - Terratest
+- Test Automation
+- Testcontainers
 - Tetragon
+- tfsec
 - Thanos
+- ThousandEyes
 - Threat Modeling
 - Throttling
+- Thundering Herd
+- TiDB
+- TiKV
 - Tilt
 - Time-Series Databases
+- Timeout Budgets
+- Timeouts
+- TimescaleDB
 - Tinkerbell
 - TLS
 - Toil
 - Tolerations
 - Tomcat Monitoring
+- Toxiproxy
 - Trace Context
+- Trace Sampling
+- Tracee
+- Traceloop
+- TraceQL
+- traceroute
 - Traces
 - Tracing
 - Traefik
 - Traffic Management
+- Traffic Shaping
+- Transactional Outbox
+- Transit Gateway
 - Travis CI
+- Trilio
+- Triton
 - Trivy
+- Trivy Operator
+- Troposphere
+- Troubleshooting
+- TruffleHog
 - Trunk-Based Development
+- TUF
+- Two-Phase Commit
 - Tyk
 - Ubuntu
+- udev
 - UDP
 - UEFI
+- Unbound
+- Unit Economics
 - Unit Testing
+- Unleash
+- UPS
 - Uptime
 - Uptime Kuma
 - Uptime Monitoring
+- UptimeRobot
+- Uptrace
 - USE Method
 - Vagrant
+- Valgrind
+- Validating Webhooks
+- Value Streams
+- Value-Stream Mapping
+- Vantage
+- Varnish
 - Vault
+- vCenter
 - vCluster
 - Vector
+- Vector Clocks
+- Veeam
 - Vegeta
 - Velero
 - Version Control
+- Vertical Autoscaling
 - Vertical Scaling
+- VEX
+- VictoriaLogs
 - VictoriaMetrics
 - Virtual Machines
+- VirtualBox
 - Virtualization
+- Vitess
 - VLANs
+- vLLM
+- VM Migration
 - VMware
+- VMware NSX
+- VMware vSAN
+- VNet
+- Volcano
+- Volume Cloning
+- Volume Health
 - Volume Snapshots
 - VPA
+- VPC
 - VPN
+- VRRP
 - vSphere
+- Vultr
+- VXLAN
+- W&B
 - WAF
+- WAL-G
+- WASI
+- wasmCloud
+- WasmEdge
+- Wasmtime
+- Weave Net
+- Web Vitals
+- WebAssembly
 - Webhooks
 - WebSockets
+- Whitebox Monitoring
+- WhyLabs
 - Windows Server
+- Wing
 - WireGuard
+- Wiz
+- Wolfi
+- Woodpecker CI
 - Workflow Automation
 - Workload Identity
+- Workloads
+- WORM
 - XCP-ng
 - Xen
 - XFS
+- xMatters
 - YAML
+- youki
 - yq
+- ytt
+- YugabyteDB
+- YUM
 - Zabbix
+- Zarf
+- Zenduty
 - Zero Downtime
 - Zero Trust
+- Zero-Code Instrumentation
+- ZeroMQ
 - ZFS
 - Zipkin
+- Zot
 - Zsh
+- Zuul
