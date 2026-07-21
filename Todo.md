@@ -2,7 +2,6 @@
 
 ## Groundcover
 
-17. Migrating from Datadog to Groundcover Without Losing Dashboards, Alerts, or Coverage
 18. How Hard Is It to Leave Groundcover? Data Formats, Schemas, and Vendor Lock-In
 19. How Groundcover Smart Sampling Works and When to Force-Sample Traces
 20. How Mature Is Groundcover RUM, and Can It Correlate Frontend Sessions with eBPF Traces?
