@@ -2,7 +2,6 @@
 
 ## Groundcover
 
-19. How Groundcover Smart Sampling Works and When to Force-Sample Traces
 20. How Mature Is Groundcover RUM, and Can It Correlate Frontend Sessions with eBPF Traces?
 
 ## At-Least-Once
