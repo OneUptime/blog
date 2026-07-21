@@ -2,7 +2,6 @@
 
 ## At-Least-Once
 
-1. Why At-Least-Once Delivery Creates Duplicates—and Why That Is Not a Broker Bug
 2. At-Least-Once vs. At-Most-Once vs. Exactly-Once: Choosing by Failure Mode
 3. How to Design an Idempotent Consumer for At-Least-Once Messaging
 4. Deduplicating Messages with Idempotency Keys and Unique Database Constraints
