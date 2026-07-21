@@ -2,7 +2,6 @@
 
 ## At-Least-Once
 
-3. How to Design an Idempotent Consumer for At-Least-Once Messaging
 4. Deduplicating Messages with Idempotency Keys and Unique Database Constraints
 5. Where Should Deduplication State Live: SQL, Redis, or the Message Broker?
 6. How Long Should You Retain Message IDs for Deduplication?
