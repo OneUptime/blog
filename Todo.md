@@ -2,7 +2,6 @@
 
 ## Showback
 
-12. How to Combine On-Premises and Cloud Costs in One Showback Model
 13. How to Allocate Shared Cloud Services for Customer-Level Profitability
 14. How Often Should You Send Showback Reports, and Who Should Receive Them?
 15. Which Metrics Belong in a Cloud Showback Dashboard?
