@@ -2,7 +2,6 @@
 
 ## At-Least-Once
 
-8. Handling Non-Idempotent REST APIs Under At-Least-Once Delivery
 9. What Happens When a Consumer Crashes After the Side Effect but Before Acknowledgement?
 10. Kafka Offset Commits: Before or After Processing?
 11. Why Kafka Consumer Rebalances Cause Duplicate Processing
