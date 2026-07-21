@@ -2,7 +2,6 @@
 
 ## Groundcover
 
-8. Does Groundcover BYOC Lower TCO or Shift More Work to Your Platform Team?
 9. How Much CPU and Memory Does Groundcover Add to a Kubernetes Cluster?
 10. Groundcover Security Review: Privileged eBPF Sensors, Host Access, and Payload Visibility
 11. Does Groundcover Data Ever Leave Your VPC? Understanding Its Control and Data Planes
