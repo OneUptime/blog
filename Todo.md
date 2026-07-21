@@ -1,9 +1,5 @@
 # Blog Post Ideas
 
-## Showback
-
-20. Build or Buy? Choosing Tools for Cloud Showback and Cost Allocation
-
 ## Groundcover
 
 1. Groundcover vs. Datadog for Kubernetes: Comparing Features, Workflows, and Cost
