@@ -1,9 +1,5 @@
 # Blog Post Ideas
 
-## Groundcover
-
-20. How Mature Is Groundcover RUM, and Can It Correlate Frontend Sessions with eBPF Traces?
-
 ## At-Least-Once
 
 1. Why At-Least-Once Delivery Creates Duplicates—and Why That Is Not a Broker Bug
