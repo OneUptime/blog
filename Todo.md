@@ -2,7 +2,6 @@
 
 ## Showback
 
-19. Showback for AI and LLM Spend: From Token Usage to Cost per Feature
 20. Build or Buy? Choosing Tools for Cloud Showback and Cost Allocation
 
 ## Groundcover
