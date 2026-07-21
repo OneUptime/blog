@@ -2,7 +2,6 @@
 
 ## At-Least-Once
 
-5. Where Should Deduplication State Live: SQL, Redis, or the Message Broker?
 6. How Long Should You Retain Message IDs for Deduplication?
 7. The Deduplication Race: Should You Record a Message Before or After Processing?
 8. Handling Non-Idempotent REST APIs Under At-Least-Once Delivery
