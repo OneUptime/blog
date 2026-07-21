@@ -2,17 +2,16 @@
 
 ## At-Least-Once
 
-10. Kafka Offset Commits: Before or After Processing?
-11. Why Kafka Consumer Rebalances Cause Duplicate Processing
-12. Producer Retries vs. Consumer Reprocessing: Finding the Source of Duplicate Kafka Messages
-13. RabbitMQ Acknowledgements and Redelivery: When Can the Same Work Run Twice?
-14. SQS Visibility Timeouts: Preventing Two Workers from Processing the Same Message
-15. SQS Standard vs. FIFO: What Exactly-Once Processing Does and Does Not Guarantee
-16. Transactional Outbox with At-Least-Once Delivery: Designing for Duplicate Events
-17. The Inbox Pattern: Atomically Deduplicating Messages with Business Updates
-18. At-Least-Once Batch Consumers: Handling Partial Failures, Retries, and Checkpoints
-19. How to Preserve Message Order When Retries and Redelivery Are Enabled
-20. How to Test At-Least-Once Consumers with Crashes, Timeouts, and Rebalances
+1. Why Kafka Consumer Rebalances Cause Duplicate Processing
+2. Producer Retries vs. Consumer Reprocessing: Finding the Source of Duplicate Kafka Messages
+3. RabbitMQ Acknowledgements and Redelivery: When Can the Same Work Run Twice?
+4. SQS Visibility Timeouts: Preventing Two Workers from Processing the Same Message
+5. SQS Standard vs. FIFO: What Exactly-Once Processing Does and Does Not Guarantee
+6. Transactional Outbox with At-Least-Once Delivery: Designing for Duplicate Events
+7. The Inbox Pattern: Atomically Deduplicating Messages with Business Updates
+8. At-Least-Once Batch Consumers: Handling Partial Failures, Retries, and Checkpoints
+9. How to Preserve Message Order When Retries and Redelivery Are Enabled
+10. How to Test At-Least-Once Consumers with Crashes, Timeouts, and Rebalances
 
 ## CSI Snapshots
 
