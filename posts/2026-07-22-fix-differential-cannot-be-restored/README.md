@@ -28,13 +28,13 @@ FROM DISK = 'E:\Restore\Sales_diff.bak';
 Find the intended row and record:
 
 - `Position`, used as `WITH FILE = n`;
-- `BackupType` 5 or `BackupTypeDescription` `Database Differential`;
+- `BackupType` 5 or `BackupTypeDescription` `DATABASE DIFFERENTIAL`;
 - database name and creation date;
 - `DifferentialBaseLSN` and `DifferentialBaseGUID`;
 - `DatabaseBackupLSN`, `FirstLSN`, and `LastLSN`;
-- copy-only status.
+- `IsCopyOnly` and `HasBackupChecksums` status.
 
-If you omit `WITH FILE`, SQL Server may select a different set from multi-set media. A filename ending in `_diff.bak` does not prove the selected set is a differential.
+`RESTORE HEADERONLY` without `FILE` returns all backup sets on the specified media. `RESTORE DATABASE` defaults to `FILE = 1`, so omitting it can select a different set from multi-set media. A filename ending in `_diff.bak` does not prove the selected set is a differential.
 
 ## Find the Exact Base
 
@@ -71,7 +71,7 @@ FROM DISK = 'E:\Restore\Sales_diff.bak'
 WITH FILE = 2, RECOVERY, CHECKSUM;
 ```
 
-Use the positions returned for your media; the example intentionally shows that the differential might be set 2. If transaction log backups follow, restore the differential with `NORECOVERY` and recover only after the final log.
+Use the positions returned for your media; the example intentionally shows that the differential might be set 2. The explicit `CHECKSUM` options require `HasBackupChecksums = 1`; SQL Server fails the restore if a backup lacks backup checksums. Without an explicit checksum option, `RESTORE` verifies checksums when present and proceeds without checksum verification when they are absent. If transaction log backups follow, restore the differential with `NORECOVERY` and recover only after the final log.
 
 If the database is already `ONLINE`, it was recovered. SQL Server does not let you return that restored database to the middle of the same sequence. Start again from the full.
 
