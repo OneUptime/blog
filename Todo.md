@@ -2,11 +2,10 @@
 
 ## Differential Backups
 
-1. Fixing “The Differential Backup Cannot Be Restored” in SQL Server
-2. How Backup Compression Affects Differential Backup Size and Restore Time
-3. Differential Backups in SQL Server Availability Groups: Primary and Secondary Replica Rules
-4. How VSS and Third-Party Backup Tools Can Change Your Differential Base
-5. How to Test and Automate Full, Differential, and Log Restore Chains
+1. How Backup Compression Affects Differential Backup Size and Restore Time
+2. Differential Backups in SQL Server Availability Groups: Primary and Secondary Replica Rules
+3. How VSS and Third-Party Backup Tools Can Change Your Differential Base
+4. How to Test and Automate Full, Differential, and Log Restore Chains
 
 ## OSV
 
