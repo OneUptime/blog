@@ -23,10 +23,10 @@ The eBPF sensor is a DaemonSet. Groundcover says one sensor pod runs on each eli
 ```text
 total sensor usage
 = eligible monitored nodes
-* measured usage per sensor pod
+* average measured usage per sensor pod
 ```
 
-Groundcover excludes Fargate and control-plane nodes through its default affinity rules. Custom node selectors, taints, and tolerations can change the eligible set, so count actual scheduled sensor pods rather than assuming every node is covered.
+Groundcover's installation documentation describes the default coverage policy as excluding Fargate and control-plane nodes. Scheduling details can vary by chart version and overrides; affinity, node selectors, taints, and tolerations can change the eligible set, so count actual scheduled sensor pods rather than assuming every node is covered.
 
 ### Per-cluster services
 
@@ -40,7 +40,7 @@ This distinction prevents a small sensor footprint from being presented as the t
 
 ## Requests are not measured usage
 
-Kubernetes resource requests affect scheduling. The scheduler uses requests when deciding whether a pod fits on a node, even when its current CPU or memory use is lower. Limits are enforcement boundaries, not a statement of normal consumption.
+Kubernetes resource requests affect scheduling. The scheduler uses requests when deciding whether a pod fits on a node, even when its current CPU or memory use is lower. Limits constrain usage: CPU limits are enforced by throttling, while memory limits are enforced reactively and can result in OOM kills. Neither is a statement of normal consumption.
 
 Record four measures for each Groundcover component:
 
@@ -153,14 +153,14 @@ For planning, use a simple model:
 
 ```text
 observability CPU request
-= per-node sensor CPU requests
-+ per-cluster component CPU requests
-+ backend CPU requests in this cluster
+= (eligible monitored nodes * sensor CPU request per pod)
++ total per-cluster component CPU requests
++ total backend CPU requests in this cluster
 
 observability memory request
-= per-node sensor memory requests
-+ per-cluster component memory requests
-+ backend memory requests in this cluster
+= (eligible monitored nodes * sensor memory request per pod)
++ total per-cluster component memory requests
++ total backend memory requests in this cluster
 ```
 
 Keep storage capacity as a separate budget. ClickHouse stores logs, traces, and Kubernetes events, while VictoriaMetrics stores metrics. Retention and data rate can grow storage without changing the sensor's scheduled memory request.
