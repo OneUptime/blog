@@ -19,7 +19,7 @@ Maintain at least these views in the same reporting model:
 - **Invoice view:** Billed or actual cost for the closed billing period. This is the financial control total.
 - **Ownership view:** Effective or amortized cost, with commitment purchases spread to the usage that benefited and shared costs distributed according to policy.
 
-FOCUS defines `BilledCost` as the charge used for invoicing, excluding amortization of upfront charges. It defines `EffectiveCost` as cost after reduced rates and discounts, including the applicable portion of prepaid purchases. Those columns are not alternatives where one is universally correct. They answer different questions.
+FOCUS defines `BilledCost` as the cost of a charge as invoiced by the invoice issuer in a billing period. It defines `EffectiveCost` as the cost of a charge based on the resources, services, or contract commitments recognized in a charge period. Both reflect applicable pricing adjustments, while effective cost for usage includes the recognized portion of related purchases such as prepayments. Those columns are not alternatives where one is universally correct. They answer different questions.
 
 Do not silently replace billed cost with effective cost in the reconciliation layer. Store both, label them clearly, and state which one each report uses.
 
