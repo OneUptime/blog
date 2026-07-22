@@ -1,9 +1,5 @@
 # Blog Post Ideas
 
-## At-Least-Once
-
-1. How to Test At-Least-Once Consumers with Crashes, Timeouts, and Rebalances
-
 ## CSI Snapshots
 
 1. Kubernetes CSI Volume Snapshots Explained: VolumeSnapshot, VolumeSnapshotContent, and VolumeSnapshotClass
