@@ -2,21 +2,20 @@
 
 ## Differential Backups
 
-1. Do You Need Every Differential Backup to Restore a Database?
-2. How to Add Transaction Log Backups After a Differential Restore for Point-in-Time Recovery
-3. Why Differential Backups Cannot Replace Transaction Log Backups
-4. Copy-Only Full Backups and Differential Bases: What DBAs Need to Know
-5. Can an Ad Hoc Full Backup Break Your Differential Backup Plan?
-6. Why SQL Server Differential Backups Keep Getting Larger
-7. How Index Rebuilds, ETL Jobs, and LOB Compaction Inflate Differential Backups
-8. When a Differential Backup Is Nearly as Large as a Full Backup
-9. How to Choose Full and Differential Backup Schedules from Your RPO and RTO
-10. How to Verify a Differential Backup’s Base LSN with RESTORE HEADERONLY
-11. Fixing “The Differential Backup Cannot Be Restored” in SQL Server
-12. How Backup Compression Affects Differential Backup Size and Restore Time
-13. Differential Backups in SQL Server Availability Groups: Primary and Secondary Replica Rules
-14. How VSS and Third-Party Backup Tools Can Change Your Differential Base
-15. How to Test and Automate Full, Differential, and Log Restore Chains
+1. How to Add Transaction Log Backups After a Differential Restore for Point-in-Time Recovery
+2. Why Differential Backups Cannot Replace Transaction Log Backups
+3. Copy-Only Full Backups and Differential Bases: What DBAs Need to Know
+4. Can an Ad Hoc Full Backup Break Your Differential Backup Plan?
+5. Why SQL Server Differential Backups Keep Getting Larger
+6. How Index Rebuilds, ETL Jobs, and LOB Compaction Inflate Differential Backups
+7. When a Differential Backup Is Nearly as Large as a Full Backup
+8. How to Choose Full and Differential Backup Schedules from Your RPO and RTO
+9. How to Verify a Differential Backup’s Base LSN with RESTORE HEADERONLY
+10. Fixing “The Differential Backup Cannot Be Restored” in SQL Server
+11. How Backup Compression Affects Differential Backup Size and Restore Time
+12. Differential Backups in SQL Server Availability Groups: Primary and Secondary Replica Rules
+13. How VSS and Third-Party Backup Tools Can Change Your Differential Base
+14. How to Test and Automate Full, Differential, and Log Restore Chains
 
 ## OSV
 
