@@ -93,7 +93,7 @@ Use a compact envelope:
 }
 ```
 
-At production, log the `event_id` and the `RecordMetadata` topic, partition, and offset returned after success. At consumption, log the same four fields plus consumer group, handler attempt, and outcome. Do not use a payload hash as the primary identity: two legitimate events can have identical bodies, and semantically identical JSON can serialize differently.
+At production, log the `event_id` and the `RecordMetadata` topic, partition, and offset returned after an acknowledged success. With `acks=0`, the metadata offset is `-1` because the producer does not wait for a broker acknowledgement. At consumption, log the same four fields plus consumer group, handler attempt, and outcome. Do not use a payload hash as the primary identity: two legitimate events can have identical bodies, and semantically identical JSON can serialize differently.
 
 A useful duplicate investigation groups observations as follows:
 
@@ -142,7 +142,7 @@ A Kafka transaction can atomically write records to Kafka and commit consumed of
 
 It does not make an arbitrary database update or REST call part of the Kafka transaction. Those consumers still need an inbox, a stable downstream idempotency key, or a reconciliation process.
 
-Likewise, a transactional producer ID must be unique to the producer instance represented by that identity. Kafka uses it to recover and fence prior producer epochs; it is not an event ID and should not be reused as one.
+Likewise, a `transactional.id` must be unique to the producer instance represented by that identity. Kafka uses it to recover and fence prior producer epochs; it is not an event ID and should not be reused as one.
 
 ## Correct the layer that owns the problem
 
