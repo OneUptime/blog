@@ -42,13 +42,13 @@ Build a table for each subscription or consumer:
 | --- | ---: | --- |
 | Lock or acknowledgment expiry | Message lifetime or retention, not merely the lock duration | Messaging team |
 | Consumer retry or delayed queue | Maximum retry schedule | Service owner |
-| Dead-letter queue redrive | DLQ retention plus response time | Operations |
+| Dead-letter queue redrive | End-to-end time across source, DLQ, redrive delay, and destination retention | Operations |
 | Broker seek or snapshot replay | Configured replay window | Platform team |
 | Archive restore or backfill | Approved restore window | Data team |
 | Producer retry | Maximum client retry and offline period | Producer owner |
 | Manual incident recovery | Recovery runbook limit | Incident commander |
 
-Use the largest value, then add margin for clock skew, delayed automation, maintenance windows, and a recovery started just before eligibility expires.
+Use the largest value, then add margin for clock skew, delayed automation, maintenance windows, and a recovery started just before eligibility expires. For a route with sequential stages, calculate the end-to-end elapsed time, accounting for any timestamp or retention resets, rather than using only the longest stage.
 
 Do not count only the visibility timeout. A short visibility timeout controls when an unacknowledged delivery becomes eligible again; it does not necessarily limit how old the message can be. Amazon SQS, for example, can retain queued messages for up to 14 days. Its documentation also recommends a DLQ retention longer than the source queue's retention, and redriving creates a new enqueue time and message ID. Preserve a stable application operation ID inside the message because a broker-generated ID can change across that workflow.
 
@@ -90,7 +90,7 @@ CREATE TABLE processed_message (
 );
 ```
 
-The primary key makes the database arbitrate concurrent deliveries. Do not perform an unlocked "select, then insert" check, since two consumers can both observe absence and apply the effect.
+The primary key makes the database arbitrate concurrent deliveries, but it prevents duplicate effects only when the insert and business change commit atomically. If the effect is external, make that operation independently idempotent or use a recoverable handoff. Do not perform an unlocked "select, then insert" check, since two consumers can both observe absence and apply the effect.
 
 Store an outcome reference when it helps a duplicate return or locate the first result. Do not copy the full payload into the deduplication row unless there is a separate requirement. Payload retention increases cost, access scope, breach impact, and deletion complexity.
 
@@ -159,3 +159,4 @@ Review the duration whenever queue retention, DLQ handling, snapshots, archives,
 - [Azure Service Bus message loss and duplicate processing](https://learn.microsoft.com/en-us/azure/service-bus-messaging/service-bus-message-loss-and-duplicates)
 - [Google Cloud Pub/Sub replay and retention](https://docs.cloud.google.com/pubsub/docs/replay-overview)
 - [PostgreSQL unique constraints](https://www.postgresql.org/docs/current/ddl-constraints.html)
+- [PostgreSQL transactions](https://www.postgresql.org/docs/current/tutorial-transactions.html)
