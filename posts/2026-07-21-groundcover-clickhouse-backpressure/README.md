@@ -22,19 +22,20 @@ For operational analysis, split the path into boundaries:
 
 1. The sensor observes or receives telemetry.
 2. A local or intermediate component transforms and batches it.
-3. The storage writer attempts an insert.
-4. ClickHouse accepts and durably persists the insert.
-5. Older eligible data may later be offloaded to object storage.
+3. In Groundcover's documented BYOC flow for logs, traces, and events, aggregation components write data to object storage for asynchronous transfer to the managed backend.
+4. The storage writer attempts an insert.
+5. ClickHouse completes the insert according to its configured table engine, replication or quorum, and filesystem-sync behavior.
+6. Older eligible data may later be offloaded to object storage.
 
-Only the broad component roles are documented. The sequence above is a useful failure model, not a claim about Groundcover's exact internal acknowledgements. Ask which boundary increments an accepted counter, how long each queue survives, whether a restart preserves it, and what happens when it fills.
+Only the broad component roles and object-storage transfer are documented. The sequence above is a useful failure model, not a claim about Groundcover's exact internal acknowledgements. Ask which boundary increments an accepted counter, how long each queue survives, whether a restart preserves it, and what happens when it fills.
 
 ## How ClickHouse Backpressure Develops
 
-ClickHouse writes inserts as data parts and merges those parts in the background. Its own guidance warns that many small inserts can create parts faster than the merge process can consolidate them. When the active part count becomes too high, ClickHouse can reject inserts with `TOO_MANY_PARTS`.
+MergeTree-family tables store inserted data in parts and merge those parts in the background. ClickHouse's guidance warns that many small synchronous inserts can create parts faster than the merge process can consolidate them. When the active part count in a partition exceeds the configured `parts_to_throw_insert` threshold, ClickHouse can reject inserts with `TOO_MANY_PARTS`.
 
 Storage pressure can also come from exhausted disk space, slow volumes, unavailable replicas, expensive transformations, or an ingestion rate that exceeds the backend's sustained capacity. The outward symptom is often higher insert latency before outright failures begin.
 
-What happens next depends on the writer. It may wait, retry, place work in a bounded queue, spill to disk, or drop records. Those are general backpressure patterns, not documented Groundcover behavior. A bounded queue protects the node but eventually overflows. An unbounded queue merely converts an ingestion incident into a memory or disk incident.
+What happens next depends on the writer. It may wait, retry, place work in a bounded queue, spill to disk, or drop records. Those are general backpressure patterns, not documented Groundcover behavior. A bounded queue protects the node but eventually overflows. An effectively unbounded queue can instead convert a prolonged ingestion incident into a memory or disk incident.
 
 ClickHouse recommends batching inserts or using asynchronous inserts for small-write workloads. Its documentation also recommends waiting for an asynchronous flush before acknowledging success when durability matters. Do not assume Groundcover uses a particular ClickHouse version or those settings, and do not change a managed BYOC backend directly without a supported procedure.
 
@@ -61,9 +62,9 @@ Delayed data is not yet lost. Data becomes irrecoverable when no durable copy re
 - an operator deletes a queue or volume during recovery;
 - the source itself has no replay mechanism after an unsuccessful export.
 
-The OpenTelemetry Collector documentation makes the same general point: an undersized Collector or an unavailable destination can cause drops, while sending queues and retry policies only provide finite protection. This applies directly to any external OpenTelemetry path. It is also a useful model for Groundcover, but it does not prove the product's internal queue implementation.
+The OpenTelemetry Collector documentation makes the same general point: an undersized Collector or an unavailable destination can cause drops, while sending queues and retry policies only provide finite protection. This applies directly to an external OpenTelemetry Collector path configured with those mechanisms. It is also a useful model for Groundcover, but it does not prove the product's internal queue implementation.
 
-Groundcover's [disaster recovery documentation](https://docs.groundcover.com/architecture/byoc/disaster-recovery) describes daily volume snapshots and object-storage offload for older logs, traces, and events. Those facilities protect data that reached the relevant durable storage. They cannot reconstruct telemetry that was never persisted. The same documentation says object storage is not used for metrics, so metric recovery has a different boundary.
+Groundcover's [disaster recovery documentation](https://docs.groundcover.com/architecture/byoc/disaster-recovery) describes daily volume snapshots and object-storage offload for older logs, traces, and events. Those facilities can recover only data captured by a snapshot or retained in object storage. They cannot reconstruct telemetry that never reached either recovery source. The same documentation says object storage is not used for metrics, so metric recovery has a different boundary.
 
 ## Detect the Gap Before the UI Does
 
@@ -115,8 +116,12 @@ Telemetry loss is manageable when its boundaries are explicit. Treat ClickHouse 
 ## Official Documentation
 
 - [Groundcover architecture overview](https://docs.groundcover.com/architecture/overview)
+- [Groundcover high availability](https://docs.groundcover.com/architecture/byoc/high-availability)
 - [Groundcover disaster recovery](https://docs.groundcover.com/architecture/byoc/disaster-recovery)
 - [Groundcover querying documentation](https://docs.groundcover.com/use-groundcover/querying-your-groundcover-data)
 - [ClickHouse guidance on avoiding excessive parts and `OPTIMIZE FINAL`](https://clickhouse.com/resources/engineering/clickhouse-optimize-table-final)
+- [ClickHouse asynchronous inserts](https://clickhouse.com/docs/optimize/asynchronous-inserts)
+- [ClickHouse transactional insert guarantees](https://clickhouse.com/docs/guides/developer/transactional)
 - [OpenTelemetry Collector troubleshooting](https://opentelemetry.io/docs/collector/troubleshooting/)
+- [OpenTelemetry Collector resiliency](https://opentelemetry.io/docs/collector/resiliency/)
 - [OpenTelemetry Protocol specification](https://opentelemetry.io/docs/specs/otlp/)
