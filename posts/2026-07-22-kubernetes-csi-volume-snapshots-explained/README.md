@@ -119,7 +119,7 @@ Four moving parts participate:
 
 1. The user or backup controller creates a `VolumeSnapshot`.
 2. The cluster-wide snapshot controller validates the relationship and creates a `VolumeSnapshotContent` for a dynamic request.
-3. The `csi-snapshotter` sidecar running with the CSI driver's controller watches matching content objects and calls the driver's `CreateSnapshot` RPC.
+3. The `csi-snapshotter` sidecar, typically running with the CSI driver's controller, watches matching content objects and calls the driver's `CreateSnapshot` RPC.
 4. The CSI driver creates or finds the backend snapshot and returns its ID, size, creation time, and readiness state. The sidecar and common controller propagate that status back to the namespaced object.
 
 There is one common snapshot controller deployment for the cluster, but each snapshot-capable CSI driver needs its own external-snapshotter sidecar. Installing the CRDs and common controller therefore does not add snapshot support to a driver that lacks it.
