@@ -2,13 +2,12 @@
 
 ## CSI Snapshots
 
-1. How to Schedule CSI Volume Snapshots and Enforce Retention in Kubernetes
-2. Are CSI Volume Snapshots Backups? Designing for Off-Cluster Disaster Recovery
-3. How to Make CSI Snapshots Application-Consistent for PostgreSQL, MySQL, and MongoDB
-4. Velero CSI Snapshots vs. File-System Backups: Which Protects Your PVCs Better?
-5. How to Migrate CSI Snapshots and Persistent Volumes to Another Kubernetes Cluster
-6. How to Snapshot Legacy In-Tree Volumes After Migrating to a CSI Driver
-7. CSI Volume Clones vs. Volume Snapshots: Which Should You Use?
+1. Are CSI Volume Snapshots Backups? Designing for Off-Cluster Disaster Recovery
+2. How to Make CSI Snapshots Application-Consistent for PostgreSQL, MySQL, and MongoDB
+3. Velero CSI Snapshots vs. File-System Backups: Which Protects Your PVCs Better?
+4. How to Migrate CSI Snapshots and Persistent Volumes to Another Kubernetes Cluster
+5. How to Snapshot Legacy In-Tree Volumes After Migrating to a CSI Driver
+6. CSI Volume Clones vs. Volume Snapshots: Which Should You Use?
 
 ## Differential Backups
 
