@@ -60,12 +60,14 @@ Review backup history across all tools:
 ```sql
 SELECT
     backup_set_id,
+    backup_set_uuid,
     backup_start_date,
     backup_finish_date,
     type,
     user_name,
     is_copy_only,
     first_lsn,
+    checkpoint_lsn,
     database_backup_lsn,
     differential_base_lsn,
     differential_base_guid
@@ -75,7 +77,7 @@ WHERE database_name = N'Sales'
 ORDER BY backup_finish_date DESC;
 ```
 
-In this table, `D` is a full database backup and `I` is a differential database backup. For media files, use `RESTORE HEADERONLY`. Match each differential's base LSN and GUID with the actual retained full.
+In this table, `D` is a full database backup and `I` is a differential database backup. For media files, use `RESTORE HEADERONLY`. For a single-based differential, match `differential_base_guid` to the base full's `backup_set_uuid` and `differential_base_lsn` to the base full's `first_lsn`; the differential's `database_backup_lsn` also matches that full's `checkpoint_lsn`. If the differential-base columns are `NULL`, inspect per-file metadata in `msdb.dbo.backupfile` or with `RESTORE FILELISTONLY`, because a multibased differential's bases must be determined per file.
 
 Alert on:
 
@@ -96,10 +98,10 @@ Do not generalize from the product category. Use a representative nonproduction 
 1. Take the normal scheduled full and a differential.
 2. Run the third-party or VSS job.
 3. Take another native differential.
-4. Inspect `RESTORE HEADERONLY` and `msdb.dbo.backupset`.
+4. Inspect native media with `RESTORE HEADERONLY` and query `msdb.dbo.backupset`. For a VSS job, also inspect the saved writer and backup-component metadata plus the product catalog or logs; a copy-only VSS backup does not update SQL Server backup history.
 5. Restore the later differential using the assumed scheduled base.
 
-Repeat after product upgrades or configuration changes. Vendor documentation and actual backup headers should agree.
+Repeat after product upgrades or configuration changes. Vendor documentation and the observed native backup headers or VSS metadata should agree.
 
 ## Recover When the Base Has Already Changed
 
