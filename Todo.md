@@ -2,9 +2,8 @@
 
 ## CSI Snapshots
 
-1. How to Migrate CSI Snapshots and Persistent Volumes to Another Kubernetes Cluster
-2. How to Snapshot Legacy In-Tree Volumes After Migrating to a CSI Driver
-3. CSI Volume Clones vs. Volume Snapshots: Which Should You Use?
+1. How to Snapshot Legacy In-Tree Volumes After Migrating to a CSI Driver
+2. CSI Volume Clones vs. Volume Snapshots: Which Should You Use?
 
 ## Differential Backups
 
