@@ -2,8 +2,7 @@
 
 ## Differential Backups
 
-1. How VSS and Third-Party Backup Tools Can Change Your Differential Base
-2. How to Test and Automate Full, Differential, and Log Restore Chains
+1. How to Test and Automate Full, Differential, and Log Restore Chains
 
 ## OSV
 
