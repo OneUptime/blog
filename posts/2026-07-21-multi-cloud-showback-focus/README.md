@@ -14,7 +14,7 @@ The strongest design uses FOCUS as the normalized cost fact, retains each native
 
 ## What FOCUS normalizes
 
-The provider-supported FOCUS 1.2 datasets standardize fields that are otherwise easy to confuse across providers:
+FOCUS 1.2 defines common fields that are otherwise easy to confuse across providers. Provider exports can still have documented conformance gaps, so support must be checked for each source:
 
 - `ProviderName`, `PublisherName`, and `InvoiceIssuerName`
 - `BillingAccountId` and `SubAccountId`
@@ -39,9 +39,9 @@ The providers expose FOCUS 1.2 in different product states and delivery systems:
 | --- | --- | --- |
 | AWS | Data Exports table named `FOCUS_1_2_AWS` | Includes AWS extension columns such as `x_Discounts`, `x_Operation`, and `x_ServiceCode` |
 | Azure | Cost and usage details (FOCUS) export | The documented 1.2 schema is marked preview and applies to supported agreement types |
-| Google Cloud | FOCUS usage cost export to BigQuery | The export is marked Preview and is stored as an immutable BigQuery dataset |
+| Google Cloud | FOCUS usage cost export to BigQuery | The export is marked Preview, is stored as an immutable BigQuery dataset, and has documented gaps for several FOCUS columns and values |
 
-Preview status, agreement coverage, and field population can change. Treat provider documentation and the delivered schema metadata as part of each ingestion contract. Do not assume that a column being required by the FOCUS specification means every optional value is available for every provider charge.
+Preview status, agreement coverage, conformance gaps, and field population can change. For example, the current Google Cloud export does not provide `InvoiceId`, `InvoiceIssuerName`, `ServiceCategory`, `ServiceSubcategory`, `Tags`, or the commitment discount columns, and AWS publishes cases where required values can be missing. Treat provider documentation, published conformance reports, and delivered schema metadata as part of each ingestion contract. Do not assume that declaring support for a FOCUS version means an export fully conforms to every requirement or populates every conditional or recommended column.
 
 ## Keep four data layers
 
@@ -52,14 +52,14 @@ A maintainable pipeline separates concerns:
 3. **Business enriched:** Stable application, team, product, customer, cost center, and environment identifiers.
 4. **Allocated:** Direct and shared costs produced by a versioned allocation policy.
 
-Do not overwrite `Tags` to fix ownership. Tags are provider observations and can be missing, late, or historically inconsistent. Add derived ownership columns with their source and effective dates. This preserves the ability to explain what the provider delivered and what the organization inferred.
+Do not overwrite `Tags` or retained provider tag and label extensions to fix ownership. These fields are provider observations and can be missing, late, or historically inconsistent. The current Google Cloud export, for example, exposes labels and tags in extension fields instead of the common `Tags` column. Add derived ownership columns with their source and effective dates. This preserves the ability to explain what the provider delivered and what the organization inferred.
 
 ## Select the right cost column
 
 FOCUS provides several cost perspectives:
 
 - `ListCost` is based on provider-published list pricing.
-- `ContractedCost` reflects contracted unit pricing before commitment discounts or other discounts described by the specification.
+- `ContractedCost` reflects contracted unit pricing, including negotiated discounts when present but excluding negotiated commitment discounts or any other discounts.
 - `BilledCost` is the charge serving as the basis for invoicing and excludes amortization of upfront charges.
 - `EffectiveCost` includes reduced rates, discounts, and the applicable portion of prepaid purchases covering the charge.
 
@@ -84,18 +84,19 @@ Provider account structures do not mean the same thing:
 These are useful allocation signals, but they are not automatically teams or products. Create a governed mapping such as:
 
 ```text
-(ProviderName, BillingAccountId, SubAccountId, ResourceId, Tags, effective_time)
+(ProviderName, BillingAccountId, SubAccountId, ResourceId,
+ Tags, provider_tag_fields, effective_time)
     -> application_id
     -> team_id
     -> product_id
     -> cost_center_id
 ```
 
-Apply the most specific valid mapping first, then fall back through resource, tag, subaccount, and billing-account rules. Record an explicit `unallocated` result rather than inserting a guessed owner.
+Apply the most specific valid mapping first, then fall back through resource, common or provider-specific tag fields, subaccount, and billing-account rules. Record an explicit `unallocated` result rather than inserting a guessed owner.
 
 ## Normalize services without erasing detail
 
-`ServiceCategory` and `ServiceSubcategory` support cross-provider analysis at a common functional level. `ServiceName`, `SkuId`, `SkuMeter`, and provider extension columns retain operational detail.
+`ServiceCategory` and `ServiceSubcategory`, when populated, support cross-provider analysis at a common functional level. `ServiceName`, `SkuId`, `SkuMeter` when available, and provider extension columns retain operational detail. The current Google Cloud preview export does not provide either category column or `SkuMeter`; if you derive them from service, SKU, or extension fields, record the mapping and provenance rather than presenting them as provider-delivered values.
 
 Use the category fields for questions such as total multi-cloud compute or database cost. Use provider fields for optimization work, because an AWS operation, Azure meter, and Google Cloud SKU are not interchangeable merely because they share a category. Maintain both views in the same record.
 
@@ -103,23 +104,23 @@ The same rule applies to regions. `RegionId` and `RegionName` are provider-assig
 
 ## Treat commitments and credits as charge data
 
-Commitment discounts differ among AWS, Azure, and Google Cloud, but FOCUS offers common columns for their identity, type, category, and status. Use those fields to distinguish covered usage, purchases, and unused commitment amounts according to the delivered provider data.
+Commitment discounts differ among AWS, Azure, and Google Cloud, but FOCUS defines common columns for their identity, type, category, and status. Use those fields where the provider populates them to distinguish covered usage, purchases, and unused commitment amounts. The current Google Cloud preview export does not provide the FOCUS commitment discount columns and instead retains related information in extensions such as `x_Credits` and `x_SubscriptionInstanceId`, so preserve those extensions and the native export.
 
-Credits also need classification. `ChargeCategory` and `ChargeClass` can help identify credits and corrections, but allocation remains a policy choice. A resource-specific credit may follow its resource owner; an account-level commercial credit may remain central or be spread by an approved rule. Keep that policy outside provider normalization.
+Credits also need classification. `ChargeCategory` and `ChargeClass` can help identify credits and corrections, but allocation remains a policy choice. The current Google Cloud export does not support the `Credit` value in `ChargeCategory` and exposes credit detail in `x_Credits`. A resource-specific credit may follow its resource owner; an account-level commercial credit may remain central or be spread by an approved rule. Keep that policy outside provider normalization.
 
 ## Validate each provider before combining them
 
 Run validation in this order:
 
 1. Verify expected files, partitions, manifests, accounts, and periods arrived.
-2. Validate types, required fields, allowed values, and exclusive period-end logic against the pinned FOCUS version.
-3. Reconcile `BilledCost` by provider, invoice issuer, billing account, invoice, billing period, and currency.
+2. Validate types, required fields, allowed values, and exclusive period-end logic against the pinned FOCUS version and each provider's published conformance gaps.
+3. Reconcile `BilledCost` by provider, billing account, billing period, and currency, adding invoice issuer and invoice ID where populated. Use native invoice metadata when those common fields are unavailable.
 4. Reconcile `EffectiveCost` to each provider's native amortized or commitment-aware view where available.
 5. Confirm business enrichment does not change source cost totals.
 6. Confirm direct, shared, central, and unallocated outputs conserve the input allocation pool.
 7. Only then aggregate providers into a multi-cloud report.
 
-A compact conformed query might start like this:
+A compact conformed query might start like this. The named placeholders are client-side pseudocode; use the parameter syntax supported by your query engine.
 
 ```sql
 SELECT
