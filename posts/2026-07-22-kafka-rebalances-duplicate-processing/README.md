@@ -59,7 +59,7 @@ A rebalance merely makes that old recovery point visible quickly. The same repla
 
 ## Commit only completed, contiguous progress
 
-Disable automatic commits when records leave the poll thread or finish asynchronously. Track completion separately for each partition, and commit only the offset after the highest *contiguous* run of completed records.
+Disable automatic commits when records leave the poll thread or finish asynchronously. Track completion separately for each partition, and advance the commit frontier only past a completed prefix of records in that partition's delivery order. Kafka offsets are not guaranteed to be numerically consecutive, so track the records actually returned by `poll()` rather than waiting for every integer offset.
 
 If offsets 40 and 42 finish while 41 is still running, committing 43 declares all three complete. A crash would then skip 41. The safe frontier remains 41 until work for offset 41 succeeds.
 
@@ -82,7 +82,7 @@ while (running) {
 }
 ```
 
-This can replay the uncommitted tail after a failure, but it does not skip a failed record. `ConsumerRecords.nextOffsets()` supplies next offsets for the records returned by the poll.
+This can replay the uncommitted tail after a failure, but it does not skip a failed record. `ConsumerRecords.nextOffsets()` supplies the next offsets for every partition whose position advanced during the poll.
 
 With worker pools, maintain a per-partition completion tracker. Pause partitions with too much in-flight work, continue polling within the group contract, and resume only when capacity is available. The `KafkaConsumer` itself must remain on its owner thread; only `wakeup()` is documented as safe from another thread.
 
@@ -96,7 +96,7 @@ A `ConsumerRebalanceListener` provides three distinct signals:
 
 Kafka recommends committing offsets during revocation to prevent unnecessary duplicate data. That is an optimization, not a correctness boundary. A killed process, network failure, or exceeded poll interval may prevent an orderly flush, and the `onPartitionsLost` documentation explicitly warns that ownership may already have moved.
 
-Do not let a stale worker continue writing after revocation. Tag work with an ownership generation or acquire a database lease for the partition or business entity. Before applying a delayed result, verify that the worker still owns the lease. Kafka can reject a stale offset commit with `CommitFailedException`; it cannot undo a stale HTTP call or database update.
+Do not let a stale worker continue writing after revocation. Tag work with an ownership generation and discard results after that generation is invalidated. When the effect needs authoritative fencing across consumers, use a database lease or monotonically increasing fencing token for the partition or business entity and check it in the same transaction as the business update. Kafka can reject a stale offset commit with `CommitFailedException`; it cannot undo a stale HTTP call or database update.
 
 ## Make the effect idempotent
 
