@@ -79,7 +79,8 @@ In one database transaction, claim the event and apply the business update only 
 begin database transaction
 
 insert (consumer_name, event_id) into consumer_inbox
-if the unique key already exists:
+    on conflict (consumer_name, event_id) do nothing
+if no row was inserted:
     commit without repeating the effect
 else:
     apply the business update
@@ -112,7 +113,7 @@ For Kafka-to-Kafka processing, Kafka transactions can atomically write output re
 
 Redelivery may overlap the original worker. An SQS visibility timeout can expire while slow processing continues. A Kafka rebalance can move a partition after a consumer exceeds `max.poll.interval.ms`. A RabbitMQ connection can be considered dead while application work is still completing elsewhere.
 
-Use database uniqueness or conditional updates to fence concurrent attempts. Extend an SQS visibility timeout only while verified work is progressing. Keep Kafka processing within the poll interval, reduce batch size, or pause partitions while external workers finish and commit only the highest contiguous completed offset. Bound RabbitMQ prefetch so a failed consumer does not hold excessive unacknowledged work.
+Use database uniqueness or conditional updates to fence concurrent attempts. Extend an SQS visibility timeout only while verified work is progressing. Keep Kafka processing within the poll interval, reduce batch size, or pause partitions while external workers finish, continue polling on the consumer thread, and commit only the next offset after the highest contiguous completed record. Bound RabbitMQ prefetch so a failed consumer does not hold excessive unacknowledged work.
 
 A graceful shutdown narrows the window but cannot eliminate it. Stop acquiring work, finish in-flight operations, durably record their result, acknowledge, and then close. Power loss can still occur immediately after the side effect.
 
@@ -144,3 +145,4 @@ The reliable ordering is still side effect first, acknowledgement second when lo
 - [Apache Kafka 4.3 delivery semantics](https://kafka.apache.org/43/design/design/#message-delivery-semantics)
 - [AWS transactional outbox pattern](https://docs.aws.amazon.com/prescriptive-guidance/latest/cloud-design-patterns/transactional-outbox.html)
 - [PostgreSQL constraints](https://www.postgresql.org/docs/current/ddl-constraints.html)
+- [PostgreSQL `INSERT`](https://www.postgresql.org/docs/current/sql-insert.html)
