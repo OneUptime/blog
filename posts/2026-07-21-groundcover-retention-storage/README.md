@@ -19,7 +19,7 @@ Groundcover's architecture overview identifies the primary stores:
 | Signal | Primary store | Retention consideration |
 | --- | --- | --- |
 | Logs | ClickHouse | High and bursty volume; filters can target selected streams |
-| Traces | ClickHouse | Sampling and payload size affect volume; filters can target selected services |
+| Traces | ClickHouse | Sampling and payload size affect volume; filters can target selected workloads |
 | Kubernetes events | ClickHouse | Usually smaller, but valuable for incident timelines |
 | Metrics | VictoriaMetrics | Cardinality and scrape frequency drive growth; retention is global in Groundcover's current retention model |
 
@@ -48,7 +48,7 @@ Groundcover documents two retention approaches. Simple retention applies one dur
 
 Advanced retention can apply exact-match filters to logs, traces, and events. Groundcover documents that when multiple rules overlap, the shorter retention wins. Metrics currently use simple, global retention rather than targeted rules.
 
-That overlap rule has practical consequences. Consider a production payment service that matches both a broad 30-day production rule and a narrow 7-day sensitive-data rule. The shorter rule should be expected to govern matching records. Build a small rule table with representative records and expected deletion dates before requesting or applying the configuration.
+That overlap rule has practical consequences. Consider logs that match both a broad 30-day `env: prod` rule and a narrow 7-day `namespace: payments-sensitive` rule. The shorter rule should be expected to govern matching records. Build a small rule table with representative records and expected deletion dates before requesting or applying the configuration.
 
 Prefer a short global baseline plus explicit longer exceptions only when the longer window has a clear owner and purpose. This reduces the risk that a new service silently inherits expensive or inappropriate retention.
 
@@ -70,9 +70,9 @@ Measure at least a representative busy week and capture:
 
 A first capacity estimate is:
 
-required primary bytes = daily compressed bytes x retained days x replication factor x headroom
+required primary bytes = daily compressed bytes per replica x retained days x replication factor x headroom
 
-Calculate this separately for ClickHouse and VictoriaMetrics. Add headroom for bursts, compaction, temporary files, rebalancing, and recovery. Do not use the formula as a vendor guarantee. Validate it with observed disk use and a load test because replicas, indexes, compression, and storage architecture change the result.
+Calculate this separately for ClickHouse and VictoriaMetrics. If the measured growth already includes every replica, do not multiply by the replication factor again. Add headroom for bursts, compaction, temporary files, rebalancing, and recovery. Do not use the formula as a vendor guarantee. Validate it with observed disk use and a load test because replicas, indexes, compression, and storage architecture change the result.
 
 VictoriaMetrics recommends estimating capacity from production-like ingestion because retention, cardinality, and data shape determine resource use. Its documentation exposes retention settings in the underlying database, but Groundcover's supported interface should remain authoritative for a Groundcover deployment.
 
@@ -108,7 +108,7 @@ More disk does not fix excessive cardinality, undersized CPU, slow storage, or a
 
 ## Understand the object-storage role
 
-In Groundcover BYOC, object storage can reduce pressure on local ClickHouse storage and support recovery for logs, traces, and events. It is still customer infrastructure that needs encryption, access control, versioning decisions, lifecycle rules, and cost monitoring.
+In Groundcover BYOC, object storage can reduce pressure on local ClickHouse storage by holding older logs, traces, and events in a safer, cheaper tier. It is still customer infrastructure that needs encryption, access control, versioning decisions, lifecycle rules, and cost monitoring.
 
 Document:
 
@@ -126,7 +126,7 @@ Avoid setting an object-storage lifecycle shorter than Groundcover expects. Conv
 
 Retention answers how long data remains available. Backup answers whether state can be restored after corruption or loss. Disaster recovery answers how the service resumes after a wider failure.
 
-Groundcover documents ClickHouse snapshots and object-storage-based recovery for logs, traces, and events. For VictoriaMetrics, Groundcover provides a backup and restore process using the VictoriaMetrics tooling. Because metrics are excluded from the logs, traces, and events offload path, give metric backup its own recovery objective.
+Groundcover documents daily snapshots of database volumes and object-storage offload for logs, traces, and events. For VictoriaMetrics, Groundcover provides a backup and restore process using the VictoriaMetrics tooling. Because metrics are excluded from the logs, traces, and events offload path, give metric backup its own recovery objective.
 
 Run restore exercises. A successful backup job only proves that files were created; it does not prove that operators can restore the correct period, credentials, topology, and application state within the required time.
 
@@ -141,6 +141,8 @@ Alert before disks approach exhaustion, but also monitor whether the policy is f
 - VictoriaMetrics active-series growth
 - failed backups and age of last verified restore
 - records surviving beyond their expected deletion date
+
+Set deletion-verification thresholds with engine cleanup behavior in mind. ClickHouse TTL deletion occurs during merges, and VictoriaMetrics removes data outside its retention period eventually as partitions and data parts are cleaned up.
 
 Revisit the policy after onboarding a large cluster, enabling a new protocol, changing sampling, adding a regulated workload, or changing an incident-response requirement. Retention is a product and governance decision expressed through storage, not merely a storage setting.
 
