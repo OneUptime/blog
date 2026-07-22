@@ -8,7 +8,7 @@ Description: Compare Groundcover eBPF observation with OpenTelemetry instrumenta
 
 ---
 
-Groundcover eBPF and OpenTelemetry are not mutually exclusive tracing products. eBPF is a Linux kernel capability Groundcover uses to observe supported workload activity without modifying application source. OpenTelemetry is a vendor-neutral set of APIs, SDKs, semantic conventions, protocols, and collector components for creating and moving telemetry.
+Groundcover's eBPF-based observation and OpenTelemetry instrumentation are not mutually exclusive approaches. eBPF is a Linux kernel capability Groundcover uses to observe supported workload activity without modifying application source. OpenTelemetry is a vendor-neutral set of APIs, SDKs, semantic conventions, protocols, and collector components for creating and moving telemetry.
 
 The practical choice is usually about where each signal should originate. Use kernel observation for broad coverage of system boundaries. Use application instrumentation when the application is the only place that knows the operation's meaning or causal context.
 
@@ -18,7 +18,7 @@ Groundcover-specific feature details in this article were checked against public
 
 | Question | Groundcover eBPF | OpenTelemetry application instrumentation |
 |---|---|---|
-| Where observation happens | Linux kernel and documented runtime hooks | Application, framework, library, agent, or Collector |
+| Where observation happens | Linux kernel and documented runtime hooks | Application, framework, library, or zero-code agent |
 | Source changes required | Not for supported kernel-level coverage | None for supported zero-code agents; code changes for manual spans and metrics |
 | Initial fleet coverage | Broad when the sensor runs on each eligible node | Depends on language, library, deployment, and instrumentation rollout |
 | Business semantics | Limited to visible protocol data and enriched infrastructure context | Can describe domain operations and controlled business attributes |
@@ -73,7 +73,7 @@ Browser, mobile, managed serverless, Windows, and external SaaS interactions may
 
 Groundcover documents ingestion of OpenTelemetry logs, metrics, and traces through OTLP from Kubernetes pods, an OpenTelemetry Collector, and standalone applications. Its standalone guide explicitly says Groundcover does not instrument those services with OpenTelemetry for you; they must already be instrumented.
 
-Groundcover also documents two trace categories: automatically generated eBPF traces for supported services and third-party traces such as OpenTelemetry. Ingested traces preserve distributed tracing, while the sensor adds infrastructure and application context. A published product update says sampled HTTP and gRPC OpenTelemetry traces can be enriched with data from eBPF spans when the sensor also samples them.
+Groundcover also documents two trace categories: automatically generated eBPF traces for supported services and third-party traces such as OpenTelemetry. Ingested traces preserve distributed tracing. When Kubernetes pods export through the sensor, it enriches received spans and logs with Kubernetes metadata. A published product update says sampled HTTP and gRPC OpenTelemetry traces can be enriched with data from eBPF spans when the sensor also samples them.
 
 That hybrid is useful when eBPF supplies broad coverage and OTel supplies causal structure and domain detail. It does not mean every eBPF transaction becomes an OpenTelemetry span or that every OTel span receives eBPF payload enrichment. The documented protocol and sampling conditions still apply.
 
@@ -84,15 +84,15 @@ Hybrid deployments need a signal contract:
 1. **Choose service identity:** standardize `service.name`, environment, namespace, and version attributes. Map them to Groundcover workload identity deliberately.
 2. **Choose the distributed trace source:** let OTel instrumentation own trace and parent IDs where end-to-end causality matters.
 3. **Define eBPF's role:** use it for coverage, golden signals, payload enrichment where approved, and gaps in manual instrumentation.
-4. **Coordinate sampling:** understand head sampling in OTel and stored-trace sampling in Groundcover. A trace absent from either side cannot be fully enriched.
+4. **Coordinate sampling:** understand SDK or Collector sampling, Groundcover's sampling of OTel traces received by the Kubernetes sensor, and stored-trace sampling for eBPF traces. A trace absent from either side cannot be fully enriched.
 5. **Control attributes:** apply OpenTelemetry semantic conventions and cardinality limits. Do not copy unbounded IDs into metrics.
-6. **Test duplicates:** verify that the same client or server operation is not displayed twice as independent spans in a way that inflates counts.
+6. **Test duplicates:** when eBPF and OTel both describe the same operation, pin Groundcover APM queries to `source:ebpf` or `source:opentelemetry`; aggregating both sources can double-count traffic.
 
-Keep raw counts and derived metrics traceable to their source. If an eBPF metric and an OTel metric use the same name but different error definitions, one must be renamed or removed.
+Keep raw counts and derived metrics traceable to their source. If an eBPF metric and an OTel metric use the same name but different error definitions, query them by source or rename or remove one.
 
 ## Make Sampling and Retention Explicit
 
-Groundcover says its eBPF pipeline processes observed requests and stores a smart-sampled subset of trace instances. OTel traces may be head-sampled by an SDK or processed by Collector sampling components before ingestion. These are separate decisions.
+Groundcover says its eBPF pipeline processes observed requests and stores a smart-sampled subset of trace instances. OTel traces may be head-sampled by an SDK or processed by Collector sampling components before ingestion. Groundcover's Kubernetes-pod guide also documents a 5% default sampling ratio for OTel traces received by the sensor, while its direct BYOC endpoint does not sample incoming OTel data. These are separate decisions.
 
 For debugging, determine which layer made the drop decision. For compliance, do not treat tracing as a guaranteed transaction ledger. Observability sampling and retention are optimized for diagnosis, not exact business accounting unless explicitly engineered and validated for that purpose.
 
@@ -110,7 +110,7 @@ Retain existing custom Prometheus metrics when they express service state that n
 
 ## Validate the Hybrid in Production-Like Traffic
 
-Select a request that crosses synchronous and asynchronous boundaries. Confirm the OTel trace ID remains stable, parent relationships are correct, Groundcover displays the full ingested waterfall, eBPF enrichment appears only where documented, and logs correlate only when the application includes trace context.
+Select a request that crosses synchronous and asynchronous boundaries. Confirm the OTel trace ID remains stable, parent relationships are correct, Groundcover displays the full ingested waterfall, eBPF enrichment appears only where documented, and exact trace-log correlation works only when log records contain trace and span IDs.
 
 Then test unsupported protocols, encrypted runtimes, errors, retries, timeouts, node replacement, and missing Collector connectivity. Measure sensor, SDK, Collector, and backend resource use separately.
 
@@ -121,7 +121,7 @@ Application instrumentation matters whenever intent matters. Groundcover eBPF ca
 - [Groundcover: Traces](https://docs.groundcover.com/capabilities/application-performance-monitoring-apm/traces)
 - [Groundcover: OpenTelemetry integration](https://docs.groundcover.com/integrations/data-sources/opentelemetry)
 - [Groundcover: Send OpenTelemetry from standalone applications](https://docs.groundcover.com/integrations/data-sources/opentelemetry/sending-from-standalone-hosts)
-- [Groundcover: eBPF enrichment of OpenTelemetry traces](https://docs.groundcover.com/product-updates/earlier-updates/2024/nov-2024)
+- [Groundcover: eBPF enrichment of OpenTelemetry traces](https://www.groundcover.com/blog/otel-data-enrichment)
 - [OpenTelemetry: Instrumentation](https://opentelemetry.io/docs/concepts/instrumentation/)
 - [OpenTelemetry: Context propagation](https://opentelemetry.io/docs/concepts/context-propagation/)
 - [OpenTelemetry: Semantic conventions](https://opentelemetry.io/docs/specs/semconv/)
