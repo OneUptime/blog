@@ -1,4 +1,4 @@
-# How to Migrate CSI Snapshots and Persistent Volumes to Another Kubernetes Cluster
+# Migrate CSI Snapshots and Persistent Volumes Between Kubernetes Clusters
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

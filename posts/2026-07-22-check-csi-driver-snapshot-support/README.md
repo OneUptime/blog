@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, CSI, Volume Snapshots, Storage Drivers, Troubleshooting
+Tags: Kubernetes, CSI, Volume Snapshot, Storage Driver, Troubleshooting
 
 Description: Verify snapshot creation and restore support across the Kubernetes API, CSI deployment, driver capability, and storage backend.
 
@@ -74,7 +74,7 @@ Directly querying the Unix socket with a CSI client can help a driver developer,
 
 ## Inspect the driver's controller deployment
 
-Snapshot calls go through an external-snapshotter sidecar colocated with the CSI controller service. Find the controller workload for the driver—not the node-plugin DaemonSet—and inspect its containers:
+Snapshot calls go through an external-snapshotter sidecar colocated with the CSI controller service. Find the controller workload for the driver-not the node-plugin DaemonSet-and inspect its containers:
 
 ```bash
 kubectl get deployment,statefulset --all-namespaces

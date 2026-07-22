@@ -573,6 +573,7 @@
 - AI Coding Agents
 - AI Embeddings
 - AI Enrichment
+- AI FinOps
 - Ai framework
 - AI Governance
 - AI Inference
@@ -678,6 +679,7 @@
 - Always
 - Always Encrypted
 - Always On
+- Always On Availability Groups
 - Always-On
 - Amanda
 - Amazon
@@ -1817,15 +1819,19 @@
 - Backup Appliance
 - Backup Automation
 - BACKUP Command
+- Backup Compression
+- Backup Operations
 - Backup Optimization
+- Backup Performance
 - Backup Plan
 - Backup Planning
 - Backup Policy
 - Backup Recovery
 - Backup Reports
 - Backup Restore
-- Backup Schedules
+- Backup Schedule
 - Backup Server
+- Backup Size
 - Backup Storage
 - Backup Strategy
 - Backup Testing
@@ -1893,6 +1899,7 @@
 - Bastion Host
 - Batch
 - Batch Computing
+- Batch Consumer
 - Batch Inference
 - Batch Ingestion
 - Batch Insert
@@ -2394,6 +2401,7 @@
 - Build Validation
 - Build Variables
 - Build Verification
+- Build vs Buy
 - Buildah
 - Buildbot
 - BuildConfigs
@@ -2458,6 +2466,7 @@
 - Business Value
 - Business-edition
 - BUSY Errors
+- BYOC
 - BYOL
 - Bypass
 - Bytecode Instrumentation
@@ -3075,6 +3084,7 @@
 - Cloud Configuration
 - Cloud Console
 - Cloud Cost
+- Cloud Cost Allocation
 - Cloud Cost Controls
 - Cloud Cost Management
 - Cloud Cost Optimization
@@ -3160,6 +3170,7 @@
 - Cloud Security
 - Cloud Service Mesh
 - Cloud Services
+- Cloud Showback
 - Cloud Source Repositories
 - Cloud Spanner
 - Cloud Spending
@@ -3169,6 +3180,7 @@
 - Cloud Storage FUSE
 - Cloud Strategy
 - Cloud Sync
+- Cloud Tags
 - Cloud Tasks
 - Cloud Telephony
 - Cloud Testing
@@ -3482,6 +3494,7 @@
 - Commit Status
 - Commit-Message
 - CommitFailedException
+- Commitment Discounts
 - Committed Use Discounts
 - Common Bugs
 - Common configuration
@@ -3776,6 +3789,7 @@
 - Consul Connect
 - Consul Template
 - Consumer
+- Consumer Acknowledgement
 - Consumer Acknowledgments
 - Consumer Configuration
 - Consumer Group
@@ -3785,6 +3799,7 @@
 - Consumer Networking
 - Consumer Offset
 - Consumer Patterns
+- Consumer Rebalance
 - Consumer Seek
 - Consumer Timeout
 - Consumer-Driven Contracts
@@ -4013,6 +4028,7 @@
 - COPY INTO
 - Copy Module
 - Copy-on-Write
+- Copy-Only Backup
 - Coqui tts
 - Coral Edge TPU
 - Coralogix
@@ -4278,6 +4294,7 @@
 - CSI
 - Csi Addons
 - CSI Driver
+- CSI Migration
 - CSI Secrets Store
 - CSMS
 - CSP
@@ -4468,6 +4485,7 @@
 - Customer Feedback
 - Customer Health Score
 - Customer Lifetime Value
+- Customer Profitability
 - Customer Reviews
 - Customer Service
 - Customer Success
@@ -4671,6 +4689,7 @@
 - Data Plane
 - Data Platform
 - Data Pool
+- Data Portability
 - Data Preparation
 - Data Preservation
 - Data Privacy
@@ -4800,6 +4819,7 @@
 - Database Testing
 - Database Tools
 - Database Tracing
+- Database Transaction
 - Database Triggers
 - Database Tuning
 - Database Updates
@@ -4894,6 +4914,7 @@
 - Dcgm
 - DCI
 - DCIM
+- DCM
 - DCsv3
 - Dd
 - DD-WRT
@@ -5300,6 +5321,8 @@
 - Diff Mode
 - Diff Strategy
 - Differential
+- Differential Backup
+- Differential Base
 - Differential Privacy
 - DiffServ
 - Dify
@@ -5355,6 +5378,7 @@
 - Disaggregated
 - Disaster
 - Disaster Recovery
+- Disaster Recovery Testing
 - Disaster-recovery
 - DisasterRecovery
 - DISCARD
@@ -5831,6 +5855,7 @@
 - Duplicate Handling
 - Duplicate IP
 - Duplicate Key
+- Duplicate Message
 - Duplicate Resource
 - Duplicate Spans
 - Duplicate Traces
@@ -6150,6 +6175,7 @@
 - Engineering
 - Engineering Culture
 - Engineering Efficiency
+- Engineering Management
 - Engineering Standards
 - Enhanced DAD
 - Enhanced Monitoring
@@ -6816,6 +6842,7 @@
 - File Synchronization
 - File System
 - File System Analysis
+- File System Backup
 - File System Cache
 - File Table Engine
 - File Transfer
@@ -6885,6 +6912,7 @@
 - Fingerprinting
 - Finite State Machine
 - FinOps
+- FinOps Tools
 - FinTech
 - Fio
 - FIPS
@@ -7032,6 +7060,7 @@
 - Flyway
 - Fmt.Errorf
 - Focalboard
+- FOCUS
 - Focus Management
 - Fold
 - Folders
@@ -7171,6 +7200,7 @@
 - Fulfillment
 - Fulfillment API
 - Full
+- Full Backup
 - Full Disk Encryption
 - Full document
 - Full Load
@@ -8133,6 +8163,7 @@
 - Host Key Checking
 - Host Management
 - Host Metrics
+- Host Monitoring
 - Host Network
 - Host Networking
 - Host Node
@@ -8605,10 +8636,12 @@
 - In-Memory Volume
 - In-Place Upgrade
 - In-Toto
+- In-Tree Volume
 - Inbound Forwarding
 - Inbound NAT
 - Inbound Traffic
 - Inbound Traffic Shaping
+- Inbox Pattern
 - Incident
 - Incident Analysis
 - Incident Classification
@@ -8671,6 +8704,7 @@
 - Index Mapping
 - Index Operations
 - Index Optimization
+- Index Rebuild
 - Index Scan
 - Index Sorting
 - Index Statistics
@@ -9007,6 +9041,7 @@
 - Invisible Index
 - Invoice
 - Invoice Processing
+- Invoice Reconciliation
 - IO
 - IO Chaos
 - IO Connector
@@ -10106,6 +10141,7 @@
 - LOADING
 - Loading States
 - Loan Origination
+- LOB
 - Lobby
 - Local
 - Local Action
@@ -10347,6 +10383,7 @@
 - LSET
 - Lshw
 - LSI
+- LSN
 - Lsof
 - LSP
 - LSP Ping
@@ -10738,6 +10775,7 @@
 - Message Broker
 - Message Bus
 - Message Channels
+- Message Consumer
 - Message Correlation
 - Message Deduplication
 - Message Delivery
@@ -10761,6 +10799,7 @@
 - Message Priority
 - Message Processing
 - Message Queue
+- Message Redelivery
 - Message Reliability
 - Message Replay
 - Message Retention
@@ -12168,8 +12207,10 @@
 - OBS Studio
 - Observability
 - Observability Cost
+- Observability Migration
 - Observability Operations
 - Observability Pipeline
+- Observability Security
 - Observability Spend
 - Observability Stack
 - Observability Strategy
@@ -13706,6 +13747,7 @@
 - Producer
 - Producer Configuration
 - Producer Consumer
+- Producer Retry
 - Producer Timeout
 - Producer Tuning
 - ProducerFencedException
@@ -14956,7 +14998,13 @@
 - Restic
 - Restoration
 - Restore
+- Restore Automation
+- Restore Chain
+- Restore Error
+- RESTORE HEADERONLY
+- Restore Performance
 - Restorecon
+- restoreSize
 - Restricted Environments
 - Restricted PSS
 - RestTemplate
@@ -15723,6 +15771,7 @@
 - Secondary Node
 - Secondary Reads
 - Secondary Region
+- Secondary Replica
 - Secondary Sort
 - Secret
 - Secret Distribution
@@ -16182,6 +16231,7 @@
 - Shared Channels
 - Shared components
 - Shared Configuration
+- Shared Costs
 - Shared Database
 - Shared Disks
 - Shared Editing
@@ -16805,6 +16855,7 @@
 - SQL Scripting
 - SQL Security
 - SQL Server
+- SQL Server 2025
 - SQL Standard
 - SQL Syntax Error
 - SQL Testing
@@ -16941,6 +16992,7 @@
 - Standard Load Balancer
 - Standard Mode
 - Standard Plan
+- Standard Queue
 - Standard SKU
 - Standard SSD
 - Standard Tier
@@ -17974,6 +18026,7 @@
 - Thinking Mode
 - Third-Party
 - Third-Party APIs
+- Third-Party Backup
 - Third-Party Repositories
 - Third-Party Services
 - Thiserror
@@ -18359,6 +18412,7 @@
 - Transactional
 - Transactional Email
 - Transactional Messaging
+- Transactional Outbox
 - Transactional Replication
 - Transcoder API
 - Transcoding
@@ -18655,6 +18709,7 @@
 - Unique Visitor
 - Unique-Local
 - uniqUpTo
+- Unit Economics
 - Unit Files
 - Unit Of Work
 - Unit Test
@@ -19189,6 +19244,7 @@
 - VoLTE
 - Volume
 - Volume Attachment
+- Volume Clone
 - Volume Drivers
 - Volume Expansion
 - Volume Gateway
@@ -19207,6 +19263,7 @@
 - Volumes
 - VolumeSnapshot
 - VolumeSnapshotClass
+- VolumeSnapshotContent
 - VolumeSnapshotLocation
 - Voting
 - VPA
@@ -19246,6 +19303,7 @@
 - VSCode
 - vsftpd
 - vSphere
+- VSS
 - VTEP
 - VTI
 - VTL

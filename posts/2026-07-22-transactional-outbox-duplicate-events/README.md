@@ -148,7 +148,7 @@ Broker deduplication is useful defense in depth, but often has a time or session
 
 ## Preserve per-aggregate order intentionally
 
-AWS's outbox guidance calls out notification order as a design concern. Store an aggregate version or sequence in the same transaction as the state change. Route all events for one aggregate through the same ordered broker unit—such as a Kafka record key or SQS FIFO message group ID—and prevent relay concurrency from publishing version 13 before an earlier failed version 12. The claim query above does not provide that serialization by itself: its `ORDER BY` selects the batch but does not guarantee the order of `UPDATE ... RETURNING` rows. Claim only the earliest unpublished version for each aggregate, or use an aggregate-scoped lock, when publish order is required.
+AWS's outbox guidance calls out notification order as a design concern. Store an aggregate version or sequence in the same transaction as the state change. Route all events for one aggregate through the same ordered broker unit-such as a Kafka record key or SQS FIFO message group ID-and prevent relay concurrency from publishing version 13 before an earlier failed version 12. The claim query above does not provide that serialization by itself: its `ORDER BY` selects the batch but does not guarantee the order of `UPDATE ... RETURNING` rows. Claim only the earliest unpublished version for each aggregate, or use an aggregate-scoped lock, when publish order is required.
 
 Global timestamp order is usually not trustworthy enough. Concurrent transactions can obtain timestamps before committing in the opposite order. Define the ordering requirement precisely:
 

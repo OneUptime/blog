@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Distributed Systems, Message Queues, At-Least-Once Delivery, Idempotency, Kafka, RabbitMQ, Amazon SQS
+Tags: Distributed System, Message Queue, At-Least-Once Delivery, Idempotency, Kafka, RabbitMQ, Amazon SQS
 
 Description: See exactly where at-least-once delivery creates duplicates and design consumers that turn repeated delivery into one durable business effect.
 

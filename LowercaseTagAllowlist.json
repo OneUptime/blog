@@ -924,6 +924,7 @@
   "resolv.conf",
   "resolve",
   "rest-server",
+  "restoreSize",
   "restorecon",
   "retention.bytes",
   "retention.ms",

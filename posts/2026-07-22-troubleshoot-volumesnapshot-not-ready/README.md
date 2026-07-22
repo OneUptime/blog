@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, CSI, Volume Snapshots, Troubleshooting, Persistent Storage
+Tags: Kubernetes, CSI, Volume Snapshot, Troubleshooting, Persistent Storage
 
 Description: Trace a VolumeSnapshot that never becomes ready across the snapshot controller, CSI sidecar, driver, and storage backend.
 
@@ -265,7 +265,7 @@ Some drivers support online snapshots; others impose attachment or application q
 
 For pre-provisioned content, verify that `spec.source.snapshotHandle` is the exact CSI snapshot ID expected by the driver, `spec.driver` is correct, `volumeSnapshotRef` points back to the namespaced object, and `sourceVolumeMode` describes the original volume.
 
-The CSI `ListSnapshots` RPC is optional. When a driver supports it, the sidecar can discover imported snapshot readiness and metadata. When it does not, the API contract permits the imported snapshot to be marked ready without all metadata. A static import that remains false with an error usually points to an unrecognized handle, inaccessible backend asset, or binding problem—not a reason to patch status.
+The CSI `ListSnapshots` RPC is optional. When a driver supports it, the sidecar can discover imported snapshot readiness and metadata. When it does not, the API contract permits the imported snapshot to be marked ready without all metadata. A static import that remains false with an error usually points to an unrecognized handle, inaccessible backend asset, or binding problem-not a reason to patch status.
 
 ## Recreate only after protecting the backend asset
 

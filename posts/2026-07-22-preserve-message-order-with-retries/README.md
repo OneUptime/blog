@@ -10,7 +10,7 @@ Description: Preserve causal order through partitioning, serial per-key executio
 
 Retries preserve correctness only when they respect the same ordering domain as normal delivery. If event 7 for an account fails while event 8 succeeds, redelivering event 7 later has already violated causal processing even if the broker originally delivered both in order.
 
-Define the scope of order—usually one entity or aggregate—route that scope to one ordered broker lane, process one sequence at a time, and do not checkpoint or acknowledge past a failed predecessor. Add sequence validation in business state because broker order alone does not cover every replay and republish path.
+Define the scope of order-usually one entity or aggregate-route that scope to one ordered broker lane, process one sequence at a time, and do not checkpoint or acknowledge past a failed predecessor. Add sequence validation in business state because broker order alone does not cover every replay and republish path.
 
 ## Define what “in order” means
 
@@ -151,7 +151,7 @@ Create versions 1 through 20 for several keys. Delay version 7, fail it transien
 - no checkpoint advances past its unresolved hole;
 - terminal handling has the documented block-or-skip outcome.
 
-Repeat during a producer retry, partition or consumer reassignment, visibility expiry, Single Active Consumer failover, and dead-letter redrive. Measure blocked-key age, gap count, retry attempts, stale-version rejection, and per-lane backlog—not only overall queue depth.
+Repeat during a producer retry, partition or consumer reassignment, visibility expiry, Single Active Consumer failover, and dead-letter redrive. Measure blocked-key age, gap count, retry attempts, stale-version rejection, and per-lane backlog-not only overall queue depth.
 
 Message order survives retries only when the retry path is part of the ordering design. Keep each causal key on one lane, keep its checkpoint behind the first unresolved event, and make stored versions the final authority when infrastructure behavior and application concurrency meet.
 

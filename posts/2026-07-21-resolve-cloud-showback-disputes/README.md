@@ -55,7 +55,7 @@ provider invoice or billing statement
   -> dashboard presentation
 ```
 
-At every step, prove conservation of cost unless an explicitly documented filter applies. Shared-cost allocation must redistribute a source pool, not create or lose money. Currency rounding should have a defined tolerance. Exclusions such as tax or marketplace charges should be visible rather than buried in a query.
+At every step, prove conservation of cost within the selected cost basis unless an explicitly documented filter or cost-basis transformation applies. Shared-cost allocation must redistribute a source pool, not create or lose money. Currency rounding should have a defined tolerance. Exclusions such as tax or marketplace charges should be visible rather than buried in a query.
 
 AWS documentation notes that a billing report containing cost allocation tags still reconciles tagged and untagged charges to the Bills page total for the same period. That is a useful control: tags change categorization, not the provider's total.
 

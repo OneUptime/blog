@@ -81,9 +81,9 @@ WITH NORECOVERY, CHECKSUM;
 
 RESTORE LOG Sales
 FROM DISK = 'E:\Restore\Sales_log_20260722_0015.trn'
-WITH NORECOVERY, CHECKSUM;
+WITH STOPAT = '2026-07-22T18:07:00', NORECOVERY, CHECKSUM;
 
--- Repeat every required log in LSN order.
+-- Repeat every required log in LSN order, using the same STOPAT value.
 RESTORE LOG Sales
 FROM DISK = 'E:\Restore\Sales_log_20260722_1815.trn'
 WITH STOPAT = '2026-07-22T18:07:00', RECOVERY, CHECKSUM;

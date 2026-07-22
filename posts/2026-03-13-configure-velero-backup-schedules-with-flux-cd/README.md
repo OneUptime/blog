@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Velero, Backup Schedules, GitOps, Kubernetes, Disaster Recovery
+Tags: Flux CD, Velero, Backup Schedule, GitOps, Kubernetes, Disaster Recovery
 
 Description: Manage Velero backup schedules as code using Flux CD GitOps to ensure consistent, automated backup coverage for Kubernetes workloads.
 

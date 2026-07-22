@@ -1,8 +1,8 @@
-# How to Restore One StatefulSet Replica from a VolumeSnapshot Without Losing Its PVC Identity
+# Restore One StatefulSet Replica Without Losing Its PVC Identity
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, StatefulSet, CSI, Volume Snapshots, Disaster Recovery
+Tags: Kubernetes, StatefulSet, CSI, Volume Snapshot, Disaster Recovery
 
 Description: Restore one StatefulSet ordinal by recreating its PVC from a snapshot under the exact stable claim name the controller expects.
 

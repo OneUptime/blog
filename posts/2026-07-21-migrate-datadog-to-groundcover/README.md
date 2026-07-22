@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Groundcover, Datadog, Observability Migration, Monitoring, Dashboards, Alerts, OpenTelemetry
+Tags: Groundcover, Datadog, Observability Migration, Monitoring, Dashboard, Alert, OpenTelemetry
 
 Description: Migrate from Datadog to Groundcover with a coverage inventory, parallel telemetry, query validation, and a safe, reversible cutover.
 

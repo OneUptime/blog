@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, CSI, Volume Snapshots, PersistentVolumeClaim, Disaster Recovery
+Tags: Kubernetes, CSI, Volume Snapshot, PersistentVolumeClaim, Disaster Recovery
 
 Description: Restore a ready CSI VolumeSnapshot into a new PVC and verify the recovered data before workload cutover.
 

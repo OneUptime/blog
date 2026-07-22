@@ -8,7 +8,7 @@ Description: Decide when a large SQL Server differential still helps and when to
 
 ---
 
-When a SQL Server differential backup is nearly as large as a full, most allocated extents may have changed since its base—or compression and data layout may make the output sizes look similar. At that point the differential's backup-time advantage often shrinks, while restore still requires both the full and differential.
+When a SQL Server differential backup is nearly as large as a full, most allocated extents may have changed since its base-or compression and data layout may make the output sizes look similar. At that point the differential's backup-time advantage often shrinks, while restore still requires both the full and differential.
 
 The practical response is usually to take a new scheduled full soon, but first confirm the real base, compare uncompressed and compressed sizes, and measure end-to-end restore time.
 

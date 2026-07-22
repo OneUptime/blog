@@ -1,4 +1,4 @@
-# At-Least-Once Batch Consumers: Handling Partial Failures, Retries, and Checkpoints
+# At-Least-Once Batch Consumers: Handling Partial Failures and Retries
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -10,7 +10,7 @@ Description: Design batch consumers around per-record outcomes, contiguous check
 
 A batch is a transport and throughput optimization, not automatically one unit of business success. When 99 records succeed and one fails, an at-least-once consumer must decide whether to retry the entire batch, retry a suffix, or report the failed item individually.
 
-The safe checkpoint is always the highest contiguous point for which every earlier required effect is durable. Never checkpoint past a hole. Assume that any successfully processed record before the checkpoint can be delivered again, and make its effect idempotent.
+For each ordered source, the safe checkpoint is always the highest contiguous point for which every earlier required effect is durable. Never checkpoint past a hole. Assume that any successfully processed record before the checkpoint can be delivered again, and make its effect idempotent.
 
 ## Separate four boundaries
 
@@ -71,9 +71,9 @@ partition 0: offsets 100, 101, 102
 partition 1: offsets  50,  51
 ```
 
-If partition 0 offset 101 fails but partition 1 finishes, a consumer can commit 101 for partition 0—the next record after completed offset 100—and 52 for partition 1. It must not commit 103 for partition 0 because that skips the hole at 101.
+If partition 0 offset 101 fails but partition 1 finishes, a consumer can commit 101 for partition 0-the next record after completed offset 100-and 52 for partition 1. It must not commit 103 for partition 0 because that skips the hole at 101.
 
-For synchronous processing:
+For synchronous processing with `enable.auto.commit=false`:
 
 ```java
 Map<TopicPartition, OffsetAndMetadata> safe = new HashMap<>();
@@ -150,7 +150,7 @@ Larger batches amortize network and commit overhead, but they also increase:
 - probability that one record fails the batch;
 - time between polls or acknowledgements.
 
-Measure throughput against p95 and p99 completion time, retry amplification, and maximum safe replay. In Kafka, adjust `max.poll.records` and `max.poll.interval.ms` together. In SQS, visibility must cover time spent waiting locally plus processing and deletion—not merely handler CPU time. In RabbitMQ, prefetch bounds the unacknowledged replay window.
+Measure throughput against p95 and p99 completion time, retry amplification, and maximum safe replay. In Kafka, adjust `max.poll.records` and `max.poll.interval.ms` together. In SQS, visibility must cover time spent waiting locally plus processing and deletion-not merely handler CPU time. In RabbitMQ, prefetch bounds the unacknowledged replay window.
 
 ## Preserve observability at record granularity
 

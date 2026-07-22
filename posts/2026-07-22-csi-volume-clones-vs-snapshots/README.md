@@ -71,7 +71,7 @@ spec:
     apiGroup: snapshot.storage.k8s.io
 ```
 
-In both cases, `dataSource` is a provisioning-time input. Kubernetes creates a new PV and asks the CSI provisioner to populate it. The source volume is not mounted into the destination pod, and later writes to either volume do not appear in the other.
+In both cases, `dataSource` is a provisioning-time input. The CSI provisioner resolves the source, asks the driver to create a pre-populated volume, and creates a new PV that represents it. The source volume is not mounted into the destination pod, and later writes to either volume do not appear in the other.
 
 ## Clone Requirements and Semantics
 
@@ -99,9 +99,9 @@ The class sets a `deletionPolicy`:
 - `Delete` removes the content object and provider snapshot when the namespaced snapshot is deleted;
 - `Retain` leaves them for manual administration and possible re-import.
 
-A snapshot records `restoreSize`, readiness, creation time, and a binding to cluster-scoped content. It can be used to provision multiple independent PVCs, subject to provider and quota limits. The source PVC can disappear while a properly retained snapshot remains.
+A snapshot's status exposes `restoreSize`, readiness, creation time, and a binding to cluster-scoped content when those values are available. It can be used to provision multiple independent PVCs, subject to provider and quota limits. The source PVC can disappear while a properly retained snapshot remains.
 
-Snapshot restore capacity must be at least `status.restoreSize`. That value normally describes the full source volume size, not the number of used filesystem bytes.
+When `status.restoreSize` is specified, snapshot restore capacity must be at least that value. It is the minimum restore size reported by the driver, not a count of used filesystem bytes.
 
 ## Compare the Operational Intent
 

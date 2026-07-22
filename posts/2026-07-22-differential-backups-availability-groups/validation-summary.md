@@ -1,4 +1,4 @@
-# Validation Summary: Differential Backups in SQL Server Availability Groups: Primary and Secondary Replica Rules
+# Validation Summary: SQL Server Differential Backups in Availability Groups
 
 ## Status
 

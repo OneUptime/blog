@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: FinOps, Showback, Cloud Costs, Invoice Reconciliation
+Tags: FinOps, Showback, Cloud Cost, Invoice Reconciliation
 
 Description: Build an auditable bridge from cloud invoices to team showback, while keeping billed, effective, shared, credit, tax, and support costs distinct.
 

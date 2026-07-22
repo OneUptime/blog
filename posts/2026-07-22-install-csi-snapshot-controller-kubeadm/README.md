@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, kubeadm, CSI, Volume Snapshots, Cluster Administration
+Tags: Kubernetes, Kubeadm, CSI, Volume Snapshot, Cluster Administration
 
 Description: Install and verify the cluster-wide CSI snapshot CRDs and snapshot controller on a kubeadm-managed Kubernetes cluster.
 
@@ -132,7 +132,7 @@ kubectl get deployment DRIVER_CONTROLLER \
   -o jsonpath='{.spec.template.spec.containers[*].name}{"\n"}'
 ```
 
-You should see the CSI driver and, for snapshot-capable installations, an external snapshotter container—often named `csi-snapshotter`. The exact workload name and installation method are vendor-specific. Upgrade or enable the sidecar using the driver's official chart or manifests instead of grafting a random sidecar into the pod: it needs the correct socket, RBAC, arguments, and a version compatible with the driver.
+You should see the CSI driver and, for snapshot-capable installations, an external snapshotter container-often named `csi-snapshotter`. The exact workload name and installation method are vendor-specific. Upgrade or enable the sidecar using the driver's official chart or manifests instead of grafting a random sidecar into the pod: it needs the correct socket, RBAC, arguments, and a version compatible with the driver.
 
 ## Create a driver-matched VolumeSnapshotClass
 

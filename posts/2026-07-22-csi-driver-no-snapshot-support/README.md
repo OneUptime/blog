@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, CSI, Backups, Persistent Storage, Disaster Recovery
+Tags: Kubernetes, CSI, Backup, Persistent Storage, Disaster Recovery
 
 Description: Choose a safe backup, migration, or driver-upgrade path when a Kubernetes CSI driver cannot create or restore volume snapshots.
 

@@ -22,7 +22,7 @@ The backup does not store a semantic instruction such as “column `Status` chan
 
 An index rebuild constructs a new index structure and replaces the old one. It can allocate, write, sort, and deallocate pages across the index. Rebuilding a large index after the weekly full can mark a correspondingly large physical footprint for every later differential based on that full.
 
-Reorganization works more incrementally, but it still changes pages and can mark extents. Do not assume it is “free” for differential size. Choose rebuild versus reorganize from documented index-maintenance needs, fragmentation pattern, workload, logging, available resources, and tested outcomes—not solely from backup size.
+Reorganization works more incrementally, but it still changes pages and can mark extents. Do not assume it is “free” for differential size. Choose rebuild versus reorganize from documented index-maintenance needs, fragmentation pattern, workload, logging, available resources, and tested outcomes-not solely from backup size.
 
 Operational options include:
 

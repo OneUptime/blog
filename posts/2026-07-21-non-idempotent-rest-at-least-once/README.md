@@ -51,12 +51,9 @@ Host: api.provider.example
 Authorization: Bearer REDACTED
 Idempotency-Key: payment-operation-8f2c
 Content-Type: application/json
+Content-Length: 68
 
-{
-  "order_reference": "order-417",
-  "amount_minor": 2599,
-  "currency": "GBP"
-}
+{"order_reference":"order-417","amount_minor":2599,"currency":"GBP"}
 ```
 
 Do not generate a fresh UUID inside the retry loop. That identifies attempts, not the logical payment, and tells the provider to execute each attempt independently.

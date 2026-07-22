@@ -1,4 +1,4 @@
-# Validation Summary: How to Migrate CSI Snapshots and Persistent Volumes to Another Kubernetes Cluster
+# Validation Summary: Migrate CSI Snapshots and Persistent Volumes Between Kubernetes Clusters
 
 ## Status
 validated

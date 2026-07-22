@@ -1,4 +1,4 @@
-# Validation Summary: Kubernetes CSI Volume Snapshots Explained: VolumeSnapshot, VolumeSnapshotContent, and VolumeSnapshotClass
+# Validation Summary: Kubernetes CSI Volume Snapshots: Core Resources Explained
 
 ## Status
 validated

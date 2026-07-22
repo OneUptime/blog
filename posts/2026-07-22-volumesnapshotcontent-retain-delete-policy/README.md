@@ -55,7 +55,7 @@ kubectl get volumesnapshotcontent "$content" \
   -o custom-columns='NAME:.metadata.name,POLICY:.spec.deletionPolicy,DRIVER:.spec.driver,HANDLE:.status.snapshotHandle'
 ```
 
-Changing, deleting, or recreating the class later does not retroactively alter existing content. The API documentation explicitly warns that a class should not be treated as a post-provisioning source of truth. If an individual snapshot needs a different lifecycle, an authorized cluster administrator can patch its content policy before deletion:
+Deleting and recreating the immutable class, even with different values, does not retroactively alter existing content. The API documentation explicitly warns that a class should not be treated as a post-provisioning source of truth. If an individual snapshot needs a different lifecycle, an authorized cluster administrator can patch its content policy before deletion:
 
 ```bash
 kubectl patch volumesnapshotcontent "$content" --type=merge \
@@ -96,10 +96,10 @@ After a retained `VolumeSnapshot` is deleted, the old `VolumeSnapshotContent` is
 
 To import the provider snapshot again, use a controlled administrator workflow:
 
-1. Record the old content's `spec.driver`, `status.snapshotHandle`, `spec.sourceVolumeMode`, and provider metadata.
+1. Record the old content's `spec.driver`, `status.snapshotHandle`, `spec.sourceVolumeMode`, provider metadata, and any `snapshot.storage.kubernetes.io/deletion-secret-name` and `snapshot.storage.kubernetes.io/deletion-secret-namespace` annotations.
 2. Confirm `spec.deletionPolicy: Retain`.
 3. Delete the released content object; with `Retain`, the CSI snapshot should remain in storage.
-4. Create a new pre-provisioned `VolumeSnapshotContent` that names the same provider handle and points to the new namespace and snapshot name.
+4. Create a new pre-provisioned `VolumeSnapshotContent` that names the same provider handle and points to the new namespace and snapshot name. If the driver requires deletion credentials, preserve those annotations or replace them with a valid deletion Secret reference.
 5. Create the matching `VolumeSnapshot` that references that content.
 6. Wait for a valid bidirectional binding and `readyToUse: true` before creating a PVC.
 
@@ -140,7 +140,7 @@ Before cleanup:
 
 - confirm no active `VolumeSnapshot` or restore depends on the handle;
 - verify backup catalog and legal-hold state;
-- ensure the deletion secret referenced by the snapshot class is still available if the driver requires it;
+- ensure the Secret named by the content's deletion-secret annotations is still available if the driver requires it;
 - record an audit event;
 - verify provider-side deletion after Kubernetes cleanup completes.
 

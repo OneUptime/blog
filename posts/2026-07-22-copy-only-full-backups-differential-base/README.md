@@ -8,7 +8,7 @@ Description: Use SQL Server copy-only full backups for ad hoc needs without redi
 
 ---
 
-A copy-only full backup is an independent SQL Server full backup that can be restored normally but cannot become a differential base and does not affect the existing base. Use it when you need an ad hoc full—for a migration, investigation, or test refresh—without changing which full backup later differentials depend on.
+A copy-only full backup is an independent SQL Server full backup that can be restored normally but cannot become a differential base and does not affect the existing base. Use it when you need an ad hoc full-for a migration, investigation, or test refresh-without changing which full backup later differentials depend on.
 
 That small option prevents one of the most damaging backup-coordination failures: a scheduled differential silently depending on an ad hoc full that is later deleted.
 

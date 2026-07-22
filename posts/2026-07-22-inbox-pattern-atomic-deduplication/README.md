@@ -26,7 +26,7 @@ It has a concurrency race. Two workers can both observe “not processed” befo
 
 It also has a crash gap. If the business update commits but the inbox insert does not, redelivery applies the update again. Reversing the two writes creates the opposite gap: the inbox can say processed even though the business update never committed.
 
-The database must accept or roll back both writes as one unit, and uniqueness—not an application-level read—must arbitrate concurrent duplicates.
+The database must accept or roll back both writes as one unit, and uniqueness-not an application-level read-must arbitrate concurrent duplicates.
 
 ## Design the inbox identity
 
@@ -175,7 +175,7 @@ An inbox can grow indefinitely, but deleting entries too early re-enables old du
 - backups or archives that can republish historical events;
 - contractual request-id reuse windows.
 
-For permanent event IDs, archive compact keys or partition the inbox by processing date rather than expiring blindly. Document what happens when replay intentionally exceeds the window: rebuild into a fresh projection with a new consumer scope, or restore the corresponding inbox history.
+For permanent event IDs, keep compact keys rather than expiring blindly. Partitioning the PostgreSQL inbox by processing date needs additional design: a partitioned table's unique constraint must include the partition key, so adding `processed_at` to the key would allow the same message identity in different date partitions. Preserve a non-expiring authoritative key registry, or otherwise enforce `(consumer_name, message_id)` across the required retention window. Document what happens when replay intentionally exceeds the window: rebuild into a fresh projection with a new consumer scope, or restore the corresponding inbox history.
 
 Monitor inbox conflicts, hash mismatches, transaction retries, age and size by consumer, handler outcomes, and time between database commit and broker settlement. A sudden increase in conflicts can reveal visibility expirations, consumer rebalances, relay duplication, or failing acknowledgements.
 

@@ -1,8 +1,8 @@
-# Why Kubernetes Cannot Restore a Snapshot In Place—and How to Roll Back Safely
+# Why Kubernetes Cannot Restore a Snapshot In Place-and How to Roll Back Safely
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, CSI, Volume Snapshots, Rollback, Disaster Recovery
+Tags: Kubernetes, CSI, Volume Snapshot, Rollback, Disaster Recovery
 
 Description: Roll back persistent data safely by restoring a CSI snapshot to a new PVC, validating it, and performing a controlled workload cutover.
 

@@ -1,4 +1,4 @@
-# How to Restore a SQL Server Full Backup and Differential Backup in the Correct Order
+# Restore SQL Server Full and Differential Backups in the Correct Order
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -8,7 +8,7 @@ Description: Restore a matching SQL Server full and differential backup safely w
 
 ---
 
-Restore the matching full backup first with `NORECOVERY`, then restore the chosen differential with `RECOVERY`—or keep using `NORECOVERY` if transaction log backups still need to be applied. The order is simple, but most failed restores come from selecting the wrong full, recovering too soon, or overlooking files, encryption keys, and backup-set positions.
+Restore the matching full backup first with `NORECOVERY`, then restore the chosen differential with `RECOVERY`-or keep using `NORECOVERY` if transaction log backups still need to be applied. The order is simple, but most failed restores come from selecting the wrong full, recovering too soon, or overlooking files, encryption keys, and backup-set positions.
 
 This runbook uses T-SQL because it is explicit, reviewable, and easy to automate.
 
@@ -32,7 +32,7 @@ RESTORE HEADERONLY
 FROM DISK = 'E:\Restore\Sales_diff.bak';
 ```
 
-Record `Position`, `BackupTypeDescription`, `DatabaseName`, `DatabaseCreationDate`, `FirstLSN`, `DatabaseBackupLSN`, `DifferentialBaseLSN`, `DifferentialBaseGUID`, and `IsCopyOnly`. The database differential must match the base full. Timestamps and filenames are hints, not proof.
+Record `Position`, `BackupTypeDescription`, `DatabaseName`, `DatabaseCreationDate`, `FirstLSN`, `CheckpointLSN`, `DatabaseBackupLSN`, `BackupSetGUID`, `DifferentialBaseLSN`, `DifferentialBaseGUID`, `IsCopyOnly`, and `HasBackupChecksums`. For a single-based database differential, its `DatabaseBackupLSN` must match the base full's `CheckpointLSN`; its `DifferentialBaseLSN` and `DifferentialBaseGUID` must match the base full's `FirstLSN` and `BackupSetGUID`, respectively. The base full must not be copy-only. If the header-level differential-base fields are `NULL` for a multibased differential, inspect the per-file `DifferentialBaseLSN` and `DifferentialBaseGUID` values with `RESTORE FILELISTONLY`. Timestamps and filenames are hints, not proof.
 
 Inspect logical files in the selected full backup set:
 
@@ -44,7 +44,7 @@ WITH FILE = 1;
 
 This produces the logical names needed by `MOVE`. Include every data and log file. Confirm destination disk capacity, permissions for the SQL Server service account, and that paths do not collide with an existing database.
 
-If Transparent Data Encryption protected the source, the destination instance needs the certificate or asymmetric key and its private key before restore. A usable `.bak` without the TDE protector is not recoverable.
+If Transparent Data Encryption protected the source, the destination instance needs the certificate and its private key, or access to the EKM-protected asymmetric key, before restore. The protector must be installed in `master`. A usable `.bak` without access to the TDE protector is not recoverable.
 
 ## 3. Restore the Full With `NORECOVERY`
 
@@ -61,7 +61,7 @@ WITH FILE = 1,
 
 `NORECOVERY` performs the restore but leaves the database in the `RESTORING` state so it can accept another backup. This is mandatory before applying the differential.
 
-The examples use `CHECKSUM` because they assume `RESTORE HEADERONLY` reports `HasBackupChecksums = 1`. Explicit `RESTORE ... WITH CHECKSUM` fails when the backup has no backup checksum. For older media without one, omit the option and accept that this layer of validation is unavailable; do not use `NO_CHECKSUM` merely to suppress a checksum failure on media that has one. If SQL Server reports an error, investigate rather than making `CONTINUE_AFTER_ERROR` the routine response.
+The examples use `CHECKSUM` because they assume `RESTORE HEADERONLY` reports `HasBackupChecksums = 1`. Explicit `RESTORE ... WITH CHECKSUM` fails when the backup has no backup checksum. For media without one, omit the option and accept that this layer of validation is unavailable; do not use `NO_CHECKSUM` merely to suppress a checksum failure on media that has one. If SQL Server reports an error, investigate rather than making `CONTINUE_AFTER_ERROR` the routine response.
 
 Use `REPLACE` only after verifying the target. It overrides important safeguards and can overwrite a database or restore over files belonging to another database. A safer normal workflow uses a distinct test database and explicit `MOVE` destinations.
 
@@ -118,7 +118,7 @@ Backups created by a newer SQL Server version cannot be restored to an older ver
 
 ## Troubleshoot Common Failures
 
-**“The differential backup cannot be restored.”** The target was not restored from the differential's actual base, or it was recovered. Match base LSN/GUID metadata and restart from the correct full with `NORECOVERY`.
+**“The differential backup cannot be restored.”** The target was not restored from the differential's actual base, or it was recovered. Match the differential's `DifferentialBaseGUID` to the full's `BackupSetGUID` and its `DatabaseBackupLSN` to the full's `CheckpointLSN`, then restart from the correct full with `NORECOVERY`.
 
 **The database is already online.** `RECOVERY` ran too early. Restart the sequence from the full; an online recovered database cannot accept the remaining backup.
 

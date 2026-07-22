@@ -1,4 +1,4 @@
-# How to Add Transaction Log Backups After a Differential Restore for Point-in-Time Recovery
+# Add Log Backups After a SQL Server Differential Restore
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -8,7 +8,7 @@ Description: Combine a matching full, a differential, and the subsequent SQL Ser
 
 ---
 
-To recover SQL Server to a point after a differential backup, restore the differential's matching full with `NORECOVERY`, restore the differential with `NORECOVERY`, then restore every required subsequent transaction log in order. Use `STOPAT` on the log backup containing the target and `RECOVERY` only when the sequence is complete.
+To recover SQL Server to a point after a differential backup, restore the differential's matching full with `NORECOVERY`, restore the differential with `NORECOVERY`, then restore every required subsequent transaction log in order. Specify the same `STOPAT` value on every log restore; it takes effect on the log backup containing the target. Use `RECOVERY` only when the sequence is complete.
 
 The differential gives you a later data starting point. The transaction log supplies the ordered changes and precise stopping capability.
 
@@ -17,10 +17,10 @@ The differential gives you a later data starting point. The transaction log supp
 Point-in-time recovery requires a database using the full recovery model, or the bulk-logged model with restrictions around minimally logged operations. The log chain must have been established and remain unbroken. You need:
 
 - the exact full backup that is the differential base;
-- a valid differential completed no later than the target time;
+- a valid differential whose endpoint is earlier than the target time;
 - all log backups required after the differential's recovery point through the target;
 - a tail-log backup when the source state permits and recovering the final interval matters;
-- any TDE certificate or other encryption protector;
+- the TDE certificate and matching private key, or other required encryption protector;
 - enough destination space and a supported SQL Server version.
 
 Microsoft notes that a point-in-time target is always interpreted as a point in a log backup. Data backups establish the restore starting point; log records roll the database forward.
@@ -37,7 +37,7 @@ RESTORE HEADERONLY FROM DISK = 'E:\Restore\Sales_log_001.trn';
 
 Confirm the full/differential base relationship. For the logs, confirm overlapping, continuous `FirstLSN` and `LastLSN` ranges that cover the target. A log backup can span the time recorded in its filename, and server clocks can complicate timestamp reasoning. Let SQL Server validate the LSN sequence.
 
-Choose the latest valid differential at or before the desired point. A differential completed after the target has already incorporated a later database state and cannot be used to roll backward.
+Choose the latest valid differential whose endpoint is earlier than the desired point. A differential that is too recent has already incorporated a later database state and cannot be used to roll backward.
 
 ## Restore Full and Differential Without Recovery
 
@@ -47,27 +47,31 @@ FROM DISK = 'E:\Restore\Sales_full.bak'
 WITH FILE = 1,
      MOVE 'Sales_Data' TO 'F:\SQLData\Sales_PITR.mdf',
      MOVE 'Sales_Log'  TO 'G:\SQLLog\Sales_PITR.ldf',
-     NORECOVERY, CHECKSUM, STATS = 10;
+     NORECOVERY, STATS = 10;
 
 RESTORE DATABASE Sales_PITR
 FROM DISK = 'E:\Restore\Sales_diff.bak'
-WITH FILE = 1, NORECOVERY, CHECKSUM, STATS = 10;
+WITH FILE = 1, NORECOVERY, STATS = 10;
 ```
 
 The target stays in `RESTORING`. If either statement uses `RECOVERY`, SQL Server rolls back incomplete transactions and brings the database online; you must restart from the full before applying more backups.
 
 ## Apply Logs in Order
 
-Restore every required log before the one containing the target:
+Restore every required log before the one containing the target, repeating the identical `STOPAT` value on each statement:
 
 ```sql
 RESTORE LOG Sales_PITR
 FROM DISK = 'E:\Restore\Sales_log_001.trn'
-WITH FILE = 1, NORECOVERY, CHECKSUM;
+WITH FILE = 1,
+     STOPAT = '2026-07-22T14:37:00',
+     NORECOVERY;
 
 RESTORE LOG Sales_PITR
 FROM DISK = 'E:\Restore\Sales_log_002.trn'
-WITH FILE = 1, NORECOVERY, CHECKSUM;
+WITH FILE = 1,
+     STOPAT = '2026-07-22T14:37:00',
+     NORECOVERY;
 ```
 
 Then stop inside the applicable log backup:
@@ -77,13 +81,12 @@ RESTORE LOG Sales_PITR
 FROM DISK = 'E:\Restore\Sales_log_003.trn'
 WITH FILE = 1,
      STOPAT = '2026-07-22T14:37:00',
-     RECOVERY,
-     CHECKSUM;
+     RECOVERY;
 ```
 
 Use an unambiguous ISO-style time and confirm how the target maps to the database server's recorded time. The restore stops before the first transaction whose commit time is after the specified time. Long-running transactions and application-visible effects mean the business state should be validated, not inferred only from wall-clock time.
 
-Microsoft recommends restoring intermediate logs with `NORECOVERY`, then recovering in a separate `RESTORE DATABASE ... WITH RECOVERY` operation after the final log. That pattern makes the boundary explicit and reduces accidental early recovery:
+Microsoft recommends restoring all logs with `NORECOVERY`, then recovering in a separate `RESTORE DATABASE ... WITH RECOVERY` operation after the final log. That pattern makes the boundary explicit and reduces accidental early recovery:
 
 ```sql
 RESTORE LOG Sales_PITR
@@ -97,7 +100,7 @@ RESTORE DATABASE Sales_PITR WITH RECOVERY;
 
 A full database backup contains enough log for its own transactional consistency, but it does not replace the later log backups. A differential also includes enough log for its own consistency; it does not contain the entire log sequence since the full as restorable log backup members.
 
-The first log you apply after a differential must contain an LSN that follows the database state established by that differential. You might not need every log since the full when a later differential is used, but you do need every required log from the chosen starting state onward. Let SQL Server's LSN checks determine applicability rather than deleting earlier logs based on dates.
+The first log you apply after a differential must contain the LSN needed to continue from the database state established by that differential. You might not need every log since the full when a later differential is used, but you do need every required log from the chosen starting state onward. Let SQL Server's LSN checks determine applicability rather than deleting earlier logs based on dates.
 
 A newer full backup generally does not break the log chain. Log backups can span full backups. The restore plan may choose a later full or differential to reduce work while preserving the same continuous log history.
 

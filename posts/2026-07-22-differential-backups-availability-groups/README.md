@@ -1,4 +1,4 @@
-# Differential Backups in SQL Server Availability Groups: Primary and Secondary Replica Rules
+# SQL Server Differential Backups in Availability Groups
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

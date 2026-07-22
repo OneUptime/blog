@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Groundcover, Karpenter, Spot Instances, Kubernetes, Observability Cost
+Tags: Groundcover, Karpenter, Spot Instance, Kubernetes, Observability Cost
 
 Description: Understand how autoscaled and interrupted Spot nodes affect Groundcover's average-host subscription, sensor coverage, and separate BYOC costs.
 

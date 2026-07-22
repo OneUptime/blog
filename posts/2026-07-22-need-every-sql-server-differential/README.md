@@ -30,11 +30,11 @@ To reach the Wednesday differential state, restore `F1` and `D3`. Do not restore
 ```sql
 RESTORE DATABASE Sales_Restore
 FROM DISK = 'E:\Restore\Sales_F1.bak'
-WITH NORECOVERY, CHECKSUM;
+WITH NORECOVERY;
 
 RESTORE DATABASE Sales_Restore
 FROM DISK = 'E:\Restore\Sales_D3.bak'
-WITH RECOVERY, CHECKSUM;
+WITH RECOVERY;
 ```
 
 If log backups must follow, restore `D3` with `NORECOVERY`, apply the required logs in order, and recover only on the final log.
@@ -57,7 +57,7 @@ FROM DISK = 'E:\Restore\Sales_D3.bak';
 
 For a single-based differential, use `DifferentialBaseLSN` and `DifferentialBaseGUID` to identify the base. Also check `DatabaseName`, database identity, backup type, backup-set `Position`, and copy-only status. A copy-only full does not become a differential base.
 
-File and partial backup strategies can be multi-based, meaning different files have different bases. Then the database-level base fields can be null and file-level metadata from `RESTORE FILELISTONLY` becomes important. The simple two-file rule applies to conventional full database plus differential database backups.
+File and partial backup strategies can be multi-based, meaning different files have different bases. Then the database-level base fields can be null and file-level metadata from `RESTORE FILELISTONLY` becomes important. The simple two-backup-set rule applies to conventional full database plus differential database backups.
 
 ## Why Keep Older Differentials?
 
@@ -83,14 +83,14 @@ Assume `D3` completed Wednesday at 00:00 and the target is Wednesday at 14:37. R
 
 1. `F1` with `NORECOVERY`;
 2. `D3` with `NORECOVERY`;
-3. every log backup required from the differential's recovery point through 14:37;
-4. the final log with `STOPAT` and `RECOVERY`.
+3. each required log backup before the backup containing 14:37, in order, with the same `STOPAT` target and `NORECOVERY`;
+4. the log backup containing 14:37 with that same `STOPAT` target and `RECOVERY`.
 
 You can instead start from `F1` and apply the longer required log sequence without any differential, as long as the entire log chain is available. The differential is an optimization and a recovery point, not the foundation of log-chain continuity.
 
 When choosing among differentials, use the newest valid one at or before the target time whose base and subsequent log chain are available. A differential after the target cannot be used to travel backward to an earlier time.
 
-## Minimum Files for Common Goals
+## Minimum Backup Sets for Common Goals
 
 | Recovery goal | Minimum conventional sequence |
 | --- | --- |
@@ -100,7 +100,7 @@ When choosing among differentials, use the newest valid one at or before the tar
 | Point without using a differential | Full + every required log after it |
 | State at older differential | Its matching full + that older differential |
 
-A tail-log backup may be needed to preserve the final active-log interval before restoring over a damaged source. Encryption keys, credentials, and backup catalog data are also operational dependencies even though they are not members of the restore sequence.
+A tail-log backup may be needed to preserve the final active-log interval before restoring over a damaged source. Depending on how backups are protected and stored, encryption keys or certificates and storage credentials can also be operational dependencies. Backup catalog data is useful for discovery but is not a member of the restore sequence.
 
 ## Test the Claim
 

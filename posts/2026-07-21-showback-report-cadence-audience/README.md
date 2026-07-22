@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: FinOps, Showback, Reporting, Cloud Costs
+Tags: FinOps, Showback, Reporting, Cloud Cost
 
 Description: Set a practical showback cadence for Engineering, Product, Finance, platform teams, Procurement, and leaders without mixing estimates with final invoices.
 

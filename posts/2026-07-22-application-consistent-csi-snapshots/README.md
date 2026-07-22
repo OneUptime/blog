@@ -1,4 +1,4 @@
-# How to Make CSI Snapshots Application-Consistent for PostgreSQL, MySQL, and MongoDB
+# Application-Consistent CSI Snapshots for PostgreSQL, MySQL, and MongoDB
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

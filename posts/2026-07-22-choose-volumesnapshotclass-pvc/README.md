@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, CSI, VolumeSnapshotClass, Persistent Volumes, Backup Policy
+Tags: Kubernetes, CSI, VolumeSnapshotClass, Persistent Volume, Backup Policy
 
 Description: Match a PVC to a compatible VolumeSnapshotClass while choosing safe deletion, credential, and backend snapshot policies.
 
@@ -74,7 +74,7 @@ Every class requires `deletionPolicy: Delete` or `Retain`:
 - `Delete` means deleting the `VolumeSnapshot` leads to deletion of its `VolumeSnapshotContent` and a CSI `DeleteSnapshot` call for the backend snapshot.
 - `Retain` leaves the `VolumeSnapshotContent` and backend snapshot after the namespaced request is deleted. A cluster administrator must manage them later.
 
-For short-lived development copies, `Delete` can prevent abandoned snapshots. For recovery points that must survive namespace or backup-object deletion, `Retain` is safer—but only with inventory, retention, and manual cleanup automation.
+For short-lived development copies, `Delete` can prevent abandoned snapshots. For recovery points that must survive namespace or backup-object deletion, `Retain` is safer-but only with inventory, retention, and manual cleanup automation.
 
 This policy is copied to the dynamically created content object. It is independent of the source PV's `persistentVolumeReclaimPolicy`, and it does not make a snapshot off-cluster or immutable in the storage backend.
 

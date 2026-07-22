@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Groundcover, Vendor Lock-In, Data Portability, ClickHouse, VictoriaMetrics, OpenTelemetry, Prometheus
+Tags: Groundcover, Vendor Lock-in, Data Portability, ClickHouse, VictoriaMetrics, OpenTelemetry, Prometheus
 
 Description: Evaluate Groundcover portability across telemetry, schemas, queries, dashboards, storage, and operations, then prepare a testable exit plan.
 

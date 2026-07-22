@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Distributed Systems, Message Delivery, Kafka, RabbitMQ, Amazon SQS, Exactly-Once, Reliability
+Tags: Distributed System, Message Delivery, Kafka, RabbitMQ, Amazon SQS, Exactly-Once, Reliability
 
 Description: Choose message delivery semantics by testing loss, retry, crash, and side-effect failures instead of relying on an unscoped broker label.
 

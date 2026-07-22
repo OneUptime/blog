@@ -130,7 +130,7 @@ A mature drill rotates through:
 - failover between availability-group backup jobs;
 - destination with different file paths or limited capacity.
 
-The automation should choose a valid alternative when policy permits and otherwise produce a precise, actionable failure—not silently select a later or less-protected recovery point.
+The automation should choose a valid alternative when policy permits and otherwise produce a precise, actionable failure-not silently select a later or less-protected recovery point.
 
 ## Clean Up Safely
 

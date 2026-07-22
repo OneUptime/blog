@@ -1,14 +1,14 @@
-# How SQL Server Differential Backups Use the Differential Change Map
+# How SQL Server Differential Backups Use the Differential Changed Map
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: SQL Server, Differential Backup, DCM, Database Internals, Backup Performance
 
-Description: Learn how SQL Server's Differential Change Map tracks changed extents, why small writes can enlarge a differential, and when a new full base resets growth.
+Description: Learn how SQL Server's Differential Changed Map tracks changed extents, why small writes can enlarge a differential, and when a new full base resets growth.
 
 ---
 
-SQL Server does not discover differential changes by comparing every data page with a full backup file. It maintains Differential Change Map, or DCM, pages inside each database file. A DCM bit tells the backup engine whether an extent has changed since the applicable full backup.
+SQL Server does not discover differential changes by comparing every data page with a full backup file. It maintains Differential Changed Map, or DCM, pages inside each database data file. A DCM bit tells the backup engine whether an extent has changed since the applicable full backup.
 
 This makes differential backups efficient when a small share of the database has changed. It also explains why logical row-change volume and differential backup size can differ dramatically.
 
@@ -19,7 +19,7 @@ The fundamental SQL Server data page is 8 KiB. Eight physically contiguous pages
 - `0` means SQL Server has not marked that extent as changed since the differential base;
 - `1` means at least one page in that extent changed after the base.
 
-When a differential backup runs, SQL Server consults these maps to find candidate extents rather than scanning and writing the entire database. Microsoft documents that DCM and Bulk Change Map pages occur at the same approximate 4 GiB intervals as Global Allocation Map and Shared Global Allocation Map pages.
+When a differential backup runs, SQL Server consults these maps to find candidate extents rather than scanning and writing the entire database. Microsoft documents that DCM and Bulk Changed Map pages occur at the same approximate 4 GiB intervals as Global Allocation Map and Shared Global Allocation Map pages.
 
 The unit is an extent, not a row. Updating a few bytes on one page can make the differential capture the current contents of the containing 64 KiB extent. Repeatedly updating that same extent does not add another historical copy to the same differential; the eventual backup contains the extent's state as needed for recovery.
 
@@ -53,7 +53,7 @@ Common causes include:
 - maintenance that moves data even when business values barely change;
 - workloads spread across a large working set.
 
-Compression may make the `.bak` file smaller, but it does not make fewer DCM bits relevant. Compare `BackupSize` with `CompressedBackupSize` in `msdb.dbo.backupset` to separate changed extent volume from output compression.
+Compression may make the `.bak` file smaller, but it does not make fewer DCM bits relevant. Compare `backup_size` with `compressed_backup_size` in `msdb.dbo.backupset` to distinguish the uncompressed backup-set size from the stored compressed size.
 
 ## Observe Differential Growth Safely
 
@@ -82,7 +82,7 @@ Some SQL Server versions expose changed-extent estimates through dynamic managem
 
 ## DCM Is Not the Transaction Log
 
-DCM answers a data-placement question: which extents changed since a base? The transaction log records ordered database changes needed for transactional recovery. The Bulk Change Map, or BCM, is another allocation bitmap used with minimally logged bulk operations under the bulk-logged recovery model; it is not the DCM.
+DCM answers a data-placement question: which extents changed since a base? The transaction log records ordered database changes needed for transactional recovery. The Bulk Changed Map, or BCM, is another allocation bitmap used with minimally logged bulk operations under the bulk-logged recovery model; it is not the DCM.
 
 These structures enable different recovery capabilities:
 

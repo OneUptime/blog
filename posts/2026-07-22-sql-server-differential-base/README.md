@@ -8,7 +8,7 @@ Description: Identify the exact full backup that a SQL Server differential depen
 
 ---
 
-The differential base is the data backup whose state a SQL Server differential uses as its starting point. For a conventional database differential, it is normally the most recent successful non-copy-only full database backup that can act as a base—not whichever `.bak` file has the most convenient timestamp or filename.
+The differential base is the data backup whose state a SQL Server differential uses as its starting point. For a conventional database differential, it is normally the most recent successful non-copy-only full database backup that can act as a base-not whichever `.bak` file has the most convenient timestamp or filename.
 
 You must restore that base before its differential. Restoring a different full, even one that looks older or newer for the same database, causes the differential restore to fail or produces an invalid recovery plan.
 
@@ -109,11 +109,11 @@ FROM DISK = 'E:\Restore\Sales_full_base.bak'
 WITH FILE = 1,
      MOVE 'Sales_Data' TO 'F:\SQLData\Sales_RestoreTest.mdf',
      MOVE 'Sales_Log'  TO 'G:\SQLLog\Sales_RestoreTest.ldf',
-     NORECOVERY, CHECKSUM;
+     NORECOVERY;
 
 RESTORE DATABASE Sales_RestoreTest
 FROM DISK = 'E:\Restore\Sales_diff.bak'
-WITH FILE = 1, RECOVERY, CHECKSUM;
+WITH FILE = 1, RECOVERY;
 ```
 
 If transaction log backups follow, leave the differential in `NORECOVERY`, restore every required log in order, and use `RECOVERY` only on the last step. A tail-log backup may be required before overwriting a damaged but accessible source database.

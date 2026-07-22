@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, CSI, Volume Snapshots, VolumeSnapshotContent, Persistent Storage
+Tags: Kubernetes, CSI, Volume Snapshot, VolumeSnapshotContent, Persistent Storage
 
 Description: Choose between dynamic CSI snapshot creation and static import of a pre-existing backend snapshot into Kubernetes.
 

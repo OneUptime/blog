@@ -1,4 +1,4 @@
-# Validation Summary: Producer Retries vs. Consumer Reprocessing: Finding the Source of Duplicate Kafka Messages
+# Validation Summary: Kafka Producer Retries vs. Consumer Reprocessing: Finding Duplicate Sources
 
 ## Status
 validated

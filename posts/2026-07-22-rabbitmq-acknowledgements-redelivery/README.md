@@ -95,7 +95,7 @@ A message can be redelivered to the same consumer or another one. Code must not 
 
 ## Bound unacknowledged work with prefetch
 
-Prefetch limits the number of unacknowledged deliveries RabbitMQ will allow before sending more. It controls both memory pressure and the maximum set of deliveries exposed to replay when a channel fails.
+Prefetch limits the number of unacknowledged deliveries RabbitMQ will allow before sending more. RabbitMQ applies `basicQos(count)` separately to each new consumer by default. It controls memory pressure and, together with the number of consumers on a channel, bounds the set of deliveries exposed to replay when that channel fails.
 
 ```java
 channel.basicQos(50);
@@ -114,7 +114,7 @@ An always-failing message combined with `requeue=true` can circulate rapidly amo
 - move exhausted messages to a dead-letter destination with failure context;
 - alert on redelivery count and dead-letter arrival.
 
-RabbitMQ quorum queues track unsuccessful delivery attempts and expose counts in headers. Modern quorum queues have a delivery limit, and RabbitMQ recommends dead-letter configuration so exhausted messages are not discarded unintentionally. Check the documentation for the exact counter behavior in the RabbitMQ version you operate; `basic.nack`, `basic.reject`, consumer loss, and timeouts do not all update counters identically across versions.
+RabbitMQ quorum queues expose `x-delivery-count` on redeliveries. Starting with RabbitMQ 4.3, they also expose `x-acquired-count`, the recommended counter for how often a message has been assigned to a consumer. Since RabbitMQ 4.0, quorum queues have a default delivery limit of 20, and RabbitMQ recommends dead-letter configuration so exhausted messages are not discarded unintentionally. In RabbitMQ 4.3, `basic.reject` and connection loss increment `delivery-count`, while `basic.nack`, suspected consumer-node loss during an intra-cluster partition, and consumer timeouts do not. Check the documentation for the exact counter behavior in the RabbitMQ version you operate because earlier releases used different counting rules.
 
 Delay retries using an explicit retry queue or supported delayed-retry mechanism rather than sleeping while holding an unacknowledged delivery. A sleeping consumer consumes prefetch capacity, extends the acknowledgement window, and makes recovery slower.
 
@@ -122,19 +122,20 @@ Delay retries using an explicit retry queue or supported delayed-retry mechanism
 
 Publish a stable message ID or business operation ID. Do not generate it when the consumer receives the message, because each redelivery would get a different value.
 
-For a relational database, enforce uniqueness in the same transaction as the effect:
+For a relational database, enforce a unique constraint on `(consumer_name, message_id)` and use it in the same transaction as the effect:
 
 ```sql
 BEGIN;
 
-INSERT INTO message_inbox (consumer_name, message_id, received_at)
-VALUES ('shipment-worker', :message_id, now())
-ON CONFLICT (consumer_name, message_id) DO NOTHING
-RETURNING message_id;
-
--- Execute only if the INSERT returned a row.
+WITH accepted AS (
+    INSERT INTO message_inbox (consumer_name, message_id, received_at)
+    VALUES ('shipment-worker', :message_id, now())
+    ON CONFLICT (consumer_name, message_id) DO NOTHING
+    RETURNING message_id
+)
 INSERT INTO shipments (order_id, status)
-VALUES (:order_id, 'requested');
+SELECT :order_id, 'requested'
+FROM accepted;
 
 COMMIT;
 ```
@@ -159,8 +160,8 @@ Automate at least these failure points:
 2. Exit after the transaction commits but before `basic.ack`: the message should return, but the effect should remain singular.
 3. Close the channel with several unacknowledged deliveries: all unfinished deliveries should be safe to replay.
 4. Send the same delivery through two consumers concurrently: the uniqueness boundary should choose one winner.
-5. Requeue a permanent failure until its configured limit: it should reach the intended dead-letter path.
-6. Lose the acknowledgement response: retry and recovery should not create another business result.
+5. On RabbitMQ 4.3 or later, requeue a permanent failure on a quorum queue with `basic.reject(..., true)` until its configured delivery limit: it should reach the intended dead-letter path.
+6. Lose the connection while the acknowledgement frame is in flight: retry and recovery should not create another business result.
 
 Monitor ready and unacknowledged message counts, redelivery rates, acknowledgement latency, channel closures, consumer capacity, dead-letter traffic, and inbox conflicts. A rising inbox-conflict rate is evidence that the idempotency mechanism is protecting the system, but it also signals a retry or stability issue worth investigating.
 

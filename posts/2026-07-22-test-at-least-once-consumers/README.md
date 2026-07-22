@@ -10,7 +10,7 @@ Description: Prove consumer correctness with deterministic crash points, real br
 
 The defining test for an at-least-once consumer is not that its handler runs once. It is that every accepted message eventually has the required durable effect, while any number of delivery attempts still produce one valid business outcome.
 
-Build deterministic failpoints around the business commit and broker settlement, then add real broker integration tests for visibility expiry, connection loss, and consumer reassignment. Assert durable invariants and recovery progress—not invocation counts or quiet logs.
+Build deterministic failpoints around the business commit and broker settlement, then add real broker integration tests for visibility expiry, connection loss, and consumer reassignment. Assert durable invariants and recovery progress-not invocation counts or quiet logs.
 
 ## Write the invariant before the test
 
@@ -143,7 +143,7 @@ Toxiproxy can create latency, timeout, bandwidth, and connection-cut faults. Kee
 
 Do not wait for the broker to create every race. Call the same handler concurrently with the same stable event ID through its delivery adapter. Synchronize both workers immediately before the inbox insert, then release them together.
 
-The database unique constraint—not an in-memory mutex—must choose one winner. Run this test against the real database and transaction isolation used in production. Verify the losing delivery is recognized as a duplicate and is safe to settle.
+The database unique constraint-not an in-memory mutex-must choose one winner. Run this test against the real database and transaction isolation used in production. Verify the losing delivery is recognized as a duplicate and is safe to settle.
 
 Add a negative case: the same event ID with a different payload fingerprint must be quarantined or rejected as an identity collision, not silently accepted as a duplicate.
 

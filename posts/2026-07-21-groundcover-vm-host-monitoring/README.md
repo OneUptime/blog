@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Groundcover, Linux, Virtual Machines, Host Monitoring
+Tags: Groundcover, Linux, Virtual Machine, Host Monitoring
 
 Description: Understand Groundcover's Linux host support, deployment requirements, available telemetry, security model, and limits outside Kubernetes.
 

@@ -105,9 +105,9 @@ FROM DISK = 'E:\Restore\Sales_diff_20260722.bak'
 WITH FILE = 1, RECOVERY, CHECKSUM;
 ```
 
-If transaction logs follow, use `NORECOVERY` on the differential and recover only after the last log. If TDE protects the source, restore the certificate or asymmetric key and private key before restoring the database.
+If transaction logs follow, use `NORECOVERY` on the differential and recover only after the last log. If TDE protects the source, make the certificate and its private key, or the EKM-backed asymmetric key, available in `master` on the target before restoring the database.
 
-`RESTORE VERIFYONLY` can check that the selected backup set is readable and complete according to its metadata and checksums. It does not apply the chain, run recovery, perform `DBCC CHECKDB`, or validate the application. Only a real restore proves that the base and differential work together in the target environment.
+`RESTORE VERIFYONLY` checks that the selected backup set is complete and all volumes are readable, and verifies checksums when they are present on the media. It does not apply the chain, run recovery, perform `DBCC CHECKDB`, or validate the application. Only a real restore proves that the base and differential work together in the target environment.
 
 ## Automate Without Hiding Evidence
 

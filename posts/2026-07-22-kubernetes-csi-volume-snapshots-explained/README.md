@@ -1,8 +1,8 @@
-# Kubernetes CSI Volume Snapshots Explained: VolumeSnapshot, VolumeSnapshotContent, and VolumeSnapshotClass
+# Kubernetes CSI Volume Snapshots: Core Resources Explained
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, CSI, Volume Snapshots, Persistent Storage, Disaster Recovery
+Tags: Kubernetes, CSI, Volume Snapshot, Persistent Storage, Disaster Recovery
 
 Description: Understand how Kubernetes coordinates CSI snapshots through VolumeSnapshot, VolumeSnapshotContent, and VolumeSnapshotClass resources.
 

@@ -1,4 +1,4 @@
-# Validation Summary: How to Restore One StatefulSet Replica from a VolumeSnapshot Without Losing Its PVC Identity
+# Validation Summary: Restore One StatefulSet Replica Without Losing Its PVC Identity
 
 ## Status
 validated

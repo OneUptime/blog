@@ -70,7 +70,7 @@ after durable success:
 
 Renewing at one-third or one-half of the timeout leaves room for a transient API failure. Add jitter so a large worker fleet does not renew every message simultaneously. Bound total processing time and renewal attempts; heartbeats should not keep a poisoned or deadlocked operation invisible forever.
 
-Stop applying new side effects if the renewal deadline passes without confirmation. This is only an application rule—the old thread is still running—so cancellation must propagate into database and HTTP operations where possible.
+Stop applying new side effects if the renewal deadline passes without confirmation. This is only an application rule-the old thread is still running-so cancellation must propagate into database and HTTP operations where possible.
 
 ## Receipt handles belong to receive attempts
 

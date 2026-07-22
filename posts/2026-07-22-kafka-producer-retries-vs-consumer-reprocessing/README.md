@@ -1,4 +1,4 @@
-# Producer Retries vs. Consumer Reprocessing: Finding the Source of Duplicate Kafka Messages
+# Kafka Producer Retries vs. Consumer Reprocessing: Finding Duplicate Sources
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -150,7 +150,7 @@ For protocol-level producer retry duplicates, enable idempotence and compatible 
 
 Avoid deleting all duplicates from a topic based only on equal payloads. Kafka records are immutable facts, and separate identical-looking events may be legitimate. Correct the processing projection, preserve audit evidence, and repair the producer or consumer boundary that created the unwanted result.
 
-The central operational rule is simple: always record both Kafka identity and business identity. Without both, teams can spend hours tuning a producer for a consumer-offset problem—or changing commit logic when an outbox relay is actually publishing twice.
+The central operational rule is simple: always record both Kafka identity and business identity. Without both, teams can spend hours tuning a producer for a consumer-offset problem-or changing commit logic when an outbox relay is actually publishing twice.
 
 ## Official Documentation
 

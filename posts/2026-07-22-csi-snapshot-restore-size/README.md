@@ -55,13 +55,13 @@ spec:
     apiGroup: snapshot.storage.k8s.io
 ```
 
-Kubernetes and the CSI provisioning path reject a requested volume that is smaller than a specified `restoreSize`. Requesting exactly the displayed quantity is usually the clearest choice. Requesting a larger value can work when the driver supports creating that capacity from a snapshot; normal volume and filesystem expansion rules then determine how the additional space becomes usable.
+Kubernetes and the CSI provisioning path reject a requested volume that is smaller than a specified `restoreSize`. Requesting exactly the displayed quantity is usually the clearest choice. Requesting a larger value can work when the driver supports creating that capacity from a snapshot. The CSI specification permits the driver to reject such a request with `OUT_OF_RANGE`; if it accepts, it must provide the requested capacity and, for a filesystem volume, resize the filesystem by or before `NodePublishVolume`.
 
 Do not request less storage merely because `du` showed only 12 GiB of files on a 100 GiB source. A block-level snapshot describes the source volume's complete addressable size, not its filesystem's used blocks. To produce a smaller destination, restore at the minimum supported size and perform a separate, application-aware migration into a smaller volume.
 
 ## Why the Restored PV Can Be Larger
 
-Storage systems allocate in provider-specific increments. A request for `100Gi` can result in a PV whose `status.capacity.storage` is larger, provided it satisfies the claim. A StorageClass can also select a backend with its own minimum size.
+Storage systems allocate in provider-specific increments. A request for `100Gi` can result in a PV whose `spec.capacity.storage` is larger, provided it satisfies the claim. A StorageClass can also select a backend with its own minimum size.
 
 Compare all three values after provisioning:
 
@@ -86,7 +86,7 @@ None tells you how many application bytes are logically in use or how much incre
 
 Suppose `restoreSize` is `100Gi` and the replacement PVC requests `200Gi`. The CSI driver receives a request to create a 200 GiB volume whose content source is the snapshot. Whether this succeeds depends on driver and backend capabilities.
 
-For `volumeMode: Filesystem`, the node-side CSI workflow or Kubernetes filesystem resize path must also make the filesystem see the additional capacity. Check the claim's conditions and events, and verify inside the mounted pod:
+For `volumeMode: Filesystem`, a CSI plugin that accepts the larger restore must make the filesystem see the requested capacity by or before `NodePublishVolume`. Check the claim's conditions and events, and verify inside the mounted pod:
 
 ```bash
 kubectl -n payments describe pvc payments-data-restore
@@ -99,7 +99,7 @@ StorageClass `allowVolumeExpansion: true` controls later edits that grow a bound
 
 ## Volume Mode Is a Separate Constraint
 
-Capacity compatibility does not imply mode compatibility. By default, a snapshot from a `Filesystem` volume must restore to `Filesystem`, and a snapshot from a `Block` volume must restore to `Block`. Kubernetes records the source mode on `VolumeSnapshotContent` and prevents unauthorized conversion.
+Capacity compatibility does not imply mode compatibility. When `VolumeSnapshotContent.spec.sourceVolumeMode` is set, a snapshot from a `Filesystem` volume must restore to `Filesystem`, and a snapshot from a `Block` volume must restore to `Block` by default. Kubernetes records the mode for dynamically provisioned snapshots; for a pre-provisioned snapshot, the administrator must populate it so that Kubernetes can prevent unauthorized conversion.
 
 An administrator can deliberately add `snapshot.storage.kubernetes.io/allow-volume-mode-change: "true"` to the content object. That bypasses the protection; it does not transform a filesystem into an application-ready raw block layout or vice versa. Keep the original mode unless a tested storage-specific procedure requires conversion.
 

@@ -18,7 +18,7 @@ A FIFO consumer can still execute business code again after its visibility timeo
 |---|---|---|
 | Delivery model | At least once | SQS does not introduce duplicates under FIFO deduplication rules |
 | Ordering | Best effort; messages may arrive out of order | Strict within each `MessageGroupId` |
-| Producer retry deduplication | None | Same deduplication ID suppressed within five minutes |
+| Producer retry deduplication | None | Same deduplication ID suppressed within its configured scope for five minutes |
 | Parallelism | Broad queue-level concurrency | Concurrent across groups, sequential within a group |
 | Consumer visibility | Message hidden temporarily after receive | Same, plus later messages in that group are withheld |
 | Need for idempotent effects | Yes | Yes |
@@ -37,9 +37,9 @@ Use standard queues when very high throughput and loose ordering fit the workloa
 
 Every FIFO send needs a `MessageGroupId` and a deduplication identity. You can supply `MessageDeduplicationId` explicitly or enable content-based deduplication.
 
-With an explicit ID, sends using the same value during the five-minute deduplication interval are accepted but only one copy is introduced into the queue. SQS continues tracking the ID even after the message is received and deleted.
+With an explicit ID, sends using the same value in the configured deduplication scope during the five-minute interval are accepted but only one copy is introduced into the queue. `DeduplicationScope` can apply to the entire queue or to each message group; high-throughput FIFO requires message-group scope. SQS continues tracking the ID even after the message is received and deleted.
 
-With content-based deduplication, SQS computes a SHA-256 hash from the message body. Message attributes are not included. Two messages with the same body but different attributes therefore collide, while semantically equivalent bodies with different JSON formatting may not.
+With content-based deduplication, SQS computes a SHA-256 hash from the message body. Message attributes are not included. Within the configured deduplication scope, two messages with the same body but different attributes therefore collide, while semantically equivalent bodies with different JSON formatting may not.
 
 An explicit business-derived ID is usually clearer:
 
@@ -85,20 +85,22 @@ worker B runs the handler again
 
 FIFO has not introduced a second queued send. The original message is being retried because it was never settled. This behavior preserves reliable processing after consumer failure.
 
-There is no distributed transaction joining an arbitrary database or external API to SQS deletion. Deleting before the effect risks loss; deleting after the effect permits repetition. Keep the latter order and make the effect idempotent.
+There is no distributed transaction joining an arbitrary database or external API to SQS deletion. Deleting before the effect risks loss; deleting after the effect permits repetition. Keep the latter order and make the effect idempotent. The inbox table needs a `UNIQUE` or `PRIMARY KEY` constraint on `(consumer_name, event_id)` so the conflict target can arbitrate concurrent claims.
 
 ```sql
 BEGIN;
 
-INSERT INTO consumed_operation (consumer_name, event_id, processed_at)
-VALUES ('order-worker', :event_id, now())
-ON CONFLICT (consumer_name, event_id) DO NOTHING
-RETURNING event_id;
-
--- Apply only for the row returned above.
+WITH claimed AS (
+  INSERT INTO consumed_operation (consumer_name, event_id, processed_at)
+  VALUES ('order-worker', :event_id, now())
+  ON CONFLICT (consumer_name, event_id) DO NOTHING
+  RETURNING event_id
+)
 UPDATE orders
 SET status = 'shipped', version = :version
-WHERE order_id = :order_id AND version < :version;
+WHERE order_id = :order_id
+  AND version < :version
+  AND EXISTS (SELECT 1 FROM claimed);
 
 COMMIT;
 ```
@@ -126,7 +128,7 @@ For failed `ReceiveMessage` calls on FIFO queues, `ReceiveRequestAttemptId` can 
 
 ## Partial batch failures need order-aware handling
 
-AWS Lambda event source mappings invoke SQS handlers at least once. By default, one exception makes all messages in the batch visible again, including records already processed. Enabling `ReportBatchItemFailures` lets the function identify failed records and avoids needless retries of successful records.
+AWS Lambda event source mappings invoke SQS handlers at least once. By default, one exception causes all messages in the batch to become visible again after the visibility timeout expires, including records already processed. Enabling `ReportBatchItemFailures` lets the function identify failed records and avoids needless retries of successful records.
 
 For FIFO queues, AWS instructs handlers to stop after the first failure and report the failed and all unprocessed records. Continuing past the failed record would let later work in the group overtake it at the application layer, despite ordered delivery from the queue.
 

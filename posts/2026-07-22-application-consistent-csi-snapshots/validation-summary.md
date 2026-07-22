@@ -1,4 +1,4 @@
-# Validation Summary: How to Make CSI Snapshots Application-Consistent for PostgreSQL, MySQL, and MongoDB
+# Validation Summary: Application-Consistent CSI Snapshots for PostgreSQL, MySQL, and MongoDB
 
 ## Status
 validated
