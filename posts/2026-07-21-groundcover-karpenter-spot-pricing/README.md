@@ -20,7 +20,7 @@ Model these independently:
 2. **Groundcover subscription:** contracted rate multiplied by Groundcover's measured monthly average monitored hosts.
 3. **Groundcover BYOC infrastructure:** the separate cloud cost of the centralized Groundcover backend in your account.
 
-Spot affects the first category directly. It affects the subscription only when autoscaling changes how many monitored nodes exist over time. It affects BYOC infrastructure only if the supported backend design itself uses Spot, which should not be assumed for a Groundcover-managed deployment.
+Spot affects the first category directly. It affects the subscription only when scaling or replacement changes how many monitored nodes exist over time. It affects BYOC compute pricing directly only if the supported backend design itself uses Spot, which should not be assumed for a Groundcover-managed deployment. Node churn can also affect BYOC cost indirectly by changing telemetry volume, cardinality, storage, or query load.
 
 On the research date, Groundcover's public pricing page displayed Pro at $30 and Enterprise at $35 per host per month, with On Premise at $50. Use your order form for actual pricing.
 
@@ -52,7 +52,7 @@ Do not optimize node count solely for an observability bill. Account for availab
 
 ## Replacement Overlap Can Raise the Average
 
-Karpenter's disruption flow can launch replacement capacity, taint and drain an old node, and then terminate it. During part of that transition, old and new nodes may coexist. Both can be monitored at the same time.
+For graceful disruptions such as consolidation and drift, Karpenter can taint an old node, launch replacement capacity and wait for it to become Ready, and then drain and terminate the old node. During Spot interruption handling, Karpenter provisions replacement capacity in parallel with draining the interrupted node. During part of either transition, old and new nodes may coexist. Both can be monitored at the same time.
 
 This overlap is correct for availability, but frequent consolidation, drift, node expiry, or Spot interruptions can add monitored node-time. The effect may be small or material depending on churn duration and fleet size. Measure it rather than assuming monthly averaging cancels it.
 
@@ -107,7 +107,7 @@ For Spot-to-Spot replacement, Karpenter applies capacity and instance-flexibilit
 
 Groundcover's managed BYOC backend is a stateful observability service using ClickHouse, VictoriaMetrics, persistent storage, and object storage according to its architecture docs. Do not apply a workload-cluster Spot policy to that backend without a supported design from Groundcover.
 
-The backend's compute purchase model affects customer cloud cost, not the per-host license for monitored workload nodes. Availability, storage attachment, database quorum, and recovery requirements may make its capacity policy different from stateless application NodePools.
+The backend's compute purchase model affects customer cloud cost, not the per-host license for monitored workload nodes. Availability, storage attachment, database state, and recovery requirements may make its capacity policy different from stateless application NodePools.
 
 ## Forecast With Real Histograms
 
@@ -115,7 +115,7 @@ Use at least a representative billing cycle of node-count data. Segment by clust
 
 Run scenarios for workload growth, more small nodes, fewer large nodes, Spot interruption spikes, migration overlap, and changes to consolidation. Add BYOC infrastructure and platform labor to every scenario.
 
-Karpenter and Spot can lower the compute part of total cost. Groundcover becomes cheaper only when they reduce monitored node-time enough to lower the monthly average, not because Spot nodes receive a different subscription rate.
+Karpenter and Spot can lower the compute part of total cost. The Groundcover subscription becomes cheaper only when they reduce monitored node-time enough to lower the monthly average, not because Spot nodes receive a different subscription rate.
 
 ## Official Documentation
 
