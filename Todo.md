@@ -344,3 +344,233 @@
 18. Azure VM Disk Host Caching: When to Use None, ReadOnly, or ReadWrite
 19. How to Get a Managed Identity Token from Azure VM IMDS Without Client Secrets
 20. Why Does `az login --identity` Say “No Subscriptions” When Key Vault Access Is Configured?
+
+## Platform Metrics
+
+1. Which Platform Engineering Metrics Actually Prove an Internal Developer Platform Is Working?
+2. DORA Metrics for Platform Teams: What They Measure—and What They Miss
+3. Platform Output vs Developer Outcomes: Stop Counting Features and Start Measuring Friction
+4. How to Measure Voluntary Platform Adoption Without Confusing Usage with Compliance
+5. How to Calculate Self-Service Rate for Infrastructure, Deployments, and Access Requests
+6. Golden Path Adoption: How to Measure Use, Bypasses, and Drop-Off Points
+7. Time to First Deployment: A Practical Metric for Developer Onboarding
+8. How to Measure Infrastructure Provisioning Time from Request to Ready
+9. How to Track Platform Coverage Without Hiding Shadow Tooling and Manual Workarounds
+10. Developer Satisfaction, NPS, or Customer Effort Score: Which Survey Metric Fits an Internal Platform?
+11. How to Measure Cognitive Load Reduction Without Turning Developer Experience into Guesswork
+12. Survey Data vs Workflow Telemetry: How to Combine Qualitative and Quantitative Platform Metrics
+13. Establishing a Platform Metrics Baseline Before You Launch or Migrate
+14. Did the Platform Improve Delivery? How to Attribute Changes in DORA Metrics
+15. Platform SLOs and Error Budgets: Measuring the Reliability of Shared Developer Services
+16. How to Measure Platform Toil Through Support Tickets, Interruptions, and Manual Approvals
+17. Cost per Service, Deployment, or Environment: Building Useful Platform Unit Economics
+18. How to Prove Platform ROI Without Inventing Fake Revenue Attribution
+19. How to Measure the Success of Platform Documentation and Discoverability
+20. Policy Guardrail Metrics: Tracking Failed Checks, Exceptions, and Time to Compliance
+
+## ActiveMQ
+
+1. ActiveMQ Classic or Artemis? How to Choose for a New JMS Workload
+2. Migrating ActiveMQ Classic Virtual Topics to Artemis Addresses and Queues
+3. ActiveMQ Queue vs Topic: What Happens When Consumers Are Offline?
+4. Persistent vs Non-Persistent ActiveMQ Messages: Delivery Guarantees and Performance Tradeoffs
+5. ActiveMQ Consumer Prefetch: How to Tune Throughput Without Starving Slow Workers
+6. Why ActiveMQ Messages Stay in the Dispatched Queue—and How to Release Them
+7. ActiveMQ Consumer Is Connected but Not Receiving Messages: A Debugging Checklist
+8. Why ActiveMQ Producers Block When Memory or Store Usage Reaches Its Limit
+9. Taming a Fast Producer and Slow Consumer with ActiveMQ Flow Control and Pending Limits
+10. Why an ActiveMQ Queue Keeps Growing—and How to Find the Bottleneck
+11. ActiveMQ Redelivery Policy Explained: Delays, Backoff, and Maximum Attempts
+12. Why Messages Land in ActiveMQ.DLQ—and How to Diagnose the Poison Message
+13. How to Replay ActiveMQ DLQ Messages Safely Without Losing or Duplicating Them
+14. Why ActiveMQ Reports “Duplicate from Store”—and How Consumer Contention Triggers It
+15. Why KahaDB Journal Files Never Shrink: Finding the Queue or Subscriber Holding Them Open
+16. Cleaning Up Abandoned Durable Subscribers Before They Exhaust Broker Memory
+17. ActiveMQ Message Selectors Can Make Consumers Appear Hung: Page Size and Prefetch Explained
+18. ActiveMQ Failover Transport: Reconnect, Backup Priority, and Transaction Replay Settings
+19. Configuring ActiveMQ TLS and Mutual Authentication Without Certificate or Hostname Errors
+20. Monitoring ActiveMQ with JMX and Prometheus: Queue Age, Backlog, Consumer Count, and Store Usage
+
+## Blameless Postmortems
+
+1. What Does “Blameless” Really Mean? Accountability Without Scapegoating After Incidents
+2. How to Introduce Blameless Postmortems in a Culture That Still Asks “Who Broke It?”
+3. Blameless Does Not Mean Consequence-Free: Handling Negligence and Repeated Mistakes
+4. Which Incidents Need a Postmortem? Setting Severity, Impact, and Near-Miss Triggers
+5. When Should You Hold a Postmortem? Choosing a Deadline While Evidence Is Fresh
+6. Who Should Attend a Blameless Postmortem—and Who Should Facilitate It?
+7. How to Keep Senior Leaders from Turning a Postmortem into a Blame Session
+8. A Practical Blameless Postmortem Agenda for a 60-Minute Review
+9. What Belongs in a Blameless Postmortem Template? Impact, Timeline, Factors, and Actions
+10. How to Reconstruct an Incident Timeline from Slack, Alerts, Logs, and Deployments
+11. How to Write a Factual Timeline Without Naming and Shaming Individuals
+12. Why “Human Error” Is Not a Root Cause—and What to Investigate Instead
+13. Five Whys or Causal Tree? Choosing a Better Analysis for Complex Incidents
+14. Root Cause vs Contributing Factors: How to Avoid a Single-Cause Story
+15. How to Turn “Improve Monitoring” into a Specific, Testable Postmortem Action Item
+16. Postmortem Action Items Keep Dying in the Backlog: How to Get Them Prioritized
+17. Assigning Owners and Deadlines Without Reintroducing Blame
+18. How to Verify That Postmortem Actions Actually Prevented a Repeat Incident
+19. What to Do When the Same Incident Happens After a Previous Postmortem
+20. How to Make Postmortems Worth Reading Instead of Letting Them Rot in Confluence
+
+## Infrastructure Metrics
+
+1. Which Infrastructure Metrics Actually Deserve Alerts? A Practical Selection Framework
+2. CPU Utilization vs Load Average: Which Signal Reveals Host Saturation?
+3. How to Calculate Per-Host CPU Usage from `node_cpu_seconds_total` Without Misleading Averages
+4. Why Prometheus CPU Metrics Can Exceed 100%—Cores, Rates, and Aggregation Explained
+5. MemFree vs MemAvailable: Which Linux Memory Metric Should Trigger an Alert?
+6. How to Detect a Memory Leak Without Alerting on Healthy Page Cache
+7. Disk Free vs Disk Available: Choosing the Right Metric for Low-Space Alerts
+8. Disk Busy but Not Full: How to Alert on I/O Saturation, Queueing, and Latency
+9. How to Monitor Inode Exhaustion Before a Server Runs Out of Disk Space
+10. Which Network Metrics Catch Real Host Problems? Drops, Errors, Retransmits, and Saturation
+11. Static Thresholds vs Dynamic Baselines: How to Reduce Noisy Infrastructure Alerts
+12. How Long Should CPU, Memory, and Disk Stay High Before an Alert Fires?
+13. What Is the Right Scrape Interval for Host Metrics?
+14. How to Choose Infrastructure Metric Retention Without Overloading Prometheus
+15. How High-Cardinality Host Labels Inflate Metrics Cost—and What to Drop at Ingest
+16. Agent-Based vs Agentless Infrastructure Metrics: Why the Numbers Do Not Match
+17. Why Containerized Node Exporter Reports Container Metrics Instead of Host Metrics
+18. Fixing Missing Filesystem Metrics and `node_filesystem_device_error` in Containerized Node Exporter
+19. How to Exclude Pseudo-Filesystems, Loop Devices, and Ephemeral Mounts from Disk Alerts
+20. Why Host and Container CPU Metrics Disagree—and How to Compare Them Correctly
+
+## kOps
+
+1. kOps “Cluster Not Found”: How to Recover the Correct `KOPS_STATE_STORE` and Context
+2. How to Design and Secure a Shared S3 State Store for Multiple kOps Clusters
+3. Moving a kOps State Store to a New S3 Bucket Without Stranding Existing Nodes
+4. Why `kops validate cluster` Cannot Resolve the API DNS Name—and How to Fix It
+5. kOps Validation Says “Node Has Not Yet Joined Cluster”: A Layer-by-Layer Troubleshooting Guide
+6. Fixing “Unauthorized” After Exporting or Rotating a kOps Kubeconfig
+7. `kops update`, `rolling-update`, `upgrade`, or `reconcile`: Which Command Should You Run?
+8. How to Upgrade a kOps Cluster One Kubernetes Minor Version at a Time
+9. Upgrading kOps to Kubernetes 1.31+: How `reconcile cluster` Avoids Version-Skew Failures
+10. Why a kOps Rolling Update Stops on Cluster Validation—and How to Resume Safely
+11. How to Resize or Change EC2 Types in a kOps InstanceGroup Without Rebuilding the Cluster
+12. Why Setting `minSize` and `maxSize` Does Not Automatically Scale a kOps Node Group
+13. How to Configure Cluster Autoscaler for Multiple kOps InstanceGroups
+14. Building kOps Spot Node Groups with `MixedInstancesPolicy` and On-Demand Fallback
+15. How to Scale a kOps InstanceGroup Without Accidentally Upgrading Kubernetes
+16. How to Run kOps in an Existing AWS VPC Without Recreating Subnets, NAT, or Routes
+17. Public vs Private Topology in kOps: API Access, Bastions, NAT Gateways, and Cost
+18. How to Keep Multiple kOps Clusters from Deleting Shared VPC Resources
+19. kOps with Terraform: Which State Is the Source of Truth and What Must Never Be Hand-Edited?
+20. How to Back Up and Restore kOps etcd with `etcd-manager-ctl`
+
+## Sidecars
+
+1. Native vs Legacy Kubernetes Sidecars: When to Use `initContainers` with `restartPolicy: Always`
+2. Why Your Kubernetes Job Never Completes When a Sidecar Keeps Running
+3. How Kubernetes Starts Native Sidecars, Init Containers, and App Containers—in Exact Order
+4. Which Container Stops First? Kubernetes Sidecar Termination Ordering Explained
+5. How to Give a Sidecar Time to Flush Logs During Pod Termination
+6. Does a Sidecar Readiness Probe Make the Whole Pod Unready?
+7. When Should a Sidecar Use `startupProbe`, `readinessProbe`, and `livenessProbe`?
+8. What Happens When a Sidecar Crashes? Independent Restarts and Pod Health Explained
+9. How Kubernetes Calculates Pod CPU and Memory Requests with Init and Sidecar Containers
+10. How Sidecar Resource Requests Affect Scheduling, HPA, and Cluster Cost
+11. Do Sidecars Share localhost, Process Namespaces, and Filesystems with the App Container?
+12. Why a Logging Sidecar Cannot Find the App’s Log File—and How to Fix the Mount Path
+13. Logging Sidecar or Node-Level DaemonSet? Choosing the Right Collection Pattern
+14. Can You Add a Sidecar to a Running Pod? What Is Immutable and What Ephemeral Containers Can Do
+15. How to Debug a CrashLooping Sidecar with `kubectl logs`, `--previous`, and `kubectl debug`
+16. Why Sidecar Injection Webhooks Time Out: DNS, TLS, CNI, and Firewall Checks
+17. How to Opt Specific Namespaces and Pods In or Out of Sidecar Injection
+18. How to Prevent Port Conflicts When App and Sidecar Share a Pod Network
+19. How Much Latency, CPU, and Memory Does a Service-Mesh Sidecar Add?
+20. Sidecar or Separate Service? A Decision Checklist for Failure Isolation and Scaling
+
+## Portainer
+
+1. How to Upgrade Portainer Without Losing Users, Environments, or Stack Definitions
+2. Portainer Is Unreachable After an Upgrade: A Container, Port, and Proxy Checklist
+3. Fixing “Unable to Retrieve Environments” in Portainer
+4. Portainer Agent Connection Timeouts: Debugging Port 9001, TLS, DNS, and Clock Skew
+5. Why Portainer Says “Control over This Stack Is Limited”—and How to Regain Full Control
+6. How to Bring an Existing Docker Compose Stack Under Portainer Management
+7. How to Deploy and Update Portainer Stacks from a Git Repository
+8. Fixing Portainer stack.env and .env Variable Substitution in Git Stacks
+9. Portainer Cannot Find a Relative Build Context: How Git Stack Paths Really Work
+10. Portainer “No Such Image” During Stack Deployment: Pull Policies, Registries, and Tags
+11. Why “Re-Pull Image and Redeploy” Fails in Portainer—and What to Check
+12. Portainer API Authentication: JWT Tokens vs. API Keys for Scripts and CI
+13. Portainer Stack API Returns 404 After an Upgrade: Migrating to the New Create Endpoints
+14. How to Back Up and Restore Portainer—and What the Backup Does Not Include
+15. How to Migrate Portainer to a New Host Without Losing Stacks or Volumes
+16. Portainer Behind Nginx, Traefik, or Cloudflare: Fixing Login, WebSocket, and HTTPS Problems
+17. How to Connect Portainer to a Private Registry Without 401 or Certificate Errors
+18. How to Secure Portainer in Production: Docker Socket Access, RBAC, TLS, and Network Exposure
+19. How to Reset a Forgotten Portainer Admin Password Without Losing Configuration
+20. Why a Stack Works with docker compose but Fails in Portainer
+
+## Argo Workflows
+
+1. Argo Workflows DAG vs. Steps Templates: Which Structure Fits Your Pipeline?
+2. WorkflowTemplate vs. ClusterWorkflowTemplate: Choosing the Right Reuse Boundary
+3. How to Pass Parameters and Artifacts Between Argo Workflow Tasks
+4. How to Extract a Nested JSON Field from an Argo Workflow Output Parameter
+5. Argo Workflows Artifact Upload Failed: Debugging S3, MinIO, GCS, and Azure Storage
+6. How to Preserve and Retrieve Argo Workflow Logs After Pods Are Deleted
+7. How to Call the Argo Workflows API When SSO Authentication Is Enabled
+8. Least-Privilege RBAC for Argo Workflows: Controllers, Executors, Users, and Retries
+9. How to Retry Argo Workflow Tasks with Exponential Backoff and Rate-Limit Delays
+10. Retry vs. Resubmit in Argo Workflows: How to Rerun Only Failed Nodes
+11. Fixing Argo Workflow `when` Expressions, Quoting Errors, and Unresolved Variables
+12. How to Fan Out Argo Workflow Tasks with withItems, withParam, and Sequences
+13. Controlling Argo Workflows Concurrency with parallelism, Semaphores, and Mutexes
+14. Argo CronWorkflow Missed a Run: Debugging Time Zones, Starting Deadlines, and Concurrency
+15. How to Use Argo Workflow Exit Handlers for Cleanup and Failure Notifications
+16. Argo Workflow Timeouts Explained: Workflow, Template, and Pod Deadlines
+17. PodGC, TTLStrategy, and Workflow Archive: What Gets Deleted—and When?
+18. Argo Workflow Is Stuck in Pending: A Scheduling, Quota, and RBAC Checklist
+19. Fixing “Request Entity Too Large” in Argo Workflows with Node-Status Offloading
+20. Argo Workflow Controller Is Falling Behind: Tuning Workers, QPS, and Pod Creation
+
+## Argo Rollouts
+
+1. How to Migrate a Kubernetes Deployment to Argo Rollouts Without Downtime
+2. Fixing “No Matches for Kind Rollout” After Installing Argo Rollouts
+3. Can Argo Rollouts Do a Canary Without a Service Mesh? Replica-Based Routing Explained
+4. Why Argo Rollouts `setWeight` Does Not Match Real Traffic—and How to Fix It
+5. Header-Based Canary Routing with Argo Rollouts and Istio for External and Internal Traffic
+6. NGINX, ALB, Istio, or Gateway API: Choosing an Argo Rollouts Traffic Router
+7. Argo Rollouts Service Selectors Explained: Stable, Canary, Active, and Preview Services
+8. Argo Rollouts Blue-Green Deployment: Configuring Active and Preview Services Safely
+9. Why Argo Rollouts Skips Canary or Blue-Green Steps on the First Deployment
+10. Promote, Abort, Retry, or Restart? Argo Rollouts Operations Explained
+11. Argo Rollouts Abort vs. Rollback: What Happens to Pods, Traffic, and Git?
+12. Why an Argo Rollouts Rollback Does Not Revert Your Git Commit
+13. Argo CD Auto-Sync and Argo Rollouts Rollbacks: Avoiding Surprising Reconciliation
+14. Prometheus AnalysisTemplates in Argo Rollouts: Handling Arrays, NaN, and Empty Results
+15. Why an Argo Rollouts AnalysisRun Is Stuck, Inconclusive, or Failing
+16. How to Run Smoke Tests with Job and Web Analysis in Argo Rollouts
+17. Argo Rollouts with HPA or KEDA: Preventing Unexpected Replica Scale-Ups and Scale-Downs
+18. Scaling Canary Pods Independently from Traffic Weight with `setCanaryScale`
+19. Why an Argo Rollout Is Stuck on “More Replicas Need to Be Updated”
+20. Can Argo Rollouts Manage StatefulSets? Safer Patterns for Stateful Canary Releases
+
+## Remote Write
+
+1. Prometheus Remote Write vs. Federation vs. Remote Read: Which Pattern Should You Use?
+2. How to Send Remote Write Data from One Prometheus Server to Another
+3. Prometheus Remote Write Returns 405 Method Not Allowed: Enabling the Receiver Correctly
+4. Fixing “snappy: Corrupt Input” and Content-Type Errors in Prometheus Remote Write
+5. Prometheus Remote Write 401 Unauthorized: Configuring Basic Auth, Bearer Tokens, and OAuth
+6. Fixing x509 and TLS Handshake Errors in Prometheus Remote Write
+7. How to Send Only Selected Metrics with `write_relabel_configs`
+8. How to Route Different Metrics to Different Remote Write Backends by Label
+9. Multiple Remote Write Destinations: Fan-Out, Failover, and the Cost of Each
+10. How to Use `external_labels` to Identify Clusters Without Creating Series Collisions
+11. Prometheus HA Remote Write: Preventing Duplicate and Out-of-Order Samples
+12. What Happens When the Prometheus Remote Write Queue Is Full?
+13. How to Measure Remote Write Lag, Pending Samples, Retries, and Data Loss
+14. Tuning Remote Write `capacity`, Shards, Batch Size, and Backoff
+15. Prometheus Remote Write Gets HTTP 429: When to Retry and When to Reduce Load
+16. Remote Write “Context Deadline Exceeded”: Diagnosing Sender, Network, and Receiver Bottlenecks
+17. Why Remote Write Increases Prometheus Memory and CPU—and How to Control It
+18. How Long Can Remote Write Survive a Backend Outage Before Losing Samples?
+19. Prometheus Agent Mode vs. Full Prometheus for Remote Write at the Edge
+20. Prometheus Remote Write 1.0 vs. 2.0: Compatibility, Metadata, and Migration
