@@ -2,20 +2,19 @@
 
 ## Differential Backups
 
-1. How to Add Transaction Log Backups After a Differential Restore for Point-in-Time Recovery
-2. Why Differential Backups Cannot Replace Transaction Log Backups
-3. Copy-Only Full Backups and Differential Bases: What DBAs Need to Know
-4. Can an Ad Hoc Full Backup Break Your Differential Backup Plan?
-5. Why SQL Server Differential Backups Keep Getting Larger
-6. How Index Rebuilds, ETL Jobs, and LOB Compaction Inflate Differential Backups
-7. When a Differential Backup Is Nearly as Large as a Full Backup
-8. How to Choose Full and Differential Backup Schedules from Your RPO and RTO
-9. How to Verify a Differential Backup’s Base LSN with RESTORE HEADERONLY
-10. Fixing “The Differential Backup Cannot Be Restored” in SQL Server
-11. How Backup Compression Affects Differential Backup Size and Restore Time
-12. Differential Backups in SQL Server Availability Groups: Primary and Secondary Replica Rules
-13. How VSS and Third-Party Backup Tools Can Change Your Differential Base
-14. How to Test and Automate Full, Differential, and Log Restore Chains
+1. Why Differential Backups Cannot Replace Transaction Log Backups
+2. Copy-Only Full Backups and Differential Bases: What DBAs Need to Know
+3. Can an Ad Hoc Full Backup Break Your Differential Backup Plan?
+4. Why SQL Server Differential Backups Keep Getting Larger
+5. How Index Rebuilds, ETL Jobs, and LOB Compaction Inflate Differential Backups
+6. When a Differential Backup Is Nearly as Large as a Full Backup
+7. How to Choose Full and Differential Backup Schedules from Your RPO and RTO
+8. How to Verify a Differential Backup’s Base LSN with RESTORE HEADERONLY
+9. Fixing “The Differential Backup Cannot Be Restored” in SQL Server
+10. How Backup Compression Affects Differential Backup Size and Restore Time
+11. Differential Backups in SQL Server Availability Groups: Primary and Secondary Replica Rules
+12. How VSS and Third-Party Backup Tools Can Change Your Differential Base
+13. How to Test and Automate Full, Differential, and Log Restore Chains
 
 ## OSV
 
