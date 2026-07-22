@@ -51,7 +51,7 @@ Do not set the timeout equal to average handler latency. Averages hide the tail 
 - time to commit the result;
 - time and network margin for `DeleteMessage`.
 
-A fixed 90-second task with a measured p99 of 52 seconds might begin with 75 seconds, then be adjusted from observed expiry and recovery behavior. A timeout that is too short creates concurrent attempts; one that is too long delays recovery after a real crash.
+A workload with a measured p99 of 52 seconds might begin with a 75-second timeout, then be adjusted from observed expiry and recovery behavior. A timeout that is too short creates concurrent attempts; one that is too long delays recovery after a real crash.
 
 Keep local prefetch or concurrency bounded. Receiving hundreds of messages into an internal queue starts all of their visibility clocks before a handler is ready. Either receive only available capacity or extend waiting deliveries carefully.
 
@@ -87,14 +87,15 @@ The simplest strong boundary is a database uniqueness rule keyed by a stable ope
 ```sql
 BEGIN;
 
-INSERT INTO message_inbox (consumer_name, operation_id, processed_at)
-VALUES ('invoice-worker', :operation_id, now())
-ON CONFLICT (consumer_name, operation_id) DO NOTHING
-RETURNING operation_id;
-
--- Execute only if this delivery inserted the inbox row.
+WITH claimed AS (
+    INSERT INTO message_inbox (consumer_name, operation_id, processed_at)
+    VALUES ('invoice-worker', :operation_id, now())
+    ON CONFLICT (consumer_name, operation_id) DO NOTHING
+    RETURNING operation_id
+)
 INSERT INTO invoices (invoice_id, account_id, amount_minor)
-VALUES (:invoice_id, :account_id, :amount_minor);
+SELECT :invoice_id, :account_id, :amount_minor
+FROM claimed;
 
 COMMIT;
 ```
@@ -107,19 +108,19 @@ For a remote API, reuse that operation ID through the provider's documented idem
 
 ## Add fencing when stale work must stop
 
-Idempotency prevents duplicate outcomes, but it may not prevent wasted concurrent work. A durable lease can fence stale attempts:
+Idempotency prevents duplicate outcomes, but it may not prevent wasted concurrent work. Generate a unique attempt ID for each receive; a durable lease can then fence stale attempts:
 
 ```sql
 UPDATE work_item
-SET owner = :worker_id,
+SET owner = :attempt_id,
     lease_version = lease_version + 1,
     lease_until = now() + interval '90 seconds'
 WHERE operation_id = :operation_id
-  AND (lease_until < now() OR owner = :worker_id)
+  AND (lease_until IS NULL OR lease_until < now() OR owner = :attempt_id)
 RETURNING lease_version;
 ```
 
-Every later state change includes the returned `lease_version` in its condition. Once another worker increments the version, the stale worker's update affects zero rows. This protects a local database state machine even when the old process keeps running.
+Every later state change includes the most recently returned `lease_version` in its condition. Once another attempt increments the version, the stale attempt's update affects zero rows. This protects a local database state machine even when the old process keeps running.
 
 Use care around external calls: a database lease cannot revoke an API request already accepted by another service. Stable downstream idempotency and reconciliation remain necessary.
 
@@ -133,9 +134,9 @@ For poison messages, record the failure class and relevant correlation IDs witho
 
 ## Standard and FIFO queues differ, but both need safe handlers
 
-Standard queues provide at-least-once delivery and can occasionally return a copy even inside the visibility period. FIFO queues serialize available messages within a `MessageGroupId`: later messages in that group are withheld while earlier ones are in flight.
+Standard queues provide at-least-once delivery and can occasionally return a copy even inside the visibility period. FIFO queues preserve receive order within a `MessageGroupId`. One receive call can return multiple messages from the same group in a batch; while those messages are in flight, later receive calls do not return more messages from that group.
 
-If a FIFO message's visibility expires, it becomes eligible again and blocks progress for its group until it is deleted or expires again. FIFO producer deduplication prevents certain duplicate sends; it does not atomically join your business transaction to `DeleteMessage`. A crash after the effect and before deletion can therefore run the handler again.
+If a FIFO message's visibility expires, it becomes eligible for redelivery. Once received again, it is in flight and later receive calls for its group wait until the received message is deleted or becomes visible again. FIFO producer deduplication prevents certain duplicate sends; it does not atomically join your business transaction to `DeleteMessage`. A crash after the effect and before deletion can therefore run the handler again.
 
 ## Operate the lease, not just the queue
 
