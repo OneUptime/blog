@@ -88,7 +88,7 @@ Choose the strongest available driver for each cost pool:
 5. **Instrumented application demand:** Use query time, transactions, rows, bytes, or another workload-specific meter carried with `application_id`.
 6. **Approved proxy:** Use requests, connections, or another correlated measure only when its limitations are stated.
 
-Amazon RDS Database Insights can slice database load by SQL, waits, hosts, or users. The RDS documentation also lists a top-application dimension for PostgreSQL and SQL Server, not for every engine. Database load represents active session activity. It can be a useful compute-pressure driver, but it is not automatically a measure of storage, backup, or network consumption.
+CloudWatch Database Insights can slice database load by SQL, waits, hosts, or users. Its current instance dashboard lists a DB Load application dimension only for Aurora PostgreSQL, so do not assume that dimension is available for an RDS PostgreSQL or SQL Server instance. Database load represents active session activity. It can be a useful compute-pressure driver, but it is not automatically a measure of storage, backup, or network consumption.
 
 `DatabaseConnections` from CloudWatch is scoped to an RDS instance, so the default service metric cannot divide a shared instance by application. Connection counts are also not necessarily proportional to cost. Long-lived pools and short expensive queries make that proxy particularly easy to misinterpret.
 
@@ -109,10 +109,10 @@ For every pool and period:
 application allocation
 = pool effective cost
 * application driver quantity
-/ driver quantity for all eligible applications
+/ (driver quantity for all eligible applications + unattributed driver quantity)
 ```
 
-If driver coverage is incomplete, keep the uncovered part in `unallocated-rds` rather than scaling known consumers to absorb unknown demand. Report coverage beside the allocation.
+If driver coverage is incomplete, assign the unattributed share to `unallocated-rds` rather than scaling known consumers to absorb unknown demand. If the total driver quantity is zero, leave the entire pool unallocated. Report coverage beside the allocation.
 
 ## Join Kubernetes and RDS results once
 
@@ -144,6 +144,6 @@ Publish the cost basis, request-versus-usage policy, idle treatment, RDS drivers
 - [Kubernetes: Tools for monitoring resources](https://kubernetes.io/docs/tasks/debug/debug-cluster/resource-usage-monitoring/)
 - [AWS: Tagging Amazon RDS resources](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/USER_Tagging.html)
 - [AWS: Monitoring RDS with Database Insights](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/USER_DatabaseInsights.html)
+- [AWS: Database Insights instance dashboard](https://docs.aws.amazon.com/AmazonCloudWatch/latest/monitoring/Database-Insights-Database-Instance-Dashboard.html)
 - [AWS: CloudWatch dimensions for Amazon RDS](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/dimensions.html)
-- [AWS: Performance Insights dashboard dimensions](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/USER_PerfInsights.UsingDashboard.Components.html)
 - [FinOps Foundation: Allocation](https://www.finops.org/framework/capabilities/allocation/)
