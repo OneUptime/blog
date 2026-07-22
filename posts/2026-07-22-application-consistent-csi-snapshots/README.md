@@ -8,7 +8,7 @@ Description: Coordinate database quiescing, multi-volume capture, and recovery v
 
 ---
 
-CSI snapshots operate at the storage layer. To make one application-consistent, the database must first reach a documented recoverable boundary, every required volume must be captured together, and writes must resume only after that capture point is secured.
+CSI snapshots operate at the storage layer. To make one application-consistent, the database must first reach a documented recoverable boundary, every required volume must be captured within that boundary, and writes must resume only after the capture points are secured. If writes remain possible, the volumes need a simultaneous storage point; if the database is stopped or fully quiesced, they can be captured sequentially while that state is maintained.
 
 The most portable method is a clean database shutdown followed by snapshots of all data and log PVCs. Online methods can reduce downtime, but they are database- and topology-specific. Test them against the exact database version, CSI driver, storage backend, and operator you run.
 
@@ -83,7 +83,7 @@ UNLOCK TABLES;
 
 Automation needs a coordinator that keeps the session open, confirms the lock, triggers and observes the snapshot from another control path, then unlocks even after a timeout. Capture all storage-engine files and required logs together. `FLUSH TABLES ... FOR EXPORT` is for exporting named InnoDB tablespaces; it is not a general whole-instance snapshot recipe.
 
-For primarily InnoDB workloads, a logical `mysqldump --single-transaction` or a supported physical backup product may produce a better online backup with less write blocking. Include binary-log or GTID coordinates when point-in-time recovery or replica seeding is required.
+For InnoDB data, a logical `mysqldump --single-transaction` or a supported physical backup product may produce a better online backup with less write blocking. `--single-transaction` does not guarantee consistency for nontransactional tables, so those tables must remain unchanged during the dump. Include binary-log or GTID coordinates when point-in-time recovery or replica seeding is required.
 
 ## MongoDB
 
@@ -99,7 +99,7 @@ db.fsyncUnlock()
 
 `db.fsyncLock()` flushes pending writes and locks the database. Do not leave the instance locked after a snapshot failure. In a replica set, MongoDB recommends using a secondary that is not serving reads, such as a hidden member, for this process. Verify that it has reached an acceptable replication point before locking it.
 
-Sharded clusters require the separate MongoDB sharded-cluster backup procedure. Independently snapshotting shards and config servers can create a recovery point that never existed. Use the vendor-supported coordinator or backup product for that topology.
+Sharded clusters require the separate MongoDB sharded-cluster backup procedure. Independently snapshotting shards and config servers while writes continue can create a recovery point that never existed. Follow the documented procedure to stop the balancer, writes, and schema transformations before capturing every component, or use a vendor-supported backup product for that topology.
 
 MongoDB also warns that snapshots usually share the source storage infrastructure and should be archived to another system. Application consistency does not imply disaster independence.
 
@@ -111,7 +111,7 @@ Hooks are useful for `fsfreeze`, a checkpoint, or a database-specific wrapper, b
 
 - the pre-hook state persists after the command returns;
 - the controller does not snapshot another PVC outside that state;
-- the post hook runs on every success and failure path;
+- the post hook is configured for normal cleanup after the backed-up item block;
 - a watchdog can recover an abandoned lock;
 - hook credentials have only the required database privilege;
 - logs prove the lock interval covered snapshot creation.
