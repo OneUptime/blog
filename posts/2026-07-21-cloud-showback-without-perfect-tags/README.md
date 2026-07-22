@@ -27,13 +27,13 @@ Choose one cost basis as well. For operating showback, an amortized metric is us
 
 The total must reconcile:
 
-`direct + derived + shared + unallocated = total showback cost`
+`direct + derived + estimated + shared + unallocated = total showback cost`
 
 If the report excludes tax, credits, or marketplace charges, state that scope and reconcile to the same scoped total.
 
 ## Build an Allocation Ladder
 
-Apply evidence in a fixed order from strongest to weakest. A practical ladder looks like this:
+Apply evidence in fixed stages, allowing more specific evidence to replace broad defaults. A practical ladder looks like this:
 
 1. **Dedicated billing container:** map an AWS account, Azure subscription, Google Cloud project, or equivalent subaccount to its owner.
 2. **Provider billing metadata:** use cost categories, resource groups, folders, account tags, subscription tags, and provider-generated dimensions.
@@ -51,7 +51,7 @@ Large parts of a cloud estate can often be allocated through hierarchy. If a Goo
 
 Hierarchy is especially valuable for early showback because it is stable and easy to explain. Its weakness is granularity. A shared account may contain several applications, and a production subscription may serve several teams. Use the hierarchy as a default, then allow more specific evidence to replace it.
 
-Provider tools can help. AWS Cost Categories can group costs by accounts, services, charge types, cost-allocation tags, and other dimensions. Azure Cost Management can apply subscription or resource-group tags to child usage records through tag inheritance. Google Cloud billing data can be grouped by projects and resource labels. These features are not identical, so preserve provider-specific logic in the ingestion layer.
+Provider tools can help. AWS Cost Categories can group costs by accounts, services, charge types, cost-allocation tags, and other dimensions. For supported billing account types (EA, MCA, and MPA with Azure plan subscriptions), Azure Cost Management can apply subscription or resource-group tags to child usage records through tag inheritance. Google Cloud billing data can be grouped by projects and resource labels. These features are not identical, so preserve provider-specific logic in the ingestion layer.
 
 ## Treat Tags as Evidence, Not Truth
 
@@ -59,7 +59,7 @@ A tag is only useful when its meaning is controlled. Normalize key names and val
 
 Validate tag evidence against a registry of valid teams, services, environments, and cost centers. A syntactically present tag with a departed employee's email address is not high-quality allocation evidence. Stable service IDs and cost-center codes tend to age better than display names.
 
-Also account for billing behavior. On AWS, resource tags must be activated as cost-allocation tags before they appear as billing dimensions. AWS supports cost-allocation tag backfill for a limited historical window, but historical values are available only for periods when the tag was actually assigned to the resource. In Azure, directly applied resource tags are included only while the resource emits usage with that tag; tag inheritance can update usage records for the current month, but it does not modify the resource itself. Google Cloud labels flow to billing reports and exports only for supported resources.
+Also account for billing behavior. On AWS, user-defined resource tag keys must be activated as cost-allocation tags before they appear in billing data; some keys, such as `awsApplication`, are automatically activated. AWS supports cost-allocation tag backfill for up to 12 months, but historical values are available only for periods when the tag was actually assigned to the resource. In Azure, directly applied resource tags are included only while the resource emits usage with that tag; tag inheritance can update usage records for the current month, but it does not modify the resource itself. Google Cloud labels flow to billing reports and exports only for supported resources.
 
 ## Add Derived Allocation With Confidence
 
@@ -74,7 +74,7 @@ Derived metadata closes the gap when billing metadata is incomplete. Build a map
 | Confidence | Separates deterministic mapping from estimation |
 | Effective and expiry dates | Prevents stale exceptions from living forever |
 
-Use a small confidence vocabulary. `Direct` can mean provider metadata or an authoritative one-to-one registry match. `Derived` can mean a deterministic join to an internal source. `Estimated` can mean a weaker proxy that an owner must review. `Unallocated` means no approved evidence exists.
+Use a small confidence vocabulary. `Direct` can mean provider metadata or dedicated billing-container ownership. `Derived` can mean a deterministic join to an authoritative internal source. `Estimated` can mean a weaker proxy that an owner must review. `Unallocated` means no approved evidence exists.
 
 Confidence should be visible in the report. A team is much more likely to trust a showback total when it can distinguish an exact subscription mapping from an inferred resource-name match.
 
@@ -111,7 +111,9 @@ The result is a model that is useful now and becomes more accurate through opera
 
 - [FinOps Foundation: Allocation capability](https://www.finops.org/framework/capabilities/allocation/)
 - [FOCUS Specification 1.4](https://focus.finops.org/focus-specification/v1-4/)
-- [AWS: Building a cost allocation strategy](https://docs.aws.amazon.com/whitepapers/latest/tagging-best-practices/building-a-cost-allocation-strategy.html)
+- [AWS: Organizing costs using AWS Cost Categories](https://docs.aws.amazon.com/awsaccountbilling/latest/aboutv2/manage-cost-categories.html)
+- [AWS: Using user-defined cost allocation tags](https://docs.aws.amazon.com/awsaccountbilling/latest/aboutv2/custom-tags.html)
+- [AWS: Using account tags for cost allocation](https://docs.aws.amazon.com/awsaccountbilling/latest/aboutv2/account-tags-cost-allocation.html)
 - [AWS: Backfill cost allocation tags](https://docs.aws.amazon.com/awsaccountbilling/latest/aboutv2/cost-allocation-backfill.html)
 - [Azure: Group and allocate costs using tag inheritance](https://learn.microsoft.com/en-us/azure/cost-management-billing/costs/enable-tag-inheritance)
 - [Google Cloud: Labels overview](https://cloud.google.com/resource-manager/docs/labels-overview)
