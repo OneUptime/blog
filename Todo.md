@@ -2,26 +2,25 @@
 
 ## Differential Backups
 
-1. Differential vs. Incremental Backups: What Changes, and Which Restores Faster?
-2. SQL Server Full, Differential, and Transaction Log Backups Explained
-3. How SQL Server Differential Backups Use the Differential Change Map
-4. What Is the Differential Base, and Which Full Backup Does SQL Server Use?
-5. How to Restore a SQL Server Full Backup and Differential Backup in the Correct Order
-6. Do You Need Every Differential Backup to Restore a Database?
-7. How to Add Transaction Log Backups After a Differential Restore for Point-in-Time Recovery
-8. Why Differential Backups Cannot Replace Transaction Log Backups
-9. Copy-Only Full Backups and Differential Bases: What DBAs Need to Know
-10. Can an Ad Hoc Full Backup Break Your Differential Backup Plan?
-11. Why SQL Server Differential Backups Keep Getting Larger
-12. How Index Rebuilds, ETL Jobs, and LOB Compaction Inflate Differential Backups
-13. When a Differential Backup Is Nearly as Large as a Full Backup
-14. How to Choose Full and Differential Backup Schedules from Your RPO and RTO
-15. How to Verify a Differential Backup’s Base LSN with RESTORE HEADERONLY
-16. Fixing “The Differential Backup Cannot Be Restored” in SQL Server
-17. How Backup Compression Affects Differential Backup Size and Restore Time
-18. Differential Backups in SQL Server Availability Groups: Primary and Secondary Replica Rules
-19. How VSS and Third-Party Backup Tools Can Change Your Differential Base
-20. How to Test and Automate Full, Differential, and Log Restore Chains
+1. SQL Server Full, Differential, and Transaction Log Backups Explained
+2. How SQL Server Differential Backups Use the Differential Change Map
+3. What Is the Differential Base, and Which Full Backup Does SQL Server Use?
+4. How to Restore a SQL Server Full Backup and Differential Backup in the Correct Order
+5. Do You Need Every Differential Backup to Restore a Database?
+6. How to Add Transaction Log Backups After a Differential Restore for Point-in-Time Recovery
+7. Why Differential Backups Cannot Replace Transaction Log Backups
+8. Copy-Only Full Backups and Differential Bases: What DBAs Need to Know
+9. Can an Ad Hoc Full Backup Break Your Differential Backup Plan?
+10. Why SQL Server Differential Backups Keep Getting Larger
+11. How Index Rebuilds, ETL Jobs, and LOB Compaction Inflate Differential Backups
+12. When a Differential Backup Is Nearly as Large as a Full Backup
+13. How to Choose Full and Differential Backup Schedules from Your RPO and RTO
+14. How to Verify a Differential Backup’s Base LSN with RESTORE HEADERONLY
+15. Fixing “The Differential Backup Cannot Be Restored” in SQL Server
+16. How Backup Compression Affects Differential Backup Size and Restore Time
+17. Differential Backups in SQL Server Availability Groups: Primary and Secondary Replica Rules
+18. How VSS and Third-Party Backup Tools Can Change Your Differential Base
+19. How to Test and Automate Full, Differential, and Log Restore Chains
 
 ## OSV
 
