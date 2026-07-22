@@ -2,12 +2,11 @@
 
 ## At-Least-Once
 
-1. SQS Standard vs. FIFO: What Exactly-Once Processing Does and Does Not Guarantee
-2. Transactional Outbox with At-Least-Once Delivery: Designing for Duplicate Events
-3. The Inbox Pattern: Atomically Deduplicating Messages with Business Updates
-4. At-Least-Once Batch Consumers: Handling Partial Failures, Retries, and Checkpoints
-5. How to Preserve Message Order When Retries and Redelivery Are Enabled
-6. How to Test At-Least-Once Consumers with Crashes, Timeouts, and Rebalances
+1. Transactional Outbox with At-Least-Once Delivery: Designing for Duplicate Events
+2. The Inbox Pattern: Atomically Deduplicating Messages with Business Updates
+3. At-Least-Once Batch Consumers: Handling Partial Failures, Retries, and Checkpoints
+4. How to Preserve Message Order When Retries and Redelivery Are Enabled
+5. How to Test At-Least-Once Consumers with Crashes, Timeouts, and Rebalances
 
 ## CSI Snapshots
 
