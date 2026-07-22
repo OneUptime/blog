@@ -18,7 +18,7 @@ The FinOps Foundation describes allocation as assigning direct and shared cost t
 
 Put the cost basis next to the dashboard title. Without it, two correct reports can appear to disagree.
 
-For a normalized dataset, FOCUS distinguishes several cost concepts. `BilledCost` is intended for cash-basis work such as invoice reconciliation. `EffectiveCost` incorporates reduced rates, discounts, and the applicable amortized portion of prepaid commitments, making it useful for cost trends and accountable consumption. List and contracted costs answer different questions about public and negotiated rates.
+For a normalized dataset, FOCUS distinguishes several cost concepts. `BilledCost` is intended for cash-basis work such as invoice reconciliation. `EffectiveCost` recognizes cost based on the resources or services used, or contract commitments recognized in a charge period; it reflects pricing adjustments and the recognized portions of related purchases, such as amortized prepayments and drawdowns. This makes it useful for cost trends and accountable consumption. List and contracted costs answer different questions about public and negotiated rates.
 
 An engineering showback view will often use effective cost because it gives commitment-covered usage an economic cost. A finance reconciliation view will normally retain billed cost. Show both when stakeholders need both, but label them rather than combining them into an unexplained "total cost."
 
