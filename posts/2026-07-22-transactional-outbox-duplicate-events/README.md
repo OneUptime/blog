@@ -39,6 +39,8 @@ CREATE TABLE outbox_event (
     payload jsonb NOT NULL,
     occurred_at timestamptz NOT NULL,
     published_at timestamptz,
+    lease_owner text,
+    lease_until timestamptz,
     attempt_count integer NOT NULL DEFAULT 0,
     last_error text,
     UNIQUE (aggregate_type, aggregate_id, aggregate_version, event_type)
@@ -68,6 +70,8 @@ RETURNING event_id;
 
 COMMIT;
 ```
+
+The `:name` tokens above represent bind parameters supplied by the application's database client; they are not literal PostgreSQL syntax.
 
 The application must require exactly one returned outbox row before committing. Zero rows means the order was missing or was no longer pending, so no event was created and the transaction must follow the caller's conflict or retry policy. If the statement fails, the state change and insert both roll back. A successfully committed order transition therefore has a committed publication intent, and an event cannot escape from a transition that did not occur.
 
@@ -118,7 +122,7 @@ WHERE e.event_id = c.event_id
 RETURNING e.*;
 ```
 
-This requires `lease_owner` and `lease_until` columns in the practical schema. After publishing, update only rows whose lease is still owned by the relay. If the relay dies, the lease expires and another instance retries. A stale relay can still have published, so consumers remain idempotent.
+The `lease_owner` and `lease_until` columns hold the current claim. After publishing, update only rows whose lease is still owned by the relay. If the relay dies, the lease expires and another instance retries. A stale relay can still have published, so consumers remain idempotent.
 
 Small deployments can publish under a row lock if the throughput and failure behavior are acceptable, but the atomicity limit is unchanged.
 
@@ -144,7 +148,7 @@ Broker deduplication is useful defense in depth, but often has a time or session
 
 ## Preserve per-aggregate order intentionally
 
-AWS's outbox guidance calls out notification order as a design concern. Store an aggregate version or sequence in the same transaction as the state change. Route all events for one aggregate through the same ordered broker unit—such as a Kafka record key or SQS FIFO message group ID—and prevent relay concurrency from publishing version 13 before an earlier failed version 12.
+AWS's outbox guidance calls out notification order as a design concern. Store an aggregate version or sequence in the same transaction as the state change. Route all events for one aggregate through the same ordered broker unit—such as a Kafka record key or SQS FIFO message group ID—and prevent relay concurrency from publishing version 13 before an earlier failed version 12. The claim query above does not provide that serialization by itself: its `ORDER BY` selects the batch but does not guarantee the order of `UPDATE ... RETURNING` rows. Claim only the earliest unpublished version for each aggregate, or use an aggregate-scoped lock, when publish order is required.
 
 Global timestamp order is usually not trustworthy enough. Concurrent transactions can obtain timestamps before committing in the opposite order. Define the ordering requirement precisely:
 
@@ -168,7 +172,7 @@ Choose based on operational ownership, latency, database support, and recovery r
 
 Store the event facts needed by consumers at transaction time. Do not store only an aggregate ID and have the relay query current state later: by publication time the aggregate may have advanced, causing an `OrderApproved` event to contain cancelled-order state.
 
-Prefer immutable insert-only outbox rows. Version event schemas, avoid credentials and unnecessary personal data, and define how consumers handle unknown fields and event types. Debezium's documentation expects inserts for outbox changes and can pass JSON or binary payloads through its event router.
+Keep event identity and payload immutable after insertion. Version event schemas, avoid credentials and unnecessary personal data, and define how consumers handle unknown fields and event types. Debezium's documentation expects inserts for outbox changes and can pass JSON or binary payloads through its event router; polling implementations may update only delivery metadata such as lease and publication fields.
 
 ## Retry and cleanup safely
 
