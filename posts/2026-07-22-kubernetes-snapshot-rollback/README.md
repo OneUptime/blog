@@ -53,7 +53,7 @@ For a write-heavy application:
 4. Wait for storage readiness and record the snapshot handle.
 5. Keep writers stopped if a strict recovery boundary is required.
 
-Do not call a live storage snapshot application-consistent merely because Kubernetes reports it ready. The readiness field comes from the storage driver.
+Do not call a live storage snapshot application-consistent merely because Kubernetes reports it ready. For a dynamically created snapshot, the readiness field reflects the CSI driver's storage-level response. For a pre-provisioned snapshot, readiness can be set to true when the driver does not support `ListSnapshots`. Neither case certifies application consistency.
 
 ## Restore into a new PVC
 
@@ -79,17 +79,17 @@ spec:
       storage: 100Gi
 ```
 
-Use a StorageClass supported by the same compatible CSI driver, request at least `status.restoreSize`, and normally keep the source volume mode. Wait for the claim to bind. A `WaitForFirstConsumer` class can remain pending until a Pod references it.
+Use a StorageClass supported by the same compatible CSI driver and, when `status.restoreSize` is reported, request at least that size. Keep the source volume mode unless a cluster administrator has explicitly allowed volume-mode conversion on the `VolumeSnapshotContent`. Wait for the claim to bind. A `WaitForFirstConsumer` class can remain pending until a Pod references it.
 
 Use a unique name rather than deleting the original claim and immediately reusing its name. The two-volume phase is what makes the procedure reversible.
 
 ## Validate without contaminating production
 
-Mount the restored claim read-only in an isolated Pod or recovery workload. Prevent it from joining a live database cluster, consuming production queues, running scheduled jobs, or sending notifications.
+For non-mutating inspection, mount a filesystem claim read-only in an isolated Pod. Expose a raw block claim through `volumeDevices` and ensure that inspection tools do not write to it. If validation requires database crash recovery, repair, or log replay, use an isolated recovery workload with write access because those operations normally modify the restored volume. Prevent it from joining a live database cluster, consuming production queues, running scheduled jobs, or sending notifications.
 
 Validate at several levels:
 
-- the filesystem or raw block device mounts without errors;
+- the filesystem mounts without errors, or the raw block device appears at the expected device path and can be read;
 - expected files, ownership, permissions, and encryption access are present;
 - database crash recovery completes successfully;
 - internal integrity checks pass;
@@ -122,7 +122,7 @@ Apply the complete reviewed workload manifest rather than a patch that accidenta
 5. Monitor error rate, latency, data invariants, replication, and queue behavior.
 6. Resume full traffic and remove the write freeze only after acceptance checks pass.
 
-With `ReadWriteOnce` or `ReadWriteOncePod`, do not try to overlap old and new writers. A blue-green data rollback is about reversible volume identity, not simultaneous modification of two divergent copies.
+Do not overlap old and new writers. `ReadWriteOnce` can allow multiple Pods on one node, and even `ReadWriteOncePod` constrains only one PVC; neither access mode coordinates writes across the two different claims. A blue-green data rollback is about reversible volume identity, not simultaneous modification of two divergent copies.
 
 ## Keep a fast path back to the pre-rollback volume
 
@@ -140,7 +140,7 @@ Writes made to the restored volume after cutover are not automatically merged ba
 
 A StatefulSet's `volumeClaimTemplates` create stable PVC identities tied to Pod ordinals. For template `data`, StatefulSet `db`, and ordinal `2`, the expected claim is `data-db-2`. You generally cannot switch that one Pod to an arbitrary new claim by editing the Pod because the controller recreates its managed specification.
 
-The safe pattern is to stop the affected replica or set, retain the current claim, validate a temporary restore, and then recreate a restored PVC under the exact ordinal-specific name during a maintenance window. Review `.spec.persistentVolumeClaimRetentionPolicy` first: `whenScaled: Delete` can remove claims during scale-down. Replicated databases also need member-removal, identity, and catch-up procedures from their own documentation.
+Review `.spec.persistentVolumeClaimRetentionPolicy` before scaling down: `whenScaled: Delete` removes claims for scaled-down replicas after their Pods terminate. The safe pattern is to ensure the relevant retention policy is `Retain`, scale down far enough to stop the affected ordinal or stop the set, preserve the current data with a snapshot or backup, and validate a temporary restore. During a maintenance window, set the original PV's reclaim policy to `Retain` if its backend volume must remain available as a backout, delete the ordinal PVC, and pre-create the restored PVC from the snapshot under the exact ordinal-specific name before restarting the Pod. The original PVC and its replacement cannot coexist under the same name; the PV reclaim policy preserves the old backend volume, not the deleted PVC object. Replicated databases also need member-removal, identity, and catch-up procedures from their own documentation.
 
 ## Treat vendor in-place revert as an exception
 
