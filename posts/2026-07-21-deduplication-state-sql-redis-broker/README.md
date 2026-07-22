@@ -100,7 +100,7 @@ Expiration and eviction matter separately:
 - With noeviction, memory-growing writes can fail, so the consumer needs an explicit policy.
 - Restoring an older snapshot can forget newer claims.
 
-Redis is therefore a sound authoritative choice only when its configured durability, retention, and failure semantics meet the business requirement, or when all state is changed atomically within Redis. Otherwise, treat it as an optimization rather than proof that a durable external effect happened.
+Redis is therefore a sound authoritative choice only when all relevant business state is changed atomically within Redis and its configured durability, retention, and failure semantics meet the business requirement. Otherwise, treat it as an optimization rather than proof that a durable external effect happened.
 
 ## The Broker: Useful but Narrow Guarantees
 
