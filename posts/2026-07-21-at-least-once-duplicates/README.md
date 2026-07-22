@@ -79,8 +79,8 @@ For a database-backed effect, store that ID in an inbox or processed-message tab
 ```text
 begin transaction
 
-insert (consumer_name, event_id) into processed_messages
-if the unique key already exists:
+attempt a conflict-safe insert of (consumer_name, event_id) into processed_messages
+if no row was inserted because the unique key already exists:
     commit with no business change
 else:
     apply the business update
@@ -141,5 +141,5 @@ The acceptance criterion is not "the handler ran once." It is "the durable busin
 - [RabbitMQ consumer acknowledgements and publisher confirms](https://www.rabbitmq.com/docs/confirms)
 - [Amazon SQS at-least-once delivery](https://docs.aws.amazon.com/AWSSimpleQueueService/latest/SQSDeveloperGuide/standard-queues-at-least-once-delivery.html)
 - [Amazon SQS visibility timeout](https://docs.aws.amazon.com/AWSSimpleQueueService/latest/SQSDeveloperGuide/sqs-visibility-timeout.html)
-- [Apache Kafka design: message delivery semantics](https://kafka.apache.org/43/design/design/#messagesemantics)
+- [Apache Kafka design: message delivery semantics](https://kafka.apache.org/43/design/design/#message-delivery-semantics)
 - [Apache Kafka producer API](https://kafka.apache.org/43/javadoc/org/apache/kafka/clients/producer/KafkaProducer.html)
