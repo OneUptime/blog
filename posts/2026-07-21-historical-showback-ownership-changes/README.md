@@ -57,7 +57,7 @@ Create an ownership dimension with a stable internal asset or allocation key and
 | `recorded_at` | When the ownership system learned about the change |
 | `source` | CMDB, service catalog, account registry, or approved exception |
 
-Join a charge to the ownership row whose validity interval contains the charge time:
+If the allocation policy attributes each charge by its start time, join it to the ownership row whose validity interval contains `charge_period_start`:
 
 ```sql
 SELECT f.charge_id, f.effective_cost, o.owner_id
@@ -68,7 +68,7 @@ LEFT JOIN ownership_history AS o
  AND f.charge_period_start < COALESCE(o.valid_to, TIMESTAMP '9999-12-31 00:00:00');
 ```
 
-Use half-open intervals so adjacent ownership periods do not overlap. Add a database constraint or data-quality test that rejects two owners for the same key and time. Decide whether daily or hourly precision is necessary based on the billing granularity and materiality of mid-period transfers.
+Use half-open intervals so adjacent ownership periods do not overlap. Add a database constraint or data-quality test that rejects two owners for the same key and time. Decide whether daily or hourly precision is necessary based on the billing granularity and materiality of mid-period transfers. If a source row spans an ownership boundary, use finer-grained data or split the row under a documented allocation rule; otherwise, this start-time join assigns the whole row to the owner at the period start.
 
 ## Preserve two kinds of time
 
