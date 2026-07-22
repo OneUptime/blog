@@ -53,16 +53,20 @@ groundcover.init({
   options: {
     sessionSampleRate: 0.25,
     eventSampleRate: 0.5,
-    tracePropagationUrls: [
-      'https://api.example.com'
-    ],
+    tracing: {
+      propagationUrls: [
+        'https://api.example.com/*'
+      ],
+      traceIdHeaderName: 'x-groundcover-trace-id',
+      spanIdHeaderName: 'x-groundcover-span-id',
+    },
   },
 });
 ```
 
 Groundcover documents `cluster`, `environment`, and `appId` as filtering and segmentation fields. Make their values stable and consistent with backend naming. A release ID is useful for associating a regression with a frontend deployment.
 
-The SDK exposes `tracePropagationUrls`. Limit it to trusted backend origins that need correlation. Propagating trace context to analytics, payment, advertising, or other third-party origins can disclose identifiers and create unwanted cross-system coupling. Verify the exact matching rules in the installed SDK before using broad URL patterns.
+The current SDK groups propagation settings under `options.tracing`. Limit `propagationUrls` to trusted backend origins that need correlation. Propagating trace context to analytics, payment, advertising, or other third-party origins can disclose identifiers and create unwanted cross-system coupling. Verify the exact matching rules in the installed SDK before using broad URL patterns.
 
 ## Make the Network Boundary Correlatable
 
