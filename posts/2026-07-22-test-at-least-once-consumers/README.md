@@ -50,7 +50,7 @@ In test builds, pause or terminate the consumer exactly at a selected point. Coo
 
 The most valuable case is `AFTER_BUSINESS_COMMIT`: terminate the process before its acknowledgement, SQS delete, or Kafka offset commit. Restart a consumer and require the source to deliver the record again. The handler's inbox or conditional update must turn the replay into a no-op before settlement completes.
 
-At `BEFORE_BUSINESS_COMMIT`, termination should leave neither inbox evidence nor a partial business effect. At `AFTER_ACK_OR_CHECKPOINT`, restart should not be needed for normal completion, though an independently duplicated message must still be safe.
+At `BEFORE_BUSINESS_COMMIT`, termination should leave no partial business effect and no inbox evidence that falsely marks the event complete. If the design persists an in-progress claim separately, that claim must be retryable or reclaimable after recovery. At `AFTER_ACK_OR_CHECKPOINT`, restart should not be needed for normal completion, though an independently duplicated message must still be safe.
 
 ## Test the effect and checkpoint as separate state
 
@@ -79,15 +79,16 @@ A mock is still useful for deterministic application branches. Kafka's `MockCons
 A practical Kafka scenario is:
 
 1. Create a unique topic and consumer group.
-2. Publish an event with a stable event ID.
-3. Start consumer A and pause it after the database transaction commits.
-4. Stop A without allowing its offset commit, or exceed the applicable group liveness boundary.
-5. Start consumer B and wait for partition assignment.
-6. Release or terminate A according to the stale-worker case.
-7. Verify B receives the same topic, partition, and offset.
-8. Verify one business effect and a committed next offset after recovery.
+2. Configure the consumers with `enable.auto.commit=false`.
+3. Publish an event with a stable event ID.
+4. Start consumer A and pause it after the database transaction commits.
+5. Stop A without allowing its offset commit, or exceed the applicable group liveness boundary.
+6. Start consumer B and wait for partition assignment.
+7. Release or terminate A according to the stale-worker case.
+8. Verify B receives the same topic, partition, and offset.
+9. Verify one business effect and a committed next offset after recovery.
 
-Also add consumer B while A is healthy to exercise planned revocation. Verify `onPartitionsRevoked` commits only completed contiguous offsets. Separately simulate an abrupt loss, where an orderly callback cannot be assumed.
+Also add consumer B while A is healthy in a test whose partitions and subscriptions require ownership to move, so planned revocation is actually exercised. Verify `onPartitionsRevoked` commits only completed contiguous offsets. Separately simulate an abrupt loss, where an orderly callback cannot be assumed.
 
 Test slow handling against `max.poll.interval.ms`, a failed `commitSync`, and an asynchronous commit callback error. With worker pools, complete offsets out of order and prove that the commit frontier never crosses a hole.
 
@@ -104,11 +105,11 @@ Use a dedicated queue with a short test visibility timeout:
 5. Require the unique operation boundary to select one effect.
 6. Delete using the active receive path and verify the queue eventually drains.
 
-Then test a heartbeat extension with `ChangeMessageVisibility`. Make one renewal succeed and the next time out. The worker should stop starting new side effects after it can no longer prove its lease is current.
+Then test a heartbeat extension with `ChangeMessageVisibility`. Make one renewal succeed and the next time out. Treat the timeout as an unknown renewal outcome and stop starting new side effects because another receive may become possible; a visibility timeout is not a lock that replaces idempotency.
 
 Use the latest receipt handle in delete tests. AWS documents that an old handle can return success without necessarily deleting the message. Test an ambiguous delete response by dropping the network response and allowing a later receive; the repeated message must remain safe.
 
-For Lambda SQS integrations, invoke a mixed batch with one deterministic failure. Without partial batch reporting, assert that successful records can repeat. With `ReportBatchItemFailures`, assert only declared failures return under the documented behavior. For FIFO, ensure the handler stops after the first failed record and returns the unprocessed suffix.
+For Lambda SQS integrations, invoke a mixed batch with one deterministic failure. Without partial batch reporting, assert that successful records can repeat. With `ReportBatchItemFailures`, catch record-level errors and return a valid `batchItemFailures` response, then assert that the event source mapping makes only the declared failures visible again. If the function throws, the entire batch is failed. For FIFO, ensure the handler stops after the first failed record and returns the failed and unprocessed suffix.
 
 ## Close RabbitMQ channels with messages in flight
 
@@ -120,7 +121,7 @@ Restart the consumer and verify:
 - unfinished work is processed;
 - acknowledgements use the receiving channel's delivery tags;
 - a cumulative acknowledgement never crosses an unfinished tag;
-- a poison message reaches the configured limit and dead-letter path.
+- a poison message reaches the application's retry limit or, for a quorum queue, its configured delivery limit, and follows the configured dead-letter path.
 
 Do not assert that a redelivery must go to a different consumer. RabbitMQ may send it to the same or another consumer.
 
@@ -186,5 +187,7 @@ At-least-once correctness is demonstrated when the same message is intentionally
 - [Amazon SQS `DeleteMessage` API](https://docs.aws.amazon.com/AWSSimpleQueueService/latest/APIReference/API_DeleteMessage.html)
 - [AWS Lambda SQS partial batch responses](https://docs.aws.amazon.com/lambda/latest/dg/services-sqs-errorhandling.html)
 - [RabbitMQ consumer acknowledgements and automatic requeueing](https://www.rabbitmq.com/docs/confirms)
+- [RabbitMQ quorum queue poison-message handling](https://www.rabbitmq.com/docs/quorum-queues)
+- [RabbitMQ dead-letter exchanges](https://www.rabbitmq.com/docs/dlx)
 - [Testcontainers Kafka module](https://java.testcontainers.org/modules/kafka/)
 - [Testcontainers Toxiproxy module](https://java.testcontainers.org/modules/toxiproxy/)
