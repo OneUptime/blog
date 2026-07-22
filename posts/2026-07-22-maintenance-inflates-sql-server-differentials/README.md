@@ -16,7 +16,7 @@ This is not evidence that differential tracking is broken. It is the expected co
 
 SQL Server stores data in 8 KiB pages, grouped into extents of eight pages. A DCM bit represents an extent and records whether it changed after the base full backup. When one page changes, that extent is relevant to the differential.
 
-The backup does not store a semantic instruction such as “column `Status` changed on 200 rows.” It stores the changed data pages and recovery information required to recreate the differential state. Physical movement matters even when logical values do not.
+The backup does not store a semantic instruction such as “column `Status` changed on 200 rows.” It stores the changed data extents and recovery information required to recreate the differential state. Physical movement matters even when logical values do not.
 
 ## Index Rebuilds
 
@@ -39,7 +39,7 @@ ETL often amplifies physical change:
 - a wide `UPDATE` can touch pages throughout a fact table;
 - a `MERGE` can combine inserts, updates, and deletes over a broad key range;
 - truncate-and-reload patterns replace large allocations;
-- staging transformations and index creation rewrite temporary and durable objects;
+- staging transformations and index creation can rewrite durable staging objects; work confined to `tempdb` does not enlarge a user-database differential;
 - partition switching is a metadata operation, but preparing the incoming partition may still produce substantial backup data in the same database.
 
 Measure changed extents and actual backup output around representative jobs. Row counts, input-file size, and transaction-log generation describe different aspects of the work and should not be substituted for differential-backup measurements.
