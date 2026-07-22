@@ -23,7 +23,7 @@ The Kubernetes snapshot API gives a standard workflow for CSI drivers:
 
 The external snapshotter calls the CSI driver's `CreateSnapshot` and `DeleteSnapshot` operations. The storage provider decides how bytes are represented: full copy, copy-on-write, incremental chain, native cloud snapshot, or another implementation.
 
-`status.readyToUse: true` means the driver reports that the snapshot can be used to create a volume. It does not certify application consistency, geographic independence, integrity, malware cleanliness, or a successful restore.
+`status.readyToUse: true` means the snapshot API considers the snapshot ready to create a volume. It does not certify application consistency, geographic independence, integrity, malware cleanliness, or a successful restore.
 
 ## Test the Failure Domains
 
@@ -58,7 +58,7 @@ Move snapshot contents or perform a file-level backup to object storage in anoth
 
 Velero CSI Snapshot Data Movement is one official option. It creates a CSI snapshot, provisions temporary access to it, and uses a data mover to upload the data to a configured backup repository. After movement, Velero removes the temporary CSI snapshot. On restore, it downloads into a newly provisioned PVC. This hybrid keeps the point-in-time advantage of a storage snapshot while producing a more portable copy.
 
-Velero's File System Backup is another option when the CSI driver lacks snapshot support or storage portability is more important than block-level speed. It reads a live mounted volume, so it is generally less point-in-time consistent and requires application quiescing for stateful data.
+Velero's File System Backup is another option when the CSI driver lacks snapshot support or storage portability is more important than block-level speed. It reads a live mounted volume, so it is generally less point-in-time consistent and may require application quiescing to produce an application-consistent backup of stateful data.
 
 ### Tier 3: Application-Native Recovery
 
@@ -144,6 +144,6 @@ A local snapshot is valuable because it is fast and storage-native. An independe
 - [Kubernetes: Volume Snapshots](https://kubernetes.io/docs/concepts/storage/volume-snapshots/)
 - [Kubernetes: Volume Snapshot Classes and Deletion Policy](https://kubernetes.io/docs/concepts/storage/volume-snapshot-classes/)
 - [Kubernetes CSI Developer Documentation: Snapshot and Restore](https://kubernetes-csi.github.io/docs/snapshot-restore-feature)
-- [Velero: CSI Snapshot Data Movement](https://velero.io/docs/main/csi-snapshot-data-movement/)
+- [Velero 1.18: CSI Snapshot Data Movement](https://velero.io/docs/v1.18/csi-snapshot-data-movement/)
 - [Velero 1.18: File System Backup](https://velero.io/docs/v1.18/file-system-backup)
 - [Velero 1.18: Restore Reference](https://velero.io/docs/v1.18/restore-reference/)
