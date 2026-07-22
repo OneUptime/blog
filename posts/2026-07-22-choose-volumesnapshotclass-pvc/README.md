@@ -36,9 +36,9 @@ PVC_CSI_DRIVER=$(kubectl get pv "$PV_NAME" \
 printf '%s\n' "$PVC_CSI_DRIVER"
 ```
 
-Use the PV as the source of truth. A StorageClass's `provisioner` normally matches, but the PVC can be statically bound or the StorageClass can have changed after provisioning.
+Use the PV as the source of truth. A StorageClass's `provisioner` normally matches, but the PVC can be statically bound or the StorageClass can have been deleted and recreated after provisioning.
 
-If `.spec.csi.driver` is empty, inspect the complete PV. Kubernetes VolumeSnapshot is available only through CSI drivers. A deprecated in-tree volume or an incomplete CSI migration needs separate investigation.
+If `.spec.csi.driver` is empty, inspect the complete PV. Kubernetes VolumeSnapshot is available only for PVs with a CSI volume source. CSI migration can route legacy in-tree volume operations through a CSI driver, but it does not make an in-tree PV compatible with the VolumeSnapshot API; migrate or reprovision the volume as a native CSI PV before using these snapshot classes.
 
 Record other restore-relevant properties while you are here:
 
@@ -118,7 +118,7 @@ deletionPolicy: Delete
 parameters: {}
 ```
 
-`csi.example.com` is a structural placeholder, not a real driver. When a `VolumeSnapshot` omits `volumeSnapshotClassName`, Kubernetes determines the source PVC's driver and selects that driver's default class. Multiple CSI drivers can each have one default.
+`csi.example.com` is a structural placeholder, not a real driver. When a dynamically provisioned `VolumeSnapshot` for a PVC omits `volumeSnapshotClassName`, Kubernetes determines the source PVC's driver and selects that driver's default class. Multiple CSI drivers can each have one default.
 
 Do not create two defaults for the same driver. Kubernetes cannot choose between them and snapshot creation fails. Also note that `volumeSnapshotClassName: ""` is not a way to disable defaulting; the empty string is not allowed for this field.
 
@@ -126,9 +126,9 @@ Backup jobs are generally more predictable when they name an explicit class. Tha
 
 ## Treat classes as immutable policy versions
 
-The significant fields of a `VolumeSnapshotClass` cannot be updated after creation. When driver parameters or deletion policy change, create a new class with a versioned, descriptive name, test it, migrate automation, and retire the old class only after checking existing snapshots.
+Treat the significant fields of a `VolumeSnapshotClass` as immutable policy. Current CRDs may accept in-place changes to `driver`, `parameters`, or `deletionPolicy`, but those changes do not update content objects already created from the class. When driver parameters or deletion policy change, create a new class with a versioned, descriptive name, test it, migrate automation, and retire the old class only after checking existing snapshots.
 
-Deleting or recreating a class does not rewrite the specification of content objects already provisioned from it. The content stores the deletion policy and driver used for its own lifecycle. Even so, deleting a class can disrupt new requests and make operations harder to audit.
+Updating, deleting, or recreating a class does not rewrite the specification of content objects already provisioned from it. The content stores the deletion policy and driver used for its own lifecycle. Even so, changing or deleting a class can disrupt new requests and make operations harder to audit.
 
 A naming scheme can expose intent without replacing inspection, for example:
 
@@ -140,7 +140,7 @@ Avoid embedding promises such as `immutable` or `cross-region` unless the backen
 
 ## Check restore compatibility, not just creation
 
-Before approving a class, create a snapshot of a disposable PVC and wait for `status.readyToUse: true`. Then create a new PVC with that snapshot as `dataSource` and a StorageClass whose provisioner uses the same compatible driver.
+Before approving a class, create a snapshot of a disposable PVC and wait for `status.readyToUse: true`. Then create a new PVC with that snapshot as `dataSource` and a StorageClass whose provisioner uses the same CSI driver.
 
 The restored claim should:
 
