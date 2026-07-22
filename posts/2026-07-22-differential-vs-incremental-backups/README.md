@@ -79,7 +79,7 @@ Apply retention through the backup product rather than deleting apparent chain m
 
 Native SQL Server offers full, differential, and transaction log backups. A SQL Server differential contains changed extents since its differential base, normally the latest non-copy-only full database backup. Each differential in the series is cumulative from that base.
 
-A transaction log backup is not simply a generic incremental data backup. Under the full or bulk-logged recovery model, log backups preserve an ordered log chain and enable point-in-time recovery. A production SQL Server plan commonly combines:
+A transaction log backup is not simply a generic incremental data backup. Under the full or bulk-logged recovery model, log backups preserve an ordered log chain. The full recovery model enables point-in-time recovery. Under the bulk-logged recovery model, a log backup that contains bulk-logged changes can be restored only to the end of that backup, not to a point within it. A production SQL Server plan commonly combines:
 
 ```text
 weekly full
@@ -87,7 +87,7 @@ daily differential
 transaction log every few minutes
 ```
 
-For a Thursday 14:37 recovery, restore the weekly full with `NORECOVERY`, the latest valid differential before 14:37 with `NORECOVERY`, and every required log backup after that differential in log-sequence order. Finish the last log restore with `STOPAT` and `RECOVERY`. The differential reduces the number of log backups that must be replayed; it does not replace them.
+For a Thursday 14:37 recovery under the full recovery model, restore the weekly full with `NORECOVERY`, the latest valid differential before 14:37 with `NORECOVERY`, and every required log backup after that differential in log-sequence order. Specify the same `STOPAT` target on every `RESTORE LOG`, keep the database unrecovered through the log sequence, and recover it after applying the log backup that contains 14:37. The differential reduces the number of log backups that must be replayed; it does not replace them.
 
 ## Choose From RPO and RTO
 
