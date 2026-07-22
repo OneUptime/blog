@@ -1,9 +1,5 @@
 # Blog Post Ideas
 
-## Differential Backups
-
-1. How to Test and Automate Full, Differential, and Log Restore Chains
-
 ## OSV
 
 1. What Is OSV? A Practical Guide to the Schema, Database, and Scanner
