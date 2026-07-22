@@ -36,7 +36,7 @@ Also record the cluster version:
 kubectl version
 ```
 
-The external-snapshotter project publishes a compatibility matrix for every supported release. Select a release compatible with your Kubernetes and CSI versions. Do not use `master`, `latest`, or a mixture of manifests from different tags in production.
+The external-snapshotter project publishes compatibility information for its releases. Select a release compatible with your Kubernetes and CSI versions. Do not use `master`, `latest`, or a mixture of manifests from different tags in production.
 
 ## Choose and pin an upstream release
 
