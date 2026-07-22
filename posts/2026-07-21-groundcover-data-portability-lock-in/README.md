@@ -72,7 +72,7 @@ Export a small interval and validate it against the destination before moving hi
 
 ## Object Storage Is Not Automatically an Exit Format
 
-Groundcover's disaster recovery documentation says older logs, traces, and events can be offloaded to object storage, and daily volume snapshots are used for monitoring data. It also says metrics do not use object storage.
+Groundcover's disaster recovery documentation says older logs, traces, and events can be offloaded to object storage, and daily volume snapshots are used for monitoring data. It also says metrics are not offloaded to object storage.
 
 Owning the bucket is valuable, but a disaster-recovery artifact is not necessarily a supported interchange artifact. Establish:
 
