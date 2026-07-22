@@ -36,7 +36,7 @@ Preserving order therefore requires all of these:
 4. Retry stays in front of later work for the same key.
 5. The business store rejects stale or gapped versions.
 
-## Kafka: key, partition, and contiguous offsets
+## Kafka: key, partition, and ordered offset progress
 
 Kafka guarantees order within a topic partition, not across partitions. Events with the same key are normally routed to the same partition, so an `order_id` or `account_id` is the natural record key.
 
@@ -50,7 +50,7 @@ producer.send(new ProducerRecord<>(
 
 Keep producer idempotence enabled. Kafka documents that with idempotence disabled, retries and more than one in-flight request can let a later batch appear before an earlier retried batch. Idempotence is enabled by default when compatible settings are used and requires no more than five in-flight requests per connection.
 
-On the consumer side, one consumer in a group owns a partition at a time, but application worker pools can still reorder completion. Process the partition serially, or maintain per-key queues plus a per-partition contiguous offset frontier. Never commit offset 103 while failed offset 101 is unresolved merely because 102 completed.
+On the consumer side, one consumer in a group owns a partition at a time, but application worker pools can still reorder completion. Process the partition serially, or maintain per-key queues plus a per-partition frontier that advances only across the completed prefix of polled records. Never commit offset 103 while failed offset 101 is unresolved merely because 102 completed.
 
 For blocking retry, pause the affected partition, continue polling as required for group membership, retry with bounded backoff, then resume. This preserves partition order but stalls unrelated keys that share the partition. More partitions reduce that blast radius at operational cost.
 
@@ -73,7 +73,7 @@ await sqs.send(new SendMessageCommand({
 
 Use one stable group ID per ordering key. A constant group ID gives total queue order and poor parallelism. A random ID per message gives parallelism and no entity order.
 
-If processing fails, do not delete the message. When visibility expires, it becomes available again and the group remains blocked behind it. Size and renew visibility so a slow valid attempt does not overlap its redelivery.
+If processing fails, do not delete the message. When visibility expires, it becomes available again. A receive can return multiple messages from the same group in one batch, so process each group's messages serially and stop at the first failure; otherwise later messages in that batch can overtake it. Size and renew visibility to reduce the chance that a slow valid attempt overlaps its redelivery.
 
 For Lambda partial batch responses on FIFO queues, AWS explicitly recommends stopping after the first failure and returning both failed and unprocessed messages. Continuing through the batch could apply later messages first even though SQS delivered the batch in group order.
 
@@ -86,9 +86,9 @@ RabbitMQ queues are ordered collections, but multiple active consumers process c
 RabbitMQ documents two primary choices for preserved order:
 
 - a stream, whose immutable offsets do not change; or
-- a queue with Single Active Consumer, plus ordered returns for requeued messages.
+- a queue with Single Active Consumer, returning requeued messages in received order and, for a quorum queue, configuring a delivery limit so requeued messages go to the front.
 
-Single Active Consumer keeps one consumer active and promotes another on failure. It preserves dispatch continuity but does not make the handler idempotent. An unacknowledged message is requeued when the active consumer's channel closes, so the replacement may repeat an effect.
+Single Active Consumer keeps one consumer active and promotes another on failure. It does not serialize the handler's thread pool, so keep handler concurrency at one or otherwise serialize effects. It also does not make the handler idempotent. With manual acknowledgements, an unacknowledged message is automatically requeued when the active consumer's channel closes, so the replacement may repeat an effect.
 
 If ordering is per entity rather than global, partition entities across queues and run a single active consumer for each lane. Keep the hash and queue-count transition stable, or migrate keys with an explicit cutover sequence.
 
@@ -137,7 +137,7 @@ Do not rely on wall-clock timestamps for sequence. Clocks skew, concurrent produ
 
 ## Preserve order across a consumer rebalance
 
-During Kafka revocation or a RabbitMQ consumer failover, stop assigning new work, drain or cancel in-flight work for the affected lanes, commit only completed contiguous progress, and fence stale workers. The new owner must start from the durable checkpoint and state version.
+During Kafka revocation or a RabbitMQ consumer failover, stop assigning new work, drain or cancel in-flight work for the affected lanes, commit only the completed prefix of delivered records, and fence stale workers. The new owner must start from the durable checkpoint and state version.
 
 A callback cannot handle every hard failure. Include an ownership epoch or lease version in delayed database writes so a worker that lost its lane cannot commit after the replacement has started.
 
