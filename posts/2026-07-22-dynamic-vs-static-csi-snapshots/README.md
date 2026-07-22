@@ -73,7 +73,7 @@ The class's `deletionPolicy` is copied to this object. If it is `Delete`, deleti
 Static import is appropriate when, for example:
 
 - a backend snapshot was created through a vendor API during an incident;
-- a `Retain` policy preserved content and the snapshot must be rebound deliberately;
+- a `Retain` policy preserved a backend snapshot and its Kubernetes metadata must be recreated for a deliberate re-import;
 - a supported migration made an existing snapshot visible to a new cluster; or
 - an administrator is reconstructing Kubernetes metadata from a backend inventory.
 
@@ -105,7 +105,7 @@ Replace `csi.example.com`, the handle, mode, names, and namespace with verified 
 
 `deletionPolicy: Retain` is the conservative import default. Choosing `Delete` authorizes later Kubernetes deletion to invoke the CSI driver's `DeleteSnapshot` against the imported asset. Do that only when ownership and retention policy are unambiguous.
 
-Set `sourceVolumeMode` to `Filesystem` or `Block` when it is known. For a pre-provisioned snapshot, the administrator is responsible for its accuracy. Modern snapshot components use it to prevent an unauthorized mode conversion during restore.
+Set `sourceVolumeMode` to the verified source mode, either `Filesystem` or `Block`. For a pre-provisioned snapshot, the administrator must populate it accurately. Modern snapshot components use it to prevent an unauthorized mode conversion during restore.
 
 ### Bind a namespaced VolumeSnapshot
 
@@ -122,7 +122,7 @@ spec:
     volumeSnapshotContentName: imported-orders-content
 ```
 
-The common controller validates the bidirectional relationship and binds the pair. If you set `volumeSnapshotClassName`, the content must use the same class name; omitting it from both is simpler for a one-off import.
+The common controller validates the bidirectional relationship and binds the pair. A class is not required for pre-provisioned binding, so omitting `volumeSnapshotClassName` from both objects is simpler for a one-off import.
 
 Verify both sides:
 
