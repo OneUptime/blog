@@ -2,17 +2,16 @@
 
 ## Differential Backups
 
-1. Can an Ad Hoc Full Backup Break Your Differential Backup Plan?
-2. Why SQL Server Differential Backups Keep Getting Larger
-3. How Index Rebuilds, ETL Jobs, and LOB Compaction Inflate Differential Backups
-4. When a Differential Backup Is Nearly as Large as a Full Backup
-5. How to Choose Full and Differential Backup Schedules from Your RPO and RTO
-6. How to Verify a Differential Backup’s Base LSN with RESTORE HEADERONLY
-7. Fixing “The Differential Backup Cannot Be Restored” in SQL Server
-8. How Backup Compression Affects Differential Backup Size and Restore Time
-9. Differential Backups in SQL Server Availability Groups: Primary and Secondary Replica Rules
-10. How VSS and Third-Party Backup Tools Can Change Your Differential Base
-11. How to Test and Automate Full, Differential, and Log Restore Chains
+1. Why SQL Server Differential Backups Keep Getting Larger
+2. How Index Rebuilds, ETL Jobs, and LOB Compaction Inflate Differential Backups
+3. When a Differential Backup Is Nearly as Large as a Full Backup
+4. How to Choose Full and Differential Backup Schedules from Your RPO and RTO
+5. How to Verify a Differential Backup’s Base LSN with RESTORE HEADERONLY
+6. Fixing “The Differential Backup Cannot Be Restored” in SQL Server
+7. How Backup Compression Affects Differential Backup Size and Restore Time
+8. Differential Backups in SQL Server Availability Groups: Primary and Secondary Replica Rules
+9. How VSS and Third-Party Backup Tools Can Change Your Differential Base
+10. How to Test and Automate Full, Differential, and Log Restore Chains
 
 ## OSV
 
