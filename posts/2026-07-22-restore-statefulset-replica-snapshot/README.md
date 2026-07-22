@@ -10,7 +10,7 @@ Description: Restore one StatefulSet ordinal by recreating its PVC from a snapsh
 
 A StatefulSet does not attach any interchangeable claim to any replica. Each `volumeClaimTemplate` and Pod ordinal produce a stable PVC name. If the template is `data`, the StatefulSet is `orders-db`, and the ordinal is `2`, the expected claim is `data-orders-db-2`.
 
-To restore that replica, stop the controller from recreating the Pod, validate the recovery separately, remove the old claim safely, and create a snapshot-backed PVC with that exact name. The new PV and CSI volume handle will differ; the Kubernetes PVC identity remains the one the StatefulSet expects.
+To restore that replica, stop the controller from recreating the Pod, validate the recovery separately, remove the old claim safely, and create a snapshot-backed PVC with that exact name. The new PV, CSI volume handle, and recreated PVC's UID will differ; what remains stable is the PVC name and ordinal relationship the StatefulSet expects.
 
 ## Decide whether a replica restore is valid
 
@@ -75,7 +75,7 @@ spec:
 
 If an operator or GitOps controller owns the StatefulSet, use its maintenance and configuration APIs. A manual patch can be immediately reversed by reconciliation.
 
-Create and verify a current-state backup before rollback. Prefer a `VolumeSnapshotClass` with `Retain` for this safety copy, and wait for `readyToUse: true`. This is separate from the older snapshot you intend to restore.
+Create and verify a current-state backup before rollback. Prefer a `VolumeSnapshotClass` with `deletionPolicy: Retain` for this safety copy, and wait for `readyToUse: true`. This is separate from the older snapshot you intend to restore.
 
 ## Stop the target ordinal without a race
 
@@ -91,7 +91,7 @@ ORIGINAL_REPLICAS=$(kubectl get statefulset "$STATEFULSET" \
 printf '%s\n' "$ORIGINAL_REPLICAS"
 ```
 
-If the target is the highest ordinal, scale below it. For a three-replica set targeting ordinal 2:
+If the target is the highest ordinal, reduce the desired replica count so that the target falls outside the desired ordinal range. The replica count is a count, not an ordinal: with start ordinal `S` and target ordinal `T`, set replicas to `T-S` or lower. For a three-replica set with the default start ordinal targeting ordinal 2:
 
 ```bash
 kubectl scale statefulset "$STATEFULSET" \
@@ -99,9 +99,9 @@ kubectl scale statefulset "$STATEFULSET" \
   --replicas=2
 ```
 
-StatefulSets scale down from the highest ordinal. To create a hole at a middle or lower ordinal, a generic StatefulSet has no per-replica pause. The conservative workflow is to scale the set to zero, or below the target knowing that all greater ordinals also stop. Coordinate quorum and availability with the application owner.
+StatefulSets scale down from the highest ordinal. To create a hole at a middle or lower ordinal, a generic StatefulSet has no per-replica pause. Reduce the desired range through the target, knowing that all greater ordinals also stop, or use the conservative workflow of scaling the set to zero. Coordinate quorum and availability with the application owner.
 
-Horizontal autoscalers and operators can undo manual scaling. Suspend their reconciliation through supported controls. Wait until the target Pod is fully gone and the volume is detached; do not force-delete it to bypass storage protection.
+Horizontal autoscalers and operators can undo manual scaling. Suspend their reconciliation through supported controls. With the default `OrderedReady` policy, scale-down can stall while any managed Pod is unhealthy; if that happens, use the workload owner's supported maintenance or recovery procedure rather than forcing the operation. Wait until the target Pod is fully gone and the volume is detached; do not force-delete it to bypass storage protection.
 
 ## Restore and validate under a temporary name
 
@@ -127,7 +127,7 @@ spec:
       storage: 200Gi
 ```
 
-Use the source claim's real modes and a capacity at least as large as the snapshot's `restoreSize`. Mount the temporary claim read-only in an isolated Pod. Run filesystem, database, version, and recovery-point checks without allowing it to join the live cluster or process production work.
+Use a StorageClass backed by the snapshot's CSI driver, the source claim's real modes, and a capacity at least as large as the snapshot's `restoreSize`. With the `dataSource` form shown here, the `VolumeSnapshot` must be in the same namespace as the PVC and report `readyToUse: true`. Mount a filesystem-mode temporary claim read-only in an isolated Pod; for raw block mode, expose it through `volumeDevices` and use non-destructive validation tooling. Run filesystem, database, version, and recovery-point checks without allowing it to join the live cluster or process production work.
 
 This step catches the wrong snapshot, missing encryption key, corrupt recovery point, and incompatible application version before the ordinal's stable name is disturbed.
 
@@ -190,7 +190,7 @@ spec:
 
 Ensure template-required labels and annotations are present, but omit controller-populated fields. If the StorageClass uses `WaitForFirstConsumer`, the claim may stay `Pending` until the StatefulSet Pod is scheduled. That is expected.
 
-Optionally mount this exact claim in a temporary read-only Pod for a final check, then delete that Pod and wait for detachment before scaling up.
+Optionally attach or mount this exact claim read-only, where supported, in a temporary Pod for a final check, then delete that Pod and wait for detachment before scaling up. With `WaitForFirstConsumer`, the validation Pod must reproduce the target StatefulSet Pod's scheduling constraints so that provisioning selects compatible topology; otherwise, let the StatefulSet Pod be the first consumer.
 
 ## Bring the replica back under application control
 
