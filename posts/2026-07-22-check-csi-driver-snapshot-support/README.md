@@ -79,10 +79,12 @@ Snapshot calls go through an external-snapshotter sidecar colocated with the CSI
 ```bash
 kubectl get deployment,statefulset --all-namespaces
 
-kubectl get deployment DRIVER_CONTROLLER \
+kubectl get WORKLOAD_KIND DRIVER_CONTROLLER \
   --namespace DRIVER_NAMESPACE \
   -o jsonpath='{range .spec.template.spec.containers[*]}{.name}{"\t"}{.image}{"\n"}{end}'
 ```
+
+Replace `WORKLOAD_KIND` with `deployment` or `statefulset`, based on the controller workload you found.
 
 A container commonly named `csi-snapshotter` is strong evidence that the installed driver package is configured for snapshots. It is not proof by itself. The sidecar could be incompatible, pointed at the wrong CSI socket, or paired with a driver that does not advertise `CREATE_DELETE_SNAPSHOT`.
 
@@ -158,7 +160,7 @@ The snapshot handle should be non-empty. Check the storage backend as well; the 
 
 ## Prove restore support separately
 
-Kubernetes restore means provisioning a new volume whose CSI `CreateVolume` request carries the snapshot as its content source. Create a new PVC in the same namespace with the same compatible StorageClass, access mode, and volume mode. Its requested size must be at least the snapshot's `restoreSize`:
+Kubernetes restore means provisioning a new volume whose CSI `CreateVolume` request carries the snapshot as its content source. Create a new PVC in the same namespace with the same compatible StorageClass, access mode, and volume mode. If the snapshot reports `restoreSize`, the PVC's requested size must be at least that value:
 
 ```yaml
 apiVersion: v1
