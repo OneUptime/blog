@@ -72,7 +72,7 @@ Choose standard queues for high-throughput work that tolerates reordering and us
 
 ## Kafka: Exactly-Once Has a Precise Scope
 
-Kafka documents three common consumer patterns. Processing then committing the offset is at-least-once. Committing the offset then processing is at-most-once. Kafka's idempotent producer prevents duplicate records caused by producer retries in Kafka's log.
+Kafka documents three common consumer patterns. Processing then committing the offset is at-least-once. Committing the offset then processing is at-most-once. Kafka's idempotent producer prevents client retries within a single producer session from creating duplicate records in Kafka's log.
 
 Kafka transactions extend that boundary. A transactional producer can write output records to multiple Kafka partitions and commit consumed offsets as one transaction. Consumers configured with `read_committed` do not expose aborted transactional records. Kafka Streams uses these mechanisms for supported exactly-once processing.
 
@@ -89,7 +89,7 @@ At-least-once is often the best default for important work because duplicate del
 - an outbox for publishing after a local database transaction;
 - reconciliation for external outcomes that remain ambiguous.
 
-An in-memory cache is not sufficient. It disappears on restart and cannot atomically protect a database update. A separate "check then act" query is also unsafe under concurrent workers unless a uniqueness constraint serializes the decision.
+An in-memory cache is not sufficient. It disappears on restart and cannot atomically protect a database update. A separate "check then act" query is also unsafe under concurrent workers unless database concurrency control, such as a uniqueness constraint, suitable locking, or serializable isolation, serializes the decision.
 
 Exactly-once designs require the same rigor. Verify stable transaction IDs, isolation, consumer read mode, fencing, timeout behavior, and what happens when a transaction outcome is unknown. Coordination adds latency and operational state, so use it where its scoped atomicity removes meaningful application complexity.
 
