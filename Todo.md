@@ -2,8 +2,7 @@
 
 ## CSI Snapshots
 
-1. How to Snapshot Legacy In-Tree Volumes After Migrating to a CSI Driver
-2. CSI Volume Clones vs. Volume Snapshots: Which Should You Use?
+1. CSI Volume Clones vs. Volume Snapshots: Which Should You Use?
 
 ## Differential Backups
 
