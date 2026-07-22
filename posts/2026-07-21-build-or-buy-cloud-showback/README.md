@@ -45,7 +45,7 @@ Map these inputs to the FinOps capabilities you need. The Foundation notes that 
 
 Adopt native tools first when the environment is concentrated in one provider, allocation follows provider hierarchies and tags, shared-cost requirements are modest, and stakeholders can work within the provider's access model.
 
-AWS, for example, provides cost allocation tags, Cost Categories, and split charge rules with proportional, fixed, or even methods. Azure Cost Management can reassign shared cost between subscriptions, resource groups, or tags for supported billing account types. These capabilities can deliver useful showback without another platform.
+AWS, for example, provides cost allocation tags, Cost Categories, and split charge rules with proportional, fixed, or even methods. Split-charge results appear only on the Cost Categories details page and its CSV export; they do not appear in the Cost and Usage Report, Cost Explorer, or other AWS Cost Management tools. Azure Cost Management can reassign shared cost in its reporting between subscriptions, resource groups, or tags for supported billing account types. Its allocations do not change the invoice and do not support purchases such as reservations and savings plans. These capabilities can deliver useful showback without another platform.
 
 Native tooling becomes harder when a common taxonomy must span providers and SaaS, when business outcomes live outside the cloud hierarchy, when Kubernetes or shared platforms need utilization-based allocation, or when users require one governed workflow across many billing accounts.
 
