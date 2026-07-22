@@ -2,11 +2,10 @@
 
 ## At-Least-Once
 
-1. Transactional Outbox with At-Least-Once Delivery: Designing for Duplicate Events
-2. The Inbox Pattern: Atomically Deduplicating Messages with Business Updates
-3. At-Least-Once Batch Consumers: Handling Partial Failures, Retries, and Checkpoints
-4. How to Preserve Message Order When Retries and Redelivery Are Enabled
-5. How to Test At-Least-Once Consumers with Crashes, Timeouts, and Rebalances
+1. The Inbox Pattern: Atomically Deduplicating Messages with Business Updates
+2. At-Least-Once Batch Consumers: Handling Partial Failures, Retries, and Checkpoints
+3. How to Preserve Message Order When Retries and Redelivery Are Enabled
+4. How to Test At-Least-Once Consumers with Crashes, Timeouts, and Rebalances
 
 ## CSI Snapshots
 
