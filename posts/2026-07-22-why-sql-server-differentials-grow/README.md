@@ -32,7 +32,7 @@ SQL Server tracks changes using Differential Change Map pages. Each DCM bit repr
 
 **Index maintenance rewrites data.** An index rebuild creates and organizes index structures across many extents. Even if business rows retain the same logical values, the physical pages changed. Broad rebuild schedules can make the next differential resemble a full.
 
-**ETL touches many rows or partitions.** A nightly `MERGE`, staging swap, mass update, or warehouse load can change extents across a large portion of the database. The number of statements is irrelevant; the changed physical footprint matters.
+**ETL touches many rows or partitions.** A nightly `MERGE`, staging-table load, mass update, or warehouse load can change extents across a large portion of the database. The number of statements is irrelevant; the changed physical footprint matters.
 
 **LOB work moves large allocations.** Updates to `varchar(max)`, `nvarchar(max)`, `varbinary(max)`, XML, and other large values can rewrite off-row pages. Compaction and migration jobs can touch much more storage than the logical payload suggests.
 
@@ -73,9 +73,9 @@ RESTORE HEADERONLY
 FROM DISK = 'E:\SQLBackups\Sales_latest_diff.bak';
 ```
 
-Match `DifferentialBaseLSN` and `DifferentialBaseGUID` to an available regular full. An unscheduled non-copy-only full can redirect later differentials. Conversely, an ad hoc copy-only full does not reset the base, so growth continues from the scheduled full.
+For a single-based differential, match `DifferentialBaseLSN` to the regular full's `FirstLSN` and `DifferentialBaseGUID` to its `BackupSetGUID`. An unscheduled non-copy-only full can redirect later differentials. Conversely, an ad hoc copy-only full does not reset the base, so growth continues from the scheduled full.
 
-If file or partial backups are used, the differential can be multi-based. Inspect file-level metadata rather than relying only on database-level fields.
+If file or partial backups are used, the differential can be multi-based. Inspect the file-level base metadata with `RESTORE FILELISTONLY` rather than relying only on database-level fields.
 
 ## Decide When to Start a New Base
 
@@ -94,7 +94,7 @@ The best threshold need not be “when differential equals full.” A full may h
 
 Do not skip important index or data maintenance merely to make backup graphs look smaller. Coordinate schedules and choose the right backup cadence. Partition-aware maintenance can reduce unnecessary rewrites when supported by the workload, but it must be justified by database performance and integrity goals.
 
-Keep complete older recovery chains while validating a new full. A full job finishing successfully does not prove that it is readable off-host, has its encryption keys, or restores within RTO. Automate periodic restoration, `DBCC CHECKDB`, and business validation.
+Keep the older full and any differential or log backups needed for recovery while validating a new full. A full job finishing successfully does not prove that it is readable off-host, has its encryption keys, or restores within RTO. Automate periodic test restores followed by `DBCC CHECKDB` and business validation.
 
 Expected differential growth becomes manageable once it is tied to a known base and measured workload. The dangerous case is an unexplained change that silently makes the recovery plan too slow or leaves its real base unretained.
 
