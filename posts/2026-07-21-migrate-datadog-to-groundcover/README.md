@@ -12,7 +12,7 @@ An observability migration is not complete when data appears in the new UI. It i
 
 Groundcover now provides an automated Datadog migration flow, but automation does not remove the need for a controlled cutover. The safest approach is inventory, dual coverage, asset translation, failure testing, and only then retirement of the old path.
 
-Feature availability changes. The statements below reflect Groundcover's official documentation reviewed on July 21, 2026.
+Feature availability changes. The statements below reflect Groundcover's official documentation reviewed on July 22, 2026.
 
 ## Start With a Coverage Contract
 
@@ -32,7 +32,7 @@ Turn that inventory into a matrix with `equivalent`, `redesigned`, `temporarily 
 
 ## Understand What the Migration Tool Covers
 
-Groundcover's [migration documentation](https://docs.groundcover.com/getting-started/migrations) says full Datadog migration support is available. An admin starts it from **Settings > Migrations**, supplies API keys for discovery, reviews the result, and migrates selected assets. Groundcover says those API keys are not stored.
+Groundcover's [migration documentation](https://docs.groundcover.com/getting-started/migrations) says full Datadog migration support is available. An admin opens the migrations page, supplies API keys for discovery, reviews the result, and migrates selected assets. Groundcover says those API keys are not stored.
 
 The documented asset coverage includes:
 
@@ -42,7 +42,7 @@ The documented asset coverage includes:
 - mappings for metric names, tags to labels, and query syntax;
 - validation that referenced metrics and data sources exist.
 
-Read the boundaries as carefully as the features. The same page says one-click migration for integrations is coming soon, while data-source configurations are available now. It also lists log pipelines and advanced metric mappings as coming soon. A translated query may be syntactically valid without being semantically equivalent, especially when aggregation, missing data, rollups, or tag cardinality differ.
+Read the boundaries as carefully as the features. The current page describes detecting missing data sources and helping you set them up; it does not document migration of log pipelines or advanced metric mappings. A translated query may be syntactically valid without being semantically equivalent, especially when aggregation, missing data, rollups, or tag cardinality differ.
 
 ## Establish Groundcover Collection in Parallel
 
@@ -52,7 +52,7 @@ For applications already instrumented with Datadog SDKs, Groundcover documents a
 
 That compatibility path is not permission to assume identical datasets. Sampling, service naming, resource attributes, tag-to-label conversion, and payload support can change the result. Compare by source and service.
 
-The Groundcover guide also shows how to point `DD_TRACE_AGENT_URL` at the Groundcover sensor and `DD_DOGSTATSD_URL` at its Vector service. Roll out such endpoint changes gradually. A small canary deployment should prove data reaches both intended systems before a wider change.
+The Groundcover guide also shows how to point both `DD_TRACE_AGENT_URL` and `DD_DOGSTATSD_URL` at the Groundcover sensor service. Roll out such endpoint changes gradually. This SDK redirection sends those signals to Groundcover instead of Datadog; it does not duplicate them by itself. A small canary deployment should prove redirected data reaches Groundcover while a separately configured path preserves the intended Datadog coverage before a wider change.
 
 Datadog's own [dual-shipping documentation](https://docs.datadoghq.com/agent/configuration/dual-shipping/) primarily describes sending to multiple Datadog organizations or sites. It directs external log-vendor routing toward Observability Pipelines. Do not infer that every Datadog signal can be duplicated to Groundcover through one agent switch, and check the billing impact of temporary duplication.
 
@@ -86,7 +86,7 @@ Dashboard review needs the same discipline. Groundcover promises translation for
 
 ## Plan the History Boundary
 
-Configuration migration and historical telemetry migration are separate decisions. Groundcover's migration page says it brings data and mappings, but public documentation does not provide a universal bulk-history procedure for every Datadog signal and retention tier.
+Configuration migration and historical telemetry migration are separate decisions. Groundcover's migration page says it ensures current data flows through metric, label, and query mapping, but public documentation does not describe a universal bulk-history procedure for every Datadog signal and retention tier.
 
 Before cutover, obtain a written answer for each dataset:
 
