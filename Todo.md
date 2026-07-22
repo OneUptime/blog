@@ -2,16 +2,15 @@
 
 ## CSI Snapshots
 
-1. Why a PVC Restored from a VolumeSnapshot Appears Empty
-2. How restoreSize Works When Recreating a PVC from a CSI Snapshot
-3. Retain vs. Delete: Choosing a Deletion Policy for VolumeSnapshotContent
-4. How to Schedule CSI Volume Snapshots and Enforce Retention in Kubernetes
-5. Are CSI Volume Snapshots Backups? Designing for Off-Cluster Disaster Recovery
-6. How to Make CSI Snapshots Application-Consistent for PostgreSQL, MySQL, and MongoDB
-7. Velero CSI Snapshots vs. File-System Backups: Which Protects Your PVCs Better?
-8. How to Migrate CSI Snapshots and Persistent Volumes to Another Kubernetes Cluster
-9. How to Snapshot Legacy In-Tree Volumes After Migrating to a CSI Driver
-10. CSI Volume Clones vs. Volume Snapshots: Which Should You Use?
+1. How restoreSize Works When Recreating a PVC from a CSI Snapshot
+2. Retain vs. Delete: Choosing a Deletion Policy for VolumeSnapshotContent
+3. How to Schedule CSI Volume Snapshots and Enforce Retention in Kubernetes
+4. Are CSI Volume Snapshots Backups? Designing for Off-Cluster Disaster Recovery
+5. How to Make CSI Snapshots Application-Consistent for PostgreSQL, MySQL, and MongoDB
+6. Velero CSI Snapshots vs. File-System Backups: Which Protects Your PVCs Better?
+7. How to Migrate CSI Snapshots and Persistent Volumes to Another Kubernetes Cluster
+8. How to Snapshot Legacy In-Tree Volumes After Migrating to a CSI Driver
+9. CSI Volume Clones vs. Volume Snapshots: Which Should You Use?
 
 ## Differential Backups
 
