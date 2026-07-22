@@ -23,7 +23,7 @@ A Kafka consumer has two important positions for each partition:
 
 Processing is an application concept. Kafka does not know that a database transaction, HTTP call, or handler callback succeeded merely because `poll()` returned a record.
 
-If offset 41 was processed successfully, the value to commit is 42. The Kafka 4.3 API explicitly says the committed offset should identify the next message to consume. `ConsumerRecords.nextOffsets()` supplies the next offsets, including leader-epoch metadata, for the returned records.
+If offset 41 was processed successfully, the value to commit is 42. The Kafka 4.3 API explicitly says the committed offset should identify the next message to consume. `ConsumerRecords.nextOffsets()` supplies the next offsets, including leader-epoch metadata, for every partition whose position advanced during the poll.
 
 Offsets are cumulative within a partition. Committing 42 means every lower offset is considered complete for that consumer group. You cannot safely commit around a processing hole where offset 40 is still running but 41 has finished.
 
