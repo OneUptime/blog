@@ -25,7 +25,7 @@ Groundcover's documented BYOC architecture places its observability backend in t
 | Visualization | Grafana dashboards | Native dashboards and embedded Grafana |
 | Logs | Agents send logs to Loki | Kubernetes stdout collection plus supported log inputs into ClickHouse |
 | Traces | Requires another backend, often Tempo or a vendor | eBPF traces and ingested OpenTelemetry or Datadog traces |
-| Operations | Your team runs each selected component | Groundcover manages BYOC backend components, while the cloud resources remain in your account |
+| Operations | Your team or a managed provider runs each selected component | Groundcover manages BYOC backend components, while the cloud resources remain in your account |
 
 This is not evidence that one design is universally better. It identifies the interfaces that make gradual integration possible.
 
