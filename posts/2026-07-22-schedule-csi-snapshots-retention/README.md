@@ -40,7 +40,7 @@ spec:
     persistentVolumeClaimName: orders-data-orders-0
 ```
 
-Wait for readiness and then restore a separate PVC:
+Wait for readiness and inspect the snapshot before restoring it to a separate test PVC:
 
 ```bash
 kubectl -n orders wait --for=jsonpath='{.status.readyToUse}'=true \
@@ -74,11 +74,11 @@ spec:
     ttl: 720h0m0s
 ```
 
-`snapshotMoveData: true` is significant: Velero first creates a CSI snapshot and then uses a data mover to copy its contents to the configured backup repository. The transient CSI snapshot is removed after movement completes. This provides a more portable recovery artifact than leaving only a provider snapshot beside the source volume.
+`snapshotMoveData: true` is significant: Velero first creates a CSI snapshot and then uses a data mover to copy its contents to the configured backup repository. The transient CSI snapshot is removed after the backup completes. This provides a more portable recovery artifact than leaving only a provider snapshot beside the source volume.
 
 Without data movement, Velero can still orchestrate native CSI snapshots. Those can be much faster, but restore normally depends on the original storage provider, driver, region or zone, permissions, and encryption keys.
 
-Select the `VolumeSnapshotClass` according to your Velero version's documented precedence. Velero supports the Kubernetes default-class annotation and an explicit `velero.io/csi-volumesnapshot-class: "true"` label. Keep at most one Velero-selected class per CSI driver to avoid ambiguous behavior.
+Select the `VolumeSnapshotClass` according to your Velero version's documented precedence. Velero supports the Kubernetes default-class annotation, an explicit `velero.io/csi-volumesnapshot-class: "true"` label, and per-PVC or per-backup/schedule annotations. Kubernetes requires at most one default class per CSI driver, and Velero requires at most one labeled class per driver.
 
 Create one backup from the schedule immediately to test its template:
 
@@ -108,14 +108,14 @@ Retention must also be aligned across layers:
 - Velero backup TTL;
 - `VolumeSnapshotContent` deletion policy;
 - backup-repository maintenance;
-- object-storage lifecycle and immutability;
+- object-storage lifecycle and compatible versioning or immutability controls;
 - cloud-provider snapshot retention or recycle-bin rules.
 
-If object storage expires data before Velero's catalog, restores fail. If provider snapshots are retained after catalog deletion, costs grow invisibly. Document which controller owns the final deletion.
+If object storage expires data before Velero's catalog, restores fail. If provider snapshots are retained after catalog deletion, costs grow invisibly. Velero 1.18 must update backup metadata in object storage, so verify provider-specific compatibility before enabling retention locks or immutability. Document which controller owns the final deletion.
 
 ## Direct VolumeSnapshot Scheduling
 
-A Kubernetes `CronJob` can create `VolumeSnapshot` resources, but it is only a reasonable choice when the team is prepared to own a snapshot controller of its own. The job needs a dedicated ServiceAccount and narrowly scoped RBAC to create, list, and delete snapshots in selected namespaces. Its logic must:
+A Kubernetes `CronJob` can create `VolumeSnapshot` resources, but it is only a reasonable choice when the team is prepared to own a snapshot controller of its own. The job needs a dedicated ServiceAccount and narrowly scoped RBAC to create, list, and delete snapshots in selected namespaces, read the targeted PVCs and their PVs, and read the relevant `VolumeSnapshotClass` and `VolumeSnapshotContent` state. Its logic must:
 
 1. generate collision-free names and apply policy labels;
 2. refuse to snapshot an unexpected or unbound PVC;
@@ -138,7 +138,7 @@ A storage snapshot of a mounted filesystem is generally crash-consistent. Databa
 
 Velero supports pre- and post-backup exec hooks. Hooks run commands directly, not through a shell unless a shell is explicitly included. A freeze or database lock must remain active until the snapshot operation has crossed the required point, and the post hook must reliably release it. Test hook failure and timeout paths; an indefinite database lock is worse than a missed snapshot.
 
-For an application spread across multiple PVCs, sequential `VolumeSnapshot` objects do not have a common point in time. Use CSI volume group snapshots when the Kubernetes version, snapshot CRDs, and driver support them, or quiesce the whole application for the complete sequence.
+For an application spread across multiple PVCs, sequential `VolumeSnapshot` objects do not have a common point in time. Use CSI volume group snapshots when the Kubernetes version, group-snapshot CRDs and controllers, backup controller, and CSI driver support them to obtain a crash-consistent common point in time. Quiesce the whole application for the complete sequence when application consistency is required.
 
 ## Monitor the Recovery Pipeline
 
@@ -160,8 +160,8 @@ Scheduling creates opportunities to recover. Verified retention, independent sto
 
 - [Kubernetes: Volume Snapshots](https://kubernetes.io/docs/concepts/storage/volume-snapshots/)
 - [Kubernetes: Volume Snapshot Classes](https://kubernetes.io/docs/concepts/storage/volume-snapshot-classes/)
-- [Kubernetes API: CronJob `concurrencyPolicy`](https://kubernetes.io/docs/reference/kubernetes-api/workload-resources/cron-job-v1/)
+- [Kubernetes API: CronJob `concurrencyPolicy`](https://kubernetes.io/docs/reference/kubernetes-api/batch/cron-job-v1/)
 - [Velero 1.18: Schedule API](https://velero.io/docs/v1.18/api-types/schedule/)
 - [Velero 1.18: Backup Scheduling and Time Zones](https://velero.io/docs/v1.18/backup-reference/#schedule-a-backup)
-- [Velero: CSI Snapshot Data Movement](https://velero.io/docs/main/csi-snapshot-data-movement/)
+- [Velero 1.18: CSI Snapshot Data Movement](https://velero.io/docs/v1.18/csi-snapshot-data-movement/)
 - [Velero 1.18: Backup Hooks](https://velero.io/docs/v1.18/backup-hooks/)
