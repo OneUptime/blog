@@ -21,8 +21,8 @@ An up-front purchase can create a large billed amount on one date while providin
 FOCUS separates several useful metrics:
 
 - `BilledCost` supports the amount charged for invoice reconciliation.
-- `EffectiveCost` represents amortized cost after reduced rates, discounts, and the applicable portion of relevant purchases.
-- `ListCost` represents cost at provider-published list price when that data is available.
+- `EffectiveCost` reflects reduced rates and discounts and includes the amortized portion of relevant purchases.
+- `ListCost` represents cost at provider-published list price.
 - commitment discount identifiers, types, and status can distinguish used and unused commitment records when the provider supports those constructs.
 
 Use effective or provider-amortized cost as the starting point for consumption showback. Keep billed cost in a parallel finance view. The sum of team allocations, unused commitment, central policy items, and adjustments must reconcile to the authoritative effective-cost scope.
