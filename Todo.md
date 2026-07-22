@@ -2,14 +2,13 @@
 
 ## At-Least-Once
 
-1. RabbitMQ Acknowledgements and Redelivery: When Can the Same Work Run Twice?
-2. SQS Visibility Timeouts: Preventing Two Workers from Processing the Same Message
-3. SQS Standard vs. FIFO: What Exactly-Once Processing Does and Does Not Guarantee
-4. Transactional Outbox with At-Least-Once Delivery: Designing for Duplicate Events
-5. The Inbox Pattern: Atomically Deduplicating Messages with Business Updates
-6. At-Least-Once Batch Consumers: Handling Partial Failures, Retries, and Checkpoints
-7. How to Preserve Message Order When Retries and Redelivery Are Enabled
-8. How to Test At-Least-Once Consumers with Crashes, Timeouts, and Rebalances
+1. SQS Visibility Timeouts: Preventing Two Workers from Processing the Same Message
+2. SQS Standard vs. FIFO: What Exactly-Once Processing Does and Does Not Guarantee
+3. Transactional Outbox with At-Least-Once Delivery: Designing for Duplicate Events
+4. The Inbox Pattern: Atomically Deduplicating Messages with Business Updates
+5. At-Least-Once Batch Consumers: Handling Partial Failures, Retries, and Checkpoints
+6. How to Preserve Message Order When Retries and Redelivery Are Enabled
+7. How to Test At-Least-Once Consumers with Crashes, Timeouts, and Rebalances
 
 ## CSI Snapshots
 
