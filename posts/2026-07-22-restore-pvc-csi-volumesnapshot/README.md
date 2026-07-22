@@ -69,7 +69,7 @@ kubectl get storageclass \
   -o custom-columns='NAME:.metadata.name,PROVISIONER:.provisioner,BINDING:.volumeBindingMode,EXPANSION:.allowVolumeExpansion'
 ```
 
-Choose a StorageClass supported by the CSI vendor for restore from that snapshot. Its `provisioner` normally needs to be the same driver. It does not have to be the original StorageClass if the driver explicitly supports the alternative parameters, tier, topology, and encryption policy.
+Choose a StorageClass supported by the CSI vendor for restore from that snapshot. Its `provisioner` must match the snapshot content's driver. It does not have to be the original StorageClass if the driver explicitly supports the alternative parameters, tier, topology, and encryption policy.
 
 Use the source PVC as a safe baseline for access and volume modes:
 
