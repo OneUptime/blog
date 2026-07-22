@@ -8,7 +8,7 @@ Description: Choose a safe backup, migration, or driver-upgrade path when a Kube
 
 ---
 
-Installing the Kubernetes snapshot CRDs and common snapshot controller does not add snapshot behavior to a CSI driver. The driver must advertise the `CREATE_DELETE_SNAPSHOT` controller capability, implement the CSI snapshot RPCs, run a compatible external-snapshotter sidecar, and support provisioning a new volume from the resulting snapshot.
+Installing the Kubernetes snapshot CRDs and common snapshot controller does not add snapshot behavior to a CSI driver. The driver must advertise the `CREATE_DELETE_SNAPSHOT` controller capability, implement `CreateSnapshot` and `DeleteSnapshot`, run a compatible external-snapshotter sidecar, and support provisioning a new volume from the resulting snapshot.
 
 When those capabilities are absent, no annotation, `VolumeSnapshotClass`, or backup product can manufacture them. The right response is to confirm the gap, choose another recovery mechanism, and test its restore path.
 
@@ -31,7 +31,7 @@ kubectl get pv "$PV_NAME" \
 Then distinguish an unsupported driver from an incomplete installation:
 
 - Check the vendor's documentation for the exact driver and version.
-- Confirm that the relevant volume type supports snapshots; a driver may support block volumes but not every file or local volume mode.
+- Confirm that the relevant volume type supports snapshots; a driver may support snapshots for some backend volume types or StorageClasses but not others.
 - Inspect the driver's controller workload for an external-snapshotter sidecar.
 - Check for a `VolumeSnapshotClass` whose `driver` exactly matches the PV.
 - Verify that the snapshot CRDs and common controller are healthy.
@@ -123,7 +123,7 @@ Backend snapshots can be a valid emergency or vendor-supported workflow, but doc
 
 Several nearby features solve different problems:
 
-- A PVC clone needs CSI clone support and is generally intended as a new live volume, not an independent retained backup.
+- A PVC clone needs CSI clone support and creates an independent live volume, but without separate retention and failure-domain controls it is not a backup strategy.
 - A second Pod mounting the same PVC does not create a recovery point.
 - A StatefulSet's stable PVC identity preserves storage across Pod recreation; it does not protect against data corruption.
 - `Retain` on a PV reclaim policy prevents automatic volume deletion after claim release, but it does not create historical versions.
@@ -143,7 +143,7 @@ Map each viable method to measurable requirements:
 | Backend-native snapshot | Potentially fast local recovery | Outside Kubernetes lifecycle and often same failure domain |
 | Storage or application replication | Low recovery-point lag | Replication can copy corruption and is not retention |
 
-For critical data, combine mechanisms. For example, use native database backups in another account for durable recovery, replication for availability, and CSI snapshots after migrating to a capable driver for fast local rollback.
+For critical data, combine mechanisms. For example, use native database backups in another account for durable recovery, replication for availability, and CSI snapshots after migrating to a capable driver for fast local recovery.
 
 Record the recovery point objective, expected restore time, retention, encryption, off-cluster location, and named owner. Schedule restore drills. A method is not a backup strategy until a clean cluster can use it to recover the required application state.
 
