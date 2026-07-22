@@ -2,20 +2,19 @@
 
 ## CSI Snapshots
 
-1. How to Restore a Kubernetes PVC from a CSI VolumeSnapshot
-2. Why Kubernetes Cannot Restore a Snapshot In Place—and How to Roll Back Safely
-3. How to Restore One StatefulSet Replica from a VolumeSnapshot Without Losing Its PVC Identity
-4. Troubleshooting a VolumeSnapshot Stuck at readyToUse: false
-5. Why a PVC Restored from a VolumeSnapshot Appears Empty
-6. How restoreSize Works When Recreating a PVC from a CSI Snapshot
-7. Retain vs. Delete: Choosing a Deletion Policy for VolumeSnapshotContent
-8. How to Schedule CSI Volume Snapshots and Enforce Retention in Kubernetes
-9. Are CSI Volume Snapshots Backups? Designing for Off-Cluster Disaster Recovery
-10. How to Make CSI Snapshots Application-Consistent for PostgreSQL, MySQL, and MongoDB
-11. Velero CSI Snapshots vs. File-System Backups: Which Protects Your PVCs Better?
-12. How to Migrate CSI Snapshots and Persistent Volumes to Another Kubernetes Cluster
-13. How to Snapshot Legacy In-Tree Volumes After Migrating to a CSI Driver
-14. CSI Volume Clones vs. Volume Snapshots: Which Should You Use?
+1. Why Kubernetes Cannot Restore a Snapshot In Place—and How to Roll Back Safely
+2. How to Restore One StatefulSet Replica from a VolumeSnapshot Without Losing Its PVC Identity
+3. Troubleshooting a VolumeSnapshot Stuck at readyToUse: false
+4. Why a PVC Restored from a VolumeSnapshot Appears Empty
+5. How restoreSize Works When Recreating a PVC from a CSI Snapshot
+6. Retain vs. Delete: Choosing a Deletion Policy for VolumeSnapshotContent
+7. How to Schedule CSI Volume Snapshots and Enforce Retention in Kubernetes
+8. Are CSI Volume Snapshots Backups? Designing for Off-Cluster Disaster Recovery
+9. How to Make CSI Snapshots Application-Consistent for PostgreSQL, MySQL, and MongoDB
+10. Velero CSI Snapshots vs. File-System Backups: Which Protects Your PVCs Better?
+11. How to Migrate CSI Snapshots and Persistent Volumes to Another Kubernetes Cluster
+12. How to Snapshot Legacy In-Tree Volumes After Migrating to a CSI Driver
+13. CSI Volume Clones vs. Volume Snapshots: Which Should You Use?
 
 ## Differential Backups
 
