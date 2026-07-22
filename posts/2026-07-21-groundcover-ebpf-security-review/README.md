@@ -18,15 +18,19 @@ Groundcover lists privileged DaemonSet containers as a Kubernetes installation r
 
 The Linux eBPF verifier protects the kernel from invalid eBPF programs. It does not reduce the authority of a compromised privileged userspace container. Your threat model must include the sensor image, its update mechanism, runtime process, service account, mounted paths, network reachability, and access to the node.
 
-Do not infer the exact runtime access from the word `privileged` alone. Render and inspect the chart version you will deploy:
+Do not infer the exact runtime access from the word `privileged` alone. After adding the Groundcover Helm repository, set `APPROVED_CHART_VERSION` to the exact chart version you will deploy, then render and inspect it:
 
 ```bash
+: "${APPROVED_CHART_VERSION:?set APPROVED_CHART_VERSION to the approved chart version}"
+
 helm template groundcover groundcover/groundcover \
+  --version "$APPROVED_CHART_VERSION" \
   --namespace groundcover \
   -f values.yaml > rendered-groundcover.yaml
 
 kubectl get daemonset -n groundcover -o yaml
 kubectl auth can-i --list \
+  --namespace groundcover \
   --as=system:serviceaccount:groundcover:actual-service-account-name
 ```
 
@@ -80,7 +84,7 @@ Ask:
 - What happens on an unsupported kernel or failed sensor?
 - Are control-plane, Fargate, or other unscheduled nodes visible?
 
-Groundcover supports filtering Kubernetes entities and disabling tracing for selected protocols. Use exclusions for workloads whose data cannot be collected under policy, and test that excluded data is absent from traces, logs, metrics labels, and searches.
+Groundcover supports filtering traces by Kubernetes entity, filtering stored logs with separate rules, and disabling tracing for selected protocols. Configure trace and log exclusions separately for workloads whose data cannot be retained under policy. Test what remains in application metrics and labels because the documented trace filters do not state that they suppress metrics.
 
 ## Assume trace payloads are sensitive
 
