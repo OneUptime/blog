@@ -2,10 +2,9 @@
 
 ## At-Least-Once
 
-1. The Inbox Pattern: Atomically Deduplicating Messages with Business Updates
-2. At-Least-Once Batch Consumers: Handling Partial Failures, Retries, and Checkpoints
-3. How to Preserve Message Order When Retries and Redelivery Are Enabled
-4. How to Test At-Least-Once Consumers with Crashes, Timeouts, and Rebalances
+1. At-Least-Once Batch Consumers: Handling Partial Failures, Retries, and Checkpoints
+2. How to Preserve Message Order When Retries and Redelivery Are Enabled
+3. How to Test At-Least-Once Consumers with Crashes, Timeouts, and Rebalances
 
 ## CSI Snapshots
 
