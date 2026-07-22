@@ -32,7 +32,7 @@ High availability and replication can reduce downtime, but they can also replica
 Measure recovery from incident declaration until the application is accepted, including:
 
 - selecting the clean recovery point;
-- obtaining credentials and TDE certificates;
+- obtaining credentials and TDE certificates with their associated private keys;
 - provisioning compute and storage;
 - downloading or mounting backup objects;
 - restoring the full;
