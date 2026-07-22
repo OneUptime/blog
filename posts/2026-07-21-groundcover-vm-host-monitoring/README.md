@@ -62,10 +62,10 @@ Groundcover installs the Linux collector as a system service with the privileges
 
 Before deployment:
 
-1. Review the installer and package source provided for your environment.
+1. Review the installer and the artifacts it downloads for your environment.
 2. Confirm which capabilities, filesystem paths, sockets, and host namespaces the service uses.
 3. Restrict who can retrieve the ingestion key and change service configuration.
-4. Pin an approved version and verify its artifact provenance.
+4. Record the deployed sensor version. The documented installer pulls the latest release, so confirm a supported pinning workflow with Groundcover if change control requires one.
 5. Define how upgrades and rollback work through your configuration-management system.
 6. Apply Groundcover's payload and log-redaction controls before production traffic is observed.
 
@@ -73,7 +73,7 @@ Do not paste a long-lived ingestion key into a shared script, ticket, or image. 
 
 ## Plan backend connectivity
 
-The current host integration is documented for BYOC and on-premises deployments. The installer needs the appropriate ingestion key and endpoint for that backend. A host being monitored does not need to be in the same VPC as the backend, but it must have a secure, reliable route to it.
+The current host integration is documented for BYOC and on-premises deployments. The installer needs a dedicated ingestion key of type `Sensor` and the endpoint for that backend. A host being monitored does not need to be in the same VPC as the backend, but it must have a secure, reliable route to it.
 
 For each network zone, document:
 
@@ -101,15 +101,15 @@ Start with a narrow allowlist:
 - enable protocol payload capture only after reviewing obfuscation
 - set retention according to the data class
 
-Groundcover provides payload-obfuscation controls for supported protocols and log-pipeline transformations for redaction or dropping. Apply those controls before storage, then use synthetic secrets and personal-data canaries to prove the raw values do not appear in search results.
+Groundcover provides payload-obfuscation controls for supported protocols and log-pipeline transformations for redaction or dropping. Payload obfuscation is disabled by default, although Groundcover obfuscates its default list of sensitive HTTP and gRPC headers. Apply the required controls before storage, then use synthetic secrets and personal-data canaries to prove the raw values do not appear in search results.
 
-Reducing a payload-size limit can lower exposure and volume, but truncation is not redaction. A secret at the beginning of a request can still be captured. Prefer preventing collection or replacing sensitive fields.
+Payload-size limits are not a substitute for an obfuscation policy. Groundcover documents that truncated data is shown as `scrubbed`, but payloads within the configured limit can still contain sensitive values. Prefer preventing collection or replacing sensitive fields.
 
 ## Roll out through normal host management
 
-Avoid one-off SSH installation across a fleet. Model the integration as a managed host package:
+Avoid one-off SSH installation across a fleet. Model the integration as a managed host service:
 
-- declare repositories, package versions, configuration, and service state
+- declare the installer source, installed version, configuration, and service state
 - retrieve keys at deployment time
 - expose health through the existing host-management platform
 - stage upgrades by operating-system and kernel cohort
