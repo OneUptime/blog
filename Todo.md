@@ -1,9 +1,5 @@
 # Blog Post Ideas
 
-## CSI Snapshots
-
-1. CSI Volume Clones vs. Volume Snapshots: Which Should You Use?
-
 ## Differential Backups
 
 1. Differential vs. Incremental Backups: What Changes, and Which Restores Faster?
