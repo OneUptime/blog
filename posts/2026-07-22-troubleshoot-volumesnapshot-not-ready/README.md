@@ -8,7 +8,7 @@ Description: Trace a VolumeSnapshot that never becomes ready across the snapshot
 
 ---
 
-`status.readyToUse: false` means the snapshot is not currently ready to restore. For a dynamically created snapshot, the value originates in the CSI driver's `CreateSnapshot` response and is propagated from `VolumeSnapshotContent` to `VolumeSnapshot`. It is not a field an operator should patch to unblock a restore.
+`status.readyToUse: false` means the snapshot is not currently ready to restore. For a dynamically created snapshot that has reached the CSI driver, readiness originates in the driver's `CreateSnapshot` response and is propagated from `VolumeSnapshotContent` to `VolumeSnapshot`. The common controller can also set `VolumeSnapshot.status.readyToUse` to false when it reports controller-side errors. It is not a field an operator should patch to unblock a restore.
 
 Troubleshooting becomes much faster when you locate the last completed stage in the control path:
 
@@ -68,7 +68,7 @@ printf '%s\n' "$CONTENT_NAME"
 
 ### No content name
 
-If the value is empty, the common snapshot controller has not completed dynamic binding. Focus on:
+For a dynamically provisioned snapshot, if the value is empty, the common snapshot controller has not completed binding. Focus on:
 
 - whether the source PVC exists in the same namespace and is `Bound`;
 - whether the requested `VolumeSnapshotClass` exists;
@@ -93,7 +93,7 @@ If `status.snapshotHandle` is absent, dynamic creation has not successfully retu
 
 ### Handle exists, but readiness remains false
 
-When a handle is present and `readyToUse` is false, the driver knows a backend snapshot but says it is still unusable. Check the backend job and driver logs. Large snapshots may be asynchronous, but indefinite waiting can indicate quota, replication, encryption, or backend health failures.
+When `VolumeSnapshotContent.status.snapshotHandle` is present and that content's `status.readyToUse` is false, the driver knows a backend snapshot but says it is still unusable. Check the backend job and driver logs. Large snapshots may be asynchronous, but indefinite waiting can indicate quota, replication, encryption, or backend health failures.
 
 Do not assume that a handle proves completion. The CSI response has a separate `ready_to_use` field for that reason.
 
@@ -118,20 +118,26 @@ PV_DRIVER=$(kubectl get pv "$PV_NAME" \
 printf '%s\n' "$PV_DRIVER"
 ```
 
-Resolve the class driver:
+Resolve the selected class:
 
 ```bash
 SNAPSHOT_CLASS=$(kubectl get volumesnapshot "$SNAPSHOT_NAME" \
   --namespace "$NAMESPACE" \
   -o jsonpath='{.spec.volumeSnapshotClassName}')
 
+printf '%s\n' "$SNAPSHOT_CLASS"
+```
+
+If the value is empty, the common controller has not selected a default class yet; return to the default-class and controller checks above. Otherwise, resolve its driver:
+
+```bash
 kubectl get volumesnapshotclass "$SNAPSHOT_CLASS" \
   -o jsonpath='{.driver}{"\n"}'
 ```
 
 The two driver names must match exactly. Also compare `.spec.driver` on the content. Check the vendor's documentation for support of the source volume type, online snapshots, topology, and the installed driver version.
 
-If the PVC was created in the same manifest moments before the snapshot, it may not have been bound when first reconciled. Recreate the snapshot request after the claim is stably `Bound` if events show that condition; source fields are immutable.
+If the PVC was created in the same manifest moments before the snapshot, it may not have been bound when first reconciled. Wait until the claim is stably `Bound`; current snapshot controllers retry this error. Recreate the snapshot only if the immutable source PVC name is wrong.
 
 ## Check the common snapshot controller
 
@@ -141,7 +147,7 @@ Locate it because the namespace can vary by distribution:
 kubectl get deployment --all-namespaces | grep snapshot-controller
 ```
 
-For a kubeadm-style installation in `kube-system`:
+For the upstream Deployment installed in `kube-system`:
 
 ```bash
 kubectl get pods --namespace kube-system \
@@ -149,6 +155,7 @@ kubectl get pods --namespace kube-system \
 
 kubectl logs deployment/snapshot-controller \
   --namespace kube-system \
+  --all-pods=true \
   --all-containers=true \
   --since=30m
 ```
@@ -158,22 +165,29 @@ Search for the snapshot, content, PVC, or PV name. Look for authorization failur
 Check the CRDs are established and serve `v1`:
 
 ```bash
+kubectl wait --for=condition=Established \
+  crd/volumesnapshots.snapshot.storage.k8s.io \
+  crd/volumesnapshotcontents.snapshot.storage.k8s.io \
+  crd/volumesnapshotclasses.snapshot.storage.k8s.io \
+  --timeout=30s
+
 kubectl get crd \
   volumesnapshots.snapshot.storage.k8s.io \
   volumesnapshotcontents.snapshot.storage.k8s.io \
-  volumesnapshotclasses.snapshot.storage.k8s.io
+  volumesnapshotclasses.snapshot.storage.k8s.io \
+  -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{range .spec.versions[*]}{.name}{" served="}{.served}{" "}{end}{"\n"}{end}'
 ```
 
 Use a snapshot-controller release compatible with the installed CRDs and Kubernetes version. Do not combine current controllers with copied legacy `v1beta1` manifests.
 
 ## Check the driver-specific snapshotter and CSI driver
 
-The common controller does not call storage. The `csi-snapshotter` sidecar running beside the CSI controller watches content objects whose `spec.driver` matches its driver.
+The common controller does not call storage. The `csi-snapshotter` sidecar normally runs beside the CSI controller and watches content objects whose `spec.driver` matches its driver. Drivers using distributed snapshotting instead run the sidecar on each node.
 
-Find the vendor controller workload and list its containers:
+Find the vendor controller workload and list its containers. The example assumes a Deployment; use `statefulset` or `daemonset` as the resource type when applicable:
 
 ```bash
-kubectl get deployment,statefulset --all-namespaces
+kubectl get deployment,statefulset,daemonset --all-namespaces
 
 kubectl get deployment DRIVER_CONTROLLER \
   --namespace DRIVER_NAMESPACE \
@@ -255,7 +269,7 @@ The CSI `ListSnapshots` RPC is optional. When a driver supports it, the sidecar 
 
 ## Recreate only after protecting the backend asset
 
-`VolumeSnapshot.spec.source` and class selection are immutable. If either is wrong, create a corrected snapshot with a new name. Before deleting the failed object, inspect the bound content's `deletionPolicy`:
+`VolumeSnapshot.spec.source` is immutable. If it is wrong, create a corrected snapshot with a new name. The API permits changing `spec.volumeSnapshotClassName`, but once content has been created, changing the request does not migrate or recreate that content; create a corrected snapshot with a new name in that case. Before deleting the failed object, inspect the bound content's `deletionPolicy`:
 
 ```bash
 kubectl get volumesnapshotcontent "$CONTENT_NAME" \
