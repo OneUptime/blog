@@ -29,7 +29,7 @@ Performance and storage efficiency remain backend-specific. A provider can imple
 
 ## How Velero CSI Snapshots Work
 
-For a CSI-backed PVC, Velero creates Kubernetes `VolumeSnapshot` and `VolumeSnapshotContent` objects through its integrated CSI support. The cluster's snapshot controller and the driver's external-snapshotter call the storage backend. Velero backs up the Kubernetes resource metadata and records the relationship needed to restore a PVC from the snapshot.
+For a CSI-backed PVC, Velero creates a Kubernetes `VolumeSnapshot` through its integrated CSI support. The cluster's snapshot controller creates and binds the `VolumeSnapshotContent`, and the driver's external-snapshotter sidecar calls the CSI driver to create the storage-backend snapshot. Velero backs up the Kubernetes resource metadata and records the relationship needed to restore a PVC from the snapshot.
 
 Prerequisites include:
 
@@ -45,7 +45,7 @@ Their main limitation is locality. The Kubernetes objects saved to backup storag
 
 ## How File System Backup Works
 
-Velero File System Backup, or FSB, runs through the node agent and Kopia data path. It discovers selected pod volumes, reads files through the node's mounted pod-volume path, and uploads them into a backup repository. During restore, Velero dynamically provisions a PVC and populates it before the application containers proceed.
+Velero File System Backup, or FSB, runs through the node agent and Kopia data path. It discovers selected pod volumes, reads files through the node's mounted pod-volume path, and uploads them into a backup repository. During restore, Velero creates the PVC, Kubernetes dynamically provisions its PV, and Velero populates the mounted volume before the application containers proceed.
 
 FSB is useful for NFS, EFS, Azure Files, local persistent volumes, `emptyDir`, or other volumes without a native snapshot concept. The backup repository is independent from the source volume implementation, so the target can use a different StorageClass.
 
@@ -62,7 +62,7 @@ FSB can protect `emptyDir`, but that volume follows pod lifecycle and may lose i
 
 ## The Hybrid: CSI Snapshot Data Movement
 
-CSI Snapshot Data Movement closes the largest gap between the two methods. Velero creates a point-in-time CSI snapshot, restores or exposes temporary access to that image, and uploads its data to object storage through a data mover. After the upload reaches a terminal state, Velero removes the temporary storage snapshot.
+CSI Snapshot Data Movement closes the largest gap between the two methods. Velero creates a point-in-time CSI snapshot, restores or exposes temporary access to that image, and uploads its data to object storage through a data mover. After the backup completes, Velero removes the temporary CSI snapshot.
 
 Create a backup with the built-in mover using:
 
@@ -81,7 +81,7 @@ kubectl -n velero get datauploads \
   -l velero.io/backup-name=orders-portable
 ```
 
-The built-in mover currently uses a Kopia-backed repository. It needs the Velero node agent and a working object `BackupStorageLocation`. For cross-provider recovery, the target needs a functioning StorageClass but does not necessarily need the same CSI snapshot facility, because data is downloaded into a newly provisioned volume.
+The built-in mover currently uses a Kopia-backed repository. It needs the Velero node agent and a working object `BackupStorageLocation`. For cross-provider recovery, the target needs a working StorageClass with the source class's name or a restore-time storage-class mapping, but does not necessarily need the same CSI snapshot facility, because data is downloaded into a newly provisioned volume.
 
 This portability costs time and resources. Moving terabytes is slower than leaving a native snapshot in place, repository encryption and credentials must be protected, and mover pods need capacity. It is common to retain frequent local snapshots for fast rollback and move fewer recovery points off-cluster.
 
@@ -147,7 +147,7 @@ A “Completed” Velero backup proves that its controllers finished their workf
 
 - [Velero 1.18: CSI Snapshot Support](https://velero.io/docs/v1.18/csi/)
 - [Velero 1.18: File System Backup](https://velero.io/docs/v1.18/file-system-backup)
-- [Velero: CSI Snapshot Data Movement](https://velero.io/docs/main/csi-snapshot-data-movement/)
+- [Velero 1.18: CSI Snapshot Data Movement](https://velero.io/docs/v1.18/csi-snapshot-data-movement/)
 - [Velero 1.18: Restore Reference](https://velero.io/docs/v1.18/restore-reference/)
 - [Velero 1.18: Backup Hooks](https://velero.io/docs/v1.18/backup-hooks/)
 - [Kubernetes: Volume Snapshots](https://kubernetes.io/docs/concepts/storage/volume-snapshots/)
