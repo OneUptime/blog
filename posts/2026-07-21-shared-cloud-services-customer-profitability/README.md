@@ -85,12 +85,12 @@ For a shared pool, time-align cost and demand before applying the rule:
 
 ```text
 customer pool share
-= shared pool effective cost
+= allocatable shared pool effective cost
 * customer driver quantity
 / total eligible measured driver quantity
 ```
 
-The denominator should contain only customers eligible for that pool and the same period as the cost. Define how internal tenants, trials, deleted customers, and unattributed activity are handled.
+The allocatable cost is the portion of the pool supported by measured demand for the same resources and time intervals. The denominator should contain only customers eligible for that pool and the same period as the cost. If the total measured driver quantity is zero, retain the pool as unallocated. Define how internal tenants, trials, deleted customers, and unattributed activity are handled.
 
 If metering covers only part of the workload, allocate the measured portion and retain the remainder as `unallocated` or `platform-unattributed`. Do not inflate known customers to force full allocation. Report driver coverage and unknown activity beside the cost.
 
