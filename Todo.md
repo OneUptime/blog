@@ -2,26 +2,25 @@
 
 ## CSI Snapshots
 
-1. Kubernetes CSI Volume Snapshots Explained: VolumeSnapshot, VolumeSnapshotContent, and VolumeSnapshotClass
-2. How to Install the CSI Snapshot Controller and CRDs on a kubeadm Cluster
-3. How to Check Whether Your Kubernetes CSI Driver Supports Volume Snapshots
-4. What to Do When Your CSI Driver Does Not Support Volume Snapshots
-5. How to Choose the Right VolumeSnapshotClass for a PVC
-6. Dynamic vs. Static CSI Snapshots: When to Create or Import VolumeSnapshotContent
-7. How to Restore a Kubernetes PVC from a CSI VolumeSnapshot
-8. Why Kubernetes Cannot Restore a Snapshot In Place—and How to Roll Back Safely
-9. How to Restore One StatefulSet Replica from a VolumeSnapshot Without Losing Its PVC Identity
-10. Troubleshooting a VolumeSnapshot Stuck at readyToUse: false
-11. Why a PVC Restored from a VolumeSnapshot Appears Empty
-12. How restoreSize Works When Recreating a PVC from a CSI Snapshot
-13. Retain vs. Delete: Choosing a Deletion Policy for VolumeSnapshotContent
-14. How to Schedule CSI Volume Snapshots and Enforce Retention in Kubernetes
-15. Are CSI Volume Snapshots Backups? Designing for Off-Cluster Disaster Recovery
-16. How to Make CSI Snapshots Application-Consistent for PostgreSQL, MySQL, and MongoDB
-17. Velero CSI Snapshots vs. File-System Backups: Which Protects Your PVCs Better?
-18. How to Migrate CSI Snapshots and Persistent Volumes to Another Kubernetes Cluster
-19. How to Snapshot Legacy In-Tree Volumes After Migrating to a CSI Driver
-20. CSI Volume Clones vs. Volume Snapshots: Which Should You Use?
+1. How to Install the CSI Snapshot Controller and CRDs on a kubeadm Cluster
+2. How to Check Whether Your Kubernetes CSI Driver Supports Volume Snapshots
+3. What to Do When Your CSI Driver Does Not Support Volume Snapshots
+4. How to Choose the Right VolumeSnapshotClass for a PVC
+5. Dynamic vs. Static CSI Snapshots: When to Create or Import VolumeSnapshotContent
+6. How to Restore a Kubernetes PVC from a CSI VolumeSnapshot
+7. Why Kubernetes Cannot Restore a Snapshot In Place—and How to Roll Back Safely
+8. How to Restore One StatefulSet Replica from a VolumeSnapshot Without Losing Its PVC Identity
+9. Troubleshooting a VolumeSnapshot Stuck at readyToUse: false
+10. Why a PVC Restored from a VolumeSnapshot Appears Empty
+11. How restoreSize Works When Recreating a PVC from a CSI Snapshot
+12. Retain vs. Delete: Choosing a Deletion Policy for VolumeSnapshotContent
+13. How to Schedule CSI Volume Snapshots and Enforce Retention in Kubernetes
+14. Are CSI Volume Snapshots Backups? Designing for Off-Cluster Disaster Recovery
+15. How to Make CSI Snapshots Application-Consistent for PostgreSQL, MySQL, and MongoDB
+16. Velero CSI Snapshots vs. File-System Backups: Which Protects Your PVCs Better?
+17. How to Migrate CSI Snapshots and Persistent Volumes to Another Kubernetes Cluster
+18. How to Snapshot Legacy In-Tree Volumes After Migrating to a CSI Driver
+19. CSI Volume Clones vs. Volume Snapshots: Which Should You Use?
 
 ## Differential Backups
 
