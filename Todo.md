@@ -2,10 +2,9 @@
 
 ## CSI Snapshots
 
-1. Velero CSI Snapshots vs. File-System Backups: Which Protects Your PVCs Better?
-2. How to Migrate CSI Snapshots and Persistent Volumes to Another Kubernetes Cluster
-3. How to Snapshot Legacy In-Tree Volumes After Migrating to a CSI Driver
-4. CSI Volume Clones vs. Volume Snapshots: Which Should You Use?
+1. How to Migrate CSI Snapshots and Persistent Volumes to Another Kubernetes Cluster
+2. How to Snapshot Legacy In-Tree Volumes After Migrating to a CSI Driver
+3. CSI Volume Clones vs. Volume Snapshots: Which Should You Use?
 
 ## Differential Backups
 
