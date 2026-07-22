@@ -14,7 +14,7 @@ Treat the snapshot as evidence. Stop writers, preserve the original `VolumeSnaps
 
 ## Confirm the Restore Request That Kubernetes Stored
 
-A snapshot restore creates a **new** volume. The PVC must reference a ready `VolumeSnapshot` in the same namespace:
+A snapshot restore creates a **new** volume. When using `dataSource` as below, the PVC must reference a ready `VolumeSnapshot` in the same namespace:
 
 ```yaml
 apiVersion: v1
@@ -43,9 +43,9 @@ kubectl -n orders get pvc orders-data-restore -o yaml
 kubectl -n orders describe pvc orders-data-restore
 ```
 
-The live `spec.dataSource` must contain all three values above. If it is absent, the provisioner was asked for an ordinary empty volume. Do not patch `dataSource` into a bound PVC: the source is a provisioning-time input. Delete the disposable restore PVC and recreate it with the correct source.
+The live `spec.dataSource` for this manifest must contain all three values above. If it is absent, check `spec.dataSourceRef` as well; only if neither field references the intended snapshot was the provisioner asked for an ordinary empty volume. Do not patch a source reference into a bound PVC: the source is a provisioning-time input. Delete the disposable restore PVC and recreate it with the correct source.
 
-Look at the PVC events. They should identify the CSI provisioner and say that the volume was provisioned from the snapshot. A successful generic provisioning event is not enough. Also verify that `storageClassName` belongs to the same CSI driver that owns the snapshot and that the requested capacity is not smaller than the snapshot's `status.restoreSize`.
+Look at the PVC events. They should identify the CSI provisioner and surface provisioning errors, but a successful event may be generic and does not prove which source was used. Also verify that the StorageClass's `provisioner` matches the snapshot content's `spec.driver` and that the requested capacity is not smaller than the snapshot's `status.restoreSize`.
 
 ## Verify the Snapshot-to-Content Binding
 
@@ -60,7 +60,7 @@ content=$(kubectl -n orders get volumesnapshot orders-2026-07-22 \
 kubectl get volumesnapshotcontent "$content" -o yaml
 ```
 
-The `VolumeSnapshot` and `VolumeSnapshotContent` must point to each other. For a dynamically created snapshot, the content should show the source volume handle in `spec.source.volumeHandle`, the CSI driver in `spec.driver`, and the provider snapshot handle in `status.snapshotHandle`. `readyToUse: true` means the driver says the snapshot can be used to create a volume; it does **not** prove that the expected files were on the source or that the application was consistent.
+The `VolumeSnapshot` and `VolumeSnapshotContent` must point to each other. For a dynamically created snapshot, the content should show the source volume handle in `spec.source.volumeHandle`, the CSI driver in `spec.driver`, and the provider snapshot handle in `status.snapshotHandle`. `readyToUse: true` means the controllers consider the snapshot ready to create a volume. For a pre-provisioned snapshot, it can be set to `true` when the driver does not support `ListSnapshots`; it does **not** prove that the expected files were on the source or that the application was consistent.
 
 Do not remove finalizers or edit status to force readiness. Those fields coordinate protection and reflect controller or driver observations. If the binding, handle, or driver is wrong, create or import the right snapshot instead of mutating an immutable source.
 
@@ -95,7 +95,7 @@ After the pod starts:
 
 ```bash
 kubectl -n orders exec inspect-orders-restore -- df -h /restore
-kubectl -n orders exec inspect-orders-restore -- find /restore -maxdepth 3 -ls
+kubectl -n orders exec inspect-orders-restore -- find /restore -maxdepth 3 -print
 ```
 
 If the access mode is `ReadWriteOnce`, make sure no other pod still uses the claim in a way the driver cannot attach. A read-only container mount does not turn every storage backend into a multi-attach volume.
@@ -116,7 +116,7 @@ Common path mistakes include:
 
 - the pod still names the original or a newly generated PVC rather than the restored claim;
 - the volume is mounted at `/data`, while the application writes to `/var/lib/app` in the container layer;
-- `subPath: database` exposes `/restore/database`, but the files are at the volume root, or the inverse;
+- `subPath: database` exposes only the volume's `database` subdirectory at the configured `mountPath`, but the files are at the volume root, or the inverse;
 - a second volume mount hides a populated directory beneath it;
 - the restored filesystem contains a nested directory created by an earlier mount convention;
 - a raw block source was expected as a filesystem.
@@ -133,7 +133,7 @@ kubectl -n orders get pvc orders-data -o wide
 kubectl get pv "$(kubectl -n orders get pvc orders-data -o jsonpath='{.spec.volumeName}')" -o yaml
 ```
 
-Check that the `persistentVolumeClaimName` was the intended claim and that the content's source volume handle corresponds to that PV. A label such as `app=orders` is not enough when a StatefulSet has `orders-data-orders-0`, `orders-data-orders-1`, and similar claims.
+For a dynamically created snapshot, check that the `persistentVolumeClaimName` was the intended claim and that the content's source volume handle corresponds to that PV. For a pre-provisioned snapshot, verify the imported provider snapshot handle against the storage system's records. A label such as `app=orders` is not enough when a StatefulSet has `orders-data-orders-0`, `orders-data-orders-1`, and similar claims.
 
 Then verify where the application wrote at snapshot time. Data in `emptyDir`, an ephemeral CSI volume, the image's writable layer, or another PVC is not captured by this snapshot. A snapshot taken before a database finished initialization can also be legitimately empty.
 
@@ -143,16 +143,16 @@ For a retained production snapshot, create another PVC from it and inspect that 
 
 CSI provides a point-in-time storage operation, not an application transaction. A running database may need journal or WAL replay after restore. Multiple PVCs snapshotted one after another do not share one recovery point. Missing log volumes, encryption keys, tablespaces, or database metadata can make valid blocks unusable.
 
-Use the database vendor's quiesce or backup procedure, or take a CSI volume group snapshot when the driver supports it and write-order consistency across volumes is sufficient. For the strongest portable procedure, stop the writer cleanly, snapshot every required PVC, wait for every snapshot to become ready, and only then restart it.
+Use the database vendor's quiesce or backup procedure, or take a CSI volume group snapshot when the driver supports it and crash consistency across volumes is sufficient. For the strongest portable procedure, stop the writer cleanly, snapshot every required PVC, wait for every snapshot to become ready, and only then restart it.
 
-Do not let an automated readiness probe decide that an unrecovered database is empty and initialize it. Restore first into an isolated namespace, inspect logs, allow documented recovery to finish, and validate records or checksums before exposing the service.
+Do not let startup automation interpret an unrecovered database as empty and initialize it. Restore first into an isolated workload, inspect logs, allow documented recovery to finish, and validate records or checksums before exposing the service.
 
 ## A Safe Diagnostic Order
 
 Use this order to minimize accidental damage:
 
 1. Stop or isolate every writer to the diagnostic PVC.
-2. Confirm the live PVC contains the intended `dataSource`.
+2. Confirm the live PVC contains the intended `dataSource` or `dataSourceRef`.
 3. Confirm snapshot readiness and bidirectional content binding.
 4. Compare CSI driver, StorageClass, volume mode, and requested size.
 5. Read the PVC provisioning events and CSI controller logs.
@@ -168,6 +168,6 @@ The key distinction is between an empty **volume**, an empty **mount view**, and
 
 - [Kubernetes: Volume Snapshots](https://kubernetes.io/docs/concepts/storage/volume-snapshots/)
 - [Kubernetes CSI Developer Documentation: VolumeSnapshot API](https://kubernetes-csi.github.io/docs/api/volume-snapshot.html)
-- [Kubernetes: CSI Volume Cloning and PVC Data Sources](https://kubernetes.io/docs/concepts/storage/volume-pvc-datasource/)
+- [Kubernetes: Volume Populators and Data Sources](https://kubernetes.io/docs/concepts/storage/volume-populators-and-data-sources/)
 - [Kubernetes: Persistent Volumes](https://kubernetes.io/docs/concepts/storage/persistent-volumes/)
 - [Kubernetes: `snapshot.storage.kubernetes.io/allow-volume-mode-change`](https://kubernetes.io/docs/reference/labels-annotations-taints/#snapshot-storage-kubernetes-io-allow-volume-mode-change)
