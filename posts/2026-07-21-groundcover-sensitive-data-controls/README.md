@@ -44,7 +44,7 @@ Agent-side redaction is defense in depth. It should not be the only barrier betw
 
 ## Reduce collection scope
 
-Groundcover provides controls to filter Kubernetes entities, drop logs, disable selected tracing protocols, and control payload size. Use those controls before designing complex regexes.
+Groundcover provides controls to filter traced Kubernetes namespaces and workloads, drop logs, disable selected tracing protocols, and control trace payload size. Use those controls before designing complex regexes.
 
 Examples of safer scope decisions include:
 
@@ -58,14 +58,14 @@ Groundcover documents that logs from all namespaces and workloads are stored by 
 
 ## Configure trace payload obfuscation
 
-Groundcover configures obfuscation separately for HTTP, gRPC, Redis, SQL, MongoDB, and AMQP handlers. It supports two modes:
+Groundcover configures obfuscation separately for HTTP, gRPC, Redis, MySQL and PostgreSQL through the SQL handler, MongoDB, and AMQP handlers. It supports two modes:
 
 - **Key-value obfuscation:** Detect structures such as JSON or query parameters and apply a field policy.
 - **Unstructured obfuscation:** Obfuscate free text without relying on keys.
 
 Key-value configuration supports an allowlist-style `KeepSpecificValues` mode and a denylist-style `ObfuscateSpecificValues` mode. An allowlist is safer when the set of fields required for debugging is small and stable.
 
-For example, preserve only an approved diagnostic field in HTTP payloads:
+For example, preserve only an approved diagnostic field in HTTP payloads that Groundcover recognizes as key-value structures:
 
 ```yaml
 agent:
@@ -79,15 +79,17 @@ agent:
             - operation_id
 ```
 
+This allowlist does not obfuscate free-text payloads. Enable `unstructuredConfig` separately when free-text payloads must be obfuscated.
+
 Apply the values through the supported CLI or Helm upgrade path. Use the exact key names and casing expected by the current chart.
 
-Groundcover states that sensitive headers are obfuscated by default and documents the default list. Review it rather than assuming it contains every proprietary token header. Extend the list for application-specific headers and keep header matching behavior in mind.
+Groundcover states that sensitive headers are obfuscated by default and documents the default list. Review it rather than assuming it contains every proprietary token header. When overriding `specificKeys`, include any default entries you still require along with application-specific headers. Header matching is always case-insensitive.
 
 ## Redact logs before storage
 
 Groundcover's current log-pipeline documentation provides three relevant operations:
 
-- `obfuscate_pii` for built-in patterns such as email, credit card, JWT, bearer token, cloud credentials, repository tokens, API keys, and private keys
+- `obfuscate_pii` for 16 built-in patterns: email, credit card, IP and MAC addresses, URL, JWT, bearer token, AWS and Azure credentials, GitHub, GitLab, and Slack tokens, Google API and Stripe keys, and private keys
 - `replace_pattern` for custom or partially masked values
 - `delete_key` for removing attributes entirely
 
@@ -139,7 +141,7 @@ Turn the canary suite into a deployment gate. Re-run it after sensor, chart, pip
 
 Redaction will never be perfect. Add containment:
 
-- use Groundcover RBAC scopes for cluster, environment, namespace, and data type
+- on the Enterprise plan, use Groundcover RBAC scopes for cluster, environment, namespace, and data type
 - avoid default full-scope roles for users who need only one service
 - govern service accounts and rotate API keys
 - configure the shortest useful retention by data type
@@ -148,7 +150,7 @@ Redaction will never be perfect. Add containment:
 - encrypt storage and control key administration
 - audit queries, exports, policy changes, and support access where available
 
-Groundcover documents advanced retention for logs, traces, and events, while metrics support a global retention policy. Retention reduces future exposure but does not retroactively sanitize backups or exports. Include every copy in deletion procedures.
+Groundcover documents advanced retention for logs, traces, and events, while metrics support a global retention policy. For BYOC deployments, Groundcover's documentation says its team must make retention changes. Retention reduces future exposure but does not retroactively sanitize backups or exports. Include every copy in deletion procedures.
 
 ## Prepare for redaction failure
 
