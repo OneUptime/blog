@@ -33,12 +33,12 @@ A typical request path is:
 1. The application SDK or zero-code agent creates spans.
 2. Instrumentation propagates context to downstream services.
 3. An OTLP exporter sends spans directly or through an OpenTelemetry Collector.
-4. The Groundcover BYOC endpoint receives the telemetry.
+4. The Groundcover sensor or BYOC endpoint receives the telemetry, depending on the integration path.
 5. Groundcover stores and displays the ingested distributed trace.
 
 The OpenTelemetry Collector can batch, enrich, filter, retry, sample, and route data according to its configured components. Every processor in that path can affect what arrives. Groundcover's standalone integration guide explicitly assumes the service is already instrumented; Groundcover does not add OTel instrumentation to it.
 
-Use stable resource attributes, especially `service.name`, and verify the Groundcover environment and workload mapping. A valid trace ID is not enough for useful fleet navigation if service identity is inconsistent.
+Use stable resource attributes, especially `service.name` for Collector and standalone ingestion, and verify the Groundcover environment and workload mapping. For OTLP sent directly from Kubernetes pods to the Groundcover sensor, Groundcover documents that the sensor replaces `service.name` with the name of the Kubernetes Deployment that owns the pod. A valid trace ID is not enough for useful fleet navigation if service identity is inconsistent.
 
 ## The eBPF Sensor Observes the Same Supported Request
 
@@ -65,15 +65,15 @@ The exact internal key or heuristic Groundcover uses to associate the records is
 | Parent-child relationships | Kubernetes pod, node, and container context |
 | Manual application spans | Supported request and response details |
 | Library and framework attributes | Cross-zone and protocol-derived attributes documented by Groundcover |
-| Application-defined status and events | Coverage where an application has no equivalent manual span |
+| Application-defined status and events | PII-status attributes documented by Groundcover |
 
-The combined waterfall can therefore answer both "which logical workflow did this request follow?" and "what infrastructure and wire-level context surrounded it?" Coverage remains conditional rather than universal.
+The enriched trace can therefore answer both "which logical workflow did this request follow?" and "what infrastructure and wire-level context surrounded it?" Coverage remains conditional rather than universal.
 
 ## Sampling Can Break the Join
 
-Sampling happens at more than one layer. OpenTelemetry SDKs can make a head-sampling decision and propagate it in trace flags. A Collector can apply additional processing or tail sampling. Groundcover separately documents smart sampling for eBPF traces and says it processes observed requests while storing only a selected fraction of trace instances.
+Sampling happens at more than one layer. OpenTelemetry SDKs can make a head-sampling decision and propagate it in trace flags. A Collector can apply additional processing or tail sampling. Groundcover separately documents smart sampling for eBPF traces and says it processes observed requests while storing only a selected fraction of trace instances. For OTLP traces sent directly from Kubernetes pods to the Groundcover sensor, Groundcover also documents a separate ingestion sampling ratio with a 5% default. The BYOC endpoint used by an external Collector does not perform that additional sampling.
 
-If the OTel trace is dropped before export, Groundcover cannot display it as an ingested distributed trace. If the corresponding eBPF transaction is not retained for enrichment, the OTel trace may still exist without the additional payload and infrastructure fields.
+If the OTel trace is dropped before storage, whether by upstream sampling or direct-sensor ingestion sampling, Groundcover cannot display it as an ingested distributed trace. If the corresponding eBPF transaction is not retained for enrichment, the OTel trace may still exist without the additional payload and infrastructure fields.
 
 Groundcover documents an `x-groundcover-force-sample: true` request header for HTTP and gRPC eBPF traces. It is useful for a controlled test, not a universal production sampling strategy. Confirm how upstream OTel sampling treats the same request, because the Groundcover header does not override an OTel SDK or Collector decision unless those components are separately configured to do so.
 
