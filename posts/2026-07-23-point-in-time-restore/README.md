@@ -8,7 +8,7 @@ Description: Select and restore a valid SQL Server backup sequence to a precise 
 
 ---
 
-A point-in-time restore is a restore sequence under the full or bulk-logged recovery model: restore a data backup, leave the database unrecovered, apply every required log backup in order, stop inside the log that contains the target time, and recover once.
+A point-in-time restore is a restore sequence under the full or bulk-logged recovery model: restore a data backup whose endpoint is earlier than the target, leave the database unrecovered, apply every required log backup in order, stop inside the log that contains the target time, and recover once.
 
 The safe default is to restore to a new database on an isolated instance. That preserves the damaged or accidentally changed source, lets the team validate the target event, and avoids an irreversible overwrite based on an unverified timestamp.
 
@@ -21,7 +21,7 @@ Before running `RESTORE`, establish:
 - whether the database was in full or bulk-logged recovery during the interval;
 - whether a tail-log backup can capture changes after the latest scheduled log backup;
 - whether any log backup covering the target contains minimally logged operations under bulk-logged recovery;
-- whether backup encryption or TDE certificates and private keys are available.
+- whether the certificate or asymmetric key used for backup encryption or TDE is available on the restore instance, including any private key or EKM access required to use it.
 
 Bulk-logged recovery can prevent stopping at an arbitrary time inside a log backup that contains bulk changes. In that case, SQL Server must restore that log through its end. Move the recovery point or choose a different recovery approach based on the business decision.
 
@@ -35,7 +35,7 @@ TO DISK = N'E:\SQLBackups\Sales_tail_20260723_1438.trn'
 WITH NORECOVERY, CHECKSUM, STATS = 10;
 ```
 
-Some damaged-database scenarios use `NO_TRUNCATE`; follow the documented tail-log scenario rather than adding it automatically. Do not take a tail backup from a healthy source merely because an alternate test restore is being performed—the normal log chain can continue.
+Offline scenarios can use `NO_TRUNCATE`, and damaged databases can require `CONTINUE_AFTER_ERROR`; follow the documented tail-log scenario rather than adding either option automatically. Do not take a tail backup from a healthy source merely because an alternate test restore is being performed—the normal log chain can continue.
 
 Retain the tail backup with the rest of the chain. It is not a disposable incident artifact.
 
@@ -53,9 +53,11 @@ FROM DISK = N'E:\SQLBackups\Sales_full_20260720.bak';
 
 For every candidate set, record backup type, database identity, `Position`, backup start and finish time, `FirstLSN`, `LastLSN`, checkpoint/database backup LSN, differential base LSN and GUID, recovery fork, copy-only status, checksum status, and all media families. If a device contains multiple backup sets, use the correct `FILE = <Position>` in every command.
 
+The restore examples below specify `CHECKSUM`. That deliberately fails if `HasBackupChecksums` is `0`. If a selected backup lacks backup checksums, omit `CHECKSUM`; the default restore behavior verifies backup checksums when present and proceeds when they are absent.
+
 Choose:
 
-1. a valid full backup before the target;
+1. a valid full backup whose endpoint is before the target;
 2. optionally, the newest compatible differential completed before the target and based on that exact full;
 3. a continuous sequence of log backups covering the selected data backup through the target;
 4. the tail-log backup when one was taken and the target requires it.
