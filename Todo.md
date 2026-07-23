@@ -2,15 +2,14 @@
 
 ## OSV
 
-1. Manifest vs. Lockfile Scanning: Why OSV-Scanner Needs Resolved Versions
-2. Fixing False Positives Caused by Version Ranges in requirements.txt
-3. How to Scan SPDX and CycloneDX SBOMs with OSV-Scanner
-4. Troubleshooting OSV-Scanner SBOM Parsing and Package URL Errors
-5. How to Scan Container Images with OSV-Scanner—and Understand Its Coverage
-6. How to Run OSV-Scanner in GitHub Actions and GitLab CI with Useful Exit Codes
-7. How to Triage OSV-Scanner Findings with Reachability and Call Analysis
-8. How to Ignore OSV Findings Safely with Reasons and Expiration Dates
-9. Offline OSV Scanning: Keeping Dependency Data Private in Restricted Environments
+1. Fixing False Positives Caused by Version Ranges in requirements.txt
+2. How to Scan SPDX and CycloneDX SBOMs with OSV-Scanner
+3. Troubleshooting OSV-Scanner SBOM Parsing and Package URL Errors
+4. How to Scan Container Images with OSV-Scanner—and Understand Its Coverage
+5. How to Run OSV-Scanner in GitHub Actions and GitLab CI with Useful Exit Codes
+6. How to Triage OSV-Scanner Findings with Reachability and Call Analysis
+7. How to Ignore OSV Findings Safely with Reasons and Expiration Dates
+8. Offline OSV Scanning: Keeping Dependency Data Private in Restricted Environments
 
 ## SQL Server
 
