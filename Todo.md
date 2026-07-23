@@ -2,8 +2,7 @@
 
 ## OSV
 
-1. How to Ignore OSV Findings Safely with Reasons and Expiration Dates
-2. Offline OSV Scanning: Keeping Dependency Data Private in Restricted Environments
+1. Offline OSV Scanning: Keeping Dependency Data Private in Restricted Environments
 
 ## SQL Server
 
