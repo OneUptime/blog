@@ -20,8 +20,8 @@ Give each pipeline a small, explicit contract:
 Registry resource:  /subscriptions/.../registries/contosoplatformacr
 Login server:       contosoplatformacr-abc123.azurecr.io
 Repository:         orders/api
-Immutable tag:      source commit SHA
-Mutable tag:        optional, updated only after the immutable push succeeds
+Commit tag:         source commit SHA
+Mutable tag:        optional, updated only after the commit-tagged push succeeds
 Network path:       public endpoint + firewall, or Private Link
 ```
 
@@ -35,7 +35,7 @@ ACR_LOGIN_SERVER=$(az acr show --name "$ACR_NAME" --query loginServer --output t
 printf 'resource=%s\nserver=%s\n' "$ACR_RESOURCE_ID" "$ACR_LOGIN_SERVER"
 ```
 
-Use the source commit as the deployment tag. A tag such as `latest` is convenient for humans but does not identify an immutable build:
+Use the source commit as a traceability tag. Unlike `latest`, it identifies the source revision. ACR tags are mutable by default, however, and rerunning a commit can produce different content if inputs such as base images move. Deploy by digest—or explicitly lock the deployed tag—when you require immutability:
 
 ```text
 contosoplatformacr-abc123.azurecr.io/orders/api:6db8c1e...
@@ -127,16 +127,16 @@ jobs:
 
     steps:
       - name: Check out source
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Sign in to Azure with OIDC
-        uses: azure/login@v2
+        uses: azure/login@v3
         with:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
-      - name: Build and push immutable image
+      - name: Build and push commit-tagged image
         env:
           ACR_NAME: ${{ vars.ACR_NAME }}
           ACR_LOGIN_SERVER: ${{ vars.ACR_LOGIN_SERVER }}
@@ -186,7 +186,7 @@ steps:
   - checkout: self
 
   - task: AzureCLI@2
-    displayName: Build and push immutable image
+    displayName: Build and push commit-tagged image
     inputs:
       azureSubscription: acr-wif
       scriptType: bash
@@ -228,11 +228,11 @@ az acr check-health --name "$ACR_NAME" --yes
 
 An unauthenticated `GET /v2/` commonly returns `401 Unauthorized`; that response proves DNS, TCP, TLS, and the registry endpoint are reachable. A timeout indicates networking. A `403` often means DNS selected the public endpoint while public access or the source IP is blocked. Login followed by a stalled layer upload points to a missing data-endpoint DNS record or firewall rule.
 
-## Make the Pipeline Reproducible
+## Make the Pipeline Traceable and Repeatable
 
 A reliable image pipeline does more than make `docker push` succeed:
 
-- Build an immutable SHA tag first. Add a release or channel tag only after the immutable push succeeds.
+- Build and push the commit-SHA tag first. Add a release or channel tag only after the commit-tagged push succeeds.
 - Record the fully qualified image reference as an output for the deployment stage.
 - Prefer deploying by digest when the target platform supports it.
 - Avoid granting catalog-list access unless the build genuinely needs to enumerate every repository.
