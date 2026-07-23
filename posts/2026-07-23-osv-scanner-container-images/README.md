@@ -71,7 +71,7 @@ OSV-Scanner v2.4.0 also enables Canonical Chisel installed-package extraction fo
 
 Coverage is evidence-driven. A stripped binary without embedded package metadata cannot be inventoried like a lockfile. A Rust binary without cargo-auditable data does not expose the same dependency information. A language package that was compiled away, flattened, or installed in an unsupported layout may not appear.
 
-The absence of a finding therefore means no extracted package matched known data. It does not prove that every file in the image was attributed to a package or that every vulnerability class is covered.
+An empty result therefore means only that, after applying the selected vulnerability data, configuration, and filters, no extracted package produced a reportable match. It does not prove that every file in the image was attributed to a package or that every vulnerability class is covered.
 
 ## Read layer and base-image context
 
@@ -89,11 +89,12 @@ Do not delete a file in a later layer and assume it never existed in image histo
 
 ## Produce detailed results
 
-Use JSON or SARIF for automation:
+Use JSON or SARIF for automation. Add `--all-packages` to JSON when you need the complete extracted package inventory, including packages without findings:
 
 ```bash
 osv-scanner scan image \
   --format=json \
+  --all-packages \
   --output-file=image-osv.json \
   example/service:2026-07-23
 ```
@@ -107,7 +108,7 @@ osv-scanner scan image \
   example/service:2026-07-23
 ```
 
-`--serve` can host the generated report locally. Do not use it on an untrusted shared network without considering access to the report.
+`--serve` can host the generated report on port 8000. In v2.4.0 it listens on all network interfaces, even though the CLI prints a `localhost` URL, so do not use it on an untrusted shared network.
 
 The `scan image` command cannot be combined with source directories or lockfile targets. Run separate source and image scans and retain both results.
 
