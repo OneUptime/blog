@@ -2,14 +2,13 @@
 
 ## SQL Server
 
-1. How to Repair an Unsynchronized SQL Server Availability Group Secondary
-2. SQL Server Availability Group Backups: Which Replica Should Run Each Job?
-3. Fixing Orphaned SQL Server Users and SID Mismatches After a Restore
-4. Encrypting SQL Server Connections: Certificates, TLS Errors, and TrustServerCertificate
-5. Designing Least-Privilege SQL Server Roles for Applications and Administrators
-6. How to Monitor SQL Server Before Users Report a Performance Problem
-7. SQL Server TempDB Contention: Symptoms, Root Causes, and Configuration Fixes
-8. DBCC CHECKDB Found Corruption: A Safe SQL Server Recovery Playbook
+1. SQL Server Availability Group Backups: Which Replica Should Run Each Job?
+2. Fixing Orphaned SQL Server Users and SID Mismatches After a Restore
+3. Encrypting SQL Server Connections: Certificates, TLS Errors, and TrustServerCertificate
+4. Designing Least-Privilege SQL Server Roles for Applications and Administrators
+5. How to Monitor SQL Server Before Users Report a Performance Problem
+6. SQL Server TempDB Contention: Symptoms, Root Causes, and Configuration Fixes
+7. DBCC CHECKDB Found Corruption: A Safe SQL Server Recovery Playbook
 
 ## ACR
 
