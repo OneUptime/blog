@@ -17,7 +17,7 @@ The production target is a certificate that clients can validate, encryption req
 At connection time, determine:
 
 1. **Is encryption requested or required?** The client `Encrypt` setting and server force-encryption setting participate.
-2. **Can the client build a trusted chain?** The issuing root and any intermediate CA certificates must be trusted on the client.
+2. **Can the client build a trusted chain?** The client must trust the issuing root CA and be able to obtain any intermediate CA certificates needed to complete the chain.
 3. **Does the server identity match?** The DNS name the client validates must appear in the certificate subject or Subject Alternative Name as required by the driver.
 
 SQL Server encrypts login credentials even when full-session encryption is not configured, using a provisioned certificate or a generated self-signed fallback. That does not mean all application data packets are protected. Verify the established connection instead of inferring from a successful login.
@@ -103,7 +103,7 @@ Test every path: listener, direct node, scheduled jobs, monitoring agents, ETL, 
 
 ### “Certificate chain was issued by an authority that is not trusted”
 
-The client cannot build a chain from the server certificate to a trusted root. Install the correct root and intermediate CA certificates in the client's trust store, send the complete intended chain, and verify the server selected the correct certificate.
+The client cannot build a chain from the server certificate to a trusted root. Ensure the client trusts the correct root CA and can obtain the required intermediate CA certificates, make the intermediates available on the server or client as appropriate, and verify the server selected the correct certificate.
 
 `TrustServerCertificate=True` suppresses this validation. It can be a time-bounded diagnostic or emergency compatibility measure when risk is explicitly accepted, but it is not the durable production fix. Self-signed encryption without identity validation is vulnerable to man-in-the-middle impersonation.
 
@@ -123,7 +123,7 @@ Review the SQL Server error log after restart. Check store location, private key
 
 ### Protocol or cipher handshake failure
 
-Client driver, operating-system TLS stack, server policy, and SQL Server version must share a supported protocol and cipher set. Capture exact client and server errors before changing system-wide TLS policy. Upgrade obsolete drivers and stage protocol removals; do not enable deprecated protocols as a permanent shortcut.
+The client driver and its TLS stack, the server TLS stack and policy, and the SQL Server version must share a supported protocol and cipher set. Capture exact client and server errors before changing system-wide TLS policy. Upgrade obsolete drivers and stage protocol removals; do not enable deprecated protocols as a permanent shortcut.
 
 ## Rotate Without an Outage Surprise
 
