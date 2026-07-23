@@ -2,20 +2,19 @@
 
 ## ACR
 
-1. Letting Azure Container Apps Pull from ACR with Managed Identity
-2. ACR Private Endpoint DNS: Fixing 403, NXDOMAIN, and Data Endpoint Failures
-3. How to Build and Push to a Private ACR from GitHub Actions or Azure DevOps
-4. Least-Privilege ACR Access: AcrPull, AcrPush, Repository Permissions, and Scope Maps
-5. Pulling ACR Images Across Azure Subscriptions and Microsoft Entra Tenants
-6. Keeping Only the Latest ACR Images with Scheduled acr purge Tasks
-7. ACR Tags vs. Manifests: How to Delete Images Without Breaking Deployments
-8. Preventing Production Image Overwrites with Immutable ACR Tags
-9. Rebuilding Images Automatically When an ACR Base Image Changes
-10. Troubleshooting ACR Tasks That Cannot Build, Pull, or Start
-11. Why ACR Pushes and Pulls Are Slow—and How to Improve Throughput
-12. ACR Zone Redundancy vs. Geo-Replication: Availability, Latency, and Cost
-13. Scanning ACR Images for Vulnerabilities and Blocking Unsafe Deployments
-14. Monitoring Azure Container Registry with Diagnostic Logs, Metrics, and Webhooks
+1. ACR Private Endpoint DNS: Fixing 403, NXDOMAIN, and Data Endpoint Failures
+2. How to Build and Push to a Private ACR from GitHub Actions or Azure DevOps
+3. Least-Privilege ACR Access: AcrPull, AcrPush, Repository Permissions, and Scope Maps
+4. Pulling ACR Images Across Azure Subscriptions and Microsoft Entra Tenants
+5. Keeping Only the Latest ACR Images with Scheduled acr purge Tasks
+6. ACR Tags vs. Manifests: How to Delete Images Without Breaking Deployments
+7. Preventing Production Image Overwrites with Immutable ACR Tags
+8. Rebuilding Images Automatically When an ACR Base Image Changes
+9. Troubleshooting ACR Tasks That Cannot Build, Pull, or Start
+10. Why ACR Pushes and Pulls Are Slow—and How to Improve Throughput
+11. ACR Zone Redundancy vs. Geo-Replication: Availability, Latency, and Cost
+12. Scanning ACR Images for Vulnerabilities and Blocking Unsafe Deployments
+13. Monitoring Azure Container Registry with Diagnostic Logs, Metrics, and Webhooks
 
 ## Ansible
 
