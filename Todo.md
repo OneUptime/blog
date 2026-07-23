@@ -2,24 +2,23 @@
 
 ## ACR
 
-1. Managed Identity, Service Principal, or Admin User? Choosing Secure ACR Authentication
-2. az acr login vs. docker login: Why One Works When the Other Returns 401
-3. Fixing “Unauthorized: Authentication Required” When Pushing to ACR
-4. ACR ImagePullBackOff in AKS: A Systematic Troubleshooting Guide
-5. Letting Azure Container Apps Pull from ACR with Managed Identity
-6. ACR Private Endpoint DNS: Fixing 403, NXDOMAIN, and Data Endpoint Failures
-7. How to Build and Push to a Private ACR from GitHub Actions or Azure DevOps
-8. Least-Privilege ACR Access: AcrPull, AcrPush, Repository Permissions, and Scope Maps
-9. Pulling ACR Images Across Azure Subscriptions and Microsoft Entra Tenants
-10. Keeping Only the Latest ACR Images with Scheduled acr purge Tasks
-11. ACR Tags vs. Manifests: How to Delete Images Without Breaking Deployments
-12. Preventing Production Image Overwrites with Immutable ACR Tags
-13. Rebuilding Images Automatically When an ACR Base Image Changes
-14. Troubleshooting ACR Tasks That Cannot Build, Pull, or Start
-15. Why ACR Pushes and Pulls Are Slow—and How to Improve Throughput
-16. ACR Zone Redundancy vs. Geo-Replication: Availability, Latency, and Cost
-17. Scanning ACR Images for Vulnerabilities and Blocking Unsafe Deployments
-18. Monitoring Azure Container Registry with Diagnostic Logs, Metrics, and Webhooks
+1. az acr login vs. docker login: Why One Works When the Other Returns 401
+2. Fixing “Unauthorized: Authentication Required” When Pushing to ACR
+3. ACR ImagePullBackOff in AKS: A Systematic Troubleshooting Guide
+4. Letting Azure Container Apps Pull from ACR with Managed Identity
+5. ACR Private Endpoint DNS: Fixing 403, NXDOMAIN, and Data Endpoint Failures
+6. How to Build and Push to a Private ACR from GitHub Actions or Azure DevOps
+7. Least-Privilege ACR Access: AcrPull, AcrPush, Repository Permissions, and Scope Maps
+8. Pulling ACR Images Across Azure Subscriptions and Microsoft Entra Tenants
+9. Keeping Only the Latest ACR Images with Scheduled acr purge Tasks
+10. ACR Tags vs. Manifests: How to Delete Images Without Breaking Deployments
+11. Preventing Production Image Overwrites with Immutable ACR Tags
+12. Rebuilding Images Automatically When an ACR Base Image Changes
+13. Troubleshooting ACR Tasks That Cannot Build, Pull, or Start
+14. Why ACR Pushes and Pulls Are Slow—and How to Improve Throughput
+15. ACR Zone Redundancy vs. Geo-Replication: Availability, Latency, and Cost
+16. Scanning ACR Images for Vulnerabilities and Blocking Unsafe Deployments
+17. Monitoring Azure Container Registry with Diagnostic Logs, Metrics, and Webhooks
 
 ## Ansible
 
