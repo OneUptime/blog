@@ -2,18 +2,17 @@
 
 ## OSV
 
-1. How to Query the OSV.dev API for One Package or an Entire Dependency Set
-2. How to Download, Mirror, and Incrementally Update the OSV Database
-3. How OSV-Scanner Finds Dependencies in Source Trees, Manifests, and Lockfiles
-4. Manifest vs. Lockfile Scanning: Why OSV-Scanner Needs Resolved Versions
-5. Fixing False Positives Caused by Version Ranges in requirements.txt
-6. How to Scan SPDX and CycloneDX SBOMs with OSV-Scanner
-7. Troubleshooting OSV-Scanner SBOM Parsing and Package URL Errors
-8. How to Scan Container Images with OSV-Scanner—and Understand Its Coverage
-9. How to Run OSV-Scanner in GitHub Actions and GitLab CI with Useful Exit Codes
-10. How to Triage OSV-Scanner Findings with Reachability and Call Analysis
-11. How to Ignore OSV Findings Safely with Reasons and Expiration Dates
-12. Offline OSV Scanning: Keeping Dependency Data Private in Restricted Environments
+1. How to Download, Mirror, and Incrementally Update the OSV Database
+2. How OSV-Scanner Finds Dependencies in Source Trees, Manifests, and Lockfiles
+3. Manifest vs. Lockfile Scanning: Why OSV-Scanner Needs Resolved Versions
+4. Fixing False Positives Caused by Version Ranges in requirements.txt
+5. How to Scan SPDX and CycloneDX SBOMs with OSV-Scanner
+6. Troubleshooting OSV-Scanner SBOM Parsing and Package URL Errors
+7. How to Scan Container Images with OSV-Scanner—and Understand Its Coverage
+8. How to Run OSV-Scanner in GitHub Actions and GitLab CI with Useful Exit Codes
+9. How to Triage OSV-Scanner Findings with Reachability and Call Analysis
+10. How to Ignore OSV Findings Safely with Reasons and Expiration Dates
+11. Offline OSV Scanning: Keeping Dependency Data Private in Restricted Environments
 
 ## SQL Server
 
