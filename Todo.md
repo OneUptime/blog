@@ -1,9 +1,5 @@
 # Blog Post Ideas
 
-## OSV
-
-1. Offline OSV Scanning: Keeping Dependency Data Private in Restricted Environments
-
 ## SQL Server
 
 1. SQL Server Production Setup Checklist: Memory, TempDB, Storage, and Service Accounts
