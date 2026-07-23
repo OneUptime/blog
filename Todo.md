@@ -2,13 +2,12 @@
 
 ## OSV
 
-1. How to Scan SPDX and CycloneDX SBOMs with OSV-Scanner
-2. Troubleshooting OSV-Scanner SBOM Parsing and Package URL Errors
-3. How to Scan Container Images with OSV-Scanner—and Understand Its Coverage
-4. How to Run OSV-Scanner in GitHub Actions and GitLab CI with Useful Exit Codes
-5. How to Triage OSV-Scanner Findings with Reachability and Call Analysis
-6. How to Ignore OSV Findings Safely with Reasons and Expiration Dates
-7. Offline OSV Scanning: Keeping Dependency Data Private in Restricted Environments
+1. Troubleshooting OSV-Scanner SBOM Parsing and Package URL Errors
+2. How to Scan Container Images with OSV-Scanner—and Understand Its Coverage
+3. How to Run OSV-Scanner in GitHub Actions and GitLab CI with Useful Exit Codes
+4. How to Triage OSV-Scanner Findings with Reachability and Call Analysis
+5. How to Ignore OSV Findings Safely with Reasons and Expiration Dates
+6. Offline OSV Scanning: Keeping Dependency Data Private in Restricted Environments
 
 ## SQL Server
 
