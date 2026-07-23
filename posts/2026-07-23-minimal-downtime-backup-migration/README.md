@@ -19,7 +19,7 @@ This workflow requires:
 - the source database to use full recovery with a healthy log chain;
 - a destination on the same or a newer SQL Server version supported for restore;
 - network and storage capacity for the full seed and continuing logs;
-- every backup-encryption and TDE certificate/private key installed at the destination before restore;
+- every certificate/private key or EKM asymmetric key/provider used for backup encryption or TDE available at the destination before restore;
 - a tested method to transfer instance-level objects and switch clients;
 - an outage window long enough for the final tail and validation.
 
@@ -112,7 +112,7 @@ Before the window:
 
 ## Capture the Tail and Recover the Target
 
-At cutover, stop application writes and background workers. Prove that writes have drained; do not rely only on an announcement. Then take the final tail-log backup:
+At cutover, stop application writes and background workers. Prove that writes have drained; do not rely only on an announcement. Drain or terminate remaining database connections so that `NORECOVERY` can obtain exclusive access, using a rehearsed single-user procedure if necessary. Then take the final tail-log backup:
 
 ```sql
 BACKUP LOG Sales
@@ -143,7 +143,7 @@ Keep clients blocked while checking:
 - critical row counts and application invariants;
 - login-to-user SID mappings and least-privilege access;
 - TDE, Service Broker, replication, CDC, and other feature-specific state;
-- read and write smoke tests through the future application endpoint;
+- read smoke tests and write tests that are guaranteed to roll back without external side effects through the future application endpoint;
 - jobs, monitoring, backup ownership, and alerting.
 
 Only then switch the listener, alias, DNS, or connection configuration and enable destination jobs. Watch connection errors, write throughput, blocking, and business transactions throughout the stabilization window.
