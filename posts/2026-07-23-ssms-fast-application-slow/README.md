@@ -108,7 +108,7 @@ WHERE pa.attribute IN ('set_options', 'dbid')
 
 ## Compare the Plans and Runtime Evidence
 
-Capture actual execution plans only with appropriate overhead and data-sensitivity controls. An actual plan includes runtime row counts and warnings; an estimated plan does not execute the query and lacks those runtime facts.
+Capture actual execution plans only with appropriate overhead and data-sensitivity controls. An actual plan includes runtime row counts and any runtime warnings; an estimated plan does not execute the query and lacks those runtime facts.
 
 Compare the application-like and SSMS executions for:
 
@@ -119,7 +119,7 @@ Compare the application-like and SSMS executions for:
 - compile-time parameter values in plan properties;
 - different plan IDs and performance distributions in Query Store.
 
-Query Store is preferable to relying only on the current plan cache because it retains plan and runtime history. Group results by plan, interval, and application context where available; averages alone can conceal one bad parameter range.
+Query Store is preferable to relying only on the current plan cache because it retains plan and runtime history. Group runtime statistics by plan, execution type, and interval; averages alone can conceal one bad parameter range.
 
 ## Reproduce the Application Faithfully
 
@@ -140,7 +140,7 @@ Run both tests against the same listener or server, database, login permissions,
 
 ## Choose a Fix for the Proven Cause
 
-- **Different or skewed parameters:** tune the query and indexes for the distribution; consider Parameter Sensitive Plan optimization on SQL Server 2022 with compatibility level 160, `OPTION (RECOMPILE)` for an appropriate low-frequency statement, or another targeted parameter-sensitivity remedy.
+- **Different or skewed parameters:** tune the query and indexes for the distribution; consider Parameter Sensitive Plan optimization for an eligible parameterized `SELECT` on SQL Server 2022 with compatibility level 160, `OPTION (RECOMPILE)` for an appropriate low-frequency statement, or another targeted parameter-sensitivity remedy.
 - **Different parameter metadata:** bind the correct SQL type and length in application code.
 - **Different `SET` options:** standardize intentional connection behavior and retest; do not rely on accidental cache separation.
 - **Plan regression:** use Query Store to assess the previous plan and apply temporary forcing only with monitoring and a removal plan.
