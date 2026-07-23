@@ -8,7 +8,7 @@ Description: Turn SQL Server missing-index signals into measured, consolidated i
 
 ---
 
-SQL Server missing-index suggestions are optimizer estimates for individual compilation scenarios. They are useful clues, not ready-to-run prescriptions. Creating every green-text recommendation can produce overlapping indexes, slower writes, longer maintenance, more storage, and a plan cache full of new alternatives.
+SQL Server missing-index suggestions are optimizer estimates for individual compilation scenarios. They are useful clues, not ready-to-run prescriptions. Creating every green-text recommendation can produce overlapping indexes, slower writes, longer maintenance, more storage, and more access paths for the optimizer to evaluate during compilation.
 
 A safer workflow begins with workload evidence, compares suggestions with the existing index set, designs the smallest useful change, and measures both reads and writes before keeping it.
 
@@ -28,7 +28,7 @@ The percentage displayed in a plan is estimated improvement for that optimizatio
 
 ## Start with the Workload
 
-Use Query Store to rank statements by total resource contribution, tail latency, and business importance. Confirm a target execution with an actual plan and `SET STATISTICS IO, TIME` in a safe test. Record:
+Use Query Store to rank statements by total resource contribution, tail latency, and business importance. Confirm a target execution with an actual plan, `SET STATISTICS IO ON`, and `SET STATISTICS TIME ON` in a safe test. Record:
 
 - execution frequency and parameter ranges;
 - logical reads, CPU, duration, and returned rows;
@@ -89,7 +89,7 @@ WHERE i.object_id = OBJECT_ID(N'Sales.Orders')
 ORDER BY i.index_id;
 ```
 
-Usage counters are cumulative since the engine last started or counters were cleared, and they do not capture every business or constraint value. Never drop an index solely because its current seek count is zero. Check uptime, seasonal jobs, disaster-recovery operations, constraints, plan history, and replicas.
+`user_updates` counts index-maintenance operations, not the number of rows changed. Usage counters are cumulative since the engine last started or counters were cleared, and they do not capture every business or constraint value. Never drop an index solely because its current seek count is zero. Check uptime, seasonal jobs, disaster-recovery operations, constraints, plan history, and replicas.
 
 ## Collect and Consolidate Missing-Index Signals
 
@@ -162,7 +162,7 @@ Do not force the old or new plan during the comparison unless plan forcing is it
 
 Script the exact `DROP INDEX` rollback, estimate free space, and choose supported online or resumable options only after checking the SQL Server version, edition, and operation restrictions. Monitor blocking and log growth during the build.
 
-After deployment, compare Query Store intervals and index usage over a full business cycle. If the new index overlaps an old one, do not immediately drop the old index. First prove that its workload is covered, account for unique and constraint semantics, then disable or remove it through the normal change process with a recreation script retained.
+After deployment, compare Query Store intervals and index usage over a full business cycle. If the new index overlaps an old one, do not immediately drop the old index. First prove that its workload is covered and account for unique and constraint semantics, then remove it through the normal change process with a recreation script retained. If that process uses a staged disable, restrict it to a nonclustered, nonunique index that does not enforce a constraint; disabling a clustered index makes the table data inaccessible.
 
 The desired outcome is not “no missing-index warnings.” It is a smaller, intentional index portfolio that meets read targets while preserving acceptable write, storage, backup, and maintenance costs.
 
