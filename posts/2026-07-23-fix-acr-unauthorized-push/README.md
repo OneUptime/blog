@@ -25,7 +25,7 @@ The wording narrows the layer that failed:
 | `unauthorized: authentication required` | missing, invalid, expired, or stale login credential |
 | `requested access to the resource is denied` | authenticated identity lacks repository write permission |
 | `client with IP ... is not allowed access` | ACR public network/firewall rule |
-| `operation is disallowed` | repository or manifest is write-locked, or another registry policy blocks it |
+| `operation is disallowed` | repository or image is write-locked, or another registry policy blocks it |
 | `i/o timeout`, DNS error, TLS timeout | login or data endpoint connectivity |
 | `429 Too Many Requests` | SKU request-rate throttling, not an authentication failure |
 
@@ -57,7 +57,7 @@ docker tag orders-api:local "$IMAGE_TAG"
 docker image inspect "$IMAGE_TAG" --format '{{json .RepoTags}}'
 ```
 
-Use lowercase repository names and the exact host. Credentials are stored per hostname, so a login for an unprotected hostname does not apply to a DNL-protected hostname or a Premium regional endpoint.
+Use lowercase repository names and the exact host. Credentials are stored per hostname, so a login for an unprotected hostname does not apply to a DNL-protected hostname or a Premium regional endpoint (preview).
 
 ## Check Registry and Client Health
 
@@ -95,7 +95,7 @@ docker logout "$LOGIN_SERVER"
 az acr login --name "$ACR_NAME"
 ```
 
-`az acr login` accepts the Azure resource name, while `docker push` uses the login server. Microsoft Entra-derived ACR login tokens expire after three hours. Reauthenticate after role changes, tenant changes, and token expiry.
+`az acr login` accepts the Azure resource name, while `docker push` uses the login server. If the push target is a regional endpoint, use Azure CLI 2.86.0 or later and add `--endpoint '<region>'` to `az acr login`; otherwise, the command logs in to the global endpoint. Microsoft Entra-derived ACR login tokens expire after three hours. Reauthenticate after role changes, tenant changes, and token expiry.
 
 On an ABAC-enabled registry, Repository Writer authorizes the push but does not itself authorize `az acr login`. The documented CLI-login role is `Container Registry Contributor and Data Access Configuration Administrator`; it grants broad control-plane management but no repository data access. Check for that distinction before misdiagnosing a CLI-login denial as a missing Writer assignment, and do not grant the broad role to a data-plane-only workload when a direct Docker credential is the intended design.
 
@@ -159,7 +159,7 @@ az role assignment list \
   --output table
 ```
 
-For a service principal, role assignment commands need the service principal **object ID**, not its application/client ID. For a managed identity, use `principalId`, not `clientId` or the identity resource ID.
+When using `--assignee-object-id`, pass a service principal's **object ID**, not its application/client ID. For a managed identity, use `principalId`, not `clientId` or the identity resource ID.
 
 If the ABAC-enabled registry needs registry-wide push-without-delete access:
 
@@ -248,9 +248,9 @@ az acr network-rule list \
   --output json
 ```
 
-The builder must either originate from an allowed public IP or reach an approved private endpoint. Do not add a broad public range merely to make CI pass.
+The builder must be admitted by an allowed public-IP rule, an allowed virtual-network rule through the service-endpoint feature (preview), an eligible trusted-service bypass, or an approved private endpoint. Do not add a broad public range merely to make CI pass.
 
-An ACR image transfer uses a registry REST/login endpoint and a separate data endpoint for layers. A firewall or private DNS configuration that permits only the login endpoint can authenticate successfully and then fail during upload. For a Premium registry with a private endpoint, validate the private record for both the registry and `<registry>.<region>.data.azurecr.io` from the builder.
+An ACR image transfer uses a registry REST/login endpoint and a separate data endpoint for layers. A firewall or private DNS configuration that permits only the login endpoint can authenticate successfully and then fail during upload. For a Premium registry with a private endpoint, validate private DNS resolution for `$LOGIN_SERVER` and every hostname returned by `az acr show --name "$ACR_NAME" --query dataEndpointHostNames --output tsv` from the builder.
 
 An unauthenticated probe helps identify reachability:
 
@@ -258,7 +258,7 @@ An unauthenticated probe helps identify reachability:
 curl --verbose "https://$LOGIN_SERVER/v2/"
 ```
 
-An HTTP 401 from this unauthenticated request is expected and proves that the login endpoint responded. A DNS or TCP failure points to networking instead.
+An HTTP 401 is expected when the registry requires authentication; a registry with anonymous pull enabled can instead return HTTP 200. Either response proves that the login endpoint responded. A DNS or TCP failure points to networking instead.
 
 ## Check for a Write Lock Only After Authentication
 
@@ -271,6 +271,8 @@ az acr repository show \
   --output jsonc
 ```
 
+For an image-level lock, repeat the inspection with `--image 'orders/api:2026.07.23.1'` or `--image 'orders/api@sha256:<digest>'`.
+
 Do not automatically unlock production content. A write lock may be an intentional immutability control. If policy permits changing it:
 
 ```bash
@@ -279,6 +281,8 @@ az acr repository update \
   --repository orders/api \
   --write-enabled true
 ```
+
+Use `--image` instead of `--repository` when `writeEnabled: false` is on a tag or manifest.
 
 This solves a write-policy denial, not a 401. Keep the distinction visible in incident notes.
 
