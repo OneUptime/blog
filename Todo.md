@@ -2,20 +2,19 @@
 
 ## SQL Server
 
-1. Why the SQL Server Transaction Log Keeps Growing—and How to Stop It Safely
-2. SQL Server Recovery Models Explained: Simple, Full, and Bulk-Logged
-3. How to Build and Test a SQL Server Backup Strategy That Meets Your RPO
-4. How to Restore SQL Server to a Point in Time Without Breaking the Log Chain
-5. Migrating SQL Server with Minimal Downtime Using Full, Log, and Tail-Log Backups
-6. In-Place Upgrade or Side-by-Side Migration? Choosing a Safe SQL Server Upgrade Path
-7. How to Repair an Unsynchronized SQL Server Availability Group Secondary
-8. SQL Server Availability Group Backups: Which Replica Should Run Each Job?
-9. Fixing Orphaned SQL Server Users and SID Mismatches After a Restore
-10. Encrypting SQL Server Connections: Certificates, TLS Errors, and TrustServerCertificate
-11. Designing Least-Privilege SQL Server Roles for Applications and Administrators
-12. How to Monitor SQL Server Before Users Report a Performance Problem
-13. SQL Server TempDB Contention: Symptoms, Root Causes, and Configuration Fixes
-14. DBCC CHECKDB Found Corruption: A Safe SQL Server Recovery Playbook
+1. SQL Server Recovery Models Explained: Simple, Full, and Bulk-Logged
+2. How to Build and Test a SQL Server Backup Strategy That Meets Your RPO
+3. How to Restore SQL Server to a Point in Time Without Breaking the Log Chain
+4. Migrating SQL Server with Minimal Downtime Using Full, Log, and Tail-Log Backups
+5. In-Place Upgrade or Side-by-Side Migration? Choosing a Safe SQL Server Upgrade Path
+6. How to Repair an Unsynchronized SQL Server Availability Group Secondary
+7. SQL Server Availability Group Backups: Which Replica Should Run Each Job?
+8. Fixing Orphaned SQL Server Users and SID Mismatches After a Restore
+9. Encrypting SQL Server Connections: Certificates, TLS Errors, and TrustServerCertificate
+10. Designing Least-Privilege SQL Server Roles for Applications and Administrators
+11. How to Monitor SQL Server Before Users Report a Performance Problem
+12. SQL Server TempDB Contention: Symptoms, Root Causes, and Configuration Fixes
+13. DBCC CHECKDB Found Corruption: A Safe SQL Server Recovery Playbook
 
 ## ACR
 
