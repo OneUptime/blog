@@ -1,9 +1,5 @@
 # Blog Post Ideas
 
-## SQL Server
-
-1. DBCC CHECKDB Found Corruption: A Safe SQL Server Recovery Playbook
-
 ## ACR
 
 1. Azure Container Registry Setup Guide: SKUs, Naming, Networking, and Your First Push
