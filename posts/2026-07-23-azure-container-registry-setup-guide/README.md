@@ -44,7 +44,7 @@ The resource name and login server are related but are not necessarily identical
 contosoplatformacr-e7ggejfuhzhgedc8.azurecr.io
 ```
 
-That hash prevents a deleted registry's old hostname from silently being reused by a different registry. The DNL scope is permanent. The current Azure CLI reference labels the `--dnl-scope` argument as Preview, so pin and test the CLI version used by provisioning automation. Always read `loginServer` from Azure after creation instead of constructing `${ACR_NAME}.azurecr.io` in scripts, Kubernetes manifests, or Helm values.
+That hash prevents a deleted registry's old hostname from silently being reused outside the selected reuse scope. With `TenantReuse`, for example, a registry recreated with the same name in the same tenant receives the same DNS label, while a registry in another tenant does not. The DNL scope is permanent. The current Azure CLI reference labels the `--dnl-scope` argument as Preview, so pin and test the CLI version used by provisioning automation. Always read `loginServer` from Azure after creation instead of constructing `${ACR_NAME}.azurecr.io` in scripts, Kubernetes manifests, or Helm values.
 
 ## Create an ABAC-Enabled Standard Registry
 
@@ -117,7 +117,7 @@ az role assignment create \
   --scope "$ACR_ID"
 ```
 
-Creating role assignments requires `Owner` or `Role Based Access Control Administrator` at the relevant scope. Azure role assignments can take time to propagate, so obtain a new registry login after the assignment exists.
+Creating role assignments requires `Microsoft.Authorization/roleAssignments/write` at the relevant scope. Built-in roles with that permission include `Owner`, `Role Based Access Control Administrator`, and `User Access Administrator`. Azure role assignments can take time to propagate, so obtain a new registry login after the assignment exists.
 
 The assignment above is registry-wide because it has no ABAC condition. Production build identities should normally receive a condition limiting `Container Registry Repository Writer` to the repositories they publish. Deployment identities should receive `Container Registry Repository Reader`, also with a repository condition where practical.
 
@@ -158,13 +158,18 @@ docker tag \
 docker push "$LOGIN_SERVER/getting-started/hello-world:v1"
 ```
 
-Test the complete pull path by removing only the local tag and pulling it again:
+Test the complete pull path by removing both local tags so Docker deletes the image and its unshared layers, then pull it again:
 
 ```bash
-docker image rm "$LOGIN_SERVER/getting-started/hello-world:v1"
+docker image rm \
+  "$LOGIN_SERVER/getting-started/hello-world:v1" \
+  mcr.microsoft.com/hello-world:latest
+
 docker pull "$LOGIN_SERVER/getting-started/hello-world:v1"
 docker run --rm "$LOGIN_SERVER/getting-started/hello-world:v1"
 ```
+
+Confirm that image removal reports the image as deleted and that the subsequent pull downloads its layer. If Docker reports that the layer already exists because another local image references it, repeat the pull test in a clean Docker environment before treating it as a data-endpoint test.
 
 A successful push proves authentication, write authorization, manifest upload, and layer upload. A subsequent pull proves read authorization and the data endpoint path as well.
 
