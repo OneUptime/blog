@@ -2,9 +2,8 @@
 
 ## SQL Server
 
-1. How to Monitor SQL Server Before Users Report a Performance Problem
-2. SQL Server TempDB Contention: Symptoms, Root Causes, and Configuration Fixes
-3. DBCC CHECKDB Found Corruption: A Safe SQL Server Recovery Playbook
+1. SQL Server TempDB Contention: Symptoms, Root Causes, and Configuration Fixes
+2. DBCC CHECKDB Found Corruption: A Safe SQL Server Recovery Playbook
 
 ## ACR
 
