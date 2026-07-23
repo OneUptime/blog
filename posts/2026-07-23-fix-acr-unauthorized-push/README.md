@@ -107,7 +107,7 @@ printf '%s' "$SP_CLIENT_SECRET" | docker login "$LOGIN_SERVER" \
   --password-stdin
 ```
 
-Confirm that the secret value—not the secret's identifier—was placed in the secret store, and check its expiry. If a secret is replaced, log out of the registry hostname before retrying so a credential helper cannot keep serving the older value.
+Confirm that the secret value-not the secret's identifier-was placed in the secret store, and check its expiry. If a secret is replaced, log out of the registry hostname before retrying so a credential helper cannot keep serving the older value.
 
 For a registry-native token, use the token name and generated token password. The token must be enabled and unexpired:
 

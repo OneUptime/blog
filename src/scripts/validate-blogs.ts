@@ -2121,7 +2121,7 @@ function checkTagNormalization(blogsJson: BlogEntry[]): void {
   const falsePluralPairs = new Set([
     'http|https', 'nat|nats', 'io|ios', 'ftp|ftps', 'amqp|amqps',
     'ip|ips', 'os|oss', 'dr|drs', 'gc|gcs',
-    'ps|pss', 'vm|vms', 'vms|vmss',
+    'ps|pss', 'vm|vms', 'vms|vmss', 'ssm|ssms',
     'label|labels', 'join|joins', 'array|arrays',
     'datasource|datasources',
     'user|users', 'volume|volumes',

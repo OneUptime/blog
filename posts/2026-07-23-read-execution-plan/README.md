@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: SQL Server, Execution Plans, Query Optimizer, Performance Tuning, Query Store
+Tags: SQL Server, Execution Plan, Query Optimizer, Performance Tuning, Query Store
 
 Description: Read SQL Server execution plans systematically by following runtime evidence, row-flow errors, warnings, and supporting I/O measurements.
 

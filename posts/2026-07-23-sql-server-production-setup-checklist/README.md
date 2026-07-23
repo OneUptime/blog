@@ -1,4 +1,4 @@
-# SQL Server Production Setup Checklist: Memory, TempDB, Storage, and Service Accounts
+# SQL Server Production Setup: Memory, TempDB, Storage, and Service Accounts
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

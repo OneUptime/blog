@@ -1,8 +1,8 @@
-# Azure Container Registry Setup Guide: SKUs, Naming, Networking, and Your First Push
+# Azure Container Registry Setup: SKUs, Networking, and Your First Push
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Azure Container Registry, Containers, Docker, Security
+Tags: Azure, Azure Container Registry, Container, Docker, Security
 
 Description: Create an Azure Container Registry with deliberate choices for its tier, DNS name, access model, and first authenticated image push.
 
@@ -207,7 +207,7 @@ Also record these operational facts in the platform repository:
 - immutable image-tag or digest conventions; and
 - retention, monitoring, and disaster-recovery requirements.
 
-Use unique version tags or digests in deployments instead of relying on `latest`. The registry is ready when a real builder can push and a real runtime can pull through the intended network path—not merely when the Azure resource reports `Succeeded`.
+Use unique version tags or digests in deployments instead of relying on `latest`. The registry is ready when a real builder can push and a real runtime can pull through the intended network path-not merely when the Azure resource reports `Succeeded`.
 
 ## Official Documentation
 

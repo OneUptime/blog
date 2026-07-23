@@ -38,7 +38,7 @@ osv-scanner scan source --call-analysis=go .
 
 `--call-analysis=all` also enables the experimental Rust and JAR analyzers; it is not a synonym for Go-only analysis.
 
-To disable Go analysis—for example, to measure the package-only baseline:
+To disable Go analysis-for example, to measure the package-only baseline:
 
 ```bash
 osv-scanner scan source --no-call-analysis=go .

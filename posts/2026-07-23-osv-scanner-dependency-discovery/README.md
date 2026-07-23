@@ -2,13 +2,13 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OSV-Scanner, Dependency Discovery, Lockfiles, SBOM, Source Scanning
+Tags: OSV-Scanner, Dependency Discovery, Lockfile, SBOM, Source Scanning
 
 Description: Understand OSV-Scanner v2 package extraction, recursive discovery, ignore behavior, and explicit input selection.
 
 ---
 
-OSV-Scanner v2 performs source scanning in two stages: it extracts package identities from recognized inputs, then matches those packages against vulnerability data. Knowing what the extraction stage found is essential—a scan cannot match a dependency that was never inventoried.
+OSV-Scanner v2 performs source scanning in two stages: it extracts package identities from recognized inputs, then matches those packages against vulnerability data. Knowing what the extraction stage found is essential-a scan cannot match a dependency that was never inventoried.
 
 ## Scan a repository recursively
 

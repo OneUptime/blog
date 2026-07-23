@@ -511,6 +511,8 @@
 - Advisor
 - Advisories
 - Advisory
+- Advisory Aliases
+- Advisory Lifecycle
 - Advisory Lock
 - ADX
 - Aerospike
@@ -600,6 +602,7 @@
 - Air Quality
 - Air-Gap
 - Air-Gapped
+- Air-Gapped Security
 - Airbyte
 - Airflow
 - Airgapped
@@ -1478,6 +1481,7 @@
 - Autovacuum
 - Avahi
 - Availability
+- Availability Groups
 - Availability Sets
 - Availability Tests
 - Availability Zone
@@ -1816,6 +1820,7 @@
 - Backup Analysis
 - Backup and DR
 - Backup And Recovery
+- Backup and Restore
 - Backup Appliance
 - Backup Automation
 - BACKUP Command
@@ -4663,6 +4668,7 @@
 - Data Mesh
 - Data Migration
 - Data Minimization
+- Data Mirror
 - Data Model
 - Data Modeling
 - Data Movement
@@ -4788,6 +4794,7 @@
 - DATABASE Function
 - Database Inspection
 - Database Integration
+- Database Integrity
 - Database Internals
 - Database Introspection
 - Database Mail
@@ -4809,6 +4816,7 @@
 - Database Reliability
 - Database Replication
 - Database Restore
+- Database Roles
 - Database Scaling
 - Database Security
 - Database Selection
@@ -4905,6 +4913,7 @@
 - DB-less
 - DBA
 - DBA Tools
+- DBCC CHECKDB
 - DbContext
 - DBI
 - Dbsize
@@ -5097,13 +5106,16 @@
 - Dependency Analysis
 - Dependency blocks
 - Dependency Cycles
+- Dependency Discovery
 - Dependency Graph
 - Dependency Injection
+- Dependency Inventory
 - Dependency Inversion
 - Dependency Lock
 - Dependency Management
 - Dependency Mapping
 - Dependency not ready
+- Dependency Resolution
 - Dependency Scanning
 - Dependency Tracking
 - Dependency updates
@@ -6560,6 +6572,7 @@
 - ExpressRoute
 - Ext4
 - Extend
+- Extended Events
 - Extended JSON
 - Extended Reference
 - Extended Reference Pattern
@@ -7424,6 +7437,7 @@
 - GHCR
 - Ghost
 - Ghost CMS
+- GHSA
 - Ghz
 - GID
 - gidmap
@@ -7482,6 +7496,7 @@
 - GitHub Enterprise
 - GitHub Environments
 - GitHub Provider
+- GitHub Security Advisories
 - Github-app
 - Gitignore
 - GitLab
@@ -8683,6 +8698,7 @@
 - Incremental Models
 - Incremental Processing
 - Incremental Refresh
+- Incremental Sync
 - Incron
 - Incus
 - Indent
@@ -9822,6 +9838,7 @@
 - Last9
 - Lastsave
 - Latch
+- Latch Contention
 - Latches
 - Late Data
 - Late Events
@@ -12143,6 +12160,7 @@
 - Nuxt.js
 - NV Series
 - NVA
+- NVD
 - NVENC
 - NVIDIA
 - NVIDIA H100
@@ -12257,6 +12275,7 @@
 - Offline Mode
 - Offline Operations
 - Offline Persistence
+- Offline Scanning
 - Offline Testing
 - Offline validation
 - Offline-First
@@ -12395,6 +12414,7 @@
 - OpenSent
 - OpenShift
 - OpenSource
+- OpenSSF
 - OpenSSH
 - OpenSSL
 - OpenStack
@@ -12546,6 +12566,12 @@
 - Osquery
 - OSS
 - OSSEC
+- OSV
+- OSV API
+- OSV Schema
+- OSV-Scalibr
+- OSV-Scanner
+- OSV.dev
 - OT
 - OT Networks
 - OT Security
@@ -12661,7 +12687,9 @@
 - Package Registry
 - Package Repository
 - Package Signing
+- Package URL
 - Package Verification
+- Package Versions
 - Package.json
 - PackageManagement
 - PackageManager
@@ -12757,6 +12785,7 @@
 - Parameter Expansion
 - Parameter Group
 - Parameter Problem
+- Parameter Sniffing
 - Parameter Store
 - Parameterization
 - Parameterized Query
@@ -14353,6 +14382,7 @@
 - Re-Authentication
 - Re-encryption
 - Re-Ranking
+- Reachability Analysis
 - Reachability Analyzer
 - React
 - React 18
@@ -14486,6 +14516,7 @@
 - Recording Rules
 - RecordTooLargeException
 - Recovery
+- Recovery Model
 - Recovery Plan
 - Recovery Points
 - Recovery Services Vault
@@ -14847,6 +14878,7 @@
 - Required Variables
 - Required_version
 - Requirements
+- requirements.txt
 - Requirepass
 - Reqwest
 - Resample
@@ -15003,6 +15035,7 @@
 - Restore Error
 - RESTORE HEADERONLY
 - Restore Performance
+- Restore Testing
 - Restorecon
 - restoreSize
 - Restricted Environments
@@ -15218,6 +15251,7 @@
 - RIR
 - RISC-V
 - Risk
+- Risk Acceptance
 - Risk Analysis
 - Risk Assessment
 - Risk Management
@@ -15554,6 +15588,7 @@
 - SAP Router
 - SAP S/4HANA
 - Sar
+- SARIF
 - SAS
 - SAS Tokens
 - Sas-token
@@ -15817,6 +15852,7 @@
 - Secured Virtual Hub
 - Security
 - Security Advisories
+- Security Advisory
 - Security Alerts
 - Security Analysis
 - Security Analytics
@@ -16654,6 +16690,7 @@
 - Source Maps
 - Source Replica
 - Source Routing
+- Source Scanning
 - Source Validation
 - Source watcher
 - Source-Based
@@ -16856,6 +16893,7 @@
 - SQL Security
 - SQL Server
 - SQL Server 2025
+- SQL Server Agent
 - SQL Standard
 - SQL Syntax Error
 - SQL Testing
@@ -16930,6 +16968,7 @@
 - SSM Parameter Store
 - SSMA
 - SSML
+- SSMS
 - SSO
 - SSO Authentication
 - SSPL
@@ -17833,6 +17872,7 @@
 - Telescope
 - Telnet
 - Temp Files
+- TempDB
 - TempDirectory
 - Temperature
 - Temperature Monitoring
@@ -19044,6 +19084,7 @@
 - Version Migration
 - Version Mismatch
 - Version Pinning
+- Version Ranges
 - Version Skew
 - Version Switching
 - Version Tracking
@@ -19318,14 +19359,20 @@
 - Vulkan
 - Vulnerabilities
 - Vulnerability
+- Vulnerability Advisories
 - Vulnerability Analysis
 - Vulnerability Assessment
+- Vulnerability Data
 - Vulnerability Database
 - Vulnerability detection
+- Vulnerability Exceptions
 - Vulnerability Management
+- Vulnerability Matching
+- Vulnerability Publishing
 - Vulnerability Remediation
 - Vulnerability Scanner
 - Vulnerability Scanning
+- Vulnerability Triage
 - Vulnerability-Scanning
 - Vultr
 - VXLAN

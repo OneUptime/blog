@@ -35,7 +35,7 @@ TO DISK = N'E:\SQLBackups\Sales_tail_20260723_1438.trn'
 WITH NORECOVERY, CHECKSUM, STATS = 10;
 ```
 
-Offline scenarios can use `NO_TRUNCATE`, and damaged databases can require `CONTINUE_AFTER_ERROR`; follow the documented tail-log scenario rather than adding either option automatically. Do not take a tail backup from a healthy source merely because an alternate test restore is being performed—the normal log chain can continue.
+Offline scenarios can use `NO_TRUNCATE`, and damaged databases can require `CONTINUE_AFTER_ERROR`; follow the documented tail-log scenario rather than adding either option automatically. Do not take a tail backup from a healthy source merely because an alternate test restore is being performed-the normal log chain can continue.
 
 Retain the tail backup with the rest of the chain. It is not a disposable incident artifact.
 
@@ -150,7 +150,7 @@ Restoring an unknown or untrusted database can expose executable code and malici
 
 Often the safest correction is to extract a small, reviewed set of rows from the recovered copy and apply a controlled compensating transaction to the live database. Replacing the whole production database may discard valid work after the chosen point.
 
-If full replacement is required, script logins, jobs, ownership, configuration, and cutover steps; freeze writes; capture any final evidence or tail; and retain a rollback copy. Changing the destination database does not break the **source** log chain. What breaks recovery is missing required log backups, changing to simple recovery, or losing media/keys—not restoring a separate copy.
+If full replacement is required, script logins, jobs, ownership, configuration, and cutover steps; freeze writes; capture any final evidence or tail; and retain a rollback copy. Changing the destination database does not break the **source** log chain. What breaks recovery is missing required log backups, changing to simple recovery, or losing media/keys-not restoring a separate copy.
 
 Document the selected backup-set positions and LSN path after the incident. Then add a recurring drill for the exact scenario that exposed the gap.
 

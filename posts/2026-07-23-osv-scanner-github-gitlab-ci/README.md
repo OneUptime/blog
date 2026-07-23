@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OSV-Scanner, GitHub Actions, GitLab CI, DevSecOps, SARIF
+Tags: OSV-Scanner, GitHub Action, GitLab CI, DevSecOps, SARIF
 
 Description: Add OSV-Scanner v2 to pull requests and scheduled pipelines without confusing findings, execution failures, and empty inventories.
 

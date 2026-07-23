@@ -79,7 +79,7 @@ The exported database includes top-level and per-ecosystem `modified_id.csv` fil
 
 Do not model a withdrawn record as a hard database delete. You need its ID, timestamp, and rationale to close findings and explain why historical scans differed.
 
-The full `all.zip` export includes withdrawn records, and records without an ecosystem—often withdrawn records—are exported under `[EMPTY]`. A mirror that only downloads currently used ecosystem directories can miss lifecycle state for a record whose affected package data was removed.
+The full `all.zip` export includes withdrawn records, and records without an ecosystem-often withdrawn records-are exported under `[EMPTY]`. A mirror that only downloads currently used ecosystem directories can miss lifecycle state for a record whose affected package data was removed.
 
 ## Update downstream findings deterministically
 

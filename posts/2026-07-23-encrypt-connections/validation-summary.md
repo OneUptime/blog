@@ -1,4 +1,4 @@
-# Validation Summary: Encrypting SQL Server Connections: Certificates, TLS Errors, and TrustServerCertificate
+# Validation Summary: Encrypting SQL Server Connections: Certificates, TLS, and TrustServerCertificate
 
 ## Status
 validated

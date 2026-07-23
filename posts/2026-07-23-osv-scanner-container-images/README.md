@@ -1,4 +1,4 @@
-# How to Scan Container Images with OSV-Scanner—and Understand Its Coverage
+# How to Scan Container Images with OSV-Scanner-and Understand Its Coverage
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

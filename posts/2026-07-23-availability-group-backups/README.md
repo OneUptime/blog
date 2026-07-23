@@ -10,7 +10,7 @@ Description: Route availability-group backup jobs by SQL Server version, backup 
 
 An availability group replicates a database; it does not replace backups. Accidental changes and some corruption can be reproduced on secondaries, and an availability-group failover does not provide an older recovery point.
 
-Backup routing has two layers: which backup types a SQL Server version supports on a secondary, and which healthy replica the configured preference selects. The availability-group preference is advisory—the Database Engine does not automatically start, stop, or enforce SQL Server Agent jobs for you.
+Backup routing has two layers: which backup types a SQL Server version supports on a secondary, and which healthy replica the configured preference selects. The availability-group preference is advisory-the Database Engine does not automatically start, stop, or enforce SQL Server Agent jobs for you.
 
 ## Start with the Version and Backup Type
 
@@ -29,7 +29,7 @@ Log backups taken on different replicas still form one consistent database log c
 
 The secondary must communicate with the primary and be `SYNCHRONIZED` or `SYNCHRONIZING` to run supported backups. A backup on a lagging secondary can add CPU, I/O, and log-retention pressure; support does not mean it is always the best operational target.
 
-Do not overlap backup operations across replicas. Microsoft documents concurrent backups—for example, a transaction-log backup on the primary while a full backup runs on a secondary—as unsupported. Coordinate schedules and retries centrally so failover does not accidentally create overlap.
+Do not overlap backup operations across replicas. Microsoft documents concurrent backups-for example, a transaction-log backup on the primary while a full backup runs on a secondary-as unsupported. Coordinate schedules and retries centrally so failover does not accidentally create overlap.
 
 ## Understand the Four Preferences
 

@@ -56,7 +56,7 @@ Some schema ecosystem values contain a release suffix, such as `Alpine:v3.17`. D
 
 OSV.dev's data documentation says it has stopped exporting separate entries for ecosystem prefixes; use the main ecosystem directory without the `:...` suffix. The JSON record itself retains the precise ecosystem value needed for matching.
 
-Records without an ecosystem—often withdrawn records—are exported under `[EMPTY]`. Do not discard that directory if the mirror must preserve lifecycle state and historical IDs.
+Records without an ecosystem-often withdrawn records-are exported under `[EMPTY]`. Do not discard that directory if the mirror must preserve lifecycle state and historical IDs.
 
 ## Bootstrap atomically
 

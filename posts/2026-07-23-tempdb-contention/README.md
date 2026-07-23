@@ -192,7 +192,7 @@ Replay representative concurrency and compare:
 
 Keep enough free disk for peaks and growth, but alert well before capacity is exhausted. On SQL Server 2025, Resource Governor can limit TempDB space by workload group; that is a guardrail for supported designs, not a replacement for sizing and tuning.
 
-The fix is complete when the proven bottleneck moves or disappears under realistic load—not when an arbitrary file-count checklist is satisfied.
+The fix is complete when the proven bottleneck moves or disappears under realistic load-not when an arbitrary file-count checklist is satisfied.
 
 ## Official Documentation
 

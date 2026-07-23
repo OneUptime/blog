@@ -8,7 +8,7 @@ Description: Build a low-overhead SQL Server monitoring baseline that detects wo
 
 ---
 
-Proactive SQL Server monitoring is not a wall of current values. It is a time-aligned history of user experience, workload, waits, resources, database health, and recoverability—with enough context to distinguish a real regression from normal business load.
+Proactive SQL Server monitoring is not a wall of current values. It is a time-aligned history of user experience, workload, waits, resources, database health, and recoverability-with enough context to distinguish a real regression from normal business load.
 
 Start from service objectives, collect small consistent samples, preserve important events, and attach every alert to a diagnostic runbook.
 
@@ -197,7 +197,7 @@ Use multi-signal and sustained conditions where possible. For example, page I/O 
 - safe containment options and prohibited shortcuts;
 - link to recent changes and recovery state.
 
-Test alert delivery and runbooks during planned fault exercises. Track false positives and missed incidents, then tune the condition—not by hiding the metric, but by improving its context.
+Test alert delivery and runbooks during planned fault exercises. Track false positives and missed incidents, then tune the condition-not by hiding the metric, but by improving its context.
 
 ## Grant Monitoring Access Deliberately
 

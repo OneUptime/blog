@@ -8,7 +8,7 @@ Description: Build and troubleshoot the complete private DNS path for ACR's logi
 
 ---
 
-An ACR private endpoint is not complete when the network interface gets a private IP. Clients continue to use the registry's normal `azurecr.io` hostname, and DNS must steer that hostname—and every layer data endpoint—to the private endpoint. A missing record can produce `NXDOMAIN`; public resolution with public access disabled can produce 403; and a missing regional data record can let login succeed while image layers time out.
+An ACR private endpoint is not complete when the network interface gets a private IP. Clients continue to use the registry's normal `azurecr.io` hostname, and DNS must steer that hostname-and every layer data endpoint-to the private endpoint. A missing record can produce `NXDOMAIN`; public resolution with public access disabled can produce 403; and a missing regional data record can let login succeed while image layers time out.
 
 Private Link for ACR requires the Premium SKU. It exposes the registry over private IPs and automatically enables dedicated data endpoints. Public access is a separate switch and should be disabled only after the private route and DNS records have been tested from every client network.
 
@@ -279,7 +279,7 @@ If `az acr login` succeeds but `docker pull` stalls on a layer:
 
 If a push stalls, troubleshoot the global or regional login endpoint instead; dedicated data endpoint DNS is not used for blob uploads.
 
-Geo-replication increases the address and record count. A registry spanning three regions—the home region plus two added replicas—consumes one private IP for the global endpoint plus one per region for dedicated data endpoints. If regional endpoints are also enabled, it consumes one more per region. Plan that capacity for every private endpoint resource.
+Geo-replication increases the address and record count. A registry spanning three regions-the home region plus two added replicas-consumes one private IP for the global endpoint plus one per region for dedicated data endpoints. If regional endpoints are also enabled, it consumes one more per region. Plan that capacity for every private endpoint resource.
 
 When a geo-replica is added, inspect the endpoint connection, NIC members, zone-group-managed records, and subnet free space again. Do not assume the original region's data record covers the replica.
 

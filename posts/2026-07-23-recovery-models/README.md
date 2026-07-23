@@ -32,7 +32,7 @@ Simple recovery also cannot support log shipping or Always On availability group
 
 ## Full Recovery
 
-Full recovery supports a sequence of full, optional differential, and transaction-log backups. With an intact chain—and a tail-log backup when the failure allows it—you can restore to a specific time or marked transaction.
+Full recovery supports a sequence of full, optional differential, and transaction-log backups. With an intact chain-and a tail-log backup when the failure allows it-you can restore to a specific time or marked transaction.
 
 Setting a database to full does not start a log-backup job. Without regular log backups, the log can continue growing and the promised point-in-time recovery does not exist. The log-backup interval is a major control on normal work-loss exposure: a 15-minute schedule can still lose up to roughly that interval if the active tail cannot be backed up.
 
@@ -119,7 +119,7 @@ TO DISK = N'E:\SQLBackups\Warehouse_bulk_window.trn'
 WITH CHECKSUM, COMPRESSION;
 ```
 
-The pre-window log backup establishes a clear recovery boundary. Any log backup that spans bulk-window changes—including, in this example, the backup taken immediately after returning to full—must be identified in the runbook, along with how it affects point-in-time restore choices. If scheduled log backups run during the window, more than one backup can require this handling.
+The pre-window log backup establishes a clear recovery boundary. Any log backup that spans bulk-window changes-including, in this example, the backup taken immediately after returning to full-must be identified in the runbook, along with how it affects point-in-time restore choices. If scheduled log backups run during the window, more than one backup can require this handling.
 
 ## Choose from RPO and Restore Tests
 

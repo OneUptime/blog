@@ -83,7 +83,7 @@ Check every replica and backup independently. An availability-group secondary ma
 
 Inventory full, differential, and log backups by headers and LSNs. Restore candidate sequences to clean, isolated storage and run full `DBCC CHECKDB` after recovery. Work backward until finding the newest recovery point that is both structurally consistent and logically acceptable.
 
-If the current log is accessible and the recovery model/scenario permits it, a tail-log backup may preserve transactions after the latest scheduled log backup. A page restore under full recovery—or in the limited bulk-logged scenarios that support it—can repair localized data-page damage while preserving more current data, but it requires an intact backup/log sequence and supported page type. File/filegroup restore can be appropriate for broader file damage.
+If the current log is accessible and the recovery model/scenario permits it, a tail-log backup may preserve transactions after the latest scheduled log backup. A page restore under full recovery-or in the limited bulk-logged scenarios that support it-can repair localized data-page damage while preserving more current data, but it requires an intact backup/log sequence and supported page type. File/filegroup restore can be appropriate for broader file damage.
 
 For a complete restore, keep the target isolated and use new file paths. Restore the full, optional compatible differential, every required log, and the tail, then recover once. Validate:
 

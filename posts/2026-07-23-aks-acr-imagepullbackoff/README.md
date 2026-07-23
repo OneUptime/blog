@@ -179,7 +179,7 @@ az role assignment list \
   --output table
 ```
 
-If `identityProfile.kubeletidentity` is empty, inspect `servicePrincipalProfile.clientId`; older clusters can use the cluster service principal. Do not assume an identity type from the cluster's age—query it.
+If `identityProfile.kubeletidentity` is empty, inspect `servicePrincipalProfile.clientId`; older clusters can use the cluster service principal. Do not assume an identity type from the cluster's age-query it.
 
 ## Use the Correct Role for the Registry Mode
 
@@ -292,7 +292,7 @@ kubectl get pods --namespace "$NAMESPACE" -o wide
 kubectl get events --namespace "$NAMESPACE" --sort-by='.lastTimestamp' | tail -n 30
 ```
 
-Test more than one node pool if their architectures or network paths differ. Then verify the negative boundary: the kubelet identity should pull its authorized image, should not push, and—when an ABAC condition is used—should not pull unrelated repositories.
+Test more than one node pool if their architectures or network paths differ. Then verify the negative boundary: the kubelet identity should pull its authorized image, should not push, and-when an ABAC condition is used-should not pull unrelated repositories.
 
 ## Official Documentation
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: SQL Server, Parameter Sniffing, Query Store, Execution Plans, Performance Tuning
+Tags: SQL Server, Parameter Sniffing, Query Store, Execution Plan, Performance Tuning
 
 Description: Prove when parameter-sensitive plans cause unstable latency and select a targeted SQL Server remedy that fits the workload.
 
@@ -147,7 +147,7 @@ Forcing a known plan can be a useful incident mitigation when it is safe across 
 
 Instance-wide or database-wide disabling of parameter sniffing changes many queries, including those that benefit from it. Assigning parameters to local variables often replaces sniffed values with generic estimates and hides intent. Clearing the procedure cache causes widespread recompilation and a temporary CPU spike. Use none of these as a first diagnostic step.
 
-Validate the chosen remedy with a parameter matrix and realistic concurrency. Measure compilation CPU, duration, logical reads, memory grants, spills, and tail latency. Then monitor Query Store after data growth and statistics changes—the correct fix today can become tomorrow's regression if its assumptions are not recorded.
+Validate the chosen remedy with a parameter matrix and realistic concurrency. Measure compilation CPU, duration, logical reads, memory grants, spills, and tail latency. Then monitor Query Store after data growth and statistics changes-the correct fix today can become tomorrow's regression if its assumptions are not recorded.
 
 ## Official Documentation
 

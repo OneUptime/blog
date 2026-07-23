@@ -1,4 +1,4 @@
-# Validation Summary: SQL Server Production Setup Checklist: Memory, TempDB, Storage, and Service Accounts
+# Validation Summary: SQL Server Production Setup: Memory, TempDB, Storage, and Service Accounts
 
 ## Status
 validated

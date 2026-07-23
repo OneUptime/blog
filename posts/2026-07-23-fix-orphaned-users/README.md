@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: SQL Server, Security, Logins, Database Restore, Access Control
+Tags: SQL Server, Security, Login, Database Restore, Access Control
 
 Description: Detect database users whose login SIDs are missing or mismatched after restore and remap them without discarding existing permissions.
 
@@ -72,7 +72,7 @@ GO
 ALTER USER [AppUser] WITH LOGIN = [AppLogin];
 ```
 
-`ALTER USER ... WITH LOGIN` changes the user's SID to match the login. It preserves the user principal and its database role memberships and direct permissions. It cannot be used to convert arbitrary principal types—for example, a certificate user into a SQL login.
+`ALTER USER ... WITH LOGIN` changes the user's SID to match the login. It preserves the user principal and its database role memberships and direct permissions. It cannot be used to convert arbitrary principal types-for example, a certificate user into a SQL login.
 
 Verify the mapping:
 
@@ -110,7 +110,7 @@ WITH PASSWORD = N'<set-through-an-approved-secret-process>',
      CHECK_POLICY = ON;
 ```
 
-The hexadecimal SID is illustrative; use the exact reviewed value. Never place a real password in a shared migration script or shell history. Set default database, language, server permissions, and server-role membership deliberately—those are instance properties and were not restored with the user database.
+The hexadecimal SID is illustrative; use the exact reviewed value. Never place a real password in a shared migration script or shell history. Set default database, language, server permissions, and server-role membership deliberately-those are instance properties and were not restored with the user database.
 
 For Windows logins, create the approved domain login or group. A domain principal normally carries its domain SID across servers in the same trusted identity system. A similarly named local Windows account on another host is a different principal.
 
@@ -174,4 +174,4 @@ Azure SQL Database and Microsoft Entra principals have different catalog and aut
 - [ALTER USER](https://learn.microsoft.com/en-us/sql/t-sql/statements/alter-user-transact-sql?view=sql-server-ver17)
 - [Transfer logins and passwords between SQL Server instances](https://learn.microsoft.com/en-us/troubleshoot/sql/database-engine/security/transfer-logins-passwords-between-instances)
 - [CREATE LOGIN](https://learn.microsoft.com/en-us/sql/t-sql/statements/create-login-transact-sql?view=sql-server-ver17)
-- [Make a database portable by using contained databases](https://learn.microsoft.com/en-us/sql/relational-databases/databases/security-best-practices-with-contained-databases?view=sql-server-ver17)
+- [Make a database portable by using contained databases](https://learn.microsoft.com/en-us/sql/relational-databases/security/contained-database-users-making-your-database-portable?view=sql-server-ver17)

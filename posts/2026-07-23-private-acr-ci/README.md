@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Azure Container Registry, GitHub Actions, Azure DevOps, CI/CD, Workload Identity
+Tags: Azure, Azure Container Registry, GitHub Action, Azure DevOps, CI/CD, Workload Identity
 
 Description: Build a secretless container-image pipeline for ACR while keeping repository permissions, runner networking, and image tags under control.
 
@@ -35,7 +35,7 @@ ACR_LOGIN_SERVER=$(az acr show --name "$ACR_NAME" --query loginServer --output t
 printf 'resource=%s\nserver=%s\n' "$ACR_RESOURCE_ID" "$ACR_LOGIN_SERVER"
 ```
 
-Use the source commit as a traceability tag. Unlike `latest`, it identifies the source revision. ACR tags are mutable by default, however, and rerunning a commit can produce different content if inputs such as base images move. Deploy by digest—or explicitly lock the deployed tag—when you require immutability:
+Use the source commit as a traceability tag. Unlike `latest`, it identifies the source revision. ACR tags are mutable by default, however, and rerunning a commit can produce different content if inputs such as base images move. Deploy by digest-or explicitly lock the deployed tag-when you require immutability:
 
 ```text
 contosoplatformacr-abc123.azurecr.io/orders/api:6db8c1e...
@@ -97,7 +97,7 @@ That role can create, configure, and delete registry resources, so this secretle
 
 ## GitHub Actions with OpenID Connect
 
-Create a Microsoft Entra application or user-assigned managed identity, create a federated identity credential for the GitHub repository, and assign the ACR roles to its principal. Scope the federated subject as tightly as the workflow allows—for example, to a protected GitHub environment instead of every branch.
+Create a Microsoft Entra application or user-assigned managed identity, create a federated identity credential for the GitHub repository, and assign the ACR roles to its principal. Scope the federated subject as tightly as the workflow allows-for example, to a protected GitHub environment instead of every branch.
 
 Store identifiers, not passwords:
 
@@ -157,7 +157,7 @@ jobs:
 
 For production, pin third-party actions to full commit SHAs and use dependency tooling to keep those pins current. GitHub's security guidance recommends full-length commit SHA pinning because a SHA is immutable.
 
-If the registry is reachable publicly but protected by IP rules, a GitHub-hosted runner's changing outbound addresses are awkward to allow safely. A self-hosted runner behind a stable egress address—or inside the connected VNet—is usually easier to govern.
+If the registry is reachable publicly but protected by IP rules, a GitHub-hosted runner's changing outbound addresses are awkward to allow safely. A self-hosted runner behind a stable egress address-or inside the connected VNet-is usually easier to govern.
 
 ## Azure DevOps with Workload Identity Federation
 

@@ -1,4 +1,4 @@
-# Validation Summary: Managed Identity, Service Principal, or Admin User? Choosing Secure ACR Authentication
+# Validation Summary: Secure ACR Authentication: Managed Identity, Service Principal, or Admin User
 
 ## Status
 validated

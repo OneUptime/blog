@@ -1,4 +1,4 @@
-# Managed Identity, Service Principal, or Admin User? Choosing Secure ACR Authentication
+# Secure ACR Authentication: Managed Identity, Service Principal, or Admin User
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

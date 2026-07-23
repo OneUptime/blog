@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: SQL Server, Blocking, Deadlocks, Extended Events, Concurrency
+Tags: SQL Server, Blocking, Deadlock, Extended Events, Concurrency
 
 Description: Distinguish SQL Server blocking chains from deadlock cycles, capture durable evidence for each, and fix the transaction behavior that caused them.
 

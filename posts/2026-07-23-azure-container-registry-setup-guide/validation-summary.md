@@ -1,4 +1,4 @@
-# Validation Summary: Azure Container Registry Setup Guide: SKUs, Naming, Networking, and Your First Push
+# Validation Summary: Azure Container Registry Setup: SKUs, Networking, and Your First Push
 
 ## Status
 

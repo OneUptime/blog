@@ -51,7 +51,7 @@ The reason should state the technical condition, decision owner or ticket, and r
 
 ## Prefer expiry to permanent acceptance
 
-`ignoreUntil` is an exception boundary. Pick a date based on a remediation milestone, compensating-control review, or upstream fix expectation—not an arbitrary distant future.
+`ignoreUntil` is an exception boundary. Pick a date based on a remediation milestone, compensating-control review, or upstream fix expectation-not an arbitrary distant future.
 
 Test the lifecycle in CI:
 
@@ -76,7 +76,7 @@ effectiveUntil = 2026-10-31
 reason = "Private fork is patched; upstream version metadata is unchanged. SEC-1901."
 ```
 
-This can constrain an exception to a particular package identity and version, but `vulnerability.ignore = true` ignores all vulnerabilities for every package matching the fields—not just one advisory. That may be broader than an ID ignore.
+This can constrain an exception to a particular package identity and version, but `vulnerability.ignore = true` ignores all vulnerabilities for every package matching the fields-not just one advisory. That may be broader than an ID ignore.
 
 Use a package override only when the package-level condition justifies suppressing every matching vulnerability and all match fields are sufficiently narrow. Otherwise use `IgnoredVulns` and keep package-instance scope in the review record.
 

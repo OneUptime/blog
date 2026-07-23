@@ -10,7 +10,7 @@ Description: Seed a destination from a full backup, continuously replay log back
 
 Native backup and restore can migrate a SQL Server database while the source remains online for most of the copy. Restore a full backup to the destination with `NORECOVERY`, apply every subsequent transaction-log backup in order, stop source writes, capture and restore the tail, and recover the destination.
 
-Downtime becomes the final write drain, tail backup transfer and restore, validation, and client switch—not the duration of the full database copy.
+Downtime becomes the final write drain, tail backup transfer and restore, validation, and client switch-not the duration of the full database copy.
 
 ## Confirm That the Method Fits
 

@@ -1,8 +1,8 @@
-# Encrypting SQL Server Connections: Certificates, TLS Errors, and TrustServerCertificate
+# Encrypting SQL Server Connections: Certificates, TLS, and TrustServerCertificate
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: SQL Server, TLS, Certificates, Security, Connectivity
+Tags: SQL Server, TLS, Certificate, Security, Connectivity
 
 Description: Configure verifiable TLS for SQL Server, diagnose certificate failures, and avoid turning TrustServerCertificate into a permanent bypass.
 

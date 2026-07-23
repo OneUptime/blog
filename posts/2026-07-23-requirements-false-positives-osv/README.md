@@ -8,7 +8,7 @@ Description: Replace ambiguous Python requirement ranges with deployment-specifi
 
 ---
 
-A line such as `requests>=2.25,<3` describes an allowed set, not the version installed in production. If a vulnerability affects one part of that set, a result derived from manifest resolution may not describe the deployed environment. The safe fix is to improve the inventory evidence—not to ignore the advisory immediately.
+A line such as `requests>=2.25,<3` describes an allowed set, not the version installed in production. If a vulnerability affects one part of that set, a result derived from manifest resolution may not describe the deployed environment. The safe fix is to improve the inventory evidence-not to ignore the advisory immediately.
 
 ## Confirm which version OSV-Scanner matched
 
@@ -56,7 +56,7 @@ osv-scanner scan source \
 
 `pip freeze` captures one installed environment; it is not a universal lock solution and does not by itself preserve artifact hashes or all resolver inputs. Generate it in the build pipeline rather than on a developer laptop, and retain the Python version, platform, index configuration, and constraints used.
 
-If the build already uses a supported Python lock format—`pylock.toml`, `uv.lock`, `poetry.lock`, `Pipfile.lock`, or `pdm.lock`—scan that artifact directly instead of reconstructing state from a loose requirements file.
+If the build already uses a supported Python lock format-`pylock.toml`, `uv.lock`, `poetry.lock`, `Pipfile.lock`, or `pdm.lock`-scan that artifact directly instead of reconstructing state from a loose requirements file.
 
 ## Separate intent from deployment evidence
 

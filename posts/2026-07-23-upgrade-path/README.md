@@ -1,4 +1,4 @@
-# In-Place Upgrade or Side-by-Side Migration? Choosing a Safe SQL Server Upgrade Path
+# In-Place or Side-by-Side? Choosing a Safe SQL Server Upgrade Path
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -141,7 +141,7 @@ The runbook should state:
 
 After acceptance, start and verify new backup chains, monitoring, integrity checks, and HA/DR on the target. Retain the source according to security and rollback policy, isolated from accidental client writes.
 
-The safe upgrade path is the one whose failure modes have been rehearsed—not the one with the fewest steps on the whiteboard.
+The safe upgrade path is the one whose failure modes have been rehearsed-not the one with the fewest steps on the whiteboard.
 
 ## Official Documentation
 

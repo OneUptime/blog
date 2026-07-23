@@ -1,4 +1,4 @@
-# Validation Summary: In-Place Upgrade or Side-by-Side Migration? Choosing a Safe SQL Server Upgrade Path
+# Validation Summary: In-Place or Side-by-Side? Choosing a Safe SQL Server Upgrade Path
 
 ## Status
 validated

@@ -1,4 +1,4 @@
-# Why a Vulnerability Is Missing from OSV.dev—and How to Report Bad Advisory Data
+# Why a Vulnerability Is Missing from OSV.dev-and How to Report Bad Advisory Data
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -83,7 +83,7 @@ For a record that exists but has a wrong package, range, alias, severity, or ref
 1. Open the vulnerability page on OSV.dev.
 2. Follow the human-friendly **Source** link to the authoritative record.
 3. When present, use **Import Source** to locate the exact source file.
-4. Follow that database's contribution process—often a pull request or issue.
+4. Follow that database's contribution process-often a pull request or issue.
 5. Include the OSV ID, package ecosystem and name, disputed versions, authoritative release or fix evidence, and the proposed correction.
 
 OSV.dev explicitly prefers correction at the home database. This avoids a downstream patch being overwritten by the next import and gets the fix to every consumer of the source.

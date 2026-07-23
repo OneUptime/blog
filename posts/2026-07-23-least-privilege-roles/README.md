@@ -8,7 +8,7 @@ Description: Build SQL Server access around separate identities, user-defined ro
 
 ---
 
-Least privilege means an identity can perform the operations its current responsibility requires—and nothing more. With login-based authentication in SQL Server, implement it through a chain of principals: authenticate a login, map it to a database user, place the user in a purpose-built role, and grant the role narrowly scoped permissions.
+Least privilege means an identity can perform the operations its current responsibility requires-and nothing more. With login-based authentication in SQL Server, implement it through a chain of principals: authenticate a login, map it to a database user, place the user in a purpose-built role, and grant the role narrowly scoped permissions.
 
 Do not make the application `db_owner` because permission analysis is inconvenient. That turns an injection flaw or stolen credential into authority to change schema, permissions, and data across the database.
 
@@ -196,7 +196,7 @@ In a controlled environment, connect as the real identity and verify:
 
 Store role definitions as reviewed code. Require an owner, purpose, ticket, and expiry for exceptions. Recertify membership, remove dormant principals, rotate credentials, and alert on changes to roles and privileged permissions. Use SQL Server Audit or an appropriate security monitoring pipeline for the events required by policy.
 
-When an application fails with “permission denied,” identify the exact denied operation and decide whether it belongs in the contract. The fix is a precise grant to a role or a redesigned module—not temporary `db_owner` membership that quietly becomes permanent.
+When an application fails with “permission denied,” identify the exact denied operation and decide whether it belongs in the contract. The fix is a precise grant to a role or a redesigned module-not temporary `db_owner` membership that quietly becomes permanent.
 
 ## Official Documentation
 

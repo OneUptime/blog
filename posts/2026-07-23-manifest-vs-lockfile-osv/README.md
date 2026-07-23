@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OSV-Scanner, Lockfiles, Dependency Resolution, Vulnerability Matching
+Tags: OSV-Scanner, Lockfile, Dependency Resolution, Vulnerability Matching
 
 Description: Choose scanner inputs that describe the versions actually selected rather than only the versions a project permits.
 

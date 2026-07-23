@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Azure Container Registry, Cloud Architecture, Containers, Cost Optimization
+Tags: Azure, Azure Container Registry, Cloud Architecture, Container, Cost Optimization
 
 Description: Select an ACR tier from required features, storage, concurrency, and measured image traffic instead of treating the SKUs as simple disk sizes.
 

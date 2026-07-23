@@ -1,4 +1,4 @@
-# Least-Privilege ACR Access: AcrPull, AcrPush, Repository Permissions, and Scope Maps
+# Least-Privilege ACR Access: Roles, Repository Permissions, and Scope Maps
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -159,7 +159,7 @@ Add `Container Registry Repository Catalog Lister` only when a tool truly calls 
 
 ## Scope Maps and Tokens: Repository Permissions Without Entra
 
-ACR tokens are a separate authentication system. A token has a username, one or two generated passwords, and exactly one scope map. The scope map grants repository actions:
+ACR tokens are a separate authentication system. A token has a username, can have zero, one, or two generated passwords, and has exactly one scope map. The scope map grants repository actions:
 
 | Scope-map action | Capability |
 | --- | --- |
@@ -267,7 +267,7 @@ Changing an existing registry from `LegacyRegistryPermissions` to `AbacRepositor
 1. Inventory every user, group, service principal, managed identity, deployment platform, and ACR Task that accesses the registry.
 2. While still in `rbac` mode, create equivalent ABAC-enabled assignments. For a registry-wide transition, Microsoft's mapping is:
    - `AcrPull` → Repository Reader plus Catalog Lister to preserve catalog behavior.
-   - `AcrPush` → Repository Writer.
+   - `AcrPush` → Repository Writer; add Catalog Lister if the identity also depends on the catalog access included in legacy `AcrPush`.
    - `AcrDelete` → Repository Contributor, but this is not permission-equivalent: Contributor also adds read, write, and update. Use a dedicated identity and a narrow repository condition, and assess a custom role if that expansion is unacceptable.
 3. Decide where registry-wide equivalence should instead become an exact repository or prefix condition.
 4. Allow role assignments to propagate, then switch the registry:

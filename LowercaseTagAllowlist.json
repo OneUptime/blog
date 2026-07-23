@@ -919,6 +919,7 @@
   "replaceOne",
   "reprepro",
   "require",
+  "requirements.txt",
   "requirepass",
   "reqwest",
   "resolv.conf",

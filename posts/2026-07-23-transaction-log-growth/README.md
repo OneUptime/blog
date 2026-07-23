@@ -1,4 +1,4 @@
-# Why the SQL Server Transaction Log Keeps Growing—and How to Stop It Safely
+# Why the SQL Server Transaction Log Keeps Growing-and How to Stop It Safely
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
