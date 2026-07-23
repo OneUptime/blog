@@ -2,16 +2,15 @@
 
 ## SQL Server
 
-1. Migrating SQL Server with Minimal Downtime Using Full, Log, and Tail-Log Backups
-2. In-Place Upgrade or Side-by-Side Migration? Choosing a Safe SQL Server Upgrade Path
-3. How to Repair an Unsynchronized SQL Server Availability Group Secondary
-4. SQL Server Availability Group Backups: Which Replica Should Run Each Job?
-5. Fixing Orphaned SQL Server Users and SID Mismatches After a Restore
-6. Encrypting SQL Server Connections: Certificates, TLS Errors, and TrustServerCertificate
-7. Designing Least-Privilege SQL Server Roles for Applications and Administrators
-8. How to Monitor SQL Server Before Users Report a Performance Problem
-9. SQL Server TempDB Contention: Symptoms, Root Causes, and Configuration Fixes
-10. DBCC CHECKDB Found Corruption: A Safe SQL Server Recovery Playbook
+1. In-Place Upgrade or Side-by-Side Migration? Choosing a Safe SQL Server Upgrade Path
+2. How to Repair an Unsynchronized SQL Server Availability Group Secondary
+3. SQL Server Availability Group Backups: Which Replica Should Run Each Job?
+4. Fixing Orphaned SQL Server Users and SID Mismatches After a Restore
+5. Encrypting SQL Server Connections: Certificates, TLS Errors, and TrustServerCertificate
+6. Designing Least-Privilege SQL Server Roles for Applications and Administrators
+7. How to Monitor SQL Server Before Users Report a Performance Problem
+8. SQL Server TempDB Contention: Symptoms, Root Causes, and Configuration Fixes
+9. DBCC CHECKDB Found Corruption: A Safe SQL Server Recovery Playbook
 
 ## ACR
 
