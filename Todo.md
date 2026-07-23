@@ -518,3 +518,233 @@
 18. How Long Can Remote Write Survive a Backend Outage Before Losing Samples?
 19. Prometheus Agent Mode vs. Full Prometheus for Remote Write at the Edge
 20. Prometheus Remote Write 1.0 vs. 2.0: Compatibility, Metadata, and Migration
+
+## Multi-Stage Builds
+
+1. Why Your Multi-Stage Docker Cache Vanishes in CI: Exporting Intermediate Layers with BuildKit `mode=max`
+2. Why `ARG` Falls Out of Scope and `ENV` Only Crosses Inherited Stages—and How to Pass Values Across `FROM` Boundaries
+3. `COPY --from` Cannot Find the Artifact: A Path and Stage-Alias Debugging Checklist
+4. Docker `VOLUME` During Builds: Why Files Vanish with the Legacy Builder but Persist with BuildKit
+5. Set Ownership and Execute Bits Across Stages with `COPY --chown` and `--chmod`
+6. A Scratch Image Says “No Such File or Directory” Even Though the Binary Exists: Check the Dynamic Linker
+7. How to Inventory and Copy Shared Libraries from a Builder into a Minimal Runtime Image
+8. What a Scratch Runtime Still Needs: CA Certificates, Time Zones, Users, and Writable Directories
+9. One Dockerfile for Development, Testing, and Production: Selecting Named Targets in Compose
+10. Why `docker build --target` Still Executes Other Stages: BuildKit’s Dependency Graph Explained
+11. How to Inspect and Run an Intermediate Docker Build Stage Without Changing the Final Image
+12. Clone Private Repositories in Builder Stages Without Leaking SSH Keys into Image History
+13. Multi-Stage Build or `apt remove`? Why Deleted Toolchains Still Occupy Earlier Layers
+14. Native Cross-Compilation with `FROM --platform=$BUILDPLATFORM` and `$TARGETPLATFORM`
+15. How to Prevent an ARM Builder from Producing the Wrong Binary for an AMD64 Runtime Stage
+16. Python Multi-Stage Builds: Copy Wheels, a Virtualenv, or `site-packages`?
+17. Why a Copied Python Virtualenv Breaks When Builder and Runtime Paths or libc Differ
+18. Node.js Multi-Stage Builds: Prune Dev Dependencies Without Re-running Lifecycle Scripts
+19. Copying Artifacts from External Images with `COPY --from`: Pin Digests, Not Mutable Tags
+20. How to Publish Multiple Images from One Multi-Stage Dockerfile with Named Targets and Buildx Bake
+
+## SOC 2
+
+1. SOC 2 Type I or Type II for Your First Enterprise Deal? Match the Report to the Buyer’s Actual Requirement
+2. Going Straight to SOC 2 Type II: Five Readiness Gates Before the Observation Window Opens
+3. What Counts as SOC 2 Evidence? Point-in-Time, Periodic, and Transactional Controls Compared
+4. How to Build Complete SOC 2 Populations for Access Changes, Deployments, Incidents, and New Hires
+5. No Terminations or Incidents This Year: How Auditors Test Controls with an Empty Population
+6. SOC 2 Access Reviews for a Five-Person Startup Where Everyone Has Production Access
+7. Scoping a SaaS SOC 2 System: Products, Cloud Accounts, People, Data, and Procedures
+8. Security, Availability, or Confidentiality? Choosing Trust Services Categories Without Overscoping
+9. Is a Penetration Test Actually Required for SOC 2? Trace the Answer to Risks, Controls, and Commitments
+10. AWS Has SOC 2, So What Do You Still Need to Audit? Understanding Shared Responsibility
+11. Carve-Out or Inclusive? How to Treat Cloud Providers and Subservice Organizations in a SOC 2 Report
+12. How Buyers Read a SOC 2 Type II Report: Opinion, Scope, Exceptions, CUECs, and Management Responses
+13. How to Vet a SOC 2 Auditor: CPA Licensure, Peer Review, Sampling Quality, and Independence
+14. SOC 2 Readiness Consultant vs CPA Auditor: Where Advice Ends and Independence Begins
+15. When Is a SOC 2 Report Too Old? Coverage Dates, Bridge Letters, and Renewal Gaps
+16. How to Share a Confidential SOC 2 Report Through an NDA-Gated Trust Center
+17. A Control Failed During Your Type II Period—Will It Qualify the Report?
+18. Can GitHub Pull Requests Prove Change Management? Building the Evidence Auditors Actually Sample
+19. SOC 2 for Contractors, BYOD, and Remote Teams: Background Checks, Device Controls, and Offboarding
+20. The Real Cost of SOC 2: Separate Audit, Readiness, Tooling, Pen Test, and Remediation Quotes
+
+## Showback
+
+1. Unblended, Amortized, or Net Amortized Cost: Which Number Belongs in an AWS Showback?
+2. Where Should Unused Savings Plan and Reserved Instance Commitments Land in Showback?
+3. Stop Dev Spikes from Changing Production’s Effective Rate: Stabilizing Shared-Discount Showback
+4. AWS CUR Showback SQL: Combining `Usage`, `DiscountedUsage`, `SavingsPlanCoveredUsage`, `RIFee`, and `Fee`
+5. Should Enterprise Agreement Discounts Be Centralized or Passed Through to Consuming Teams?
+6. How to Allocate Cloud Credits, Refunds, Support Plans, Marketplace Charges, and Tax in Showback
+7. Who Pays for NAT Gateway and Cross-AZ Transfer? Attribute Network Cost to the Traffic Generator
+8. Kubernetes Showback by Requests or Actual Usage? Choosing a CPU and Memory Cost Driver
+9. How to Split Idle Kubernetes Node Cost Between Headroom, Platform Overhead, and Waste
+10. EKS Split Cost Allocation Data: Joining Pod Costs to Load Balancers, EBS, and Control-Plane Charges
+11. Showback for Short-Lived Kubernetes Jobs After Pods and Metrics Have Disappeared
+12. OpenCost Across Multiple Clusters: Solving Retention, Label Consistency, and Duplicate Workload Names
+13. Untaggable Cloud Services: Build a Controlled Association Table Instead of Inventing Tags
+14. Service Catalog Says One Owner, Cloud Tags Say Another: Detecting Showback Attribution Drift
+15. Version Your Allocation Rules So Re-running Last Month Produces the Same Showback
+16. Daily Estimated Cost vs Finalized Monthly Cost: Handling Late Billing Adjustments Without Surprises
+17. How to Prove Your Showback Is Complete: Control Totals, Residual Buckets, and Double-Allocation Tests
+18. Allocating Shared Database Cost by Queries, Storage, or Connections—Not Revenue Share
+19. Hybrid HPC Showback for GPUs: Requested Hours, Wall Time, Utilization, and Energy Cost
+20. Showback for Deleted and Ephemeral Resources When the Billing Line Outlives the Asset
+
+## Cloud Portability
+
+1. Cloud-Agnostic or Cloud-Native? A Decision Matrix Based on Switching Probability and Engineering Cost
+2. How Portable Is Your Kubernetes Stack? An EKS-to-AKS/GKE Compatibility Audit
+3. Terraform Is Multi-Provider, Not Cloud-Agnostic: Designing Provider-Specific Modules Behind a Stable Interface
+4. Portable Kubernetes Storage: Mapping StorageClasses Without Baking Cloud Disks into Manifests
+5. Moving Stateful Kubernetes Workloads Between Clouds Without Losing Persistent Volume Data
+6. Ingress Without Lock-In: Replacing Cloud Load-Balancer Annotations with the Kubernetes Gateway API
+7. Designing a Cloud-Neutral Identity Layer Across AWS IAM, Microsoft Entra ID, and Google Cloud IAM
+8. Escaping Managed Database Lock-In: Schema, Extension, Backup, and Replication Checks Before You Commit
+9. From Lambda to Portable Compute: When Containers or Knative Actually Make Migration Easier
+10. A Portable Object-Storage Abstraction: What S3 Compatibility Does—and Does Not—Guarantee
+11. Cross-Cloud Messaging Without Rewriting Business Logic: Adapter Boundaries for SQS, Pub/Sub, and Service Bus
+12. The Hidden Portability Tax: DNS, Certificates, Secrets, and Observability During a Cloud Move
+13. How to Test Cloud Portability Continuously Instead of Discovering It During Migration
+14. Building a Cloud Exit Runbook: Inventory, Dependency Graph, Data Transfer, and DNS Cutover
+15. Zero-Downtime Database Migration Between Cloud Providers: CDC, Dual Writes, and Cutover Trade-Offs
+16. What Egress Fees Do to a Multi-Cloud Architecture—and How to Model Them Before Deployment
+17. Cloud Portability vs. Multi-Cloud Resilience: Two Different Goals, Two Different Architectures
+18. Provider-Neutral IaC Without Lowest-Common-Denominator Infrastructure: A Layered Module Pattern
+19. Measuring Vendor Lock-In: A Practical Portability Scorecard for Managed Services
+20. The Quarterly Cloud-Evacuation Drill: Proving Backups, Images, IaC, and Runbooks Actually Work
+
+## Infrastructure Automation
+
+1. Concurrency Control for Infrastructure Automation: Per-Environment Locks, Queues, and Idempotency Keys
+2. How Small Should a Terraform State Be? Splitting State to Reduce Lock Contention and Blast Radius
+3. When Two Automation Controllers Own the Same Resource: Detecting and Eliminating Reconciliation Loops
+4. Safe Terraform CI: Preserving the Reviewed Plan from Pull Request to Apply
+5. Preventing Stale Terraform Plans When Multiple Pull Requests Merge
+6. Who Should Approve Terraform Apply? Designing Gates That Add Context, Not Ceremony
+7. Terraform Drift Detection in CI: Alert, Import, Revert, or Auto-Remediate?
+8. Break-Glass Infrastructure Changes: Recording, Expiring, and Reconciling Emergency Exceptions
+9. Designing a Safe Dry-Run Mode for Destructive Infrastructure Automation
+10. Testing Terraform Modules: `terraform test` vs. Terratest vs. Provider Sandboxes
+11. Policy as Code for Terraform: Blocking Public Storage, Weak Encryption, and Overbroad IAM
+12. Passwordless Terraform Pipelines with OIDC and Short-Lived Cloud Credentials
+13. Keeping Secrets Out of Terraform State, Plan Files, and CI Logs
+14. Infrastructure Automation Under Cloud API Rate Limits: Adaptive Backoff, Jitter, and Safe Resumption
+15. Decommission Automation: Proving Backups, Dependency Removal, and Cost Cleanup Before Destroy
+16. Why Terraform Provisioners Fail on Retries—and When to Build Immutable Images Instead
+17. Designing Idempotent Infrastructure Automation That Survives Partial Failure
+18. Event-Driven Remediation or Scheduled Reconciliation? Choosing an Automation Trigger Model
+19. Self-Service Infrastructure Without Unbounded Access: Catalogs, Guardrails, and Approval Boundaries
+20. Recovery After a Partial Terraform Apply: Reconciling State Before Rolling Forward
+
+## Argo Events
+
+1. Argo Events vs. WorkflowEventBinding: Choosing the Right Way to Trigger an Argo Workflow
+2. From GitHub Push to Argo Workflow: Wiring EventSource, EventBus, Sensor, Service, and Ingress
+3. Securing Argo Events Webhooks: GitHub Signatures, Bearer Tokens, TLS, and Secret Rotation
+4. Routing One Webhook to Different Workflows with Sensor Data Filters and Trigger Conditions
+5. Passing Nested Event Payload Fields into WorkflowTemplate Parameters Without Brittle `dataKey` Paths
+6. Transforming Argo Events Payloads with Lua or JQ Before Filters Run
+7. Combining Multiple Event Dependencies in Argo Sensors: AND, OR, Reset, and Latest-Event Semantics
+8. Why Argo Sensor Triggers Don’t Wait for Each Other—and How to Move Sequencing into a Workflow
+9. Triggering WorkflowTemplates Across Namespaces: The RBAC and ServiceAccount Checklist
+10. Triggering a ClusterWorkflowTemplate from Argo Events Without Duplicating the Workflow Spec
+11. At-Most-Once or At-Least-Once? Choosing Argo Events Trigger Delivery Semantics
+12. Making Argo Event Handlers Idempotent When Sensors Redeliver After a Crash
+13. Trigger Retries and Dead-Letter Triggers in Argo Events: A Failure-Handling Playbook
+14. EventBus Choices for Argo Events: JetStream vs. Kafka for Persistence, Scale, and Operations
+15. Running a JetStream EventBus in Production: Replicas, Volumes, TLS, and Disaster Recovery
+16. Scaling Kafka EventSources and Sensors Without Duplicate Consumption or Runaway Workflow Fan-Out
+17. Controlling Event Storms with Filters, Trigger Rate Limits, and Backpressure-Aware Design
+18. High-Availability EventSources and Sensors: Leader Election, Replicas, and Failover Testing
+19. Debugging “Trigger Conditions Not Met” with Dependency State and Sensor Logs
+20. Observability for Argo Events: Tracing an Event from Source to Bus to Sensor to Workflow
+
+## Databricks
+
+1. Why Databricks Auto Loader Schema Evolution Breaks After Column Renames—and How to Recover Without Reingesting Bronze
+2. Resetting a Databricks Structured Streaming Checkpoint: Source, Sink, and Offset Checks to Avoid Data Loss
+3. Do Delta OPTIMIZE and VACUUM Invalidate Streaming Checkpoints? A Transaction-Log Walkthrough
+4. Migrating `hive_metastore` Tables to Unity Catalog: Finding Hard-Coded Names, DBFS Mounts, and Cross-Metastore Views
+5. Unity Catalog Compute Access Modes Explained Through the Errors They Cause: RDDs, SparkContext, UDFs, and Libraries
+6. Volumes, External Locations, or Managed Tables? Choosing the Right Unity Catalog Storage Abstraction
+7. How to Preserve dbt Models and Grants When Moving to Unity Catalog’s Three-Level Namespace
+8. Why Schema Migrations Should Not Run on Every Databricks Bundle Deploy
+9. One Databricks Bundle per Service or One Monorepo? Scaling Deployments and Shared Libraries
+10. Making Databricks CI Fail on `SUCCESS_WITH_FAILURES` Instead of Shipping a Broken Workflow
+11. Databricks Job Parameters vs Task Parameters vs Widgets: Precedence, Defaults, and Debugging
+12. How to Capture Databricks Job Run IDs and Parameters Without Fragile Notebook Context APIs
+13. Databricks Cost per Run: Combining DBUs, Cloud VM Charges, Startup Time, and Runtime
+14. Why the Cheapest Databricks Instance per Hour Can Cost More per Job
+15. When Databricks Instance Pools Reduce Cold Starts—and When Idle Capacity Costs More Than It Saves
+16. Using Spot Workers Safely in Databricks Jobs: Fallback, Retry, and Driver Placement Patterns
+17. Serverless SQL Warehouse, Pro Warehouse, or Job Compute? A Cost-and-Concurrency Decision Guide
+18. Diagnosing High ODBC Latency in Databricks SQL: Startup, Queueing, Fetch Size, and Result Caching
+19. Azure Key Vault Secret Scopes and Unity Catalog Service Credentials: Use Cases, Governance, and Private Endpoint Trade-Offs
+20. Upgrading Databricks Runtime 10.x to 15.4 LTS: A Compatibility Test Matrix for Python, Scala, Libraries, and Unity Catalog
+
+## Operational Readiness
+
+1. How to Run a Production Readiness Review That Produces Evidence, Owners, and Real Launch Gates
+2. Which Changes Need a Full PRR? Designing Risk-Tiered Reviews for Features, Services, and Migrations
+3. Who Can Approve a Launch Exception? Defining PRR Roles, Waivers, Expiry Dates, and Escalation
+4. The Dependency Readiness Map: Owners, Health Checks, Failure Contracts, and Escalation Paths
+5. Defining SLIs and SLOs Before Launch: Start with User Journeys, Not Available Metrics
+6. Is This Alert Worth Paging? The Actionability Test Every Production Alert Should Pass
+7. What Makes an On-Call Runbook Usable at 3 A.M.? A Game-Day Validation Checklist
+8. From Load Test to Capacity Plan: Calculating Headroom, Saturation Signals, and Scaling Limits
+9. Building a Failure-Mode Inventory: Timeouts, Partial Outages, Queue Backlogs, and Dependency Loss
+10. A Backup Is Not a Recovery Plan: Proving RPO and RTO with Restore Drills
+11. Can You Actually Roll Back? Testing Database-Compatible Reverts and Forward Fixes Before Launch
+12. Feature Flags as Operational Controls: Kill Switches, Safe Defaults, Ownership, and Cleanup
+13. Reducing Deployment Blast Radius with Canaries, Progressive Delivery, and Automated Abort Criteria
+14. Is the Team Ready for On-Call? Coverage, Escalation, Access, and Handoff Requirements
+15. Designing a First-15-Minutes Incident Dashboard: Impact, Recent Changes, Dependencies, Logs, and Traces
+16. How Should a Service Degrade When a Dependency Fails? Budgets for Timeouts, Retries, and Circuit Breakers
+17. Production Security Readiness: Least Privilege, Secret Rotation, Audit Logs, and Break-Glass Access
+18. Launch-Day Go/No-Go: Which Metrics Must Be Green, Who Must Be Present, and What Triggers Rollback?
+19. The Post-Launch Readiness Review: Catching Alert Noise, Capacity Misses, and Runbook Gaps
+20. Continuous Operational Readiness: Turning Review Questions into Tested Policy and Service Metadata
+
+## Transit Gateway
+
+1. Transit Gateway Association vs. Propagation: How Attachments Select Route Tables and Routes Get Installed
+2. One Attachment, One TGW Route Table: How to Build Multiple Routing Domains Without Leaking Traffic
+3. Isolating Production, Nonproduction, and Shared Services with Transit Gateway Route Tables
+4. Why VPC Route Tables Do Not Learn Transit Gateway Routes—and How to Automate the Missing Entries
+5. Traffic Reaches the Transit Gateway but Never Returns: A Four-Table Return-Path Checklist
+6. Finding Transit Gateway Blackholes with Route Analyzer, Transit Gateway Flow Logs, and `PacketDropCountBlackhole`
+7. Which Subnets Should a VPC Transit Gateway Attachment Use? Availability-Zone and Routing Consequences
+8. When Transit Gateway Appliance Mode Fixes Stateful Inspection—and When It Creates Cross-AZ Surprises
+9. Centralized Internet Egress Through a Shared NAT Gateway: Required Return Routes and Hidden Data Charges
+10. AWS Network Firewall Behind Transit Gateway: Designing Symmetric East-West Inspection Paths
+11. Overlapping VPC CIDRs: What Transit Gateway Cannot Route and When PrivateLink or Private NAT Helps
+12. Cross-Region Transit Gateway Peering: Static Routes, Non-Transitive Paths, and the Real Cost Model
+13. Transit Gateway or VPC Peering? Finding the Break-Even Point for VPC Count and Traffic Volume
+14. Why a Cross-Account Transit Gateway Attachment Stays Pending—and Who Owns Each Side of the Route
+15. Direct Connect Gateway to Transit Gateway: Allowed Prefixes, BGP Advertisements, and Route Precedence
+16. Direct Connect with VPN Backup Through Transit Gateway: Preventing Asymmetric Failover
+17. Private DNS Across Transit Gateway: Building a Route 53 Resolver Hub for VPCs and On-Premises Networks
+18. Referencing Security Groups Across Transit Gateway: Supported Topologies, Prerequisites, and Gotchas
+19. Dual-Stack Transit Gateway Routing: Where IPv6 Propagation, Egress, and Inspection Differ from IPv4
+20. Updating Transit Gateway Route Tables with Terraform Without Creating a Connectivity Gap
+
+## Apache Hadoop
+
+1. Why the HDFS NameNode Stays in Safe Mode: Diagnose Block Reports Before Forcing It to Leave
+2. Why `hdfs fsck` Reports but Does Not Repair Corrupt and Missing HDFS Blocks
+3. “Could Only Be Replicated to 0 Nodes”: A Systematic HDFS Write-Failure Checklist
+4. The SecondaryNameNode Is Not a Standby: Designing Real HDFS NameNode High Availability
+5. How JournalNodes, ZKFC, and Fencing Prevent Split Brain in HDFS HA
+6. HDFS Federation vs High Availability: Namespace Scale and Failover Solve Different Problems
+7. The HDFS Small-Files Problem: NameNode Heap, Mapper Startup, and Practical Compaction Options
+8. Sizing NameNode Heap from File, Directory, and Block Counts Instead of Raw HDFS Capacity
+9. Choosing an HDFS Block Size for Splittable, Unsplittable, and Compressed Inputs
+10. What Happens to Existing Files When You Change `dfs.blocksize`?
+11. How to Decommission an HDFS DataNode Without Losing Replicas or Stranding Under-Replicated Blocks
+12. Why the HDFS Balancer Moves Nothing: Thresholds, Storage Policies, and Pinned Blocks
+13. HDFS Says Space Is Available but Writes Fail: Reconciling `hdfs dfs -df`, Reserved Space, and Disk Health
+14. YARN “Container Is Running Beyond Memory Limits”: Heap, Off-Heap, and Process-Tree Accounting
+15. How YARN Rounds Container Requests: Minimum Allocation, Maximum Allocation, and Wasted Memory
+16. Sizing `yarn.nodemanager.resource.memory-mb` and vCores Without Starving the Operating System
+17. DataNode Up, NodeManager Missing: Why HDFS and YARN See Different Cluster Membership
+18. Why a Map Task Reads Remote HDFS Blocks: Measuring and Improving Data Locality
+19. MapReduce Reducers Stuck in Shuffle: Diagnosing Skew, Spill, Merge, and Slow Fetches
+20. When Speculative Execution Helps Hadoop—and When Duplicate Side Effects Make It Dangerous
