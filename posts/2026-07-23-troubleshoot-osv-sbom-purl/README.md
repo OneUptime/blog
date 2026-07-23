@@ -75,7 +75,7 @@ pkg:type/namespace/name@version?qualifiers#subpath
 
 Common errors include:
 
-- using an OSV ecosystem label as a purl type, such as `pkg:PyPI/...` instead of canonical `pkg:pypi/...`;
+- using an OSV ecosystem label where it differs from the registered purl type, such as `pkg:crates.io/...` instead of `pkg:cargo/...`; purl types are case-insensitive, but their canonical form is lowercase (`pkg:pypi/...`, not `pkg:PyPI/...`);
 - omitting the package version;
 - failing to percent-encode reserved characters in a namespace;
 - putting the full purl in the component `name` but leaving the `purl` property empty;
@@ -115,7 +115,7 @@ jq -r '.results[].packages[].package
        | [.ecosystem, .name, .version] | @tsv' debug.json
 ```
 
-If the SBOM contains 500 components but only a small set is extracted, inspect skipped components for absent or invalid purls, absent versions, and nested component structure. Repair the SBOM generator or its configuration; avoid post-processing that cannot be reproduced from the build.
+If the SBOM contains 500 components but only a small set appears, inspect omitted components for absent or invalid purls. OSV-Scalibr recursively traverses nested CycloneDX `components`, so nesting alone should not hide them. Also inspect listed entries with empty ecosystems or versions: `--all-packages` includes extracted but unscannable packages in JSON even though OSV-Scanner filters them from vulnerability queries. Repair the SBOM generator or its configuration; avoid post-processing that cannot be reproduced from the build.
 
 OSV-Scanner may log warnings for unusable component identities while continuing with others. A partial result should not be promoted as complete merely because the process produced JSON.
 
