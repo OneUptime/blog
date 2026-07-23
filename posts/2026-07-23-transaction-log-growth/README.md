@@ -59,10 +59,10 @@ Under the full or bulk-logged recovery model, regular transaction-log backups ar
 ```sql
 BACKUP LOG Sales
 TO DISK = N'E:\SQLBackups\Sales_20260723_1430.trn'
-WITH CHECKSUM, COMPRESSION, STATS = 10;
+WITH CHECKSUM, STATS = 10;
 ```
 
-The path is an example and must be a protected destination accessible to the Database Engine service account. An ad hoc log backup becomes part of the restore chain, so retain and catalog it. Do not use `COPY_ONLY` expecting it to avoid the log chain; copy-only log backups do not affect log truncation and must still be handled correctly during recovery planning.
+The path is an example and must be a protected destination accessible to the Database Engine service account. A conventional ad hoc log backup becomes part of the restore chain, so retain and catalog it. Do not use `COPY_ONLY` expecting it to free reusable space: a copy-only log backup leaves the regular log-backup sequence unchanged, but it never truncates the log.
 
 ### `ACTIVE_TRANSACTION`
 
@@ -100,7 +100,7 @@ Other values, including database snapshot creation, mirroring, or memory-optimiz
 
 Even when truncation works, the active log must be large enough for the largest operation between reuse points. Index builds, bulk loads, large deletes, long transactions, and availability lag can require substantial space. A file that grows to 200 GB during every maintenance window probably needs to remain near that size or the operation needs redesign; repeated shrink-and-grow cycles add overhead and risk another disk-full incident.
 
-Inspect recent autogrowth events through the default trace where available or, preferably, an intentional Extended Events/monitoring pipeline. Correlate growth with job history and workload. Review virtual log file layout:
+Inspect recent autogrowth events through an intentional Extended Events/monitoring pipeline. The deprecated default trace may contain historical growth events where it remains enabled, but do not build new monitoring on it. Correlate growth with job history and workload. Review virtual log file layout:
 
 ```sql
 SELECT
@@ -147,9 +147,9 @@ GO
 DBCC SHRINKFILE (N'Sales_log', 65536);
 ```
 
-The target is megabytes and is only an example. SQL Server cannot remove active VLFs or free space that is not at the end of the file, so the operation may not reach the target immediately. Never loop shrink continuously. Afterward, set the intended size and growth increment, run a log backup if required by the recovery model, and verify the next backup/restore drill.
+The target is megabytes and is only an example. SQL Server cannot remove active VLFs or free space that is not at the end of the file, so the operation may not reach the target immediately. Never loop shrink continuously. Afterward, verify the resulting size, set the intended growth increment, run a log backup if required by the recovery model, and verify the next backup/restore drill.
 
-Do not switch to simple recovery merely to shrink a log. Switching recovery models changes recovery capability and can break the log backup chain; returning to full recovery requires establishing a new chain with a data backup. That is a business recovery-policy change, not a disk-space trick.
+Do not switch to simple recovery merely to shrink a log. Switching recovery models changes recovery capability and can break the log backup chain; returning to full recovery requires establishing a new chain with a full or differential database backup. That is a business recovery-policy change, not a disk-space trick.
 
 ## Official Documentation
 
