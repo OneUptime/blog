@@ -2,11 +2,10 @@
 
 ## OSV
 
-1. How to Scan Container Images with OSV-Scanner—and Understand Its Coverage
-2. How to Run OSV-Scanner in GitHub Actions and GitLab CI with Useful Exit Codes
-3. How to Triage OSV-Scanner Findings with Reachability and Call Analysis
-4. How to Ignore OSV Findings Safely with Reasons and Expiration Dates
-5. Offline OSV Scanning: Keeping Dependency Data Private in Restricted Environments
+1. How to Run OSV-Scanner in GitHub Actions and GitLab CI with Useful Exit Codes
+2. How to Triage OSV-Scanner Findings with Reachability and Call Analysis
+3. How to Ignore OSV Findings Safely with Reasons and Expiration Dates
+4. Offline OSV Scanning: Keeping Dependency Data Private in Restricted Environments
 
 ## SQL Server
 
