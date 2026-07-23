@@ -2,11 +2,10 @@
 
 ## SQL Server
 
-1. Encrypting SQL Server Connections: Certificates, TLS Errors, and TrustServerCertificate
-2. Designing Least-Privilege SQL Server Roles for Applications and Administrators
-3. How to Monitor SQL Server Before Users Report a Performance Problem
-4. SQL Server TempDB Contention: Symptoms, Root Causes, and Configuration Fixes
-5. DBCC CHECKDB Found Corruption: A Safe SQL Server Recovery Playbook
+1. Designing Least-Privilege SQL Server Roles for Applications and Administrators
+2. How to Monitor SQL Server Before Users Report a Performance Problem
+3. SQL Server TempDB Contention: Symptoms, Root Causes, and Configuration Fixes
+4. DBCC CHECKDB Found Corruption: A Safe SQL Server Recovery Playbook
 
 ## ACR
 
