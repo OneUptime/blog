@@ -27,7 +27,7 @@ SET STATISTICS XML OFF;
 GO
 ```
 
-Prefer a plan captured from the slow execution context. A fast SSMS execution with different parameters or `SET` options may use a different cached plan. Query Store can supply historical plans and runtime distributions when the bad plan is no longer active.
+Prefer a plan captured from the slow execution context. A fast SSMS execution with different parameters or `SET` options may use a different cached plan. Query Store can supply historical plans and aggregated runtime statistics when the bad plan is no longer active.
 
 Collect supporting measurements in the same controlled session:
 
@@ -86,7 +86,7 @@ Do not rank join algorithms as good or bad. Nested loops often suits a small out
 
 ### Sorts and Spools
 
-A sort may support `ORDER BY`, a merge join, aggregation, or windowing. A spool materializes rows for reuse or correctness. Inspect why it exists, how many times it is rewound or rebound, and whether it spills; deleting an operator is not itself a tuning objective.
+A sort may support `ORDER BY`, a merge join, aggregation, or windowing. A spool materializes rows in `tempdb` for reuse or correctness. Inspect why it exists and how many times it is rewound or rebound; for a sort, also check whether it spills. Deleting an operator is not itself a tuning objective.
 
 ### Parallelism Operators
 
@@ -97,7 +97,7 @@ Parallel branches add exchanges that distribute, repartition, or gather rows. Sk
 Useful warning categories include:
 
 - **spill to TempDB:** a sort or hash needed more memory than granted;
-- **implicit conversion:** incompatible data types may affect estimates or index access;
+- **implicit conversion:** differing data types may affect estimates or index access;
 - **missing statistics or no join predicate:** the optimizer lacked useful information or a join may be accidental;
 - **excessive grant:** reserved memory greatly exceeded observed use;
 - **unmatched indexes or plan-affecting conversion:** plan reuse or predicate processing deserves inspection.
@@ -106,7 +106,7 @@ A warning is not automatically the bottleneck. Correlate it with duration, reads
 
 ## Do Not Trust Cost Percentages as Runtime Percentages
 
-Graphical percentages compare estimated subtree costs within that compiled plan. They are neither elapsed-time measurements nor a comparison with alternative plans the optimizer did not choose. Estimate errors can make the percentages especially misleading.
+Graphical percentages are derived from optimizer cost estimates within that compiled plan. They are neither elapsed-time measurements nor a comparison with alternative plans the optimizer did not choose. Estimate errors can make the percentages especially misleading.
 
 Instead, rank candidate work using:
 

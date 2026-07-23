@@ -57,7 +57,8 @@ JOIN sys.query_store_plan AS p
   ON p.query_id = q.query_id
 JOIN sys.query_store_runtime_stats AS rs
   ON rs.plan_id = p.plan_id
-WHERE qt.query_sql_text LIKE N'%usp_GetOrders%'
+WHERE qt.query_sql_text LIKE N'%CustomerId = @CustomerId%'
+  AND qt.query_sql_text NOT LIKE N'%query_store%'
 GROUP BY q.query_id, p.plan_id, qt.query_sql_text
 ORDER BY max_duration_ms DESC;
 ```
