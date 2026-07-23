@@ -51,7 +51,7 @@ Interpret the pattern:
 - **All databases disconnected on one replica:** investigate instance, endpoint, network, authentication, or WSFC health.
 - **One database suspended:** inspect its error and suspend reason; storage/file problems are common candidates.
 - **`SYNCHRONIZING` with moving timestamps/queues:** data movement works; determine whether send or redo throughput is insufficient.
-- **`NOT SYNCHRONIZING` with `REVERTING`:** the replica may be undoing changes after a failover; estimate progress before intervening.
+- **Primary reports `NOT SYNCHRONIZING` while the secondary reports `REVERTING`:** the secondary may be undoing changes after a failover; estimate progress before intervening.
 - **Database absent or not joined:** initial seeding or join may be incomplete.
 
 An asynchronous-commit secondary normally reports `SYNCHRONIZING`, not `SYNCHRONIZED`, even when healthy. Do not require the synchronous state from an asynchronous design.
@@ -94,7 +94,7 @@ When queues decline and timestamps advance, leave data movement running. Reseedi
 
 ## Handle Reverting and Forced-Failover History Carefully
 
-After failover, a new secondary may enter `REVERTING` while it negotiates a common recovery point and undoes log that is ahead of the current primary. This can be slow after a large interrupted transaction. Monitor the documented recovery-queue counters and error log before deciding it is stuck.
+After failover, a new secondary may enter `REVERTING` while it negotiates a common recovery point and undoes log that is ahead of the current primary. This can be slow after a large interrupted transaction. Monitor the `Total Log Requiring Undo` and `Log Remaining for Undo` performance counters before deciding it is stuck.
 
 After a forced failover with possible data loss, the former primary may contain transactions absent from the new primary. Resuming can roll that divergent state back. If losing those rows is unacceptable, remove and preserve the former-primary database for analysis instead of resuming it automatically. This is a business data-reconciliation decision, not routine availability maintenance.
 
