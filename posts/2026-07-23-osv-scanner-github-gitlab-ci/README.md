@@ -143,7 +143,7 @@ osv_scan:
       - osv-results.json
 ```
 
-Adapt the binary path only after checking the pinned image. Preserve stderr in the job log because JSON output goes to stdout while diagnostics go to stderr.
+Adapt the binary path only after checking the pinned image. With `--output-file`, JSON is written to `osv-results.json` while diagnostics remain on stderr in the job log.
 
 ## Design useful policy around the codes
 
