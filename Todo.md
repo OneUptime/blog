@@ -2,19 +2,18 @@
 
 ## SQL Server
 
-1. SQL Server Recovery Models Explained: Simple, Full, and Bulk-Logged
-2. How to Build and Test a SQL Server Backup Strategy That Meets Your RPO
-3. How to Restore SQL Server to a Point in Time Without Breaking the Log Chain
-4. Migrating SQL Server with Minimal Downtime Using Full, Log, and Tail-Log Backups
-5. In-Place Upgrade or Side-by-Side Migration? Choosing a Safe SQL Server Upgrade Path
-6. How to Repair an Unsynchronized SQL Server Availability Group Secondary
-7. SQL Server Availability Group Backups: Which Replica Should Run Each Job?
-8. Fixing Orphaned SQL Server Users and SID Mismatches After a Restore
-9. Encrypting SQL Server Connections: Certificates, TLS Errors, and TrustServerCertificate
-10. Designing Least-Privilege SQL Server Roles for Applications and Administrators
-11. How to Monitor SQL Server Before Users Report a Performance Problem
-12. SQL Server TempDB Contention: Symptoms, Root Causes, and Configuration Fixes
-13. DBCC CHECKDB Found Corruption: A Safe SQL Server Recovery Playbook
+1. How to Build and Test a SQL Server Backup Strategy That Meets Your RPO
+2. How to Restore SQL Server to a Point in Time Without Breaking the Log Chain
+3. Migrating SQL Server with Minimal Downtime Using Full, Log, and Tail-Log Backups
+4. In-Place Upgrade or Side-by-Side Migration? Choosing a Safe SQL Server Upgrade Path
+5. How to Repair an Unsynchronized SQL Server Availability Group Secondary
+6. SQL Server Availability Group Backups: Which Replica Should Run Each Job?
+7. Fixing Orphaned SQL Server Users and SID Mismatches After a Restore
+8. Encrypting SQL Server Connections: Certificates, TLS Errors, and TrustServerCertificate
+9. Designing Least-Privilege SQL Server Roles for Applications and Administrators
+10. How to Monitor SQL Server Before Users Report a Performance Problem
+11. SQL Server TempDB Contention: Symptoms, Root Causes, and Configuration Fixes
+12. DBCC CHECKDB Found Corruption: A Safe SQL Server Recovery Playbook
 
 ## ACR
 
