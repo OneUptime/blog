@@ -70,7 +70,7 @@ TO DISK = N'E:\SQLBackups\Sales_log_20260723_1205.trn'
 WITH CHECKSUM, COMPRESSION, INIT, STATS = 10;
 ```
 
-These paths and `INIT` choices are examples for distinct files; never point an automated job at an unresolved or shared filename that could overwrite required media. If third-party tooling is used, verify its exact full, differential, copy-only, stripe, encryption, and retention behavior.
+These paths and `INIT` choices are examples for distinct files; never point an automated job at an unresolved or shared filename that could overwrite required media. The `COMPRESSION` option requires a SQL Server edition and version that support backup compression; omit it where unsupported. If third-party tooling is used, verify its exact full, differential, copy-only, stripe, encryption, and retention behavior.
 
 Choose full and differential cadence from measured change rate, backup size, and restore time. Differentials grow as changed extents accumulate after their differential base. An ad hoc normal full can change that base, while a copy-only full does not. Catalog the base and restore dependencies rather than choosing backups by filenames alone.
 
@@ -126,10 +126,10 @@ Alert on backup age against RPO, failure, unexpected size or duration, missing m
 
 At a frequency justified by risk, select a recovery point without giving the operator a prebuilt list. On an isolated instance:
 
-1. inventory media with `RESTORE HEADERONLY` and `RESTORE FILELISTONLY`;
+1. inventory backup sets with `RESTORE HEADERONLY`, then inspect each candidate set with `RESTORE FILELISTONLY ... WITH FILE = <position>`;
 2. select the correct full, optional differential, and continuous log sequence by metadata;
 3. restore to new paths and a new database name with `NORECOVERY` until the final step;
-4. apply `STOPAT` for a point-in-time scenario;
+4. specify the same `STOPAT` target on every `RESTORE LOG` statement for a point-in-time scenario;
 5. recover the database;
 6. run `DBCC CHECKDB` at the rigor specified by policy;
 7. validate schema version, critical counts, business invariants, users, and an isolated application smoke test;
