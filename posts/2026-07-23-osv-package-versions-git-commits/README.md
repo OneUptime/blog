@@ -62,9 +62,9 @@ An `affected` entry can also contain a `versions` array:
 
 The schema recommends this list in general because a consumer can directly test a concrete package release without implementing every ecosystem's ordering. A correctly expressed `SEMVER` range removes the requirement to enumerate versions. A `GIT` range does not, because answering reachability questions requires access to the repository graph.
 
-OSV.dev enriches imported records where it has ecosystem support. Its FAQ documents version enumeration, Git affected-commit enumeration, commit-to-tag mapping, purl computation, and alias computation. Those processes can populate `affected.versions` even when the authoritative source primarily supplied ranges.
+OSV.dev enriches imported records where it has ecosystem support. Its FAQ documents version enumeration, Git affected-commit enumeration, commit-to-tag mapping, purl computation, and alias computation. The version and commit enumeration processes can populate `affected.versions` even when the authoritative source primarily supplied ranges.
 
-The `modified` timestamp can therefore change because OSV.dev enrichment changed, not only because the vulnerability prose changed.
+The `modified` timestamp can also change when computed aliases change, not only because the vulnerability prose changed.
 
 ## Git ranges model branches, not a numeric line
 
