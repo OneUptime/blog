@@ -8,13 +8,13 @@ Description: Use OSV-Scanner call analysis to prioritize findings while respecti
 
 ---
 
-A package-version match says a dependency version is affected. Go and Rust call analysis ask a narrower question: does static analysis find a path from the project to a vulnerable function named by advisory data? Experimental JAR reachability instead asks whether dependency classes are reachable from a built application JAR.
+A package-version match says a dependency version is affected. Go call analysis asks a narrower question: does static analysis find a path from the project to a vulnerable function named by advisory data? Experimental Rust analysis instead checks whether vulnerable functions remain in optimized build outputs and appear in their DWARF debug information. Experimental JAR reachability asks whether dependency classes are reachable from a built application JAR.
 
 OSV-Scanner v2 enables Go call analysis by default, supports Rust analysis experimentally, and has supported experimental JAR reachability since v2.2.2. Each is a prioritization signal, not a reason to declare a vulnerable dependency safe forever.
 
 ## Run the default scan first
 
-Capture the package-level baseline:
+Capture the package findings, along with the default Go call analysis:
 
 ```bash
 osv-scanner scan source \
@@ -24,11 +24,11 @@ osv-scanner scan source \
   .
 ```
 
-Package findings remain the complete set to remediate. Reachability then adds analyzer-specific context: Go and Rust can distinguish confirmed-called, analyzed-not-called, and not-analyzed results, while JAR analysis can identify dependency packages not found on a reachable class path.
+Package findings remain the complete set to remediate. Reachability adds analyzer-specific context: Go and Rust can distinguish analyzer-reported called, analyzed-not-called, and not-analyzed results, while JAR analysis can identify dependency packages not found on a reachable class path.
 
 ## Understand Go call analysis
 
-Go call analysis is enabled by default. OSV-Scanner uses the `govulncheck` library to analyze Go source and identify calls to vulnerable functions. The Go compiler must be installed and available on `PATH`.
+Go call analysis is enabled by default. OSV-Scanner uses the `golang.org/x/vuln/scan` package to run govulncheck analysis of Go source and identify calls to vulnerable functions. The Go toolchain, including the `go` command, must be installed and available on `PATH`.
 
 To request only Go analysis explicitly:
 
@@ -61,7 +61,7 @@ The Rust toolchain, including `cargo`, must be on `PATH` and capable of compilin
 
 Do not enable it on an untrusted pull request in a privileged runner. Use an isolated, least-privileged environment without production secrets or unnecessary network access.
 
-Documented Rust limitations include dependencies on procedural macros, dynamically linked dependencies, and dependencies that link external non-Rust code. Compilation failures and unsupported constructs produce unknown reachability, not “not called.”
+Documented Rust limitations include dependencies on procedural macros, dynamically linked dependencies, and dependencies that link external non-Rust code. A compilation failure produces no analysis conclusion. Results involving unsupported constructs are not reliable evidence of reachability and should be treated as unknown even if the output contains a call-analysis value.
 
 ## Analyze a built JAR experimentally
 
@@ -73,20 +73,22 @@ osv-scanner scan image \
   example/service:2026-07-23
 ```
 
-This analyzer follows bytecode paths from application entry points and maps reachable classes back to Maven dependencies. The current implementation is limited to Maven-built JARs with the expected metadata and main-class information, and it downloads dependency JARs from Maven Central to build class mappings. Run it only where that network access is acceptable.
+Scanning a named image requires the Docker command-line tool on `PATH`.
+
+This analyzer recursively follows class references from application entry points and maps reachable classes back to Maven dependencies. The current implementation is limited to Maven-built JARs with the expected metadata and main-class information, and it downloads dependency JARs from Maven Central to build class mappings. Run it only where that network access is acceptable.
 
 Unlike Go and Rust analysis, JAR reachability marks vulnerabilities in an unreachable dependency package rather than matching calls to vulnerable symbols supplied by an advisory. Failure to analyze the JAR is unknown coverage, not proof that its dependencies are unreachable.
 
 ## Read the result states correctly
 
-For Go and Rust, table output separates findings affecting code called by the project from findings in code paths not found to be called. JSON attaches analysis to vulnerability groups. A simplified shape is:
+For Go and Rust, table output with `--all-vulns` separates findings affecting code called by the project from findings not reported as called; without that flag, v2 hides uncalled findings from the table. JSON attaches analysis to vulnerability groups. A simplified shape is:
 
 ```json
 {
   "groups": [
     {
       "ids": ["GHSA-example", "RUSTSEC-example"],
-      "experimentalAnalysis": {
+      "experimental_analysis": {
         "RUSTSEC-example": {
           "called": false
         }
@@ -100,8 +102,8 @@ Interpret three states, not two:
 
 | State | Meaning | Suggested priority |
 |---|---|---|
-| `called: true` | A vulnerable function is found on a call path | Urgent technical review |
-| `called: false` | Analysis ran for supplied vulnerable symbols and found no call | Lower priority, retain finding |
+| `called: true` | The analyzer reports a vulnerable function as called | Urgent technical review |
+| `called: false` | The analyzer processed supplied vulnerable symbols and did not report them as called | Lower priority, retain finding |
 | No analysis entry | Analysis did not produce a conclusion | Package-level priority; investigate why |
 
 For Go and Rust, an absent analysis object is not equivalent to `called: false`. It may mean missing symbol metadata, unsupported language behavior, a toolchain failure, or no analysis for that record in an alias group. For JAR analysis, treat an analysis failure or unsupported JAR layout as unknown in the same way.
@@ -138,7 +140,7 @@ Use time-bound exceptions only after documenting why the analysis represents pro
 
 - [OSV-Scanner source scanning and call analysis](https://google.github.io/osv-scanner/usage/scan-source)
 - [OSV-Scanner call-analysis output](https://google.github.io/osv-scanner/output/)
-- [Go vulnerability checking library used by OSV-Scanner](https://pkg.go.dev/golang.org/x/vuln/cmd/govulncheck)
+- [Go vulnerability scanning package used by OSV-Scanner](https://pkg.go.dev/golang.org/x/vuln/scan)
 - [OSV schema ecosystem-specific affected-function data](https://ossf.github.io/osv-schema/)
 - [OSV-Scanner v2.2.2 JAR reachability release notes](https://github.com/google/osv-scanner/releases/tag/v2.2.2)
 - [OSV-Scalibr Java reachability implementation](https://github.com/google/osv-scalibr/tree/main/enricher/reachability/java)
