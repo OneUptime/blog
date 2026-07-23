@@ -73,7 +73,7 @@ These forms prevent a generated artifact from being silently missed because its 
 
 ## Account for `.gitignore`
 
-OSV-Scanner does not scan files ignored by applicable `.gitignore` rules by default. This avoids build caches and vendored output in normal source scans, but it can also hide a generated lockfile that CI intends to assess.
+During recursive directory scans, OSV-Scanner does not discover files ignored by applicable `.gitignore` rules by default. This avoids build caches and vendored output in normal source scans, but it can also hide a generated lockfile that CI intends to assess.
 
 Use `--no-ignore` only when deliberately including ignored content:
 
@@ -115,7 +115,7 @@ osv-scanner scan source \
   .
 ```
 
-`--all-packages` is documented for JSON output. Review source paths, package ecosystems, names, and versions. Package overrides with `ignore` take precedence, so also inspect nearby `osv-scanner.toml` files.
+`--all-packages` is documented for JSON output. Review source paths, package ecosystems, names, and versions. Package overrides with `ignore` take precedence, so also inspect any `osv-scanner.toml` file in the same directory as a scanned input.
 
 Exit code `128` means no packages were found. Do not convert it to a successful clean scan. A valid security gate proves both that the expected inputs were inventoried and that the resulting package identities had no known matches.
 
