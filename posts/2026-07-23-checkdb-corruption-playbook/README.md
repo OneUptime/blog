@@ -83,7 +83,7 @@ Check every replica and backup independently. An availability-group secondary ma
 
 Inventory full, differential, and log backups by headers and LSNs. Restore candidate sequences to clean, isolated storage and run full `DBCC CHECKDB` after recovery. Work backward until finding the newest recovery point that is both structurally consistent and logically acceptable.
 
-If the current log is accessible and the recovery model/scenario permits it, a tail-log backup may preserve transactions after the latest scheduled log backup. A page restore under full or bulk-logged recovery can repair localized data-page damage while preserving more current data, but it requires an intact backup/log sequence and supported page type. File/filegroup restore can be appropriate for broader file damage.
+If the current log is accessible and the recovery model/scenario permits it, a tail-log backup may preserve transactions after the latest scheduled log backup. A page restore under full recovery—or in the limited bulk-logged scenarios that support it—can repair localized data-page damage while preserving more current data, but it requires an intact backup/log sequence and supported page type. File/filegroup restore can be appropriate for broader file damage.
 
 For a complete restore, keep the target isolated and use new file paths. Restore the full, optional compatible differential, every required log, and the tail, then recover once. Validate:
 
@@ -99,7 +99,7 @@ Then validate schema, constraints, critical totals, business invariants, securit
 Choose the recovery option that meets the business's data-loss and downtime decision:
 
 1. **Restore a known-good database** when broad corruption exists and the backup chain meets the acceptable recovery point.
-2. **Page restore** for eligible localized page damage with a valid full/log chain.
+2. **Page restore** for eligible localized page damage with a valid data-backup/log sequence.
 3. **Recreate a nonclustered index** only when base data is verified and all related corruption is confined to that recreatable index.
 4. **Export known-good data into a clean database** when backups are unavailable but enough structures remain readable, accepting that dependencies and relationships need intensive validation.
 5. **DBCC repair** only when better recovery paths are unavailable and explicit data loss is accepted.
