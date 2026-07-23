@@ -18,8 +18,8 @@ An ACR client can touch several hostnames:
 
 | Endpoint | Purpose | Private endpoint IP use |
 | --- | --- | --- |
-| Registry/global login server | token exchange, manifests, tags, registry API | one private IP |
-| Dedicated data endpoint per registry region | upload and download image layers | one private IP per geo-replica region |
+| Registry/global login server | token exchange, manifests, tags, registry API, blob uploads | one private IP |
+| Dedicated data endpoint per registry region | download image layers | one private IP per geo-replica region |
 | Regional endpoint per geo-replica, when enabled | direct regional registry operations | one additional private IP per replica |
 
 Query the service rather than guessing hostnames:
@@ -36,7 +36,7 @@ az acr show-endpoints \
   --output table
 ```
 
-Regional endpoints are currently Preview. Enabling them and using `az acr login --endpoint` requires Azure CLI 2.86.0 or later. `az acr show-endpoints` is GA but was also added to the core CLI in version 2.86.0, so upgrade older administration images before following those commands.
+Regional endpoints are currently Preview. Enabling them and using `az acr login --endpoint` requires Azure CLI 2.86.0 or later. `az acr show-endpoints` itself is GA and exists in earlier CLI releases, but use version 2.86.0 or later when working with regional endpoints.
 
 A DNL-protected registry can have a hash in `LOGIN_SERVER`. Hand-created DNS based only on the Azure resource name can therefore be wrong. A private endpoint DNS zone group is preferable because Azure maintains the records from the private endpoint's actual FQDN configuration.
 
@@ -267,9 +267,9 @@ If public access is intentionally set to selected networks instead, a 403 naming
 
 ## Fix Login Success Followed by Layer Failure
 
-Docker first reaches the login/registry endpoint, then follows service-provided URLs to upload or download layers. With a private endpoint, dedicated data endpoints are automatically enabled, one per registry region.
+During a pull, Docker first reaches the login/registry endpoint, then follows service-provided URLs to download layers from a dedicated data endpoint. Blob uploads during pushes stay on the global or regional login server and do not use dedicated data endpoints. With a private endpoint, dedicated data endpoints are automatically enabled, one per registry region.
 
-If `az acr login` succeeds but `docker pull` or `push` stalls on a layer:
+If `az acr login` succeeds but `docker pull` stalls on a layer:
 
 - resolve every data endpoint returned by `az acr show-endpoints`;
 - confirm each has an A record and distinct private endpoint IP configuration;
@@ -277,7 +277,9 @@ If `az acr login` succeeds but `docker pull` or `push` stalls on a layer:
 - verify custom DNS forwards the data endpoint's `privatelink.azurecr.io` alias; and
 - check that the private endpoint subnet has enough free addresses.
 
-Geo-replication increases the address and record count. A registry with three replicas consumes one private IP for the global endpoint plus one per replica for dedicated data endpoints. If regional endpoints are also enabled, it consumes one more per replica. Plan that capacity for every private endpoint resource.
+If a push stalls, troubleshoot the global or regional login endpoint instead; dedicated data endpoint DNS is not used for blob uploads.
+
+Geo-replication increases the address and record count. A registry spanning three regions—the home region plus two added replicas—consumes one private IP for the global endpoint plus one per region for dedicated data endpoints. If regional endpoints are also enabled, it consumes one more per region. Plan that capacity for every private endpoint resource.
 
 When a geo-replica is added, inspect the endpoint connection, NIC members, zone-group-managed records, and subnet free space again. Do not assume the original region's data record covers the replica.
 
@@ -289,7 +291,7 @@ From a host on the intended private path:
 curl --verbose "https://$LOGIN_SERVER/v2/"
 ```
 
-An unauthenticated HTTP 401 is expected and proves private DNS, TCP, TLS, and the registry endpoint responded. Then test authenticated manifest and layer operations:
+For a registry that requires authentication, an unauthenticated HTTP 401 is expected and proves private DNS, TCP, TLS, and the registry endpoint responded. Then test authenticated manifest and layer operations:
 
 ```bash
 az acr login --name "$ACR_NAME"
