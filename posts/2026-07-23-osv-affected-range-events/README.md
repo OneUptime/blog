@@ -84,6 +84,7 @@ There must be at least one `introduced` event in each range.
 
 ```json
 {
+  "type": "ECOSYSTEM",
   "events": [
     {"introduced": "0"},
     {"last_affected": "2.1.214"}
@@ -97,7 +98,7 @@ An event array may contain `fixed` events or `last_affected` events, but not bot
 
 ## Understand limit in Git ranges
 
-Without an explicit limit, an implicit `{"limit":"*"}` applies. In a Git graph, a `limit` restricts the commits considered vulnerable to those reachable from the limit. It is not simply another spelling of a fixed commit.
+Without an explicit limit, an implicit `{"limit":"*"}` applies. In a Git graph, a `limit` restricts the commits considered vulnerable to commits that precede at least one limit under graph reachability; the limit commit itself is excluded. It is not simply another spelling of a fixed commit.
 
 This restriction can be useful for a narrowly scoped branch, but it can exclude vulnerable commits and create false negatives. The schema therefore recommends fixed events where possible. If fixes were cherry-picked into multiple branches, list the relevant fixed commits so descendants of each fix are handled correctly.
 
@@ -122,7 +123,7 @@ The package is affected if **any** range matches or the exact version appears in
 For each affected package:
 
 1. Choose `SEMVER` only when the values truly follow SemVer 2.0; otherwise use the defined ecosystem ordering.
-2. Verify every introduced and fixed version exists in the package registry when required by the data-quality rules.
+2. Verify every non-special introduced, fixed, and last-affected version exists in the package registry under its canonical rules.
 3. Ensure introduced sorts before fixed or last-affected.
 4. Keep intervals distinct and, for SemVer, non-overlapping.
 5. Prefer `fixed` to `last_affected`, and prefer fixes to Git limits.
@@ -136,4 +137,3 @@ Range syntax can be valid JSON while still being operationally wrong. JSON Schem
 - [OSV JSON Schema](https://github.com/ossf/osv-schema/blob/main/validation/schema.json)
 - [OSV record linter](https://github.com/ossf/osv-schema/tree/main/tools/osv-linter)
 - [OSV.dev data-quality requirements](https://google.github.io/osv.dev/data_quality.html)
-
