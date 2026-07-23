@@ -2,19 +2,18 @@
 
 ## ACR
 
-1. ACR Private Endpoint DNS: Fixing 403, NXDOMAIN, and Data Endpoint Failures
-2. How to Build and Push to a Private ACR from GitHub Actions or Azure DevOps
-3. Least-Privilege ACR Access: AcrPull, AcrPush, Repository Permissions, and Scope Maps
-4. Pulling ACR Images Across Azure Subscriptions and Microsoft Entra Tenants
-5. Keeping Only the Latest ACR Images with Scheduled acr purge Tasks
-6. ACR Tags vs. Manifests: How to Delete Images Without Breaking Deployments
-7. Preventing Production Image Overwrites with Immutable ACR Tags
-8. Rebuilding Images Automatically When an ACR Base Image Changes
-9. Troubleshooting ACR Tasks That Cannot Build, Pull, or Start
-10. Why ACR Pushes and Pulls Are Slow—and How to Improve Throughput
-11. ACR Zone Redundancy vs. Geo-Replication: Availability, Latency, and Cost
-12. Scanning ACR Images for Vulnerabilities and Blocking Unsafe Deployments
-13. Monitoring Azure Container Registry with Diagnostic Logs, Metrics, and Webhooks
+1. How to Build and Push to a Private ACR from GitHub Actions or Azure DevOps
+2. Least-Privilege ACR Access: AcrPull, AcrPush, Repository Permissions, and Scope Maps
+3. Pulling ACR Images Across Azure Subscriptions and Microsoft Entra Tenants
+4. Keeping Only the Latest ACR Images with Scheduled acr purge Tasks
+5. ACR Tags vs. Manifests: How to Delete Images Without Breaking Deployments
+6. Preventing Production Image Overwrites with Immutable ACR Tags
+7. Rebuilding Images Automatically When an ACR Base Image Changes
+8. Troubleshooting ACR Tasks That Cannot Build, Pull, or Start
+9. Why ACR Pushes and Pulls Are Slow—and How to Improve Throughput
+10. ACR Zone Redundancy vs. Geo-Replication: Availability, Latency, and Cost
+11. Scanning ACR Images for Vulnerabilities and Blocking Unsafe Deployments
+12. Monitoring Azure Container Registry with Diagnostic Logs, Metrics, and Webhooks
 
 ## Ansible
 
