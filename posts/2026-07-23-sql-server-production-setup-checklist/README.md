@@ -107,7 +107,7 @@ Map each workload to measurable latency, throughput, capacity, durability, and r
 
 Separate volumes can provide independent capacity, failure, and performance control, but different drive letters backed by the same saturated storage do not provide isolation. Confirm that the entire I/O path honors SQL Server write-ahead logging requirements. Do not place database or log files on a filesystem-compressed volume.
 
-Pre-size data and log files to avoid predictable autogrowth during peak load. Keep autogrowth enabled as a safety mechanism, alert on it, and choose meaningful fixed increments. Grant the Database Engine service the `Perform volume maintenance tasks` right when instant file initialization is approved; remember that its behavior and log-file support vary by SQL Server version, so do not use it as a substitute for pre-sizing.
+Pre-size data and log files to avoid predictable autogrowth during peak load. Keep autogrowth enabled as a safety mechanism, alert on it, and choose meaningful fixed increments. On Windows, grant the Database Engine service SID the `Perform volume maintenance tasks` right when instant file initialization is approved; remember that its behavior and log-file support vary by SQL Server version, so do not use it as a substitute for pre-sizing.
 
 ## Use Isolated, Low-Privilege Service Identities
 
@@ -130,7 +130,7 @@ Before cutover, run a representative workload and a controlled service restart. 
 2. the OS retains healthy available memory under load;
 3. data, log, TempDB, and backup latency remain within the tested target;
 4. SQL Server Agent jobs and remote-share access work under their service identities;
-5. full and log backups complete with checksums and can be restored on an isolated instance;
+5. full backups and, for databases that use the full or bulk-logged recovery model, log backups complete with checksums and can be restored on an isolated instance;
 6. monitoring captures disk capacity, file growth, memory pressure, failed jobs, and SQL Server errors.
 
 Export the final configuration and record why each nondefault value exists. A production checklist is complete only when another operator can rebuild and verify the same instance without relying on undocumented knowledge.
