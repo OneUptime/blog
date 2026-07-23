@@ -28,7 +28,7 @@ Simple recovery automatically reclaims inactive log space after checkpoints, sub
 
 Suppose a full backup runs Sunday and differential backups run every four hours. If the database is lost at 15:59, the latest recoverable state may be the 12:00 differential; changes after that point are exposed to loss. More frequent data backups can reduce the exposure, but they are not a substitute for log backups when a minutes-level RPO is required.
 
-Simple recovery also cannot support features that depend on a log backup chain, including log shipping and Always On availability groups. It is appropriate only when the stated recovery requirement accepts these limits.
+Simple recovery also cannot support log shipping or Always On availability groups. Log shipping depends on transaction-log backups, while availability-group databases must use the full recovery model. It is appropriate only when the stated recovery requirement accepts these limits.
 
 ## Full Recovery
 
@@ -42,7 +42,7 @@ Full recovery is required for an availability-group database. It is also the nor
 
 Bulk-logged recovery is a variation of full recovery. Certain qualifying bulk operations can be minimally logged, reducing log-record volume for those operations. It does not make arbitrary `INSERT`, `UPDATE`, or `DELETE` statements minimally logged, and the exact eligibility depends on the operation, table conditions, and other requirements.
 
-The recovery tradeoff is critical: if a log backup contains minimally logged changes, SQL Server must include the changed data extents in that log backup. The backup can therefore be large, and you cannot restore to an arbitrary point inside that log backup; you restore it through its end. Any data files containing the bulk changes must remain accessible for the log backup to capture them.
+The recovery tradeoff is critical: if a log backup contains minimally logged changes, SQL Server must include the changed data extents in that log backup. The backup can therefore be large, and you cannot restore to an arbitrary point inside that log backup; you restore it through its end. If the database contains bulk-logged changes, all of its data files must remain online for the log backup to succeed.
 
 Use bulk-logged only for a planned window when:
 
@@ -101,7 +101,7 @@ TO DISK = N'E:\SQLBackups\Sales_log_20260723_1430.trn'
 WITH CHECKSUM, COMPRESSION, STATS = 10;
 ```
 
-Paths and media policies are examples. Keep these files together with their encryption keys, retention metadata, and off-host copies.
+Paths and media policies are examples. The `COMPRESSION` option requires Enterprise, Standard, or Developer edition; omit it on unsupported editions. Retain any required encryption certificates or asymmetric keys in a separate protected location, along with retention metadata and off-host backup copies.
 
 Moving from full or bulk-logged to simple breaks the log backup chain. If you later return to full, establish a new chain with a data backup. Never switch to simple as an emergency shrink technique; resolve the actual `log_reuse_wait_desc` and preserve the recovery policy.
 
@@ -119,7 +119,7 @@ TO DISK = N'E:\SQLBackups\Warehouse_bulk_window.trn'
 WITH CHECKSUM, COMPRESSION;
 ```
 
-The pre-window log backup establishes a clear recovery boundary. The backup taken immediately after returning to full contains the bulk-window changes, so the runbook must identify it and document how it affects point-in-time restore choices.
+The pre-window log backup establishes a clear recovery boundary. Any log backup that spans bulk-window changes—including, in this example, the backup taken immediately after returning to full—must be identified in the runbook, along with how it affects point-in-time restore choices. If scheduled log backups run during the window, more than one backup can require this handling.
 
 ## Choose from RPO and Restore Tests
 
