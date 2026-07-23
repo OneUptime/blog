@@ -8,7 +8,7 @@ Description: Build SQL Server access around separate identities, user-defined ro
 
 ---
 
-Least privilege means an identity can perform the operations its current responsibility requires—and nothing more. In SQL Server, implement it through a chain of principals: authenticate a login, map it to a database user, place the user in a purpose-built role, and grant the role narrowly scoped permissions.
+Least privilege means an identity can perform the operations its current responsibility requires—and nothing more. With login-based authentication in SQL Server, implement it through a chain of principals: authenticate a login, map it to a database user, place the user in a purpose-built role, and grant the role narrowly scoped permissions.
 
 Do not make the application `db_owner` because permission analysis is inconvenient. That turns an injection flaw or stolen credential into authority to change schema, permissions, and data across the database.
 
@@ -111,7 +111,9 @@ GRANT CREATE PROCEDURE TO [deploy_sales_schema];
 GRANT CREATE VIEW TO [deploy_sales_schema];
 ```
 
-Whether migrations require table creation, index operations, or permission changes depends on the release design. Do not grant `CONTROL DATABASE` when a smaller combination works. Keep deployment credentials out of the running application's configuration.
+Review schema ownership and the deployment principal's other grants before making these grants. With `ALTER` on a schema, permission to create modules, and permission to execute or select from those modules as applicable, a principal can use ownership chaining to reach objects in other schemas that share the same owner.
+
+Whether migrations require table creation, index operations, or permission changes depends on the release design. Do not grant `CONTROL` on the database when a smaller combination works. Keep deployment credentials out of the running application's configuration.
 
 ## Design Administrative Roles by Task
 
@@ -141,6 +143,8 @@ Reserve `sysadmin` for tightly controlled break-glass and platform administratio
 
 ## Review Grants, Denies, Ownership, and Membership
 
+Run catalog queries with a principal that has sufficient metadata visibility; otherwise, they can omit rows.
+
 List role memberships:
 
 ```sql
@@ -156,7 +160,7 @@ JOIN sys.database_principals AS member_principal
 ORDER BY role_name, member_name;
 ```
 
-List explicit database permissions:
+List explicit schema permissions:
 
 ```sql
 SELECT
