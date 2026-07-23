@@ -12,7 +12,7 @@ OSV-Scanner v2 can treat SPDX and CycloneDX SBOMs as package inventories. The de
 
 ## Use a recognized SBOM filename
 
-Automatic detection follows each specification's naming conventions.
+Automatic detection relies on filename patterns documented by OSV-Scanner.
 
 Supported SPDX patterns include:
 
@@ -33,7 +33,7 @@ bom.xml
 *.cdx.xml
 ```
 
-In OSV-Scanner v2 there is no need for the old v1 `--sbom` flag. The migration guide states that SBOM scanning now relies on the filename.
+In OSV-Scanner v2, the old `--sbom` flag remains only as a deprecated compatibility option. Use `--lockfile` or `-L`; the migration guide states that SBOM scanning now relies on the filename.
 
 ## Scan one SBOM explicitly
 
@@ -76,7 +76,7 @@ pkg:cargo/serde@1.0.203
 pkg:maven/org.example/widget@4.2.1
 ```
 
-In SPDX 2.x, place the purl in a package external reference with reference type `purl`. In CycloneDX, use the component's `purl` property.
+In SPDX 2.3, place the purl in a package external reference with category `PACKAGE-MANAGER` and reference type `purl`. In CycloneDX, use the component's `purl` property.
 
 A component name and version without an ecosystem does not provide enough information for package-native OSV matching. Likewise, an unversioned purl identifies a package but cannot establish whether a version lies in an affected range.
 
@@ -84,7 +84,7 @@ Qualifiers can be significant for operating-system packages. Preserve generator-
 
 ## Verify the inventory first
 
-Ask OSV-Scanner to return all packages, not only vulnerable ones:
+Ask OSV-Scanner to return all non-ignored packages, not only vulnerable ones:
 
 ```bash
 osv-scanner scan source \
@@ -100,6 +100,8 @@ Then compare counts and identities:
 jq '[.results[].packages[]] | length' inventory-and-vulns.json
 jq '.results[].packages[].package' inventory-and-vulns.json
 ```
+
+`PackageOverrides` entries with the `ignore` action take precedence over `--all-packages`, so account for the active `osv-scanner.toml` when reconciling counts.
 
 Check that expected direct and transitive packages appear with the right versions and ecosystems. An SBOM can be syntactically valid yet omit build-stage dependencies, optional groups, vendored code, or runtime packages.
 
@@ -146,4 +148,3 @@ SBOM scanning is only as complete as the inventory. Pair package-count checks wi
 - [Package URL specification](https://github.com/package-url/purl-spec)
 - [SPDX 2.3 file naming conventions](https://spdx.github.io/spdx-spec/v2.3/conformance/)
 - [CycloneDX recognized file patterns](https://cyclonedx.org/specification/overview/#recognized-file-patterns)
-
