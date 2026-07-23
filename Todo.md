@@ -2,21 +2,20 @@
 
 ## SQL Server
 
-1. SQL Server Blocking vs. Deadlocks: How to Capture and Fix Both
-2. Why the SQL Server Transaction Log Keeps Growing—and How to Stop It Safely
-3. SQL Server Recovery Models Explained: Simple, Full, and Bulk-Logged
-4. How to Build and Test a SQL Server Backup Strategy That Meets Your RPO
-5. How to Restore SQL Server to a Point in Time Without Breaking the Log Chain
-6. Migrating SQL Server with Minimal Downtime Using Full, Log, and Tail-Log Backups
-7. In-Place Upgrade or Side-by-Side Migration? Choosing a Safe SQL Server Upgrade Path
-8. How to Repair an Unsynchronized SQL Server Availability Group Secondary
-9. SQL Server Availability Group Backups: Which Replica Should Run Each Job?
-10. Fixing Orphaned SQL Server Users and SID Mismatches After a Restore
-11. Encrypting SQL Server Connections: Certificates, TLS Errors, and TrustServerCertificate
-12. Designing Least-Privilege SQL Server Roles for Applications and Administrators
-13. How to Monitor SQL Server Before Users Report a Performance Problem
-14. SQL Server TempDB Contention: Symptoms, Root Causes, and Configuration Fixes
-15. DBCC CHECKDB Found Corruption: A Safe SQL Server Recovery Playbook
+1. Why the SQL Server Transaction Log Keeps Growing—and How to Stop It Safely
+2. SQL Server Recovery Models Explained: Simple, Full, and Bulk-Logged
+3. How to Build and Test a SQL Server Backup Strategy That Meets Your RPO
+4. How to Restore SQL Server to a Point in Time Without Breaking the Log Chain
+5. Migrating SQL Server with Minimal Downtime Using Full, Log, and Tail-Log Backups
+6. In-Place Upgrade or Side-by-Side Migration? Choosing a Safe SQL Server Upgrade Path
+7. How to Repair an Unsynchronized SQL Server Availability Group Secondary
+8. SQL Server Availability Group Backups: Which Replica Should Run Each Job?
+9. Fixing Orphaned SQL Server Users and SID Mismatches After a Restore
+10. Encrypting SQL Server Connections: Certificates, TLS Errors, and TrustServerCertificate
+11. Designing Least-Privilege SQL Server Roles for Applications and Administrators
+12. How to Monitor SQL Server Before Users Report a Performance Problem
+13. SQL Server TempDB Contention: Symptoms, Root Causes, and Configuration Fixes
+14. DBCC CHECKDB Found Corruption: A Safe SQL Server Recovery Playbook
 
 ## ACR
 
