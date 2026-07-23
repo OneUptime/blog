@@ -22,18 +22,21 @@ osv-scanner scan source \
   --output-file=osv-python.json
 ```
 
-Inspect the package, version, source, and any resolution messages:
+Inspect each package, resolved version, source, and vulnerabilities:
 
 ```bash
 jq '.results[]
     | select(.source.path | endswith("requirements.txt"))
+    | .source as $source
     | .packages[]
-    | {package, vulnerabilities}' osv-python.json
+    | {source: $source, package, vulnerabilities}' osv-python.json
 ```
+
+Resolution warnings are written to the scan's stderr, so review the scan log as well as the JSON file.
 
 The critical question is not “Is the advisory false?” It is “Does this extracted version equal the version in the artifact or environment I am protecting?”
 
-OSV-Scanner v2 uses OSV-Scalibr for extraction. Version 2.3.5 and later enable deps.dev-based transitive resolution for `requirements.txt` by default. The resulting graph describes what that resolver selected for its current inputs; a range can resolve differently across Python versions, platforms, indexes, dates, and constraints. It is not automatically proof of a particular deployment.
+OSV-Scanner v2 uses OSV-Scalibr for extraction. Version 2.3.5 and later enable deps.dev-based transitive resolution for `requirements.txt` by default. The resulting graph describes what the deps.dev resolver selected from public ecosystem data; it does not reproduce pip's target interpreter, platform, index options, or constraints. A real pip resolution can vary across Python versions, platforms, indexes, available releases over time, and constraints. The graph is not automatically proof of a particular deployment.
 
 ## Reproduce the target environment
 
@@ -44,7 +47,7 @@ python -m pip install -r requirements.txt
 python -m pip freeze --all > requirements.resolved.txt
 ```
 
-Then scan the exact pins with an explicit parser type:
+Then scan the generated snapshot with an explicit parser type:
 
 ```bash
 osv-scanner scan source \
@@ -73,9 +76,9 @@ This distinction avoids both failure modes:
 
 ## Include constraints and referenced files
 
-Python requirement files can include other files with `-r`. OSV-Scanner's requirements extractor follows referenced requirement files, but the resolver still needs all inputs used by the real build. Make the scan root and paths reproduce CI's layout.
+Python requirement files can include other files with `-r`. OSV-Scanner's requirements extractor follows those references. Make the scan root and paths reproduce CI's layout.
 
-If production uses a constraints file, private index, environment marker, extra, or platform-specific wheel, preserve that context. A resolution against public defaults may legitimately differ from a private build.
+The extractor does not apply `-c` constraints or pip index options when it creates the dependency graph, and deps.dev resolution is not a target-platform pip install. If production uses a constraints file, private index, environment marker, extra, or platform-specific wheel, generate and scan the resolved artifact in that real build context. A resolution against public defaults may legitimately differ from a private build.
 
 Use `--all-packages --format=json` to verify transitive packages and source paths after every change. Do not assume a successful command means every indirect dependency was represented.
 
@@ -96,7 +99,7 @@ If the extracted and deployed versions match but the affected range is wrong, re
 
 ## Use exceptions only for residual cases
 
-After verifying inventory and advisory data, an exception may still be appropriate for an unreachable code path or accepted deployment condition. Record the advisory ID, concrete package version, evidence, owner, reason, and an expiry date in `osv-scanner.toml`.
+After verifying inventory and advisory data, an exception may still be appropriate for an unreachable code path or accepted deployment condition. In `osv-scanner.toml`, record the advisory ID with `id`, the explanation with `reason`, and an expiry date with `ignoreUntil`; include the concrete package version, evidence, and owner in the reason or a linked exception record.
 
 An ignore is not a substitute for resolving ranges. When a future install can choose another version, the exception can hide a real regression while leaving no record of which version was originally reviewed.
 
@@ -106,5 +109,5 @@ An ignore is not a substitute for resolving ranges. When a future install can ch
 - [OSV-Scanner source scanning and explicit parser syntax](https://google.github.io/osv-scanner/usage/scan-source)
 - [OSV-Scanner output and JSON format](https://google.github.io/osv-scanner/output/)
 - [OSV-Scanner configuration and timed ignores](https://google.github.io/osv-scanner/configuration/)
-- [OSV-Scalibr requirements extraction and resolution source](https://github.com/google/osv-scalibr/tree/main/enricher/transitivedependency/requirements)
+- [OSV-Scalibr requirements extraction source](https://github.com/google/osv-scalibr/tree/main/extractor/filesystem/language/python/requirements) and [resolution source](https://github.com/google/osv-scalibr/tree/main/enricher/transitivedependency/requirements)
 - [OSV-Scanner v2.3.5 release notes](https://github.com/google/osv-scanner/releases/tag/v2.3.5)
