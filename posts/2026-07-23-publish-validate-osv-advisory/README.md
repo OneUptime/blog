@@ -83,10 +83,10 @@ The OSV.dev quality bar requires package-level precision. A record can pass JSON
 
 ## Validate against the official JSON Schema
 
-Clone or pin a release of the schema repository so validation is reproducible:
+Clone the schema repository, then pin the commit or release used for validation so the result is reproducible:
 
 ```bash
-git clone https://github.com/ossf/osv-schema.git
+git clone --branch v1.8.0 --depth 1 https://github.com/ossf/osv-schema.git
 cd osv-schema
 ```
 
@@ -114,7 +114,7 @@ Run this in CI for every changed JSON file. Pin the schema commit or release use
 JSON Schema checks shape and allowed fields. The official linter adds quality checks for affected data, relationship fields, introduced events, distinct ranges, package existence, package versions, and purls.
 
 ```bash
-cd osv-schema/tools/osv-linter
+cd tools/osv-linter
 go run ./cmd/osv record lint /path/to/advisory.json
 ```
 
@@ -146,7 +146,7 @@ The test import-finding endpoint and linter results are part of onboarding; a gr
 
 ## Maintain the record after publication
 
-Update `modified` whenever the record changes. Add aliases when identifiers are assigned, correct ranges when new branches or fixes are discovered, and set `withdrawn` with a rationale rather than silently deleting a published ID.
+Update `modified` whenever the record changes. Add aliases when identifiers are assigned, correct ranges when new branches or fixes are discovered, and set `withdrawn` while putting the rationale in `summary` rather than silently deleting a published ID.
 
 Keep advisory generation deterministic and retain source evidence for every boundary. Consumers use these fields to make automated upgrade decisions, so precision is more valuable than verbose prose.
 
