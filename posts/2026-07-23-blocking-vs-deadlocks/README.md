@@ -8,11 +8,11 @@ Description: Distinguish SQL Server blocking chains from deadlock cycles, captur
 
 ---
 
-Blocking and deadlocks both involve incompatible locks, but they are different incidents.
+Blocking and deadlocks are often discussed together because both commonly involve incompatible locks, but they are different incidents. Deadlocks can also involve non-lock resources such as worker threads or communication buffers.
 
 **Blocking** is a wait: one session holds a lock and another waits for it. Short blocking is expected in a lock-based relational database. It becomes a problem when the holder runs too long, leaves a transaction open, or creates an unacceptable queue.
 
-A **deadlock** is a cycle: each participant waits for a resource held by another participant in the cycle. SQL Server detects the cycle, selects a victim, rolls back that victim's transaction, and returns error 1205. The other transaction can continue.
+A **deadlock** is a cycle: each participant waits for a resource held by another participant in the cycle. SQL Server detects the cycle, selects a victim, rolls back that victim's transaction, and returns error 1205. The other participants can continue.
 
 Treating both as “kill the blocker” loses the evidence required for a durable fix.
 
@@ -48,7 +48,9 @@ WHERE r.session_id <> @@SPID
 ORDER BY r.blocking_session_id DESC, r.session_id;
 ```
 
-Walk `blocking_session_id` values until reaching the session that is not itself blocked: the head blocker. A head blocker may be sleeping and therefore absent from `sys.dm_exec_requests`; correlate `sys.dm_exec_sessions`, `sys.dm_tran_session_transactions`, and `sys.dm_tran_active_transactions` to find a session with an open transaction.
+Seeing other sessions requires `VIEW SERVER STATE` on SQL Server 2019 and earlier, or `VIEW SERVER PERFORMANCE STATE` on SQL Server 2022 and later.
+
+Walk positive `blocking_session_id` values until reaching the session that is not itself blocked: the head blocker. Negative values identify special owners such as orphaned distributed or deferred recovery transactions, or latch owners whose session ID is unavailable. A head blocker may be sleeping and therefore absent from `sys.dm_exec_requests`; correlate `sys.dm_exec_sessions`, `sys.dm_tran_session_transactions`, and `sys.dm_tran_active_transactions` to find a session with an open transaction.
 
 Record the chain repeatedly with timestamps. One DMV snapshot can disappear as soon as a lock is released and cannot show how the queue evolved.
 
@@ -60,6 +62,8 @@ SQL Server does not emit blocked process reports by default. Configure a thresho
 EXEC sys.sp_configure 'show advanced options', 1;
 RECONFIGURE;
 EXEC sys.sp_configure 'blocked process threshold (s)', 10;
+RECONFIGURE;
+EXEC sys.sp_configure 'show advanced options', 0;
 RECONFIGURE;
 ```
 
@@ -78,6 +82,8 @@ ADD TARGET package0.event_file
 
 ALTER EVENT SESSION [ConcurrencyEvidence] ON SERVER STATE = START;
 ```
+
+Before starting the session, replace the filename with a path to an existing local directory that the SQL Server service account can write to. On Azure SQL Managed Instance, an `event_file` target must use Azure Storage instead of a local path.
 
 The blocked process report includes blocked and blocking process details, lock modes, resources, and execution context. Secure the files because SQL text can contain sensitive values. Disable the session and reset the threshold if the capture was temporary.
 
