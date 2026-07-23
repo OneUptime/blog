@@ -103,7 +103,7 @@ Do not compare a cumulative lifetime average with a five-minute incident. Store 
 
 ## Make Query Store the Regression Record
 
-For SQL Server 2016 and later, Query Store can retain query texts, plans, and runtime statistics across plan-cache eviction and restart. SQL Server 2022 enables it by default for newly created databases, but upgraded and older databases require explicit state verification.
+For SQL Server 2016 and later, Query Store can retain query texts, plans, and runtime statistics across plan-cache eviction and restart. Starting with SQL Server 2022, it is enabled by default for newly created databases, but upgraded and older databases require explicit state verification.
 
 ```sql
 SELECT
@@ -124,8 +124,8 @@ Use Query Store to trend:
 - weighted duration, CPU, logical reads, writes, and memory by query and plan;
 - execution count and maximum/tail behavior per interval;
 - plan changes after deployments or statistics updates;
-- parameter-sensitive distributions;
-- forced-plan and Query Store hint success/failure.
+- runtime variability that can indicate parameter-sensitive behavior;
+- forced-plan success/failure and, on SQL Server 2022 and later, Query Store hint success/failure.
 
 Keep query text and plans under sensitive-data controls. They can expose object names and literal values.
 
@@ -149,7 +149,7 @@ Performance monitoring that ignores recovery is incomplete. Alert on:
 - data, log, TempDB, and backup-volume free capacity;
 - file autogrowth frequency and duration;
 - transaction-log used percentage and `log_reuse_wait_desc`;
-- full, differential, and log backup age against RPO;
+- age of the full, differential, and log backups required by the recovery model and restore strategy against RPO;
 - backup transfer/retention and encryption-key availability;
 - last successful isolated restore and `DBCC CHECKDB` evidence;
 - SQL Server Agent failures and jobs running beyond their baseline;
@@ -201,7 +201,7 @@ Test alert delivery and runbooks during planned fault exercises. Track false pos
 
 ## Grant Monitoring Access Deliberately
 
-Many server-scoped DMVs require `VIEW SERVER STATE` on SQL Server 2019 and earlier. SQL Server 2022 and later introduced `VIEW SERVER PERFORMANCE STATE` for many performance DMVs. Grant only the target-version permissions the collector needs, protect its credential, and review its access to query text and security-sensitive state.
+Many server-scoped DMVs require `VIEW SERVER STATE` on SQL Server 2019 and earlier. Starting with SQL Server 2022, many performance DMVs instead require `VIEW SERVER PERFORMANCE STATE`. Grant only the target-version permissions the collector needs, protect its credential, and review its access to query text and security-sensitive state.
 
 Finally, monitor the monitor: sample lag, dropped events, Query Store state, collector errors, clock skew, storage use, and alert-delivery failure should all be visible before the next SQL Server incident.
 
