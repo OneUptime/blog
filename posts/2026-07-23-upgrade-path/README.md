@@ -24,7 +24,7 @@ Neither path is automatically safest. The right choice depends on supported upgr
 | Pre-write fallback | Requires a tested server-level recovery plan | Source can remain intact until target writes are enabled |
 | Complexity | Lower movement complexity, higher change concentration | More dependency and cutover work |
 
-Once an upgraded database is recovered and written on a newer Database Engine, a database backup cannot be restored to an older SQL Server version. Side-by-side preserves a clean fallback only until writes begin on the target; after that, the copies diverge unless a separately engineered reverse path exists.
+After an older database is restored or attached to a newer Database Engine, SQL Server upgrades it; a backup subsequently taken by that newer version cannot be restored to an older SQL Server version. Side-by-side preserves a clean fallback only until writes begin on the target; after that, the copies diverge unless a separately engineered reverse path exists.
 
 ## Apply Hard Support Gates First
 
