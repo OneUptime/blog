@@ -8,13 +8,13 @@ Description: Stage OSV ecosystem databases, transfer them into a restricted envi
 
 ---
 
-OSV-Scanner v2 has an official offline mode that matches extracted packages against local OSV ecosystem databases. Full `--offline` mode does not download or update the database and does not send project or dependency information anywhere.
+OSV-Scanner v2 has an official offline mode that matches extracted packages against local OSV ecosystem databases. Used without `--download-offline-databases`, full `--offline` mode does not download or update the database and does not send project or dependency information anywhere.
 
 Offline operation has two separate jobs: update the database in a connected staging environment, then scan with network access unavailable in the restricted environment.
 
 ## Choose the correct flag
 
-The two similarly named modes have different privacy guarantees:
+Without `--download-offline-databases`, the two similarly named modes have different privacy guarantees:
 
 | Flag | Vulnerability data | Other features |
 |---|---|---|
@@ -148,4 +148,3 @@ A local database protects dependency privacy, but only explicit provenance, comp
 - [OSV-Scanner supported artifacts and manifest-resolution limits](https://google.github.io/osv-scanner/supported-languages-and-lockfiles/)
 - [OSV.dev downloadable data](https://google.github.io/osv.dev/data/)
 - [Public OSV vulnerability bucket](https://osv-vulnerabilities.storage.googleapis.com/)
-
