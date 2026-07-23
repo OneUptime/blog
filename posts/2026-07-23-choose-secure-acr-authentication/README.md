@@ -93,7 +93,7 @@ That role is correct for an ABAC-enabled registry. On a legacy RBAC registry, us
 On a VM with the identity attached, a diagnostic login can use the identity without a password if it also has the separate control-plane permission required by `az acr login`:
 
 ```bash
-az login --identity
+az login --identity --object-id "$IDENTITY_PRINCIPAL_ID"
 az acr login --name "$ACR_NAME"
 docker pull '<login-server>/orders/api:<immutable-tag>'
 ```
