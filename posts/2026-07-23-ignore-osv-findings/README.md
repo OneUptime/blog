@@ -96,10 +96,10 @@ If the advisory data is wrong, report it at the authoritative source. A local ig
 
 ## Audit the effective policy
 
-For each scan, retain the config digest and scanner version. Review all active exceptions with:
+For each scan, retain the config digest and scanner version. Locate exception entries for review with:
 
 ```bash
-rg -n '\[\[IgnoredVulns\]\]|ignoreUntil|effectiveUntil|reason' \
+rg -n '^\[\[(IgnoredVulns|PackageOverrides)\]\]|^(id|name|nameIsRegex|version|ecosystem|group|ignore|vulnerability\.ignore|ignoreUntil|effectiveUntil|reason)\s*=' \
   --glob 'osv-scanner.toml'
 ```
 
@@ -113,4 +113,3 @@ An exception is safe only while its assumptions remain true. Short scope, explic
 - [OSV-Scanner output and alias grouping](https://google.github.io/osv-scanner/output/)
 - [OSV schema alias definition](https://ossf.github.io/osv-schema/)
 - [OSV.dev FAQ: correcting bad source data](https://google.github.io/osv.dev/faq/)
-
