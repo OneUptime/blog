@@ -25,8 +25,8 @@ The complete archive includes withdrawn records:
 ```bash
 curl -fL \
   https://storage.googleapis.com/osv-vulnerabilities/all.zip \
-  -o all.zip
-unzip -q all.zip -d osv-snapshot
+  -o all.zip &&
+  unzip -q all.zip -d osv-snapshot
 ```
 
 For PyPI only:
@@ -63,6 +63,8 @@ Records without an ecosystem—often withdrawn records—are exported under `[EM
 Download and validate a candidate snapshot outside the live mirror path:
 
 ```bash
+set -euo pipefail
+
 candidate_dir=$(mktemp -d)
 curl -fL \
   https://storage.googleapis.com/osv-vulnerabilities/all.zip \
@@ -87,7 +89,7 @@ Top-level rows have this shape:
 2026-07-23T08:29:00Z,Go/GO-2026-5678
 ```
 
-Per-ecosystem rows omit the directory prefix. Files are sorted in reverse chronological order, so a client can stream until it reaches an already processed timestamp.
+Per-ecosystem rows omit the directory prefix. The files are documented as sorted in reverse chronological order. However, the current exporter formats timestamps with variable-length fractional seconds and sorts those strings, so rows within one second can be slightly out of chronological order. Parse the full CSV and select every row newer than your overlap boundary rather than stopping at the first timestamp you have processed.
 
 ```bash
 curl -fsSL \
@@ -111,7 +113,7 @@ For every candidate record:
 
 1. Parse the JSON before opening a transaction.
 2. Locate the existing row by `id`.
-3. Compare RFC 3339 `modified` timestamps.
+3. Parse the RFC 3339 `modified` timestamps and compare instants, not timestamp strings.
 4. Replace only with a newer record, or verify equality if timestamps match.
 5. Preserve `withdrawn` state.
 6. Update affected-package and alias indexes in the same transaction.
@@ -120,13 +122,13 @@ The OSV schema says that the later `modified` entry for one ID is authoritative.
 
 ## Reconcile with periodic full snapshots
 
-Incremental synchronization should be paired with periodic full downloads. A full comparison catches client bugs, old records missed before the retained index window, and lifecycle edge cases.
+Incremental synchronization should be paired with periodic full downloads. A full comparison catches client bugs, records missed by earlier incremental runs, and lifecycle edge cases.
 
-Do not infer deletion because an ID is absent from `modified_id.csv`; the file lists recent changes, not the entire database. Also account for OSV.dev's current source-specific deletion behavior: explicit withdrawals are retained, GCS deletions are converted to withdrawals, and Git or REST deletions may currently leave orphaned records.
+Do not infer deletion because an ID is absent from the rows newer than your high-water mark; that slice lists changes, not the entire database. The current exporter rebuilds the complete CSV from every exported vulnerability, but the CSV does not emit deletion events, so reconcile removals against the periodic full snapshot. Also account for OSV.dev's current source-specific deletion behavior: explicit withdrawals are retained, GCS deletions are converted to withdrawals, and Git or REST deletions may currently leave orphaned records.
 
 A useful mirror audit records:
 
-- export URL and retrieval time;
+- export URL, retrieval time, and object generation or checksum;
 - last successfully processed modification point;
 - counts by ecosystem and withdrawn state;
 - rejected or unparsable records;
@@ -141,4 +143,3 @@ This turns the mirror into a reproducible data product rather than a directory o
 - [OSV.dev FAQ: database download and recent changes](https://google.github.io/osv.dev/faq/)
 - [Public OSV vulnerability bucket](https://storage.googleapis.com/osv-vulnerabilities/index.html)
 - [OpenSSF OSV schema: ID and modified fields](https://ossf.github.io/osv-schema/)
-
