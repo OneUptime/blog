@@ -8,7 +8,7 @@ Description: Select an ACR tier from required features, storage, concurrency, an
 
 ---
 
-Choose Standard for a typical single-region production registry, Basic for low-volume development or evaluation, and Premium when a Premium-only capability or materially higher concurrency is required. Storage alone is rarely the deciding factor because every tier can exceed its included allowance, up to its hard storage limit, with additional storage billed separately.
+Choose Standard for a typical single-region production registry, Basic for low-volume development or evaluation, and Premium when a Premium-only capability or materially higher concurrency is required. Storage alone is rarely the deciding factor because every tier can exceed its included allowance, up to its documented storage limit, with additional storage billed separately.
 
 ## Start with the Feature Gate
 
@@ -17,7 +17,7 @@ The current service tiers share the same registry APIs and core capabilities: Mi
 | Requirement | Basic | Standard | Premium |
 | --- | --- | --- | --- |
 | Included storage | 10 GiB | 100 GiB | 500 GiB |
-| Maximum registry storage | 40 TiB | 40 TiB | 100 TiB |
+| Documented registry storage limit | 40 TiB | 40 TiB | 100 TiB |
 | Webhooks | 2 | 10 | 500 |
 | Microsoft Entra repository permissions | yes | yes | yes |
 | Non-Entra tokens and scope maps | yes | yes | yes |
@@ -29,7 +29,7 @@ The current service tiers share the same registry APIs and core capabilities: Mi
 | Geo-replication | no | no | yes |
 | Dedicated data endpoints | no | no | yes |
 | Customer-managed keys | no | no | yes |
-| Artifact streaming | no | no | yes |
+| Artifact streaming | no | no | yes (preview) |
 | Connected registries | no | no | yes |
 
 These are documented service limits, not a pricing table. Included storage is part of the tier's daily rate; usage above it is charged per GiB until the tier's storage limit. Consult Azure's live pricing page for monetary comparisons because rates vary by region and can change.
@@ -80,11 +80,11 @@ Premium has the highest API request rates, authentication and authorization capa
 
 ### Premium-only governance and edge features
 
-Customer-managed keys, connected registries, artifact streaming, retention policy for untagged manifests, export policy, artifact transfer, content trust, and dedicated ACR Tasks agent pools are Premium-only in the current feature table. Docker Content Trust can no longer be enabled on a registry that did not already have it enabled by May 31, 2026, and ACR is scheduled to remove it completely on March 31, 2028, so it is not a reason to select Premium for a new design. Confirm the lifecycle and regional support of every optional feature before making it an architectural dependency.
+Customer-managed keys, connected registries, artifact streaming, retention policy for untagged manifests, export policy, artifact transfer, content trust, and dedicated ACR Tasks agent pools are Premium-only in the current feature table. Artifact streaming, the retention policy for untagged manifests, and dedicated ACR Tasks agent pools are currently in preview. Docker Content Trust can no longer be enabled on a registry that did not already have it enabled by May 31, 2026, and ACR is scheduled to remove it completely on March 31, 2028, so it is not a reason to select Premium for a new design. Confirm the lifecycle and regional support of every optional feature before making it an architectural dependency.
 
 ## Understand How Pulls Consume Capacity
 
-One `docker pull` is not one registry request. A client authenticates, resolves a tag or digest, reads a manifest or index, and requests each missing layer. A multi-platform index or image with many layers increases request count. Hundreds of new nodes can repeat those operations concurrently.
+One `docker pull` is not one registry request. Depending on registry configuration, a client may authenticate before requesting a manifest or index by tag or digest and each missing layer. A multi-platform index or image with many layers increases request count. Hundreds of new nodes can repeat those operations concurrently.
 
 ACR enforces separate per-minute request limits for categories including:
 
