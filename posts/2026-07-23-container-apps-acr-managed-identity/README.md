@@ -225,13 +225,23 @@ SYSTEM_PRINCIPAL_ID=$(az containerapp identity show \
   --query principalId --output tsv)
 ```
 
-Assign `Container Registry Repository Reader` for an ABAC-enabled registry, or `AcrPull` for legacy RBAC:
+For an ABAC-enabled registry, assign `Container Registry Repository Reader`:
 
 ```bash
 az role assignment create \
   --assignee-object-id "$SYSTEM_PRINCIPAL_ID" \
   --assignee-principal-type ServicePrincipal \
   --role 'Container Registry Repository Reader' \
+  --scope "$ACR_ID"
+```
+
+For a legacy registry, assign `AcrPull` instead:
+
+```bash
+az role assignment create \
+  --assignee-object-id "$SYSTEM_PRINCIPAL_ID" \
+  --assignee-principal-type ServicePrincipal \
+  --role AcrPull \
   --scope "$ACR_ID"
 ```
 
@@ -319,7 +329,7 @@ Container Apps checks for a current image whenever a container starts. Use immut
 After the revision becomes healthy, verify these boundaries:
 
 - the app starts without any ACR password secret;
-- the pull identity has Reader, not Writer or Contributor;
+- the pull identity has only the pull role for its registry mode (`Container Registry Repository Reader` or `AcrPull`), not a write-capable role;
 - an ABAC condition limits it to `orders/api` when required;
 - the identity has no unrelated Azure roles; and
 - the private registry remains unreachable outside the approved network path.
