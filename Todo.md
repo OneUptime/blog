@@ -2,23 +2,22 @@
 
 ## OSV
 
-1. How to Read OSV Affected Ranges, Introduced Events, and Fixed Events
-2. Why One Vulnerability Has OSV, CVE, GHSA, and Ecosystem-Specific IDs
-3. Why a Vulnerability Is Missing from OSV.dev—and How to Report Bad Advisory Data
-4. How OSV Handles Withdrawn, Deleted, and Updated Vulnerability Records
-5. How to Publish and Validate an Advisory with the OSV Schema
-6. How to Query the OSV.dev API for One Package or an Entire Dependency Set
-7. How to Download, Mirror, and Incrementally Update the OSV Database
-8. How OSV-Scanner Finds Dependencies in Source Trees, Manifests, and Lockfiles
-9. Manifest vs. Lockfile Scanning: Why OSV-Scanner Needs Resolved Versions
-10. Fixing False Positives Caused by Version Ranges in requirements.txt
-11. How to Scan SPDX and CycloneDX SBOMs with OSV-Scanner
-12. Troubleshooting OSV-Scanner SBOM Parsing and Package URL Errors
-13. How to Scan Container Images with OSV-Scanner—and Understand Its Coverage
-14. How to Run OSV-Scanner in GitHub Actions and GitLab CI with Useful Exit Codes
-15. How to Triage OSV-Scanner Findings with Reachability and Call Analysis
-16. How to Ignore OSV Findings Safely with Reasons and Expiration Dates
-17. Offline OSV Scanning: Keeping Dependency Data Private in Restricted Environments
+1. Why One Vulnerability Has OSV, CVE, GHSA, and Ecosystem-Specific IDs
+2. Why a Vulnerability Is Missing from OSV.dev—and How to Report Bad Advisory Data
+3. How OSV Handles Withdrawn, Deleted, and Updated Vulnerability Records
+4. How to Publish and Validate an Advisory with the OSV Schema
+5. How to Query the OSV.dev API for One Package or an Entire Dependency Set
+6. How to Download, Mirror, and Incrementally Update the OSV Database
+7. How OSV-Scanner Finds Dependencies in Source Trees, Manifests, and Lockfiles
+8. Manifest vs. Lockfile Scanning: Why OSV-Scanner Needs Resolved Versions
+9. Fixing False Positives Caused by Version Ranges in requirements.txt
+10. How to Scan SPDX and CycloneDX SBOMs with OSV-Scanner
+11. Troubleshooting OSV-Scanner SBOM Parsing and Package URL Errors
+12. How to Scan Container Images with OSV-Scanner—and Understand Its Coverage
+13. How to Run OSV-Scanner in GitHub Actions and GitLab CI with Useful Exit Codes
+14. How to Triage OSV-Scanner Findings with Reachability and Call Analysis
+15. How to Ignore OSV Findings Safely with Reasons and Expiration Dates
+16. Offline OSV Scanning: Keeping Dependency Data Private in Restricted Environments
 
 ## SQL Server
 
