@@ -2,12 +2,11 @@
 
 ## SQL Server
 
-1. Fixing Orphaned SQL Server Users and SID Mismatches After a Restore
-2. Encrypting SQL Server Connections: Certificates, TLS Errors, and TrustServerCertificate
-3. Designing Least-Privilege SQL Server Roles for Applications and Administrators
-4. How to Monitor SQL Server Before Users Report a Performance Problem
-5. SQL Server TempDB Contention: Symptoms, Root Causes, and Configuration Fixes
-6. DBCC CHECKDB Found Corruption: A Safe SQL Server Recovery Playbook
+1. Encrypting SQL Server Connections: Certificates, TLS Errors, and TrustServerCertificate
+2. Designing Least-Privilege SQL Server Roles for Applications and Administrators
+3. How to Monitor SQL Server Before Users Report a Performance Problem
+4. SQL Server TempDB Contention: Symptoms, Root Causes, and Configuration Fixes
+5. DBCC CHECKDB Found Corruption: A Safe SQL Server Recovery Playbook
 
 ## ACR
 
