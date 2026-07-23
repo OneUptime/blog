@@ -66,7 +66,7 @@ When `commit` is present, do not set `version`. For a Git tag query, the API als
 
 ## Batch a resolved dependency set
 
-Build one query per resolved package instance:
+Build one query per resolved package instance. A batch request currently accepts at most 1,000 queries, so split larger inventories into multiple requests:
 
 ```json
 {
@@ -111,6 +111,8 @@ A batch match is intentionally compact:
 Fetch complete records separately:
 
 ```bash
+mkdir -p records
+
 jq -r '.results[].vulns[]?.id' batch-response.json \
   | sort -u \
   | while IFS= read -r id; do
