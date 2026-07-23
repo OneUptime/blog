@@ -30,8 +30,9 @@ SELECT
 FROM sys.dm_os_waiting_tasks AS wt
 LEFT JOIN sys.dm_exec_requests AS r
   ON r.session_id = wt.session_id
-WHERE wt.wait_type LIKE N'PAGE%LATCH_%'
-   OR wt.resource_description LIKE N'2:%'
+WHERE (wt.wait_type LIKE N'PAGELATCH[_]%'
+       OR wt.wait_type LIKE N'PAGEIOLATCH[_]%')
+  AND wt.resource_description LIKE N'2:%'
 ORDER BY wt.wait_duration_ms DESC;
 ```
 
@@ -40,7 +41,7 @@ TempDB is database ID 2, and page wait resources commonly appear as `2:<file_id>
 Distinguish the families:
 
 - `PAGELATCH_*` is synchronization around an in-memory page. On TempDB allocation map pages, it can indicate concurrent allocation/deallocation contention.
-- `PAGEIOLATCH_*` waits for a page to be read from storage. That points toward physical I/O and workload volume, not an in-memory allocation latch.
+- `PAGEIOLATCH_*` waits while a data or index page buffer is involved in an I/O request. Long waits point toward physical I/O and workload volume, not an in-memory allocation latch.
 - `LCK_*` waits are locks and require a transaction/blocking investigation.
 
 Do not call every wait whose name contains “latch” an allocation problem.
@@ -53,7 +54,7 @@ Allocation contention often concentrates on:
 - Global Allocation Map (GAM) pages;
 - Shared Global Allocation Map (SGAM) pages.
 
-Common examples include page 1 (PFS) and page 3 (SGAM) in one or more TempDB data files, but use documented page information and repeated evidence rather than memorizing two addresses. On supported versions, inspect a wait resource with `sys.dm_db_page_info`:
+Common examples include page 1 (PFS) and page 3 (SGAM) in one or more TempDB data files, but use documented page information and repeated evidence rather than memorizing two addresses. On SQL Server 2019 and later, inspect a wait resource with `sys.dm_db_page_info`:
 
 ```sql
 SELECT
@@ -153,14 +154,14 @@ SQL Server 2016 made uniform extent allocation and coordinated TempDB data-file 
 
 High-concurrency creation and deletion of temporary tables can contend on TempDB system metadata. Adding files may not remove that bottleneck. Reduce unnecessary create/drop cycles and use stored-procedure patterns that permit temporary object caching where appropriate.
 
-SQL Server 2019 introduced memory-optimized TempDB metadata for on-premises SQL Server. Enable it only when diagnostic evidence shows metadata contention that materially limits the workload:
+SQL Server 2019 introduced memory-optimized TempDB metadata. Enable it only when diagnostic evidence shows metadata contention that materially limits the workload:
 
 ```sql
 ALTER SERVER CONFIGURATION
 SET MEMORY_OPTIMIZED TEMPDB_METADATA = ON;
 ```
 
-The change requires a service restart. It changes TempDB system-table implementation, consumes memory, has documented limitations, and is not available on every Azure SQL platform. Test memory behavior, workload compatibility, startup, and rollback before production. It does not fix allocation latches or slow TempDB storage.
+The change requires a service restart. It changes TempDB system-table implementation, consumes memory, has documented limitations, and is not available in Azure SQL Database, Azure SQL Managed Instance, or SQL database in Microsoft Fabric. Test memory behavior, workload compatibility, startup, and rollback before production. It does not fix allocation latches or slow TempDB storage.
 
 ## Fix the Workload That Drives TempDB
 
