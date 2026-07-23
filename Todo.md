@@ -2,10 +2,9 @@
 
 ## SQL Server
 
-1. Designing Least-Privilege SQL Server Roles for Applications and Administrators
-2. How to Monitor SQL Server Before Users Report a Performance Problem
-3. SQL Server TempDB Contention: Symptoms, Root Causes, and Configuration Fixes
-4. DBCC CHECKDB Found Corruption: A Safe SQL Server Recovery Playbook
+1. How to Monitor SQL Server Before Users Report a Performance Problem
+2. SQL Server TempDB Contention: Symptoms, Root Causes, and Configuration Fixes
+3. DBCC CHECKDB Found Corruption: A Safe SQL Server Recovery Playbook
 
 ## ACR
 
