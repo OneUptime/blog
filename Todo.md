@@ -2,8 +2,7 @@
 
 ## SQL Server
 
-1. SQL Server TempDB Contention: Symptoms, Root Causes, and Configuration Fixes
-2. DBCC CHECKDB Found Corruption: A Safe SQL Server Recovery Playbook
+1. DBCC CHECKDB Found Corruption: A Safe SQL Server Recovery Playbook
 
 ## ACR
 
