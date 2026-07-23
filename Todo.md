@@ -2,23 +2,22 @@
 
 ## SQL Server
 
-1. How to Read a SQL Server Execution Plan and Find the Actual Bottleneck
-2. Missing Index or Index Sprawl? A Safer SQL Server Tuning Workflow
-3. SQL Server Blocking vs. Deadlocks: How to Capture and Fix Both
-4. Why the SQL Server Transaction Log Keeps Growing—and How to Stop It Safely
-5. SQL Server Recovery Models Explained: Simple, Full, and Bulk-Logged
-6. How to Build and Test a SQL Server Backup Strategy That Meets Your RPO
-7. How to Restore SQL Server to a Point in Time Without Breaking the Log Chain
-8. Migrating SQL Server with Minimal Downtime Using Full, Log, and Tail-Log Backups
-9. In-Place Upgrade or Side-by-Side Migration? Choosing a Safe SQL Server Upgrade Path
-10. How to Repair an Unsynchronized SQL Server Availability Group Secondary
-11. SQL Server Availability Group Backups: Which Replica Should Run Each Job?
-12. Fixing Orphaned SQL Server Users and SID Mismatches After a Restore
-13. Encrypting SQL Server Connections: Certificates, TLS Errors, and TrustServerCertificate
-14. Designing Least-Privilege SQL Server Roles for Applications and Administrators
-15. How to Monitor SQL Server Before Users Report a Performance Problem
-16. SQL Server TempDB Contention: Symptoms, Root Causes, and Configuration Fixes
-17. DBCC CHECKDB Found Corruption: A Safe SQL Server Recovery Playbook
+1. Missing Index or Index Sprawl? A Safer SQL Server Tuning Workflow
+2. SQL Server Blocking vs. Deadlocks: How to Capture and Fix Both
+3. Why the SQL Server Transaction Log Keeps Growing—and How to Stop It Safely
+4. SQL Server Recovery Models Explained: Simple, Full, and Bulk-Logged
+5. How to Build and Test a SQL Server Backup Strategy That Meets Your RPO
+6. How to Restore SQL Server to a Point in Time Without Breaking the Log Chain
+7. Migrating SQL Server with Minimal Downtime Using Full, Log, and Tail-Log Backups
+8. In-Place Upgrade or Side-by-Side Migration? Choosing a Safe SQL Server Upgrade Path
+9. How to Repair an Unsynchronized SQL Server Availability Group Secondary
+10. SQL Server Availability Group Backups: Which Replica Should Run Each Job?
+11. Fixing Orphaned SQL Server Users and SID Mismatches After a Restore
+12. Encrypting SQL Server Connections: Certificates, TLS Errors, and TrustServerCertificate
+13. Designing Least-Privilege SQL Server Roles for Applications and Administrators
+14. How to Monitor SQL Server Before Users Report a Performance Problem
+15. SQL Server TempDB Contention: Symptoms, Root Causes, and Configuration Fixes
+16. DBCC CHECKDB Found Corruption: A Safe SQL Server Recovery Playbook
 
 ## ACR
 
