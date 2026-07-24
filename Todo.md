@@ -8,7 +8,6 @@
 
 ## Devfile
 
-17. Designing Multi-Container and Multi-Service Devfiles Without Component Conflicts
 20. Building and Publishing a Custom Devfile Registry with CI Validation
 
 ## OPA Gatekeeper
