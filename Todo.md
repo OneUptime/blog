@@ -5,7 +5,6 @@
 
 ## Ansible
 
-5. Roles, Collections, and Repositories: Structuring Ansible Automation for Reuse
 6. Ansible raw vs. command vs. shell: Which Module Should You Use?
 7. Looping Over Dictionaries and Registered Results in Ansible Without Losing Your Mind
 20. Moving Playbooks to AWX: Inventories, Credentials, Vault Files, and Repository Layout
