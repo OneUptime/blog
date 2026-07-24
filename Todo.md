@@ -8,7 +8,6 @@
 
 ## Devfile
 
-13. Using ConfigMaps, Secrets, and imagePullSecrets in Devfile Workspaces
 14. Connecting odo to a Private Devfile Registry with TLS or Self-Signed Certificates
 15. Devfile Starter Projects: Branches, Revisions, Private Git, and Multiple Repositories
 16. Debugging a Devfile Application with odo dev --debug and Custom Debug Commands
