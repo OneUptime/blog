@@ -8,7 +8,6 @@
 
 ## Devfile
 
-14. Connecting odo to a Private Devfile Registry with TLS or Self-Signed Certificates
 15. Devfile Starter Projects: Branches, Revisions, Private Git, and Multiple Repositories
 16. Debugging a Devfile Application with odo dev --debug and Custom Debug Commands
 17. Designing Multi-Container and Multi-Service Devfiles Without Component Conflicts
