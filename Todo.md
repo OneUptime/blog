@@ -8,7 +8,6 @@
 
 ## Devfile
 
-16. Debugging a Devfile Application with odo dev --debug and Custom Debug Commands
 17. Designing Multi-Container and Multi-Service Devfiles Without Component Conflicts
 18. Speeding Up odo dev for Projects with Large Dependency Trees
 19. What odo deploy Actually Creates—and How to Find and Remove Stale Resources
