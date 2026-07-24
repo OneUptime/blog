@@ -6,7 +6,6 @@
 
 ## Ansible
 
-3. Debugging Ansible Dynamic Inventory When Hosts or Groups Are Missing
 4. Ansible Variable Precedence Explained Through Real Override Conflicts
 5. Roles, Collections, and Repositories: Structuring Ansible Automation for Reuse
 6. Ansible raw vs. command vs. shell: Which Module Should You Use?
