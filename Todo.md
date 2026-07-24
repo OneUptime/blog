@@ -10,7 +10,6 @@
 
 ## Devfile
 
-1. A Practical devfile.yaml Walkthrough: Metadata, Components, Commands, and Projects
 2. Parent Devfile or Self-Contained Devfile? Choosing the Right Reuse Model
 3. How to Validate a Devfile and Decode Common Schema Errors
 4. How to Inspect the Fully Resolved Devfile After Parent Inheritance
