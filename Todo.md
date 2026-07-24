@@ -9,7 +9,6 @@
 ## Devfile
 
 9. Devfile Lifecycle Events Explained: preStart, postStart, and postStop
-11. Devfile Endpoints and Port Forwarding: Fixing Routes, Ingress, and HTTPS Problems
 12. Persistent Storage in Devfiles: Volumes, PVCs, and Data Between Dev Sessions
 13. Using ConfigMaps, Secrets, and imagePullSecrets in Devfile Workspaces
 14. Connecting odo to a Private Devfile Registry with TLS or Self-Signed Certificates
