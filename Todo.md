@@ -10,7 +10,6 @@
 ## Devfile
 
 4. How to Inspect the Fully Resolved Devfile After Parent Inheritance
-8. Devfile exec, apply, and composite Commands: Defaults, Groups, and Execution Order
 9. Devfile Lifecycle Events Explained: preStart, postStart, and postStop
 10. Why odo dev Keeps Restarting—and How to Configure Reliable Hot Reload
 11. Devfile Endpoints and Port Forwarding: Fixing Routes, Ingress, and HTTPS Problems
