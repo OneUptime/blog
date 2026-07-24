@@ -7,7 +7,6 @@
 3. ACR Tags vs. Manifests: How to Delete Images Without Breaking Deployments
 4. Preventing Production Image Overwrites with Immutable ACR Tags
 5. Rebuilding Images Automatically When an ACR Base Image Changes
-6. Troubleshooting ACR Tasks That Cannot Build, Pull, or Start
 7. Why ACR Pushes and Pulls Are Slow—and How to Improve Throughput
 8. ACR Zone Redundancy vs. Geo-Replication: Availability, Latency, and Cost
 9. Scanning ACR Images for Vulnerabilities and Blocking Unsafe Deployments
