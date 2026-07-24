@@ -33,7 +33,7 @@ metadata:
 components:
   - name: runtime
     container:
-      image: node:20-bookworm-slim
+      image: node:22-bookworm-slim
       mountSources: true
       command: ["tail"]
       args: ["-f", "/dev/null"]
