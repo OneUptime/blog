@@ -13,7 +13,6 @@
 5. Roles, Collections, and Repositories: Structuring Ansible Automation for Reuse
 6. Ansible raw vs. command vs. shell: Which Module Should You Use?
 7. Looping Over Dictionaries and Registered Results in Ansible Without Losing Your Mind
-12. Fixing “/usr/bin/python Not Found” on New Ansible Targets
 13. Secure Ansible Privilege Escalation with become, Sudo, and Dedicated Accounts
 14. Ansible Vault or External Secret Manager? Choosing a Sustainable Secrets Pattern
 15. Preventing Secret Leaks in Ansible Output, Logs, and Registered Variables
