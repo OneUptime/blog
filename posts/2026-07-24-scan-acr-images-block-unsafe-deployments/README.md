@@ -257,6 +257,6 @@ Scanning tells you what Defender knows about an image. A gate turns that evidenc
 - [Scan ACR images with Microsoft Defender for Cloud](https://learn.microsoft.com/en-us/azure/container-registry/scan-images-defender)
 - [Vulnerability assessments for supported environments](https://learn.microsoft.com/en-us/azure/defender-for-cloud/agentless-vulnerability-assessment-azure)
 - [Gated deployment for Kubernetes container images](https://learn.microsoft.com/en-us/azure/defender-for-cloud/runtime-gated-overview)
-- [Configure gated deployment rules](https://learn.microsoft.com/en-us/azure/defender-for-cloud/runtime-gated-configure)
+- [Configure gated deployment rules](https://learn.microsoft.com/en-us/azure/defender-for-cloud/enablement-guide-runtime-gated)
 - [Defender for Containers support matrix](https://learn.microsoft.com/en-us/azure/defender-for-cloud/support-matrix-defender-for-containers)
-- [Query vulnerability assessment results through REST](https://learn.microsoft.com/en-us/azure/defender-for-cloud/get-vulnerability-assessment-findings-rest-api)
+- [Query vulnerability assessment results through REST](https://learn.microsoft.com/en-us/rest/api/defenderforcloud-composite/sub-assessments/list?view=rest-defenderforcloud-composite-latest)

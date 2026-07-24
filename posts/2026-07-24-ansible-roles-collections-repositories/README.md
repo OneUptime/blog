@@ -444,9 +444,8 @@ Roles organize behavior. Collections package a namespaced content product. Repos
 ## Official Documentation
 
 - [Roles](https://docs.ansible.com/projects/ansible/latest/playbook_guide/playbooks_reuse_roles.html)
-- [Using collections](https://docs.ansible.com/projects/ansible/latest/collections_guide/collections_using.html)
+- [Using collections](https://docs.ansible.com/projects/ansible/latest/collections_guide/collections_using_playbooks.html)
 - [Collection structure](https://docs.ansible.com/projects/ansible/latest/dev_guide/developing_collections_structure.html)
 - [Creating collections](https://docs.ansible.com/projects/ansible/latest/dev_guide/developing_collections_creating.html)
 - [Installing collections](https://docs.ansible.com/projects/ansible/latest/collections_guide/collections_installing.html)
 - [Testing collections](https://docs.ansible.com/projects/ansible/latest/dev_guide/testing.html)
-
