@@ -10,7 +10,6 @@
 
 ## Devfile
 
-3. How to Validate a Devfile and Decode Common Schema Errors
 4. How to Inspect the Fully Resolved Devfile After Parent Inheritance
 5. Overriding Parent Devfile Components Without Breaking Lists and Attributes
 7. PROJECT_SOURCE, sourceMapping, and workingDir: Understanding Devfile Source Paths
