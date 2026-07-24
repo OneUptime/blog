@@ -9,7 +9,6 @@
 5. Roles, Collections, and Repositories: Structuring Ansible Automation for Reuse
 6. Ansible raw vs. command vs. shell: Which Module Should You Use?
 7. Looping Over Dictionaries and Registered Results in Ansible Without Losing Your Mind
-17. Speeding Up Ansible Fact Gathering with Subsets and Fact Caching
 18. Rolling Updates with Ansible serial, max_fail_percentage, and Failure Controls
 19. Testing Ansible Roles with Check Mode, ansible-lint, and Molecule
 20. Moving Playbooks to AWX: Inventories, Credentials, Vault Files, and Repository Layout
