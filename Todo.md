@@ -1,15 +1,5 @@
 # Blog Post Ideas
 
-## ACR
-
-
-## Ansible
-
-
-## Devfile
-
-20. Building and Publishing a Custom Devfile Registry with CI Validation
-
 ## OPA Gatekeeper
 
 1. OPA vs Gatekeeper: What Actually Runs Where in Kubernetes Admission Control?
