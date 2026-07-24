@@ -5,7 +5,6 @@
 
 ## Ansible
 
-6. Ansible raw vs. command vs. shell: Which Module Should You Use?
 7. Looping Over Dictionaries and Registered Results in Ansible Without Losing Your Mind
 
 ## Devfile
