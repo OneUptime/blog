@@ -1,4 +1,4 @@
-# Persistent Storage in Devfiles: Volumes, PVCs, and Data Between Sessions
+# Persistent Storage in Devfiles: Volumes, PVCs, and Data Between Dev Sessions
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# ConfigMaps, Secrets, and imagePullSecrets in Devfile Workspaces
+# Using ConfigMaps, Secrets, and imagePullSecrets in Devfile Workspaces
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# Devfile Lifecycle Events: preStart, postStart, and postStop
+# Devfile Lifecycle Events Explained: preStart, postStart, and postStop
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# Ansible’s First Production Run: Inventory, Config, SSH, and Playbook Setup
+# Ansible’s First Production Run: Inventory, ansible.cfg, SSH, and Playbook Setup
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
@@ -365,4 +365,3 @@ The first production run should feel uneventful. That happens when target select
 - [Configuring Ansible](https://docs.ansible.com/projects/ansible/latest/installation_guide/intro_configuration.html)
 - [Creating a playbook](https://docs.ansible.com/projects/ansible/latest/getting_started/get_started_playbook.html)
 - [Validating Ansible playbooks](https://docs.ansible.com/projects/ansible/latest/playbook_guide/playbooks_checkmode.html)
-
