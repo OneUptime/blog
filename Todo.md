@@ -2,7 +2,6 @@
 
 ## ACR
 
-5. Rebuilding Images Automatically When an ACR Base Image Changes
 
 ## Ansible
 
