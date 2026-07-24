@@ -13,7 +13,6 @@
 5. Roles, Collections, and Repositories: Structuring Ansible Automation for Reuse
 6. Ansible raw vs. command vs. shell: Which Module Should You Use?
 7. Looping Over Dictionaries and Registered Results in Ansible Without Losing Your Mind
-14. Ansible Vault or External Secret Manager? Choosing a Sustainable Secrets Pattern
 15. Preventing Secret Leaks in Ansible Output, Logs, and Registered Variables
 16. Tuning Ansible Performance with Forks, Pipelining, Async, and Free Strategy
 17. Speeding Up Ansible Fact Gathering with Subsets and Fact Caching
