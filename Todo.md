@@ -2,7 +2,6 @@
 
 ## ACR
 
-4. Preventing Production Image Overwrites with Immutable ACR Tags
 5. Rebuilding Images Automatically When an ACR Base Image Changes
 
 ## Ansible
