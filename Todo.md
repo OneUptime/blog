@@ -2,7 +2,6 @@
 
 ## ACR
 
-1. Pulling ACR Images Across Azure Subscriptions and Microsoft Entra Tenants
 2. Keeping Only the Latest ACR Images with Scheduled acr purge Tasks
 3. ACR Tags vs. Manifests: How to Delete Images Without Breaking Deployments
 4. Preventing Production Image Overwrites with Immutable ACR Tags
