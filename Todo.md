@@ -6,7 +6,6 @@
 
 ## Ansible
 
-2. Organizing Ansible Inventories with group_vars and host_vars Across Environments
 3. Debugging Ansible Dynamic Inventory When Hosts or Groups Are Missing
 4. Ansible Variable Precedence Explained Through Real Override Conflicts
 5. Roles, Collections, and Repositories: Structuring Ansible Automation for Reuse
