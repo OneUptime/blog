@@ -5,7 +5,6 @@
 
 ## Ansible
 
-7. Looping Over Dictionaries and Registered Results in Ansible Without Losing Your Mind
 
 ## Devfile
 
