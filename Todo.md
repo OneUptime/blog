@@ -2,7 +2,6 @@
 
 ## ACR
 
-3. ACR Tags vs. Manifests: How to Delete Images Without Breaking Deployments
 4. Preventing Production Image Overwrites with Immutable ACR Tags
 5. Rebuilding Images Automatically When an ACR Base Image Changes
 10. Monitoring Azure Container Registry with Diagnostic Logs, Metrics, and Webhooks
