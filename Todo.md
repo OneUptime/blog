@@ -10,7 +10,6 @@
 ## Devfile
 
 4. How to Inspect the Fully Resolved Devfile After Parent Inheritance
-7. PROJECT_SOURCE, sourceMapping, and workingDir: Understanding Devfile Source Paths
 8. Devfile exec, apply, and composite Commands: Defaults, Groups, and Execution Order
 9. Devfile Lifecycle Events Explained: preStart, postStart, and postStop
 10. Why odo dev Keeps Restarting—and How to Configure Reliable Hot Reload
