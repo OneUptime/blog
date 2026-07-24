@@ -9,7 +9,6 @@
 ## Devfile
 
 17. Designing Multi-Container and Multi-Service Devfiles Without Component Conflicts
-19. What odo deploy Actually Creates—and How to Find and Remove Stale Resources
 20. Building and Publishing a Custom Devfile Registry with CI Validation
 
 ## OPA Gatekeeper
