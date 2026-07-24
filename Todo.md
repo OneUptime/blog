@@ -8,7 +8,6 @@
 
 ## Devfile
 
-15. Devfile Starter Projects: Branches, Revisions, Private Git, and Multiple Repositories
 16. Debugging a Devfile Application with odo dev --debug and Custom Debug Commands
 17. Designing Multi-Container and Multi-Service Devfiles Without Component Conflicts
 18. Speeding Up odo dev for Projects with Large Dependency Trees
