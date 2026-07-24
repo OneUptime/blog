@@ -1,4 +1,4 @@
-# PROJECT_SOURCE and workingDir: Understanding Devfile Source Paths
+# PROJECT_SOURCE, sourceMapping, and workingDir: Devfile Source Paths
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -246,4 +246,3 @@ Path portability comes from declaring relationships, not from guessing where a p
 - [odo Devfile reference and special variables](https://odo.dev/docs/development/devfile/)
 - [odo architecture: project source synchronization](https://odo.dev/docs/development/architecture/how-odo-works/)
 - [odo: Pushing specific source files](https://odo.dev/docs/user-guides/advanced/pushing-specific-files/)
-

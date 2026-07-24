@@ -199,7 +199,11 @@ func main() {
 		os.Exit(1)
 	}
 
-	if warnings != nil {
+	if len(warnings.Commands) > 0 ||
+		len(warnings.Components) > 0 ||
+		len(warnings.Projects) > 0 ||
+		len(warnings.StarterProjects) > 0 ||
+		len(warnings.DependentProjects) > 0 {
 		fmt.Fprintln(os.Stderr, warnings)
 	}
 

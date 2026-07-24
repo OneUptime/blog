@@ -155,10 +155,10 @@ az acr task identity show \
 For a system-assigned identity, obtain its principal ID and grant pull access on the source registry:
 
 ```bash
-TASK_PRINCIPAL_ID=$(az acr task identity show \
+TASK_PRINCIPAL_ID=$(az acr task show \
   --registry "$ACR_NAME" \
   --name "$TASK_NAME" \
-  --query principalId \
+  --query identity.principalId \
   --output tsv)
 
 SOURCE_ACR_ID=$(az acr show \
@@ -248,4 +248,3 @@ Most importantly, preserve the order of diagnosis: run record, run log, trigger,
 - [Cross-registry authentication in an ACR task](https://learn.microsoft.com/en-us/azure/container-registry/container-registry-tasks-cross-registry-authentication)
 - [Manage network bypass policy for tasks](https://learn.microsoft.com/en-us/azure/container-registry/manage-network-bypass-policy-for-tasks)
 - [ACR roles and permissions overview](https://learn.microsoft.com/en-us/azure/container-registry/container-registry-rbac-built-in-roles-overview)
-

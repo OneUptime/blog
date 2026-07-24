@@ -111,7 +111,7 @@ DIGEST=$(az acr manifest show-metadata \
 printf '%s\n' "$DIGEST"
 ```
 
-Use an Azure CLI version that includes `az acr manifest`. Older `az acr repository show-manifests` examples are deprecated.
+As of July 2026, the `az acr manifest` command group is in preview. Pin and test an Azure CLI version that includes it, and recheck its support status before making it a production gate. Older `az acr repository show-manifests` examples are deprecated.
 
 ## Review Findings in Defender for Cloud
 
@@ -260,4 +260,3 @@ Scanning tells you what Defender knows about an image. A gate turns that evidenc
 - [Configure gated deployment rules](https://learn.microsoft.com/en-us/azure/defender-for-cloud/runtime-gated-configure)
 - [Defender for Containers support matrix](https://learn.microsoft.com/en-us/azure/defender-for-cloud/support-matrix-defender-for-containers)
 - [Query vulnerability assessment results through REST](https://learn.microsoft.com/en-us/azure/defender-for-cloud/get-vulnerability-assessment-findings-rest-api)
-

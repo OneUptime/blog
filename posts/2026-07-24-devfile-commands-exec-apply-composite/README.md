@@ -1,4 +1,4 @@
-# Devfile Commands: exec, apply, composite, Groups, and Execution Order
+# Devfile exec, apply, and composite Commands: Defaults, Groups, and Order
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
