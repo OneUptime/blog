@@ -204,13 +204,15 @@ Ansible creates a registered variable for each host even when the task is skippe
     cmd: /opt/myapp/bin/myapp --version
   register: version_query
   changed_when: false
-  failed_when: false
+  # This tool documents rc=3 as "not installed".
+  failed_when: version_query.rc not in [0, 3]
 
 - name: Report an installed version
   ansible.builtin.debug:
     msg: "{{ version_query.stdout }}"
   when:
     - version_query is succeeded
+    - version_query.rc == 0
     - version_query.stdout | default('') | length > 0
 ```
 
@@ -236,4 +238,3 @@ This turns undefined-variable handling into an explicit interface. A play either
 - [ansible.builtin.assert module](https://docs.ansible.com/projects/ansible/latest/collections/ansible/builtin/assert_module.html)
 - [The undef function](https://docs.ansible.com/projects/ansible/latest/playbook_guide/playbooks_templating_undef.html)
 - [Using variables](https://docs.ansible.com/projects/ansible/latest/playbook_guide/playbooks_variables.html)
-

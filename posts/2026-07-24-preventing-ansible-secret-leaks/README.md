@@ -268,7 +268,7 @@ Prefer application-native secret mounts or runtime identity when available. If a
 - remove it when no longer needed
 - consider how the file is copied during support collection
 
-Encrypted source passed to modules such as `copy` or `template` is decrypted on the target as intended. Vault encryption does not keep the deployed file encrypted.
+Encrypted source passed to modules such as `copy` or `template` is decrypted during task execution and written as plaintext on the target. Vault encryption does not keep the deployed file encrypted.
 
 ## Build Safe Diagnostic Patterns
 
@@ -317,4 +317,3 @@ The best secret is never fetched by Ansible because the workload uses its own id
 - [Ansible Vault security scope](https://docs.ansible.com/projects/ansible/latest/vault_guide/vault.html)
 - [ansible.builtin.set_fact module](https://docs.ansible.com/projects/ansible/latest/collections/ansible/builtin/set_fact_module.html)
 - [AWX credentials](https://docs.ansible.com/projects/awx/en/24.6.1/userguide/credentials.html)
-

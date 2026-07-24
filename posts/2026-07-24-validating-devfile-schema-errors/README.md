@@ -109,7 +109,11 @@ func main() {
 		os.Exit(1)
 	}
 
-	if warnings != nil {
+	if len(warnings.Commands) > 0 ||
+		len(warnings.Components) > 0 ||
+		len(warnings.Projects) > 0 ||
+		len(warnings.StarterProjects) > 0 ||
+		len(warnings.DependentProjects) > 0 {
 		fmt.Fprintln(os.Stderr, warnings)
 	}
 }
@@ -383,4 +387,3 @@ Exercise build, run, test, debug, file synchronization, endpoint access, restart
 - [Devfile Go library](https://devfile.io/docs/2.3.0/library)
 - [odo Devfile reference](https://odo.dev/docs/development/devfile/)
 - [odo describe component](https://odo.dev/docs/command-reference/describe-component/)
-

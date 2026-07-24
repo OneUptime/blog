@@ -291,7 +291,7 @@ Test failure contracts too:
       ansible.builtin.include_role:
         name: my_namespace.my_collection.myapp
       vars:
-        myapp_port: 70000
+        myapp_port: not-an-integer
 
     - name: Fail if invalid input was accepted
       ansible.builtin.fail:
@@ -302,6 +302,7 @@ Test failure contracts too:
       ansible.builtin.assert:
         that:
           - ansible_failed_result is defined
+          - "'myapp_port' in (ansible_failed_result.msg | default(''))"
 ```
 
 ## Test Idempotence
@@ -353,4 +354,3 @@ The strongest role pipeline answers four questions:
 - [Molecule installation](https://docs.ansible.com/projects/molecule/installation/)
 - [Molecule Ansible-native configuration](https://docs.ansible.com/projects/molecule/ansible-native/)
 - [Molecule command-line reference](https://docs.ansible.com/projects/molecule/usage/)
-

@@ -88,9 +88,10 @@ Commands report fields such as `rc`, `stdout`, and `stderr`. Register the result
   ansible.builtin.command:
     cmd: /usr/local/bin/myappctl reconcile --output json
   register: reconcile
-  changed_when: (reconcile.stdout | from_json).changed | bool
-  failed_when:
-    - reconcile.rc != 0
+  changed_when: >-
+    reconcile.rc == 0
+    and ((reconcile.stdout | from_json).changed | bool)
+  failed_when: reconcile.rc != 0
 ```
 
 Machine-readable JSON is less fragile than matching prose. If the tool offers explicit exit codes, use those:
@@ -259,4 +260,3 @@ The goal is a precise task contract: actual transitions report changed, stable s
 - [Ansible playbooks and idempotency](https://docs.ansible.com/projects/ansible/latest/playbook_guide/playbooks_intro.html)
 - [Validating tasks with check and diff mode](https://docs.ansible.com/projects/ansible/latest/playbook_guide/playbooks_checkmode.html)
 - [Handlers: running operations on change](https://docs.ansible.com/projects/ansible/latest/playbook_guide/playbooks_handlers.html)
-

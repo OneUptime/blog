@@ -44,7 +44,7 @@ serial:
   - "20%"
 ```
 
-This canary pattern updates one host, then five, then 20 percent of the remaining hosts per batch until complete. Percentage batches always include at least one host.
+This canary pattern updates one host, then five, then batches sized at 20 percent of the play's total host count until complete. The final batch takes any smaller remainder, and percentage batches always include at least one host.
 
 Choose a size based on spare capacity, traffic distribution, startup time, and how quickly monitoring detects a regression. The fastest batch that keeps enough healthy capacity is not necessarily the safest batch.
 
@@ -256,9 +256,7 @@ An application returning HTTP 200 immediately after restart may still have eleva
 
     - name: Check batch error rate
       ansible.builtin.uri:
-        url: >-
-          https://monitoring.example.com/api/error-rate
-          ?hosts={{ ansible_play_batch | join(',') }}
+        url: "https://monitoring.example.com/api/error-rate?hosts={{ ansible_play_batch | join(',') | urlencode }}"
         return_content: true
       register: batch_metrics
       failed_when: batch_metrics.json.error_rate | float > 0.01
