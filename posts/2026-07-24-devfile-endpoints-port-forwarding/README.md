@@ -48,7 +48,7 @@ commands:
 
 `targetPort` must match the port on which the process listens inside the container. The endpoint does not reconfigure the application. If the process starts on 8080 while the Devfile says 3000, forwarding and probes reach the wrong socket.
 
-Endpoint names are identifiers, so keep them stable and unique within the relevant scope. Use names such as `http`, `metrics`, and `debug` instead of embedding a mutable port number in every name.
+Endpoint names are identifiers and must be unique across components, so keep them stable. Use names such as `http`, `metrics`, and `debug` instead of embedding a mutable port number in every name.
 
 ## Understand the Endpoint Fields
 
@@ -84,7 +84,7 @@ For a predictable mapping:
 odo dev --port-forward 3000:runtime:3000
 ```
 
-The three-part form is necessary when multiple components expose the same target port. For a unique target port, current `odo` also accepts:
+The three-part form is necessary to disambiguate the component when multiple components validly expose the same target port, such as containers that use dedicated Pods. For a unique target port, current `odo` also accepts:
 
 ```bash
 odo dev --port-forward 3000:3000
@@ -111,6 +111,8 @@ components:
     container:
       image: postgres:17
       mountSources: false
+      command: ["docker-entrypoint.sh"]
+      args: ["postgres"]
       endpoints:
         - name: postgres
           targetPort: 5432
@@ -118,6 +120,8 @@ components:
 ```
 
 `exposure: none` communicates that the endpoint should not be exposed outside its component or workspace context. The application still needs the correct in-workspace host and port according to the consumer's networking model.
+
+The explicit `command` and `args` preserve the image's normal long-running startup under `odo`, which otherwise substitutes an idle command when both fields are absent. A fresh `postgres:17` database also requires its normal initialization settings. Supply `POSTGRES_PASSWORD` or `POSTGRES_PASSWORD_FILE` through an approved secret mechanism; the fragment above only illustrates endpoint exposure.
 
 Do not mark a database endpoint public merely to make local debugging easy. Use an explicit, temporary port forward and appropriate credentials instead.
 
@@ -134,52 +138,57 @@ commands:
   - id: apply-network
     apply:
       component: production-network
+      group:
+        kind: deploy
+        isDefault: true
 ```
 
-`deploy/network.yaml` can contain:
+Assuming the workload's Pods carry the label `app: catalog-api`, `deploy/network.yaml` can contain a Kubernetes resource list:
 
 ```yaml
 apiVersion: v1
-kind: Service
-metadata:
-  name: catalog-api
-spec:
-  selector:
-    app: catalog-api
-  ports:
-    - name: http
-      port: 80
-      targetPort: 3000
----
-apiVersion: networking.k8s.io/v1
-kind: Ingress
-metadata:
-  name: catalog-api
-spec:
-  tls:
-    - hosts:
-        - catalog.dev.example.com
-      secretName: catalog-dev-tls
-  rules:
-    - host: catalog.dev.example.com
-      http:
-        paths:
-          - path: /
-            pathType: Prefix
-            backend:
-              service:
-                name: catalog-api
-                port:
-                  name: http
+kind: List
+items:
+  - apiVersion: v1
+    kind: Service
+    metadata:
+      name: catalog-api
+    spec:
+      selector:
+        app: catalog-api
+      ports:
+        - name: http
+          port: 80
+          targetPort: 3000
+  - apiVersion: networking.k8s.io/v1
+    kind: Ingress
+    metadata:
+      name: catalog-api
+    spec:
+      tls:
+        - hosts:
+            - catalog.dev.example.com
+          secretName: catalog-dev-tls
+      rules:
+        - host: catalog.dev.example.com
+          http:
+            paths:
+              - path: /
+                pathType: Prefix
+                backend:
+                  service:
+                    name: catalog-api
+                    port:
+                      name: http
 ```
 
-The Ingress API only declares routing. An Ingress controller must be installed, DNS must point to it, and `catalog-dev-tls` must contain a certificate and key. Certificate issuance can be managed separately by the platform; the Devfile specification does not issue one.
+The Ingress API only declares routing. An Ingress controller must be installed, and the Ingress must select it through `spec.ingressClassName` or a default IngressClass. DNS must point to the controller, and a `catalog-dev-tls` Secret in the same namespace must contain the `tls.crt` certificate and `tls.key` private key. Certificate issuance can be managed separately by the platform; the Devfile specification does not issue one.
 
 Keep secrets out of the Devfile and repository. Refer to a pre-created TLS Secret or use an approved certificate controller.
 
 ## Use an OpenShift Route Only on OpenShift
 
-An OpenShift Route is not a Kubernetes-standard object. It can still be included in an `openshift` or Kubernetes-style manifest component when the target cluster supports its API:
+An OpenShift Route is not a Kubernetes-standard object. It can be included in a Devfile `openshift` manifest component when the target cluster supports its API:
 
 ```yaml
 apiVersion: route.openshift.io/v1
@@ -197,7 +206,9 @@ spec:
     termination: edge
 ```
 
-At edge termination, the router handles client TLS and forwards to the backend using the route's configured policy. Other termination modes have different backend requirements. Validate them against the OpenShift version and cluster policy.
+At edge termination, the router handles client TLS and forwards unencrypted HTTP to the backend. The optional `insecureEdgeTerminationPolicy` separately controls whether client HTTP is disabled, allowed, or redirected. Other termination modes have different backend requirements. Validate them against the OpenShift version and cluster policy.
+
+Because this example omits a route-specific certificate and key, the router uses its default certificate. That certificate must cover `catalog.dev.example.com`; otherwise, configure a matching certificate through an approved cluster mechanism.
 
 Do not place both an Ingress and a Route in a portable default without deciding which controller owns the hostname. Platform variants can select the appropriate resource through separate manifests or parent Devfiles.
 
@@ -227,7 +238,7 @@ If HTTPS fails, test separately for DNS, TCP connectivity, certificate trust, ho
 
 ## Official Documentation
 
-- [Devfile: Defining endpoints](https://devfile.io/docs/2.2.2/defining-endpoints)
+- [Devfile: Defining endpoints](https://devfile.io/docs/2.3.0/defining-endpoints)
 - [Devfile 2.3 schema reference](https://devfile.io/docs/2.3.0/devfile-schema)
 - [odo dev: Custom port mappings](https://odo.dev/docs/command-reference/dev/#using-custom-port-mapping-for-port-forwarding)
 - [Kubernetes Ingress](https://kubernetes.io/docs/concepts/services-networking/ingress/)
