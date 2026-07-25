@@ -19,10 +19,10 @@ A command's `workingDir` is a path inside the selected component's container. It
 
 ## Start with a Portable Command
 
-For a single-project repository, this is the portable pattern:
+`odo` 3.16.1, its final release before the project was deprecated, supports Devfile schema versions through 2.2.2. For a single-project repository used with `odo`, this is the portable pattern:
 
 ```yaml
-schemaVersion: 2.3.0
+schemaVersion: 2.2.2
 metadata:
   name: catalog-api
 components:
@@ -49,7 +49,7 @@ commands:
         isDefault: true
 ```
 
-The consuming tool expands `${PROJECT_SOURCE}` before running the command. The image does not need to define that variable itself, although the tool can also inject it into the container environment.
+The consuming tool expands `${PROJECT_SOURCE}` before running the command. The image does not need to define that variable itself. `odo` also injects `PROJECTS_ROOT` and `PROJECT_SOURCE` into components with `mountSources: true`.
 
 Use the brace form in YAML because it makes the boundary clear when a suffix follows:
 
@@ -67,14 +67,14 @@ A container component controls whether the project source is available:
 components:
   - name: runtime
     container:
-      image: golang:1.24
+      image: golang:1.26
       mountSources: true
       sourceMapping: /workspace
 ```
 
 `mountSources: true` asks the consumer to mount or synchronize project sources into this component. `sourceMapping` optionally selects the container path used as the projects root. The Devfile schema's default is `/projects` when `sourceMapping` is omitted.
 
-For current `odo` behavior, a component with the example above receives values equivalent to:
+With `odo` 3.16.1, a component with the example above receives values equivalent to:
 
 ```text
 PROJECTS_ROOT=/workspace
@@ -124,6 +124,9 @@ components:
     container:
       image: postgres:17
       mountSources: false
+      env:
+        - name: POSTGRES_PASSWORD
+          value: dev-only-change-me
 ```
 
 Application build and run commands should target `runtime`, not `database`.
@@ -150,9 +153,9 @@ If each service has its own Devfile, place it at the service root and return to 
 
 ## Multiple Projects Change the Meaning
 
-The schema supports `projects` and `dependentProjects`. Their Git definitions can include a remote, checkout revision, and clone directory. With multiple projects, `${PROJECT_SOURCE}` points to the first project rather than serving as a stable alias for every repository.
+The schema supports `projects` and `dependentProjects`. A project entry can include a `clonePath`, while its Git definition can include remotes and a checkout revision. With multiple projects, `${PROJECT_SOURCE}` points to the first project rather than serving as a stable alias for every repository.
 
-For a workspace with explicit projects:
+For a Devfile consumer that materializes all explicit projects:
 
 ```yaml
 projects:
@@ -171,6 +174,8 @@ commands:
       commandLine: npm test
       workingDir: ${PROJECTS_ROOT}/shared-ui
 ```
+
+This is a specification-level pattern. `odo` 3.16.1 does not clone these declared Git remotes during `odo dev`; it synchronizes the current local directory into the first project's `clonePath`, or the first project's name when `clonePath` is omitted.
 
 Use `${PROJECTS_ROOT}/<project-directory>` when addressing a non-first project. Confirm how the selected consumer chooses clone directories, especially if a project sets `clonePath`. Do not assume array reordering is harmless: it can change what `${PROJECT_SOURCE}` denotes.
 
@@ -217,7 +222,7 @@ commands:
       workingDir: ${PROJECT_SOURCE}
 ```
 
-Run it with the tool's explicit command facility, for example:
+While `odo dev` is running, run it from another terminal with the tool's explicit command facility:
 
 ```bash
 odo run inspect-source
@@ -241,8 +246,10 @@ Path portability comes from declaring relationships, not from guessing where a p
 
 ## Official Documentation
 
-- [Devfile 2.3 schema reference](https://devfile.io/docs/2.3.0/devfile-schema)
-- [Devfile 2.3: Creating Devfiles](https://devfile.io/docs/2.3.0/create-devfiles)
+- [Devfile 2.2.2 schema reference](https://devfile.io/docs/2.2.2/devfile-schema)
+- [Devfile 2.2.2: Creating Devfiles](https://devfile.io/docs/2.2.2/create-devfiles)
 - [odo Devfile reference and special variables](https://odo.dev/docs/development/devfile/)
 - [odo architecture: project source synchronization](https://odo.dev/docs/development/architecture/how-odo-works/)
 - [odo: Pushing specific source files](https://odo.dev/docs/user-guides/advanced/pushing-specific-files/)
+- [odo run command reference](https://odo.dev/docs/command-reference/run/)
+- [odo deprecation announcement](https://odo.dev/blog/odo-deprecation-announcement/)
