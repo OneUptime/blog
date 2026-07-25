@@ -16,12 +16,14 @@ Devfile commands describe operations a development tool can expose or automate. 
 
 Commands can also belong to a group: `build`, `run`, `test`, `debug`, or `deploy`. The group expresses intent; the consuming tool decides when to select it. For example, current `odo dev` uses development groups, while `odo deploy` searches for the default command in the `deploy` group.
 
+Current `odo` documentation targets Devfile 2.2.0, so the `odo`-compatible examples here declare that schema version. The upstream `odo` repository was archived in April 2026, so these behaviors describe its final v3 documentation rather than an actively maintained release stream.
+
 ## `exec`: Run in a Named Container
 
 An `exec` command needs a `component` and `commandLine`:
 
 ```yaml
-schemaVersion: 2.3.0
+schemaVersion: 2.2.0
 metadata:
   name: inventory-api
 components:
@@ -40,7 +42,7 @@ commands:
         isDefault: true
 ```
 
-The component reference must name a container component that exists in the effective Devfile. `workingDir` is inside that container. Optional `env` entries apply while running the command, and `hotReloadCapable` tells a supporting consumer whether the process can react to synchronized source changes without being restarted.
+The component reference must name a container component that exists in the effective Devfile. `workingDir` is inside that container. Optional `env` entries apply while running the command. `hotReloadCapable` tells a supporting consumer not to rerun or restart a default build, run, or debug command after synchronized source changes. A run or debug process must handle the changes itself; a hot-reload-capable build command is expected to run only once.
 
 Keep shell behavior explicit. `commandLine` is a string, so chaining and error propagation are properties of the shell used by the consumer and image. For a multi-step operation, prefer a checked script in the repository:
 
@@ -69,7 +71,7 @@ The exact effect follows the component type and consumer. Applying a Kubernetes 
 
 `apply` does not contain an arbitrary shell line. Use `exec` for Helm, Kustomize, database migration clients, or other executables, and ensure their binary exists in the referenced container image.
 
-Be deliberate about automatic application. Current odo documentation distinguishes component types: image components use `autoBuild`, while Kubernetes and OpenShift components use `deployByDefault`. When either setting is omitted and no apply command references that component, odo applies it automatically; an explicit `false` leaves an unreferenced component unapplied. Once an apply command references the component, that command provides its execution path. Other consumers can behave differently, so verify the exact tool and version used by the team.
+Be deliberate about automatic application. Current odo documentation distinguishes component types: image components use `autoBuild`, while Kubernetes and OpenShift components use `deployByDefault`. When either setting is omitted and no apply command references that component, odo applies it automatically. When the setting is `false`, an apply command can still apply a referenced component when invoked, while an unreferenced component remains unapplied. An explicit `true` requests automatic application even if an apply command also references the component. Other consumers can behave differently, so verify the exact tool and version used by the team.
 
 ## `composite`: Build a Command Graph
 
@@ -157,12 +159,12 @@ Do not rely on array position to choose the default. Express it with `isDefault`
 
 ## Understand `odo dev` Ordering
 
-For its documented development flow, `odo` synchronizes source, then executes the selected default build command, and then starts the selected run command. Debug mode selects a debug command when `odo dev --debug` is used. Support for every schema feature is tool- and version-specific, so treat the Devfile specification and the selected consumer documentation as two required contracts.
+For its documented development flow, `odo` synchronizes source, then executes the selected default build command if one is defined, and then starts the selected default run command if one is defined. With `odo dev --debug`, the selected default debug command replaces the run command. Its final documentation lists the `test` group but marks automatic test execution as not implemented. Support for every schema feature is tool- and version-specific, so treat the Devfile specification and the selected consumer documentation as two required contracts.
 
 A practical inner-loop definition is:
 
 ```yaml
-schemaVersion: 2.3.0
+schemaVersion: 2.2.0
 metadata:
   name: inventory-api
 components:
@@ -269,8 +271,8 @@ Devfile command design becomes predictable when IDs define the graph, groups def
 
 ## Official Documentation
 
-- [Devfile 2.3 schema reference](https://devfile.io/docs/2.3.0/devfile-schema)
-- [Devfile 2.3: Creating Devfiles](https://devfile.io/docs/2.3.0/create-devfiles)
+- [Devfile 2.2 schema reference](https://devfile.io/docs/2.2.0/devfile-schema)
+- [Devfile 2.2: Creating Devfiles](https://devfile.io/docs/2.2.0/create-devfiles)
 - [odo Devfile reference](https://odo.dev/docs/development/devfile/)
 - [odo dev command reference](https://odo.dev/docs/command-reference/dev/)
 - [odo deploy command reference](https://odo.dev/docs/command-reference/deploy/)
