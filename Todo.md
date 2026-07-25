@@ -1,9 +1,5 @@
 # Blog Post Ideas
 
-## Data Volume
-
-1. How to Fix “Unable to Create disk.img, Not Enough Space” When the PVC Looks Large Enough
-
 ## Percona Server
 
 1. Percona Server vs Oracle MySQL: What Changes—and Is It Really a Drop-In Replacement?
