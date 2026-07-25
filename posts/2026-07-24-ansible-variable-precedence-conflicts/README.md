@@ -75,7 +75,7 @@ Ansible loads the first configuration file it finds:
 3. `~/.ansible.cfg`
 4. `/etc/ansible/ansible.cfg`
 
-Later files are ignored. Environment variables for configuration override values in the selected file, and command-line options override configuration.
+Later files are ignored. As a security exception, Ansible does not automatically load `ansible.cfg` from the current directory when that directory is world-writable. Environment variables for configuration override values in the selected file, and command-line options override configuration.
 
 Inspect the active sources:
 
@@ -97,7 +97,9 @@ role defaults
   < inventory group variables
   < inventory host variables
   < facts and cached set_facts
-  < play vars, vars_prompt, and vars_files
+  < play vars
+  < vars_prompt
+  < vars_files
   < role vars
   < block vars
   < task vars
@@ -198,7 +200,7 @@ canary:
 
 A higher group priority merges later. The priority must be in the inventory source, not `group_vars/`, because Ansible needs it before group variables are loaded.
 
-Prefer a more explicit child group or one variable owner. Alphabetical filenames and group priority should not become the main environment policy engine.
+Prefer a more explicit child group or one variable owner. Alphabetical group-name ordering and group priority should not become the main environment policy engine.
 
 Inspect final inventory values:
 
@@ -422,7 +424,7 @@ service_settings:
   workers: 8
 ```
 
-With the default `hash_behavior=replace`, the inventory dictionary replaces the lower-precedence dictionary. `port` and `log_level` do not automatically survive.
+With the default `hash_behaviour=replace`, the inventory dictionary replaces the lower-precedence dictionary. `port` and `log_level` do not automatically survive.
 
 Prefer complete dictionaries at the owning layer or combine explicit fragments:
 
@@ -495,4 +497,3 @@ Precedence is a conflict-resolution mechanism, not a configuration architecture.
 - [How inventory variables are merged](https://docs.ansible.com/projects/ansible/latest/inventory_guide/intro_inventory.html)
 - [ansible.builtin.set_fact module](https://docs.ansible.com/projects/ansible/latest/collections/ansible/builtin/set_fact_module.html)
 - [Discovering variables, facts, and magic variables](https://docs.ansible.com/projects/ansible/latest/playbook_guide/playbooks_vars_facts.html)
-
