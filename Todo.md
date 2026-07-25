@@ -2,19 +2,18 @@
 
 ## Data Volume
 
-1. How to Fix OOMKilled CDI Import, Clone, and Upload Pods on Slow Storage
-2. How to Upload a Local VM Disk with `virtctl image-upload` and an Existing DataVolume
-3. How to Fix “x509: Certificate Signed by Unknown Authority” in `virtctl image-upload`
-4. How to Import a VM Disk from a Private Container Registry with CDI Credentials
-5. Raw vs qcow2 vs ISO: Which Image Format and `contentType` Should a DataVolume Use?
-6. How to Clone a CDI DataVolume Across Kubernetes Namespaces Without RBAC Errors
-7. Why Did CDI Fall Back from CSI or Snapshot Cloning to Host-Assisted Copy?
-8. How to Troubleshoot a DataVolume Clone Stuck in `CloneInProgress`
-9. Filesystem vs Block DataVolumes: Which `volumeMode` Works Best for KubeVirt?
-10. Why CDI Needs Scratch Space—and How to Choose Its StorageClass and Size
-11. How to Use `dataVolumeTemplates` So a KubeVirt VM Waits for Its Boot Disk
-12. How to Refresh Golden VM Images Automatically with CDI `DataImportCron`
-13. How to Fix “Unable to Create disk.img, Not Enough Space” When the PVC Looks Large Enough
+1. How to Upload a Local VM Disk with `virtctl image-upload` and an Existing DataVolume
+2. How to Fix “x509: Certificate Signed by Unknown Authority” in `virtctl image-upload`
+3. How to Import a VM Disk from a Private Container Registry with CDI Credentials
+4. Raw vs qcow2 vs ISO: Which Image Format and `contentType` Should a DataVolume Use?
+5. How to Clone a CDI DataVolume Across Kubernetes Namespaces Without RBAC Errors
+6. Why Did CDI Fall Back from CSI or Snapshot Cloning to Host-Assisted Copy?
+7. How to Troubleshoot a DataVolume Clone Stuck in `CloneInProgress`
+8. Filesystem vs Block DataVolumes: Which `volumeMode` Works Best for KubeVirt?
+9. Why CDI Needs Scratch Space—and How to Choose Its StorageClass and Size
+10. How to Use `dataVolumeTemplates` So a KubeVirt VM Waits for Its Boot Disk
+11. How to Refresh Golden VM Images Automatically with CDI `DataImportCron`
+12. How to Fix “Unable to Create disk.img, Not Enough Space” When the PVC Looks Large Enough
 
 ## Percona Server
 
