@@ -22,7 +22,7 @@ Many organizations use both: a pinned platform parent plus a small child for app
 A child can refer to a registry stack:
 
 ```yaml
-schemaVersion: 2.2.0
+schemaVersion: 2.3.0
 
 metadata:
   name: inventory-api
@@ -30,7 +30,7 @@ metadata:
 parent:
   id: go
   registryUrl: https://registry.devfile.io/
-  version: 1.2.0
+  version: 2.6.0
 ```
 
 The registry `version` can be a concrete stack version or `latest`. If omitted, the registry's default stack version is used. Pin an explicit tested version when reproducibility matters.
@@ -42,7 +42,7 @@ parent:
   uri: https://platform.example.com/devfiles/go/devfile.yaml
 ```
 
-Or from a Kubernetes resource in consumers that support that source:
+Or from a Kubernetes `DevWorkspaceTemplate` custom resource in consumers that support that source:
 
 ```yaml
 parent:
@@ -51,7 +51,7 @@ parent:
     namespace: platform-devfiles
 ```
 
-The child inherits the parent's behavior. A Devfile parser resolves the source, merges child content and permitted overrides, substitutes variables, and validates the flattened result.
+The child inherits the parent's behavior. To produce an effective Devfile, a parser resolves the source, applies parent overrides, merges child content, substitutes variables, and validates the flattened result.
 
 Consumer support matters. The schema can describe a parent source that a particular tool or deployment mode cannot resolve. Test with the exact odo, DevWorkspace, or editor integration used by developers.
 
@@ -82,7 +82,7 @@ commands:
 
 The parent may supply the `runtime` container and default build/run commands. The child adds the application's test behavior.
 
-An override generally identifies inherited list elements by their Devfile identifier, such as component `name` or command `id`. Do not assume generic YAML list replacement rules. Resolve and inspect the effective Devfile after every override, because nested maps, lists, attributes, and consumer versions can merge differently from intuition.
+Parent overrides are declared inside the `parent` object and identify inherited list elements by their Devfile identifier, such as component `name` or command `id`. New child elements remain in top-level lists, as in the test command above. Do not assume generic YAML list replacement rules. Resolve and inspect the effective Devfile after every override, because nested maps, lists, attributes, and consumer versions can merge differently from intuition.
 
 ## When a Parent Is a Strong Fit
 
@@ -97,7 +97,7 @@ Typical centralized content includes:
 - build and debug commands
 - volume mounts
 - platform attributes
-- security-context defaults
+- consumer-specific security defaults expressed through supported attributes
 
 Benefits include:
 
@@ -125,7 +125,7 @@ Choose a self-contained Devfile when:
 
 - the project has a unique toolchain
 - no team can operate a reliable parent source
-- workspaces must start offline or in an isolated network
+- no parent source can be fetched when workspaces start offline or in an isolated network
 - every configuration change must be visible in the application review
 - the consumer has limited parent support
 - debugging and long-term archival are more important than deduplication
@@ -165,7 +165,7 @@ commands:
         isDefault: true
 ```
 
-The repository review shows the image and commands that will be used. There is no parent registry or URI to fetch at workspace creation time.
+The repository review shows the image reference and commands that will be used. There is no parent registry or URI to fetch at workspace creation time.
 
 The cost is duplication. Ten copies of the same runtime can drift, and fixing all of them requires repository-by-repository updates.
 
@@ -173,14 +173,14 @@ The cost is duplication. Ten copies of the same runtime can drift, and fixing al
 
 | Concern | Parent Devfile | Self-contained Devfile |
 |---|---|---|
-| Runtime source availability | Parent registry, URI, or cluster resource must resolve | Repository is sufficient |
+| Runtime source availability | Parent source must resolve; referenced images and remote content must also be available | No separate parent source; referenced images and remote content must still be available |
 | Update propagation | Central release plus child version bumps, or implicit with mutable version | Per-repository change |
 | Review visibility | Child diff omits inherited details | Complete content in one diff |
 | Duplication | Low | Higher |
-| Reproducibility | Strong only when parent and images are pinned | Strong when file and images are pinned |
+| Reproducibility | Strong when parent content is immutable and images and other remote references are pinned | Strong when the file is versioned and images and other remote references are pinned |
 | Debugging | Requires inspecting flattened output | Direct file is close to effective input |
 | Ownership | Split between platform and application teams | Mostly application team |
-| Offline use | Needs mirrored or preavailable parent | Simpler |
+| Offline use | Parent and other remote dependencies must be mirrored or preavailable | No parent fetch, but other remote dependencies must still be mirrored or preavailable |
 | Blast radius | Parent release can affect many consumers | Usually one repository |
 
 Neither model is reproducible if it points to mutable container tags or unpinned Git revisions.
@@ -292,7 +292,7 @@ Use a parent if all are true:
 
 Use a self-contained file if any are decisive:
 
-- independent/offline startup is required
+- no parent source can be fetched at startup
 - no reliable parent owner exists
 - the application differs substantially
 - full configuration must be visible in each change
@@ -307,4 +307,3 @@ A pinned, tested parent with a thin child is usually the best reuse model for an
 - [Devfile library parsing and flattening](https://devfile.io/docs/2.3.0/library)
 - [Devfile validation rules](https://devfile.io/docs/2.3.0/devfile-validation-rules)
 - [odo describe component](https://odo.dev/docs/command-reference/describe-component/)
-
