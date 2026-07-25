@@ -61,7 +61,7 @@ spec:
 
 All top-level matchers must match. The policy applies only to Pods in `production` with that label.
 
-Do not rely on a label for a security boundary if the workload owner can remove it. Protect the label with RBAC, validate that selected controllers include it in `spec.template.metadata.labels`, or scope by an object field that the policy itself examines.
+Do not rely on a label for a security boundary if the workload owner can remove it. RBAC can restrict who may update the workload, but it cannot protect an individual label field. Use an admission policy to require selected controllers to include the label in `spec.template.metadata.labels`. Any selector the workload owner can change, including `spec.serviceAccountName`, is not by itself a security boundary.
 
 ## Scope by the Pod's assigned ServiceAccount
 
@@ -173,11 +173,11 @@ spec:
 
 Do not use a generated Pod name for stable scoping. ReplicaSet hashes and Pod suffixes change. Labels, namespace boundaries, and assigned ServiceAccounts are more durable.
 
-Test positive and negative cases before enforcement:
+Test positive and negative cases before enforcement. Because the sample Constraint matches Pods, use Pod manifests for server-side dry runs. A Deployment dry run exercises it only if workload expansion is configured:
 
 ```bash
-kubectl apply --dry-run=server -f payments-api.yaml
-kubectl apply --dry-run=server -f unrelated-api.yaml
+kubectl apply --dry-run=server -f payments-api-pod.yaml
+kubectl apply --dry-run=server -f unrelated-api-pod.yaml
 gator test -f policies/ -f test-resources/
 ```
 
