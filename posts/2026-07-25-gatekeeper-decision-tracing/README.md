@@ -25,7 +25,7 @@ Before tracing evaluation, check template and Constraint ingestion:
 kubectl get constrainttemplate <template-name> -o yaml
 kubectl get <constraint-kind> <constraint-name> -o yaml
 kubectl get constrainttemplatepodstatus,constraintpodstatus \
-  -n gatekeeper-system
+  -n gatekeeper-system -o yaml
 ```
 
 Confirm every Gatekeeper replica observed the current generation and has no compilation errors.
@@ -90,6 +90,8 @@ Trigger one representative request:
 kubectl apply --dry-run=server -f unexpected-deployment.yaml
 ```
 
+Run it from the authentication context named in `user`; a kubeconfig using a different identity will not match the trace selector.
+
 Trace output is written to the stdout logs of the Gatekeeper controller Pod that handled the request:
 
 ```bash
@@ -98,7 +100,7 @@ kubectl logs -n gatekeeper-system \
   --since=5m --prefix
 ```
 
-If the trace is absent, confirm the request identity, GVK after API conversion, and which Pod received the request.
+If the trace is absent, confirm the request identity, the GVK in `AdmissionReview.request.kind`, and which Pod received the request.
 
 ## Use data dumps sparingly
 
@@ -139,7 +141,7 @@ Also check:
 - Pod paths versus Deployment template paths.
 - String case and whitespace.
 - Set versus array comparisons.
-- Multiple `violation` rules producing duplicate messages.
+- Multiple `violation` rules producing distinct results; Rego de-duplicates identical violations.
 - Rego v0 versus explicitly enabled Rego v1 syntax.
 - `input.parameters` type and default assumptions.
 
@@ -163,7 +165,7 @@ tests:
           - violations: 1
 ```
 
-Use an AdmissionReview fixture when the rule reads `userInfo`, operation, or old object. Supply `inventory` files for referential rules.
+Use an AdmissionReview fixture when the rule reads `userInfo`, `operation`, `oldObject`, `uid`, or `dryRun`. Supply `inventory` files for referential rules.
 
 ```bash
 gator verify suite.yaml

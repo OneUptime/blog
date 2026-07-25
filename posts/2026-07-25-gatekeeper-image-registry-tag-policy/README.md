@@ -77,7 +77,7 @@ Requiring fully qualified names is usually clearest for supply-chain controls. T
 
 ## Block mutable or prohibited tags
 
-The library's `K8sDisallowedTags` policy handles regular, init, and ephemeral containers. It also treats an image with no tag as a violation and checks the last path component so a registry port is not mistaken for a tag.
+The library's `K8sDisallowedTags` policy handles regular, init, and ephemeral containers. It also treats a plain image reference with neither a tag nor a digest as a violation and checks the last path component so a registry port is not mistaken for a tag.
 
 ```yaml
 apiVersion: constraints.gatekeeper.sh/v1beta1
@@ -99,6 +99,8 @@ spec:
 ```
 
 Use fully qualified entries for exemptions. A broad prefix exemption can allow an untrusted repository with a similar name.
+
+The template checks disallowed tags with an end-of-string suffix match. A tag-plus-digest reference such as `api:latest@sha256:<digest>` therefore does not trigger its `latest` rule. The digest still pins the pulled content, but use a custom policy if the tag text itself must be prohibited in combined references.
 
 Blocking `latest` does not make another tag immutable. A registry can move `v1.2.3` unless its governance prevents it.
 
@@ -153,7 +155,7 @@ A Pod-only Constraint does not reject the parent Deployment request unless workl
 Inventory real image strings:
 
 ```bash
-kubectl get pods -A -o jsonpath='{range .items[*]}{.metadata.namespace}{"\\t"}{range .spec.initContainers[*]}{.image}{"\\n"}{end}{range .spec.containers[*]}{.image}{"\\n"}{end}{range .spec.ephemeralContainers[*]}{.image}{"\\n"}{end}{end}' \
+kubectl get pods -A -o go-template='{{range .items}}{{ $namespace := .metadata.namespace }}{{range .spec.initContainers}}{{printf "%s\t%s\n" $namespace .image}}{{end}}{{range .spec.containers}}{{printf "%s\t%s\n" $namespace .image}}{{end}}{{range .spec.ephemeralContainers}}{{printf "%s\t%s\n" $namespace .image}}{{end}}{{end}}' \
   | sort -u
 ```
 
