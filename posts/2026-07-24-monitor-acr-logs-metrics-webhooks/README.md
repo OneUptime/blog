@@ -117,6 +117,7 @@ az monitor diagnostic-settings create \
   --name "acr-audit-to-log-analytics" \
   --resource "$ACR_ID" \
   --workspace "$WORKSPACE_ID" \
+  --export-to-resource-specific true \
   --logs '[
     {
       "category": "ContainerRegistryLoginEvents",
@@ -358,4 +359,3 @@ Together, metrics provide the trend, logs provide the actor and operation, the A
 - [ContainerRegistryRepositoryEvents schema](https://learn.microsoft.com/en-us/azure/azure-monitor/reference/tables/containerregistryrepositoryevents)
 - [Using Azure Container Registry webhooks](https://learn.microsoft.com/en-us/azure/container-registry/container-registry-webhook)
 - [ACR webhook schema](https://learn.microsoft.com/en-us/azure/container-registry/container-registry-webhook-reference)
-
