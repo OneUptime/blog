@@ -37,7 +37,7 @@ openssl s_client \
 Check three separate properties:
 
 1. The certificate is within its validity period.
-2. The URL hostname appears in a DNS subject alternative name.
+2. The URL hostname matches a DNS subject alternative name.
 3. The issuer chain ends at a CA the client trusts.
 
 An unknown-authority fix does not solve an expired certificate or a hostname mismatch.
@@ -72,12 +72,13 @@ kubectl get configmap cdi-uploadproxy-signer-bundle \
   > cdi-uploadproxy-ca.crt
 ```
 
-Confirm the certificate:
+The ConfigMap is a rotation bundle, so it can contain more than one CA certificate. Inspect every certificate in it:
 
 ```bash
-openssl x509 \
-  -in cdi-uploadproxy-ca.crt \
-  -noout -subject -issuer -fingerprint -sha256
+openssl crl2pkcs7 \
+  -nocrl \
+  -certfile cdi-uploadproxy-ca.crt \
+  | openssl pkcs7 -print_certs -noout
 ```
 
 KubeVirt's user guide also documents exporting `tls.crt` from the `cdi-uploadproxy-server-cert` Secret. Prefer a stable CA bundle when available rather than pinning a rotating leaf certificate. Access to the Secret requires elevated permissions and should not be granted merely to every uploader.
@@ -89,9 +90,22 @@ For an Ingress-terminated endpoint, obtain the issuing CA through your organizat
 On Debian or Ubuntu:
 
 ```bash
-sudo install -m 0644 cdi-uploadproxy-ca.crt \
-  /usr/local/share/ca-certificates/cdi-uploadproxy-ca.crt
+ca_split_dir=$(mktemp -d)
+awk -v output_dir="${ca_split_dir}" '
+  /-----BEGIN CERTIFICATE-----/ { certificate++ }
+  certificate {
+    print > (output_dir "/cdi-uploadproxy-ca-" certificate ".crt")
+  }
+' cdi-uploadproxy-ca.crt
+
+sudo install -d -m 0755 \
+  /usr/local/share/ca-certificates/cdi-uploadproxy
+sudo find /usr/local/share/ca-certificates/cdi-uploadproxy \
+  -maxdepth 1 -type f -name '*.crt' -delete
+sudo install -m 0644 "${ca_split_dir}"/*.crt \
+  /usr/local/share/ca-certificates/cdi-uploadproxy/
 sudo update-ca-certificates
+rm -r "${ca_split_dir}"
 ```
 
 On Fedora or RHEL:
