@@ -21,7 +21,7 @@ qemu-img info --output=json ./appliance.qcow2
 sha256sum ./appliance.qcow2
 ```
 
-The target must accommodate the virtual disk after conversion, not only the compressed qcow2 file. Keep the checksum for your own artifact audit; `virtctl image-upload` does not turn a local checksum into a CDI HTTP source checksum.
+The `spec.storage` request must accommodate the virtual disk after conversion, not only the compressed qcow2 file. For a Filesystem volume, CDI accounts for its configured filesystem overhead when it creates the underlying PVC. Keep the checksum for your own artifact audit; `virtctl image-upload` does not turn a local checksum into a CDI HTTP source checksum.
 
 ## Create the Upload DataVolume
 
@@ -59,10 +59,10 @@ If a DataVolume with that name already exists, verify its source before proceedi
 
 ```bash
 kubectl get datavolume appliance-root -n vm-images \
-  -o jsonpath='{.spec.source.upload}{" phase="}{.status.phase}{"\n"}'
+  -o jsonpath='{.spec.source}{" phase="}{.status.phase}{"\n"}'
 ```
 
-An empty `{}` confirms the upload source. Stop if the object points to HTTP, registry, PVC clone, or another source.
+An output beginning with `map[upload:map[]]` confirms the upload source. Stop if the object points to HTTP, registry, PVC clone, or another source.
 
 ## Confirm the Upload Proxy URL
 
@@ -97,9 +97,12 @@ Do not pass `--size`, `--storage-class`, `--access-mode`, or `--volume-mode` whe
 
 `virtctl` creates an `UploadTokenRequest`, sends the authenticated upload to the proxy, and waits while CDI processes the image. The token is short-lived and scoped to the target claim.
 
-For a DataVolume using a `WaitForFirstConsumer` StorageClass, upload may wait because the PVC is intentionally unbound. `--force-bind` exists, but use it only when immediate placement is safe, such as a topology-independent golden image:
+For a DataVolume using a `WaitForFirstConsumer` StorageClass, upload may wait because the PVC is intentionally unbound. With `--no-create`, current `virtctl` does not add the immediate-binding annotation to an existing object, so `--force-bind` alone is not sufficient. If immediate placement is safe, such as for a topology-independent golden image, annotate the existing PVC and use `--force-bind` to let the client wait while CDI binds it:
 
 ```bash
+kubectl annotate pvc appliance-root -n vm-images \
+  cdi.kubevirt.io/storage.bind.immediate.requested=true
+
 virtctl image-upload dv appliance-root \
   --namespace=vm-images \
   --no-create \
@@ -132,12 +135,12 @@ An asynchronous server-side conversion may continue after bytes finish crossing 
 
 ## Fix Common Failures
 
-- `DataVolume not found`: verify the namespace and context; `--no-create` correctly refuses to invent the target.
+- target PVC or DataVolume not found: verify the namespace and context, and wait for CDI to create the DataVolume's PVC; `--no-create` correctly refuses to invent the target.
 - target is not an upload DataVolume: create a separate `source.upload` DataVolume.
 - unknown authority: install the upload endpoint's CA chain in the client trust store.
 - certificate SAN mismatch: use the endpoint's valid DNS name or issue the correct certificate.
 - `403` creating an upload token: grant the user permission to create `uploadtokenrequests` in the target namespace.
-- no space during conversion: size for qcow2 virtual size plus filesystem overhead and scratch requirements.
+- no space during conversion: size the `spec.storage` request for the qcow2 virtual size; CDI accounts for configured filesystem overhead when rendering the underlying Filesystem PVC. Separately, ensure CDI can provision its temporary Filesystem/RWO scratch PVC.
 - upload Pod Pending: inspect PVC binding, quota, scheduling, and scratch StorageClass.
 
 Use `--insecure` only to isolate a TLS diagnosis in an approved environment. It disables server verification and is not the production fix.
@@ -159,7 +162,7 @@ volumes:
       name: appliance-root
 ```
 
-Starting from an incomplete upload can produce a corrupt or unbootable guest disk.
+KubeVirt normally keeps a VM that references a DataVolume from starting until population succeeds; waiting for `Succeeded` also gives you a clear operational gate before attachment.
 
 ## Official Documentation
 
