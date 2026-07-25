@@ -46,10 +46,9 @@ metadata:
     - PostgreSQL
   architectures:
     - amd64
-    - arm64
 ```
 
-`metadata.name` identifies the workspace or registry entry. Names and command IDs follow Kubernetes-compatible lowercase naming rules in Devfile validation: lowercase alphanumeric characters and hyphens, with an alphanumeric first and last character and a maximum of 63 characters.
+`metadata.name` identifies the workspace or registry entry. Component and project names and command IDs follow Kubernetes-compatible lowercase naming rules in Devfile validation: lowercase alphanumeric characters and hyphens, with an alphanumeric first and last character and a maximum of 63 characters.
 
 Registry-facing fields such as `displayName`, description, language, project type, tags, provider, icon, and support URL help discovery but do not install a runtime.
 
@@ -62,10 +61,10 @@ projects:
   - name: inventory-api-source
     git:
       remotes:
-        origin: https://github.com/example/inventory-api.git
+        origin: https://github.com/devfile-samples/devfile-stack-go.git
       checkoutFrom:
         remote: origin
-        revision: main
+        revision: v2.3.0
 ```
 
 Every project needs a unique name and one source type. If a Git source has more than one remote, `checkoutFrom.remote` is required so the consumer knows which remote supplies the revision.
@@ -78,9 +77,9 @@ projects:
     clonePath: services/inventory-api
     git:
       remotes:
-        origin: https://github.com/example/inventory-api.git
+        origin: https://github.com/devfile-samples/devfile-stack-go.git
       checkoutFrom:
-        revision: main
+        revision: v2.3.0
 ```
 
 Do not use an absolute path or a path that escapes the projects root.
@@ -134,7 +133,7 @@ components:
 
 An endpoint gives a port a stable name and describes how a consumer may expose it. `targetPort` is the port used by the process in the component.
 
-Endpoint names must be unique across components. Target-port uniqueness has additional validation rules for containers sharing a pod. Do not assume two unrelated component entries can always claim the same port.
+Endpoint names use the same lowercase character pattern as other identifiers, but have a maximum of 15 characters and must be unique across components. Two container components cannot use the same `targetPort` unless `dedicatedPod: true` makes the restriction inapplicable; a single container component can define multiple endpoints for the same port.
 
 `exposure: public` is a request to the consuming tool, not a guarantee of internet reachability. Cluster ingress, policy, and tool behavior determine the actual URL.
 
@@ -152,7 +151,7 @@ components:
       mountSources: true
       volumeMounts:
         - name: dependencies
-          path: /home/user/go/pkg
+          path: /go/pkg/mod
 ```
 
 A volume mount must reference a valid volume component. Persistence semantics are consumer-specific, but the mount makes caches or workspace data independent from the container filesystem.
@@ -169,7 +168,7 @@ commands:
     exec:
       component: runtime
       workingDir: ${PROJECT_SOURCE}
-      commandLine: go build -o bin/inventory-api ./cmd/server
+      commandLine: mkdir -p bin && go build -o bin/inventory-api .
       group:
         kind: build
         isDefault: true
@@ -198,7 +197,7 @@ Command IDs must be unique. The `component` value must match a container compone
 
 Groups express command intent. Devfile supports build, run, test, debug, and deploy group kinds. Only one command in each kind can be the default. Consumers decide which groups they execute automatically. odo uses default build and run commands for its development loop and a default debug command when launched in debug mode.
 
-`hotReloadCapable: true` tells a supporting consumer that the process handles source changes itself. Do not enable it for a process that must be restarted after a rebuild.
+For a default run or debug command, `hotReloadCapable: true` tells a supporting consumer that the process handles source changes itself and should not be restarted. For a default build command, it means the build should execute only once. Do not enable it for a process that must be restarted after a rebuild.
 
 ## Compose Commands
 
@@ -249,16 +248,15 @@ metadata:
     - REST
   architectures:
     - amd64
-    - arm64
 
 projects:
   - name: inventory-api-source
     git:
       remotes:
-        origin: https://github.com/example/inventory-api.git
+        origin: https://github.com/devfile-samples/devfile-stack-go.git
       checkoutFrom:
         remote: origin
-        revision: main
+        revision: v2.3.0
 
 components:
   - name: dependencies
@@ -285,14 +283,14 @@ components:
           exposure: public
       volumeMounts:
         - name: dependencies
-          path: /home/user/go/pkg
+          path: /go/pkg/mod
 
 commands:
   - id: build
     exec:
       component: runtime
       workingDir: ${PROJECT_SOURCE}
-      commandLine: go build -o bin/inventory-api ./cmd/server
+      commandLine: mkdir -p bin && go build -o bin/inventory-api .
       group:
         kind: build
         isDefault: true
@@ -323,7 +321,7 @@ Configure the YAML Language Server with the official schema:
 ```json
 {
   "yaml.schemas": {
-    "https://raw.githubusercontent.com/devfile/api/main/schemas/latest/devfile.json": "devfile.yaml"
+    "https://raw.githubusercontent.com/devfile/api/v2.3.0/schemas/latest/devfile.json": "devfile.yaml"
   }
 }
 ```
@@ -346,4 +344,3 @@ If targeting odo, use the schema version it supports and test `odo dev` in a dis
 - [Devfile validation rules](https://devfile.io/docs/2.3.0/devfile-validation-rules)
 - [odo Devfile reference](https://odo.dev/docs/development/devfile/)
 - [odo describe component](https://odo.dev/docs/command-reference/describe-component/)
-
