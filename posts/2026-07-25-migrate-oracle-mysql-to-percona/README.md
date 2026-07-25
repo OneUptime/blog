@@ -22,7 +22,7 @@ Percona Server builds are based on MySQL releases. Keep the first migration as c
 - MySQL 8.4 to a compatible Percona Server 8.4 build
 - MySQL 8.0 to Percona Server 8.4 only as a planned and tested 8.0-to-8.4 upgrade
 
-MySQL supports replication from an older source to a newer replica only when that pairing is also a supported upgrade path. It does not support replication from a later release to an earlier-release replica. This rule determines both upgrade order and the rollback boundary.
+MySQL supports replication from an older source to a newer replica only when that pairing is also a supported upgrade path. Replication from a later release to an earlier-release replica is generally unsupported outside documented rollback-only downgrade paths. For example, MySQL and Percona document 8.4-to-8.0 replication as a rollback method only when no new server functionality has been applied to the data. Cross-distribution Percona-to-Oracle replication still needs confirmation for the exact builds. These rules determine both upgrade order and the rollback boundary.
 
 Record the exact source:
 
@@ -109,8 +109,9 @@ GTID-based replication makes the cutover and catch-up checks easier. Ideally, bo
 [mysqld]
 gtid_mode=ON
 enforce_gtid_consistency=ON
-binlog_format=ROW
 ```
+
+Verify that `@@binlog_format` is `ROW`. Row-based logging is the default in current MySQL 8.0 and 8.4 releases. The `binlog_format` variable itself is deprecated as of MySQL 8.0.34, so do not add it to a new configuration when the default is already correct; if an existing server explicitly selects another format, move it to `ROW` using the procedure for that exact release.
 
 Each server needs a unique nonzero `server_id` and a unique `server_uuid`.
 
@@ -127,7 +128,7 @@ If the source purges transactions before the target requests them, auto-position
 
 ## Create a Dedicated, Encrypted Replication Account
 
-On the Oracle MySQL source, restrict the account to the target network:
+On a MySQL 8.0 or 8.4 Oracle source, restrict the account to the target network:
 
 ```sql
 CREATE USER 'percona_migrate'@'10.20.30.%'
@@ -166,17 +167,21 @@ mysqldump \
   --events \
   --triggers \
   --set-gtid-purged=ON \
-  --all-databases \
+  --databases app_db_1 app_db_2 \
   > mysql-migration.sql
 ```
 
 Important limitations:
 
+- Replace the example database names with every application schema in the replication scope. `--set-gtid-purged=ON` records the source's full `gtid_executed` set, including transactions for omitted schemas, so omitting an application schema can make auto-positioning skip history that was never restored.
+- Do not load the source's `mysql` system schema over a target initialized by a different version or distribution. Recreate reviewed accounts and grants with account-management statements, and keep the target's own system schemas.
 - `--single-transaction` gives a consistent snapshot for transactional tables such as InnoDB.
 - It does not make changes to nontransactional tables consistent.
 - DDL during the dump can invalidate assumptions or make the dump fail.
+- Use a current `mysqldump` client supported with the source. Before MySQL 8.0.32, combining `--single-transaction` with `--set-gtid-purged=ON` could produce inconsistent output.
+- Current clients require `RELOAD` or `FLUSH_TABLES` for this GTID and single-transaction combination, and require `PROCESS` unless `--no-tablespaces` is used. Grant only the privileges required by the chosen dump.
 - Large instances may take too long to dump and load inside the binary log retention window.
-- System accounts and vendor-specific metadata need deliberate review.
+- System accounts, definers, grants, and vendor-specific metadata need deliberate review.
 
 Quiesce DDL and handle nontransactional tables with a tested locking or application-maintenance procedure. Do not add global locks casually to a busy source.
 
@@ -196,6 +201,8 @@ mysql \
   --password \
   < mysql-migration.sql
 ```
+
+The temporary restore account must be able to execute every statement in the dump, including its restricted GTID and binary-log session assignments. Required dynamic privileges differ across current 8.0 and 8.4 builds, so prove the account with a staged restore and revoke it after use.
 
 Immediately restore the fence before attaching the replication channel:
 
@@ -305,7 +312,7 @@ SELECT @@GLOBAL.gtid_executed;
 SELECT WAIT_FOR_EXECUTED_GTID_SET('<captured-gtid-set>', 60);
 ```
 
-A result of `0` means the set executed before the timeout. A result of `1` means timeout. `NULL` indicates an error. Do not proceed until the expected set is present and both replication threads are healthy.
+A result of `0` means the set executed before the timeout. A result of `1` means timeout. Other failures raise an error. Do not proceed until the expected set is present and both replication threads are healthy.
 
 5. Stop replication cleanly on the target:
 
@@ -328,7 +335,7 @@ Persist the intended read-only settings through your configuration or orchestrat
 
 Before any write reaches Percona, you can usually redirect traffic to the still-current Oracle source.
 
-After Percona accepts writes, Oracle is stale. Sending traffic back without synchronizing data loses acknowledged transactions. If Percona is on a later release, reverse replication to the earlier Oracle release is not supported. Even at the same release family, Percona-only features can make reverse compatibility worse.
+After Percona accepts writes, Oracle is stale. Sending traffic back without synchronizing data loses acknowledged transactions. If Percona is on a later release, do not assume that reverse replication to the earlier Oracle release is supported. MySQL and Percona document some 8.4-to-8.0 replication downgrade paths for rollback only, provided no new server functionality has been applied to the data; confirm cross-distribution support for the exact builds. Even at the same release family, Percona-only features can make reverse compatibility worse.
 
 Choose one of these explicitly:
 
@@ -360,9 +367,14 @@ Minimal downtime comes from doing all expensive copying and most validation befo
 - [Percona Server for MySQL 8.4 documentation](https://docs.percona.com/percona-server/8.4/index.html)
 - [Percona Server and MySQL feature comparison](https://docs.percona.com/percona-server/8.4/feature-comparison.html)
 - [Percona Server upgrade strategies](https://docs.percona.com/percona-server/8.4/upgrade-strategies.html)
+- [Percona Server downgrade paths](https://docs.percona.com/percona-server/8.4/downgrade.html)
+- [MySQL upgrade paths](https://dev.mysql.com/doc/refman/8.4/en/upgrade-paths.html)
+- [MySQL downgrade paths](https://dev.mysql.com/doc/refman/8.4/en/downgrading.html)
 - [MySQL replication compatibility between versions](https://dev.mysql.com/doc/refman/8.4/en/replication-compatibility.html)
 - [MySQL GTID auto-positioning](https://dev.mysql.com/doc/refman/8.4/en/replication-gtids-auto-positioning.html)
 - [MySQL online GTID enablement](https://dev.mysql.com/doc/refman/8.4/en/replication-mode-change-online-enable-gtids.html)
+- [MySQL `mysqldump` reference](https://dev.mysql.com/doc/refman/8.4/en/mysqldump.html)
 - [MySQL CHANGE REPLICATION SOURCE TO](https://dev.mysql.com/doc/refman/8.4/en/change-replication-source-to.html)
 - [MySQL encrypted replication connections](https://dev.mysql.com/doc/refman/8.4/en/replication-encrypted-connections.html)
+- [MySQL GTID functions](https://dev.mysql.com/doc/refman/8.4/en/gtid-functions.html)
 - [MySQL `read_only` and `super_read_only` variables](https://dev.mysql.com/doc/refman/8.4/en/server-system-variables.html#sysvar_super_read_only)
