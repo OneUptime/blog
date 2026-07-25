@@ -96,7 +96,7 @@ A longer TTL lowers latency and provider load but extends staleness. Cache immut
 
 Since Gatekeeper v3.11, external providers require HTTPS with TLS or mutual TLS and a minimum TLS version of 1.3.
 
-The Provider's `caBundle` lets Gatekeeper verify the server. For mTLS, the provider must also trust Gatekeeper's client certificate. Coordinate certificate rotation so trust bundles do not drift.
+The Provider's `caBundle` lets Gatekeeper verify the server. For mTLS, the provider must also trust the CA that issued Gatekeeper's client certificate. Coordinate certificate rotation so trust bundles do not drift.
 
 Monitor:
 
@@ -130,7 +130,7 @@ Avoid making readiness depend on a slow optional upstream if cached answers can 
 
 Set:
 
-- CPU and memory requests that prevent throttling.
+- CPU and memory requests sized for the workload, with CPU limits that do not cause throttling.
 - Bounded concurrency and connection pools.
 - Upstream timeouts shorter than the Provider deadline.
 - Circuit breaking and rate limits.
@@ -144,7 +144,7 @@ Load-test bursts from controllers, not only single interactive requests.
 Gatekeeper exposes:
 
 - `gatekeeper_providers` by status.
-- `gatekeeper_provider_error_count_total`.
+- `gatekeeper_provider_error_count` (`gatekeeper_provider_error_count_total` in Prometheus) for Provider reconciliation errors.
 - `gatekeeper_validation_request_duration_seconds`.
 - `gatekeeper_mutation_request_duration_seconds`.
 
