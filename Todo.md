@@ -2,11 +2,10 @@
 
 ## OPA Gatekeeper
 
-1. How to Trace a Gatekeeper Decision and Debug Unexpected Rego Results
-2. How to Restrict Container Image Registries and Tags Without Gatekeeper False Positives
-3. Gatekeeper Mutation vs Validation: What Happens When Both Target the Same Field?
-4. How to Use External Data Providers Without Slowing Gatekeeper Admission Requests
-5. How to Monitor Gatekeeper Audit Health, Denials, and Policy Latency with Prometheus
+1. How to Restrict Container Image Registries and Tags Without Gatekeeper False Positives
+2. Gatekeeper Mutation vs Validation: What Happens When Both Target the Same Field?
+3. How to Use External Data Providers Without Slowing Gatekeeper Admission Requests
+4. How to Monitor Gatekeeper Audit Health, Denials, and Policy Latency with Prometheus
 
 ## Data Volume
 
