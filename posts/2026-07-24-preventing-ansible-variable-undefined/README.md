@@ -139,7 +139,7 @@ The module can then use its own default behavior. Be careful when chaining filte
 
 ## Assert the Input Contract Before Changes
 
-`ansible.builtin.assert` evaluates expressions on the controller and supports check mode. Put preflight assertions near the beginning of a role or play:
+The `ansible.builtin.assert` action runs on the controller for each host and supports check mode. Put preflight assertions near the beginning of a role or play:
 
 ```yaml
 - name: Validate deployment input
@@ -149,8 +149,10 @@ The module can then use its own default behavior. Be careful when chaining filte
       - app_name is string
       - app_name | length > 0
       - app_port is defined
+      - (app_port | string) is match('^[0-9]+$')
       - app_port | int >= 1
       - app_port | int <= 65535
+      - deploy_environment is defined
       - deploy_environment in ['development', 'staging', 'production']
     fail_msg: >-
       Define app_name, a valid app_port, and a supported
@@ -182,7 +184,7 @@ The `mandatory` filter returns the value unchanged when it exists and raises an 
 database_url={{ database_url | mandatory }}
 ```
 
-It is most useful if undefined-variable failures have been relaxed globally, or when a template should make a required field unmistakable. It checks existence, not quality. An empty string passes `mandatory`, so use `assert` when you also need type, range, format, or cross-field validation.
+It is useful when a template should make a required field unmistakable. It checks existence, not quality. An empty string passes `mandatory`, so use `assert` when you also need type, range, format, or cross-field validation.
 
 For a role default that must be overridden, `undef()` can document the contract and provide a useful hint:
 
@@ -196,7 +198,7 @@ This is preferable to a fake placeholder such as `CHANGEME`, which is defined an
 
 ## Handle Registered Results Deliberately
 
-Ansible creates a registered variable for each host even when the task is skipped or fails. Test its state rather than assuming a successful result shape:
+Ansible creates a registered variable for each host even when the task is skipped by a condition or fails. A task skipped by tags is an exception. Test its state rather than assuming a successful result shape:
 
 ```yaml
 - name: Query current application version
