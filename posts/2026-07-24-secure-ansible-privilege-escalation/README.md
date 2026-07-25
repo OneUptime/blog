@@ -80,6 +80,8 @@ Provision the account through an image pipeline, cloud-init, or a controlled boo
     state: present
 ```
 
+The `authorized_key` task requires the `ansible.posix` collection, which is not included in `ansible-core`.
+
 Protect the private key in a credential system. Give separate keys or credentials to production and non-production rather than one universal identity.
 
 ## Understand the Limits of Command Allowlisting
@@ -89,7 +91,7 @@ It is tempting to permit only `/usr/bin/apt`, `/usr/bin/systemctl`, and a few ot
 This leaves three realistic designs:
 
 - Allow broad sudo for a tightly controlled automation account, then constrain who can use its credential and which reviewed playbooks can run.
-- Write purpose-built privileged wrappers with fixed paths and strictly validated arguments, then invoke those wrappers.
+- Write purpose-built privileged wrappers with fixed paths and strictly validated arguments, then invoke them explicitly through sudo from a non-`become` task. Standard Ansible `become` asks sudo to execute Ansible's generated module command, not the wrapper path.
 - Avoid host elevation by moving privileged changes into image construction or another controlled system.
 
 Do not claim least privilege while granting `NOPASSWD: /usr/bin/python3`; assess what that permission actually enables.
@@ -105,6 +107,8 @@ ansible_deploy ALL=(root) NOPASSWD: ALL
 ```
 
 This example is operationally broad. Its security depends on strong control over the account's SSH credential, source repositories, CI or AWX permissions, and playbook review. If your environment requires password-backed sudo, omit `NOPASSWD` and supply the become password through a protected runtime mechanism.
+
+With `NOPASSWD: ALL`, any process running as `ansible_deploy` can call sudo directly. Task-level `become` remains a useful review boundary, but it is not an enforcement boundary against code that has already compromised this account.
 
 Always validate sudoers syntax:
 
@@ -173,7 +177,7 @@ Group related privileged tasks in a named block:
         - Restart myapp
 ```
 
-Keep API calls, controller-side lookups, assertions, and read-only application commands outside the block when they do not need root. This improves review and reduces the effect of a compromised module or malformed variable.
+Keep API calls, controller-side lookups, assertions, and read-only application commands outside the block when they do not need root. This improves review. It also limits privileges when the sudo policy itself enforces a boundary, but not with the broad `NOPASSWD: ALL` policy shown above.
 
 ## Account for Environment Changes
 
@@ -203,9 +207,9 @@ Do not preserve an entire caller environment just for convenience. It may includ
 
 ## Consider Pipelining and Temporary Files
 
-Ansible normally transfers module code to a temporary location on the managed node. Pipelining can reduce file transfers by sending many modules over the SSH connection, and may improve both performance and handling of temporary module files. It is disabled by default and must be compatible with the connection plugin and sudo policy.
+Ansible normally transfers module code to a temporary location on the managed node. Pipelining can reduce network operations by executing supported modules without first saving their code to temporary files, and may improve performance and temporary-file handling. It does not avoid temporary files for modules that transfer files, such as `copy`, `fetch`, and `template`, or for non-Python modules. It is disabled by default and must be compatible with the connection plugin and sudo policy.
 
-Older sudo configurations that require a TTY conflict with pipelining. Modern automation accounts should not require an interactive TTY.
+Sudo configurations that require a TTY conflict with pipelining. Automation accounts should not require an interactive TTY.
 
 Ansible documents additional risks when both the connection user and `become_user` are unprivileged accounts. It may need POSIX ACLs, group sharing, or another mechanism so the second user can read the temporary module. Do not enable world-readable temporary files as a casual workaround. Review the privilege-escalation documentation for the exact platform and core version.
 
@@ -256,5 +260,4 @@ Treat every link as part of the control. A dedicated account with broad sudo can
 - [Become plugins](https://docs.ansible.com/projects/ansible/latest/plugins/become.html)
 - [Connection methods and remote users](https://docs.ansible.com/projects/ansible/latest/inventory_guide/connection_details.html)
 - [Ansible pipelining configuration](https://docs.ansible.com/projects/ansible/latest/reference_appendices/config.html#ansible-pipelining)
-- [sudoers manual](https://www.sudo.ws/docs/man/1.9.14/sudoers.man/)
-
+- [sudoers manual](https://www.sudo.ws/docs/man/sudoers.man/)
