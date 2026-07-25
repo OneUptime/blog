@@ -8,14 +8,14 @@ Description: Configure an encrypted Percona Server 8.4 GTID replication channel 
 
 ---
 
-Global transaction identifiers give each committed transaction a durable identity across a replication topology. With GTID auto-positioning, a replica tells the source which transactions it has already executed, and the source sends the missing set. Operators no longer need to choose a binary-log file and offset when changing sources.
+Global transaction identifiers give each binary-logged committed transaction a durable identity across a replication topology. With GTID auto-positioning, a replica tells the source which transactions it has already executed or received, and the source sends the missing set. Operators no longer need to choose a binary-log file and offset when changing sources.
 
 GTIDs simplify positioning. They do not provide automatic failover, prevent every data divergence, or replace write fencing. A safe setup still needs:
 
 - unique server identities
 - a consistent initial data copy
 - enough binary-log retention
-- encrypted replication credentials
+- an encrypted replication connection and protected credentials
 - a read-only replica
 - monitoring and tested recovery
 
@@ -49,7 +49,6 @@ On the source:
 server_id=101
 gtid_mode=ON
 enforce_gtid_consistency=ON
-binlog_format=ROW
 binlog_expire_logs_seconds=604800
 ```
 
@@ -60,7 +59,6 @@ On the replica:
 server_id=102
 gtid_mode=ON
 enforce_gtid_consistency=ON
-binlog_format=ROW
 skip_replica_start=ON
 read_only=ON
 super_read_only=ON
@@ -68,7 +66,7 @@ super_read_only=ON
 
 The seven-day binary-log retention value is only an example. Size it from the longest expected outage, seed duration, backup window, incident response time, and disk capacity.
 
-MySQL 8.4 enables binary logging and row format by default in normal package installations, but make the intended replication contract explicit and verify it. A source must have binary logging.
+MySQL 8.4 enables binary logging and uses row format by default in normal package installations. The `binlog_format` variable is deprecated, so do not set it in a new 8.4 configuration. Verify that binary logging remains enabled; a source must have binary logging.
 
 Restart each server through the service manager:
 
@@ -85,7 +83,6 @@ SELECT
   @@gtid_mode,
   @@enforce_gtid_consistency,
   @@log_bin,
-  @@binlog_format,
   @@log_replica_updates,
   @@read_only,
   @@super_read_only;
@@ -104,7 +101,7 @@ OFF
 -> ON
 ```
 
-It first enables `enforce_gtid_consistency`, checks for incompatible workload, and waits for anonymous transactions to drain. Complete each step on every topology member before moving to the next.
+It first sets `enforce_gtid_consistency=WARN` to check for incompatible workload, then sets it to `ON` and waits for anonymous transactions to drain. Complete each step on every topology member before moving to the next.
 
 Do not set `gtid_mode=ON` on one live member and improvise the rest. Follow the official procedure, including its backup implications.
 
@@ -126,7 +123,7 @@ Restrict the host pattern more tightly when stable replica addresses permit it. 
 
 Percona Server 8.4 uses `caching_sha2_password` for modern accounts. MySQL requires either a secure connection or RSA-based password exchange for full authentication with this plugin. Use verified TLS for production replication.
 
-Store the password in the approved secret manager. SQL clients can record statements in history, and the replication channel needs a credential for unattended reconnects. Restrict access to both administrative history and replication metadata.
+Keep the generated password at 32 characters or fewer because `SOURCE_PASSWORD` has a 32-character limit. Store it in the approved secret manager. SQL clients can record statements in history, and the replication channel needs a credential for unattended reconnects. Restrict access to both administrative history and replication metadata.
 
 ## Provision the Replica from a Consistent State
 
@@ -300,7 +297,7 @@ FROM replication_check.sentinel
 WHERE id = 1;
 ```
 
-`WAIT_FOR_EXECUTED_GTID_SET` returns `0` on success before the timeout, `1` on timeout, and `NULL` on error.
+`WAIT_FOR_EXECUTED_GTID_SET` returns `0` on success before the timeout and `1` on timeout. Other failures generate an error; a negative timeout in non-strict SQL mode is the documented exception that returns `NULL` with a warning.
 
 Remove the test schema only through the approved schema lifecycle. A `DROP DATABASE` on the source replicates too, so confirm that no other test data shares it.
 
@@ -311,21 +308,20 @@ MySQL 8.4 uses four replica workers by default:
 ```sql
 SELECT
   @@replica_parallel_workers,
-  @@replica_parallel_type,
   @@replica_preserve_commit_order;
 ```
 
-The normal values are four workers, `LOGICAL_CLOCK`, and commit-order preservation enabled. Keep the defaults initially and measure. Raise workers only when the applier is proven to be the bottleneck and the workload has usable parallelism.
+The normal values are four workers and commit-order preservation enabled. Keep the defaults initially and measure. Raise workers only when the applier is proven to be the bottleneck and the workload has usable parallelism.
 
 Tables should have primary keys. Row-based replication applies updates and deletes more efficiently when it can locate rows by a primary or suitable unique key.
 
 ## Plan Binary-Log Retention and Reseeding
 
-During the initial GTID handshake, the replica sends its executed GTID set. The source finds missing transactions and sends them. If the source has purged a required GTID, replication fails with a fatal error.
+During the initial GTID handshake, the replica sends the union of its executed GTID set and the channel's received transaction set. The source finds missing transactions and sends them. If the source has purged a required GTID, replication fails with a fatal error.
 
 The correct responses are:
 
-- restore the missing binary logs through an approved recovery method, or
+- obtain and apply the missing transactions from another source that still retains them through an approved recovery method, or
 - take a new consistent snapshot and reseed the replica
 
 Do not insert empty GTIDs simply to silence the error unless an incident process has proven the transaction can be skipped. Skipping marks a transaction as executed without applying its data.
@@ -387,7 +383,7 @@ Inspect `LAST_ERROR_NUMBER`, `LAST_ERROR_MESSAGE`, and the applying GTID. Determ
 
 ## Back Up the New Topology
 
-MySQL's GTID setup guidance calls for a new backup after GTID enablement because old anonymous binary logs and pre-transition backups may not fit the new recovery chain.
+MySQL's GTID setup guidance calls for a new backup after GTID enablement because old anonymous binary logs cannot be used after the transition, and pre-transition backups are no longer usable on those servers.
 
 Take a full backup, restore it to an isolated Percona Server 8.4 instance, and verify:
 
