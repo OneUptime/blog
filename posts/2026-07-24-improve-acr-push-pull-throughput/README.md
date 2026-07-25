@@ -8,7 +8,7 @@ Description: Find the real bottleneck behind slow ACR transfers and improve imag
 
 ---
 
-A slow `docker pull` is not one operation. The client authenticates, resolves a tag to a manifest, checks which layers are already cached, follows data-endpoint redirects, downloads missing blobs, decompresses them, and writes them to local storage. A push performs a similar sequence in reverse and uploads only layers the registry does not already have.
+A slow `docker pull` is not one operation. The client authenticates, resolves the image reference to a manifest, checks which layers are already cached, follows data-endpoint redirects, downloads missing blobs, decompresses them, and writes them to local storage. A push performs a similar sequence in reverse and uploads only layers the registry does not already have.
 
 That means an ACR transfer can be limited by the client, the network path, image layout, registry request capacity, or geo-replication behavior. Upgrading the registry before measuring these stages often leaves the real bottleneck untouched.
 
@@ -96,7 +96,7 @@ az acr replication list \
   --output table
 ```
 
-The global endpoint normally routes a client to the replica with the best network performance profile, which is often the nearest healthy replica. Replication is eventually consistent. A deployment that pulls immediately in another region can briefly see `manifest unknown`, especially for large images. Publish by digest, retry with backoff, and wait for replication completion before a coordinated multi-region rollout.
+The global endpoint normally routes a client to the replica with the best network performance profile, which is often the nearest healthy replica. Replication is eventually consistent. A deployment that pulls immediately in another region can briefly see `manifest unknown`, especially for large images. Deploy by digest, retry with backoff, and wait for replication completion before a coordinated multi-region rollout.
 
 As of July 2026, ACR regional endpoints are a preview feature. They let a client target a particular geo-replica for predictable routing and push-pull consistency, but require client-side failover planning. Do not make a preview endpoint a production dependency without confirming support and lifecycle requirements.
 
@@ -239,4 +239,3 @@ This process distinguishes registry capacity from distance, image design, and lo
 - [Geo-replication in Azure Container Registry](https://learn.microsoft.com/en-us/azure/container-registry/container-registry-geo-replication)
 - [Dedicated data endpoints](https://learn.microsoft.com/en-us/azure/container-registry/container-registry-dedicated-data-endpoints)
 - [Check registry health](https://learn.microsoft.com/en-us/azure/container-registry/container-registry-check-health)
-
