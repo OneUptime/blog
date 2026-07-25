@@ -2,13 +2,12 @@
 
 ## Data Volume
 
-1. Why Did CDI Fall Back from CSI or Snapshot Cloning to Host-Assisted Copy?
-2. How to Troubleshoot a DataVolume Clone Stuck in `CloneInProgress`
-3. Filesystem vs Block DataVolumes: Which `volumeMode` Works Best for KubeVirt?
-4. Why CDI Needs Scratch Space—and How to Choose Its StorageClass and Size
-5. How to Use `dataVolumeTemplates` So a KubeVirt VM Waits for Its Boot Disk
-6. How to Refresh Golden VM Images Automatically with CDI `DataImportCron`
-7. How to Fix “Unable to Create disk.img, Not Enough Space” When the PVC Looks Large Enough
+1. How to Troubleshoot a DataVolume Clone Stuck in `CloneInProgress`
+2. Filesystem vs Block DataVolumes: Which `volumeMode` Works Best for KubeVirt?
+3. Why CDI Needs Scratch Space—and How to Choose Its StorageClass and Size
+4. How to Use `dataVolumeTemplates` So a KubeVirt VM Waits for Its Boot Disk
+5. How to Refresh Golden VM Images Automatically with CDI `DataImportCron`
+6. How to Fix “Unable to Create disk.img, Not Enough Space” When the PVC Looks Large Enough
 
 ## Percona Server
 
