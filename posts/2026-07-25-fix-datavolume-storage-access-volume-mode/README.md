@@ -10,7 +10,7 @@ Description: Fix CDI storage rendering errors by setting valid access and volume
 
 This error means CDI received a DataVolume `spec.storage` request without enough information to render the underlying PVC. CDI tried to obtain the missing values from the StorageProfile associated with the chosen StorageClass, but that profile did not contain a usable `claimPropertySets` entry.
 
-The fastest scoped fix is to set `accessModes` and `volumeMode` on the DataVolume. The broader administrative fix is to configure accurate defaults on the StorageProfile.
+The fastest scoped fix is to set `accessModes` and `volumeMode` when creating the DataVolume. The broader administrative fix is to configure accurate defaults on the StorageProfile.
 
 ## Confirm the Actual Event
 
@@ -39,13 +39,12 @@ kubectl get storageclass fast-storage -o yaml
 kubectl get storageprofile fast-storage -o yaml
 ```
 
-CDI creates one StorageProfile for each StorageClass. An unrecognized provisioner can result in an empty profile:
+CDI creates one StorageProfile for each StorageClass. An unrecognized provisioner can result in a profile whose status has no `claimPropertySets`:
 
 ```yaml
 status:
   storageClass: fast-storage
   provisioner: storage.example.com/csi
-  claimPropertySets: []
 ```
 
 ## Fix One DataVolume Explicitly
@@ -79,7 +78,7 @@ kubectl apply -f vm-root.yaml
 kubectl get datavolume,pvc -n vm-lab -w
 ```
 
-If the existing DataVolume has already created a PVC, some fields are immutable. Do not delete a claim that contains valuable data just to change a mode. For a new failed import with no useful data, create a new DataVolume name with the corrected specification and switch the VM only after the new import succeeds.
+A DataVolume's `spec` is immutable after creation, so `kubectl apply` can create this corrected object but cannot add the modes to an existing DataVolume, even if no PVC was created. Do not delete a DataVolume or claim that contains valuable data just to change a mode. For a failed import with no useful data, create a new DataVolume name with the corrected specification and switch the VM only after the new import succeeds.
 
 Verify the selected combination against the CSI driver and StorageClass. CDI cannot make a block-only backend provide filesystem volumes, or make a ReadWriteOnce backend support ReadWriteMany.
 
@@ -130,7 +129,7 @@ kubectl get storageclass \
   -o custom-columns=NAME:.metadata.name,DEFAULT:.metadata.annotations.storageclass\\.kubernetes\\.io/is-default-class,VIRT_DEFAULT:.metadata.annotations.storageclass\\.kubevirt\\.io/is-default-virt-class
 ```
 
-When `storageClassName` is omitted, CDI's `spec.storage` logic prioritizes a default virtualization StorageClass, then the Kubernetes default. Multiple conflicting defaults make behavior harder to predict.
+For a DataVolume with the default `kubevirt` content type used here, omitting `storageClassName` makes CDI's `spec.storage` logic prioritize a default virtualization StorageClass, then the Kubernetes default. Multiple conflicting defaults make behavior harder to predict.
 
 An explicit class is preferable in reusable manifests:
 
