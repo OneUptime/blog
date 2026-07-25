@@ -56,8 +56,7 @@ ansible-project/
   ansible.cfg
   collections/
     requirements.yml
-  playbooks/
-    site.yml
+  site.yml
   roles/
     myapp/
       defaults/main.yml
@@ -200,12 +199,12 @@ vault_database_password: !vault |
 
 Create an AWX Vault credential with identifier `production` and attach it to the Job Template. For content encrypted with multiple Vault IDs, attach the matching Vault credentials.
 
-Keep the identifier aligned with the label used during encryption:
+Keep the identifier aligned with the label used during variable encryption. This command prompts for the value and emits the `!vault` YAML to place in the variables file:
 
 ```bash
-ansible-vault encrypt \
+ansible-vault encrypt_string \
   --vault-id production@prompt \
-  inventories/production/group_vars/all/vault.yml
+  --stdin-name vault_database_password
 ```
 
 AWX supplies the decryption password at job time. Vault still protects data at rest only. Use `no_log: true` and `diff: false` for tasks that consume the decrypted value.
@@ -330,4 +329,3 @@ This makes a second AWX installation recoverable and keeps UI drift visible. Sec
 - [AWX Job Templates](https://docs.ansible.com/projects/awx/en/24.6.1/userguide/job_templates.html)
 - [AWX inventory files from source control](https://docs.ansible.com/projects/awx/en/24.6.1/administration/scm-inv-source.html)
 - [Ansible Builder execution environments](https://docs.ansible.com/projects/builder/en/latest/)
-
