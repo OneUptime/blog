@@ -38,7 +38,7 @@ all:
 
 `inventory_hostname` is the inventory alias. `ansible_host` is the address Ansible contacts. A manual connection to `web-01` can resolve through `~/.ssh/config`, while Ansible may be contacting a stale IP from inventory.
 
-Check for overlapping inventory sources and variable precedence. A host variable, group variable, dynamic inventory value, command-line `-u`, or `--private-key` can change the effective connection.
+Check for overlapping inventory sources and variable precedence. A host variable, group variable, or dynamic inventory value can change the effective connection. Ordinary command-line options such as `-u` and `--private-key` override configuration settings, but they do not override connection variables from inventory or playbooks.
 
 ## 2. Reproduce Ansible's Connection Explicitly
 
@@ -113,14 +113,14 @@ For keys, prefer an agent where practical or set an explicit file:
 ansible_ssh_private_key_file: /secure/keys/production_ed25519
 ```
 
-You can test one run without editing inventory:
+To force these values for one diagnostic run without editing inventory, pass them as extra variables, which override inventory variables:
 
 ```bash
 ansible web-01 \
   -i inventories/production \
   -m ansible.builtin.ping \
-  -u deploy \
-  --private-key /secure/keys/production_ed25519
+  -e 'ansible_user=deploy' \
+  -e 'ansible_ssh_private_key_file=/secure/keys/production_ed25519'
 ```
 
 The default OpenSSH connection plugin cannot open an interactive prompt to decrypt a protected private key during a task. Load the key into `ssh-agent` before the run, or provide credentials through the automation platform's supported credential mechanism.
@@ -149,10 +149,10 @@ In ephemeral environments, manage a dedicated known-hosts file and distribute tr
 
 ## 7. Match Bastion and Proxy Configuration
 
-If manual SSH uses `ProxyJump` or `ProxyCommand`, ensure Ansible receives the same path. Ansible's native SSH plugin reads OpenSSH configuration, so a stable host alias can work:
+If manual SSH uses `ProxyJump` or `ProxyCommand`, ensure Ansible receives the same path. Ansible's native SSH plugin reads OpenSSH configuration, but the `Host` pattern must match the hostname or address passed to `ssh`. With the `ansible_host` value above, include that address and any manual alias that should share the settings:
 
 ```sshconfig
-Host web-prod-*
+Host web-01 192.0.2.41
   User deploy
   ProxyJump bastion.example.com
   IdentityFile /secure/keys/production_ed25519
@@ -194,10 +194,15 @@ For cloud hosts, confirm that dynamic inventory has refreshed and that the selec
 
 Ansible uses native OpenSSH by default and can benefit from ControlPersist. A stale control socket can retain a route or identity after a host changes. The verbose output shows the control path and SSH arguments.
 
-As a diagnostic, run the equivalent direct SSH command without multiplexing:
+As a diagnostic, take the equivalent direct SSH command and disable only multiplexing. For the example connection:
 
 ```bash
-ssh -o ControlMaster=no -o ControlPath=none deploy@192.0.2.41
+ssh -vvv \
+  -o ControlMaster=no \
+  -o ControlPath=none \
+  -p 22 \
+  -i /secure/keys/production_ed25519 \
+  deploy@192.0.2.41
 ```
 
 If that works, inspect `ssh_args`, control-path permissions, path length, and stale socket lifecycle on the controller. Do not permanently discard connection reuse without measuring the performance cost.
