@@ -27,7 +27,7 @@ skopeo inspect \
   docker://registry.example.com/vm-images/rhel9:2026-07
 ```
 
-Check architecture, digest, media types, and provenance. With the `pod` pull method, CDI extracts the ContainerDisk layers to scratch space, finds the disk, and converts it to raw for the target volume as needed. Node pull uses the node container runtime instead.
+Check architecture, digest, and media types. Verify provenance separately with your approved signature or attestation tooling. With the `pod` pull method, CDI extracts the ContainerDisk layers to scratch space, finds the disk, and converts it to raw for the target volume as needed. Node pull uses the node container runtime instead.
 
 Do not use `contentType: archive`. Registry sources support `kubevirt`, and a tar archive is not a substitute for the ContainerDisk layout.
 
@@ -147,7 +147,7 @@ With node pull, CDI adds a node selector matching the requested architecture. St
 
 ## Diagnose Failures
 
-Inspect all three storage objects:
+Inspect the related objects:
 
 ```bash
 kubectl get datavolume,pvc,pod -n vm-images
