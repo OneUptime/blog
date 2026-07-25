@@ -52,7 +52,7 @@ spec:
         kind: ServiceAccount
 ```
 
-The Config must be named `config` in `gatekeeper-system`. Gatekeeper synchronizes the union of `SyncSet.spec.gvks` and `Config.spec.sync.syncOnly`.
+The Config must be named `config` in Gatekeeper's installation Namespace (`gatekeeper-system` in the default manifests). Gatekeeper synchronizes the union of `SyncSet.spec.gvks` and `Config.spec.sync.syncOnly`.
 
 ## Understand the inventory path
 
@@ -79,7 +79,7 @@ Use `object.get` or an existence check when a path may be absent. An undefined R
 
 ## Example: require an existing ServiceAccount
 
-This template rejects Pods that name a ServiceAccount missing from the same Namespace:
+This template rejects Pods when their ServiceAccount is not present in Gatekeeper's synchronized inventory for the same Namespace:
 
 ```yaml
 apiVersion: templates.gatekeeper.sh/v1
@@ -101,7 +101,7 @@ spec:
           service_account := object.get(input.review.object.spec, "serviceAccountName", "default")
           not data.inventory.namespace[namespace]["v1"]["ServiceAccount"][service_account]
           msg := sprintf(
-            "ServiceAccount %q does not exist in namespace %q",
+            "ServiceAccount %q was not found in synchronized inventory for namespace %q",
             [service_account, namespace],
           )
         }
@@ -155,7 +155,7 @@ Gatekeeper's runtime flag documentation warns that referential constraints can b
 - A referenced object was deleted but remains briefly visible.
 - Two concurrent requests each pass because neither is yet stored.
 
-Do not use eventual cache state as the only mechanism for an invariant that must be atomic. Where possible, use Kubernetes-native uniqueness, owner references, a controller that reconciles desired state, or another transactional system.
+Do not use eventual cache state as the only mechanism for an invariant that must be atomic. Where possible, use Kubernetes-native validation or uniqueness. Use owner references or a controller when lifecycle management and eventual reconciliation are sufficient; use a transactional system when strict atomicity is required.
 
 Design messages to describe a potentially stale lookup and make retries safe.
 
