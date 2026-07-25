@@ -2,10 +2,9 @@
 
 ## Data Volume
 
-1. Why CDI Needs Scratch Space—and How to Choose Its StorageClass and Size
-2. How to Use `dataVolumeTemplates` So a KubeVirt VM Waits for Its Boot Disk
-3. How to Refresh Golden VM Images Automatically with CDI `DataImportCron`
-4. How to Fix “Unable to Create disk.img, Not Enough Space” When the PVC Looks Large Enough
+1. How to Use `dataVolumeTemplates` So a KubeVirt VM Waits for Its Boot Disk
+2. How to Refresh Golden VM Images Automatically with CDI `DataImportCron`
+3. How to Fix “Unable to Create disk.img, Not Enough Space” When the PVC Looks Large Enough
 
 ## Percona Server
 
