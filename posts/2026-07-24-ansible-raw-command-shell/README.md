@@ -286,7 +286,7 @@ Some tools use a nonzero status for a normal result. Encode that contract explic
 
 Do not add `failed_when: false` to silence an unexplained failure. It converts broken commands, missing binaries, and permission errors into apparent success.
 
-For a state-changing command, use an application status query, `creates`, `removes`, or a carefully tested `changed_when`. If none can identify state, the task is not idempotent and should be documented and isolated.
+For a state-changing command, use an application status query, `creates`, or `removes` to avoid executing an already-satisfied operation. Use a carefully tested `changed_when` only to report whether an executed command changed state; it does not make the command idempotent. If no guard can prevent repeated changes, the task is not idempotent and should be documented and isolated.
 
 ## Understand Check Mode
 
@@ -327,7 +327,7 @@ All three modules can expose data through:
 - Diagnostic tracing.
 - Registered output.
 
-`no_log: true` hides Ansible output but does not prevent a secret placed in an argument from appearing in the remote process table. Prefer a purpose-built module's secret parameter, protected temporary file, `stdin` where the application supports it, or another documented credential mechanism.
+`no_log: true` suppresses normal Ansible task output, but it does not protect debug output or prevent a secret placed in an argument from appearing in the remote process table. Prefer a purpose-built module's secret parameter, protected temporary file, `stdin` where the application supports it, or another documented credential mechanism.
 
 Do not build a shell command by concatenating credentials, even with `quote`.
 
@@ -341,7 +341,7 @@ Ask these questions in order:
    - If no, use a minimal `raw` bootstrap.
 3. Is the operation one executable with arguments?
    - Use `command`, preferably `argv`.
-4. Does it require a pipe, redirect, glob, variable expansion, or compound shell statement?
+4. Does it require a pipe, redirect, glob, shell parameter expansion, or compound shell statement?
    - Use `shell`, quote all templated values, and specify Bash only when required.
 5. Is the inline shell becoming a program?
    - Move it to a tested script or custom module.
@@ -370,4 +370,3 @@ The safest choice is usually the least powerful execution path that satisfies th
 - [ansible.builtin.shell module](https://docs.ansible.com/projects/ansible/latest/collections/ansible/builtin/shell_module.html)
 - [ansible.builtin.script module](https://docs.ansible.com/projects/ansible/latest/collections/ansible/builtin/script_module.html)
 - [Validating tasks with check mode and diff mode](https://docs.ansible.com/projects/ansible/latest/playbook_guide/playbooks_checkmode.html)
-
