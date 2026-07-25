@@ -25,6 +25,9 @@ curl --fail --head \
 openssl s_client \
   -connect images.internal.example:443 \
   -servername images.internal.example \
+  -CAfile ./image-service-ca.pem \
+  -verify_hostname images.internal.example \
+  -verify_return_error \
   -showcerts </dev/null
 ```
 
@@ -118,7 +121,7 @@ kubectl get datavolume rhel9-golden -n vm-images -w
 kubectl describe datavolume rhel9-golden -n vm-images
 ```
 
-CDI's custom-certificate HTTP path can require a scratch PVC for non-raw images. Ensure CDI has a valid scratch StorageClass capable of provisioning `ReadWriteOnce` filesystem volumes.
+CDI can require a scratch PVC when it cannot stream an image directly for conversion, including some custom-certificate HTTP imports. Ensure CDI has a valid scratch StorageClass capable of provisioning `ReadWriteOnce` filesystem volumes.
 
 ## Diagnose Authentication and TLS Separately
 
@@ -141,7 +144,7 @@ Common outcomes are:
 - `x509: certificate signed by unknown authority`: verify the ConfigMap name, CA chain, and namespace.
 - hostname validation failure: use the certificate's DNS name or issue a certificate with the correct SAN.
 - timeout or connection refused: test cluster egress, DNS, NetworkPolicy, proxies, and firewall rules.
-- scratch PVC Pending: inspect `CDIConfig.status.scratchSpaceStorageClass` and that class's capacity.
+- scratch PVC Pending: describe the scratch PVC, inspect its selected StorageClass and events, and check `CDIConfig.status.scratchSpaceStorageClass` if an override is configured.
 
 Check references without exposing values:
 
@@ -152,7 +155,7 @@ kubectl get secret image-endpoint-credentials -n vm-images
 kubectl get configmap image-endpoint-ca -n vm-images
 ```
 
-Do not set `insecureSkipVerify: true` as the fix. It disables server verification and makes credential-bearing downloads vulnerable to interception. It can narrow a diagnosis in an isolated test, but the production solution is a valid chain and hostname.
+On CDI versions that expose `spec.source.http.insecureSkipVerify`, do not set it to `true` as the fix. It disables server verification and makes credential-bearing downloads vulnerable to interception. It can narrow a diagnosis in an isolated test, but the production solution is a valid chain and hostname.
 
 ## Rotate Credentials and CAs Safely
 
