@@ -44,7 +44,7 @@ Check the timestamp and count:
 
 ```bash
 kubectl get <constraint-kind> <constraint-name> \
-  -o jsonpath='{.status.auditTimestamp}{"\\n"}{.status.totalViolations}{"\\n"}'
+  -o jsonpath='{.status.auditTimestamp}{"\n"}{.status.totalViolations}{"\n"}'
 ```
 
 Only the latest audit run is represented in Constraint status. The default individual violation limit is 20, so a short `.status.violations` list does not mean only 20 resources are invalid.
@@ -61,7 +61,7 @@ kubectl logs -n gatekeeper-system deploy/gatekeeper-audit \
   --since=10m
 ```
 
-Names vary by installation method. Locate the Pod whose arguments include `--operation=audit`.
+Names vary by installation method. In a split deployment, locate the Pod whose arguments include `--operation=audit`. If no `--operation` arguments are present, that Gatekeeper process enables all operations by default, including audit.
 
 An `--audit-interval=0` argument disables the periodic audit operation. Removing an audit Deployment can also remove singleton responsibilities in some Gatekeeper layouts, so use the documented chart setting or disable only the audit operation.
 
