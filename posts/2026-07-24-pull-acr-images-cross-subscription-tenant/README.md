@@ -114,7 +114,7 @@ az aks update \
 
 Do not use `--attach-acr` for an ABAC-enabled registry. Microsoft currently directs administrators to assign `Container Registry Repository Reader` manually instead.
 
-The same registry-scoped assignment works for a VM, Container Apps environment, or another Azure service that supports managed identities. Use that service's actual pull identity, which is not always its control-plane identity.
+The same registry-scoped assignment pattern works for a VM, a container app, or another Azure service that supports managed identities. Use that service's actual pull identity, which is not always its control-plane identity. For Container Apps, also ensure that the registry permits ARM audience tokens for authentication.
 
 ## Test a same-tenant identity
 
@@ -143,6 +143,7 @@ For the Microsoft-documented AKS approach:
 An administrator in Tenant B can provision the enterprise application with Azure CLI after signing into that tenant:
 
 ```bash
+TENANT_A_ID="44444444-4444-4444-4444-444444444444"
 TENANT_B_ID="22222222-2222-2222-2222-222222222222"
 APP_CLIENT_ID="33333333-3333-3333-3333-333333333333"
 
@@ -175,10 +176,13 @@ For an AKS cluster that was intentionally created with service principal authent
 
 ```bash
 az login --tenant "$TENANT_A_ID"
+read -rsp "Application client secret: " APP_CLIENT_SECRET
+printf '\n'
 
 az aks update-credentials \
   --name "$AKS_NAME" \
   --resource-group "$AKS_RESOURCE_GROUP" \
+  --subscription "$AKS_SUBSCRIPTION_ID" \
   --reset-service-principal \
   --service-principal "$APP_CLIENT_ID" \
   --client-secret "$APP_CLIENT_SECRET"
@@ -207,7 +211,13 @@ metadata:
   name: payments-api
   namespace: payments
 spec:
+  selector:
+    matchLabels:
+      app: payments-api
   template:
+    metadata:
+      labels:
+        app: payments-api
     spec:
       imagePullSecrets:
         - name: acr-pull
@@ -234,7 +244,7 @@ For AKS, use Microsoft's ACR connectivity checks and inspect the pod event:
 kubectl describe pod <pod-name> --namespace payments
 ```
 
-`401 Unauthorized` usually points to credentials or identity. `403 Forbidden` often indicates authenticated but insufficient authorization, an ABAC condition mismatch, or registry policy. Timeouts and DNS errors point to the network path rather than RBAC.
+`401 Unauthorized` usually points to credentials, identity, or missing pull authorization. `403 Forbidden` is not proof that authentication succeeded; for AKS pulls, it commonly indicates registry network access such as a private DNS or IP allowlist problem. Timeouts and DNS errors also point to the network path rather than RBAC.
 
 ## Production checklist
 
