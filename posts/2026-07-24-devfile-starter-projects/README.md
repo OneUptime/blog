@@ -209,7 +209,7 @@ Instead:
 
 Authentication is consumer-specific. A desktop IDE, hosted workspace service, and CLI can obtain credentials in different ways. The Devfile remains portable by describing the source rather than the secret. Consult the selected consumer's current credential documentation instead of assuming that a local credential helper, SSH agent, or cluster Secret is automatically used.
 
-`git ls-remote <url>` is a useful check that the URL and revision are visible from a particular shell, but it does not prove a different consumer has the same credential context.
+`git ls-remote <url>` is a useful check that the URL and the repository's advertised refs are visible from a particular shell, but it does not prove a different consumer has the same credential context.
 
 ## Select a starter with archived odo v3
 
@@ -220,7 +220,7 @@ odo init \
   --name payments-api \
   --devfile nodejs \
   --devfile-version 2.1.1 \
-  --starter node-service-main
+  --starter nodejs-starter
 ```
 
 The `--starter` value must match the starter project's `name`, not its remote name or repository name. `odo init` is intended to run before a local `devfile.yaml` exists. When source already exists, odo follows its source-detection flow and does not need to download a starter.
