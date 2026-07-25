@@ -68,7 +68,7 @@ metadata:
 components:
   - name: tools
     container:
-      image: registry.example.com/dev/node:20
+      image: registry.access.redhat.com/ubi9/nodejs-24
       mountSources: true
       endpoints:
         - name: http
@@ -104,12 +104,12 @@ Devfile volume components can persist package-manager downloads independently of
 components:
   - name: tools
     container:
-      image: registry.example.com/dev/node:20
+      image: registry.access.redhat.com/ubi9/nodejs-24
       mountSources: true
       memoryLimit: 2Gi
       volumeMounts:
         - name: npm-cache
-          path: /home/user/.npm
+          path: /opt/app-root/src/.npm
   - name: npm-cache
     volume:
       size: 1Gi
@@ -122,7 +122,7 @@ commands:
   - id: run
     exec:
       component: tools
-      commandLine: npm ci --cache /home/user/.npm && npm run dev -- --host 0.0.0.0
+      commandLine: npm ci --cache /opt/app-root/src/.npm && npm run dev -- --host 0.0.0.0
       workingDir: ${PROJECT_SOURCE}
       hotReloadCapable: true
       group:
@@ -156,7 +156,7 @@ Then edit one leaf source file, press `p`, and record the time until the applica
 
 If local container execution is relevant to the team, `odo dev --platform podman` can help separate Kubernetes scheduling and network costs from sync and command costs. It is not inherently faster, and it does not replace testing on the target cluster, but the comparison can identify which portion of the loop deserves attention.
 
-Finally, commit the Devfile, ignore rules, and benchmark procedure together. The best-performing configuration is one whose source contract is understandable and reproducible by the next developer—not one that relies on an undocumented cache left behind by a previous session.
+Finally, commit the Devfile, ignore rules, and benchmark procedure together. The best-performing configuration is one whose source contract is understandable and reproducible by the next developer-not one that relies on an undocumented cache left behind by a previous session.
 
 ## Official Documentation
 

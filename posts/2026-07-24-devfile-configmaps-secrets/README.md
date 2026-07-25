@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Devfile, Kubernetes, Secrets, ConfigMaps, Supply Chain Security
+Tags: Devfile, Kubernetes, Secret, ConfigMap, Supply Chain Security
 
 Description: Use Kubernetes ConfigMaps, Secrets, and imagePullSecrets with Devfile workflows without embedding credentials or assuming unsupported portable fields.
 

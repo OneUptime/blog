@@ -1,8 +1,8 @@
-# Why ACR Pushes and Pulls Are Slow—and How to Improve Throughput
+# Why ACR Pushes and Pulls Are Slow-and How to Improve Throughput
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Azure, Azure Container Registry, Docker, Containers, Performance, DevOps
+Tags: Azure, Azure Container Registry, Docker, Container, Performance, DevOps
 
 Description: Find the real bottleneck behind slow ACR transfers and improve image layout, network locality, registry capacity, and client behavior.
 

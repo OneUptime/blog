@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Gatekeeper, Kubernetes, ServiceAccount, Workloads, Policy Scope
+Tags: Gatekeeper, Kubernetes, ServiceAccount, Workload, Policy Scope
 
 Description: Scope Gatekeeper policy to a workload label, assigned Pod ServiceAccount, or requesting identity without confusing these different signals.
 

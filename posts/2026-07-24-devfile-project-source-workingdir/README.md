@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Devfile, odo, Source Synchronization, Containers, Kubernetes
+Tags: Devfile, odo, Source Synchronization, Container, Kubernetes
 
 Description: Understand PROJECT_SOURCE, PROJECTS_ROOT, sourceMapping, and workingDir so Devfile commands run against the intended synchronized source tree.
 

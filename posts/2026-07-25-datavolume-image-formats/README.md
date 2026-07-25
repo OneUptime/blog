@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, KubeVirt, CDI, qcow2, VM Images
+Tags: Kubernetes, KubeVirt, CDI, QCOW2, VM Image
 
 Description: Choose raw, qcow2, or ISO sources for CDI, set the correct contentType, and size DataVolumes for conversion and filesystem overhead.
 
@@ -40,7 +40,7 @@ Relevant values are:
 }
 ```
 
-The 2.2 GiB artifact represents a 40 GiB virtual disk. Size the DataVolume for at least the virtual size plus applicable filesystem overhead. CDI converts qcow2 to raw for KubeVirt storage and grows the image to usable target capacity.
+The image occupies about 2.2 GiB on the local filesystem and represents a 40 GiB virtual disk. Size the DataVolume for at least the virtual size and add a deliberate growth margin. When you use `spec.storage` with a filesystem-mode target, CDI accounts for configured filesystem overhead when it renders the PVC. CDI converts qcow2 to raw for KubeVirt storage and grows the image to usable target capacity.
 
 Example:
 

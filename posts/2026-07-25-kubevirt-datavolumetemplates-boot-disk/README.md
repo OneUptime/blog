@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, KubeVirt, CDI, DataVolume, Virtual Machines
+Tags: Kubernetes, KubeVirt, CDI, DataVolume, Virtual Machine
 
 Description: Define a VM-owned DataVolume template so KubeVirt creates, populates, and gates startup on a completed boot disk import.
 

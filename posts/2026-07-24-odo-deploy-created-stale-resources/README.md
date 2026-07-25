@@ -1,4 +1,4 @@
-# What odo deploy Actually Creates—and How to Find and Remove Stale Resources
+# What odo deploy Actually Creates-and How to Find and Remove Stale Resources
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ansible, Playbooks, Loops, Variables, Jinja2, Automation
+Tags: Ansible, Playbook, Loop, Variable, Jinja2, Automation
 
 Description: Write readable Ansible loops over dictionaries, nested data, and registered results without losing track of each item.
 

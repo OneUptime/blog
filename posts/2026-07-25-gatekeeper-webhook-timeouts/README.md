@@ -8,7 +8,7 @@ Description: Isolate Gatekeeper webhook timeout causes across request scope, Ser
 
 ---
 
-Every matching Gatekeeper admission call is on the Kubernetes API write path. A slow webhook delays users and controllers; a timeout then invokes the webhook's failure policy.
+Every matching Gatekeeper admission call blocks the Kubernetes API request it evaluates. A slow webhook delays users and controllers; a timeout then invokes the webhook's failure policy.
 
 Do not start by increasing `timeoutSeconds`. First determine where the time is spent.
 
@@ -39,7 +39,7 @@ Record:
 ```bash
 kubectl get validatingwebhookconfiguration \
   gatekeeper-validating-webhook-configuration \
-  -o jsonpath='{range .webhooks[*]}{.name}{"\\n  failurePolicy: "}{.failurePolicy}{"\\n  timeoutSeconds: "}{.timeoutSeconds}{"\\n"}{end}'
+  -o jsonpath='{range .webhooks[*]}{.name}{"\n  failurePolicy: "}{.failurePolicy}{"\n  timeoutSeconds: "}{.timeoutSeconds}{"\n"}{end}'
 ```
 
 Kubernetes allows webhook timeouts from 1 to 30 seconds. Gatekeeper's release manifest commonly uses a short timeout because admission should normally complete in milliseconds.
@@ -79,7 +79,7 @@ kubectl get pods -n gatekeeper-system \
 kubectl describe pods -n gatekeeper-system
 ```
 
-Check CPU throttling, out-of-memory kills, long garbage collection, and too few replicas. Gatekeeper uses the container CPU limit to set Go concurrency through `automaxprocs`. Excessive thread concurrency can starve CPU and increase latency.
+`kubectl top` requires Metrics Server. Use container metrics to confirm CPU throttling and runtime telemetry to investigate garbage-collection pauses; use Pod status and `kubectl describe` to identify out-of-memory kills and restarts. Also check for too few replicas. Gatekeeper uses the container CPU limit to set Go concurrency through `automaxprocs`. Excessive thread concurrency can starve CPU and increase latency.
 
 The `--max-serving-threads` flag caps concurrent policy evaluations. Tune it only with load tests; a higher value can increase memory and CPU contention.
 
@@ -116,10 +116,10 @@ Latency grows with the number of matching Constraints and the work each evaluati
 - Logging or violation details that serialize large objects.
 - External data calls.
 
-Use Gator to compare policy versions:
+Use Gator to compare Rego policy versions:
 
 ```bash
-gator bench --filename=policies/
+gator bench --filename=policies/ --engine=rego
 ```
 
 Gator bench measures policy compute only. It excludes network, TLS, API server, and webhook overhead, so use it for relative comparisons rather than a production latency promise.

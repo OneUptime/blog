@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Automation, Variables, Error Handling, Jinja2
+Tags: Ansible, Automation, Variable, Error Handling, Jinja2
 
 Description: Prevent undefined-variable failures in Ansible by designing explicit inputs, safe defaults, assertions, and role contracts.
 

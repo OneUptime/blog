@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Harvester, Kubernetes, Virtualization, HCI, Console, VNC, Virtctl
+Tags: Harvester, Kubernetes, Virtualization, HCI, Console, VNC, virtctl
 
 Description: Learn how to access virtual machine consoles in Harvester using the web-based VNC console, virtctl, and serial console methods.
 

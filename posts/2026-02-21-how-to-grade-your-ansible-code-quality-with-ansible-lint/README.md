@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Ansible-lint, Code Quality, DevOps, Best Practice
+Tags: Ansible, ansible-lint, Code Quality, DevOps, Best Practice
 
 Description: Learn how to use ansible-lint profiles to grade your Ansible code quality from basic to production level and progressively improve your playbooks.
 

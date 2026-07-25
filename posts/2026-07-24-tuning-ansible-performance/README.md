@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Performance, Automation, SSH, Playbooks
+Tags: Ansible, Performance, Automation, SSH, Playbook
 
 Description: Tune Ansible concurrency and transport safely by measuring forks, SSH pipelining, asynchronous jobs, and free-strategy tradeoffs.
 

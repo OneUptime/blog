@@ -781,7 +781,7 @@
 - Ansible_distribution
 - Ansible_os_family
 - Ansible-builder
-- Ansible-lint
+- ansible-lint
 - Ansible-navigator
 - Ansible-pull
 - Ansible-runner
@@ -3786,6 +3786,7 @@
 - Constraint
 - Constraint Framework
 - Constraint templates
+- ConstraintTemplate
 - Construct Hub
 - Constructed Plugin
 - Constructors
@@ -4793,6 +4794,7 @@
 - Database Flags
 - DATABASE Function
 - Database Inspection
+- Database Installation
 - Database Integration
 - Database Integrity
 - Database Internals
@@ -4853,6 +4855,7 @@
 - DatagramSocket
 - DataGrip
 - DataHub
+- DataImportCron
 - DataIngestion
 - DataIntegrity
 - DataLoader
@@ -4878,6 +4881,7 @@
 - Datastream
 - DataSync
 - Dataverse
+- DataVolume
 - DataZone
 - Date
 - Date Arithmetic
@@ -5230,6 +5234,8 @@
 - Development Tools
 - Development Workflow
 - DevEx
+- Devfile
+- Devfile Registry
 - Device
 - Device Authentication
 - Device Class
@@ -5271,6 +5277,7 @@
 - Devicemapper
 - Devise
 - DevOps
+- DevOps Automation
 - DevOps Guru
 - Devpi
 - DevPod
@@ -7310,6 +7317,7 @@
 - GatewayPorts
 - Gather_facts
 - Gatling
+- Gator
 - Gatsby
 - Gauge
 - GC
@@ -8547,6 +8555,7 @@
 - Image Garbage Collection
 - Image Generation
 - Image IDs
+- Image Immutability
 - Image Import
 - Image Inspection
 - Image Management
@@ -8568,6 +8577,7 @@
 - Image Reflector
 - Image Reflector Controller
 - Image Registry
+- Image Retention
 - Image Scanning
 - Image Search
 - Image Signing
@@ -8581,6 +8591,7 @@
 - Image update automation
 - Image Updater
 - Image Updates
+- Image Upload
 - Image Verification
 - Image-automation
 - Image-management
@@ -9982,6 +9993,7 @@
 - Licensing
 - Life Science
 - Lifecycle
+- Lifecycle Events
 - Lifecycle Hooks
 - Lifecycle Management
 - Lifecycle Monitoring
@@ -11492,6 +11504,7 @@
 - MySQL 5.7
 - MySQL 8
 - MySQL 8.0
+- MySQL 8.4
 - Mysql Client
 - MySQL Database Engine
 - MySQL Enterprise
@@ -12263,6 +12276,7 @@
 - Odhcpd
 - ODM
 - Odmantic
+- odo
 - OEE
 - Offboarding
 - Office 365
@@ -12983,6 +12997,7 @@
 - Percona
 - Percona Operator
 - Percona Pmm
+- Percona Server
 - Percona Toolkit
 - Percona XtraBackup
 - Percona XtraDB
@@ -13393,8 +13408,10 @@
 - Policy Ordering
 - Policy Precedence
 - Policy Reports
+- Policy Rollout
 - Policy Routing
 - Policy Scanning
+- Policy Scope
 - Policy Server
 - Policy Sets
 - Policy Table
@@ -14620,6 +14637,7 @@
 - ReferenceGrant
 - Referencing
 - Referential Integrity
+- Referential Policy
 - Referrer Analysis
 - Reflect Package
 - Reflection
@@ -14650,6 +14668,7 @@
 - Registered Variables
 - Registrar
 - Registration
+- Registries
 - Registry
 - Registry Management
 - Registry Mirror
@@ -14689,6 +14708,7 @@
 - Release Automation
 - Release Candidate
 - Release Channels
+- Release Engineering
 - Release Gating
 - Release History
 - Release Jobs
@@ -15096,6 +15116,7 @@
 - Reusable Patterns
 - Reusable Pipelines
 - Reusable Workflows
+- Reuse
 - Revalidation
 - Revenue
 - Revenue Analytics
@@ -15720,6 +15741,7 @@
 - Scrapy
 - Scratch
 - Scratch Image
+- Scratch Space
 - Scrcpy
 - Screen
 - Screen Capture Protection
@@ -16691,6 +16713,7 @@
 - Source Replica
 - Source Routing
 - Source Scanning
+- Source Synchronization
 - Source Validation
 - Source watcher
 - Source-Based
@@ -17232,6 +17255,7 @@
 - StorageClass
 - StorageClassDeviceSets
 - StorageClasses
+- StorageProfile
 - Store Gateway
 - Store Locator
 - Stored Columns
@@ -19148,7 +19172,7 @@
 - Virt-install
 - Virt-manager
 - Virt-viewer
-- Virtctl
+- virtctl
 - Virtio
 - Virtqemud
 - Virtual
@@ -19286,6 +19310,7 @@
 - Volume
 - Volume Attachment
 - Volume Clone
+- Volume Cloning
 - Volume Drivers
 - Volume Expansion
 - Volume Gateway

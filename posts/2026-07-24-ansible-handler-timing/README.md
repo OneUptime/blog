@@ -1,8 +1,8 @@
-# Why Your Ansible Handler Did Not Run—and How Handler Timing Really Works
+# Why Your Ansible Handler Did Not Run-and How Handler Timing Really Works
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Automation, Handlers, Playbooks, Troubleshooting
+Tags: Ansible, Automation, Handler, Playbook, Troubleshooting
 
 Description: Diagnose skipped Ansible handlers by understanding change notifications, execution boundaries, failures, names, and flush timing.
 

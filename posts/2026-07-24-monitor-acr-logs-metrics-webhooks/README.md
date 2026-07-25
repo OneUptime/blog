@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Azure, Azure Container Registry, Azure Monitor, Observability, Webhooks, Containers
+Tags: Azure, Azure Container Registry, Azure Monitor, Observability, Webhook, Container
 
 Description: Build practical ACR monitoring with platform metrics, audit logs, alerts, Service Health, and secure repository webhooks.
 

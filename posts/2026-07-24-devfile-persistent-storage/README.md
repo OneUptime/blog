@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Devfile, Kubernetes, Persistent Volumes, odo, Developer Environments
+Tags: Devfile, Kubernetes, Persistent Volume, odo, Developer Environments
 
 Description: Choose persistent or ephemeral Devfile volumes, mount them safely across containers, and distinguish workspace storage from source synchronization.
 

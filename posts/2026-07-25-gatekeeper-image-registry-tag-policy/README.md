@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Gatekeeper, Kubernetes, Container Images, Supply Chain Security, Policy
+Tags: Gatekeeper, Kubernetes, Container Image, Supply Chain Security, Policy
 
 Description: Combine approved registry, disallowed tag, and digest policies while handling image syntax, container variants, and rollout exceptions safely.
 

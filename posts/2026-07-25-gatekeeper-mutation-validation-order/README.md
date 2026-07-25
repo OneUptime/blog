@@ -33,7 +33,7 @@ Gatekeeper mutation uses:
 
 Validation uses a `ConstraintTemplate` and one or more Constraints.
 
-`enforcementAction` belongs to Constraints. It does not put a mutator in dry-run or warning mode. Test mutators with Gator expansion and server-side dry run before applying them broadly.
+`enforcementAction` belongs to Constraints. It does not put a mutator in dry-run or warning mode. Test mutators with server-side dry run before applying them broadly. `gator expand` applies mutators only when testing an `ExpansionTemplate` pipeline.
 
 ## Example: add a default label, then require its value
 
@@ -100,9 +100,9 @@ For example, require a container to exist before assigning one of its fields:
 ```yaml
 parameters:
   pathTests:
-    - subPath: spec.containers[name: api]
+    - subPath: "spec.containers[name: api]"
       condition: MustExist
-    - subPath: spec.containers[name: api].imagePullPolicy
+    - subPath: "spec.containers[name: api].imagePullPolicy"
       condition: MustNotExist
   assign:
     value: Always
@@ -112,7 +112,7 @@ For mutators other than `AssignMetadata`, `applyTo` declares exact groups, versi
 
 ## Account for operation scope
 
-Gatekeeper's mutation webhook currently processes `CREATE` and `UPDATE`. `applyTo.operations` can select either or both:
+Gatekeeper's mutation webhook currently processes `CREATE` and `UPDATE`. In Gatekeeper v3.23 and later, `applyTo.operations` can select either or both for mutators that use `applyTo`:
 
 ```yaml
 applyTo:
@@ -121,6 +121,8 @@ applyTo:
     kinds: ["Pod"]
     operations: ["CREATE", "UPDATE"]
 ```
+
+`AssignMetadata` has no `applyTo` field, so it cannot use this operation selector.
 
 If the field should remain enforced on later updates, do not mutate only on create without considering lifecycle effects.
 

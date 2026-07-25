@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, KubeVirt, CDI, DataImportCron, Golden Images
+Tags: Kubernetes, KubeVirt, CDI, DataImportCron, Golden Image
 
 Description: Poll a registry image with DataImportCron, publish the latest successful source through a DataSource, and retain controlled history.
 

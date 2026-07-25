@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: odo, Devfile Registry, TLS, Certificates, Platform Engineering
+Tags: odo, Devfile Registry, TLS, Certificate, Platform Engineering
 
 Description: Connect odo to a private Devfile registry with trusted TLS, diagnose self-signed certificate errors, and avoid unsafe verification bypasses.
 

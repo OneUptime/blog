@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Azure, Azure Container Registry, High Availability, Geo-Replication, Disaster Recovery, Containers
+Tags: Azure, Azure Container Registry, High Availability, Geo-Replication, Disaster Recovery, Container
 
 Description: Choose the right ACR resilience model by comparing automatic zone redundancy with Premium multi-region geo-replication.
 

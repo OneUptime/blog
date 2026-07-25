@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ansible, Ansible Roles, Ansible Galaxy, Collections, Automation, DevOps
+Tags: Ansible, Ansible Roles, Ansible Galaxy, Collection, Automation, DevOps
 
 Description: Choose sensible boundaries for Ansible playbooks, roles, collections, repositories, dependencies, versions, and tests.
 

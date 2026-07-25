@@ -72,7 +72,7 @@ ansible-platform/
 
 Keep inventory names, configuration, and playbooks in version control. Do not commit private keys, passwords, vault passwords, or cloud credentials.
 
-An explicit environment directory prevents a staging host and a production host from being selected through the same ambiguous file.
+An explicit environment directory helps prevent a staging host and a production host from being selected through the same ambiguous file.
 
 ## Write a YAML Inventory
 
@@ -164,7 +164,7 @@ For CI, set `ANSIBLE_CONFIG` to a controlled absolute path or always run from th
 
 Ansible uses native OpenSSH by default on suitable systems and can use normal SSH configuration, agents, jump hosts, and ControlPersist.
 
-Create a dedicated automation key according to the organization's key policy:
+With a running SSH agent, create a dedicated automation key according to the organization's key policy:
 
 ```bash
 ssh-keygen \
@@ -205,8 +205,7 @@ Start with a read-only OpenSSH check, then use Ansible:
 ansible all --list-hosts
 
 ansible all \
-  --module-name ansible.builtin.ping \
-  --one-line
+  --module-name ansible.builtin.ping
 ```
 
 `ansible.builtin.ping` is not an ICMP ping. It logs in, runs a small Python module, and verifies a usable response. Its success proves the SSH and Python module path, but it does not prove sudo works.
@@ -217,11 +216,10 @@ Test privilege escalation without changing state:
 ansible webservers \
   --become \
   --module-name ansible.builtin.command \
-  --args "id -u" \
-  --one-line
+  --args "id -u"
 ```
 
-The expected output is `0` when the account can become root. If sudo requires a password, use `--ask-become-pass` for an interactive run or a protected credential flow in automation. Never pass a password directly on a shared command line.
+The expected command output is `0` when the account can become root. The `command` module will normally report `CHANGED` because it cannot infer whether an arbitrary command changed the host, even though `id -u` is read-only. If sudo requires a password, use `--ask-become-pass` for an interactive run or a protected credential flow in automation. Never pass a password directly on a shared command line.
 
 If the host has no Python, inspect it with `raw` and disable fact gathering in the bootstrap play:
 
@@ -251,7 +249,7 @@ Create `playbooks/production-baseline.yml`:
       ansible.builtin.assert:
         that:
           - "'production' in group_names"
-          - ansible_facts['system'] in ['Linux', 'FreeBSD']
+          - ansible_facts['system'] == 'Linux'
         fail_msg: "Host classification or operating system is unexpected."
 
   tasks:
@@ -274,7 +272,7 @@ Create `playbooks/production-baseline.yml`:
           Inventory host: {{ inventory_hostname }}
 ```
 
-This example makes a deliberately small change and uses modules that describe desired state. Replace it with a reviewed organizational baseline. The `serial: 1` setting makes the first rollout one host at a time, and `any_errors_fatal: true` stops the play across the batch after a fatal failure.
+This example makes a deliberately small change and uses modules that describe desired state. Replace it with a reviewed organizational baseline. The `serial: 1` setting makes the first rollout one host at a time. If a task returns a fatal error, `any_errors_fatal: true` finishes that task on the current batch and then stops the play on all hosts.
 
 Quoting `"0755"` and `"0644"` prevents YAML from interpreting modes unexpectedly.
 

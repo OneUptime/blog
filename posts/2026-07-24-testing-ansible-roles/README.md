@@ -87,6 +87,14 @@ collections:
 
 ## Run Fast Static Checks First
 
+Make the role resolvable for the project layout above:
+
+```ini
+# ansible.cfg
+[defaults]
+roles_path = roles
+```
+
 Use a small role harness:
 
 ```yaml
@@ -151,20 +159,13 @@ Guard an unavoidable command:
   when: not ansible_check_mode
 ```
 
-Or model the prediction explicitly when safe:
+Or let `ansible.builtin.command` model the prediction with `creates` when the marker reliably represents completion:
 
 ```yaml
-- name: Check whether initialization is complete
-  ansible.builtin.stat:
-    path: /var/lib/myapp/.initialized
-  register: initialization_marker
-
 - name: Initialize the database
   ansible.builtin.command:
     cmd: /opt/myapp/bin/initialize
-  when:
-    - not initialization_marker.stat.exists
-    - not ansible_check_mode
+    creates: /var/lib/myapp/.initialized
 ```
 
 Disable diff on secret-bearing templates even in tests:
@@ -237,7 +238,7 @@ Use disposable hosts only. For containers, VMs, or cloud instances, add tested `
         myapp_port: 18080
 ```
 
-If the role is not in a collection, use its resolvable role name and configure role paths through `ansible.cfg`. Molecule's documentation notes that, as of Molecule 6, role and collection paths should be configured in `ansible.cfg`, not by relying on old Molecule-specific path options.
+If the role is not in a collection, use its resolvable role name and configure role paths through Ansible's configuration. In the Ansible-native schema shown here, put the corresponding setting under `ansible.cfg.defaults` in `molecule.yml`. Molecule's documentation notes that, as of Molecule 6, role and collection paths should use `ansible.cfg` settings rather than old Molecule-specific path options.
 
 Run an iterative converge:
 

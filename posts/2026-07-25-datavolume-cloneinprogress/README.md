@@ -60,7 +60,7 @@ CDI versions and volume-populator paths can expose different intermediate annota
 
 ## If It Is a Host-Assisted Copy
 
-List CDI clone Pods in both namespaces:
+List CDI clone Pods in both namespaces. With the volume-populator path, a temporary target PVC and both workers can be in the source namespace:
 
 ```bash
 kubectl get pods -n golden-images --show-labels
@@ -73,17 +73,17 @@ kubectl get pods -A \
 Describe any source and target workers you find:
 
 ```bash
-kubectl describe pod CLONE_SOURCE_POD -n golden-images
-kubectl describe pod CLONE_TARGET_POD -n vm-lab
+kubectl describe pod CLONE_SOURCE_POD -n SOURCE_POD_NAMESPACE
+kubectl describe pod CLONE_TARGET_POD -n TARGET_POD_NAMESPACE
 ```
 
 Read every relevant container log:
 
 ```bash
-kubectl logs CLONE_SOURCE_POD -n golden-images \
+kubectl logs CLONE_SOURCE_POD -n SOURCE_POD_NAMESPACE \
   --all-containers \
   --timestamps
-kubectl logs CLONE_TARGET_POD -n vm-lab \
+kubectl logs CLONE_TARGET_POD -n TARGET_POD_NAMESPACE \
   --all-containers \
   --timestamps
 ```
@@ -113,9 +113,9 @@ kubectl get pods -A | grep -E 'csi|provisioner'
 
 Look for provisioning retries, unsupported data sources, backend timeouts, capacity exhaustion, and source-in-use restrictions. Confirm:
 
-- source and target StorageClasses match
+- source and target StorageClasses resolve to the same CSI driver; the class names can differ if the driver supports cross-class cloning
 - volume modes match
-- StorageProfile says `csi-clone`
+- the target StorageProfile's effective `status.cloneStrategy` is `csi-clone`
 - the driver version supports volume cloning
 - source is not mounted
 
@@ -151,8 +151,8 @@ kubectl get vmi -A
 Efficient clone paths require an unused source. For cross-namespace clones, verify the creating actor:
 
 ```bash
-kubectl auth can-i create datavolumes/source \
-  --api-group=cdi.kubevirt.io \
+kubectl auth can-i create datavolumes.cdi.kubevirt.io \
+  --subresource=source \
   --namespace=golden-images \
   --as=system:serviceaccount:vm-lab:vm-builder
 ```

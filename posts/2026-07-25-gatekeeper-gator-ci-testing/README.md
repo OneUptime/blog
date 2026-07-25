@@ -101,7 +101,7 @@ gator verify policy/suite.yaml
 gator verify ./...
 ```
 
-Gator silently ignores YAML files that do not declare the Suite API and kind, so make sure CI targets the intended Suite path and reports how many tests ran.
+Gator silently ignores YAML files that do not declare the Suite API and kind, so make sure CI targets the intended Suite path and use `--verbose` when you need individual test and case names in the logs.
 
 ## Test more than one denied example
 
@@ -116,7 +116,7 @@ For every policy, include:
 - Parameter edge cases.
 - Update or delete AdmissionReviews if the policy reads operation or old object.
 
-If a policy reads `userInfo`, wrap the object in an `admission.k8s.io/v1` AdmissionReview fixture. Plain Kubernetes objects used by `gator test` do not contain the original request identity.
+If a policy reads `userInfo`, use a `gator verify` case whose object is an `admission.k8s.io/v1` AdmissionReview fixture. `gator test` does not interpret an AdmissionReview wrapper as request metadata, and plain Kubernetes objects do not contain the original request identity.
 
 ## Supply inventory for referential policies
 
@@ -173,8 +173,8 @@ jobs:
   gator:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
         with:
           go-version: "1.26.x"
       - name: Install pinned Gator
@@ -182,7 +182,7 @@ jobs:
           go install github.com/open-policy-agent/gatekeeper/v3/cmd/gator@v3.23.0
           gator version
       - name: Verify policy suites
-        run: gator verify ./policy/...
+        run: gator verify --verbose ./policy/...
 ```
 
 Align the Go version with the selected Gatekeeper release. If your organization permits only digest-pinned Actions, pin those dependencies to reviewed commit SHAs.

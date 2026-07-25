@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ansible, Variables, Debugging, Playbooks, Configuration Management, Automation
+Tags: Ansible, Variable, Debugging, Playbook, Configuration Management, Automation
 
 Description: Understand Ansible precedence by tracing connection, inventory, role, play, task, set_fact, and extra-variable conflicts.
 

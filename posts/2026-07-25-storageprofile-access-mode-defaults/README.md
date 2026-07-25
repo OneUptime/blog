@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, KubeVirt, CDI, StorageProfile, Persistent Volumes
+Tags: Kubernetes, KubeVirt, CDI, StorageProfile, Persistent Volume
 
 Description: Understand CDI StorageProfile selection, explain surprising access modes, and override defaults without breaking other KubeVirt workloads.
 

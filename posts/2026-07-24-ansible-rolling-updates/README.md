@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Deployment, Rolling Updates, Error Handling, Automation
+Tags: Ansible, Deployment, Rolling Update, Error Handling, Automation
 
 Description: Build controlled Ansible rolling updates with explicit batches, health gates, load-balancer delegation, and well-defined abort behavior.
 

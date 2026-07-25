@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Devfile, Containers, Kubernetes, Microservices, Developer Environments
+Tags: Devfile, Container, Kubernetes, Microservice, Developer Environments
 
 Description: Structure multi-container Devfile 2.3 environments with unique identities, valid endpoints, explicit commands, shared storage, and realistic resource limits.
 

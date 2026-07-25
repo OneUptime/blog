@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ansible, Inventory, Variables, Configuration Management, Automation, DevOps
+Tags: Ansible, Inventory, Variable, Configuration Management, Automation, DevOps
 
 Description: Structure staging and production inventories so group defaults, host exceptions, secrets, and override behavior remain predictable.
 

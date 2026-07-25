@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Gatekeeper, Kubernetes, Namespaces, Security, Admission Control
+Tags: Gatekeeper, Kubernetes, Namespace, Security, Admission Control
 
 Description: Exclude Kubernetes namespaces at the right Gatekeeper layer while preventing ordinary namespace editors from granting themselves a policy bypass.
 

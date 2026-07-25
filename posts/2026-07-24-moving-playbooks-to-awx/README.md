@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, AWX, Automation, Inventories, Credentials, Ansible Vault
+Tags: Ansible, AWX, Automation, Inventories, Credential, Ansible Vault
 
 Description: Move local Ansible playbooks into AWX by separating source content, inventories, credentials, vault passwords, and runtime dependencies.
 

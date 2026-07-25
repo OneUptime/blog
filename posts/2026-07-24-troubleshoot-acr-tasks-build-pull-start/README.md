@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Azure, Azure Container Registry, ACR Tasks, Containers, Troubleshooting, DevOps
+Tags: Azure, Azure Container Registry, ACR Tasks, Container, Troubleshooting, DevOps
 
 Description: Diagnose ACR Tasks that stay queued, fail to pull a base image, cannot fetch source, or stop during a container build.
 

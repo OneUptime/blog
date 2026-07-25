@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Gatekeeper, Kubernetes, Deployments, Pods, Admission Control
+Tags: Gatekeeper, Kubernetes, Deployment, Pod, Admission Control
 
 Description: Learn why Pod constraints allow a Deployment object, what happens when its controller creates Pods, and how to validate workload templates earlier.
 

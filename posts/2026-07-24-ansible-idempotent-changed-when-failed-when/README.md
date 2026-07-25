@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Automation, Idempotency, Error Handling, Playbooks
+Tags: Ansible, Automation, Idempotency, Error Handling, Playbook
 
 Description: Make command-driven Ansible tasks report changes and failures accurately without masking drift or real operational errors.
 

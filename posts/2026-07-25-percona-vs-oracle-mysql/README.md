@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Percona Server, MySQL, Database Migration, Compatibility, Operations
+Tags: Percona Server, MySQL, Database Migration, Compatibility, Operation
 
 Description: Understand what Percona Server keeps compatible with Oracle MySQL, what it changes, and how to test a production replacement safely.
 

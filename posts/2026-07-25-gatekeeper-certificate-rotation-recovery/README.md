@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Gatekeeper, Kubernetes, TLS, Certificates, Incident Response
+Tags: Gatekeeper, Kubernetes, TLS, Certificate, Incident Response
 
 Description: Diagnose Gatekeeper webhook TLS failures, identify certificate ownership, restore CA consistency safely, and preserve a controlled admission recovery path.
 

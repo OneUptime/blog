@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Azure Container Registry, ACR Tasks, Container Builds, Base Images, DevOps Automation
+Tags: Azure Container Registry, ACR Tasks, Container Build, Base Images, DevOps Automation
 
 Description: Configure ACR Tasks to discover base-image dependencies and rebuild application images whenever a tracked base tag moves.
 

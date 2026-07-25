@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ansible, Playbooks, Command Line, Shell, Automation, Security
+Tags: Ansible, Playbook, Command Line, Shell, Automation, Security
 
 Description: Choose between Ansible raw, command, and shell based on Python availability, shell syntax, safety, and idempotence.
 

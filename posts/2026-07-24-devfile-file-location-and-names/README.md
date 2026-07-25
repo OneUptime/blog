@@ -35,13 +35,13 @@ odo dev
 The repository root is the useful default because relative paths in the Devfile can then be reviewed alongside the files they address:
 
 ```yaml
-schemaVersion: 2.3.0
+schemaVersion: 2.2.2
 metadata:
   name: payments-api
 components:
   - name: runtime
     container:
-      image: golang:1.24
+      image: golang:1.26
       mountSources: true
 commands:
   - id: build
@@ -80,7 +80,9 @@ Do not infer that every application embedding the library enables the same direc
 
 ## What odo Expects
 
-The current `odo dev` documentation describes `odo` looking for `devfile.yaml`, and `odo init` writes a downloaded or selected stack to the working project as `devfile.yaml`. For an `odo` project, treat that spelling and location as the interface.
+`odo` was deprecated on October 23, 2025, reached end of life on March 31, 2026, and its repository was archived on April 1, 2026. The commands below describe the final `odo` v3.16.1 behavior for teams maintaining an existing workflow, not an actively maintained choice for a new project.
+
+The final `odo dev` documentation describes `odo` looking for `devfile.yaml`, while the v3.16.1 implementation recognizes the same four filenames in the same priority order as the Devfile library. `odo init` writes a downloaded or selected stack to the working project as `devfile.yaml`. For an `odo` project, treat that documented spelling and location as the interface.
 
 Initialize in the directory that should become the project root:
 
@@ -147,7 +149,7 @@ Several Devfile fields can refer to other content, including a parent by URI and
 For example:
 
 ```yaml
-schemaVersion: 2.3.0
+schemaVersion: 2.2.2
 metadata:
   name: payments-api
 components:
@@ -217,7 +219,9 @@ This policy uses the most widely documented convention while leaving room for to
 ## Official Documentation
 
 - [Devfile library parsing and filename discovery](https://devfile.io/docs/2.3.0/library)
-- [Devfile schema 2.3.0](https://devfile.io/docs/2.3.0/devfile-schema)
+- [Devfile schema 2.2.2](https://devfile.io/docs/2.2.2/devfile-schema)
 - [odo dev command reference](https://odo.dev/docs/command-reference/dev/)
 - [odo init command reference](https://odo.dev/docs/command-reference/init/)
 - [odo JSON output and devfilePath](https://odo.dev/docs/command-reference/json-output/)
+- [odo v3.16.1 filename discovery implementation](https://github.com/redhat-developer/odo/blob/v3.16.1/pkg/devfile/location/location.go)
+- [odo deprecation and end-of-life announcement](https://developers.redhat.com/articles/2025/10/23/odo-cli-deprecated-what-developers-need-know)
