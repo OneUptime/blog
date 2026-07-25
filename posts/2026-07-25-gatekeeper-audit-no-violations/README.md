@@ -31,7 +31,7 @@ Gatekeeper also exposes:
 - `gatekeeper_audit_last_run_end_time`
 - `gatekeeper_violations`
 
-The end time distinguishes a completed run from one that started and stalled.
+Compare the start and end times to distinguish a completed run from one that started and stalled.
 
 ## Find the audit operation
 
@@ -96,7 +96,7 @@ Frequent mistakes include:
 - Selecting a label only present on the Deployment, not its Pod template.
 - Setting `scope: Cluster` for namespaced resources.
 - Excluding the namespace in the Constraint.
-- Expecting a Pod Constraint to report its owning Deployment.
+- Expecting a Pod Constraint to report its owning Deployment without an `ExpansionTemplate` that expands Deployments to Pods.
 
 Create one deliberately violating fixture in a test namespace and confirm it matches every selector.
 
@@ -132,7 +132,7 @@ kubectl get config.config.gatekeeper.sh config \
   -n gatekeeper-system -o yaml
 ```
 
-The union of all `SyncSet.spec.gvks` and `Config.spec.sync.syncOnly` entries is cached. Ensure group, version, and kind exactly match the Constraint. The `gatekeeper_sync` metric and sync logs help confirm that objects arrived.
+The union of all `SyncSet.spec.gvks` and `Config.spec.sync.syncOnly` entries is cached. Ensure group, version, and kind exactly match the cluster resource kinds you expect audit to read. The `gatekeeper_sync` metric and sync logs help confirm that objects arrived.
 
 ## Check audit-only input limitations
 
