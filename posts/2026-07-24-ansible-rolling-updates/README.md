@@ -195,7 +195,7 @@ Apply it to genuine global invariants, not every task. A single transient host f
 
 A successfully rescued task is treated as recovered for play control and does not trigger `max_fail_percentage` or `any_errors_fatal`, though Ansible still reports the original failure in statistics. The final explicit `fail` above makes the host count against the rollout failure budget after rollback.
 
-Choose the behavior deliberately. If rollback restores service and the rollout may continue, omit the final failure. If one failed upgrade indicates a bad artifact, fail so later batches stop.
+Choose the behavior deliberately. If rollback restores service and the rollout may continue, omit the final failure. If one failed upgrade indicates a bad artifact, fail so the configured failure policy can stop later batches.
 
 ## Know What Does Not Count the Same Way
 
