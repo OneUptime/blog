@@ -2,19 +2,18 @@
 
 ## OPA Gatekeeper
 
-1. Gatekeeper Audit Shows No Violations: How to Diagnose Constraints, Scope, and Cache Settings
-2. Why Does Gatekeeper Report Only 20 Violations? How to Raise the Limit Safely
-3. How to Write Referential Gatekeeper Policies with `data.inventory` and `syncOnly`
-4. Why a Gatekeeper Pod Policy Does Not Block Violating Deployments
-5. How to Test Gatekeeper Policies in CI with Gator Before They Reach a Cluster
-6. Gatekeeper Fail-Open vs Fail-Closed: Avoiding Both Policy Bypass and Cluster Lockout
-7. How to Troubleshoot Gatekeeper Webhook Timeouts and Kubernetes API Latency
-8. How Gatekeeper Webhook Certificate Rotation Fails—and How to Recover Admission
-9. How to Trace a Gatekeeper Decision and Debug Unexpected Rego Results
-10. How to Restrict Container Image Registries and Tags Without Gatekeeper False Positives
-11. Gatekeeper Mutation vs Validation: What Happens When Both Target the Same Field?
-12. How to Use External Data Providers Without Slowing Gatekeeper Admission Requests
-13. How to Monitor Gatekeeper Audit Health, Denials, and Policy Latency with Prometheus
+1. Why Does Gatekeeper Report Only 20 Violations? How to Raise the Limit Safely
+2. How to Write Referential Gatekeeper Policies with `data.inventory` and `syncOnly`
+3. Why a Gatekeeper Pod Policy Does Not Block Violating Deployments
+4. How to Test Gatekeeper Policies in CI with Gator Before They Reach a Cluster
+5. Gatekeeper Fail-Open vs Fail-Closed: Avoiding Both Policy Bypass and Cluster Lockout
+6. How to Troubleshoot Gatekeeper Webhook Timeouts and Kubernetes API Latency
+7. How Gatekeeper Webhook Certificate Rotation Fails—and How to Recover Admission
+8. How to Trace a Gatekeeper Decision and Debug Unexpected Rego Results
+9. How to Restrict Container Image Registries and Tags Without Gatekeeper False Positives
+10. Gatekeeper Mutation vs Validation: What Happens When Both Target the Same Field?
+11. How to Use External Data Providers Without Slowing Gatekeeper Admission Requests
+12. How to Monitor Gatekeeper Audit Health, Denials, and Policy Latency with Prometheus
 
 ## Data Volume
 
