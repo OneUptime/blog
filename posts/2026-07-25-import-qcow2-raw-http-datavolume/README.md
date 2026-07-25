@@ -55,9 +55,10 @@ spec:
         storage: 45Gi
 ```
 
-Apply it:
+Create the namespace if it does not already exist, then apply it:
 
 ```bash
+kubectl create namespace vm-images
 kubectl apply -f server-image-datavolume.yaml
 kubectl get datavolume,pvc -n vm-images
 kubectl get datavolume server-image -n vm-images -w
@@ -137,18 +138,18 @@ spec:
             name: server-image
 ```
 
-Wait for `Succeeded` before starting a VM that references a separately created DataVolume:
+With immediately bound storage, you can wait for `Succeeded` before starting the VM:
 
 ```bash
 kubectl get datavolume server-image -n vm-images -w
 virtctl start imported-server -n vm-images
 ```
 
-`dataVolumeTemplates` can automate this gate when the DataVolume belongs to the VM.
+KubeVirt gates VM startup until every referenced DataVolume is ready, including a separately created DataVolume. If the DataVolume reports `WaitForFirstConsumer`, start the VM while it is in that phase so KubeVirt can perform initial scheduling and trigger volume binding; KubeVirt then waits for the import to finish before launching the VM. `dataVolumeTemplates` additionally automate DataVolume creation and lifecycle when the DataVolume belongs to the VM.
 
 ## Diagnose Common Failures
 
-For `404`, `403`, redirect, or TLS errors, test the URL from a network location equivalent to the cluster and inspect importer logs. Authentication and custom CAs must be supplied with `secretRef` and `certConfigMap`; a successful browser download from your laptop does not prove the importer can reach the endpoint.
+For `404`, `403`, redirect, or TLS errors, test the URL from a network location equivalent to the cluster and inspect importer logs. HTTP basic authentication and custom CAs can be supplied with `secretRef` and `certConfigMap`, respectively; use `secretExtraHeaders` for sensitive credentials carried in HTTP headers. A successful browser download from your laptop does not prove the importer can reach the endpoint.
 
 For `no space` or conversion failures, compare the qcow2 virtual size with the target's usable capacity. Filesystem metadata consumes part of a filesystem-mode PVC. `spec.storage` lets CDI inflate the claim for configured filesystem overhead, but storage backends can still differ.
 
