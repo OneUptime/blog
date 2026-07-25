@@ -42,13 +42,13 @@ The important StorageClass field is:
 volumeBindingMode: WaitForFirstConsumer
 ```
 
-If the DataVolume phase is `WaitForFirstConsumer` and the PVC event says it is waiting for a first consumer, CDI is deliberately not starting its importer, uploader, or clone Pod yet.
+If the DataVolume phase is `WaitForFirstConsumer` and the PVC event says it is waiting for a first consumer, CDI is deliberately not starting its importer, uploader, or clone Pod yet. On CSI-backed storage where CDI uses volume populators, the equivalent delayed-binding phase is `PendingPopulation`, and the target PVC remains Pending until population completes.
 
 ## Why CDI Does Not Bind It Immediately
 
 Local and topology-constrained storage cannot be attached from every node. If CDI's temporary importer Pod triggered binding by itself, it might select a node that conflicts with the VM's node selector, affinity, devices, or other disks.
 
-With CDI's `HonorWaitForFirstConsumer` behavior, the intended workload initiates placement. KubeVirt understands DataVolumes and can participate in this flow without booting from incomplete content. CDI starts data population after the PVC is bound, and the VM waits for the DataVolume to succeed.
+With CDI's `HonorWaitForFirstConsumer` behavior, KubeVirt initiates placement using a consumer with the VM's scheduling requirements. KubeVirt understands DataVolumes and can participate in this flow without booting from incomplete content. In the legacy flow, CDI starts data population after the target PVC is bound. With CDI volume populators, a temporary PVC is bound and populated, and the target PVC becomes Bound only after population completes. In both flows, the VM waits for the DataVolume to succeed.
 
 Use a VM that references the DataVolume:
 
@@ -140,11 +140,20 @@ If any answer is uncertain, let KubeVirt and the scheduler drive the first-consu
 
 ## Confirm Progress Safely
 
-A healthy sequence usually looks like:
+A healthy legacy import sequence usually looks like:
 
 ```text
 WaitForFirstConsumer
 PVCBound
+ImportScheduled
+ImportInProgress
+Succeeded
+```
+
+For CSI-backed DataVolumes using CDI volume populators, the delayed-binding import sequence starts with `PendingPopulation`, and the target PVC does not need to expose `PVCBound` before the import:
+
+```text
+PendingPopulation
 ImportScheduled
 ImportInProgress
 Succeeded
