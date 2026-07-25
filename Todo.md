@@ -2,24 +2,23 @@
 
 ## Data Volume
 
-1. Why Is My CDI DataVolume Stuck in Pending or `WaitForFirstConsumer`?
-2. How to Fix “DataVolume.storage Spec Is Missing accessMode and volumeMode”
-3. Why Does CDI Pick the Wrong Access Mode? Understanding StorageProfile Defaults
-4. How to Import a VM Image from an Authenticated HTTPS URL with CDI Secrets and a Custom CA
-5. How to Debug a Failed CDI Importer Pod with DataVolume Events and Logs
-6. How to Fix OOMKilled CDI Import, Clone, and Upload Pods on Slow Storage
-7. How to Upload a Local VM Disk with `virtctl image-upload` and an Existing DataVolume
-8. How to Fix “x509: Certificate Signed by Unknown Authority” in `virtctl image-upload`
-9. How to Import a VM Disk from a Private Container Registry with CDI Credentials
-10. Raw vs qcow2 vs ISO: Which Image Format and `contentType` Should a DataVolume Use?
-11. How to Clone a CDI DataVolume Across Kubernetes Namespaces Without RBAC Errors
-12. Why Did CDI Fall Back from CSI or Snapshot Cloning to Host-Assisted Copy?
-13. How to Troubleshoot a DataVolume Clone Stuck in `CloneInProgress`
-14. Filesystem vs Block DataVolumes: Which `volumeMode` Works Best for KubeVirt?
-15. Why CDI Needs Scratch Space—and How to Choose Its StorageClass and Size
-16. How to Use `dataVolumeTemplates` So a KubeVirt VM Waits for Its Boot Disk
-17. How to Refresh Golden VM Images Automatically with CDI `DataImportCron`
-18. How to Fix “Unable to Create disk.img, Not Enough Space” When the PVC Looks Large Enough
+1. How to Fix “DataVolume.storage Spec Is Missing accessMode and volumeMode”
+2. Why Does CDI Pick the Wrong Access Mode? Understanding StorageProfile Defaults
+3. How to Import a VM Image from an Authenticated HTTPS URL with CDI Secrets and a Custom CA
+4. How to Debug a Failed CDI Importer Pod with DataVolume Events and Logs
+5. How to Fix OOMKilled CDI Import, Clone, and Upload Pods on Slow Storage
+6. How to Upload a Local VM Disk with `virtctl image-upload` and an Existing DataVolume
+7. How to Fix “x509: Certificate Signed by Unknown Authority” in `virtctl image-upload`
+8. How to Import a VM Disk from a Private Container Registry with CDI Credentials
+9. Raw vs qcow2 vs ISO: Which Image Format and `contentType` Should a DataVolume Use?
+10. How to Clone a CDI DataVolume Across Kubernetes Namespaces Without RBAC Errors
+11. Why Did CDI Fall Back from CSI or Snapshot Cloning to Host-Assisted Copy?
+12. How to Troubleshoot a DataVolume Clone Stuck in `CloneInProgress`
+13. Filesystem vs Block DataVolumes: Which `volumeMode` Works Best for KubeVirt?
+14. Why CDI Needs Scratch Space—and How to Choose Its StorageClass and Size
+15. How to Use `dataVolumeTemplates` So a KubeVirt VM Waits for Its Boot Disk
+16. How to Refresh Golden VM Images Automatically with CDI `DataImportCron`
+17. How to Fix “Unable to Create disk.img, Not Enough Space” When the PVC Looks Large Enough
 
 ## Percona Server
 
