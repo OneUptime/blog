@@ -145,7 +145,7 @@ For an inner-loop workspace that needs secrets, choose a documented integration 
 
 ## Add `imagePullSecrets` Through a Pod Override
 
-Pulling the workspace image is a pod-level concern. Devfile 2.3's standardized `pod-overrides` attribute can set pod fields that are not prohibited, including `imagePullSecrets`:
+Pulling the workspace image is a pod-level concern. Devfile 2.3's documented `pod-overrides` attribute can set pod fields that are not prohibited, including `imagePullSecrets`:
 
 ```yaml
 schemaVersion: 2.3.0

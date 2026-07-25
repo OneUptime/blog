@@ -8,7 +8,7 @@ Description: Connect odo to a private Devfile registry with trusted TLS, diagnos
 
 ---
 
-`odo` connects to a Devfile registry over HTTP to list and download stack metadata. HTTPS succeeds only when the registry presents a certificate for the requested hostname and the machine running `odo` trusts the certificate's issuing CA.
+`odo` connects to a Devfile registry over HTTP(S) to list stack metadata and download stacks. With verification enabled, HTTPS succeeds only when the registry presents a certificate valid for the requested hostname and `odo` can validate its certification path to a trusted anchor.
 
 There are two important version facts:
 
@@ -59,7 +59,7 @@ A Devfile registry service commonly includes an index/API service and OCI-compat
 
 Three failures need different fixes:
 
-- `x509: certificate signed by unknown authority` is client trust;
+- `x509: certificate signed by unknown authority` is certification-path validation, commonly a missing trust anchor on the client or an intermediate certificate on the server;
 - `x509: certificate is valid for ... not ...` is hostname/SAN mismatch;
 - HTTP `401` or `403` is authentication or authorization.
 
@@ -73,7 +73,7 @@ The cleanest design is:
 
 1. create an internal CA or use an enterprise/public CA;
 2. issue a server certificate whose Subject Alternative Name includes `devfiles.platform.example.com`;
-3. configure the Ingress, Route, or reverse proxy with the complete certificate chain;
+3. configure the Ingress, Route, or reverse proxy with the leaf certificate plus the required intermediate certificates;
 4. install the CA certificate into developer-machine trust stores through managed endpoint policy;
 5. restart clients that cache trust configuration.
 
@@ -85,7 +85,7 @@ Test the server before involving odo:
 curl --verbose https://devfiles.platform.example.com/index
 ```
 
-The exact health or index path depends on the registry release. A successful TLS handshake proves trust and hostname validation even if the chosen path returns a normal application-level `404`.
+The exact health or index path depends on the registry release. A normal curl request that reaches an HTTP response without a certificate error confirms that curl accepted the certificate path and hostname, even if the chosen path returns an application-level `404`. It does not prove that odo uses the same trust store as that curl build.
 
 Inspect the presented chain:
 
@@ -100,7 +100,7 @@ Check that the leaf certificate is not expired, the SAN includes the host, and t
 
 ## Why a Self-Signed Leaf Commonly Fails
 
-A certificate signed by itself is not trusted merely because encryption is active. The client has no trusted path from the leaf to a known CA.
+A certificate signed by itself is not trusted merely because encryption is active. Unless that leaf is explicitly configured as a trust anchor, the client has no trusted certification path.
 
 An official 2023 odo article documented that its then-current in-cluster registry workflow could not be forced to use HTTPS with insecure or self-signed certificates. The safe conclusion for archived versions is not to invent an `--insecure` flag. Use a certificate chain trusted by the operating system, or use a different supported client/workflow.
 
@@ -201,4 +201,3 @@ Because odo is end-of-life, freeze known working configuration and avoid buildin
 - [odo: Deploying and using an in-cluster Devfile registry](https://odo.dev/blog/deploying-and-using-in-cluster-devfile-registry/)
 - [Devfile 2.3: Understanding a Devfile registry](https://devfile.io/docs/2.3.0/understanding-a-devfile-registry)
 - [Red Hat: odo deprecation and end-of-life](https://developers.redhat.com/products/odo)
-
