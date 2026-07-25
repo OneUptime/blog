@@ -2,13 +2,12 @@
 
 ## OPA Gatekeeper
 
-1. How to Troubleshoot Gatekeeper Webhook Timeouts and Kubernetes API Latency
-2. How Gatekeeper Webhook Certificate Rotation Fails—and How to Recover Admission
-3. How to Trace a Gatekeeper Decision and Debug Unexpected Rego Results
-4. How to Restrict Container Image Registries and Tags Without Gatekeeper False Positives
-5. Gatekeeper Mutation vs Validation: What Happens When Both Target the Same Field?
-6. How to Use External Data Providers Without Slowing Gatekeeper Admission Requests
-7. How to Monitor Gatekeeper Audit Health, Denials, and Policy Latency with Prometheus
+1. How Gatekeeper Webhook Certificate Rotation Fails—and How to Recover Admission
+2. How to Trace a Gatekeeper Decision and Debug Unexpected Rego Results
+3. How to Restrict Container Image Registries and Tags Without Gatekeeper False Positives
+4. Gatekeeper Mutation vs Validation: What Happens When Both Target the Same Field?
+5. How to Use External Data Providers Without Slowing Gatekeeper Admission Requests
+6. How to Monitor Gatekeeper Audit Health, Denials, and Policy Latency with Prometheus
 
 ## Data Volume
 
