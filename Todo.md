@@ -2,21 +2,20 @@
 
 ## OPA Gatekeeper
 
-1. How to Apply a Gatekeeper Policy Only to One ServiceAccount or Workload
-2. Why Gatekeeper Blocks New Resources but Misses Existing Policy Violations
-3. Gatekeeper Audit Shows No Violations: How to Diagnose Constraints, Scope, and Cache Settings
-4. Why Does Gatekeeper Report Only 20 Violations? How to Raise the Limit Safely
-5. How to Write Referential Gatekeeper Policies with `data.inventory` and `syncOnly`
-6. Why a Gatekeeper Pod Policy Does Not Block Violating Deployments
-7. How to Test Gatekeeper Policies in CI with Gator Before They Reach a Cluster
-8. Gatekeeper Fail-Open vs Fail-Closed: Avoiding Both Policy Bypass and Cluster Lockout
-9. How to Troubleshoot Gatekeeper Webhook Timeouts and Kubernetes API Latency
-10. How Gatekeeper Webhook Certificate Rotation Fails—and How to Recover Admission
-11. How to Trace a Gatekeeper Decision and Debug Unexpected Rego Results
-12. How to Restrict Container Image Registries and Tags Without Gatekeeper False Positives
-13. Gatekeeper Mutation vs Validation: What Happens When Both Target the Same Field?
-14. How to Use External Data Providers Without Slowing Gatekeeper Admission Requests
-15. How to Monitor Gatekeeper Audit Health, Denials, and Policy Latency with Prometheus
+1. Why Gatekeeper Blocks New Resources but Misses Existing Policy Violations
+2. Gatekeeper Audit Shows No Violations: How to Diagnose Constraints, Scope, and Cache Settings
+3. Why Does Gatekeeper Report Only 20 Violations? How to Raise the Limit Safely
+4. How to Write Referential Gatekeeper Policies with `data.inventory` and `syncOnly`
+5. Why a Gatekeeper Pod Policy Does Not Block Violating Deployments
+6. How to Test Gatekeeper Policies in CI with Gator Before They Reach a Cluster
+7. Gatekeeper Fail-Open vs Fail-Closed: Avoiding Both Policy Bypass and Cluster Lockout
+8. How to Troubleshoot Gatekeeper Webhook Timeouts and Kubernetes API Latency
+9. How Gatekeeper Webhook Certificate Rotation Fails—and How to Recover Admission
+10. How to Trace a Gatekeeper Decision and Debug Unexpected Rego Results
+11. How to Restrict Container Image Registries and Tags Without Gatekeeper False Positives
+12. Gatekeeper Mutation vs Validation: What Happens When Both Target the Same Field?
+13. How to Use External Data Providers Without Slowing Gatekeeper Admission Requests
+14. How to Monitor Gatekeeper Audit Health, Denials, and Policy Latency with Prometheus
 
 ## Data Volume
 
