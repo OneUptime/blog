@@ -8,7 +8,7 @@ Description: Understand CDI StorageProfile selection, explain surprising access 
 
 ---
 
-When a DataVolume uses `spec.storage` and omits `accessModes` or `volumeMode`, CDI renders those fields from the StorageProfile for the selected StorageClass. A result that looks "wrong" is usually the first compatible preference in that profile, a user override on the profile, or a different StorageClass than the author expected.
+When a DataVolume uses `spec.storage` with the default KubeVirt disk-image content type and omits `accessModes` or `volumeMode`, CDI tries to render those fields from the StorageProfile for the selected StorageClass, falling back to a Kubernetes default where one exists. A result that looks "wrong" is usually the first compatible preference in that profile, a user override on the profile, or a different StorageClass than the author expected.
 
 CDI cannot discover every operational requirement. It may prefer combinations that support performance or live migration, while your particular VM requires a simpler mode.
 
@@ -75,7 +75,7 @@ spec:
         storage: 30Gi
 ```
 
-CDI should search for a property set compatible with `Filesystem`. If the profile only advertises block combinations, CDI cannot safely invent a filesystem access mode. It may fall back according to the available Kubernetes defaults or report an invalid claim event, depending on which field is absent and the installed CDI behavior.
+CDI searches for a property set compatible with `Filesystem`. If the profile only advertises block combinations, CDI cannot supply the required access mode: rendering fails and the DataVolume receives an `ErrClaimNotValid` warning event. In the inverse case, where `accessModes` is supplied but no profile set has a matching volume mode, CDI leaves `volumeMode` unset and Kubernetes defaults it to `Filesystem`.
 
 This request removes ambiguity:
 
@@ -95,7 +95,7 @@ An explicit DataVolume parameter has higher priority than StorageProfile default
 
 ## Check Which Default StorageClass Was Chosen
 
-If `storageClassName` is absent, CDI prefers a class annotated as the default virtualization class before the normal Kubernetes default:
+For the default KubeVirt disk-image content type, if `storageClassName` is absent, CDI prefers a class annotated as the default virtualization class before the normal Kubernetes default. A DataVolume with `contentType: archive` uses the normal Kubernetes default instead.
 
 ```bash
 kubectl get storageclass \
@@ -120,7 +120,7 @@ Access modes describe how Kubernetes may mount a volume; they are not generic pe
 - `ReadOnlyMany` permits read-only mounting by many nodes.
 - `ReadWriteOncePod` restricts read-write access to one Pod and is only supported for CSI volumes under specific Kubernetes and driver conditions. CDI's StorageProfile documentation notes that CDI does not currently test it as a profile default.
 
-For a single non-migrating VM, `ReadWriteOnce` is usually adequate. Live migration normally requires storage accessible from both source and destination nodes, but the exact KubeVirt migration support depends on the backend, volume type, and cluster configuration. Do not select `ReadWriteMany` merely because it appears more capable.
+For a single non-migrating VM, `ReadWriteOnce` is usually adequate. For a VM using a PVC, KubeVirt's live-migration documentation requires shared `ReadWriteMany` storage. Confirm that the driver supports the mode and check the VMI's `LiveMigratable` condition before relying on migration. Do not select `ReadWriteMany` merely because it appears more capable.
 
 ## Override One Workload or the Whole Class
 
