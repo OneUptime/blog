@@ -8,7 +8,7 @@ Description: Diagnose OOMKilled CDI worker Pods and tune global resource request
 
 ---
 
-`OOMKilled` means the container exceeded a memory limit or the node experienced memory pressure. Slow storage can make CDI conversion and copy Pods live longer, increasing exposure to memory peaks and node contention, but transfer duration alone is not proof that storage caused the out-of-memory termination.
+`OOMKilled` means the kernel's OOM killer terminated the container. This commonly happens when the container exceeds its memory limit, but it can also happen during a node-wide OOM; kubelet node-pressure eviction is a separate outcome. Slow storage can make CDI conversion and copy Pods live longer, increasing exposure to memory peaks and node contention, but transfer duration alone is not proof that storage caused the out-of-memory termination.
 
 CDI creates short-lived worker Pods for import, upload, and host-assisted clone operations. Their resources come from CDI configuration and can also be affected by namespace LimitRanges, ResourceQuotas, admission policies, and node capacity.
 
@@ -60,7 +60,7 @@ kubectl get cdiconfig config -o yaml
 kubectl get limitrange,resourcequota -n vm-images -o yaml
 ```
 
-CDI documents `spec.config.podResourceRequirements` as the global setting for its utility Pods. CDI's own default is no explicit CPU or memory request or limit. A namespace LimitRange may still inject a memory limit, so do not assume an empty CDI configuration means an unlimited Pod.
+CDI documents `spec.config.podResourceRequirements` as the global setting for its utility Pods. As of upstream CDI v1.65, unset overrides result in requests of 100m CPU and 60M memory and limits of 750m CPU and 600M memory; defaults can vary by CDI version or distribution. A namespace LimitRange can inject values for fields that reach admission unset and can reject values outside its constraints, so inspect the actual Pod and CDIConfig status rather than assuming an empty CDI spec means unlimited Pods.
 
 Also inspect node pressure and eviction events:
 
@@ -120,7 +120,7 @@ kubectl get datavolume,pvc,pod -n vm-images -w
 
 CDI has operation-specific retry behavior, and behavior can differ by version. Do not delete a DataVolume or PVC until you understand ownership and whether it contains useful data. For a disposable failed import, a new DataVolume name provides a clean retest without risking another disk.
 
-Retain a worker Pod for the controlled reproduction:
+Add the retention annotation to the DataVolume before the controlled reproduction:
 
 ```yaml
 metadata:
