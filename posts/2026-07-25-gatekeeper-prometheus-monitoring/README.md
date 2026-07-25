@@ -44,8 +44,12 @@ spec:
     matchNames:
       - gatekeeper-system
   selector:
-    matchLabels:
-      control-plane: controller-manager
+    matchExpressions:
+      - key: gatekeeper.sh/operation
+        operator: In
+        values:
+          - webhook
+          - audit
   podMetricsEndpoints:
     - port: metrics
       path: /metrics
