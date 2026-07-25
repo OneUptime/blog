@@ -105,7 +105,7 @@ Subset names and contents can change with core versions. Check the `setup` modul
 
 ## Filter an Explicit Setup Call
 
-The setup `filter` parameter uses shell-style matching against first-level fact keys:
+The setup `filter` parameter uses shell-style matching against first-level fact keys. It limits the facts returned after collection; use `gather_subset` to limit the collection work itself:
 
 ```yaml
 - name: Gather distribution facts only
@@ -113,6 +113,9 @@ The setup `filter` parameter uses shell-style matching against first-level fact 
     gather_subset:
       - "!all"
       - "!min"
+      - distribution
+      - distribution_major_version
+      - os_family
     filter:
       - ansible_distribution
       - ansible_distribution_major_version
@@ -198,7 +201,7 @@ Clear gathered facts for current hosts when required:
   ansible.builtin.meta: clear_facts
 ```
 
-`clear_facts` removes persistent facts for hosts in the play. Be aware that `set_fact` creates a high-precedence host variable, and `cacheable: true` also creates a lower-precedence cached fact. Clearing cached facts does not necessarily remove every in-memory host-variable copy created earlier in the run.
+`clear_facts` clears gathered facts for hosts in the play, including their persistent fact cache. Be aware that `set_fact` creates a high-precedence host variable, and `cacheable: true` also creates a lower-precedence cached fact. Clearing cached facts does not necessarily remove every in-memory host-variable copy created earlier in the run.
 
 ## Avoid Caching Secrets
 
@@ -214,7 +217,7 @@ Never mark a secret fact as cacheable:
 
 Cache plugins are not secret managers. Retrieve sensitive values at runtime, use `no_log: true`, and keep them out of persistent fact and inventory caches.
 
-Custom facts under `/etc/ansible/facts.d` also deserve review. Static `.fact` files and executable fact scripts run on the managed node and populate `ansible_local`. Do not place credentials in them.
+Custom facts under `/etc/ansible/facts.d` also deserve review. Static `.fact` files are read from the managed node, while executable `.fact` scripts run there; both populate `ansible_local`. Do not place credentials in them.
 
 ## Do Not Treat the Cache as a Database API
 
@@ -262,4 +265,3 @@ Fact optimization is most effective when the play explicitly states what it need
 - [Cache plugins](https://docs.ansible.com/projects/ansible/latest/plugins/cache.html)
 - [Ansible configuration settings](https://docs.ansible.com/projects/ansible/latest/reference_appendices/config.html)
 - [ansible.builtin.meta module](https://docs.ansible.com/projects/ansible/latest/collections/ansible/builtin/meta_module.html)
-
