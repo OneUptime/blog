@@ -38,6 +38,8 @@ An application or platform automation repository commonly owns inventory, entry-
 platform-automation/
 ├── ansible.cfg
 ├── inventories/
+│   ├── test/
+│   │   └── hosts.yml
 │   ├── staging/
 │   │   ├── hosts.yml
 │   │   ├── group_vars/
@@ -55,6 +57,14 @@ platform-automation/
 │   └── requirements.yml
 ├── role-requirements.yml
 └── tests/
+```
+
+Because `playbooks/` and `roles/` are sibling directories in this layout, configure the project and dependency role paths:
+
+```ini
+# ansible.cfg
+[defaults]
+roles_path = ./roles:./.cache/roles
 ```
 
 The top-level playbook composes reusable content:
@@ -305,7 +315,7 @@ Declare standalone role dependencies separately:
 roles:
   - name: acme.nginx
     version: "2.3.1"
-    source: https://git.example.com/ansible/nginx-role.git
+    src: https://git.example.com/ansible/nginx-role.git
     scm: git
 ```
 
@@ -448,4 +458,4 @@ Roles organize behavior. Collections package a namespaced content product. Repos
 - [Collection structure](https://docs.ansible.com/projects/ansible/latest/dev_guide/developing_collections_structure.html)
 - [Creating collections](https://docs.ansible.com/projects/ansible/latest/dev_guide/developing_collections_creating.html)
 - [Installing collections](https://docs.ansible.com/projects/ansible/latest/collections_guide/collections_installing.html)
-- [Testing collections](https://docs.ansible.com/projects/ansible/latest/dev_guide/testing.html)
+- [Testing collections](https://docs.ansible.com/projects/ansible/latest/dev_guide/developing_collections_testing.html)
