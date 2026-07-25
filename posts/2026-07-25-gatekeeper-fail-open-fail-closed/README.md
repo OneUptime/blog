@@ -8,9 +8,9 @@ Description: Choose Gatekeeper webhook failure behavior deliberately, harden fai
 
 ---
 
-Gatekeeper's Constraint webhook defaults to `failurePolicy: Ignore`. If the webhook times out, returns an error, or is unreachable, the API server continues the request without Gatekeeper enforcement.
+Gatekeeper's Constraint webhook defaults to `failurePolicy: Ignore`. If the webhook times out, returns an error, or is unreachable, the API server continues the request without enforcement from that webhook. Other configured enforcement points, such as a generated Kubernetes `ValidatingAdmissionPolicy`, may still evaluate the request.
 
-Changing the policy to `Fail` closes that availability bypass, but makes Kubernetes API writes depend on Gatekeeper's availability. The correct choice comes from explicit risk and recovery requirements.
+Changing the policy to `Fail` closes that webhook availability bypass, but makes matching Kubernetes API writes depend on Gatekeeper's availability. The correct choice comes from explicit risk and recovery requirements.
 
 ## What failure policy does and does not do
 
@@ -38,7 +38,7 @@ Do not infer behavior from chart defaults alone:
 ```bash
 kubectl get validatingwebhookconfiguration \
   gatekeeper-validating-webhook-configuration \
-  -o jsonpath='{range .webhooks[*]}{.name}{"  failurePolicy="}{.failurePolicy}{"  timeout="}{.timeoutSeconds}{"s\\n"}{end}'
+  -o jsonpath='{range .webhooks[*]}{.name}{"  failurePolicy="}{.failurePolicy}{"  timeout="}{.timeoutSeconds}{"s\n"}{end}'
 ```
 
 Also review each webhook's operations, resources, namespace selector, object selector, and match conditions. Failure policy matters only for requests that match.
@@ -117,14 +117,14 @@ Scope the webhook deliberately. Namespace exclusions do not cover cluster-scoped
 
 ## Maintain a break-glass path
 
-Gatekeeper's official emergency procedure deletes the validating webhook configuration:
+Gatekeeper's official emergency procedure for the validating webhook deletes its configuration:
 
 ```bash
 kubectl delete validatingwebhookconfiguration \
   gatekeeper-validating-webhook-configuration
 ```
 
-This removes Gatekeeper admission checks for the whole cluster. Use it only during a confirmed admission emergency, with elevated authorization, incident logging, and immediate follow-up.
+This disables that Gatekeeper validating webhook cluster-wide. It does not remove Gatekeeper's separate mutating webhook configuration or any generated `ValidatingAdmissionPolicy` resources. Use it only during a confirmed admission emergency, with elevated authorization, incident logging, and immediate follow-up.
 
 The recovery plan must also account for an operator or GitOps controller that recreates the configuration. Keep credentials and instructions available even when normal in-cluster tooling is affected.
 
