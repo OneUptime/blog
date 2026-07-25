@@ -2,17 +2,16 @@
 
 ## Data Volume
 
-1. How to Fix “x509: Certificate Signed by Unknown Authority” in `virtctl image-upload`
-2. How to Import a VM Disk from a Private Container Registry with CDI Credentials
-3. Raw vs qcow2 vs ISO: Which Image Format and `contentType` Should a DataVolume Use?
-4. How to Clone a CDI DataVolume Across Kubernetes Namespaces Without RBAC Errors
-5. Why Did CDI Fall Back from CSI or Snapshot Cloning to Host-Assisted Copy?
-6. How to Troubleshoot a DataVolume Clone Stuck in `CloneInProgress`
-7. Filesystem vs Block DataVolumes: Which `volumeMode` Works Best for KubeVirt?
-8. Why CDI Needs Scratch Space—and How to Choose Its StorageClass and Size
-9. How to Use `dataVolumeTemplates` So a KubeVirt VM Waits for Its Boot Disk
-10. How to Refresh Golden VM Images Automatically with CDI `DataImportCron`
-11. How to Fix “Unable to Create disk.img, Not Enough Space” When the PVC Looks Large Enough
+1. How to Import a VM Disk from a Private Container Registry with CDI Credentials
+2. Raw vs qcow2 vs ISO: Which Image Format and `contentType` Should a DataVolume Use?
+3. How to Clone a CDI DataVolume Across Kubernetes Namespaces Without RBAC Errors
+4. Why Did CDI Fall Back from CSI or Snapshot Cloning to Host-Assisted Copy?
+5. How to Troubleshoot a DataVolume Clone Stuck in `CloneInProgress`
+6. Filesystem vs Block DataVolumes: Which `volumeMode` Works Best for KubeVirt?
+7. Why CDI Needs Scratch Space—and How to Choose Its StorageClass and Size
+8. How to Use `dataVolumeTemplates` So a KubeVirt VM Waits for Its Boot Disk
+9. How to Refresh Golden VM Images Automatically with CDI `DataImportCron`
+10. How to Fix “Unable to Create disk.img, Not Enough Space” When the PVC Looks Large Enough
 
 ## Percona Server
 
