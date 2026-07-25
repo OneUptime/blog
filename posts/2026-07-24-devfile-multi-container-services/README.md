@@ -208,28 +208,9 @@ Target ports also have a cross-container rule. Two normal container components c
         targetPort: 8080
 ```
 
-Change one service's listen port, or intentionally isolate containers with `dedicatedPod: true`. The validation rule exempts dedicated-pod containers from the cross-component target-port restriction because each gets a separate pod:
+Change one service's listen port. The Devfile 2.3 schema also defines `dedicatedPod: true` to request a separate pod, and the published validation rules describe an exemption from the cross-component target-port restriction for such containers. However, the Devfile API v2.3.0 reference validator still compares target ports for every container without checking `dedicatedPod`, and the companion Devfile library did not implement dedicated-pod generation. For a portable 2.3 Devfile, keep target ports unique unless the selected consumer explicitly documents and tests support for the exemption.
 
-```yaml
-components:
-  - name: frontend
-    container:
-      dedicatedPod: true
-      image: example/frontend
-      endpoints:
-        - name: frontend-http
-          targetPort: 8080
-
-  - name: backend
-    container:
-      dedicatedPod: true
-      image: example/backend
-      endpoints:
-        - name: backend-http
-          targetPort: 8080
-```
-
-Do not use `dedicatedPod` only to avoid renumbering. It changes scheduling, networking, storage, startup, and resource behavior. Make that architectural choice deliberately.
+Where a consumer implements `dedicatedPod`, do not use it only to avoid renumbering. It changes scheduling, networking, storage, startup, and resource behavior. Make that architectural choice deliberately.
 
 The uniqueness rule is more nuanced within one container: Devfile validation permits two endpoints in the same container to use the same target port. That can represent multiple ways of exposing one listener, although consumer behavior must still be tested.
 
@@ -253,7 +234,7 @@ The `ephemeral` field defaults to `false`; setting it to `true` means the volume
 
 The Devfile endpoint schema describes a listener and exposure intent. It does not give every consumer one universal service-discovery contract.
 
-The example defaults `PAYMENTS_URL` to `127.0.0.1` because it assumes the three ordinary containers share the main development pod's network namespace. That assumption must be tested with the selected consumer. If `payments-mock` becomes a dedicated pod, localhost is wrong; the URL must use a Service or another address created by the platform workflow.
+The example defaults `PAYMENTS_URL` to `127.0.0.1` because it assumes the three ordinary containers share the main development pod's network namespace. That assumption must be tested with the selected consumer. If a consumer runs `payments-mock` in a dedicated pod, localhost is wrong; the URL must use a Service or another address created by the platform workflow.
 
 Likewise, an endpoint name is not automatically a portable DNS hostname. odo may create Services and local forwards differently from an IDE-backed DevWorkspace. Parameterizing the URL with a Devfile variable keeps the topology visible and overrideable. In an archived odo v3 environment, the override looked like this:
 
@@ -269,19 +250,19 @@ Each container can declare `cpuRequest`, `cpuLimit`, `memoryRequest`, and `memor
 
 Resource planning is cumulative. Three modest containers can create a pod that no developer namespace can schedule. Start with measured runtime and debugger usage, include build spikes, and add all requests before publishing the Devfile.
 
-Dedicated pods change the scheduling calculation: each pod must fit independently, while ordinary co-located containers contribute to one pod's total. Missing values may be inferred by the consumer or platform, which makes explicit, realistic values preferable for shared stacks.
+Where supported, dedicated pods change the scheduling calculation: each pod must fit independently, while ordinary co-located containers contribute to one pod's total. Missing values may be inferred by the consumer or platform, which makes explicit, realistic values preferable for shared stacks.
 
 ## Review the flattened environment
 
 Before publishing:
 
 - Confirm component names, command IDs, and endpoint names are globally unique.
-- Confirm normal container components do not reuse endpoint target ports.
+- Confirm container endpoint target ports are unique unless the chosen consumer demonstrably supports the documented `dedicatedPod` exemption.
 - Confirm every `exec.component`, composite subcommand, and volume mount resolves.
-- Confirm exactly one default command exists for each group kind.
+- Confirm no group kind has more than one default command; if multiple commands share a group kind, select exactly one default.
 - Use a default composite when several processes must start together.
 - Confirm source-writing commands cannot corrupt shared mounts.
-- Verify resource requests are valid, below limits, and schedulable in aggregate.
+- Verify resource requests are valid, do not exceed limits, and are schedulable in aggregate.
 - Test service addresses with the actual Devfile consumer.
 - Recheck conflicts after parent inheritance and overrides are flattened.
 
