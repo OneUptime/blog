@@ -66,19 +66,19 @@ If no strategy is specified, CDI documents attempting snapshot cloning where pos
 
 ## Check Efficient-Clone Prerequisites
 
-For CSI cloning, CDI documents these important requirements:
+For CSI cloning, current CDI checks these important requirements:
 
 - CSI driver supports volume cloning
 - StorageProfile uses `csi-clone`
-- source and target use the same StorageClass
+- source volume and target StorageClass resolve to the same CSI driver, which supports cloning across those classes
 - source and target use the same volume mode
-- creator may create `datavolumes/source` in the source namespace
+- creator has source permission for a cross-namespace clone
 - source volume is not in use
 
 For snapshot cloning:
 
 - a matching VolumeSnapshotClass exists
-- source and target use the same StorageClass
+- source volume and target StorageClass resolve to the same CSI driver
 - source and target use the same volume mode
 - creator has source permission
 - source volume is not in use
@@ -100,13 +100,13 @@ kubectl get volumesnapshotclass
 kubectl get csidriver
 ```
 
-A VolumeSnapshotClass must correspond to the source StorageClass's CSI driver. Merely having any snapshot class is insufficient.
+A VolumeSnapshotClass must correspond to the CSI driver shared by the source volume and target StorageClass. Merely having any snapshot class is insufficient.
 
 ## Common Fallback Reasons
 
 ### Different StorageClasses
 
-Backend-native clones generally operate within one storage system and class. Moving from `golden-rbd` to `team-cephfs` requires copying bytes:
+Different StorageClass names alone do not force host-assisted copy. CDI can use an efficient clone when both classes resolve to the same CSI driver and that driver supports the operation. Moving from an RBD class such as `golden-rbd` to a CephFS class such as `team-cephfs` uses different CSI drivers and requires copying bytes:
 
 ```yaml
 spec:
@@ -118,7 +118,7 @@ spec:
     storageClassName: team-cephfs
 ```
 
-If cross-class movement is intentional, host-assisted copy is expected.
+If movement between different CSI drivers or backends is intentional, host-assisted copy is expected.
 
 ### Different Volume Modes
 
@@ -146,15 +146,15 @@ Do not set `csi-clone` as an optimization guess. An incorrect profile can turn a
 
 ### Source Is in Use
 
-Efficient clone paths require an unused source for consistency. Coordinate a shutdown or use an application-consistent image publication workflow. Do not detach production storage abruptly just to obtain a faster clone.
+CDI requires an unused source for cloning and waits while a Pod is using the source PVC, emitting a `CloneSourceInUse` event rather than falling back solely because the source is busy. Coordinate a shutdown or use an application-consistent image publication workflow. Do not detach production storage abruptly just to obtain a faster clone.
 
 ### Permission Is Missing
 
-Cross-namespace clones need `create` on `datavolumes/source` in the source namespace. A permission failure can prevent the clone rather than simply make it slower, depending on the path and admission stage. Verify it explicitly:
+Cross-namespace clones must be authorized in the source namespace. The dedicated permission is `create` on `datavolumes/source`; for PVC sources, CDI also accepts permission to create Pods there. A permission failure can prevent the clone rather than simply make it slower, depending on the path and admission stage. Verify the dedicated permission explicitly:
 
 ```bash
-kubectl auth can-i create datavolumes/source \
-  --api-group=cdi.kubevirt.io \
+kubectl auth can-i create datavolumes.cdi.kubevirt.io \
+  --subresource=source \
   --namespace=golden-images \
   --as=system:serviceaccount:vm-lab:vm-builder
 ```
@@ -163,7 +163,7 @@ kubectl auth can-i create datavolumes/source \
 
 Accept host-assisted copy when:
 
-- moving between storage classes or backends
+- moving between incompatible CSI drivers or backends
 - intentionally changing volume mode
 - cloning is rare and the performance cost is acceptable
 - the CSI driver lacks clone or snapshot support
