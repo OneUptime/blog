@@ -120,7 +120,7 @@ An operationally useful test is recovery from a known pause:
 1. on a noncritical replica, stop only the applier for an approved short interval
 2. leave the receiver running so relay logs accumulate
 3. restart apply with the candidate worker count
-4. measure time to return to the captured source GTID
+4. measure time to reach the captured source GTID set, or source binary-log coordinates when GTIDs are not in use
 
 Do not intentionally create backlog unless binary log and relay-log capacity, disk space, and recovery risk have been reviewed.
 
@@ -157,9 +157,9 @@ More workers help only if dependencies allow concurrency. Look for:
 
 - one transaction containing millions of row events
 - repeated updates to the same account, counter, or queue row
-- transactions that span many schemas
+- transactions with broad writesets that conflict with many later transactions
 - DDL or metadata locks
-- a source that commits only one transaction at a time
+- statement-logged transactions whose dependency metadata exposes little concurrency
 - commit-order waits behind one slow worker
 
 Sample worker state repeatedly. A balanced workload shows several workers progressing. If only one applies transactions, investigate dependency and transaction design before allocating more threads.
@@ -235,13 +235,13 @@ The thread state can appear as:
 Waiting for preceding transaction to commit
 ```
 
-Many such waits can mean one earlier transaction is the critical path. Turning commit-order preservation off changes correctness and recovery properties; it is not a routine performance toggle.
+Many such waits can mean one earlier transaction is the critical path. Turning commit-order preservation off changes visibility and recovery properties; it is not a routine performance toggle.
 
 Keep it on unless the architecture has explicitly accepted the documented implications of gaps and out-of-order externalization.
 
 ## Size Pending Job Memory with Evidence
 
-`replica_pending_jobs_size_max` limits memory for events queued to workers. The 8.4 default is 128 MiB. On a multithreaded replica, MySQL requires this value to be at least as large as the source's `max_allowed_packet`. An unusually large event can force special scheduling behavior, and a full queue can make the coordinator wait.
+`replica_pending_jobs_size_max` limits memory for events queued to workers. The 8.4 default is 128 MiB. On a multithreaded replica, MySQL says to set this value at least as large as the source's `max_allowed_packet`. An unusually large event can force special scheduling behavior, and a full queue can make the coordinator wait.
 
 Review current value:
 
@@ -306,7 +306,7 @@ JOIN performance_schema.variables_info AS vi
 WHERE gv.VARIABLE_NAME = 'replica_parallel_workers';
 ```
 
-This catches drift between option files, dynamic changes, and persisted configuration.
+This identifies the effective value and the source from which it was most recently set. Compare it with configuration management's source of truth to detect drift.
 
 ## A Tuning Decision Table
 
