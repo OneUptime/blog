@@ -19,6 +19,7 @@ The official repository layout places each stack under `stacks/`, with a `stack.
 ```text
 .
 ├── extraDevfileEntries.yaml
+├── last_modified.json
 └── stacks
     └── go-enterprise
         ├── stack.yaml
@@ -29,6 +30,8 @@ The official repository layout places each stack under `stacks/`, with a `stack.
             ├── devfile.yaml
             └── Dockerfile
 ```
+
+With `registry-support` v1.3.0, `last_modified.json` is also required at the repository root. Populate its `stacks` and `samples` arrays with each entry's name, version (use `undefined` for an unversioned entry), and RFC 3339 `lastModified` timestamp before running the build. The official registry generates this file from Git history during its container build.
 
 The stack metadata declares all published versions and exactly one default:
 
