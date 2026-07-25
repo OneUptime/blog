@@ -15,14 +15,15 @@ That optimization also explains most “handler did not run” incidents. The ha
 ## Start with the Core Contract
 
 ```yaml
-- name: Install the application configuration
-  ansible.builtin.template:
-    src: app.conf.j2
-    dest: /etc/myapp/app.conf
-    owner: root
-    group: root
-    mode: "0644"
-  notify: Restart myapp
+tasks:
+  - name: Install the application configuration
+    ansible.builtin.template:
+      src: app.conf.j2
+      dest: /etc/myapp/app.conf
+      owner: root
+      group: root
+      mode: "0644"
+    notify: Restart myapp
 
 handlers:
   - name: Restart myapp
@@ -164,12 +165,13 @@ handlers:
 For several handlers that should react to one event, use a topic:
 
 ```yaml
-- name: Update proxy configuration
-  ansible.builtin.template:
-    src: proxy.conf.j2
-    dest: /etc/proxy/proxy.conf
-    mode: "0644"
-  notify: Proxy configuration changed
+tasks:
+  - name: Update proxy configuration
+    ansible.builtin.template:
+      src: proxy.conf.j2
+      dest: /etc/proxy/proxy.conf
+      mode: "0644"
+    notify: Proxy configuration changed
 
 handlers:
   - name: Validate proxy configuration
@@ -205,16 +207,16 @@ Handlers are not selected per changed item. If one item changes, the handler is 
 
 ## Includes and Imports Affect Availability
 
-Handlers from roles and included files enter the play's handler scope according to Ansible's insertion rules. Static imports are processed when the play is parsed, while dynamic includes are processed at runtime. A handler inside a dynamic include is not available before that include has executed.
+Handlers from roles enter the play's handler scope according to Ansible's insertion rules. Handlers from roles listed under `roles` are loaded first, followed by handlers declared in the play and handlers from statically imported roles. Handlers from dynamically included roles become available only after the `include_role` task executes.
 
 For predictable behavior:
 
 - define public role handlers in `roles/<role>/handlers/main.yml`
 - give every handler a unique name
 - notify a stable `listen` topic when several roles participate in one event
-- avoid hiding essential handlers behind a conditional include that may not execute
+- avoid hiding essential handlers behind a conditional `include_role` that may not execute
 
-Also remember that notifying a dynamic include as a handler does not run every task inside it in the same way as notifying individual imported handlers. Consult the handler documentation when mixing includes, imports, and notifications.
+Task-file imports and includes follow different rules. A static `import_tasks` used in the `handlers` section is expanded before play execution, and the imported tasks can be notified individually. A dynamic `include_tasks` can itself be notified as a handler, which runs every task in the included file; handlers defined inside a dynamic include cannot be notified.
 
 ## Check Custom Change Conditions
 
@@ -254,4 +256,3 @@ Handlers are reliable once treated as a queued, per-host consequence of a report
 - [Error handling and forced handlers](https://docs.ansible.com/projects/ansible/latest/playbook_guide/playbooks_error_handling.html)
 - [Blocks and flushing handlers during rescue](https://docs.ansible.com/projects/ansible/latest/playbook_guide/playbooks_blocks.html)
 - [ansible.builtin.meta module](https://docs.ansible.com/projects/ansible/latest/collections/ansible/builtin/meta_module.html)
-
