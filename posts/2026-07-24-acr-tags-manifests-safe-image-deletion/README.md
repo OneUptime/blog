@@ -182,7 +182,7 @@ Kubernetes digests are immutable references:
 ```yaml
 containers:
   - name: payments
-    image: myregistry.azurecr.io/apps/payments@sha256:0123456789abcdef...
+    image: myregistry.azurecr.io/apps/payments@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
 ```
 
 Digest pinning protects a deployment from tag movement, but it also makes manifest retention mandatory. Cleanup jobs must preserve every deployed or rollback digest.
@@ -251,7 +251,7 @@ az acr repository delete \
   --yes
 ```
 
-Do not add `--yes` until the script produces a reviewable candidate file, excludes protected digests, and has a separate approval gate. Deletion is documented as unrecoverable.
+Do not add `--yes` until the script produces a reviewable candidate file, excludes protected digests, and has a separate approval gate. Deletion is unrecoverable unless ACR's opt-in preview soft delete policy was enabled before deletion and the artifact remains within its retention window. Restoring a soft-deleted image index does not recursively restore its child manifests.
 
 Deleting by digest removes all tags associated with the manifest. Shared layers remain while other manifests reference them, so a successful deletion might recover less storage than expected.
 
@@ -295,5 +295,6 @@ The safest question is not "How old is this tag?" It is "Which manifest does thi
 - [Azure CLI reference for az acr manifest](https://learn.microsoft.com/en-us/cli/azure/acr/manifest?view=azure-cli-latest)
 - [Lock a container image in Azure Container Registry](https://learn.microsoft.com/en-us/azure/container-registry/container-registry-image-lock)
 - [Automatically purge images from Azure Container Registry](https://learn.microsoft.com/en-us/azure/container-registry/container-registry-auto-purge)
+- [Recover deleted artifacts with the soft delete policy in Azure Container Registry](https://learn.microsoft.com/en-us/azure/container-registry/container-registry-soft-delete-policy)
 - [Kubernetes image names, tags, digests, and pull policies](https://kubernetes.io/docs/concepts/containers/images/)
 - [OCI Image Index specification](https://github.com/opencontainers/image-spec/blob/main/image-index.md)
