@@ -66,7 +66,7 @@ SELECT
 FROM performance_schema.replication_connection_status;
 ```
 
-If the receiver is disconnected or receives heartbeats irregularly, investigate:
+If the receiver is disconnected, or if neither data nor heartbeats arrive during expected idle periods, investigate:
 
 - source availability
 - DNS and routing
@@ -76,7 +76,7 @@ If the receiver is disconnected or receives heartbeats irregularly, investigate:
 - packet loss and bandwidth
 - `replica_net_timeout` and the configured heartbeat period
 
-If the receiver is healthy and the relay log grows while executed GTIDs fall behind received GTIDs, the applier is the bottleneck.
+When GTIDs are in use, if the receiver is healthy and the relay log grows while executed GTIDs fall behind received GTIDs, the applier is the bottleneck. If GTIDs are disabled, compare the receiver and applier source log files and positions instead.
 
 ## Inspect Every Applier Worker
 
@@ -118,7 +118,7 @@ MySQL can also write coordinator scheduling statistics to the error log at infor
 
 ## Allow for Post-Restart Warm-Up
 
-An upgrade restarts the server. The buffer pool, filesystem cache, adaptive state, and prepared application connections may be cold.
+An upgrade restarts the MySQL process. The buffer pool and any enabled adaptive state must warm again. The filesystem cache may also be cold if maintenance restarted the host or displaced cached pages, and application connection pools must refill if the application restarted.
 
 Compare lag over three periods:
 
@@ -137,6 +137,8 @@ pidstat -dru -p "$(systemctl show mysql --property=MainPID --value)" 1
 ```
 
 Run short, supervised samples. These tools may require packages or privileges. Do not leave high-frequency diagnostics running indefinitely on a production node.
+
+The systemd service unit may be named `mysql` or `mysqld`; substitute the unit name used on the host.
 
 ## Compare Effective Configuration, Including Its Source
 
@@ -170,6 +172,8 @@ ORDER BY gv.VARIABLE_NAME;
 
 Run it on the old baseline and upgraded replica. Do not assume old aliases or removed variables still control 8.4.
 
+`replica_parallel_type` and `binlog_format` are deprecated in MySQL 8.4. They remain useful here for finding inherited configuration, but use `LOGICAL_CLOCK` and row-based logging rather than treating them as long-term tuning interfaces.
+
 MySQL 8.4 changes several defaults from 8.0. A changed default can improve a typical workload but still differ from the tuned 8.0 environment. Re-evaluate each override against the 8.4 documentation instead of copying all old values.
 
 ## Check Parallel Apply Before Adding Workers
@@ -178,7 +182,7 @@ In MySQL 8.4:
 
 - `replica_parallel_workers` defaults to `4`
 - `replica_preserve_commit_order` defaults to `ON`
-- `replica_parallel_type` defaults to `LOGICAL_CLOCK`
+- `replica_parallel_type` is deprecated and defaults to `LOGICAL_CLOCK`
 - setting zero workers is deprecated
 - setting one worker gives sequential apply
 
@@ -207,9 +211,8 @@ Common serialization sources include:
 - one large batch transaction
 - repeated updates to the same hot rows
 - DDL and metadata locks
-- cross-database transactions
+- dependency chains recorded in the source binary log
 - commit-order waits
-- a low-concurrency source workload
 - cascades or triggers that concentrate writes
 
 Inspect source transaction size and cadence, application deploys, and batch schedules. The version change may be coincidental with a workload change.
@@ -274,7 +277,7 @@ If the replica has binary logging and `log_replica_updates` enabled for promotio
 
 Do not weaken `sync_binlog` or `innodb_flush_log_at_trx_commit` merely to hide lag. Those settings define loss and recovery behavior. Compare them with the approved durability model and fix storage or capacity if the business requires durable commits.
 
-Also verify that an upgraded replica intended for promotion still has the required binary logging. Disabling it may improve a benchmark while silently removing failover capability.
+Also verify that an upgraded replica intended for promotion still meets the failover design's binary-logging requirements. Disabling binary logging may improve a benchmark while silently removing required capabilities, such as serving downstream replicas or supporting point-in-time recovery.
 
 ## Check Version-Mixed Topology Constraints
 
