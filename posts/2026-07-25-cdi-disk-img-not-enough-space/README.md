@@ -105,7 +105,7 @@ If policy permits a controlled diagnostic mount of an unused test claim, compare
 
 ## Check Scratch Capacity
 
-CDI requests scratch at the DataVolume size and always uses `ReadWriteOnce`, `Filesystem`. Pod-pull registry imports, uploads, and some HTTP paths require it. Registry imports that use `pullMethod: node` do not create a scratch PVC.
+CDI derives the scratch request from the target PVC's requested size and always uses `ReadWriteOnce`, `Filesystem`. Pod-pull registry imports, uploads, and some HTTP paths require it. Registry imports that use `pullMethod: node` do not create a scratch PVC.
 
 Check the configured class:
 
@@ -130,6 +130,8 @@ Do not delete it while the worker is active.
 For a failed new import with no valuable target data, create a new, larger DataVolume:
 
 ```yaml
+apiVersion: cdi.kubevirt.io/v1beta1
+kind: DataVolume
 metadata:
   name: vm-root-v2
 spec:
@@ -154,7 +156,7 @@ PVC expansion may be possible when the StorageClass has:
 allowVolumeExpansion: true
 ```
 
-Expansion behavior depends on CSI support, filesystem resize rules, DataVolume state, and whether the worker retries. Do not patch a production claim until the storage provider's procedure and CDI recovery behavior are understood.
+Expansion behavior depends on storage driver support, filesystem resize rules, DataVolume state, and whether the worker retries. Do not patch a production claim until the storage provider's procedure and CDI recovery behavior are understood.
 
 ## Correct an Inaccurate Overhead Setting
 
@@ -179,7 +181,7 @@ Do not set overhead to zero merely to make the requested PVC look smaller. That 
 
 ## Do Not Switch to Block Mode Blindly
 
-Block mode has no target filesystem overhead, but it requires CSI, KubeVirt, CDI, and CRI support. It can change snapshot, clone, migration, and operational behavior. Scratch remains filesystem mode.
+Block mode has no target filesystem overhead, but it requires the storage backend or provisioner, KubeVirt, CDI, and CRI to support raw block volumes. It can change snapshot, clone, migration, and operational behavior. Scratch remains filesystem mode.
 
 Choose block mode as an architectural storage decision:
 
