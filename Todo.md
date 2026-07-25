@@ -2,25 +2,24 @@
 
 ## OPA Gatekeeper
 
-1. ConstraintTemplate vs Constraint in Gatekeeper: Why Do You Need Both?
-2. How to Debug “No Matches for Kind” After Applying a Gatekeeper ConstraintTemplate
-3. Gatekeeper `deny`, `warn`, and `dryrun`: Which Enforcement Action Should You Use During Rollout?
-4. How to Exclude `kube-system` and Other Namespaces Without Creating a Gatekeeper Bypass
-5. How to Apply a Gatekeeper Policy Only to One ServiceAccount or Workload
-6. Why Gatekeeper Blocks New Resources but Misses Existing Policy Violations
-7. Gatekeeper Audit Shows No Violations: How to Diagnose Constraints, Scope, and Cache Settings
-8. Why Does Gatekeeper Report Only 20 Violations? How to Raise the Limit Safely
-9. How to Write Referential Gatekeeper Policies with `data.inventory` and `syncOnly`
-10. Why a Gatekeeper Pod Policy Does Not Block Violating Deployments
-11. How to Test Gatekeeper Policies in CI with Gator Before They Reach a Cluster
-12. Gatekeeper Fail-Open vs Fail-Closed: Avoiding Both Policy Bypass and Cluster Lockout
-13. How to Troubleshoot Gatekeeper Webhook Timeouts and Kubernetes API Latency
-14. How Gatekeeper Webhook Certificate Rotation Fails—and How to Recover Admission
-15. How to Trace a Gatekeeper Decision and Debug Unexpected Rego Results
-16. How to Restrict Container Image Registries and Tags Without Gatekeeper False Positives
-17. Gatekeeper Mutation vs Validation: What Happens When Both Target the Same Field?
-18. How to Use External Data Providers Without Slowing Gatekeeper Admission Requests
-19. How to Monitor Gatekeeper Audit Health, Denials, and Policy Latency with Prometheus
+1. How to Debug “No Matches for Kind” After Applying a Gatekeeper ConstraintTemplate
+2. Gatekeeper `deny`, `warn`, and `dryrun`: Which Enforcement Action Should You Use During Rollout?
+3. How to Exclude `kube-system` and Other Namespaces Without Creating a Gatekeeper Bypass
+4. How to Apply a Gatekeeper Policy Only to One ServiceAccount or Workload
+5. Why Gatekeeper Blocks New Resources but Misses Existing Policy Violations
+6. Gatekeeper Audit Shows No Violations: How to Diagnose Constraints, Scope, and Cache Settings
+7. Why Does Gatekeeper Report Only 20 Violations? How to Raise the Limit Safely
+8. How to Write Referential Gatekeeper Policies with `data.inventory` and `syncOnly`
+9. Why a Gatekeeper Pod Policy Does Not Block Violating Deployments
+10. How to Test Gatekeeper Policies in CI with Gator Before They Reach a Cluster
+11. Gatekeeper Fail-Open vs Fail-Closed: Avoiding Both Policy Bypass and Cluster Lockout
+12. How to Troubleshoot Gatekeeper Webhook Timeouts and Kubernetes API Latency
+13. How Gatekeeper Webhook Certificate Rotation Fails—and How to Recover Admission
+14. How to Trace a Gatekeeper Decision and Debug Unexpected Rego Results
+15. How to Restrict Container Image Registries and Tags Without Gatekeeper False Positives
+16. Gatekeeper Mutation vs Validation: What Happens When Both Target the Same Field?
+17. How to Use External Data Providers Without Slowing Gatekeeper Admission Requests
+18. How to Monitor Gatekeeper Audit Health, Denials, and Policy Latency with Prometheus
 
 ## Data Volume
 
