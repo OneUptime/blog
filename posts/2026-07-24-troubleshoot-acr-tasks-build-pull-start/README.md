@@ -35,7 +35,7 @@ The status narrows the investigation:
 - No new run means the trigger did not fire or the task is disabled.
 - `Queued` for an unusual length of time points to worker capacity, an agent-pool problem, or a service issue.
 - `Running` followed by `Failed` means the log should identify a source, login, pull, build, test, or push failure.
-- `Canceled` can be a user action, automation action, or timeout-related cleanup.
+- `Canceled` normally means a user or automation canceled the run. `Timeout` is a separate status that means the configured run timeout expired.
 - `Succeeded` with no expected image usually means the task did not tag or push the intended output.
 
 Copy the run ID and inspect both its properties and log:
@@ -98,7 +98,7 @@ az acr task timer list \
   --output table
 ```
 
-Timer schedules use UTC. For source triggers, verify that the repository connection or personal access token remains valid and that the watched branch and path filters still match. Never print a source token in task output. Microsoft warns that command-line values and URIs can be captured in diagnostic tracing.
+Timer schedules use UTC. For source triggers, verify that the repository connection or personal access token remains valid and that the watched branch and source-context subfolder still exist. Never print a source token in task output. Microsoft warns that command-line values and URIs can be captured in diagnostic tracing.
 
 ## Separate Registry Health from Task Health
 
@@ -183,7 +183,7 @@ az acr task credential add \
 
 Role assignments can take a short time to propagate. Retry with backoff rather than recreating the identity.
 
-If the task builds successfully but fails on its final push, inspect authorization on the destination registry and the repository name. A repository lock or an immutable tag can correctly reject an overwrite even when authentication succeeded.
+If the task builds successfully but fails on its final push, inspect authorization on the destination registry and the repository name. A write-disabled repository or tag can correctly reject an overwrite even when authentication succeeded.
 
 ## Check Network Isolation Explicitly
 
@@ -197,7 +197,7 @@ A `403`, timeout, DNS error, or connection refusal can be network policy rather 
 
 Network-restricted registries need a deliberate design for ACR Tasks. Microsoft documents a `networkRuleBypassAllowedForTasks` registry policy that can let system-identity tasks bypass network rules when trusted-services access is enabled. As of July 2026, configuration of this property uses the `2025-06-01-preview` API. Treat it as a preview control, review its security implications, and do not enable it merely to make an error disappear.
 
-For stricter routing, use a dedicated ACR Tasks agent pool connected to the required network. Agent pools and advanced private networking have tier, region, and quota requirements, so verify current availability before relying on them.
+For stricter routing, use a dedicated ACR Tasks agent pool connected to the required network. Agent pools are currently in preview, require the Premium tier, support only Linux nodes, and are limited to specific regions, so verify current availability and quotas before relying on them.
 
 ## Diagnose Build-Step Failures
 
@@ -219,6 +219,8 @@ az acr run \
   .
 ```
 
+If the YAML reads images or artifacts from the same registry and that registry uses RBAC Registry + ABAC Repository Permissions, add `--source-acr-auth-id "[caller]"` and ensure the caller has the appropriate repository role.
+
 Use step-level `retries` only for genuinely transient operations. A retry will not fix an invalid credential, a missing file, or an unsupported platform.
 
 ## A Practical Failure Map
@@ -231,7 +233,7 @@ Use step-level `retries` only for genuinely transient operations. A retry will n
 | Base image returns 401/403 | Task identity and source ACR roles | Missing reader role, wrong auth mode, wrong login server |
 | Pull or source times out | Registry and agent-pool network path | Firewall, private DNS, blocked egress |
 | Build exits nonzero | Dockerfile command and build log | Package failure, platform mismatch, missing file |
-| Push is denied | Destination role and repository attributes | Missing writer role, tag lock, immutable repository |
+| Push is denied | Destination role and repository attributes | Missing writer role, repository or tag write lock |
 | Run ends at a fixed duration | Task timeout and long step | Timeout too low or stalled dependency |
 
 ## Make the Next Failure Easier to Diagnose
