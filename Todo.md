@@ -2,8 +2,7 @@
 
 ## OPA Gatekeeper
 
-1. How to Use External Data Providers Without Slowing Gatekeeper Admission Requests
-2. How to Monitor Gatekeeper Audit Health, Denials, and Policy Latency with Prometheus
+1. How to Monitor Gatekeeper Audit Health, Denials, and Policy Latency with Prometheus
 
 ## Data Volume
 
