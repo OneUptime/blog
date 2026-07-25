@@ -863,3 +863,233 @@
 18. Should a Registry Reject Unsigned Pushes or Should Kubernetes Verify Images at Admission?
 19. How to Secure Keyless Cosign Signing in GitHub Actions Against Untrusted Pull Requests
 20. How to Verify an Image Has More Than One Valid Signature with Cosign
+
+## Woodpecker CI
+
+1. Woodpecker Pipeline Never Starts After a Push: Trace the Forge Webhook, Repository Sync, and Config Path
+2. Why Does “Run Pipeline” Spin Forever in Woodpecker? Add the `manual` Event and Check Forge Connectivity
+3. Why Does One Pull Request Trigger Two Woodpecker Pipelines? Separating `push` and `pull_request` Events
+4. Woodpecker `when` Filters Not Matching? Debug Branch, Ref, Event, Path, and Status Conditions
+5. How to Run Only the Changed Service in a Woodpecker Monorepo
+6. Why Did `depends_on` Make Every Woodpecker Step Run in Parallel? Building the DAG You Intended
+7. How to Share Environment Variables Across Woodpecker Steps Without Repeating YAML
+8. Why Are Woodpecker Secrets Missing on Pull Requests and Forks?
+9. How Do Files Persist Between Woodpecker Steps? Workspace, Volumes, and Artifacts Explained
+10. How to Cache npm, Maven, and Go Dependencies in Woodpecker Without Cross-Branch Contamination
+11. Docker-in-Docker or Host Socket in Woodpecker: Which Image-Build Pattern Is Safer?
+12. Woodpecker Says “No Basic Auth Credentials”: Fixing Private Registry Hostnames and Pull Secrets
+13. Why Can Woodpecker Clone the Repository but Not Its Private Git Submodules?
+14. Why Is a Woodpecker Workflow Stuck in “Pending”? Match Agent Labels, Platform, and Backend
+15. Woodpecker Agent Cannot Connect to the Server: A gRPC Address, Token, and TLS Checklist
+16. Woodpecker Breaks After Docker Engine 29: Fixing the “Client Version Is Too Old” API Error
+17. Why Is a Woodpecker Kubernetes Job Stuck Pending? Check PVCs, Storage Classes, Resources, and Service Accounts
+18. How to Reproduce a Woodpecker Failure Locally with `woodpecker-cli exec`
+19. Why Didn’t a Woodpecker Cron Pipeline Run? Schedule, Time Zone, Branch, and Event Checks
+20. How to Upgrade Woodpecker 2.x to 3.x Without Breaking Secrets, Cron Schedules, Privileged Plugins, or Webhooks
+
+## Browser Monitoring
+
+1. Browser Monitoring, Synthetic Tests, or CrUX: Which View of User Experience Should You Trust?
+2. Why Is Lighthouse Fast While Real Users Are Slow? Segment RUM by Device, Network, Region, and Cache State
+3. Which Browser Metrics Matter After Page Load? LCP, INP, CLS, Long Tasks, and Custom Actions
+4. How to Alert on the 75th Percentile of Core Web Vitals Without Paging on Traffic-Mix Noise
+5. Why Does Browser Monitoring Miss SPA Route Changes? Instrumenting Virtual Navigations and Route Timings
+6. How to Measure Hydration Delay When Content Appears Before the Page Becomes Interactive
+7. How to Monitor Failed Fetch Calls When the Browser Exposes Only `TypeError: Failed to fetch`
+8. Why Does Browser Monitoring Report Status 0? Distinguishing CORS, Offline, Abort, and Ad-Blocker Failures
+9. Browser Telemetry Disappears Behind Ad Blockers and CSP: How Much Data Are You Missing?
+10. Why Are Browser Beacons Lost During Navigation? Making `sendBeacon` and `fetch(keepalive)` More Reliable
+11. How Should You Sample Browser Sessions Without Losing Rare Errors and Slow Outliers?
+12. How to Control High-Cardinality Browser Telemetry from URLs, User IDs, and Session Attributes
+13. Why Are Production JavaScript Stack Traces Still Minified? Matching Source Maps to the Exact Release
+14. How to Separate First-Party JavaScript Failures from Extensions, Third-Party Scripts, and “Script Error”
+15. Session Replay Without Leaking PII: Masking Inputs, URLs, DOM Text, and Network Payloads
+16. Why Is Session Replay Blank or Incomplete? Iframes, Canvas, Shadow DOM, and Browser Compatibility
+17. Does Your Browser Monitoring SDK Slow the Page? Measuring Bundle, Main-Thread, and Network Overhead
+18. How Do bfcache Restores and Prerendered Pages Distort Browser Performance Metrics?
+19. INP Is Poor but LCP Is Fine: Finding the Long Task or Event Handler Behind Slow Interactions
+20. How to Detect a Frontend Regression Without Confusing It with Bot Traffic, Extensions, or a Changing User Mix
+
+## Kuzu
+
+1. Kuzu Was Archived: Should You Pin 0.11.3, Fork It, or Migrate?
+2. Kuzu to LadybugDB: What Actually Changes in Packages, APIs, Extensions, and Database Files?
+3. How to Audit a Frozen Kuzu Deployment for Security and Compatibility Risk
+4. Why Does `INSTALL EXTENSION` Fail in Kuzu Now? Using Bundled Extensions or a Local Extension Server
+5. How to Export and Validate a Kuzu Graph Before Moving to Another Database
+6. Kuzu Says “Could Not Set Lock on File”: Safely Using Jupyter, the CLI, and Explorer
+7. Can Multiple Web Workers Write to One Kuzu Database? Designing a Single-Process API Layer
+8. Kuzu In-Memory vs On-Disk: Which Mode Fits Tests, Analytics, and Production?
+9. How Should You Model Node Tables, Relationship Tables, and Primary Keys in Kuzu?
+10. Kuzu CSV Import Put the Header in Your Data—or Rejected Valid Rows: Fixing Auto-Detection, Nulls, and Delimiters
+11. `COPY FROM`, `CREATE`, or `MERGE`: Which Kuzu Ingestion Path Scales to Millions of Nodes and Edges?
+12. Kuzu Crashes or Exhausts Memory During Bulk Load: Tuning the Buffer Pool and Import Batch
+13. Why Doesn’t Neo4j Cypher Run Unchanged in Kuzu? Finding Dialect and Schema Assumptions
+14. A Kuzu Query Is Slow: Reading `EXPLAIN`/`PROFILE`, Bounding Paths, and Checking Join Order
+15. Why Did a Variable-Length Kuzu Traversal Explode in Rows and Memory?
+16. How to Parameterize Kuzu Cypher Safely Without Replanning Every Query
+17. Kuzu HNSW Search Is Fast but Misses Neighbors: Tuning `efs` for Recall and Latency
+18. How to Combine Kuzu Vector Search, Full-Text Search, and Graph Traversal for Graph RAG
+19. Kuzu-Wasm Database Vanishes on Refresh: Persisting IDBFS and Synchronizing the Filesystem
+20. Kuzu-Wasm Worker Fails to Load or Freezes the UI: Choosing Async, Sync, and Multithreaded Builds
+
+## Continuous Improvement
+
+1. Why Do the Same Problems Reappear Every Retrospective? Closing the Improvement Feedback Loop
+2. How Much Sprint Capacity Should You Reserve for Improvement Work and Technical Debt?
+3. Too Many Improvement Ideas, Too Little Time: Prioritizing the Constraint That Actually Limits Flow
+4. PDCA, A3, or DMAIC: Which Continuous Improvement Method Fits a Software Team?
+5. How to Turn “Deployments Are Painful” into a Measurable Improvement Hypothesis
+6. What Baseline Do You Need Before Changing a Process?
+7. Leading vs Lagging Improvement Metrics: How to Know Before the Quarter Ends
+8. How to Use DORA Metrics for Improvement Without Ranking or Punishing Teams
+9. Deployment Frequency Improved but Burnout Got Worse: Choosing Balanced Guardrail Metrics
+10. Cycle Time, Queue Time, Throughput, and Work Item Age: Which Flow Metric Answers Which Question?
+11. What Should Your First WIP Limit Be—and When Should You Change It?
+12. How to Run a Value-Stream Mapping Session That Reveals Wait Time, Rework, and Handoffs
+13. How to Prevent Local Optimization from Making the End-to-End Delivery System Slower
+14. When Does Standard Work Help Continuous Improvement—and When Does It Become Bureaucracy?
+15. Small Reversible Experiment or Company-Wide Transformation: How Big Should an Improvement Be?
+16. Why Won’t People Raise Process Problems? Building Psychological Safety Without Empty Slogans
+17. How to Run a Remote Retrospective Where Quiet Team Members Shape the Actions
+18. Improvement Fatigue Is Real: How Many Process Experiments Can a Team Run at Once?
+19. Did the Change Help Customers or Just Move an Internal Metric?
+20. How to Make an Improvement Stick: Ownership, Automation, Documentation, and Drift Checks
+
+## Apache Spark
+
+1. Why Does a Spark Stage Sit at 99%? Find Skewed Keys and Straggler Tasks in the Spark UI
+2. Spark `FetchFailedException` After an Executor Dies: Is the Network, Disk, or Shuffle Service at Fault?
+3. `collect()`, `take()`, or `toLocalIterator()`: How Do You Inspect Spark Results Without Crashing the Driver?
+4. How Many Partitions Should a Spark Job Use? Size Tasks from Input Bytes, Cores, and AQE
+5. `repartition()`, `coalesce()`, or `repartitionByRange()`: Which Spark Operation Fits Each Shuffle?
+6. Why Is Spark Reading Millions of Tiny Parquet Files Slowly—and Where Should You Compact Them?
+7. When Does Spark Spill to Disk, and Why Do Some “Spillable” Jobs Still Run Out of Memory?
+8. Spark Broadcast Join Keeps Timing Out: Should You Raise the Timeout, Fix Statistics, or Stop Broadcasting?
+9. How Do You Diagnose a Many-to-Many Spark Join That Silently Explodes the Row Count?
+10. Native Spark Functions, Arrow UDFs, or Pandas UDFs: Which PySpark Path Is Actually Faster?
+11. Why Does `applyInPandas()` OOM on One Group? Bound Skew Before Arrow Materializes It
+12. Does Caching Make This Spark Job Slower? Read Recompute, Eviction, and Storage-Level Metrics
+13. Executor Heartbeat Timed Out: Is Spark GC-Paused, Network-Starved, or Running an Oversized Task?
+14. `groupByKey()`, `reduceByKey()`, or `aggregateByKey()`: Why Map-Side Combining Changes Spark Shuffle Memory
+15. Why Isn’t Adaptive Query Execution Fixing My Skewed Join? Check Statistics, Thresholds, and Join Shape
+16. Why Isn’t a Structured Streaming Watermark Dropping Old Events? Event-Time and Output-Mode Traps
+17. Can You Reuse a Spark Structured Streaming Checkpoint After Changing the Query?
+18. Why Does a Structured Streaming State Store Keep Growing? Find Missing Watermarks and Unbounded Keys
+19. Why Does Kafka Consumer Lag Keep Rising in Spark Structured Streaming? Tune Input Rate and Find Slow Operators
+20. Dynamic Allocation Removed an Executor: Will Spark Lose Its Shuffle Files?
+
+## Partitioning
+
+1. Table Partitioning vs Sharding: When Do You Need a New Failure Domain, Not Another Child Table?
+2. Partitioning or a Composite Index: Which Actually Helps a 500-Million-Row Table?
+3. Range, Hash, or List Partitioning: Match the Strategy to Predicates and Write Distribution
+4. How Do You Choose a Partition Key Without Creating Hot Partitions or Full Scans?
+5. Why Didn’t the Database Prune Partitions? Diagnose Casts, Functions, and Non-Sargable Predicates
+6. How Can `EXPLAIN` Prove PostgreSQL Pruned Partitions at Plan Time or Execution Time?
+7. How Many PostgreSQL Partitions Are Too Many? Measure Planner, Lock, and Catalog Overhead
+8. Why Must PostgreSQL and MySQL Unique Keys Include the Partition Key?
+9. How Do Foreign Keys Behave When Both PostgreSQL Tables Are Partitioned?
+10. How Do You Convert a Live PostgreSQL Table to Declarative Partitioning With Minimal Downtime?
+11. Why Does PostgreSQL `ATTACH PARTITION` Scan and Lock the Table Despite a CHECK Constraint?
+12. Why Can a PostgreSQL DEFAULT Partition Make the Next Partition Creation Block?
+13. What Happens When an UPDATE Changes a PostgreSQL Partition Key?
+14. Daily, Weekly, or Monthly Partitions: Choose Boundaries From Retention and Query Windows
+15. Drop, Detach, or Archive: What Is the Safest Partition-Retention Workflow?
+16. Should a Multi-Tenant Table Partition by Tenant, Time, or Both?
+17. Consistent Hashing Still Has Hot Keys: How Do You Salt a Busy Partition Without Breaking Reads?
+18. Can You Change a Cassandra Partition Key? Plan the Replacement Table, Backfill, and Cutover
+19. Hive-Style Date Partitions or Iceberg Hidden Partitioning: Which Survives Layout Evolution?
+20. Why Do Lakehouse Partitions Create Tiny Files? Balance Pruning, Compaction, and Write Concurrency
+
+## InfiniBand
+
+1. InfiniBand Port Is `LinkUp` but Not `Active`: Is the Subnet Manager Missing?
+2. Active/Standby OpenSM or Competing Masters: How Should InfiniBand Subnet Manager Redundancy Work?
+3. `ibstat` Shows `Down/Polling`: How Do You Separate Cable, Port, Firmware, and Link-Mode Faults?
+4. Why Did an InfiniBand Link Negotiate 1X or a Lower Rate Than the HCA Advertises?
+5. Which InfiniBand Counters Actually Point to a Bad Cable? Read Symbol Errors, Link Recovery, and Discards
+6. Why Does `ibv_devinfo` Show No RDMA Devices After a Kernel Upgrade?
+7. Distribution `rdma-core` or MLNX_OFED: Which Driver Stack Fits Your Kernel and ConnectX Generation?
+8. Is This ConnectX Port in Ethernet or InfiniBand Mode? Verify VPI Link Type Before Reconfiguring It
+9. IPoIB Works, but Why Is It Far Below InfiniBand Line Rate?
+10. IPoIB Datagram, Connected, or Enhanced Mode: Which Options Does Your Driver and HCA Actually Support?
+11. Does Open MPI Actually Use InfiniBand? Prove UCX Transport Selection Instead of Assuming
+12. Open MPI Warns “IB Port Not Selected”: Why UCX Replaced the `openib` BTL
+13. `UCX_NET_DEVICES` Says `mlx5_0:1` Is Unavailable: Check Namespaces, Link Layer, and Build Options
+14. `ibv_reg_mr()` Returns “Cannot Allocate Memory”: Check `memlock`, Page Pinning, and HCA Registration Limits
+15. `IBV_WC_RETRY_EXC_ERR` vs `IBV_WC_RNR_RETRY_EXC_ERR`: Which Side of the Queue Pair Is Broken?
+16. `RDMA_CM_EVENT_ROUTE_ERROR`: How Do GIDs, P_Keys, and Address Resolution Cause It?
+17. InfiniBand Bandwidth Is Low but `ibdiagnet` Is Clean: Check PCIe Width, NUMA Placement, and CPU Pinning
+18. How Should You Run `ib_write_bw` Without Benchmarking the Wrong Path or Memory Type?
+19. Why Can a Kubernetes Pod See `/dev/infiniband` but UCX Still Fail GID Resolution?
+20. When Does GPUDirect RDMA Fail Because of PCIe ACS, IOMMU, or GPU–HCA Topology?
+
+## Infrastructure Testing
+
+1. How Do You Test a Terraform Module That Depends on Shared VPCs, IAM, or Remote State?
+2. `command = plan` vs `command = apply` in `terraform test`: Which Should Your Test Use?
+3. How Do `terraform test` Run Blocks Share State—and When Should You Isolate Them?
+4. How Do You Test Terraform Data Sources and Computed Attributes with `mock_provider` and Overrides?
+5. Why Do Terratest Suites Flake on Eventually Consistent Cloud APIs—and How Should You Retry Assertions?
+6. How Do You Guarantee Cleanup When an Infrastructure Test Crashes Mid-Apply?
+7. How Do You Run Terratest in Parallel Without State, Name, or Cloud-Quota Collisions?
+8. What Belongs in a Dedicated Cloud Account for Infrastructure Integration Tests?
+9. How Do You Keep Real-Cloud Infrastructure Tests Fast and Affordable?
+10. How Do You Test a Terraform Module Across Multiple Terraform and Provider Versions?
+11. How Can You Assert Terraform Plan JSON Without Writing Brittle Snapshot Tests?
+12. Policy Tests vs Behavior Tests: Should OPA, Checkov, or Terratest Enforce This Infrastructure Rule?
+13. How Do You Test Private Terraform Modules in CI Without Exposing Cloud Credentials?
+14. How Should Terratest Share Expensive Fixtures Without Coupling Every Test?
+15. Should Infrastructure Tests Verify Resource Configuration or the Service’s Actual Behavior?
+16. How Do You Test a Terraform Change That Forces Resource Replacement Before It Reaches Production?
+17. Why Does `terraform test` Pass Locally but Fail in CI? Check Versions, Credentials, Regions, and Quotas
+18. How Do You Prevent Leftover Test State and Orphaned Resources from Poisoning the Next Run?
+19. How Do You Build Per-Pull-Request Infrastructure Environments That Clean Themselves Up?
+20. Which Infrastructure Tests Run on Every Pull Request—and Which Belong in a Nightly Suite?
+
+## Backoff
+
+1. Full Jitter, Equal Jitter, or Decorrelated Jitter: Which Retry Backoff Should Your Client Use?
+2. How Do You Choose the Initial Delay, Multiplier, and Cap for Exponential Backoff?
+3. Maximum Attempts or Maximum Elapsed Time: How Should a Retry Loop Stop?
+4. Should `Retry-After` Override Exponential Backoff—and What If the Header Is Invalid?
+5. HTTP 408, 409, 429, and 5xx: Which Responses Deserve a Backoff Retry?
+6. How Do You Retry a Timed-Out POST Without Creating Duplicate Side Effects?
+7. Why Is the Request Body Empty on the Second HTTP Retry—and How Do You Replay It Safely?
+8. Per-Attempt Timeout vs Overall Deadline: How Do You Budget Time Across Retries and Backoff?
+9. Where Should Retry Ownership Live When the SDK, Service Mesh, and Application All Retry?
+10. Why Does Capped Exponential Backoff Still Hammer a Sick Service—and How Do Retry Tokens Help?
+11. What Does gRPC Retry Pushback Mean, and How Should Clients Combine It with Backoff?
+12. How Do You Make a Backoff Sleep Respect Cancellation, Shutdown, and Request Deadlines?
+13. How Do You Test Jittered Retry Logic Deterministically Without Slow or Flaky Tests?
+14. Which Retry Metrics and Trace Attributes Reveal Backoff Loops Before They Become an Outage?
+15. Should Backoff State Be Per Request, Per Host, or Shared Across a Client Fleet?
+16. Fixed, Linear, or Exponential Backoff: Which Pattern Fits Rate Limits, Lock Contention, and Polling?
+17. Why Can One Poison Message Stall a Backoff Loop—and When Should You Dead-Letter It?
+18. Sequential Retry or Hedged Request: Which Reduces Tail Latency Without Doubling Load?
+19. Should Failed Requests Sleep in Worker Threads or Move to a Delayed Retry Queue?
+20. How Should a Multi-Tenant Client Partition Backoff and Retry Budgets to Avoid Noisy Neighbors?
+
+## Feast
+
+1. What Does `event_timestamp` Mean in a Feast Entity DataFrame, and Why Is It Required?
+2. Why Does a Feast Point-in-Time Join Return Nulls? Debugging Timestamps, TTLs, and Join Keys
+3. Feast TTL Explained: Why Historical Join Windows and Online Feature Expiry Are Not the Same Thing
+4. `feast materialize` vs `materialize-incremental`: Which Handles Late-Arriving Feature Data Correctly?
+5. Why Are Feast Online Features Missing After Materialization? Registry, Entity-Key, Type, and Timestamp Checks
+6. How Do You Rematerialize Corrected Feast Features When the Online Store Keeps the Older Value?
+7. Redis, DynamoDB, or PostgreSQL: Which Feast Online Store Fits Your Latency and Concurrency Needs?
+8. Feast Materialization Ran Out of Memory: When Should You Replace the In-Process Engine?
+9. How Do You Detect Silent Feast Materialization Failures Before Online Features Go Stale?
+10. How Do You Keep Feast Point-in-Time Joins Correct with Duplicate and Late-Arriving Rows?
+11. How Do Composite Entities and `join_key_map` Aliases Work in Feast?
+12. FeatureView, FeatureService, or OnDemandFeatureView: Which Feast Object Should You Use?
+13. How Do You Version Feast Feature Services Without Breaking a Deployed Model?
+14. File Registry or SQL Registry: Which Feast Backend Survives Concurrent Production Updates?
+15. How Should `feast apply` Promote Feature Definitions from Staging to Production Without Registry Drift?
+16. Batch Pipeline, On-Demand Transform, or Feast Aggregation: Where Should a 30-Day Rolling Feature Run?
+17. How Do You Push Streaming Features to Both Feast Stores Without Creating Training-Serving Skew?
+18. Why Is `get_historical_features` Slow or Memory-Hungry on a Large Entity DataFrame?
+19. Python Feature Server or Alpha Go Server: How Should Non-Python Clients Read Feast Features?
+20. How Do You Evolve a Feast FeatureView Schema Without Type Mismatches or Broken Consumers?
