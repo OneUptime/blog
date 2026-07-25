@@ -90,6 +90,8 @@ The child never defines `runtime`, `build`, or `run`, yet all three should exist
 
 ## Inspect odo's Effective Devfile
 
+odo was deprecated on October 23, 2025 and reached end of life on March 31, 2026. Use this path only to diagnose an existing, pinned odo v3.16.1 workflow; use the maintained Devfile library described below for new automation.
+
 From the directory containing `devfile.yaml`, ask odo to describe the local component as JSON:
 
 ```bash
@@ -111,9 +113,9 @@ odo describe component -o json \
   > /tmp/inventory-api-resolved.json
 ```
 
-The current odo implementation parses an “effective Devfile” for local commands. Its source enables parent flattening and conversion of referenced Kubernetes content before `odo describe component` builds the JSON response.
+The final odo v3 implementation parses an “effective Devfile” for local commands. Its source enables parent flattening and conversion of referenced Kubernetes content before `odo describe component` builds the JSON response.
 
-This is a consumer-effective view, not a universal canonical format. odo can apply consumer-specific variable and image processing. Pin the odo version in CI and interpret the output as what that version plans to use.
+This is a consumer-effective view, not a universal canonical format. odo can apply consumer-specific variable and image processing. Interpret the output as what the pinned final version plans to use; odo no longer receives maintenance or security updates.
 
 If the command fails before producing JSON, the first useful error often identifies parent retrieval, merge, variable, or semantic validation rather than a problem with `jq`.
 
@@ -221,12 +223,12 @@ Create a small module and pin a tested library version:
 
 ```bash
 go mod init example.com/devfile-resolve
-go get github.com/devfile/library/v2@v2.3.0
+go get github.com/devfile/library/v2@v2.4.0
 go get sigs.k8s.io/yaml
 go run . ./devfile.yaml > /tmp/resolved-devfile.yaml
 ```
 
-Use a library release compatible with the schema versions you support. A Kubernetes-resource parent also needs the parser context and Kubernetes client needed to retrieve that resource. Registry and URI parents need network access, certificate trust, and supported authentication.
+The pinned v2.4.0 release requires Go 1.24 or newer. Use a library release compatible with the schema versions you support. A Kubernetes-resource parent also needs the parser context and Kubernetes client needed to retrieve that resource. Remote registry and URI parents need network access, certificate trust, and supported authentication.
 
 The library can add provenance attributes describing imported or overridden elements. Preserve them during diagnosis; they help explain where effective content came from.
 
@@ -291,7 +293,7 @@ parent:
         memoryLimit: 2Gi
 ```
 
-A partial `runtime` entry in the child's top-level `components` list would add child content rather than express this parent-scoped patch.
+A partial `runtime` entry in the child's top-level `components` list would be treated as child content rather than a parent-scoped patch. Because the parent already defines `runtime`, flattening rejects that collision instead of applying the override.
 
 After resolution, inspect the whole component:
 
@@ -328,7 +330,7 @@ commands:
 
 If the parent already has a different default test command, flattened validation fails because each command group kind permits only one default.
 
-List effective defaults:
+If you already have a flattened artifact from a resolver that exposes data before semantic validation, list effective defaults:
 
 ```bash
 jq '
@@ -348,6 +350,8 @@ jq '
     }
 ' /tmp/inventory-api-resolved.json
 ```
+
+`odo describe component` does not produce this JSON when duplicate-default validation fails. In that case, use the command IDs named in the validation error, or temporarily make one candidate non-default and resolve again for inspection.
 
 Either override the intended inherited command according to supported merge rules or make the child command non-default.
 
@@ -446,3 +450,4 @@ Once the flattened configuration is visible, parent inheritance stops being hidd
 - [Devfile 2.3.0 schema](https://devfile.io/docs/2.3.0/devfile-schema)
 - [odo describe component](https://odo.dev/docs/command-reference/describe-component/)
 - [odo JSON output](https://odo.dev/docs/command-reference/json-output/)
+- [odo deprecation and end-of-life dates](https://developers.redhat.com/articles/2025/10/23/odo-cli-deprecated-what-developers-need-know)
