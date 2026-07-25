@@ -79,20 +79,19 @@ kubectl apply -f team-a-clone-source-binding.yaml
 
 The RoleBinding's namespace is the security boundary. Binding this ClusterRole in `golden-images` authorizes sourcing from that namespace, not every namespace.
 
-The actor still needs ordinary permissions to create DataVolumes and associated resources in `team-a`. Grant those through your existing tenant role rather than adding unrelated rights to the source binding.
+The actor still needs ordinary permission to create DataVolumes in `team-a`. CDI's controllers create the underlying PVC and clone resources with CDI-managed permissions. Grant the actor's target-namespace rights through your existing tenant role rather than adding unrelated rights to the source binding.
 
 ## Verify Authorization Before Creating Storage
 
 Use impersonation if your administrator account is allowed:
 
 ```bash
-kubectl auth can-i create datavolumes/source \
-  --api-group=cdi.kubevirt.io \
+kubectl auth can-i create datavolumes.cdi.kubevirt.io \
+  --subresource=source \
   --namespace=golden-images \
   --as=system:serviceaccount:team-a:vm-builder
 
-kubectl auth can-i create datavolumes \
-  --api-group=cdi.kubevirt.io \
+kubectl auth can-i create datavolumes.cdi.kubevirt.io \
   --namespace=team-a \
   --as=system:serviceaccount:team-a:vm-builder
 ```
