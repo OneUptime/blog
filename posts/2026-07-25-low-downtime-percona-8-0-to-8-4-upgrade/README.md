@@ -57,6 +57,7 @@ Do not start with an unhealthy topology. Require:
 - enough capacity to remove one replica at a time
 - current 8.0 patch releases appropriate for upgrade
 - a recent MySQL Shell Upgrade Checker result
+- `GTID_MODE=ON` on every node for the GTID-based cutover below, or a separate file/position cutover runbook
 - all applications tested with an 8.4 replica
 - an approved source-fencing mechanism
 - a failover runbook rehearsed in staging
