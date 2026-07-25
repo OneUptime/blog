@@ -47,7 +47,7 @@ ansible new-host \
   -vvvv
 ```
 
-The `raw` action runs through the configured remote shell and bypasses the normal module subsystem. If it succeeds, SSH is usable.
+The `raw` action runs through the configured remote shell and bypasses the normal module subsystem. If it succeeds, the configured connection and remote shell are usable.
 
 ## Remove Stale Interpreter Pinning
 
@@ -134,7 +134,7 @@ For a Red Hat-family image, use its package manager:
       changed_when: "'PYTHON_INSTALLED' in python_bootstrap.stdout"
 ```
 
-Raw commands do not provide normal module idempotency or check-mode support. The `test ... || install ...` guard is what makes the transition repeatable. Package output differs between distributions and releases, so keep bootstrap logic small and test the reported change status on your images.
+Raw commands do not provide normal module idempotency or check-mode support. The `test ...` guard is what makes the transition repeatable. Package output differs between distributions and releases, so keep bootstrap logic small and test the reported change status on your images.
 
 Do not put Debian and RPM commands in one guessed shell expression unless you have a well-tested image matrix. Inventory groups make the bootstrap contract explicit.
 
@@ -145,7 +145,7 @@ After installing Python, start a normal play that gathers facts:
 ```yaml
 ---
 - name: Install target prerequisites
-  hosts: new_linux
+  hosts: new_debian
   gather_facts: false
   become: true
   tasks:
@@ -162,7 +162,7 @@ After installing Python, start a normal play that gathers facts:
       changed_when: "'PYTHON_INSTALLED' in python_bootstrap.stdout"
 
 - name: Configure bootstrapped hosts
-  hosts: new_linux
+  hosts: new_debian
   gather_facts: true
   vars:
     ansible_python_interpreter: /usr/bin/python3
@@ -197,8 +197,9 @@ Check the controller:
 
 ```bash
 ansible --version
-python3 --version
 ```
+
+The `python version` line in `ansible --version` identifies the Python runtime actually executing Ansible.
 
 Check the managed node without a Python-dependent module:
 
@@ -227,7 +228,7 @@ Do not point `ansible_python_interpreter` at `/usr/bin/env python3`. The setting
 
 ## Know the Exceptions
 
-Windows targets use PowerShell-based modules and Windows connection plugins, not the POSIX Python module path. Many network devices have no general-purpose Python runtime and are managed using collection-specific modules that execute logic on the controller through connections such as `network_cli`, `netconf`, or `httpapi`.
+Windows targets use PowerShell-based modules and Windows connection plugins, not the POSIX Python module path. Many network devices have no general-purpose Python runtime and are managed using collection-specific modules that execute logic on the controller through connections such as `ansible.netcommon.network_cli`, `ansible.netcommon.netconf`, or `ansible.netcommon.httpapi`.
 
 Do not install Python on an appliance merely because a Linux-oriented play targeted it accidentally. Put devices in the right inventory groups, set the correct connection plugin and network OS, and use the platform collection.
 
