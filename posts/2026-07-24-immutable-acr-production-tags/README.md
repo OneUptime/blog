@@ -92,7 +92,10 @@ DIGEST=$(az acr manifest show-metadata \
   --query digest \
   --output tsv)
 
-test -n "$DIGEST"
+test -n "$DIGEST" || {
+  printf 'Failed to resolve the manifest digest\n' >&2
+  exit 1
+}
 printf 'Published %s@%s\n' "$REPOSITORY" "$DIGEST"
 ```
 
@@ -186,11 +189,11 @@ spec:
     spec:
       containers:
         - name: payments
-          image: contosoprod.azurecr.io/apps/payments@sha256:0123456789abcdef...
+          image: contosoprod.azurecr.io/apps/payments@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
           imagePullPolicy: IfNotPresent
 ```
 
-A digest is immutable by definition, so all replicas select the same manifest. The ACR lock ensures the selected manifest remains available for scale-out, rescheduling, rollback, and disaster recovery.
+A digest is immutable by definition, so all replicas select the same manifest. The ACR lock protects the selected manifest from update or deletion so it remains available from that registry for scale-out, rescheduling, and rollback.
 
 If operators prefer a human-readable tag in Git, record both the release tag and digest in release metadata, but make the applied workload use the digest. Kubernetes also accepts `name:tag@sha256:...`; when both are present, the digest controls what is pulled.
 
@@ -201,10 +204,13 @@ Some teams need `prod` for discovery or external tooling. Update it only after t
 ```bash
 PROD_ALIAS="$ACR_LOGIN_SERVER/$REPOSITORY:prod"
 
-docker pull "$ACR_LOGIN_SERVER/$REPOSITORY@$DIGEST"
-docker tag "$ACR_LOGIN_SERVER/$REPOSITORY@$DIGEST" "$PROD_ALIAS"
-docker push "$PROD_ALIAS"
+docker buildx imagetools create \
+  --prefer-index=false \
+  --tag "$PROD_ALIAS" \
+  "$ACR_LOGIN_SERVER/$REPOSITORY@$DIGEST"
 ```
+
+This registry-side operation preserves a multi-platform image index. A pull, tag, and push sequence can instead promote only the child manifest selected for the pipeline runner's platform. `--prefer-index=false` also preserves a single-platform source manifest instead of wrapping it in a new image index.
 
 This `prod` tag is intentionally mutable. Do not claim the repository has fully immutable tags if the process routinely unlocks and moves it. Restrict alias updates to a promotion identity and audit them.
 
@@ -229,11 +235,11 @@ Repository, tag, and manifest attributes can all affect a failed push or delete.
 
 The identity that builds and pushes does not need broad registry administration. Under the ABAC repository-permissions mode:
 
-- `Container Registry Repository Writer` is the normal data-plane role for identities that push and manage image tags;
+- `Container Registry Repository Writer` is the normal data-plane role for identities that push and manage image tags and metadata, including lock attributes;
 - `Container Registry Repository Contributor` includes delete capability and should be more restricted;
 - pull-only runtimes should use `Container Registry Repository Reader`.
 
-Under registry-wide RBAC, use the corresponding ACR data-plane roles and least privilege. Keep the ability to unlock or delete deployed content behind an audited break-glass or release-management workflow.
+Under registry-wide RBAC, use `AcrPush`, `AcrDelete`, and `AcrPull` as appropriate. The built-in writer roles include metadata management, so an identity that can apply a lock can also remove it. If publication and unlocking must be separate security boundaries, give the publisher a custom data-plane role without metadata write permission and route lock changes through a separate, audited release-management identity. Keep delete access and emergency unlocks behind that workflow.
 
 An emergency unlock is explicit:
 
@@ -266,13 +272,13 @@ An ACR image lock is not:
 
 An Azure resource lock can protect the ACR resource from management deletion, but it does not prevent repository pushes, tag moves, or manifest deletion. Image attributes protect registry data.
 
-Tag locking is also separate from the Premium-only Content Trust feature listed in the ACR SKU table. The repository/image attribute commands are part of normal ACR programmatic operations and are not presented as requiring Premium. Registry throughput and other features still vary by SKU.
+Tag locking is also separate from the Premium-only Docker Content Trust (DCT) feature listed in the ACR SKU table. DCT can no longer be enabled on new registries or registries that had not enabled it previously, and it is scheduled for removal on March 31, 2028; Microsoft recommends transitioning image signing to Notary Project. The repository/image attribute commands are part of normal ACR programmatic operations and are not presented as requiring Premium. Registry throughput and other features still vary by SKU.
 
 ## Integrate locking into the release gate
 
 A production release should not complete until the pipeline can prove:
 
-1. The tag is unique and was not previously published.
+1. The tag is absent from ACR and has not appeared in the authoritative release ledger.
 2. Tests and required scans passed for the resolved digest.
 3. The release tag resolves to the recorded digest.
 4. Tag and digest attributes are locked.
@@ -292,3 +298,4 @@ The result is straightforward: human-readable release names for operations, cont
 - [Azure CLI reference for az acr manifest](https://learn.microsoft.com/en-us/cli/azure/acr/manifest?view=azure-cli-latest)
 - [Azure Container Registry roles and permissions](https://learn.microsoft.com/en-us/azure/container-registry/container-registry-rbac-built-in-roles-overview)
 - [Azure Container Registry SKU features and limits](https://learn.microsoft.com/en-us/azure/container-registry/container-registry-skus)
+- [Transition from Docker Content Trust to Notary Project](https://learn.microsoft.com/en-us/azure/container-registry/container-registry-content-trust-deprecation)
