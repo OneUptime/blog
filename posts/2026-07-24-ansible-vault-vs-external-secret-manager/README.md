@@ -29,7 +29,7 @@ Or encrypt one variable:
 ```bash
 ansible-vault encrypt_string \
   --vault-id production@prompt \
-  --name database_password
+  --prompt
 ```
 
 A common repository layout separates readable configuration from encrypted values:
@@ -60,9 +60,9 @@ Vault's strengths are simplicity, offline operation, reviewable placement alongs
 Its limits are equally important:
 
 - Vault encryption protects data at rest, not data in use.
-- Anyone with the vault password and repository can decrypt all content protected by it.
+- Anyone with a vault password and the repository can decrypt all content encrypted with that password.
 - Per-secret access policy and audit are limited compared with a dedicated service.
-- Rotation requires changing the encrypted content, distributing or retrieving the new vault password, and committing updates.
+- Rotating a stored secret requires changing the encrypted content and committing the update. Rotating a file-level vault password requires rekeying the file and distributing or retrieving the new password.
 - Old encrypted values remain in repository history, though still encrypted.
 
 ## Use Vault IDs for Distinct Trust Domains
@@ -127,7 +127,7 @@ collections:
 
 Lookup plugins execute on the controller during templating. The controller, not the managed host, needs network access, CA trust, plugin dependencies, and an authentication method for the secret service.
 
-Use workload identity, AppRole, cloud identity, or another short-lived mechanism appropriate to the manager. Do not solve secret retrieval by committing a long-lived manager token.
+Use workload identity, AppRole with constrained SecretIDs, cloud identity, or another appropriately short-lived mechanism supported by the manager. Do not solve secret retrieval by committing a long-lived manager token.
 
 ## Compare the Operational Tradeoffs
 
