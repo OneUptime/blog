@@ -2,9 +2,8 @@
 
 ## Data Volume
 
-1. How to Use `dataVolumeTemplates` So a KubeVirt VM Waits for Its Boot Disk
-2. How to Refresh Golden VM Images Automatically with CDI `DataImportCron`
-3. How to Fix “Unable to Create disk.img, Not Enough Space” When the PVC Looks Large Enough
+1. How to Refresh Golden VM Images Automatically with CDI `DataImportCron`
+2. How to Fix “Unable to Create disk.img, Not Enough Space” When the PVC Looks Large Enough
 
 ## Percona Server
 
