@@ -1,4 +1,4 @@
-# Why odo dev Keeps Restarting—and How to Configure Reliable Hot Reload
+# Why odo dev Keeps Restarting-and How to Configure Reliable Hot Reload
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
