@@ -27,9 +27,9 @@ Authentication has both a server and client implementation:
 
 - The account row selects a server-side authentication plugin.
 - The connector must understand the corresponding client-side protocol.
-- `caching_sha2_password` full authentication needs TLS or RSA-based password exchange.
+- `caching_sha2_password` full authentication needs a secure transport, such as TLS for TCP connections, or RSA-based password exchange.
 
-An 8.4 server can be healthy while a legacy account receives:
+An 8.4 server can be healthy while a native-password account's connection is rejected with an access-denied error. Attempts to create or alter an account by explicitly naming the disabled plugin receive:
 
 ```text
 ERROR 1524 (HY000): Plugin 'mysql_native_password' is not loaded
@@ -266,7 +266,7 @@ Check server logs for authentication failures without logging passwords or full 
 
 ### Plugin Not Loaded
 
-If a native account receives error 1524 on 8.4, either:
+If a native account cannot connect on 8.4 because the plugin is disabled, either:
 
 - enable `mysql_native_password` temporarily and restart, or
 - connect through a modern administrative account and migrate the affected account
