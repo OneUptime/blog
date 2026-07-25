@@ -18,14 +18,14 @@ Compare the stored examples with the total:
 
 ```bash
 kubectl get <constraint-kind> <constraint-name> \
-  -o jsonpath='stored={.status.violations}{"\\n"}total={.status.totalViolations}{"\\n"}'
+  -o jsonpath='stored={.status.violations}{"\n"}total={.status.totalViolations}{"\n"}'
 ```
 
 For a concise count:
 
 ```bash
 kubectl get <constraint-kind> <constraint-name> \
-  -o jsonpath='{.status.totalViolations}{"\\n"}'
+  -o jsonpath='{.status.totalViolations}{"\n"}'
 ```
 
 `status.totalViolations` includes violations beyond the individual list cap. The Prometheus `gatekeeper_violations` metric also provides an aggregate from the latest audit run.
@@ -40,9 +40,9 @@ Each Constraint is a Kubernetes API object backed by etcd. An unbounded `.status
 - Send larger status updates to the API server.
 - Increase etcd object and watch traffic.
 - Risk exceeding the API object's size limit.
-- Cause more reconciliation churn for every client watching Constraints.
+- Make every client watching Constraints process a larger update event.
 
-The Gatekeeper documentation notes the default etcd request limit of approximately 1.5 MB and recommends no more than 500 stored violations per Constraint. The safe number can be lower when violation messages, resource names, labels, or details are large.
+The Gatekeeper documentation notes the default etcd request limit of 1.5 MiB and recommends no more than 500 stored violations per Constraint. The safe number can be lower when violation messages or resource identifiers are large, or when the Constraint is already large.
 
 ## Configure the audit process
 
@@ -72,7 +72,7 @@ After rollout, confirm the audit Pod has the intended argument:
 ```bash
 kubectl get pods -n gatekeeper-system \
   -l gatekeeper.sh/operation=audit \
-  -o jsonpath='{range .items[*]}{.metadata.name}{"  "}{.spec.containers[0].args}{"\\n"}{end}'
+  -o jsonpath='{range .items[*]}{.metadata.name}{"  "}{.spec.containers[?(@.name=="manager")].args}{"\n"}{end}'
 ```
 
 Labels vary between installation methods. If this selector returns nothing, locate the Pod containing `--operation=audit`.
