@@ -69,9 +69,9 @@ Devfile elements have identifiers:
 - endpoints, environment entries, and volume mounts also have identifying names in their objects;
 - projects and starter projects use `name`.
 
-Copy those identifiers exactly from the parent. Renaming `runtime` to `tools` in an override does not rename the inherited component. It addresses a different element and may create an invalid or unexpected flattened result.
+Copy those identifiers exactly from the parent. Renaming `runtime` to `tools` in an override does not rename the inherited component. The Devfile library rejects it because parent overrides can only address elements that already exist. If `tools` is a new component, define it in the child's top-level `components` list instead.
 
-Before writing a child, fetch or inspect the exact parent version:
+Before writing a child, use registry details to discover the stack and its available versions:
 
 ```bash
 odo registry \
@@ -100,7 +100,7 @@ parent:
 
 Avoid copying the complete parent component into every child. A copied image reference, source mount, endpoint, or command becomes an accidental fork. It also hides whether a future parent improvement is inherited.
 
-This principle is especially important for union types. A component is one of several kinds, such as `container`, `volume`, `image`, or `kubernetes`. Override fields within the same inherited kind. Do not try to turn an inherited container into a volume by supplying a different union member.
+This principle is especially important for union types. A component is one of several kinds, such as `container`, `volume`, `image`, or `kubernetes`. Override fields within the same inherited kind unless you intentionally want to replace it. Supplying a different union member changes the inherited component's kind rather than merging both definitions, so validate all references that depended on the old kind.
 
 ## Lists Need a Deliberate Review
 
@@ -137,7 +137,9 @@ For example, a CI check can parse the resolved Devfile and assert that `NODE_ENV
 
 Devfile `attributes` are implementation-dependent, free-form data. Devfile 2.3 also describes parent attribute overrides as strategic merge patches, but the schema cannot give every custom attribute a portable meaning.
 
-For example:
+At the top level, an attribute key under `parent.attributes` must already exist in the parent; add new top-level keys to the child's top-level `attributes` map instead. The Devfile API merges those existing attribute keys but replaces the complete free-form value for a matching key rather than recursively merging its nested fields.
+
+For example, if the parent already defines `platform.example.com`, the child can replace its value:
 
 ```yaml
 parent:
@@ -215,4 +217,3 @@ Parent inheritance reduces duplication, but it also makes the selected parent pa
 - [Devfile 2.3 schema reference](https://devfile.io/docs/2.3.0/devfile-schema)
 - [Devfile 2.3: Extending Kubernetes resources](https://devfile.io/docs/2.3.0/overriding-pod-and-container-attributes)
 - [Devfile 2.3 library parsing and flattening](https://devfile.io/docs/2.3.0/library)
-
