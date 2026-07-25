@@ -8,7 +8,7 @@ Description: Poll a registry image with DataImportCron, publish the latest succe
 
 ---
 
-CDI `DataImportCron` automates polling and importing an operating-system image. On the first scheduled import it creates a managed source. On later polls, a changed source digest triggers a new import, and CDI updates a managed `DataSource` to point to the new successful source.
+CDI `DataImportCron` automates polling and importing an operating-system image. When it is created, it performs an initial poll and import to create a managed source. On later scheduled polls, a changed source digest triggers a new import, and CDI updates a managed `DataSource` to point to the new successful source.
 
 Existing VM disks do not change in place. New DataVolumes that reference the managed DataSource resolve to the current source. That separation avoids silently changing a running VM's root disk.
 
@@ -20,11 +20,11 @@ Golden images are supply-chain assets. Keep them in a protected namespace:
 kubectl create namespace golden-images
 ```
 
-Limit who can update `DataImportCron`, `DataSource`, Secrets, and StorageProfiles there. Consumers can receive narrow cross-namespace clone permission rather than write access to the catalog.
+Limit who can update `DataImportCron`, `DataSource`, and Secrets there, and restrict changes to cluster-scoped StorageProfiles. Consumers can receive narrow cross-namespace clone permission rather than write access to the catalog.
 
 ## Define the DataImportCron
 
-This example polls a ContainerDisk registry source every Monday:
+This example performs an initial import, then polls a ContainerDisk registry source every Monday:
 
 ```yaml
 apiVersion: cdi.kubevirt.io/v1beta1
@@ -191,6 +191,6 @@ CDI can clean up old sources after a class change, but the change should still b
 ## Official Documentation
 
 - [CDI automated image polling and updates](https://github.com/kubevirt/containerized-data-importer/blob/main/doc/os-image-poll-and-update.md)
-- [CDI DataSource references](https://github.com/kubevirt/containerized-data-importer/blob/main/doc/datavolumes.md)
+- [CDI DataSource reference API](https://kubevirt.io/cdi-api-reference/main/definitions.html#v1beta1.DataVolumeSourceRef)
 - [CDI StorageProfile source formats](https://github.com/kubevirt/containerized-data-importer/blob/main/doc/storageprofile.md)
 - [Kubernetes CronJob schedule syntax](https://kubernetes.io/docs/concepts/workloads/controllers/cron-jobs/#schedule-syntax)
