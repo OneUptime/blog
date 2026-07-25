@@ -24,7 +24,7 @@ Each event contains command IDs, but the command type is not arbitrary. The offi
 | `preStop` | `exec` |
 | `postStop` | `apply` |
 
-A composite follows the same rule recursively. Every member of a composite used by `preStart` or `postStop` must be an apply command. Every member used by `postStart` or `preStop` must be an exec command.
+A composite follows the same rule for its directly listed commands. Every member of a composite used by `preStart` or `postStop` must be an apply command. Every member used by `postStart` or `preStop` must be an exec command. Because a nested composite is itself a composite rather than an apply or exec command, do not nest composites bound to lifecycle events.
 
 This distinction prevents a common mistake: putting a shell command directly in `preStart` or `postStop`. It may resemble examples for an older tool version, but it is invalid under the Devfile 2.3 validation rules.
 
@@ -269,7 +269,7 @@ Use `parallel: true` only when all members are independent. Parallel cleanup tha
 
 ## Events and Command Groups Are Different
 
-Groups identify default build, run, test, debug, and deploy entrypoints:
+Groups classify build, run, test, debug, and deploy commands. `isDefault: true` identifies the default entrypoint for a group:
 
 ```yaml
 commands:
@@ -311,5 +311,5 @@ Schema support and consumer support are separate. A Devfile can be valid 2.3 whi
 
 - [Devfile 2.3 validation rules](https://devfile.io/docs/2.3.0/devfile-validation-rules)
 - [Devfile 2.3 schema reference](https://devfile.io/docs/2.3.0/devfile-schema)
-- [Devfile: Adding an apply command](https://devfile.io/docs/2.2.0/adding-an-apply-command)
+- [Devfile 2.3: Adding an apply command](https://devfile.io/docs/2.3.0/adding-an-apply-command)
 - [Devfile 2.3: Adding event bindings](https://devfile.io/docs/2.3.0/adding-event-bindings)
