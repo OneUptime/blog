@@ -14,7 +14,7 @@ Use a DataVolume when a disk must be imported, uploaded, cloned, or initialized 
 
 ## What a DataVolume Adds
 
-A DataVolume is a CDI custom resource layered over a PVC. CDI creates the underlying claim, starts the required importer, uploader, or cloner workload, and exposes progress through `status.phase`.
+A DataVolume is a CDI custom resource layered over a PVC. CDI creates the underlying claim, orchestrates the required import, upload, or clone operation, and exposes progress through `status.phase`.
 
 For example, this DataVolume imports a cloud image over HTTPS:
 
