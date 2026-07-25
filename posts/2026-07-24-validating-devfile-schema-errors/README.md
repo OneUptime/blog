@@ -156,32 +156,42 @@ Fix the earliest structural error first. A malformed component can cause many se
 
 ## Common Error: Invalid Name or ID
 
-Devfile names and IDs use a Kubernetes-compatible pattern:
+Referenceable identifiers such as component names, command IDs, project names, and endpoint names use a Kubernetes-compatible pattern:
 
 ```text
 ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
 ```
 
-They must be lowercase, at most 63 characters, use only alphanumeric characters and hyphens, and begin and end with an alphanumeric character.
+They must be lowercase, use only alphanumeric characters and hyphens, and begin and end with an alphanumeric character. Component names, command IDs, and project names are limited to 63 characters; endpoint names are limited to 15 characters. The Devfile 2.3.0 schema does not apply this pattern to `metadata.name`.
 
 Incorrect:
 
 ```yaml
-metadata:
-  name: Inventory_API
+components:
+  - name: Inventory_API
+    container:
+      image: example/runtime
 
 commands:
   - id: Run App!
+    exec:
+      component: Inventory_API
+      commandLine: npm start
 ```
 
 Correct:
 
 ```yaml
-metadata:
-  name: inventory-api
+components:
+  - name: inventory-api
+    container:
+      image: example/runtime
 
 commands:
   - id: run-app
+    exec:
+      component: inventory-api
+      commandLine: npm start
 ```
 
 Do not use top-level variables to construct identifiers. Devfile variable substitution is not supported for element identifiers such as component names, command IDs, endpoint names, or project names.
@@ -226,9 +236,9 @@ components:
       image: image-b
 ```
 
-Duplicates can appear only after parent inheritance. Validate the flattened Devfile, not just the child file.
+Identifier collisions can also surface when parent inheritance is resolved. A child that repeats an inherited name or ID in its top-level arrays is not an override. Validate the flattened Devfile, not just the child file.
 
-An intended parent override should use the identifier and shape supported by the Devfile merge rules. Inspect resolved output to confirm whether the child merged, replaced, or added content.
+An intended parent override belongs under `parent.components` or `parent.commands` and must use the identifier and override shape supported by the Devfile merge rules. Inspect resolved output to confirm whether the child merged, replaced, or added content.
 
 ## Common Error: Missing Component Reference
 
@@ -294,7 +304,7 @@ A composite cannot reference itself directly or indirectly. Draw the command gra
 
 ## Common Error: Endpoint Conflicts
 
-Endpoint names must be unique across components. Target ports must also follow cross-container uniqueness rules unless components use supported dedicated-pod behavior.
+Endpoint names must be unique across components. Target ports must also be unique across container components. The 2.3 validation-rules page documents an exception for `dedicatedPod: true`, but the validator used by Devfile library v2.4.0 still applies the cross-container target-port check to those containers.
 
 Invalid:
 
@@ -315,7 +325,7 @@ components:
           targetPort: 8080
 ```
 
-Give endpoints unique names and nonconflicting ports, or deliberately model separate pods if the consumer supports that feature.
+Give endpoints unique names and nonconflicting ports. Do not rely on `dedicatedPod` to allow a duplicate port unless the exact library and consumer version implement the documented exception.
 
 ## Common Error: Resource Quantity or Ordering
 
@@ -325,7 +335,7 @@ Resource values use Kubernetes quantities:
 container:
   image: example/runtime
   cpuRequest: 250m
-  cpuLimit: 1
+  cpuLimit: "1"
   memoryRequest: 512Mi
   memoryLimit: 1Gi
 ```
@@ -343,14 +353,14 @@ env:
     value: /custom/path
 ```
 
-They are supplied by the Devfile consumer. Use `sourceMapping`, project clone paths, and `workingDir` to control source layout.
+They are supplied by the Devfile consumer. Use `sourceMapping` and project clone paths to control source layout, and use `workingDir` to choose the directory in which an exec command runs.
 
 ## Common Error: Parent Resolution
 
 Parent failures often come before schema validation of the flattened content:
 
 - registry unavailable
-- stack ID or version absent
+- registry stack ID not found or requested version unavailable
 - URI returns HTML instead of YAML
 - certificate not trusted
 - authentication missing
