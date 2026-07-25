@@ -25,7 +25,7 @@ kubectl api-resources --api-group=constraints.gatekeeper.sh
 kubectl get crd | grep constraints.gatekeeper.sh
 ```
 
-If the kind appears, refresh the failing client's discovery cache by retrying with a new `kubectl` process. Also verify the exact API version printed by `kubectl api-resources`. Most Gatekeeper Constraints use `constraints.gatekeeper.sh/v1beta1`.
+If the kind appears, use `kubectl api-resources` to refresh the failing client's discovery cache, then retry with a new `kubectl` process. Also verify the exact API version printed by `kubectl api-resources`. Most Gatekeeper Constraints use `constraints.gatekeeper.sh/v1beta1`.
 
 If the kind does not appear, debug the template rather than repeatedly applying the Constraint.
 
@@ -67,7 +67,7 @@ An accepted Kubernetes object is not necessarily an ingested Gatekeeper policy. 
 
 ```bash
 kubectl get constrainttemplate k8sexample \
-  -o jsonpath='{range .status.byPod[*]}{.id}{"\\n"}{range .errors[*]}  {.code}{": "}{.message}{"\\n"}{end}{end}'
+  -o jsonpath='{range .status.byPod[*]}{.id}{"\n"}{range .errors[*]}  {.code}{": "}{.message}{"\n"}{end}{end}'
 ```
 
 You can also inspect the complete YAML:
@@ -101,11 +101,11 @@ Also check that:
 - Property types match the values in existing Constraints.
 - Required fields are listed under the correct object.
 
-The API server may reject an invalid structural schema directly, while other ingestion failures are visible in Gatekeeper status.
+Gatekeeper's validating webhook may reject an invalid structural schema when the template is applied, while controller-side ingestion or CRD-generation failures are visible in Gatekeeper status.
 
 ## Check Rego compilation
 
-Syntax that works with one OPA or Rego version might not work in the template form you selected. Gatekeeper supports legacy `spec.targets[].rego`, while Rego v1 syntax is explicitly selected through a `code` entry with `engine: Rego` and `source.version: "v1"`.
+Syntax that works with one OPA or Rego version might not work in the template form you selected. Gatekeeper supports legacy `spec.targets[].rego`. Gatekeeper 3.19 and later let you opt in to Rego v1 syntax through a `code` entry with `engine: Rego` and `source.version: "v1"`.
 
 Do not paste Rego v1-only syntax into the legacy field and assume it is enabled. Match the template format to the Gatekeeper version you run.
 
@@ -135,14 +135,14 @@ Do not solve this by deleting a healthy generated CRD. Fix template ingestion an
 
 ## Check Gatekeeper permissions
 
-The validating webhook operation needs permission to create custom resource definitions. A hardened or hand-built deployment can accidentally remove it.
+The Gatekeeper process that generates Constraint CRDs needs permission to create custom resource definitions. A hardened or hand-built deployment can accidentally remove it.
 
 ```bash
 kubectl auth can-i create customresourcedefinitions.apiextensions.k8s.io \
   --as=system:serviceaccount:gatekeeper-system:gatekeeper-admin
 ```
 
-The exact ServiceAccount name depends on the installation method. Inspect the controller-manager Pod's `spec.serviceAccountName` before running the check.
+The exact ServiceAccount name depends on the installation method. Inspect the `spec.serviceAccountName` of the Pod performing CRD generation before running the check. In a split deployment, this is the Pod running the `generate` operation; in older or combined deployments, it may be a controller-manager Pod.
 
 Also inspect recent events:
 
@@ -157,13 +157,16 @@ A policy pipeline should make the dependency explicit:
 
 ```bash
 kubectl apply -f template.yaml
+kubectl wait --for=create \
+  crd/k8sexample.constraints.gatekeeper.sh \
+  --timeout=60s
 kubectl wait --for=condition=Established \
-  crd/k8sexamples.constraints.gatekeeper.sh \
+  crd/k8sexample.constraints.gatekeeper.sh \
   --timeout=60s
 kubectl apply -f constraint.yaml
 ```
 
-The generated CRD name follows Kubernetes pluralization configured by the template, so confirm it with `kubectl get crd` rather than guessing in generic automation.
+Gatekeeper derives the generated CRD name by lowercasing `spec.crd.spec.names.kind` and appending `.constraints.gatekeeper.sh`; it does not add an `s`. Confirm the name with `kubectl get crd` rather than guessing in generic automation.
 
 Finally, test the policy files with Gator before cluster deployment. It catches template compilation and evaluation problems earlier, although cluster reconciliation, permissions, and discovery still require cluster-side checks.
 
@@ -172,5 +175,4 @@ Finally, test the policy files with Gator before cluster deployment. It catches 
 - [Gatekeeper debugging](https://open-policy-agent.github.io/gatekeeper/website/docs/debug/)
 - [Gatekeeper ConstraintTemplates](https://open-policy-agent.github.io/gatekeeper/website/docs/constrainttemplates/)
 - [Gatekeeper operations and required permissions](https://open-policy-agent.github.io/gatekeeper/website/docs/operations/)
-- [Kubernetes API discovery](https://kubernetes.io/docs/reference/using-api/api-concepts/#api-discovery)
-
+- [Kubernetes API discovery](https://kubernetes.io/docs/concepts/overview/kubernetes-api/#discovery-api)

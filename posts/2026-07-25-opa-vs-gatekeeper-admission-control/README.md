@@ -8,13 +8,13 @@ Description: Learn where Kubernetes, Gatekeeper, and OPA each run, how an admiss
 
 ---
 
-Gatekeeper and Open Policy Agent are often described as if they were interchangeable. They are not. OPA is the policy evaluation engine. Gatekeeper is a Kubernetes-native policy controller that embeds OPA and connects it to admission, custom resources, audit, mutation, and operational tooling.
+Gatekeeper and Open Policy Agent are often described as if they were interchangeable. They are not. OPA is a policy evaluation engine. Gatekeeper is a Kubernetes-native policy controller that embeds OPA for Rego-based policy evaluation and adds Kubernetes admission, custom resources, audit, mutation, and operational tooling. Gatekeeper also supports CEL-based ConstraintTemplates; the OPA-specific path below is the Rego-backed validating webhook path.
 
 That distinction matters when a policy appears to be missing, when a webhook is unavailable, or when you are deciding which component to monitor.
 
 ## The request path
 
-For a typical create or update, the path looks like this:
+For a typical Rego-backed validation during create or update, the path looks like this:
 
 ```text
 kubectl or controller
@@ -35,13 +35,13 @@ Constraint matching and OPA evaluation
 allow, warning, or denial
 ```
 
-The API server decides whether a request matches Gatekeeper's webhook configuration. It then sends an `AdmissionReview` over HTTPS to Gatekeeper. Gatekeeper selects the relevant constraints, constructs policy input, asks its embedded policy engine to evaluate them, and returns an `AdmissionResponse`.
+The API server decides whether a request matches Gatekeeper's webhook configuration. It then sends an `AdmissionReview` over HTTPS to Gatekeeper. Gatekeeper selects the relevant constraints, constructs policy input, asks its embedded OPA engine to evaluate them, and returns an `AdmissionReview` containing an `AdmissionResponse`.
 
 The API server does not call a standalone OPA REST endpoint in the normal Gatekeeper deployment.
 
 ## What OPA does
 
-OPA evaluates policy against structured input and data. In a Gatekeeper validation policy, that input includes the admission request under `input.review`, while constraint parameters are available under `input.parameters`. Referential policies can also read resources replicated into `data.inventory`.
+OPA evaluates policy against structured input and data. In a Gatekeeper Rego validation policy, that input includes the admission request under `input.review`, while constraint parameters are available under `input.parameters`. Referential policies can also read resources replicated into `data.inventory`.
 
 OPA is responsible for questions such as:
 
@@ -54,16 +54,16 @@ OPA does not register Kubernetes webhooks, create Gatekeeper custom resource def
 
 ## What Gatekeeper does
 
-Gatekeeper turns policy evaluation into a Kubernetes control-plane service. Its validating webhook operation performs several jobs:
+Gatekeeper turns policy evaluation into a Kubernetes control-plane service. Its validation-related operations perform several jobs:
 
 - Watches `ConstraintTemplate` and Constraint resources.
-- Creates a Constraint custom resource definition for each valid template.
+- The `generate` operation creates a Constraint custom resource definition for each valid template and can generate Kubernetes `ValidatingAdmissionPolicy` and `ValidatingAdmissionPolicyBinding` resources for eligible CEL templates and constraints.
 - Loads policy and constraint data into the evaluation engine.
-- Serves the HTTPS validating webhook.
-- Reports per-pod ingestion status.
+- The `webhook` operation serves the HTTPS validating webhook.
+- Reports per-pod ingestion status, which the singleton `status` operation aggregates onto templates and constraints.
 - Watches resources requested by referential policies.
 
-Other Gatekeeper operations provide mutation, audit, and policy generation. They can run together or be separated with the `--operation` flag. A common production layout uses replicated controller-manager Pods for admission and a singleton audit Pod. Separating audit prevents a large scan or out-of-memory event from taking down the admission endpoint.
+Gatekeeper's webhook, mutation, audit, status aggregation, and generation operations can run together or be separated with the `--operation` flag. A common production layout uses replicated controller-manager Pods for admission and a singleton audit Pod. Separating audit prevents a large scan or out-of-memory event from taking down the admission endpoint.
 
 ## Where the policy resources live
 
@@ -119,7 +119,7 @@ Work from the outside in:
 1. Confirm the API server has the Gatekeeper webhook configurations.
 2. Confirm the webhook Service has ready endpoints.
 3. Confirm the TLS certificate and `caBundle` agree.
-4. Confirm every Gatekeeper replica ingested the template and constraint.
+4. Confirm every admission-serving Gatekeeper replica ingested the template and constraint.
 5. Confirm the Constraint `match` includes the tested resource.
 6. Confirm the policy reads the correct `input.review` fields.
 7. Check audit separately if the issue concerns existing resources.
@@ -127,14 +127,16 @@ Work from the outside in:
 ```bash
 kubectl get validatingwebhookconfiguration \
   gatekeeper-validating-webhook-configuration -o yaml
-kubectl get svc,endpoints -n gatekeeper-system \
+kubectl get svc -n gatekeeper-system \
   gatekeeper-webhook-service
+kubectl get endpointslices -n gatekeeper-system \
+  -l kubernetes.io/service-name=gatekeeper-webhook-service
 kubectl get pods -n gatekeeper-system
 kubectl logs -n gatekeeper-system \
   -l control-plane=controller-manager --since=10m
 ```
 
-The useful ownership boundary is simple: Kubernetes decides when to call; Gatekeeper receives, matches, and operates; OPA evaluates policy logic.
+The useful ownership boundary is simple: Kubernetes decides when to call; Gatekeeper receives, matches, and operates; OPA evaluates Rego policy logic.
 
 ## Official documentation
 
@@ -142,4 +144,3 @@ The useful ownership boundary is simple: Kubernetes decides when to call; Gateke
 - [Gatekeeper operations architecture](https://open-policy-agent.github.io/gatekeeper/website/docs/operations/)
 - [Gatekeeper admission review input](https://open-policy-agent.github.io/gatekeeper/website/docs/input/)
 - [Kubernetes dynamic admission control](https://kubernetes.io/docs/reference/access-authn-authz/extensible-admission-controllers/)
-
