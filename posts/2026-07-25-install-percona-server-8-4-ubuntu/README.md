@@ -56,7 +56,7 @@ dpkg-query -W \
 Inspect configured sources without changing them:
 
 ```bash
-grep -RHE '^[[:space:]]*deb ' \
+grep -RHE '^[[:space:]]*(deb(-src)?[[:space:]]|Types:|URIs:|Suites:|Components:|Enabled:)' \
   /etc/apt/sources.list \
   /etc/apt/sources.list.d 2>/dev/null
 ```
@@ -105,7 +105,7 @@ sudo apt install -y \
   ./percona-release_latest.generic_all.deb
 ```
 
-APT verifies and records the package. Avoid piping a downloaded script into a root shell.
+APT installs and records the local package and resolves its dependencies. Avoid piping a downloaded script into a root shell.
 
 ## Select the Percona Server 8.4 LTS Track
 
@@ -123,7 +123,7 @@ Review enabled Percona locations:
 
 ```bash
 sudo percona-release show
-grep -RHE '^[[:space:]]*deb ' \
+grep -RHE '^[[:space:]]*(deb(-src)?[[:space:]]|Types:|URIs:|Suites:|Components:|Enabled:)' \
   /etc/apt/sources.list.d/percona* 2>/dev/null
 ```
 
@@ -156,9 +156,8 @@ Read the complete output. Stop if APT proposes to:
 - mix Oracle and Percona server or common packages
 - install a version from testing or experimental
 - downgrade shared libraries without an approved reason
-- reuse a data directory whose upgrade path has not been tested
 
-A simulation is especially valuable in automation because the dependency solution can change when repositories publish new builds.
+A simulation reports planned package operations; it does not run package maintainer scripts. Separately, stop before the real install if an existing data directory is present and its upgrade path has not been tested. A simulation is especially valuable in automation because the dependency solution can change when repositories publish new builds.
 
 ## Decide Whether APT Pinning Is Necessary
 
@@ -172,7 +171,7 @@ Pin: release o=Percona Development Team
 Pin-Priority: 1001
 ```
 
-Store it in `/etc/apt/preferences.d/00percona.pref`, then repeat `apt-cache policy` and the simulated install. Confirm the actual `Origin` string in `apt-cache policy`; do not assume a copied pin matches current repository metadata.
+Store it in `/etc/apt/preferences.d/00percona.pref`, then run `apt-cache policy` without package arguments to inspect repository release metadata, repeat the package-specific policy checks, and simulate the install again. Confirm the actual `release o=...` value; do not assume a copied pin matches current repository metadata.
 
 If there is no approved reason to keep an overlapping Oracle repository, disabling it is clearer than relying on competing priorities.
 
