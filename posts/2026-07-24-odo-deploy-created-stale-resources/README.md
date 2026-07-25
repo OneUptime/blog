@@ -8,9 +8,9 @@ Description: Understand odo deploy outputs, trace labeled Kubernetes objects and
 
 ---
 
-`odo deploy` does not create one fixed set of Kubernetes objects. It executes the Devfile's deployment contract: it may build and push images, apply arbitrary Kubernetes or OpenShift manifests, and run deployment commands as Jobs. Consequently, a stale deployment might be a Deployment, a custom resource, a persistent volume claim, an unfinished Job, or an image tag outside the cluster.
+`odo deploy` does not create one fixed set of Kubernetes objects. It executes the Devfile's deployment contract: it may build and push images, apply resources defined by Kubernetes or OpenShift manifests, and run deployment commands as Jobs. Consequently, a stale deployment might be a Deployment, a custom resource, a persistent volume claim, an unfinished Job, or an image tag outside the cluster.
 
-Lifecycle context matters before troubleshooting an old workflow. Red Hat deprecated odo effective October 23, 2025, and its GitHub repository was archived on April 1, 2026. This article describes the final odo v3 behavior for teams maintaining a pinned installation. odo's documentation targets Devfile 2.2.0; the current Devfile specification is 2.3. Plan migration for long-lived workflows rather than assuming future odo fixes.
+Lifecycle context matters before troubleshooting an old workflow. Red Hat deprecated odo effective October 23, 2025, and its GitHub repository was archived on April 1, 2026. This article describes the final odo v3 behavior for teams maintaining a pinned installation. odo's documentation targets Devfile 2.2.0; the current Devfile specification is 2.3.0. Plan migration for long-lived workflows rather than assuming future odo fixes.
 
 ## Read the deploy command before inspecting the cluster
 
@@ -53,7 +53,7 @@ The `build-image` apply command builds the image and pushes it to the configured
 
 Image and Kubernetes components can also be applied implicitly. An image with `autoBuild: true`, or with the field unset and no apply command referencing it, is built automatically. Kubernetes and OpenShift components follow the corresponding `deployByDefault` behavior. A component explicitly set to `false` and not referenced by an apply command is not applied. Review both the deploy composite and these component-level defaults when explaining what a run created.
 
-An `exec` command in the deploy group is different from an ordinary long-running application container. odo creates a Kubernetes Job to run the command through `/bin/sh`. Its name is derived from the component and command ID, it can retry after a failure, and odo attempts to delete it after success. If immediate cleanup fails, odo configures a short time-to-live for the completed Job. A Job left behind may therefore indicate failure, interruption, or a cluster cleanup problem.
+An `exec` command in the deploy group is different from an ordinary long-running application container. odo creates a Kubernetes Job to run the command through `/bin/sh`. Its name follows `<component-name>-app-<command-id>` with length trimming when necessary, and it can retry once after a failure. odo sets `ttlSecondsAfterFinished` to 60 seconds when it creates the Job and also attempts to delete the Job after the command completes or fails. The TTL is a backup if explicit deletion does not happen or fails. A Job left behind may therefore still be active or retrying, or it may indicate interruption or a cluster cleanup problem.
 
 Exec commands can call Helm, Kustomize, or a custom deployment script. Those tools can create resources that odo never sees directly. Unless the downstream tool propagates odo's labels or maintains its own release inventory, `odo delete component` might not find everything it created. Treat every such command as a separate ownership boundary with an explicit uninstall procedure.
 
@@ -61,7 +61,7 @@ Exec commands can call Helm, Kustomize, or a custom deployment script. Those too
 
 An image component has two categories of output:
 
-- build work performed in the cluster or local environment; and
+- local build work performed through Podman or Docker; and
 - an OCI image pushed to an external registry.
 
 When an image name is relative, odo can use its configured image registry and generate a unique tag. It can also substitute the resulting image reference into standard Kubernetes workload manifests. The pushed image is not a Kubernetes object, however, and the documented component-deletion flow does not promise to remove remote tags or manifests.
