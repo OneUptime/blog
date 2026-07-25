@@ -20,7 +20,7 @@ They are not equivalent.
 
 ## Prefer a Constraint-level exclusion
 
-If only one policy is incompatible with a system namespace, keep the exception local to that Constraint:
+If only one policy is incompatible with a system namespace, keep the exception local to that Constraint. This example assumes the matching `K8sRequiredLabels` ConstraintTemplate is already installed:
 
 ```yaml
 apiVersion: constraints.gatekeeper.sh/v1beta1
@@ -71,7 +71,7 @@ spec:
 
 Gatekeeper applies a namespace selector to the containing Namespace. When the reviewed object is itself a Namespace, the selector applies to that Namespace object.
 
-Protect policy-selection labels with RBAC or a separate policy. If application owners can freely remove an enforcement label from their Namespace, positive selection becomes a bypass.
+Protect policy-selection labels by limiting Namespace update and patch permissions with RBAC. If users need broader Namespace-update access, enforce the labels with a separate admission policy because Kubernetes RBAC cannot restrict individual metadata fields. If application owners can freely remove an enforcement label from their Namespace, positive selection becomes a bypass.
 
 ## Use Config for process-specific exclusions
 
@@ -105,7 +105,7 @@ Important effects:
 - Excluding `webhook` is evaluated inside Gatekeeper, so the API server still calls the webhook.
 - Excluding `mutation-webhook` prevents Gatekeeper mutations but not validation.
 
-The `Config` resource is alpha and must be named `config` in `gatekeeper-system`. Gatekeeper ignores a differently named instance.
+The `Config` resource is alpha and must be named `config` in Gatekeeper's installation namespace (`gatekeeper-system` for the default install). Gatekeeper ignores instances with another name or namespace.
 
 ## Use a webhook-level exemption only when required
 
@@ -122,7 +122,7 @@ If anyone who could label a Namespace could add that label, namespace-edit permi
 --exempt-namespace-prefix=platform-
 ```
 
-With the Helm chart, configure the corresponding `controllerManager.exemptNamespaces` values. Only then label the intended Namespace:
+With the Helm chart, use `controllerManager.exemptNamespaces` for exact names and `controllerManager.exemptNamespacePrefixes` for prefixes. Only then label the intended Namespace:
 
 ```bash
 kubectl label namespace kube-system \
@@ -141,7 +141,7 @@ Use these controls:
 
 - Require code review for exemption configuration.
 - Keep the list explicit where practical.
-- Restrict Namespace label updates with RBAC and policy.
+- Restrict who can update or patch Namespace objects with RBAC, and use admission policy for label-specific controls.
 - Record an owner, reason, and expiry in annotations.
 - Alert on additions of `admission.gatekeeper.sh/ignore`.
 - Recheck exemptions during cluster and add-on upgrades.
