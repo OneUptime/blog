@@ -154,7 +154,7 @@ contosoprod.westeurope.geo.azurecr.io
 
 It sends the entire registry operation to one specific replica. This helps with deterministic routing, capacity planning, and push-then-pull consistency. It also bypasses global health-aware failover. The client must detect a regional failure and switch endpoints itself.
 
-Microsoft changed the related Azure CLI flag in version 2.86.0: `--region-endpoint-enabled` became `--global-endpoint-routing`. The older flag was removed in Azure CLI 2.87.0 in June 2026. Pinning old CLI syntax in automation will now fail. Confirm the installed CLI version and the preview contract before using this capability.
+Microsoft changed the per-replica routing flag in Azure CLI 2.86.0: `--region-endpoint-enabled` became `--global-endpoint-routing`. The older flag was removed in Azure CLI 2.87.0 in June 2026. This is distinct from the registry-level `--regional-endpoints` flag that enables preview regional endpoint URLs. Pinning old CLI syntax in automation will now fail. Confirm the installed CLI version and the preview contract before using this capability.
 
 Do not use a long-lived DNS cache to pin the global endpoint. It can keep clients routed to a replica that ACR has removed from global routing.
 
@@ -166,7 +166,7 @@ A healthy replica is useless if clients cannot resolve or reach it. For geo-repl
 - A dedicated data endpoint for each replica.
 - A regional endpoint for each replica if the preview capability is enabled.
 
-A private endpoint needs private IP capacity for these surfaces. Microsoft documents that adding replicas can fail when connected subnets do not have enough free addresses. Private DNS zones and firewall rules must include newly added replica endpoints.
+A private endpoint needs private IP capacity for these surfaces. Microsoft documents that adding replicas can fail when connected subnets do not have enough free addresses. If you manage private DNS records manually, add records for each new replica's data endpoint and, when enabled, its regional endpoint. Firewall rules must allow every endpoint that clients use.
 
 Test from every deployment region:
 
