@@ -8,7 +8,7 @@ Description: Define a VM-owned DataVolume template so KubeVirt creates, populate
 
 ---
 
-A KubeVirt `VirtualMachine` can embed CDI DataVolume specifications in `spec.dataVolumeTemplates`. KubeVirt creates those DataVolumes and prevents the VM launcher from scheduling until required population succeeds.
+A KubeVirt `VirtualMachine` can embed CDI DataVolume specifications in `spec.dataVolumeTemplates`. KubeVirt creates those DataVolumes and prevents the guest from starting until required population succeeds.
 
 This closes a race that exists with a plain PVC: KubeVirt cannot know whether an external process has finished writing an arbitrary claim. A DataVolume exposes an explicit `Succeeded` phase that KubeVirt understands.
 
@@ -61,6 +61,8 @@ spec:
             name: web-server-root
 ```
 
+The manifest assumes that CDI is installed, the `vm-lab` namespace and `fast-rwo` StorageClass already exist, and the example image URL has been replaced with a reachable boot image.
+
 Apply the single manifest:
 
 ```bash
@@ -68,7 +70,7 @@ kubectl apply -f web-server.yaml
 kubectl get vm,vmi,datavolume,pvc,pod -n vm-lab -w
 ```
 
-The expected control flow is:
+With an immediately binding StorageClass, the expected control flow is:
 
 ```text
 VirtualMachine created
@@ -112,7 +114,7 @@ Do not set both legacy `running` and `runStrategy`.
 
 A topology-aware StorageClass can put the DataVolume into `WaitForFirstConsumer`. This is expected when provisioning must consider the eventual VM's node placement.
 
-KubeVirt and CDI coordinate the initial scheduling so storage binds in a topology compatible with the VM. Keep VM node selectors and affinity in the template:
+KubeVirt handles this by creating the VMI and scheduling a temporary pod with the VM's placement constraints but no VM payload. This lets storage bind in a topology compatible with the eventual launcher; the guest still waits for population to complete. Keep VM node selectors and affinity in the template:
 
 ```yaml
 template:
@@ -181,7 +183,7 @@ If the DataVolume is:
 - `Failed`: fix endpoint, TLS, capacity, conversion, or worker-resource errors.
 - `Succeeded`: move to VM and VMI scheduling, devices, networks, and image bootability.
 
-The absence of a VMI while a required DataVolume is incomplete is the safety feature working as intended.
+A VM that has not launched while a required DataVolume is incomplete is the safety feature working as intended. With `WaitForFirstConsumer`, the VMI and a temporary provisioning pod can exist before the DataVolume reaches `Succeeded`.
 
 ## Understand Template Lifecycle
 
