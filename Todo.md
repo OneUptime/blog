@@ -2,25 +2,24 @@
 
 ## Percona Server
 
-1. How to Verify Whether a Host Is Running Percona Server or Community MySQL
-2. How to Install Percona Server for MySQL 8.4 on Ubuntu Without Repository Conflicts
-3. How to Migrate from Oracle MySQL to Percona Server with Minimal Downtime
-4. Percona Server 5.7 to 8.4: Why You Must Upgrade Through MySQL 8.0
-5. How to Plan a Low-Downtime Percona Server 8.0-to-8.4 Upgrade with Replicas
-6. Why Percona Server 8.4 Breaks `mysql_native_password` Clients—and How to Migrate Them
-7. Why Did Replication Lag Increase After Upgrading Percona Server to MySQL 8?
-8. How to Tune `replica_parallel_workers` When a Percona Replica Cannot Keep Up
-9. How to Set Up GTID-Based Source-Replica Replication on Percona Server 8.4
-10. Percona Async Replication, Group Replication, or XtraDB Cluster: Which HA Topology Fits?
-11. How to Take a Hot, Consistent Percona Server Backup with XtraBackup
-12. Why Won’t a Restored Percona Server Start? Fixing Datadir Permissions and `--initialize`
-13. How to Chain and Prepare Percona XtraBackup Incrementals in the Correct Order
-14. How to Perform Point-in-Time Recovery with Percona XtraBackup and Binary Logs
-15. Should You Run XtraBackup on the Primary or a Dedicated Percona Replica?
-16. How to Size the InnoDB Buffer Pool Without Causing Swap or OOM on Percona Server
-17. When Should You Enable Percona Server’s Thread Pool—and How Do You Size It?
-18. How to Diagnose Slow Queries with the Slow Log, Performance Schema, and PMM
-19. How to Configure Percona Server Audit Log Filtering and Rotation Without Filling the Disk
+1. How to Install Percona Server for MySQL 8.4 on Ubuntu Without Repository Conflicts
+2. How to Migrate from Oracle MySQL to Percona Server with Minimal Downtime
+3. Percona Server 5.7 to 8.4: Why You Must Upgrade Through MySQL 8.0
+4. How to Plan a Low-Downtime Percona Server 8.0-to-8.4 Upgrade with Replicas
+5. Why Percona Server 8.4 Breaks `mysql_native_password` Clients—and How to Migrate Them
+6. Why Did Replication Lag Increase After Upgrading Percona Server to MySQL 8?
+7. How to Tune `replica_parallel_workers` When a Percona Replica Cannot Keep Up
+8. How to Set Up GTID-Based Source-Replica Replication on Percona Server 8.4
+9. Percona Async Replication, Group Replication, or XtraDB Cluster: Which HA Topology Fits?
+10. How to Take a Hot, Consistent Percona Server Backup with XtraBackup
+11. Why Won’t a Restored Percona Server Start? Fixing Datadir Permissions and `--initialize`
+12. How to Chain and Prepare Percona XtraBackup Incrementals in the Correct Order
+13. How to Perform Point-in-Time Recovery with Percona XtraBackup and Binary Logs
+14. Should You Run XtraBackup on the Primary or a Dedicated Percona Replica?
+15. How to Size the InnoDB Buffer Pool Without Causing Swap or OOM on Percona Server
+16. When Should You Enable Percona Server’s Thread Pool—and How Do You Size It?
+17. How to Diagnose Slow Queries with the Slow Log, Performance Schema, and PMM
+18. How to Configure Percona Server Audit Log Filtering and Rotation Without Filling the Disk
 
 ## StarRocks
 
