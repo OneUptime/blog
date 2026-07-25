@@ -2,17 +2,16 @@
 
 ## Percona Server
 
-1. How to Set Up GTID-Based Source-Replica Replication on Percona Server 8.4
-2. Percona Async Replication, Group Replication, or XtraDB Cluster: Which HA Topology Fits?
-3. How to Take a Hot, Consistent Percona Server Backup with XtraBackup
-4. Why Won’t a Restored Percona Server Start? Fixing Datadir Permissions and `--initialize`
-5. How to Chain and Prepare Percona XtraBackup Incrementals in the Correct Order
-6. How to Perform Point-in-Time Recovery with Percona XtraBackup and Binary Logs
-7. Should You Run XtraBackup on the Primary or a Dedicated Percona Replica?
-8. How to Size the InnoDB Buffer Pool Without Causing Swap or OOM on Percona Server
-9. When Should You Enable Percona Server’s Thread Pool—and How Do You Size It?
-10. How to Diagnose Slow Queries with the Slow Log, Performance Schema, and PMM
-11. How to Configure Percona Server Audit Log Filtering and Rotation Without Filling the Disk
+1. Percona Async Replication, Group Replication, or XtraDB Cluster: Which HA Topology Fits?
+2. How to Take a Hot, Consistent Percona Server Backup with XtraBackup
+3. Why Won’t a Restored Percona Server Start? Fixing Datadir Permissions and `--initialize`
+4. How to Chain and Prepare Percona XtraBackup Incrementals in the Correct Order
+5. How to Perform Point-in-Time Recovery with Percona XtraBackup and Binary Logs
+6. Should You Run XtraBackup on the Primary or a Dedicated Percona Replica?
+7. How to Size the InnoDB Buffer Pool Without Causing Swap or OOM on Percona Server
+8. When Should You Enable Percona Server’s Thread Pool—and How Do You Size It?
+9. How to Diagnose Slow Queries with the Slow Log, Performance Schema, and PMM
+10. How to Configure Percona Server Audit Log Filtering and Rotation Without Filling the Disk
 
 ## StarRocks
 
