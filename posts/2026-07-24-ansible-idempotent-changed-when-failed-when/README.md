@@ -64,7 +64,7 @@ A robust command wrapper often has three stages:
   changed_when: activation.rc == 0
 ```
 
-The query always reports `ok`. The transition is skipped when state already matches. This is more trustworthy than parsing a vague “nothing to do” message after running the mutation every time.
+A successful query reports `ok`. The transition is skipped when state already matches. This is more trustworthy than parsing a vague “nothing to do” message after running the mutation every time.
 
 ## Use Command Guards When They Match the Resource
 
@@ -185,18 +185,21 @@ Accurate status matters beyond a tidy recap. A false change can notify a handler
 A handler runs only when a notifying task reports a change:
 
 ```yaml
-- name: Import routing rules
-  ansible.builtin.command:
-    cmd: /usr/local/bin/routectl import /etc/myapp/routes.yaml
-  register: route_import
-  changed_when: "'applied 0 changes' not in route_import.stdout"
-  notify: Reload myapp
+- name: Configure application routing
+  hosts: all
+  tasks:
+    - name: Import routing rules
+      ansible.builtin.command:
+        cmd: /usr/local/bin/routectl import /etc/myapp/routes.yaml
+      register: route_import
+      changed_when: "'applied 0 changes' not in route_import.stdout"
+      notify: Reload myapp
 
-handlers:
-  - name: Reload myapp
-    ansible.builtin.service:
-      name: myapp
-      state: reloaded
+  handlers:
+    - name: Reload myapp
+      ansible.builtin.service:
+        name: myapp
+        state: reloaded
 ```
 
 If output format is not a stable public interface, prefer a checksum, a separate state query, or structured output. A translated or reworded message can otherwise cause unnecessary reloads.
@@ -215,7 +218,7 @@ This task lies:
 It mutates the file on every run while reporting `ok`. The correct implementation manages the desired state:
 
 ```yaml
-- name: Ensure the setting occurs once
+- name: Ensure the setting has the desired value
   ansible.builtin.lineinfile:
     path: /etc/myapp/app.conf
     regexp: '^enabled='
@@ -251,7 +254,7 @@ Test failure paths too:
 - every documented nonzero exit code
 - handler notification on both changed and unchanged results
 
-The goal is a precise task contract: actual transitions report changed, stable state reports ok, expected negative queries remain usable, and operational errors still stop the play.
+The goal is a precise task contract: actual transitions report changed, stable state reports ok, expected negative queries remain usable, and operational errors still fail the task and stop execution for the affected host.
 
 ## Official Documentation
 
