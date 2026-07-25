@@ -78,12 +78,14 @@ For a quick administrative view, `mysqladmin` queries server information:
 ```bash
 mysqladmin \
   --host=db-01.example.internal \
+  --port=3306 \
   --user=inventory_reader \
   --password \
+  --ssl-mode=VERIFY_IDENTITY \
   version
 ```
 
-Read the `Server version` and server description in the output. The first `mysql Ver` line still describes the client program, so do not stop there.
+Read the `Server version` and connection details in the output. The leading `mysqladmin Ver` or `mysql Ver` banner, depending on the build, still describes the client program, so do not stop there.
 
 ## Do Not Trust `mysql --version` Alone
 
@@ -153,9 +155,9 @@ apt-cache policy percona-server-server mysql-server mysql-community-server
 On RPM-based systems:
 
 ```bash
-rpm -q Percona-Server-server mysql-community-server mysql-server
+rpm -q percona-server-server mysql-community-server mysql-server
 rpm -qf /usr/sbin/mysqld
-dnf repoquery --installed --info Percona-Server-server mysql-community-server
+dnf repoquery --installed --info percona-server-server mysql-community-server
 ```
 
 Package names and capitalization vary by repository and distribution. Treat "package not installed" as one result, not as a command failure that proves the other vendor is active.
