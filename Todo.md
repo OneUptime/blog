@@ -2,8 +2,7 @@
 
 ## Data Volume
 
-1. How to Refresh Golden VM Images Automatically with CDI `DataImportCron`
-2. How to Fix “Unable to Create disk.img, Not Enough Space” When the PVC Looks Large Enough
+1. How to Fix “Unable to Create disk.img, Not Enough Space” When the PVC Looks Large Enough
 
 ## Percona Server
 
