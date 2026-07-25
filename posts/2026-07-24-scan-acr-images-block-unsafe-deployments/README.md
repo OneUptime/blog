@@ -58,10 +58,10 @@ Environment settings
 
 Confirm that:
 
-- Defender for Containers is enabled where gated deployment will run.
-- Registry access or Agentless container vulnerability assessment is enabled.
+- Defender for Containers is enabled for every environment that contains the Kubernetes cluster or registry used by gated deployment.
+- Registry access is enabled for scanning, with Security findings enabled for gated deployment.
 - The target Kubernetes environment appears in the current support matrix.
-- Required Kubernetes API access, sensor, or admission components are provisioned for that environment.
+- The Defender sensor with Security Gating is provisioned. For AKS, also enable the OIDC issuer and meet the documented Kubernetes API and sensor connectivity requirements.
 - Security administrators have permission to create and change gated-deployment rules.
 
 Plan names, extensions, availability, and charges can change. Check the current pricing and support matrix before enabling a subscription broadly.
@@ -117,7 +117,7 @@ As of July 2026, the `az acr manifest` command group is in preview. Pin and test
 
 In the portal, go to Defender for Cloud, then Recommendations. Filter for container image vulnerability findings and the target registry or digest.
 
-The recommendation model is evolving. In March 2026 Microsoft announced a move from grouped container vulnerability recommendations toward individual recommendations in the portal. Automation should use the currently documented API schema rather than scraping recommendation titles.
+The recommendation model is evolving. In March 2026 Microsoft announced a move from grouped container vulnerability recommendations toward individual recommendations in the portal. Grouped recommendations are deprecated on July 31, 2026. Automation should use the individual `microsoft.security/assessments` schema rather than legacy grouped subassessments or scraped recommendation titles.
 
 Azure Resource Graph can help inventory the current individual assessment records:
 
@@ -130,7 +130,7 @@ securityresources
 | project name, properties
 ```
 
-Use this as an exploration query. Before turning it into a release gate, inspect the returned schema in your subscription and use Microsoft's supported REST guidance to correlate the exact registry, repository, digest, severity, and exemption state.
+Use this as an exploration query. Before turning it into a release gate, inspect the returned schema in your subscription and use Microsoft's current assessment API and recommendation-transition guidance to correlate the exact registry, repository, digest, severity, and exemption state.
 
 Define the policy before looking at a particular result. A sensible policy answers:
 
@@ -168,12 +168,12 @@ Microsoft Defender for Cloud
   -> Environment settings
   -> Security rules
   -> Gated deployment
-  -> Vulnerabilities
+  -> Vulnerability assessment
 ```
 
 A rule can select cloud and resource scope, vulnerability conditions, action, and exemptions. The exact supported environments and registries are documented in the Defender for Containers support matrix.
 
-Decide explicitly what happens when an image has no findings artifact. An unknown image is not the same as a clean image. Gated deployment behavior for missing evidence is rule-dependent, so test it with:
+Decide explicitly what happens when an image has no findings artifact. An unknown image is not the same as a clean image. For a deny rule, enable `Block all deployments with missing artifacts` if missing evidence must block, and test the behavior with:
 
 - A newly pushed digest whose result is still pending.
 - An image from an unsupported registry.
@@ -195,7 +195,7 @@ Build -> push candidate -> wait for digest assessment
      -> promote the same digest -> deploy the same digest
 ```
 
-Do not rebuild after approval. A rebuild creates a new digest with different evidence. Promote by adding a release tag to the already assessed manifest or by importing the same digest into the production registry, then deploy by digest.
+Do not rebuild after approval. A rebuild creates a new digest with different evidence. Promote by adding a release tag to the already assessed manifest or by importing the same digest into the production registry, then deploy by digest. If you import into a different registry, wait for assessment evidence in that target registry before deployment.
 
 Keep the gate's implementation conservative:
 
@@ -259,4 +259,4 @@ Scanning tells you what Defender knows about an image. A gate turns that evidenc
 - [Gated deployment for Kubernetes container images](https://learn.microsoft.com/en-us/azure/defender-for-cloud/runtime-gated-overview)
 - [Configure gated deployment rules](https://learn.microsoft.com/en-us/azure/defender-for-cloud/enablement-guide-runtime-gated)
 - [Defender for Containers support matrix](https://learn.microsoft.com/en-us/azure/defender-for-cloud/support-matrix-defender-for-containers)
-- [Query vulnerability assessment results through REST](https://learn.microsoft.com/en-us/rest/api/defenderforcloud-composite/sub-assessments/list?view=rest-defenderforcloud-composite-latest)
+- [List individual assessment results through REST](https://learn.microsoft.com/en-us/rest/api/defenderforcloud-composite/assessments/list?view=rest-defenderforcloud-composite-stable)
