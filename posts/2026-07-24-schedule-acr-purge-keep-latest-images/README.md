@@ -18,7 +18,7 @@ The safe pattern is:
 4. Schedule the already-reviewed command.
 5. Monitor every timer-triggered run.
 
-`acr purge` is currently a preview feature. Microsoft currently distributes it through the `mcr.microsoft.com/acr/acr-cli` image and exposes the `acr purge` alias in ACR Tasks. Preview behavior and parameters can change, so run `acr purge --help` and repeat the dry run after upgrades or policy changes.
+`acr purge` is currently a preview feature. Microsoft currently distributes it through the `mcr.microsoft.com/acr/acr-cli` image and exposes the `acr purge` alias in ACR Tasks. Preview behavior and parameters can change, so run `az acr run --registry contosoprod --cmd 'acr purge --help' /dev/null` and repeat the dry run after upgrades or policy changes.
 
 ## Understand what `--keep` means
 
@@ -38,7 +38,7 @@ This distinction matters:
 
 keeps all matching tags newer than 14 days, plus the latest 20 tags from the older deletion candidates. The repository can therefore retain more than 20 tags.
 
-To retain exactly the latest 20 matching tags regardless of age, use:
+To make matching tags of all ages eligible for deletion while retaining the latest 20 deletion candidates, use:
 
 ```text
 --ago 0d --keep 20
@@ -65,7 +65,7 @@ Use an anchored expression:
 apps/payments:^build-[0-9]+$
 ```
 
-Avoid a broad filter such as `apps/payments:.*` unless every tag in the repository truly follows the same retention rule. The filter grammar uses regular expressions, and features such as negative lookahead might not be available in the underlying regular-expression engine. Positive, anchored naming patterns are easier to audit.
+Avoid a broad filter such as `apps/payments:.*` unless every tag in the repository truly follows the same retention rule. The filter grammar uses regular expressions, and its preview implementation can change between releases. Positive, anchored naming patterns are easier to audit than complex exclusions.
 
 For several applications, use one filter per repository:
 
@@ -117,7 +117,7 @@ Do not simply remove `--dry-run` because the command returned successfully. A su
 
 By default, `acr purge` removes matching tag references. It does not remove the underlying manifests and layer data. This makes the first stage less destructive, but it might not materially reduce storage.
 
-Adding `--untagged` also deletes untagged manifests that satisfy the age filter:
+Adding `--untagged` also makes untagged manifests that satisfy the age filter eligible for deletion:
 
 ```bash
 PURGE_CMD="acr purge \
@@ -127,6 +127,8 @@ PURGE_CMD="acr purge \
   --untagged \
   --dry-run"
 ```
+
+In the current `acr-cli`, the same `--keep 20` value also retains the newest 20 eligible untagged manifests per repository during this combined cleanup. Use separate tag and manifest cleanup tasks when they need different keep counts.
 
 This option deserves a separate approval. A manifest can be untagged and still be referenced by a deployment using its digest:
 
@@ -233,9 +235,9 @@ Basic, Standard, and Premium registries provide the same core data-plane APIs, b
 
 `acr purge` does not delete a tag or repository whose `write-enabled` attribute is `false`. That is useful for production protection. Treat a skipped locked image as a policy decision, not something the cleanup task should automatically unlock.
 
-For registries using RBAC plus ABAC repository permissions, current `acr purge` detects ABAC mode automatically. Its task identity needs:
+For registries using RBAC plus ABAC repository permissions, current `acr purge` detects ABAC mode automatically, but ACR Tasks no longer has default data-plane access. For an on-demand `az acr run`, add `--source-acr-auth-id '[caller]'` and grant the required roles to the caller. For a scheduled task, add `--source-acr-auth-id '[system]'` or a user-assigned identity resource ID to `az acr task create`, then grant that managed identity:
 
-- `Container Registry Repository Contributor` on repositories it may purge;
+- `Container Registry Repository Contributor`, with the assignment covering the repositories it may purge (use an ABAC condition for repository scoping);
 - `Container Registry Repository Catalog Lister` at registry scope when it must enumerate repositories.
 
 If a filter identifies one repository explicitly, the command can operate without catalog-list permission. If a broad filter reaches a repository the identity cannot purge, the command stops at the first unauthorized repository and reports completed, failed, and unprocessed repositories. Scope both the filter and the role assignment to the same repository set.
