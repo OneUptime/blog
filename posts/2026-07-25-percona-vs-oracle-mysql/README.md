@@ -113,7 +113,7 @@ Treat these cases as migrations or upgrades, not simple swaps:
 1. Moving from MySQL 5.7 directly to Percona Server 8.4. MySQL's supported path requires 5.7 to 8.0, followed by 8.0 to 8.4.
 2. Starting an older binary on a data directory that has been upgraded to a newer release. In-place downgrade across release families is not a safe rollback.
 3. Moving data that uses a vendor-specific engine, plugin, component, or encryption provider.
-4. Promoting a later-release replica while earlier-release replicas still depend on it. MySQL does not support replication from a later release to an earlier-release replica.
+4. Promoting a later-release replica while earlier-release replicas still depend on it. Replication from a later release to an earlier-release replica might work in limited cases, but MySQL generally does not support it.
 5. Assuming an Enterprise-only Oracle feature has a Community-compatible equivalent with identical configuration and semantics.
 6. Enabling a Percona-only data format, then expecting an untouched Oracle instance to accept that data during rollback.
 
@@ -185,7 +185,7 @@ Do not permit writes to both databases independently. That creates divergent his
 
 Before the first write on the new source, rollback can be as simple as redirecting traffic to the still-fenced original source. After new writes begin, the original is stale.
 
-At that point, rollback requires a tested data path, such as compatible same-release replication, logical data movement, or a restore. MySQL does not support a later-release source replicating to an earlier-release replica, and Percona-specific features can make even a same-release reverse move impossible. Many migrations should therefore be described as fail-forward after cutover.
+At that point, rollback requires a tested data path, such as compatible same-release replication, logical data movement, or a restore. MySQL generally does not support a later-release source replicating to an earlier-release replica, and Percona-specific features can make even a same-release reverse move impossible. Many migrations should therefore be described as fail-forward after cutover.
 
 Keep vendor-specific features disabled until the replacement has completed its soak period. This preserves the simplest possible recovery path.
 
