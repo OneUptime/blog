@@ -69,7 +69,7 @@ commands:
   - id: debug-node
     exec:
       component: runtime
-      commandLine: node --inspect=0.0.0.0:${DEBUG_PORT} server.js
+      commandLine: node --inspect=127.0.0.1:${DEBUG_PORT} server.js
       workingDir: ${PROJECT_SOURCE}
       group:
         kind: debug
@@ -98,7 +98,7 @@ You can keep another debugger profile as a non-default command:
   - id: debug-node-break
     exec:
       component: runtime
-      commandLine: node --inspect-brk=0.0.0.0:${DEBUG_PORT} server.js
+      commandLine: node --inspect-brk=127.0.0.1:${DEBUG_PORT} server.js
       workingDir: ${PROJECT_SOURCE}
       group:
         kind: debug
@@ -120,7 +120,7 @@ The runtime must listen on a known container port, and the container component m
 
 Use `exposure: none` for a debugger unless the consumer requires something else. A debugger port generally needs local forwarding, not a public route. Authentication and transport security vary by debugger, so exposing it to a shared network is an unnecessary risk.
 
-Listening only on `127.0.0.1` inside the container is a common cause of failed attachment. A forwarded connection enters the container's network namespace and often needs the debug server to bind to `0.0.0.0`. Keep the endpoint non-public and let the local forward be the boundary.
+For the Kubernetes workflow described here, odo's pod port forwarding can reach a debug server bound to `127.0.0.1` inside the pod, so the example keeps Node's inspector on loopback. Other forwarding mechanisms, including ordinary Podman host-port forwarding, may require `0.0.0.0` or a consumer-specific loopback-forwarding option. Node warns that binding the inspector to `0.0.0.0` is unsafe if the port is reachable from an untrusted network. Keep the endpoint non-public and let the local forward be the boundary.
 
 The application endpoint and debug endpoint serve different clients:
 
