@@ -69,7 +69,7 @@ ansible-doc -t inventory amazon.aws.aws_ec2
 
 The plugin documentation lists:
 
-- Required collection version.
+- The collection version being documented.
 - Control-node Python libraries.
 - Valid source filename suffix.
 - Authentication sources.
@@ -109,13 +109,15 @@ compose:
 
 keyed_groups:
   - prefix: env
-    key: tags.Environment
+    key: ec2_tags.Environment
   - prefix: role
-    key: tags.Role
+    key: ec2_tags.Role
 
 strict: false
 strict_permissions: true
 ```
+
+The `ec2_tags` host variable is available in `amazon.aws` 11.2.0 and later. The older `tags` host variable is deprecated in current releases, so consult the documentation for the collection version installed in the execution environment.
 
 Check four things before looking at the provider:
 
@@ -169,8 +171,10 @@ For AWS, confirm the same environment can identify itself:
 aws sts get-caller-identity
 aws ec2 describe-instances \
   --region eu-west-1 \
-  --max-results 5
+  --max-items 5
 ```
+
+If the inventory source sets `profile` or `assume_role_arn`, make the CLI test use the equivalent profile or assumed-role credentials. Otherwise, the test may identify a different principal from the inventory plugin.
 
 For another provider, use its official SDK or CLI to perform the same read operation as the inventory plugin.
 
@@ -250,7 +254,7 @@ ansible-inventory \
   --yaml
 ```
 
-If two resources share a tag used as the preferred hostname, the plugin can choose another candidate, overwrite an ambiguous alias, or handle duplicates according to plugin-specific options. Use a stable unique provider property for `inventory_hostname`, then set a readable variable for display.
+If two resources resolve to the same preferred hostname, they collide instead of becoming two distinct inventory hosts. The AWS plugin does not fall back to the next hostname candidate merely because a name is already in use. Its `allow_duplicated_hosts` option controls whether each instance contributes all matching names from `hostnames` or only the first; it does not make names unique across instances. Use a stable unique provider property for `inventory_hostname`, then set a readable variable for display.
 
 Do not assume `ansible_host` is the key used in `host_vars/`. Host-variable filenames match `inventory_hostname`.
 
@@ -263,7 +267,7 @@ In this example:
 ```yaml
 keyed_groups:
   - prefix: env
-    key: tags.Environment
+    key: ec2_tags.Environment
 ```
 
 a provider value such as `Production-West` is transformed into a valid Ansible group name according to the plugin and core sanitization rules. The result may be closer to:
@@ -317,7 +321,7 @@ ansible-inventory \
   --vars
 ```
 
-When the same variable is supplied by multiple sources, later inventory definitions can overwrite earlier ones. Debug the single dynamic source first, then add the other sources until the conflict appears.
+When the same variable is supplied at the same inventory precedence by multiple sources, later inventory definitions can overwrite earlier ones. More specific inventory variables, such as host variables, still take precedence over group variables. Debug the single dynamic source first, then add the other sources until the conflict appears.
 
 ## Eliminate Stale Cache Results
 
@@ -329,7 +333,7 @@ Inspect plugin-specific options such as:
 cache: false
 ```
 
-Disable caching temporarily and rerun. You can also ask the CLI to flush its cache:
+Disable caching temporarily and rerun. You can also ask the CLI to bypass cached inventory data while rebuilding the inventory:
 
 ```bash
 ansible-inventory \
@@ -338,7 +342,7 @@ ansible-inventory \
   --graph
 ```
 
-The exact cache backend may also need its documented cleanup procedure. Do not delete a shared cache blindly, because other automation might use it.
+The `--flush-cache` flag also clears cached facts for inventory hosts. If inventory and facts share a cache backend, account for both effects. The exact cache backend may also need its documented cleanup procedure. Do not delete a shared cache blindly, because other automation might use it.
 
 If disabling cache fixes the inventory, restore caching with an expiry that matches resource churn and ensure provisioning workflows invalidate or refresh it when necessary.
 
@@ -394,4 +398,3 @@ This sequence separates discovery from grouping and selection. Once each stage i
 - [Index of inventory plugins](https://docs.ansible.com/projects/ansible/latest/collections/index_inventory.html)
 - [amazon.aws.aws_ec2 inventory plugin](https://docs.ansible.com/projects/ansible/latest/collections/amazon/aws/aws_ec2_inventory.html)
 - [ansible.builtin.constructed inventory plugin](https://docs.ansible.com/projects/ansible/latest/collections/ansible/builtin/constructed_inventory.html)
-

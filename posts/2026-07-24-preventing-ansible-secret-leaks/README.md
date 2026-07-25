@@ -59,7 +59,7 @@ This is unsafe:
     var: app_credentials
 ```
 
-Ansible's logging documentation explicitly notes that `no_log` does not affect separate debugging output. Protect follow-up tasks individually:
+`no_log` applies only to the task where it is set; it does not protect a separate `debug` task that prints the same variable. Protect follow-up tasks individually:
 
 ```yaml
 - name: Create the application database user
@@ -232,6 +232,7 @@ Review these settings and integrations:
 
 - `log_path`
 - `display_args_to_stdout`
+- `ANSIBLE_DEBUG`
 - callback plugins
 - CI log retention and artifact uploads
 - AWX job access and retention
@@ -239,6 +240,8 @@ Review these settings and integrations:
 - observability agents that capture process output
 
 `display_args_to_stdout` can make similar tasks easier to distinguish by including variable values in output. Do not enable it casually in a secret-bearing environment.
+
+Do not enable `ANSIBLE_DEBUG` in production. Ansible's internal debug output can include secrets even when `no_log` is set.
 
 Custom callbacks and third-party plugins must honor Ansible's censorship markers. Test the exact callback stack you deploy, rather than assuming every plugin treats `no_log` correctly.
 
