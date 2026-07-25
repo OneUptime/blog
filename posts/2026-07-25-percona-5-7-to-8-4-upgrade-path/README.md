@@ -8,19 +8,21 @@ Description: Plan the required two-stage Percona Server upgrade from 5.7 through
 
 ---
 
-Percona Server 5.7 cannot be upgraded directly to Percona Server 8.4. MySQL's official upgrade-path matrix says a 5.7 server moving to 8.4 must first upgrade to the 8.0 LTS series, then upgrade from 8.0 to 8.4 LTS.
+Percona Server 5.7 cannot be upgraded directly to Percona Server 8.4. MySQL's official upgrade-path matrix says a 5.7 server moving to 8.4 must first upgrade to the 8.0 bugfix series, then upgrade from 8.0 to 8.4 LTS.
 
 The required path is:
 
 ```text
-latest supported 5.7
+latest available 5.7 GA
         |
         v
-latest appropriate 8.0
+latest available 8.0 GA
         |
         v
 current Percona Server 8.4 LTS
 ```
+
+Both Percona Server 5.7 and 8.0 are end-of-life in the general product lifecycle as of publication. Treat 8.0 as a compatibility hop rather than a new steady state, and confirm package availability or post-EOL support before scheduling the work.
 
 This is not a packaging inconvenience. MySQL 8.0 performs a major data-dictionary and system-schema transition. MySQL 8.4 then removes and changes interfaces from the 8.0 era. The server upgrade machinery is designed and tested around those adjacent release-family transitions.
 
@@ -78,7 +80,7 @@ Percona's 8.4 upgrade guidance treats in-place upgrade as the higher-risk option
 
 Before the first major upgrade:
 
-- move to the latest supported 5.7 patch level required by the upgrade documentation
+- move to the latest available 5.7 GA patch level accepted by the exact upgrade documentation
 - eliminate replication errors and unexplained lag
 - confirm all tables are healthy
 - record exact Percona and upstream base versions
@@ -110,18 +112,19 @@ GROUP BY ENGINE;
 
 ## Gate 1: Check 5.7 Readiness for 8.0
 
-Use the MySQL Shell Upgrade Checker with an explicit target supported by the Shell version. In a protected administrative session, the pattern is:
+Use the MySQL Shell Upgrade Checker with an explicit target supported by the Shell version. The checker account requires `RELOAD`, `PROCESS`, and `SELECT` privileges. In a protected administrative session, the pattern is:
 
 ```javascript
 util.checkForServerUpgrade(
   "upgrade_checker@mysql57.example.internal:3306",
   {
-    targetVersion: "8.0.x"
+    targetVersion: "8.0.x",
+    configPath: "/etc/mysql/my.cnf"
   }
 )
 ```
 
-Replace `8.0.x` with the exact planned target version. With no password in the connection data or options dictionary, MySQL Shell prompts for it. Review the current MySQL Shell target support before running the check.
+Replace `8.0.x` with the exact planned target version and `configPath` with the local server option-file path. The `sysVarsNewDefaults` check requires `configPath` when checking a MySQL 5.7 instance. With no password in the connection data or options dictionary, MySQL Shell prompts for it. Review the current MySQL Shell target support before running the check.
 
 The checker automates known checks, but it cannot prove application compatibility. Also review:
 
@@ -182,10 +185,13 @@ Run the upgrade checker again with the exact 8.4 target:
 util.checkForServerUpgrade(
   "upgrade_checker@mysql80.example.internal:3306",
   {
-    targetVersion: "8.4.x"
+    targetVersion: "8.4.x",
+    configPath: "/etc/mysql/my.cnf"
   }
 )
 ```
+
+Replace `configPath` with the local server option-file path.
 
 Review Percona's 8.4 checklist in addition to the automated output. Current 8.4-sensitive items include:
 
@@ -211,7 +217,7 @@ Upgrade client libraries and alter accounts to `caching_sha2_password` before th
 
 ## Phase 2: Move from 8.0 to 8.4
 
-For a replication topology, upgrade replicas before the source. MySQL supports the older 8.0 source sending to the newer 8.4 replica for this supported path. It does not support the reverse direction.
+For a replication topology, upgrade replicas before the source. MySQL supports the older 8.0 source sending to the newer 8.4 replica for this supported path. The standard rolling upgrade does not support the reverse direction; documented 8.4-to-8.0 replication is a separate rollback-only downgrade method and is supported only when no new server functionality has been applied to the data.
 
 The rolling order is:
 
@@ -224,7 +230,7 @@ The rolling order is:
 7. keep the old 8.0 source fenced and outside the topology
 8. upgrade the old source to 8.4 before reinserting it
 
-Never promote an 8.4 source while it still has to feed an 8.0 replica. That creates the unsupported newer-source-to-older-replica direction.
+During the standard rolling upgrade, never promote an 8.4 source while it still has to feed an 8.0 replica. That creates a newer-source-to-older-replica direction outside the supported upgrade topology.
 
 ## Keep Rollback Separate at Each Boundary
 
@@ -240,7 +246,7 @@ The 5.7 source is stale. Returning to it requires a tested data movement or reco
 
 ### After 8.4 Accepts Writes
 
-The old 8.0 source is stale, and replication from newer 8.4 back to older 8.0 is not supported. Treat the cutover as fail-forward; returning requires a tested logical data-movement or restore procedure, not reverse asynchronous replication.
+The old 8.0 source is stale. Ordinary continued replication from newer 8.4 to older 8.0 is not a supported mixed-version upgrade topology. MySQL and Percona do, however, document logical dump and load or replication from 8.4 to 8.0 as rollback-only downgrade methods, and only when no new server functionality has been applied to the data. Treat the cutover as fail-forward unless that constrained downgrade path has been designed and tested; an in-place downgrade is not supported.
 
 Backups protect data, but restoring a large backup can exceed the intended recovery time. Measure restores instead of describing them as instant rollback.
 
@@ -280,3 +286,5 @@ Each stage should have entry criteria, abort conditions, owners, measured durati
 - [MySQL Shell upgrade checker utility](https://dev.mysql.com/doc/mysql-shell/8.4/en/mysql-shell-utilities-upgrade.html)
 - [MySQL replication compatibility between versions](https://dev.mysql.com/doc/refman/8.4/en/replication-compatibility.html)
 - [MySQL upgrading a replication topology](https://dev.mysql.com/doc/refman/8.4/en/replication-upgrade.html)
+- [MySQL 8.4 downgrade paths](https://dev.mysql.com/doc/refman/8.4/en/downgrading.html)
+- [Percona Server 8.4 downgrade options](https://docs.percona.com/percona-server/8.4/downgrade.html)
