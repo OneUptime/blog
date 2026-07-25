@@ -151,7 +151,7 @@ Constraint matching supports `source`:
 - `Generated` matches expanded resources only.
 - `All` matches both.
 
-Use this to avoid duplicate messages or to stage expansion separately. For example, you can warn on generated Pods while continuing to deny invalid original Pods.
+Use this to avoid duplicate messages or to stage expansion separately. For example, separate Constraints can warn on generated Pods while continuing to deny invalid original Pods.
 
 An `ExpansionTemplate` can also set an enforcement action override for its expanded resources. Use that during initial rollout so a false positive in the prediction does not block every parent workload.
 
@@ -159,7 +159,7 @@ An `ExpansionTemplate` can also set an enforcement action override for its expan
 
 The Deployment request may come from a human or CI ServiceAccount. The eventual Pod request comes from a Kubernetes controller. A policy based on `input.review.userInfo` therefore sees different actors.
 
-If the rule concerns the identity assigned to the Pod, check `spec.serviceAccountName` in the template. If it concerns who may deploy, validate the parent request and account for audit's inability to reconstruct user information.
+If the rule concerns the identity assigned to the Pod, check `spec.serviceAccountName` in the template, treating an omitted value as the namespace's `default` ServiceAccount. If it concerns who may deploy, validate the parent request and account for audit's inability to reconstruct user information.
 
 ## A practical rollout
 
