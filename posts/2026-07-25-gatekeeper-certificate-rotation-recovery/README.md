@@ -1,4 +1,4 @@
-# How Gatekeeper Webhook Certificate Rotation Fails—and How to Recover Admission
+# How Gatekeeper Webhook Certificate Rotation Fails-and How to Recover Admission
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -24,7 +24,7 @@ kubectl get deployment -n gatekeeper-system \
   -o jsonpath='{.spec.template.spec.containers[?(@.name=="manager")].args}{"\n"}'
 ```
 
-No `--disable-cert-rotation` argument on that Deployment means the default is enabled. The separate audit Deployment can legitimately disable rotation because it does not serve admission traffic; do not use its arguments to infer certificate ownership. A Helm chart, operator, or certificate manager can still alter ownership, so inspect annotations and release configuration before changing Secrets.
+A missing `--disable-cert-rotation` argument or `--disable-cert-rotation=false` means embedded rotation is enabled. `--disable-cert-rotation` or `--disable-cert-rotation=true` disables it. The separate audit Deployment can legitimately disable rotation because it does not serve admission traffic; do not use its arguments to infer certificate ownership. A Helm chart, operator, or certificate manager can still alter ownership, so inspect annotations and release configuration before changing Secrets.
 
 Never let Gatekeeper's cert controller and a third-party controller continuously overwrite the same Secret or `caBundle`.
 
@@ -37,8 +37,9 @@ Different messages suggest different faults:
 | `certificate has expired or is not yet valid` | Expiry, rotation failure, or clock skew |
 | `certificate signed by unknown authority` | Served chain and webhook `caBundle` differ |
 | `certificate is valid for ..., not ...` | Service name or certificate SAN mismatch |
-| `tls: bad certificate` | Client authentication or key/certificate mismatch |
-| `no endpoints available` | Service readiness problem, not certificate rotation |
+| `tls: bad certificate` | A TLS peer rejected a certificate; identify which side logged it |
+| `tls: private key does not match public key` | The serving certificate and private key differ |
+| `no endpoints available` | Service endpoints or readiness failure; certificate bootstrap can be an upstream cause |
 
 Capture the exact error from the API client, API server logs if available, and Gatekeeper controller logs.
 
@@ -49,7 +50,7 @@ Gatekeeper's default certificate Secret is commonly named `gatekeeper-webhook-se
 ```bash
 kubectl get secret -n gatekeeper-system \
   gatekeeper-webhook-server-cert \
-  -o jsonpath='{.data.tls\\.crt}' \
+  -o jsonpath='{.data.tls\.crt}' \
   | base64 --decode \
   | openssl x509 -noout \
       -subject -issuer -serial -dates -ext subjectAltName
@@ -62,7 +63,7 @@ Inspect the CA stored with the Secret:
 ```bash
 kubectl get secret -n gatekeeper-system \
   gatekeeper-webhook-server-cert \
-  -o jsonpath='{.data.ca\\.crt}' \
+  -o jsonpath='{.data.ca\.crt}' \
   | base64 --decode \
   | openssl x509 -noout -subject -issuer -fingerprint -sha256
 ```
@@ -92,12 +93,12 @@ kubectl get service -n gatekeeper-system \
   gatekeeper-webhook-service -o yaml
 kubectl get validatingwebhookconfiguration \
   gatekeeper-validating-webhook-configuration \
-  -o jsonpath='{range .webhooks[*]}{.name}{"  "}{.clientConfig.service.namespace}{"/"}{.clientConfig.service.name}{"\\n"}{end}'
+  -o jsonpath='{range .webhooks[*]}{.name}{"  "}{.clientConfig.service.namespace}{"/"}{.clientConfig.service.name}{"\n"}{end}'
 ```
 
 If `--cert-service-name` or the Service name changed, regenerate a certificate for the current identity and update the `caBundle` through its owner.
 
-Compare control-plane, node, and workstation clocks. A newly rotated certificate can appear "not yet valid" when time synchronization is broken.
+Compare the control-plane clock with the clock on the node running the Gatekeeper Pod that generates the certificate. A newly rotated certificate can appear "not yet valid" when time synchronization is broken.
 
 ## Check rotation permissions
 
@@ -117,7 +118,7 @@ kubectl auth can-i update secret/gatekeeper-webhook-server-cert \
   --as=system:serviceaccount:gatekeeper-system:<serviceaccount>
 ```
 
-The mutating-webhook check matters when Gatekeeper mutation is installed; the embedded certificate controller patches both webhook configurations.
+The mutating-webhook check matters when Gatekeeper mutation is installed; the embedded certificate controller updates both webhook configurations.
 
 Also inspect events and logs for forbidden updates, optimistic-lock conflicts, or repeated rotation:
 
@@ -152,7 +153,7 @@ kubectl delete validatingwebhookconfiguration \
   gatekeeper-validating-webhook-configuration
 ```
 
-This disables all Gatekeeper validation, not just the broken policy. Use an audited incident procedure. An operator or GitOps controller may recreate the object, so account for that before acting.
+This disables all validation performed by Gatekeeper's validating webhooks, not just the broken policy. It does not directly disable the mutating webhook or Gatekeeper-generated `ValidatingAdmissionPolicy` and `ValidatingAdmissionPolicyBinding` resources, if used. Account for those separately if they can block repair. Use an audited incident procedure. An operator or GitOps controller may recreate the object, so account for that before acting.
 
 After certificate repair, redeploy the pinned webhook configuration, verify its CA and endpoints, then run Gatekeeper audit to find resources admitted during the gap.
 
@@ -174,4 +175,5 @@ Certificate rotation is part of control-plane availability. Treat it as an SLO-b
 - [Gatekeeper certificate rotation configuration](https://open-policy-agent.github.io/gatekeeper/website/docs/customize-startup/#disable-certificate-generation-and-rotation-for-gatekeepers-webhook)
 - [Gatekeeper runtime certificate flags](https://open-policy-agent.github.io/gatekeeper/website/docs/runtime-flags/)
 - [Gatekeeper operations and certificate permissions](https://open-policy-agent.github.io/gatekeeper/website/docs/operations/)
+- [Gatekeeper integration with Kubernetes Validating Admission Policy](https://open-policy-agent.github.io/gatekeeper/website/docs/validating-admission-policy/)
 - [Kubernetes webhook TLS requirements](https://kubernetes.io/docs/reference/access-authn-authz/extensible-admission-controllers/#service-reference)
