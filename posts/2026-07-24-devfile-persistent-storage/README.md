@@ -30,7 +30,7 @@ components:
       mountSources: true
       volumeMounts:
         - name: maven-cache
-          path: /home/developer/.m2
+          path: /root/.m2
   - name: maven-cache
     volume:
       size: 2Gi
@@ -49,7 +49,7 @@ Persistent is the default intent when `ephemeral` is omitted or false:
       ephemeral: false
 ```
 
-Whether data survives every possible event still depends on lifecycle and platform policy. A PVC can be deleted when the development component is deleted, retained by another tool, or reclaimed according to cluster configuration. “Persistent” means the volume is not deliberately pod-ephemeral; it is not a backup guarantee.
+Whether data survives every possible event still depends on lifecycle and platform policy. For example, current `odo` gives generated PVCs an owner reference to the development Deployment, and ending `odo dev` deletes the session resources and the owned PVCs. Other consumers can retain claims instead. After a PVC is deleted, the backing PV is retained or deleted according to its reclaim policy. “Persistent” means the volume is not deliberately pod-ephemeral; it does not guarantee retention between tool-managed sessions or provide a backup.
 
 ## Use Ephemeral Storage for Rebuildable Data
 
@@ -89,14 +89,14 @@ A Devfile volume can be mounted by multiple container components:
 components:
   - name: builder
     container:
-      image: golang:1.24
+      image: golang:1.26
       mountSources: true
       volumeMounts:
         - name: artifacts
           path: /workspace/artifacts
   - name: scanner
     container:
-      image: registry.example.com/security/scanner:4
+      image: aquasec/trivy:0.70.0
       mountSources: false
       volumeMounts:
         - name: artifacts
@@ -121,7 +121,7 @@ commands:
   - id: scan-artifact
     exec:
       component: scanner
-      commandLine: scanner /scan/input/app
+      commandLine: trivy fs /scan/input/app
       workingDir: /scan/input
   - id: build-and-scan
     composite:
@@ -171,7 +171,7 @@ components:
 
 For current `odo` on Kubernetes, source synchronization uses an `odo-projects` volume. Its backing is affected by odo's `Ephemeral` preference: the documented default uses a PVC, while ephemeral mode uses `emptyDir`. That source volume is distinct from the explicit `npm-cache` Devfile component.
 
-Do not infer a Devfile volume's lifecycle from the odo source preference, or vice versa. Document both settings if they matter to recovery time.
+Do not infer a Devfile volume's lifecycle from the odo source preference, or vice versa. Normal `odo dev` cleanup deletes both kinds of odo-managed PVC, so neither setting alone promises data will remain for the next session. Document both settings if they matter to recovery time.
 
 ## A Devfile Volume Is Not an Existing PVC Reference
 
@@ -202,8 +202,8 @@ This belongs to the workload defined in that manifest, not automatically to the 
 Dependency caches grow without bound unless package managers prune them. Choose a size based on measurements and provide a recovery path:
 
 ```bash
-du -sh /home/developer/.m2
-find /home/developer/.m2 -type f -mtime +30 -delete
+du -sh /root/.m2
+find /root/.m2 -type f -mtime +30 -delete
 ```
 
 Do not place an unsafe deletion command in a lifecycle event without tightly validating its path. Prefer package-manager-supported cleanup and let the cluster enforce namespace quota.
@@ -213,7 +213,7 @@ For persistent workspace data, answer these questions:
 - Who owns the PVC?
 - What deletes it?
 - Can the workspace move to another node?
-- Is the storage mode compatible with concurrent mounts?
+- Is the access mode compatible with concurrent mounts?
 - What happens when the size request changes?
 - Is any data backed up independently?
 
@@ -242,7 +242,7 @@ When a command sees an empty directory, verify:
 
 ## Official Documentation
 
-- [Devfile: Adding a volume component](https://devfile.io/docs/2.2.0/adding-a-volume-component)
+- [Devfile: Adding a volume component](https://devfile.io/docs/2.3.0/adding-a-volume-component)
 - [Devfile 2.3 schema reference](https://devfile.io/docs/2.3.0/devfile-schema)
 - [odo architecture: Project source storage](https://odo.dev/docs/development/architecture/how-odo-works/)
 - [Kubernetes persistent volumes](https://kubernetes.io/docs/concepts/storage/persistent-volumes/)
