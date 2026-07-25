@@ -2,17 +2,16 @@
 
 ## OPA Gatekeeper
 
-1. How to Write Referential Gatekeeper Policies with `data.inventory` and `syncOnly`
-2. Why a Gatekeeper Pod Policy Does Not Block Violating Deployments
-3. How to Test Gatekeeper Policies in CI with Gator Before They Reach a Cluster
-4. Gatekeeper Fail-Open vs Fail-Closed: Avoiding Both Policy Bypass and Cluster Lockout
-5. How to Troubleshoot Gatekeeper Webhook Timeouts and Kubernetes API Latency
-6. How Gatekeeper Webhook Certificate Rotation Fails—and How to Recover Admission
-7. How to Trace a Gatekeeper Decision and Debug Unexpected Rego Results
-8. How to Restrict Container Image Registries and Tags Without Gatekeeper False Positives
-9. Gatekeeper Mutation vs Validation: What Happens When Both Target the Same Field?
-10. How to Use External Data Providers Without Slowing Gatekeeper Admission Requests
-11. How to Monitor Gatekeeper Audit Health, Denials, and Policy Latency with Prometheus
+1. Why a Gatekeeper Pod Policy Does Not Block Violating Deployments
+2. How to Test Gatekeeper Policies in CI with Gator Before They Reach a Cluster
+3. Gatekeeper Fail-Open vs Fail-Closed: Avoiding Both Policy Bypass and Cluster Lockout
+4. How to Troubleshoot Gatekeeper Webhook Timeouts and Kubernetes API Latency
+5. How Gatekeeper Webhook Certificate Rotation Fails—and How to Recover Admission
+6. How to Trace a Gatekeeper Decision and Debug Unexpected Rego Results
+7. How to Restrict Container Image Registries and Tags Without Gatekeeper False Positives
+8. Gatekeeper Mutation vs Validation: What Happens When Both Target the Same Field?
+9. How to Use External Data Providers Without Slowing Gatekeeper Admission Requests
+10. How to Monitor Gatekeeper Audit Health, Denials, and Policy Latency with Prometheus
 
 ## Data Volume
 
