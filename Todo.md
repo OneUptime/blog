@@ -1,9 +1,5 @@
 # Blog Post Ideas
 
-## OPA Gatekeeper
-
-1. How to Monitor Gatekeeper Audit Health, Denials, and Policy Latency with Prometheus
-
 ## Data Volume
 
 1. Kubernetes CDI DataVolume vs PVC: When Should KubeVirt Use Each?
