@@ -2,19 +2,18 @@
 
 ## Percona Server
 
-1. Why Did Replication Lag Increase After Upgrading Percona Server to MySQL 8?
-2. How to Tune `replica_parallel_workers` When a Percona Replica Cannot Keep Up
-3. How to Set Up GTID-Based Source-Replica Replication on Percona Server 8.4
-4. Percona Async Replication, Group Replication, or XtraDB Cluster: Which HA Topology Fits?
-5. How to Take a Hot, Consistent Percona Server Backup with XtraBackup
-6. Why Won’t a Restored Percona Server Start? Fixing Datadir Permissions and `--initialize`
-7. How to Chain and Prepare Percona XtraBackup Incrementals in the Correct Order
-8. How to Perform Point-in-Time Recovery with Percona XtraBackup and Binary Logs
-9. Should You Run XtraBackup on the Primary or a Dedicated Percona Replica?
-10. How to Size the InnoDB Buffer Pool Without Causing Swap or OOM on Percona Server
-11. When Should You Enable Percona Server’s Thread Pool—and How Do You Size It?
-12. How to Diagnose Slow Queries with the Slow Log, Performance Schema, and PMM
-13. How to Configure Percona Server Audit Log Filtering and Rotation Without Filling the Disk
+1. How to Tune `replica_parallel_workers` When a Percona Replica Cannot Keep Up
+2. How to Set Up GTID-Based Source-Replica Replication on Percona Server 8.4
+3. Percona Async Replication, Group Replication, or XtraDB Cluster: Which HA Topology Fits?
+4. How to Take a Hot, Consistent Percona Server Backup with XtraBackup
+5. Why Won’t a Restored Percona Server Start? Fixing Datadir Permissions and `--initialize`
+6. How to Chain and Prepare Percona XtraBackup Incrementals in the Correct Order
+7. How to Perform Point-in-Time Recovery with Percona XtraBackup and Binary Logs
+8. Should You Run XtraBackup on the Primary or a Dedicated Percona Replica?
+9. How to Size the InnoDB Buffer Pool Without Causing Swap or OOM on Percona Server
+10. When Should You Enable Percona Server’s Thread Pool—and How Do You Size It?
+11. How to Diagnose Slow Queries with the Slow Log, Performance Schema, and PMM
+12. How to Configure Percona Server Audit Log Filtering and Rotation Without Filling the Disk
 
 ## StarRocks
 
