@@ -689,3 +689,233 @@
 18. Why a Map Task Reads Remote HDFS Blocks: Measuring and Improving Data Locality
 19. MapReduce Reducers Stuck in Shuffle: Diagnosing Skew, Spill, Merge, and Slow Fetches
 20. When Speculative Execution Helps Hadoop—and When Duplicate Side Effects Make It Dangerous
+
+## Pods
+
+1. Kubernetes Pod Is in `CrashLoopBackOff` but Logs Are Empty: Where Did the Error Go?
+2. Why Is a Kubernetes Pod Pending When the Cluster Still Has Free CPU and Memory?
+3. Kubernetes Pod Stuck in `ContainerCreating`: How to Separate CNI, CSI, and Image Failures
+4. `ErrImagePull` vs `ImagePullBackOff`: Which Registry Failure Should You Fix First?
+5. Why Was a Pod `OOMKilled` When `kubectl top` Never Reached Its Memory Limit?
+6. `Evicted` vs `OOMKilled`: How to Tell Node Pressure from a Container Memory Limit
+7. Kubernetes Pod Stuck in `Terminating`: When Is Force Deletion Safe?
+8. Pod Is `Running` but Not `Ready`: A Probe, Sidecar, and Readiness-Gate Checklist
+9. Kubernetes Service Has No Endpoints: Checking Pod Labels, Readiness, and EndpointSlices
+10. Pod Can Reach a Service IP but Not Its DNS Name: Debugging CoreDNS and Search Domains
+11. Liveness, Readiness, or Startup Probe: What Should Each Health Check Actually Test?
+12. Why Deleting a `CrashLoopBackOff` Pod Usually Does Not Fix the Crash
+13. How to Retrieve Logs from a Restarted or Already-Deleted Kubernetes Pod
+14. How to Debug a Distroless Pod When `kubectl exec` Has No Shell or Debugging Tools
+15. CPU Requests, CPU Limits, and Memory Limits: What Actually Schedules, Throttles, or Kills a Pod?
+16. How to Shut Down Kubernetes Pods Without Dropping In-Flight Requests
+17. Why Does a Long-Running Pod Exit as `Completed` and Keep Restarting?
+18. How Do Containers in the Same Pod Share `localhost`, Volumes, and Health State?
+19. Why Did a ConfigMap or Secret Change Not Reach a Running Pod?
+20. Init Container Is Stuck or Failing: How to Debug Pod Startup Dependencies and Resource Math
+
+## Postgres Replication
+
+1. PostgreSQL Replication Lag: When Should You Trust Bytes, LSNs, or Replay Time?
+2. Why Does PostgreSQL Replica Lag Grow While the Primary Is Idle?
+3. Read-After-Write on a PostgreSQL Replica: `remote_apply`, LSN Fencing, or Primary Reads?
+4. How to Recover from “Requested WAL Segment Has Already Been Removed” Without Guesswork
+5. PostgreSQL `pg_wal` Is Filling the Disk: Is the Cause a Slot, Archive, or Standby?
+6. Why Do PostgreSQL Writes Hang When a Synchronous Standby Goes Offline?
+7. `synchronous_commit = on` but the Standby Is Still Async: What Configuration Is Missing?
+8. Physical vs Logical PostgreSQL Replication: Which One Fits HA, Upgrades, and Selective Tables?
+9. “Canceling Statement Due to Conflict with Recovery”: How to Balance Replica Queries, Lag, and Bloat
+10. Logical Replication Stopped on a Duplicate Key: How to Find Sequence Drift and Divergent Writes
+11. PostgreSQL Logical Replication Does Not Copy DDL: In What Order Should You Deploy Schema Changes?
+12. “No Replica Identity” on UPDATE or DELETE: Primary Key, Unique Index, or `REPLICA IDENTITY FULL`?
+13. Why PostgreSQL Logical Replication Does Not Advance Sequences—and How to Prepare for Failover
+14. Logical Subscription Stuck in `initializing` or `data synchronization`: What Should You Inspect?
+15. Why Is a Logical Replication Slot’s `restart_lsn` Not Moving?
+16. Can Physical PostgreSQL Replication Span Major Versions? Planning an Upgrade Without Breaking the Standby
+17. PostgreSQL Standby Cannot Connect: Debugging `pg_hba.conf`, Replication Roles, TLS, and `primary_conninfo`
+18. Cascading PostgreSQL Replication: What Happens to Downstream Standbys After Failover?
+19. How to Remove a PostgreSQL Replica Without Leaving a WAL-Retaining Slot Behind
+20. PostgreSQL Replication Monitoring: What to Alert On in `pg_stat_replication`, `pg_stat_wal_receiver`, and `pg_replication_slots`
+
+## EdgeDB
+
+1. EdgeDB Is Now Gel: What Must Change in Your CLI, Packages, Schema Files, and `gel.toml`?
+2. Gel vs PostgreSQL: When Is EdgeDB’s Higher-Level Data Model Worth the Extra Layer?
+3. EdgeDB vs Prisma vs Hasura: Are You Choosing a Database, an ORM, or an API Layer?
+4. EdgeQL vs SQL: How Do Links, Shapes, and Cardinality Replace Joins and Result Mapping?
+5. How to Initialize EdgeDB/Gel with Docker Compose Without Running `project init` as Root
+6. EdgeDB Container Exits After Applying Migrations: How to Diagnose Signals, Health Checks, and Memory
+7. EdgeDB Schema and Migration History Disagree: How to Diagnose Drift Before Applying Changes
+8. EdgeDB 5 to Gel 6: When Can You Use CLI Upgrade, and When Is Dump-and-Restore Required?
+9. Gel Branches vs EdgeDB Databases: Which Kind of Branch Should Development and CI Use?
+10. Why Did an EdgeDB Access Policy Suddenly Hide Every Object?
+11. How to Pass Per-Request User Context to EdgeDB Access Policies Without Mutating a Shared Client
+12. How to Update a Nested Linked Object in EdgeDB Without Accidentally Replacing the Link
+13. “Modification of Computed Link Is Prohibited”: How Stored and Computed Links Differ in EdgeDB
+14. How to Filter for Either an Empty Link or a Matching Link in EdgeQL
+15. EdgeDB Backlinks Explained: How to Traverse Reverse Relationships Without Storing Both Directions
+16. Unique, Composite, or Expression Index: Which Should You Define in EdgeDB?
+17. EdgeQL Query Is Slow: How to Read `analyze`, Check Cardinality, and Verify Index Use
+18. Why Does the EdgeDB JavaScript Client Trigger “Can’t Resolve `fs`” in a Next.js Build?
+19. How to Configure EdgeDB/Gel TLS in Docker Without Shipping Certificates in Environment Variables
+20. Can EdgeDB Use PostGIS and Other PostgreSQL Extensions? What Changed in Gel 6
+
+## ESXi
+
+1. ESXi Datastore Is Full: How to Find Hidden Snapshots, Swap Files, ISOs, and Orphaned VMDKs
+2. Why Does ESXi Show More Provisioned Space Than Your VMs Actually Use?
+3. How to Fix “Virtual Machine Disks Consolidation Is Needed” Without Damaging the Snapshot Chain
+4. ESXi VM Won’t Power On: How to Troubleshoot “Failed to Lock the File”
+5. How to Find Which ESXi Host or Backup Proxy Owns a VMDK Lock
+6. How to Verify a Broken ESXi Snapshot Chain with `vmkfstools`
+7. ESXi Snapshot Manager Is Empty but Delta Files Remain: What Happened?
+8. How Much Free Datastore Space Does ESXi Need to Consolidate a Snapshot?
+9. ESXi Snapshots vs Backups: What Can Each One Actually Recover?
+10. How Long Should You Keep an ESXi Snapshot Before It Becomes a Risk?
+11. ESXi Datastore Disappeared After a Firmware Update: Driver, HCL, and LUN Checks
+12. Why a Brief Network Outage Can Take ESXi VMs Offline on NFS or iSCSI Storage
+13. ESXi Management Network Cannot Reach the Gateway: A vSwitch and VLAN Checklist
+14. ESXi VM Has No Network Connectivity: How to Trace the Path from vNIC to Physical Switch
+15. ESXi Purple Screen of Death: What Evidence to Capture Before Rebooting
+16. How to Upgrade a Standalone ESXi Host When Every VM Is Stored Locally
+17. How to Move an ESXi VM Between Isolated Hosts Without vMotion
+18. ESXi Boot Device Is Failing: How to Migrate from USB or SD to Persistent Storage
+19. How to Build an ESXi VM and Datastore Inventory Report with PowerCLI
+20. ESXi Host Is Disconnected from vCenter but VMs Still Run: What Should You Check First?
+
+## OTel
+
+1. OpenTelemetry Traces Are Missing: How to Test Every Hop from SDK to Backend
+2. OTLP Port 4317 vs 4318: When to Use gRPC, HTTP, and `/v1/traces`
+3. Why Does OpenTelemetry Show `unknown_service`? Fixing `service.name` and Resource Attributes
+4. OpenTelemetry Collector Returns “Unimplemented MetricsService”: Are You Sending the Wrong Signal to Jaeger?
+5. How to Troubleshoot OpenTelemetry “context deadline exceeded” and “connection closed” Export Errors
+6. OpenTelemetry Collector Says “Sending Queue Is Full”: How to Find the Real Bottleneck
+7. How to Reduce OpenTelemetry Data Loss During Backend Outages with Queues and Retries
+8. OpenTelemetry Collector Keeps Getting OOMKilled: Tuning the Memory Limiter, Batch Processor, and Queues
+9. Does OpenTelemetry Collector Processor Order Matter? A Safe Pipeline Ordering Guide
+10. OpenTelemetry Agent, Sidecar, DaemonSet, or Gateway: Which Deployment Pattern Fits?
+11. Head Sampling vs Tail Sampling in OpenTelemetry: Which Traces Will You Lose?
+12. How to Keep Error and High-Latency Traces with OpenTelemetry Tail Sampling
+13. Why Tail Sampling Breaks Across Multiple OpenTelemetry Collectors—and How Trace-Aware Routing Fixes It
+14. OpenTelemetry Trace Context Breaks Across Async Jobs, Queues, or Webhooks: How to Repair It
+15. OpenTelemetry Collector Starts Successfully but Exports Nothing: Are Your Components Wired into a Pipeline?
+16. OpenTelemetry Logs Have No Trace ID or Span ID: How to Restore Log-Trace Correlation
+17. Auto-Instrumentation Plus Manual Spans: How to Avoid Duplicate or Split OpenTelemetry Traces
+18. How to Fix OpenTelemetry TLS Errors with Self-Signed Collector Certificates
+19. How High-Cardinality OpenTelemetry Attributes Inflate Cost and Collector Memory
+20. Which OpenTelemetry Collector Metrics Reveal Backpressure, Dropped Data, and Exporter Failures?
+
+## Volume Snapshots
+
+1. Kubernetes `VolumeSnapshot`, `VolumeSnapshotContent`, and `VolumeSnapshotClass`: What Does Each Object Do?
+2. Why Does Kubernetes Say “No Matches for Kind VolumeSnapshot”? Installing the CRDs, Controller, and CSI Sidecar
+3. Kubernetes VolumeSnapshot Stuck at `readyToUse: false`: A Layer-by-Layer Troubleshooting Guide
+4. CSI Driver Does Not Support VolumeSnapshots: What Backup Options Still Work?
+5. Why Is a PVC Restored from a Kubernetes VolumeSnapshot Stuck in Pending?
+6. PVC Restored from a VolumeSnapshot Is Empty: Check the StorageClass and CSI Driver
+7. How to Restore a Kubernetes PVC from a VolumeSnapshot Without Losing the Original
+8. How to Restore One StatefulSet Replica from a VolumeSnapshot Without Replacing the Whole Set
+9. Can You Snapshot a PVC While It Is Mounted? Crash Consistency vs Application Consistency
+10. Are Kubernetes VolumeSnapshots Backups? Understanding Storage-System and Cluster Failure Boundaries
+11. `Retain` vs `Delete`: What Happens When You Remove a VolumeSnapshot?
+12. VolumeSnapshot Stuck in Terminating: How to Diagnose Finalizers Before Removing Them
+13. Why Does Deleting a Kubernetes VolumeSnapshot Not Free Storage?
+14. How Kubernetes Chooses a Default VolumeSnapshotClass—and Why Multiple Defaults Fail
+15. How to Schedule Kubernetes VolumeSnapshots and Keep Only the Latest N Copies
+16. How to Restore a VolumeSnapshot into a Different Namespace with `dataSourceRef` and `ReferenceGrant`
+17. Can You Move a Kubernetes VolumeSnapshot to Another Cluster? Static Content and Provider Limits
+18. Snapshot Restore Size Does Not Match Used Space: What `restoreSize` Really Means
+19. PVC Clone vs VolumeSnapshot vs File-Level Backup: Which Kubernetes Data Copy Method Fits?
+20. How to Snapshot Multiple PVCs Consistently: Quiescing Workloads vs CSI Volume Group Snapshots
+
+## OIDC
+
+1. ID Token vs Access Token in OIDC: Which Token Belongs in Your API Authorization Header?
+2. OAuth 2.0 vs OpenID Connect: Why an Access Token Alone Is Not a Login
+3. OIDC State vs Nonce vs PKCE: Which Attack Does Each One Prevent?
+4. Why Your OIDC Callback Fails Behind a Reverse Proxy: Redirect URIs, Forwarded Headers, and Cookie Paths
+5. How to Fix an OIDC “Correlation Failed” Error Caused by SameSite and Secure Cookies
+6. How to Validate an OIDC ID Token Correctly: Signature, Issuer, Audience, Nonce, and Time Claims
+7. Unknown `kid` After an Identity-Provider Key Rotation: How to Refresh and Cache JWKS Safely
+8. Why an OIDC Access Token May Be Opaque—and When to Use Introspection Instead of JWT Parsing
+9. Why `offline_access` Does Not Always Return an OIDC Refresh Token
+10. OIDC Refresh Token Returns `invalid_grant`: Rotation, Reuse, Expiry, and Revocation Checks
+11. Why OIDC Group or Role Claims Are Missing—and Where to Retrieve Authorization Data
+12. OIDC Authorization Code Flow for SPAs: Where PKCE Helps and Where It Does Not
+13. Should a Backend Trust Claims from the ID Token or Call the OIDC UserInfo Endpoint?
+14. How to Implement OIDC Logout When the App Session and Identity-Provider Session Disagree
+15. Why an OIDC Token Is “Not Yet Valid” or Already Expired: Clock Skew and Time-Sync Troubleshooting
+16. How to Validate Tokens from Multiple OIDC Issuers Without Creating an Issuer-Confusion Bug
+17. Why Your OIDC Redirect URI Matches Visually but Is Still Rejected
+18. OIDC `aud` vs `azp`: How to Validate Tokens Issued to Multiple Clients
+19. Where Should a Browser App Store OIDC Tokens? Cookies, Memory, and the BFF Pattern Compared
+20. How to Debug OIDC Discovery Failures: Issuer URLs, `/.well-known/openid-configuration`, TLS, and DNS
+
+## Cloud Controller
+
+1. What Does Kubernetes cloud-controller-manager Actually Do—and What Still Belongs to kube-controller-manager?
+2. Do You Need a Cloud Controller Manager on Bare-Metal Kubernetes?
+3. `--cloud-provider=external` vs a Provider Name: What Kubernetes Accepts Now
+4. Why Nodes Stay Tainted `node.cloudprovider.kubernetes.io/uninitialized` After Bootstrap
+5. ProviderID Is Empty on Kubernetes Nodes: How to Trace Cloud Node Initialization
+6. How to Break the Cloud Controller Manager Bootstrap Deadlock When Its Own Pods Cannot Schedule
+7. Why a `LoadBalancer` Service Stays Pending Even Though cloud-controller-manager Is Running
+8. Cloud Controller Manager vs CSI Driver vs Load Balancer Controller: Which Component Owns What?
+9. Why cloud-controller-manager Sets the Wrong `InternalIP` or `ExternalIP` on a Node
+10. How to Troubleshoot Cloud Controller Manager IAM and API Permission Failures
+11. What Happens When cloud-controller-manager Goes Down? New Nodes, Routes, and Load Balancers Explained
+12. Cloud Controller Manager as a Deployment, DaemonSet, or Static Pod: Which Topology Fits?
+13. How Leader Election Prevents Multiple Cloud Controller Manager Replicas from Duplicating Resources
+14. Why Cloud Routes Are Not Created: `--configure-cloud-routes`, Pod CIDRs, and Provider Support
+15. Can cloud-controller-manager Delete a Kubernetes Node? Understanding Cloud Node Lifecycle Checks
+16. How to Migrate from an In-Tree Cloud Provider to an External cloud-controller-manager
+17. Why Cluster Autoscaler Reports a Missing or Invalid ProviderID
+18. How to Choose a cloud-controller-manager Version That Matches Your Kubernetes Cluster
+19. How to Monitor cloud-controller-manager Health: Leader Leases, Reconcile Errors, and API Throttling
+20. Why Load Balancer Health Checks Fail After CCM Provisioning—and Which Service Annotations to Inspect
+
+## Entra ID
+
+1. Microsoft Entra App Registration vs Enterprise Application vs Service Principal: What Is the Difference?
+2. Client ID, Tenant ID, Object ID, and Principal ID in Entra ID: Which One Does Each API Need?
+3. Delegated vs Application Permissions in Entra ID: Which OAuth Flow Uses Each?
+4. Why “Grant Admin Consent” Does Not Limit an Entra App to One User
+5. Entra Admin Consent vs User Assignment: How to Control Permissions and Sign-In Separately
+6. How to Fix AADSTS50011 When the Entra Redirect URI Looks Correct
+7. How to Fix AADSTS700016: Wrong Tenant, Client ID, or Missing Service Principal?
+8. How to Fix AADSTS7000215 Without Confusing the Client Secret Value and Secret ID
+9. “Invalid Audience” in an Entra Access Token: How to Request a Token for the Right API
+10. Why Entra Group Claims Disappear for Users in Many Groups—and How to Handle Overage
+11. Entra App Roles vs Group Claims: Which Model Scales Better for Application Authorization?
+12. Why the `roles` Claim Is Missing from an Entra Access Token
+13. What Does the `.default` Scope Mean in Microsoft Entra ID?
+14. Single-Tenant vs Multi-Tenant Entra Apps: How `common`, `organizations`, and Tenant Endpoints Change Validation
+15. Client Secret vs Certificate vs Managed Identity vs Workload Federation: Which Entra Credential Model Fits?
+16. Why a New Entra Client Secret Still Fails After Rotation: Deployment, Caching, and Encoding Checks
+17. Why Standard Conditional Access Does Not Protect Client-Credential Sign-Ins—and What Workload Identity Policies Cover
+18. Why an Entra App Registration Does Not Appear Under Enterprise Applications
+19. Entra ID B2B Guest vs Member: What Changes for Access, Claims, and Lifecycle?
+20. How to Trace an Entra Sign-In Failure with Correlation IDs, Sign-In Logs, and AADSTS Codes
+
+## Image Signing
+
+1. Why You Should Sign Container Images by Digest Instead of by Tag
+2. Cosign Keyless Signing Explained: What “Keyless” Means and Which Identity Gets Recorded
+3. How to Choose Safe `--certificate-identity` and `--certificate-oidc-issuer` Values for Cosign Verification
+4. Where Does Cosign Store Container Image Signatures? OCI Referrers and Separate Repositories Explained
+5. Why a Cosign Signature Disappears After Mirroring an Image to Another Registry
+6. How to Copy Container Images Without Losing Cosign Signatures, SBOMs, or Attestations
+7. How to Sign and Verify Multi-Architecture Container Images with Cosign
+8. How Rekor Fits into Cosign Verification—and What Changes During a Transparency-Log Outage
+9. Cosign Signature vs Attestation vs SBOM: What Does Each One Prove?
+10. Why Image Signing Does Not Prove the Image Is Vulnerability-Free
+11. How to Verify Cosign Signatures from a Private Registry with Custom CAs and Credentials
+12. How to Verify Cosign Signatures in an Air-Gapped Environment with Sigstore Bundles
+13. What Happens to Keyless Cosign Signatures After the Fulcio Certificate Expires?
+14. How to Rotate a Cosign Signing Key Without Breaking Verification of Older Images
+15. Cosign vs Notation: Which Container Image Signing Workflow Fits Your Registry and Policy Engine?
+16. Why Kyverno `verifyImages` Blocks Signed Images: Digest Mutation, Credentials, and Identity Checks
+17. How to Roll Out Image-Signature Enforcement in Kubernetes Without Blocking System and Sidecar Images
+18. Should a Registry Reject Unsigned Pushes or Should Kubernetes Verify Images at Admission?
+19. How to Secure Keyless Cosign Signing in GitHub Actions Against Untrusted Pull Requests
+20. How to Verify an Image Has More Than One Valid Signature with Cosign
