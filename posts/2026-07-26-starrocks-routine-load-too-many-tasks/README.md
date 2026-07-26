@@ -25,10 +25,10 @@ min(
 )
 ```
 
-Inspect jobs across databases:
+Inspect active jobs in every database, repeating this statement for each database that owns Routine Load jobs:
 
 ```sql
-SHOW ALL ROUTINE LOAD;
+SHOW ROUTINE LOAD FROM ingestion;
 ```
 
 For a specific job:
@@ -117,8 +117,8 @@ The current documented default is 4 GiB. Older FAQ advice to increase batch size
 
 Use the coordinator BE's `be.INFO` log to determine which boundary ends consumption. A `consumer group done` record includes `left_time` and `left_bytes`:
 
-- `left_bytes < 0` indicates the byte limit was reached before consume time expired. A larger byte cap might allow a larger batch, if memory and transaction size remain safe.
-- `left_bytes >= 0` indicates time ended first. A longer consume duration may reduce task QPS.
+- `left_bytes <= 0` indicates the byte limit was reached. A larger byte cap might allow a larger batch, if memory and transaction size remain safe.
+- `left_bytes > 0` indicates the byte limit was not reached. Check `left_time` and `eos`: `left_time <= 0` means consume time ended first, while `eos: 1` can mean the consumer queue ended. A longer consume duration may reduce task QPS when time is the boundary.
 
 Larger batches reduce scheduling and tablet-version pressure, but increase end-to-end latency, memory use, transaction size, and recovery work after failure. Change one dimension at a time.
 
