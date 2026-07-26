@@ -8,7 +8,7 @@ Description: Diagnose slow StarRocks Iceberg queries by separating metadata plan
 
 ---
 
-An Iceberg query can be slow before StarRocks reads a single data row. The frontend must resolve a snapshot, read metadata and manifests, enumerate candidate files, and build a plan. Only then do the backends or compute nodes scan data and apply delete files.
+An Iceberg query can be slow before StarRocks reads a single data row. The frontend must resolve a snapshot, retrieve metadata, enumerate candidate files, and build a plan. Depending on `plan_mode`, manifest parsing runs locally or is distributed across backends or compute nodes. Only then do those nodes scan data and apply delete files.
 
 Treat "slow Iceberg" as four separate problems:
 
@@ -24,6 +24,8 @@ Changing scan concurrency cannot repair a five-second planning phase. Increasing
 Run the same query twice and record both client-visible latency and the StarRocks query ID:
 
 ```sql
+SET enable_profile = true;
+
 SELECT /* iceberg_baseline */
        region, sum(net_amount)
 FROM lakehouse.sales.orders
@@ -61,7 +63,7 @@ SHOW CREATE CATALOG lakehouse;
 SHOW VARIABLES LIKE 'plan_mode';
 ```
 
-StarRocks supports local, distributed, and adaptive Iceberg metadata planning. The adaptive mode is intended to choose between inexpensive local planning for small metadata sets and distributed parsing for large numbers of manifests. Pin `plan_mode` only after a profile demonstrates that the automatic choice is wrong for a repeatable workload.
+StarRocks supports `local`, `distributed`, and `auto` Iceberg metadata planning. The default `auto` mode adaptively chooses between inexpensive local planning for small metadata sets and distributed parsing for large numbers of manifests. Pin `plan_mode` only after a profile demonstrates that the automatic choice is wrong for a repeatable workload.
 
 The current documentation also describes a two-level memory and disk cache. Disk caching is controlled by FE settings such as `enable_iceberg_metadata_disk_cache` and is disabled by default. Before enabling it, verify that the configured cache path exists on every relevant FE, has enough fast storage, and is monitored for capacity and latency.
 
@@ -75,8 +77,8 @@ Iceberg hidden partitioning does not remove the need for filter expressions that
 
 ```sql
 -- Easier to prune.
-WHERE order_ts >= TIMESTAMP '2026-07-01 00:00:00'
-  AND order_ts <  TIMESTAMP '2026-07-08 00:00:00'
+WHERE order_ts >= DATETIME '2026-07-01 00:00:00'
+  AND order_ts <  DATETIME '2026-07-08 00:00:00'
 ```
 
 Avoid transforming the filtered column unless the plan proves the transformation is pushed down:
@@ -110,7 +112,7 @@ WITH ASYNC MODE;
 
 Check the exact statistics command supported by your StarRocks version before automating it. External-table sampling is supported from 3.4. Histogram collection for external tables is currently supported only for Hive, not Iceberg.
 
-Starting in 3.4, StarRocks can also obtain Iceberg statistics from external metadata when the catalog property `enable_get_stats_from_external_metadata` and its corresponding session control are enabled. The default is `false`. Test the resulting estimates with `EXPLAIN VERBOSE`; metadata statistics are useful only when the writer maintains meaningful file-level metrics.
+Starting in 3.4, StarRocks can also obtain Iceberg statistics from external metadata when the catalog property `enable_get_stats_from_external_metadata` is enabled. The property defaults to `false` in the 3.4 and 3.5 release lines and in 4.0.0, and to `true` from 4.0.1 onward in the 4.x line. The `enable_iceberg_column_statistics` session variable remains `false` by default and controls whether StarRocks obtains column statistics; when it is disabled, StarRocks obtains only row counts. Test the resulting estimates with `EXPLAIN VERBOSE`; metadata statistics are useful only when the writer maintains meaningful file-level metrics.
 
 Collect statistics for columns that affect joins, filters, and grouping. Collecting every column on a very wide lake table creates its own metadata and maintenance cost.
 
@@ -118,19 +120,19 @@ Collect statistics for columns that affect joins, filters, and grouping. Collect
 
 A well-pruned query can still open thousands of tiny objects. In the Query Profile, look for many files and scan tasks relative to bytes read, high remote I/O latency, and significant delete-file processing.
 
-Compaction changes table state, so coordinate it with the Iceberg table owner. Current StarRocks versions expose Iceberg maintenance procedures, including:
+Compaction changes table state, so coordinate it with the Iceberg table owner. StarRocks 4.0 and later expose the `rewrite_data_files` Iceberg maintenance procedure:
 
 ```sql
 ALTER TABLE lakehouse.sales.orders
 EXECUTE rewrite_data_files(
   "min_file_size_bytes" = 134217728
 )
-WHERE order_date = '2026-07-01';
+WHERE order_date = DATE '2026-07-01';
 ```
 
 This example targets files smaller than 128 MiB in one partition. Choose thresholds from observed file sizes and writer throughput, not from the example alone. Compact a bounded partition first and measure write amplification and query improvement.
 
-Excessive small manifests can be addressed independently:
+Starting in StarRocks 4.1, excessive small manifests can be addressed independently:
 
 ```sql
 ALTER TABLE lakehouse.sales.orders
@@ -156,7 +158,7 @@ Re-run the identical query after every change. A successful fix should reduce a 
 
 - Iceberg external catalogs are supported from StarRocks 2.4, but cache, statistics, and maintenance capabilities were added over later releases.
 - Manifest-cache memory ratio controls documented for current releases begin in 3.5.6; the table-cache refresh interval begins in 3.5.7.
-- External-metadata statistics begin in 3.4 and are disabled by default.
+- External-metadata statistics begin in 3.4. The catalog-level switch defaults to enabled from 4.0.1 onward in the 4.x line, while Iceberg column statistics remain disabled by default at the session level.
 - Cache invalidation and background refresh are catalog-dependent. Validate freshness with the exact metastore, catalog, and writer used in production.
 - Data and metadata caching can make a benchmark warm. Always report whether a measurement was cold or warm.
 - Maintenance procedures mutate Iceberg metadata and files. Test permissions, rollback expectations, and interoperability with other engines first.
