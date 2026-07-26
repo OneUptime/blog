@@ -100,11 +100,11 @@ spec:
         name: report-request-dead-letter
 ```
 
-The Trigger delivery covers getting the event accepted by JobSink. It does **not** keep the HTTP request open until the resulting Job finishes. A Job that fails thirty minutes later will not cause the Trigger to retry or send the original event to its dead letter sink.
+Support for these delivery fields depends on the configured Broker class and, for an `MTChannelBasedBroker`, its backing Channel implementation. When supported, the Trigger delivery covers getting the event accepted by JobSink. It does **not** keep the HTTP request open until the resulting Job finishes. A Job that fails thirty minutes later will not cause the Trigger to retry or send the original event to its dead letter sink.
 
 There are therefore two separate retry systems:
 
-- Knative `spec.delivery.retry` handles HTTP delivery to JobSink;
+- Knative Trigger `spec.delivery.retry` handles HTTP delivery to JobSink when the Broker implementation supports it;
 - Kubernetes Job `backoffLimit` handles failed Job Pods.
 
 Alert and recovery procedures must cover both.

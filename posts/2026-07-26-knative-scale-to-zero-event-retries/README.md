@@ -100,7 +100,7 @@ Reduce work on the critical startup path:
 - use small images and immutable digests;
 - ensure nodes can pull the image without cold registry authentication;
 - avoid long blocking initialization that can be lazy or cached;
-- request enough CPU and memory to avoid startup throttling;
+- set realistic CPU and memory requests, and avoid CPU limits that throttle startup;
 - remove unnecessary init containers;
 - keep DNS, Secret, volume, and sidecar initialization observable.
 
@@ -190,7 +190,7 @@ spec:
 
 Backoff should give activation time to finish instead of sending several attempts into the same cold interval. A dead letter sink prevents an unusually slow or broken Revision from holding the event indefinitely.
 
-Do not use `retry: 100` as a warming mechanism. It amplifies load, increases duplicates, blocks ordered partitions, and delays operator visibility.
+Do not use `retry: 100` as a warming mechanism. It amplifies load, increases duplicates, can block later events on ordered partitions, and delays operator visibility.
 
 ## Acknowledge Durably and Idempotently
 

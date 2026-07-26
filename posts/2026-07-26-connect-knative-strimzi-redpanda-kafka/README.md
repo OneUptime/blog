@@ -49,20 +49,20 @@ For Redpanda, read the Kafka API bootstrap address from the Redpanda custom reso
 
 A Kafka client contacts the bootstrap server and then connects to the broker addresses returned in metadata. Reaching only the bootstrap Service is insufficient.
 
-Run a temporary Kafka client Pod under the same NetworkPolicies and service-mesh policy as the Knative data plane. With a mounted client configuration:
+Run a temporary Kafka client Pod under the same NetworkPolicies and service-mesh policy as the Knative data plane. With a mounted kcat/librdkafka client configuration:
 
 ```bash
 kcat -F /etc/kafka/client.properties -b "$BOOTSTRAP_SERVERS" -L
 ```
 
-Verify that every broker hostname in the output:
+Verify that every broker address in the output:
 
-- resolves from the Pod;
+- resolves from the Pod when it is a hostname;
 - routes to the correct cluster and port;
 - is allowed by NetworkPolicy and firewalls;
-- appears in the broker certificate's subject alternative names.
+- is covered as a DNS name or IP address by the broker certificate's subject alternative names.
 
-Timeouts after a successful bootstrap connection almost always point to bad advertised listeners or blocked per-broker addresses.
+Timeouts after a successful bootstrap connection often point to bad advertised listeners or blocked per-broker addresses.
 
 ## Connect a KafkaSource with TLS and SCRAM
 
@@ -173,7 +173,7 @@ spec:
     namespace: knative-eventing
 ```
 
-Supported native Broker SASL mechanisms include `PLAIN`, `SCRAM-SHA-256`, and `SCRAM-SHA-512`. Use `SASL_SSL` for authenticated encrypted traffic. `SASL_PLAINTEXT` exposes the Kafka protocol and credentials to the network and is rarely appropriate.
+Supported native Broker SASL mechanisms include `PLAIN`, `SCRAM-SHA-256`, and `SCRAM-SHA-512`. Use `SASL_SSL` for authenticated encrypted traffic. `SASL_PLAINTEXT` leaves Kafka traffic unencrypted and, when used with `PLAIN`, exposes the password on the network, so it is rarely appropriate.
 
 If each namespace needs its own data-plane and credential boundary, evaluate the `KafkaNamespaced` Broker class. Its ConfigMap must be in the Broker namespace, and it costs additional deployments and resources.
 

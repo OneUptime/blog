@@ -51,7 +51,7 @@ data:
 
 The replication factor cannot exceed the number of Kafka brokers. If you attach an externally managed topic with `kafka.eventing.knative.dev/external.topic`, Knative no longer owns its lifecycle or validates all of its operational policy; your Kafka team must manage it.
 
-An `MTChannelBasedBroker` inherits storage behavior from its Channel. A KafkaChannel can provide Kafka durability. An InMemoryChannel loses its buffered state when its dispatcher restarts and must not be used in production.
+An `MTChannelBasedBroker` inherits storage behavior from its Channel. A KafkaChannel can provide Kafka durability. An InMemoryChannel is a best-effort Channel with no persistent backing store and must not be used in production.
 
 A dead letter sink and retry policy improve failure handling, but they do not replace durable transport or adequate Kafka retention.
 

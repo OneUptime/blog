@@ -12,7 +12,7 @@ Kafka ordering is per partition, not per topic and not global. Knative can prese
 
 There are two different Knative Kafka paths:
 
-- `KafkaSource` reads an existing topic and preserves each source partition's order by waiting for a successful sink response before delivering the next record from that partition.
+- `KafkaSource` reads an existing topic and, with its default `spec.ordering: ordered` setting, preserves each source partition's order by waiting for a successful sink response before delivering the next record from that partition.
 - the native Kafka Broker defaults each Trigger to `unordered`; add an annotation to request a per-partition blocking consumer.
 
 Configure the path you actually use.
@@ -53,11 +53,11 @@ In structured JSON content mode, `partitionkey` is a top-level CloudEvent extens
 
 The `partitionkey` value must be a non-empty string. It is routing metadata, so preserve it through any CloudEvent transform that should retain the same ordering group.
 
-If Kafka clients publish to a source topic directly, set the Kafka record key consistently. A `KafkaSource` keeps the existing partition assignment; it does not repartition records based on the CloudEvent it later creates.
+If Kafka clients publish to a source topic directly, set the Kafka record key consistently and use compatible partitioning behavior across producers. A `KafkaSource` keeps the existing partition assignment; it does not repartition records based on the CloudEvent it later creates.
 
 ## Enable Ordered Kafka Broker Delivery
 
-Set the native Kafka Broker class and annotate each Trigger that requires ordered delivery:
+Make sure the Broker uses the native `Kafka` or `KafkaNamespaced` class, and annotate each Trigger that requires ordered delivery:
 
 ```yaml
 apiVersion: eventing.knative.dev/v1
@@ -69,9 +69,9 @@ metadata:
     kafka.eventing.knative.dev/delivery.order: ordered
 spec:
   broker: orders
-  filter:
-    attributes:
-      type: com.example.order.status-changed.v1
+  filters:
+    - exact:
+        type: com.example.order.status-changed.v1
   subscriber:
     ref:
       apiVersion: serving.knative.dev/v1
@@ -129,7 +129,7 @@ For each hop, ask:
 4. when does the subscriber acknowledge?
 5. can retries, dead lettering, or asynchronous work create a gap?
 
-A KafkaSource already serializes delivery within each input partition. If its sink is a Kafka Broker, include or derive a stable `partitionkey` before Broker ingress if downstream Trigger ordering matters. The KafkaSource exposes the original Kafka key as a CloudEvent `key` extension, but `key` and the standardized `partitionkey` extension are distinct attributes; transform intentionally rather than assuming one is substituted for the other.
+A KafkaSource using its default `spec.ordering: ordered` setting serializes delivery within each input partition. If its sink is a Kafka Broker, include or derive a stable `partitionkey` before Broker ingress if downstream Trigger ordering matters. The KafkaSource exposes the original Kafka key as a CloudEvent `key` extension, but `key` and the standardized `partitionkey` extension are distinct attributes; transform intentionally rather than assuming one is substituted for the other.
 
 Each Trigger has its own consumer path. Ordering on one Trigger does not coordinate side effects across two different subscribers.
 
