@@ -8,7 +8,7 @@ Description: Diagnose a paused StarRocks Routine Load job without skipping Kafka
 
 ---
 
-`PAUSED` is a recoverable Routine Load state. StarRocks stopped scheduling consumption because a task crossed an error threshold or encountered a source problem, but the job definition and committed progress still exist.
+`PAUSED` is a recoverable Routine Load state. For a job that StarRocks paused automatically, it stopped scheduling consumption because a task crossed an error threshold or encountered a source problem, but the job definition and committed progress still exist.
 
 Do not stop and recreate the job immediately. `STOPPED` cannot be resumed, and a new job with the wrong starting offset can skip or replay data.
 
@@ -51,15 +51,15 @@ Broker: Offset out of range
 Compare each partition's `Progress` offset with Kafka's current earliest and latest offsets. For example:
 
 ```bash
-kafka-run-class.sh kafka.tools.GetOffsetShell \
-  --broker-list kafka-0.example.net:9092,kafka-1.example.net:9092 \
+bin/kafka-get-offsets.sh \
+  --bootstrap-server kafka-0.example.net:9092,kafka-1.example.net:9092 \
   --topic orders \
-  --time -2
+  --time earliest
 
-kafka-run-class.sh kafka.tools.GetOffsetShell \
-  --broker-list kafka-0.example.net:9092,kafka-1.example.net:9092 \
+bin/kafka-get-offsets.sh \
+  --bootstrap-server kafka-0.example.net:9092,kafka-1.example.net:9092 \
   --topic orders \
-  --time -1
+  --time latest
 ```
 
 Use the Kafka tooling that matches your distribution and security settings. If StarRocks progress is older than Kafka's earliest retained offset, the missing messages have already been deleted from Kafka. Resuming cannot reconstruct them.
@@ -91,17 +91,16 @@ Inspect the rejected row and identify the exact mapping failure:
 
 Do not immediately increase both thresholds. The last task may already have committed its valid rows while filtering bad rows, depending on which threshold was crossed.
 
-If business policy permits a small rejected fraction, change one deliberate threshold while the job remains paused:
+If business policy permits a bounded number of rejected rows, increase the alterable row-count threshold while the job remains paused:
 
 ```sql
 ALTER ROUTINE LOAD FOR ingestion.kafka_orders
 PROPERTIES (
-  'max_error_number' = '10',
-  'max_filter_ratio' = '0.001'
+  'max_error_number' = '10'
 );
 ```
 
-When both are set, the job pauses when either boundary is reached. Send rejected events to an upstream dead-letter path if possible; Routine Load filtering alone is not a complete quarantine workflow.
+Current `ALTER ROUTINE LOAD` does not support changing `max_filter_ratio`; that ratio must be chosen when the job is created. If it was configured at creation time, the job pauses when either the row-count or ratio boundary is reached. Send rejected events to an upstream dead-letter path if possible; Routine Load filtering alone is not a complete quarantine workflow.
 
 ### JSON parsing or mapping is wrong
 
@@ -119,12 +118,12 @@ For CSV, confirm the actual delimiter and representation of null. StarRocks uses
 
 ### Connectivity, authentication, or DNS failed
 
-Kafka clients first receive broker addresses from cluster metadata. Every BE that can coordinate a Routine Load task must resolve and reach those advertised broker addresses and possess the required TLS or SASL material.
+Kafka clients first receive broker addresses from cluster metadata. Every BE that can coordinate a Routine Load task must resolve and reach those advertised broker addresses and have access to the required TLS or SASL material.
 
-Check live tasks and coordinators:
+Check task records and their coordinator BE IDs:
 
 ```sql
-SHOW ROUTINE LOAD TASK WHERE JobName = 'kafka_orders';
+SHOW ROUTINE LOAD TASK FROM ingestion WHERE JobName = 'kafka_orders';
 ```
 
 Then test DNS, port reachability, certificate validity, and Kafka ACLs from the relevant StarRocks nodes. A successful connection from an FE or an operator laptop does not prove a coordinator BE can connect.
@@ -141,7 +140,7 @@ The state temporarily becomes `NEED_SCHEDULE`, then should become `RUNNING`. Wat
 
 ```sql
 SHOW ROUTINE LOAD FOR ingestion.kafka_orders\G
-SHOW ROUTINE LOAD TASK WHERE JobName = 'kafka_orders';
+SHOW ROUTINE LOAD TASK FROM ingestion WHERE JobName = 'kafka_orders';
 ```
 
 Verify that:
