@@ -1,4 +1,4 @@
-# Validation Summary: Why Is StarRocks Scanning Every Partition? A Partition-Pruning Troubleshooting Guide
+# Validation Summary: Why Is StarRocks Scanning Every Partition? A Troubleshooting Guide
 
 ## Status
 

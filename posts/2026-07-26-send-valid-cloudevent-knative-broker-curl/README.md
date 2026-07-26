@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Knative Eventing, CloudEvents, Kubernetes, curl, Broker, Troubleshooting
+Tags: Knative Eventing, CloudEvent, Kubernetes, curl, Broker, Troubleshooting
 
 Description: Build, send, and verify valid binary-mode and structured-mode CloudEvents against a Knative Broker without confusing ingress acceptance with subscriber completion.
 

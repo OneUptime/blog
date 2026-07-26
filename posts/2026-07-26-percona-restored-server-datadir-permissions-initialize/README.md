@@ -1,4 +1,4 @@
-# Why Won’t a Restored Percona Server Start? Fixing Datadir Permissions and `--initialize`
+# Restored Percona Server Won’t Start? Fix Datadir Permissions
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

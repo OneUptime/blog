@@ -1,8 +1,8 @@
-# Knative Eventing Broker vs Channel: Which Production Routing Model Should You Choose?
+# Knative Broker vs Channel: Which Production Routing Model Fits?
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Knative Eventing, Kubernetes, Broker, Channel, CloudEvents, Event Routing
+Tags: Knative Eventing, Kubernetes, Broker, Channel, CloudEvent, Event Routing
 
 Description: Choose between Knative Broker and Channel APIs by comparing routing intent, topology, filtering, delivery, and production backing implementations.
 

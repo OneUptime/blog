@@ -1,8 +1,8 @@
-# Knative Broker Is Not Ready: How to Diagnose Configuration, Channel, and Data-Plane Failures
+# Knative Broker Not Ready: Diagnose Channel and Data-Plane Failures
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Knative Eventing, Kubernetes, Broker, Troubleshooting, CloudEvents, Kafka
+Tags: Knative Eventing, Kubernetes, Broker, Troubleshooting, CloudEvent, Kafka
 
 Description: Diagnose a Knative Broker that is not Ready by following status conditions through class configuration, backing resources, and data-plane health.
 

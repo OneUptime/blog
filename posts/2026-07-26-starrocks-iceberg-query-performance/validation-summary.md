@@ -1,4 +1,4 @@
-# Validation Summary: Why Are StarRocks Iceberg Queries Slow? Metadata Cache, Statistics, and File-Pruning Fixes
+# Validation Summary: Slow StarRocks Iceberg Queries: Metadata and File-Pruning Fixes
 
 ## Status
 validated

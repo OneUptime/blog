@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Knative Eventing, CloudEvents, Broker, Trigger, Fan-Out, Reliability
+Tags: Knative Eventing, CloudEvent, Broker, Trigger, Fan-Out, Reliability
 
 Description: Fan out one CloudEvent through independent Knative Triggers while containing subscriber failures, retries, duplicates, and reply-event loops.
 

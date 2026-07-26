@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Knative Eventing, Kubernetes, Namespaces, Broker, Trigger, RBAC, NetworkPolicy
+Tags: Knative Eventing, Kubernetes, Namespace, Broker, Trigger, RBAC, NetworkPolicy
 
 Description: Route Knative events to cross-namespace sinks and distinguish that stable pattern from alpha cross-namespace Broker and Channel subscriptions.
 

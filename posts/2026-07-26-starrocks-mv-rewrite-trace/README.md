@@ -1,4 +1,4 @@
-# Why Isn’t StarRocks Using My Materialized View? Diagnose Query Rewrite with TRACE
+# Why Isn’t StarRocks Using My Materialized View? TRACE Query Rewrite
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

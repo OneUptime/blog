@@ -1,4 +1,4 @@
-# Validation Summary: StarRocks Routine Load Reports “TOO MANY TASKS”: How to Tune Concurrency and Batch Size
+# Validation Summary: StarRocks Routine Load Has TOO MANY TASKS: Tune Concurrency
 
 ## Status
 

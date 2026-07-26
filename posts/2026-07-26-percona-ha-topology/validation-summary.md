@@ -1,4 +1,4 @@
-# Validation Summary: Percona Async Replication, Group Replication, or XtraDB Cluster: Which HA Topology Fits?
+# Validation Summary: Percona Replication or XtraDB Cluster: Which HA Topology Fits?
 
 ## Status
 validated

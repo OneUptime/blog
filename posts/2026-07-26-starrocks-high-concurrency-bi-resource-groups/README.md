@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: StarRocks, Resource Groups, Business Intelligence, Query Concurrency, Query Queue, Performance
+Tags: StarRocks, Resource Group, Business Intelligence, Query Concurrency, Query Queue, Performance
 
 Description: Isolate dashboard traffic in StarRocks, route it reliably, control admission, and tune CPU and memory from measured latency.
 

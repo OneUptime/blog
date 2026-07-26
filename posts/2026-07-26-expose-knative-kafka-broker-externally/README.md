@@ -1,8 +1,8 @@
-# How to Expose a Knative Kafka Broker Outside the Cluster Without Breaking CloudEvents
+# Expose a Knative Kafka Broker Without Breaking CloudEvents
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Knative Eventing, Kafka Broker, CloudEvents, Kubernetes Gateway API, TLS, Security
+Tags: Knative Eventing, Kafka Broker, CloudEvent, Kubernetes Gateway API, TLS, Security
 
 Description: Publish a narrow HTTPS route to Knative Kafka Broker ingress while preserving the Broker path, CloudEvent headers, body, authentication, and delivery semantics.
 

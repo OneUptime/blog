@@ -139,7 +139,7 @@ Example:
 240 GB/day ÷ 8 GB/tablet ≈ 30 buckets
 ```
 
-Round to a value that distributes well across the executor fleet—perhaps 32—then measure. Replica count multiplies physical storage in shared-nothing mode but does not change logical rows per tablet.
+Round to a value that distributes well across the executor fleet-perhaps 32-then measure. Replica count multiplies physical storage in shared-nothing mode but does not change logical rows per tablet.
 
 Too few buckets cause:
 
@@ -202,7 +202,7 @@ This is asynchronous and rewrites layout. StarRocks' documentation notes that sh
 7. Profile selective filters, full scans, ingestion, compaction, and joins.
 8. Revisit the layout when partitions, node count, or query patterns materially change.
 
-The best bucketing design is a balance: enough distinct key values for even work, enough alignment for common queries, and enough—but not excessive—tablets for the cluster to execute in parallel.
+The best bucketing design is a balance: enough distinct key values for even work, enough alignment for common queries, and enough-but not excessive-tablets for the cluster to execute in parallel.
 
 ## Official Documentation
 

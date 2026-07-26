@@ -1,4 +1,4 @@
-# Validation Summary: How to Export a Consistent StarRocks Snapshot to CSV or JSON While Data Is Changing
+# Validation Summary: Export a Consistent StarRocks Snapshot While Data Changes
 
 ## Status
 

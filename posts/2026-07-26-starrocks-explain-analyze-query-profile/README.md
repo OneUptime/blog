@@ -214,7 +214,7 @@ Use a short decision sequence:
 6. Did spill keep the query alive at an unacceptable latency cost?
 7. Is network or remote storage the bottleneck?
 
-Make one change—statistics, predicate, schema distribution, sort key, materialized view, join strategy, memory/spill policy, or resource isolation—then compare the same query and load. Keep the before/after query IDs and profiles.
+Make one change-statistics, predicate, schema distribution, sort key, materialized view, join strategy, memory/spill policy, or resource isolation-then compare the same query and load. Keep the before/after query IDs and profiles.
 
 The fastest path through a profile is not to read every counter. Start at the summary, find the dominant fragment/operator, and use its rows, time, memory, and distribution to trace the bottleneck back toward the scans.
 

@@ -1,4 +1,4 @@
-# Why Are StarRocks Primary Key Upserts Slowing Down? Index, Compaction, and Schema Checks
+# StarRocks Primary Key Upserts Are Slow: Index and Compaction Checks
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

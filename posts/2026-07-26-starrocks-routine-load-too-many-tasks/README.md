@@ -1,4 +1,4 @@
-# StarRocks Routine Load Reports “TOO MANY TASKS”: How to Tune Concurrency and Batch Size
+# StarRocks Routine Load Has TOO MANY TASKS: Tune Concurrency
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

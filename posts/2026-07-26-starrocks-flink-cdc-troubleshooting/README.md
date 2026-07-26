@@ -1,4 +1,4 @@
-# Flink CDC to StarRocks Keeps Failing: A Connector and Stream Load Troubleshooting Checklist
+# Flink CDC to StarRocks Fails: Connector Troubleshooting Checklist
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

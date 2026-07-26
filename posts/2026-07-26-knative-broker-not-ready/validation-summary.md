@@ -1,4 +1,4 @@
-# Validation Summary: Knative Broker Is Not Ready: How to Diagnose Configuration, Channel, and Data-Plane Failures
+# Validation Summary: Knative Broker Not Ready: Diagnose Channel and Data-Plane Failures
 
 ## Status
 validated

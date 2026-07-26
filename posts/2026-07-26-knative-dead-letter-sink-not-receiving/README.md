@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Knative Eventing, Dead Letter Sink, Troubleshooting, Retries, CloudEvents, Kubernetes
+Tags: Knative Eventing, Dead Letter Sink, Troubleshooting, Retries, CloudEvent, Kubernetes
 
 Description: Trace a failed Knative event from its delivery owner to the dead letter endpoint and find why the expected handoff never arrives.
 

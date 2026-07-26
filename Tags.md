@@ -552,6 +552,7 @@
 - Agentless Migration
 - Aggregate
 - Aggregate Function
+- Aggregate Key
 - Aggregated Sinks
 - AggregateFunction
 - AggregatingMergeTree
@@ -1336,6 +1337,7 @@
 - Audit Controls
 - Audit Evidence
 - Audit Log
+- Audit Log Filter
 - Audit Logging
 - Audit Manager
 - Audit Monitoring
@@ -2746,6 +2748,7 @@
 - Certificate-chain
 - Certificate-renewal
 - Certification
+- CESQL
 - CfCT
 - CFEngine
 - CGA
@@ -4949,6 +4952,7 @@
 - Dead Letter
 - Dead Letter Exchange
 - Dead Letter Queue
+- Dead Letter Sink
 - Dead Letter Topic
 - Dead Man's Switch
 - Dead-Letter Queue
@@ -9381,6 +9385,7 @@
 - Job Triggers
 - Job Worker
 - Jobs API
+- JobSink
 - Joi
 - Join
 - Join Collections
@@ -9497,10 +9502,14 @@
 - KaaS
 - Kafka
 - Kafka Alternative
+- Kafka Broker
 - Kafka Connect
 - Kafka Operations
 - Kafka Protocol
 - Kafka Streams
+- KafkaBroker
+- KafkaChannel
+- KafkaSource
 - KafkaTopic
 - KafkaUser
 - Kali Linux
@@ -10762,6 +10771,7 @@
 - Memory Safety
 - Memory Systems
 - Memory Testing
+- Memory Tuning
 - MEMORY USAGE
 - Memory_profiler
 - Memory-Mapped Files
@@ -10850,6 +10860,7 @@
 - Metaclasses
 - Metacontroller
 - Metadata
+- Metadata Cache
 - Metadata Caching
 - Metadata Enrichment
 - Metadata Filtering
@@ -11270,6 +11281,7 @@
 - MSW
 - MT-ISIS
 - MTBF
+- MTChannelBasedBroker
 - mTLS
 - mtools
 - MTP
@@ -11510,6 +11522,7 @@
 - MySQL Enterprise
 - MySQL Operator
 - MySQL Protocol
+- MySQL Replication
 - MySQL Router
 - MySQL Shell
 - MySQL Table Function
@@ -13049,6 +13062,7 @@
 - Persistent Data
 - Persistent Derived Tables
 - Persistent Disk
+- Persistent Index
 - Persistent Logging
 - Persistent Messaging
 - Persistent Mount
@@ -13679,6 +13693,7 @@
 - Primary Affinity
 - Primary Index
 - Primary Key
+- Primary Key Table
 - Primary Slave
 - Primary_reselect
 - Primary-Remote
@@ -14155,6 +14170,7 @@
 - Query Cache
 - Query Caching
 - Query Complexity
+- Query Concurrency
 - Query Correction
 - Query Depth
 - Query DSL
@@ -14192,6 +14208,7 @@
 - Query Prioritization
 - Query Priority
 - Query Processing
+- Query Profile
 - Query Profiler
 - Query Profiling
 - Query Queue
@@ -14831,6 +14848,7 @@
 - Replication Filters
 - Replication Lag
 - Replication Policy
+- Reply Event
 - Repo Server
 - Report
 - Report Generation
@@ -15395,6 +15413,7 @@
 - RouterChecker
 - RouterOS
 - Routine
+- Routine Load
 - Routing
 - Routing Connector
 - Routing Database
@@ -17287,6 +17306,7 @@
 - Stream Analytics
 - Stream Joins
 - Stream Length
+- Stream Load
 - Stream Metrics
 - Stream Module
 - Stream Processing
@@ -18540,6 +18560,7 @@
 - Trial Conversion
 - Trie
 - Trigger
+- Trigger Filters
 - Trigger Jobs
 - Trigonometry
 - Trim
@@ -19847,6 +19868,7 @@
 - XSS Protection
 - XtraBackup
 - XtraDB
+- XtraDB Cluster
 - XTRIM
 - XUnit
 - XXE

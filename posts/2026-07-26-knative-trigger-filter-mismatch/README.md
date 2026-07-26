@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Knative Eventing, Trigger Filters, CloudEvents, CESQL, KafkaBroker, Troubleshooting
+Tags: Knative Eventing, Trigger Filters, CloudEvent, CESQL, KafkaBroker, Troubleshooting
 
 Description: Fix Knative Trigger filter mismatches by inspecting the real CloudEvent envelope, filter API, case, composition, and Broker support.
 

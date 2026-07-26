@@ -1,4 +1,4 @@
-# Validation Summary: Why Isn’t StarRocks Using My Materialized View? Diagnose Query Rewrite with TRACE
+# Validation Summary: Why Isn’t StarRocks Using My Materialized View? TRACE Query Rewrite
 
 ## Status
 

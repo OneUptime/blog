@@ -1,4 +1,4 @@
-# Validation Summary: How to Expose a Knative Kafka Broker Outside the Cluster Without Breaking CloudEvents
+# Validation Summary: Expose a Knative Kafka Broker Without Breaking CloudEvents
 
 ## Status
 validated

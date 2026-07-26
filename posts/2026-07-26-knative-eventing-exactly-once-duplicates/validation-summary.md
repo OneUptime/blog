@@ -1,4 +1,4 @@
-# Validation Summary: Does Knative Eventing Guarantee Exactly-Once Delivery? Design for Duplicates Instead
+# Validation Summary: Knative Eventing Exactly-Once Delivery? Design for Duplicates
 
 ## Status
 validated

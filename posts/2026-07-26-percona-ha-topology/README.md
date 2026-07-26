@@ -1,4 +1,4 @@
-# Percona Async Replication, Group Replication, or XtraDB Cluster: Which HA Topology Fits?
+# Percona Replication or XtraDB Cluster: Which HA Topology Fits?
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

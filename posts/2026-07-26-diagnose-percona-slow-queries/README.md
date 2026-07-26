@@ -195,7 +195,7 @@ For every fix, retain:
 - schema/statistics change and rollback;
 - production confirmation over a comparable load window.
 
-Restore diagnostic settings to their approved baseline. Keep a sustainable always-on source—usually a sampled file slow log for Percona Server or Performance Schema when file management and literal capture are unacceptable.
+Restore diagnostic settings to their approved baseline. Keep a sustainable always-on source-usually a sampled file slow log for Percona Server or Performance Schema when file management and literal capture are unacceptable.
 
 The tools are most effective together: Performance Schema discovers workload shape, the slow log gives detailed events, and PMM adds time-series ranking and correlation.
 

@@ -1,4 +1,4 @@
-# Why Are StarRocks Iceberg Queries Slow? Metadata Cache, Statistics, and File-Pruning Fixes
+# Slow StarRocks Iceberg Queries: Metadata and File-Pruning Fixes
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

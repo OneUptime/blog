@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Knative Eventing, JobSink, Kubernetes Jobs, Asynchronous Processing, CloudEvents, Reliability
+Tags: Knative Eventing, JobSink, Kubernetes jobs, Asynchronous Processing, CloudEvent, Reliability
 
 Description: Decouple long-running work from Knative's HTTP delivery using JobSink or a durable application queue, with explicit idempotency and completion reporting.
 

@@ -1,4 +1,4 @@
-# Why Is StarRocks Scanning Every Partition? A Partition-Pruning Troubleshooting Guide
+# Why Is StarRocks Scanning Every Partition? A Troubleshooting Guide
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -153,7 +153,7 @@ Also check for a `MAXVALUE` catch-all or an unusually wide future partition that
 
 ## Understand Time Zones
 
-StarRocks `DATETIME` does not itself carry a time-zone offset. If applications convert UTC to a local day in SQL while partitions were defined from unconverted UTC values, the business-day range may legitimately touch two partitions—or the expression may not be invertible for pruning.
+StarRocks `DATETIME` does not itself carry a time-zone offset. If applications convert UTC to a local day in SQL while partitions were defined from unconverted UTC values, the business-day range may legitimately touch two partitions-or the expression may not be invertible for pruning.
 
 Make the contract explicit:
 

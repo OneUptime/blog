@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: StarRocks, Kafka, Routine Load, DNS, Data Ingestion
 
-Description: Resolve StarRocks Routine Load "Bad message format" errors by checking Kafka-advertised hostnames before changing payload parsers.
+Description: Resolve StarRocks Routine Load 'Bad message format' errors by checking Kafka-advertised hostnames before changing payload parsers.
 
 ---
 

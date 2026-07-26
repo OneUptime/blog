@@ -1,4 +1,4 @@
-# Validation Summary: Synchronous vs Asynchronous Materialized Views in StarRocks: Which One Should You Use?
+# Validation Summary: StarRocks Sync vs Async Materialized Views: Which Should You Use?
 
 ## Status
 

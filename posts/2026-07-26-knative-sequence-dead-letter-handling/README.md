@@ -1,8 +1,8 @@
-# Why Dead Letter Handling Fails Inside Knative Sequences—and How to Fix Each Step
+# Why Dead Letter Handling Fails Inside Knative Sequences-and How to Fix Each Step
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Knative Eventing, Sequence, Dead Letter Sink, Retries, CloudEvents, Kubernetes
+Tags: Knative Eventing, Sequence, Dead Letter Sink, Retries, CloudEvent, Kubernetes
 
 Description: Give every Knative Sequence step its own retry and dead letter policy, then distinguish delivery failures from successful responses that emit no reply event.
 

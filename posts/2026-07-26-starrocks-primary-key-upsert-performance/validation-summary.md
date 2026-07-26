@@ -1,4 +1,4 @@
-# Validation Summary: Why Are StarRocks Primary Key Upserts Slowing Down? Index, Compaction, and Schema Checks
+# Validation Summary: StarRocks Primary Key Upserts Are Slow: Index and Compaction Checks
 
 ## Status
 

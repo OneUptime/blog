@@ -1,4 +1,4 @@
-# Duplicate, Aggregate, Unique, or Primary Key: Which StarRocks Table Type Fits Your Workload?
+# Which StarRocks Table Type Fits Your Workload?
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

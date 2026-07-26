@@ -100,19 +100,21 @@ For row-based logging, decoded output is useful for human inspection, but replay
 
 ## Replay to a Timestamp
 
-After confirming the event time and server time-zone assumptions, replay:
+After confirming the event time, make the recovery time zone explicit and replay:
 
 ```bash
-mysqlbinlog \
+set -o pipefail
+
+TZ=UTC mysqlbinlog \
   --start-position=684 \
   --stop-datetime='2026-07-26 14:37:20' \
   /archive/binlog.000217 \
   /archive/binlog.000218 \
   /archive/binlog.000219 \
-| mysql --login-path=recovery
+| mysql --login-path=recovery --binary-mode
 ```
 
-`--start-position` applies to the first input log. `--stop-datetime` stops before the first event whose timestamp is at or after the supplied value. Test this behavior with your exact incident and binary logs; timestamps describe events, not necessarily the business time shown in an application UI.
+`--start-position` applies to the first input log. `--stop-datetime` stops before the first event whose timestamp is at or after the supplied value, interpreted in the local time zone of the machine running `mysqlbinlog`; `TZ=UTC` makes that interpretation explicit here. `--binary-mode` lets the `mysql` client safely process output containing null bytes, and `pipefail` exposes a failure from either side of the pipeline. Test the boundary with your exact incident and binary logs; timestamps describe events, not necessarily the business time shown in an application UI.
 
 Do not add `--force` to push through SQL errors. A duplicate-key or missing-object error can mean the replay began at the wrong coordinate, a log is missing, the wrong backup was restored, or external writes reached the target.
 
@@ -121,14 +123,16 @@ Do not add `--force` to push through SQL errors. A duplicate-key or missing-obje
 If inspection locates the exact offending transaction, note its start/end log positions and stop before it:
 
 ```bash
+set -o pipefail
+
 mysqlbinlog \
   --start-position=684 \
   --stop-position=932144 \
   /archive/binlog.000217 \
-| mysql --login-path=recovery
+| mysql --login-path=recovery --binary-mode
 ```
 
-Position options apply to the named file context, so plan carefully when the stop lies in a later file. A safe approach is to replay complete intermediate files, then run a final command with the stop position for the last file.
+`--start-position` applies only to the first log file named on the command line, while `--stop-position` applies only to the last. When the stop lies in a later file, name the starting file, every intermediate file, and the stopping file in one ordered `mysqlbinlog` command so the stream is applied through one `mysql` connection.
 
 GTID-aware recovery can use included or excluded GTID sets, but do not improvise GTID filtering during an incident. Record the backup's GTID metadata, rehearse the exact `mysqlbinlog` options used by your environment, and verify `@@GLOBAL.gtid_executed` after replay.
 

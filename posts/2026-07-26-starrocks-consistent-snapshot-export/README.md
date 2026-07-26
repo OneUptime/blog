@@ -1,4 +1,4 @@
-# How to Export a Consistent StarRocks Snapshot to CSV or JSON While Data Is Changing
+# Export a Consistent StarRocks Snapshot While Data Changes
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

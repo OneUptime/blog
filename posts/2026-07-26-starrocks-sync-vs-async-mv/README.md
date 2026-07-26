@@ -1,4 +1,4 @@
-# Synchronous vs Asynchronous Materialized Views in StarRocks: Which One Should You Use?
+# StarRocks Sync vs Async Materialized Views: Which Should You Use?
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

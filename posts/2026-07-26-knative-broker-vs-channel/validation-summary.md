@@ -1,4 +1,4 @@
-# Validation Summary: Knative Eventing Broker vs Channel: Which Production Routing Model Should You Choose?
+# Validation Summary: Knative Broker vs Channel: Which Production Routing Model Fits?
 
 ## Status
 validated

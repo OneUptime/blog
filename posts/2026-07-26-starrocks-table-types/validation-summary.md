@@ -1,4 +1,4 @@
-# Validation Summary: Duplicate, Aggregate, Unique, or Primary Key: Which StarRocks Table Type Fits Your Workload?
+# Validation Summary: Which StarRocks Table Type Fits Your Workload?
 
 ## Status
 

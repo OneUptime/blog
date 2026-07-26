@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Knative Eventing, Trigger, Broker, CloudEvents, Reply Event, Event Routing
+Tags: Knative Eventing, Trigger, Broker, CloudEvent, Reply Event, Event Routing
 
 Description: Follow a subscriber response CloudEvent back into a Knative Broker, distinguish acknowledgements from replies, and prevent routing loops and duplicate side effects.
 
@@ -16,12 +16,14 @@ It is not returned synchronously to the producer that originally posted to the B
 
 | Subscriber response | Knative result |
 | --- | --- |
-| `2xx` with no body | Original delivery succeeds; no reply event |
-| `2xx` with a non-CloudEvent body | Original delivery succeeds; body is not routed as an event |
+| `2xx` with no body and no CloudEvent encoding headers | Original delivery succeeds; no reply event |
+| `2xx` that does not form a valid CloudEvent but has a body or CloudEvent encoding headers | Not a portable acknowledgement; current MTChannelBasedBroker and Apache Kafka Broker data planes treat it as a delivery failure |
 | `2xx` with a valid binary- or structured-mode CloudEvent | Original delivery succeeds and the reply is sent back to the Broker |
 | Non-`2xx` or transport error | Original delivery fails; retry/dead letter policy applies |
 
 A JSON document is not automatically a structured CloudEvent. It needs `Content-Type: application/cloudevents+json` and all required attributes. A binary-mode reply needs the required `ce-*` response headers.
+
+Invalid-response handling is a Broker implementation detail. For portable behavior, return either an empty successful response or a valid CloudEvent.
 
 ## Return a Valid Reply Event
 
@@ -114,11 +116,11 @@ Do not rely on an in-memory counter or a maximum-hop field added by one service.
 There are two delivery operations:
 
 ```text
-1. Trigger dispatcher -> subscriber
-2. subscriber response event -> Broker reply URL
+1. Broker data plane -> subscriber
+2. subscriber response event -> Broker reply path
 ```
 
-The current shared Knative dispatcher applies its retry configuration when forwarding the reply. If the subscriber returns a valid event but republishing it fails, the overall dispatch can fail and the subscriber may receive the original event again.
+In paths that use Knative's shared Go dispatcher, the second operation posts to a Broker reply URL and applies the same retry configuration. The Apache Kafka Broker instead writes the reply to the Broker's Kafka topic. If the subscriber returns a valid event but republishing it fails, the overall dispatch can fail and the subscriber may receive the original event again.
 
 That creates an important ambiguous window:
 
@@ -129,7 +131,7 @@ That creates an important ambiguous window:
 
 The subscriber must deduplicate the input `(source, id)`, and it must produce a deterministic durable output event through the same transaction or outbox. Re-running the handler should not create a second business mutation or a second logical reply.
 
-When a dead letter sink is configured, failed reply forwarding can send the original input event to that sink with Knative error extensions. `knativeerrordest` can identify the reply URL that failed. Do not assume the dead letter payload is the reply CloudEvent; inspect the attributes and store both the input identity and diagnostic destination.
+When a dead letter sink is configured on a path that uses the shared dispatcher, failed reply forwarding can send the original input event to that sink with Knative error extensions. `knativeerrordest` can identify the reply URL that failed. Do not assume the dead letter payload is the reply CloudEvent; inspect the attributes and store both the input identity and diagnostic destination.
 
 ## A Reply Is Not Request-Response RPC
 
@@ -142,7 +144,7 @@ If a client needs a business response:
 - consume a matching result event asynchronously; or
 - use a purpose-built synchronous API.
 
-Knative also has an experimental `RequestReply` API in current Eventing references, but its lifecycle and suitability must be evaluated against the installed release. Do not infer synchronous RPC behavior from ordinary Broker and Trigger replies.
+Knative also has a `v1alpha1` `RequestReply` API in current Eventing references, but its lifecycle and suitability must be evaluated against the installed release. Do not infer synchronous RPC behavior from ordinary Broker and Trigger replies.
 
 ## Preserve the CloudEvent Correctly
 
@@ -163,7 +165,7 @@ Ce-Type: com.example.order.validated.v1
 
 For structured mode, use one JSON CloudEvent envelope and `application/cloudevents+json`. Do not mix a structured envelope with unrelated `ce-*` headers.
 
-A successful response whose headers do not identify any CloudEvent encoding—such as ordinary JSON without the CloudEvents HTTP binding—is treated as a non-event response body and discarded from the reply path. That is different from a response that declares binary or structured CloudEvent encoding but is malformed: creating or forwarding the reply can fail, causing the overall dispatch to fail and potentially retry the original subscriber delivery. Validate reply construction in the subscriber's CloudEvents SDK and test against the Broker data plane.
+A non-empty successful response whose headers do not identify any CloudEvent encoding-such as ordinary JSON without the CloudEvents HTTP binding-is not a portable acknowledgement. Although the shared Go dispatcher discards an unrecognized response when used by itself, the current MTChannelBasedBroker filter rejects a non-empty unrecognized response, and the Apache Kafka Broker dispatcher does the same. A response that declares binary or structured CloudEvent encoding but is malformed also fails when the data plane parses or forwards it. Either failure can cause the original subscriber delivery to be retried. Validate reply construction in the subscriber's CloudEvents SDK and test against the installed Broker data plane.
 
 ## Observe Both Event Identities
 
@@ -188,4 +190,6 @@ The clean mental model is: a subscriber response CloudEvent is a new asynchronou
 - [Knative Eventing API reference](https://knative.dev/docs/eventing/reference/eventing-api/)
 - [Knative handling delivery failure and reply destinations](https://knative.dev/docs/eventing/event-delivery/)
 - [Knative shared event dispatcher implementation](https://github.com/knative/eventing/blob/main/pkg/kncloudevents/event_dispatcher.go)
+- [Knative MTChannelBasedBroker response validation](https://github.com/knative/eventing/blob/main/pkg/broker/filter/filter_handler.go)
+- [Knative Apache Kafka Broker response handling](https://github.com/knative-extensions/eventing-kafka-broker/blob/main/data-plane/dispatcher/src/main/java/dev/knative/eventing/kafka/broker/dispatcher/impl/BaseResponseHandler.java)
 - [CloudEvents HTTP protocol binding](https://github.com/cloudevents/spec/blob/ce%40v1.0.2/cloudevents/bindings/http-protocol-binding.md)

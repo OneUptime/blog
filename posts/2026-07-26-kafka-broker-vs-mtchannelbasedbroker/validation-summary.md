@@ -1,4 +1,4 @@
-# Validation Summary: Kafka Broker vs MTChannelBasedBroker in Knative: Durability, Latency, and Operations
+# Validation Summary: Knative Kafka Broker vs MTChannelBasedBroker: Key Tradeoffs
 
 ## Status
 validated

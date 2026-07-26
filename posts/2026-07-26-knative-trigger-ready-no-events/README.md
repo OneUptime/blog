@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Knative Eventing, Trigger, CloudEvents, Troubleshooting, Kubernetes, Event Delivery
+Tags: Knative Eventing, Trigger, CloudEvent, Troubleshooting, Kubernetes, Event Delivery
 
 Description: Trace a missing Knative event from producer through Broker ingress, Trigger filtering, dispatcher delivery, and subscriber acknowledgement.
 

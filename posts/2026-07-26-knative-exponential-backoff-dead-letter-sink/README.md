@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Knative Eventing, Retries, Dead Letter Sink, CloudEvents, Kubernetes, Reliability
+Tags: Knative Eventing, Retries, Dead Letter Sink, CloudEvent, Kubernetes, Reliability
 
 Description: Configure bounded exponential retries and a recoverable dead letter path for Knative event delivery without creating retry storms or silent failures.
 

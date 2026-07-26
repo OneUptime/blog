@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Knative Eventing, Apache Kafka, Ordering, CloudEvents, KafkaSource, Kafka Broker
+Tags: Knative Eventing, Apache Kafka, Ordering, CloudEvent, KafkaSource, Kafka Broker
 
 Description: Preserve per-key, per-partition order through Knative KafkaSource and Kafka Broker deliveries while understanding throughput and failure trade-offs.
 

@@ -1,8 +1,8 @@
-# Does Knative Eventing Guarantee Exactly-Once Delivery? Design for Duplicates Instead
+# Knative Eventing Exactly-Once Delivery? Design for Duplicates
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Knative Eventing, CloudEvents, Idempotency, At-Least-Once Delivery, Kafka, Reliability
+Tags: Knative Eventing, CloudEvent, Idempotency, At-Least-Once Delivery, Kafka, Reliability
 
 Description: Build duplicate-safe Knative subscribers with CloudEvent identity, transactional deduplication, idempotent side effects, and realistic replay windows.
 

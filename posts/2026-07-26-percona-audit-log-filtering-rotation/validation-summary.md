@@ -1,4 +1,4 @@
-# Validation Summary: How to Configure Percona Server Audit Log Filtering and Rotation Without Filling the Disk
+# Validation Summary: Percona Audit Log Filtering and Rotation Without Filling the Disk
 
 ## Status
 

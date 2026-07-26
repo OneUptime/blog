@@ -1,4 +1,4 @@
-# StarRocks Routine Load Is PAUSED: Fix Kafka Offset, Error-Row, and Parsing Failures
+# StarRocks Routine Load Is PAUSED: Fix Kafka and Parsing Failures
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

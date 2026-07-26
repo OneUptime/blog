@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Knative Eventing, CloudEvents, HTTP, Retries, Dead Letter Sink, Kubernetes
+Tags: Knative Eventing, CloudEvent, HTTP, Retries, Dead Letter Sink, Kubernetes
 
 Description: Understand which HTTP responses Knative retries, which responses stop redelivery, and how to make subscriber status codes express the right delivery outcome.
 

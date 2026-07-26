@@ -1,4 +1,4 @@
-# Validation Summary: Why Won’t a Restored Percona Server Start? Fixing Datadir Permissions and `--initialize`
+# Validation Summary: Restored Percona Server Won’t Start? Fix Datadir Permissions
 
 ## Status
 

@@ -1,4 +1,4 @@
-# Kafka Broker vs MTChannelBasedBroker in Knative: Durability, Latency, and Operations
+# Knative Kafka Broker vs MTChannelBasedBroker: Key Tradeoffs
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

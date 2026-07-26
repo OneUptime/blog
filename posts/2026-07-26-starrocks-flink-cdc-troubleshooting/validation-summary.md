@@ -1,4 +1,4 @@
-# Validation Summary: Flink CDC to StarRocks Keeps Failing: A Connector and Stream Load Troubleshooting Checklist
+# Validation Summary: Flink CDC to StarRocks Fails: Connector Troubleshooting Checklist
 
 ## Status
 validated

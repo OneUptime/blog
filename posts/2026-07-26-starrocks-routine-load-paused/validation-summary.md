@@ -1,4 +1,4 @@
-# Validation Summary: StarRocks Routine Load Is PAUSED: Fix Kafka Offset, Error-Row, and Parsing Failures
+# Validation Summary: StarRocks Routine Load Is PAUSED: Fix Kafka and Parsing Failures
 
 ## Status
 validated

@@ -1,4 +1,4 @@
-# When Should You Enable Percona Server’s Thread Pool—and How Do You Size It?
+# When Should You Enable Percona Server’s Thread Pool-and How Do You Size It?
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -8,7 +8,7 @@ Description: Decide whether Percona Server's thread pool fits the workload and t
 
 ---
 
-Percona Server's default `one-thread-per-connection` model works well for moderate connection counts. The built-in thread pool becomes useful when very high concurrency creates too many runnable threads, context switches, and lock contention—especially for short OLTP statements.
+Percona Server's default `one-thread-per-connection` model works well for moderate connection counts. The built-in thread pool becomes useful when very high concurrency creates too many runnable threads, context switches, and lock contention-especially for short OLTP statements.
 
 Do not enable it merely because `max_connections` is large. Idle connections consume resources, but they do not create the same CPU scheduling pressure as thousands of simultaneously active queries. Percona's 8.4 documentation says that below roughly 20,000 connections the thread pool generally does not provide significant benefit. Treat that as guidance, then benchmark your workload; active concurrency and query shape matter more than a single threshold.
 
@@ -174,7 +174,7 @@ Do not change every variable simultaneously. First decide whether the pool beats
 - Recheck CPU visibility after VM or container quota changes.
 - Maintain a privileged operational path and test it during saturation.
 
-Enable Percona's thread pool when scheduling too many active connection threads is the measured bottleneck. Size it from effective CPU, allow modest oversubscription for blocking, and judge success by tail latency and stable throughput—not by a smaller thread count alone.
+Enable Percona's thread pool when scheduling too many active connection threads is the measured bottleneck. Size it from effective CPU, allow modest oversubscription for blocking, and judge success by tail latency and stable throughput-not by a smaller thread count alone.
 
 ## Official Documentation
 
