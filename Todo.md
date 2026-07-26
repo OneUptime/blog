@@ -2,15 +2,14 @@
 
 ## Percona Server
 
-1. How to Take a Hot, Consistent Percona Server Backup with XtraBackup
-2. Why Won’t a Restored Percona Server Start? Fixing Datadir Permissions and `--initialize`
-3. How to Chain and Prepare Percona XtraBackup Incrementals in the Correct Order
-4. How to Perform Point-in-Time Recovery with Percona XtraBackup and Binary Logs
-5. Should You Run XtraBackup on the Primary or a Dedicated Percona Replica?
-6. How to Size the InnoDB Buffer Pool Without Causing Swap or OOM on Percona Server
-7. When Should You Enable Percona Server’s Thread Pool—and How Do You Size It?
-8. How to Diagnose Slow Queries with the Slow Log, Performance Schema, and PMM
-9. How to Configure Percona Server Audit Log Filtering and Rotation Without Filling the Disk
+1. Why Won’t a Restored Percona Server Start? Fixing Datadir Permissions and `--initialize`
+2. How to Chain and Prepare Percona XtraBackup Incrementals in the Correct Order
+3. How to Perform Point-in-Time Recovery with Percona XtraBackup and Binary Logs
+4. Should You Run XtraBackup on the Primary or a Dedicated Percona Replica?
+5. How to Size the InnoDB Buffer Pool Without Causing Swap or OOM on Percona Server
+6. When Should You Enable Percona Server’s Thread Pool—and How Do You Size It?
+7. How to Diagnose Slow Queries with the Slow Log, Performance Schema, and PMM
+8. How to Configure Percona Server Audit Log Filtering and Rotation Without Filling the Disk
 
 ## StarRocks
 
