@@ -12,7 +12,7 @@ Percona XtraBackup can copy InnoDB data files while Percona Server continues ser
 
 "Hot" does not mean "no coordination at all." XtraBackup uses backup locks where supported to protect metadata and non-InnoDB files. DML against InnoDB can normally continue, but DDL and writes to other storage engines may wait. Schedule and monitor the job accordingly.
 
-This guide uses Percona Server and Percona XtraBackup 8.4. XtraBackup 8.4 only supports databases created by the 8.4 series or later, and the prepare binary must be compatible with the backup. Do not assume a binary from another major series can prepare it.
+This guide uses Percona Server and Percona XtraBackup 8.4. XtraBackup 8.4 supports 8.4 source servers, and the source data directory must have been created by the 8.4 series rather than an earlier series. The prepare binary must also be compatible with the backup. Do not assume a binary from another major series can prepare it.
 
 ## Prepare the Backup Identity and Storage
 
@@ -24,6 +24,15 @@ CREATE USER 'xtrabackup'@'localhost'
 
 GRANT BACKUP_ADMIN, PROCESS, RELOAD, LOCK TABLES, REPLICATION CLIENT
 ON *.* TO 'xtrabackup'@'localhost';
+
+GRANT SELECT ON performance_schema.log_status
+TO 'xtrabackup'@'localhost';
+
+GRANT SELECT ON performance_schema.keyring_component_status
+TO 'xtrabackup'@'localhost';
+
+GRANT SELECT ON performance_schema.replication_group_members
+TO 'xtrabackup'@'localhost';
 ```
 
 Use `--check-privileges` in the actual job so missing mandatory privileges fail early. The operating-system account is separate from the MySQL account: it must be able to traverse and read the server data paths and write the target directory.
@@ -44,9 +53,9 @@ Use a new, empty target directory for every run. XtraBackup does not overwrite e
 
 ```bash
 xtrabackup \
+  --login-path=backup \
   --backup \
   --target-dir=/srv/backups/2026-07-26T020000Z \
-  --login-path=backup \
   --check-privileges \
   --parallel=4 \
   2> /var/log/xtrabackup-2026-07-26T020000Z.log
@@ -68,7 +77,7 @@ sed -n '1,160p' /srv/backups/2026-07-26T020000Z/xtrabackup_info
 test -s /srv/backups/2026-07-26T020000Z/xtrabackup_logfile
 ```
 
-Expect `backup_type = full-backuped` before preparation. Preserve the complete directory, not just `.ibd` files. Tablespaces outside the main data directory, keyring material, and encryption configuration need special handling described in the XtraBackup encryption documentation.
+Expect `backup_type = full-backuped` before preparation. Preserve the complete directory, not just `.ibd` files. XtraBackup records external tablespaces in `xtrabackup_tablespaces` and restores them to their original external paths, so those destinations must be available and writable during restore. Encrypted tablespaces require the matching supported keyring component configuration during prepare and restore, as described in the XtraBackup encryption documentation.
 
 ## Prepare a Working Copy
 
@@ -78,7 +87,6 @@ Files copied at different instants are not yet a consistent data directory. Run 
 xtrabackup \
   --prepare \
   --target-dir=/srv/backups/2026-07-26T020000Z \
-  --parallel=4 \
   2> /var/log/xtrabackup-prepare-2026-07-26T020000Z.log
 ```
 
