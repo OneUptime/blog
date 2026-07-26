@@ -55,7 +55,7 @@ kubectl get broker shared -n event-hub
 kubectl get trigger invoice-created-to-ledger -n event-hub \
   -o jsonpath='{.status.subscriberUri}{"\n"}'
 kubectl get ksvc ledger -n finance \
-  -o jsonpath='{.status.url}{"\n"}'
+  -o jsonpath='{.status.address.url}{"\n"}'
 ```
 
 Require the Trigger to be Ready and verify that `status.subscriberUri` names the intended namespace. Omitting `ref.namespace` defaults the reference to the namespace of the Trigger.
@@ -64,9 +64,9 @@ This layout centralizes routing ownership. It also avoids enabling the alpha eve
 
 ## Allow the Data Plane Through NetworkPolicy
 
-Kubernetes object resolution does not grant network reachability. A default-deny policy in `finance` must admit traffic from the Eventing data plane that actually dispatches the Trigger.
+Kubernetes object resolution does not grant network reachability. A default-deny policy must admit every data-plane hop that reaches protected Pods. For a Kubernetes Service subscriber, that can be the Eventing dispatcher. For the Knative Service shown here, requests first pass through the configured Knative Serving ingress or HTTP router and can pass through the Activator before reaching the workload's queue-proxy. A policy selecting the `ledger` workload Pods must therefore allow the applicable Serving components; allowing only the Eventing dispatcher is insufficient.
 
-The source namespace and Pod labels depend on the Broker class:
+The Eventing component that sends the request toward the subscriber depends on the Broker class:
 
 - shared Kafka Broker dispatchers normally run in `knative-eventing`
 - `KafkaNamespaced` dispatchers run in the Broker namespace
@@ -80,9 +80,10 @@ kubectl get pods -A \
   -l app.kubernetes.io/part-of=knative-eventing \
   --show-labels
 kubectl get pods -n knative-eventing --show-labels
+kubectl get pods -n knative-serving --show-labels
 ```
 
-Use namespace and Pod selectors that match your installed release. Do not copy guessed labels into a production NetworkPolicy. Also allow DNS and any service-mesh identity path required by the cluster.
+Use namespace and Pod selectors that match your installed release, and inspect the namespace used by the installed Serving networking layer. Do not copy guessed labels into a production NetworkPolicy. If egress is isolated, also allow DNS and any service-mesh identity path required by the cluster.
 
 ## Put a Trigger in a Different Namespace Only When Needed
 
@@ -98,7 +99,7 @@ data:
   cross-namespace-event-links: enabled
 ```
 
-The remote Trigger uses `brokerRef` rather than the legacy same-namespace `broker` string:
+The upstream `brokerRef` path is currently implemented for `MTChannelBasedBroker`. The Knative Kafka Broker controllers still resolve `spec.broker` in the Trigger's own namespace and do not support remote `brokerRef` Triggers. For a supported Broker, the remote Trigger uses `brokerRef` rather than the same-namespace `broker` string:
 
 ```yaml
 apiVersion: eventing.knative.dev/v1
@@ -166,7 +167,7 @@ kubectl auth can-i knsubscribe brokers.eventing.knative.dev/shared \
   --as-group=finance-event-admins
 ```
 
-Because this API is alpha, confirm the field names and upgrade behavior against the exact installed Knative release before adopting it.
+Because this API is alpha, confirm the field names, supported Broker and Channel implementations, and upgrade behavior against the exact installed Knative release before adopting it.
 
 ## Secure the Namespace Boundary
 
@@ -187,8 +188,8 @@ CloudEvent context attributes can be logged and inspected by intermediaries. Do 
 kubectl describe trigger invoice-created-to-ledger -n event-hub
 kubectl get events -n event-hub --sort-by=.lastTimestamp
 kubectl get ksvc ledger -n finance
-kubectl get endpointslice -n finance \
-  -l kubernetes.io/service-name=ledger
+kubectl get service ledger -n finance -o yaml
+kubectl get revision -n finance
 kubectl get networkpolicy -n finance
 ```
 
