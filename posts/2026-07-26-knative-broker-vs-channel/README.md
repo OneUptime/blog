@@ -31,7 +31,7 @@ For most application event meshes, start with one Broker per namespace. Knative'
 | Consumer selection | Trigger filters on CloudEvents context attributes and extensions | Each Subscription receives from the named Channel |
 | Topology | Consumer graph is hidden from producers | Named forwarding layer is explicit |
 | Fan-out | One or more matching Triggers | One or more Subscriptions |
-| Reply route | Subscriber replies follow Broker/Trigger behavior and configured destinations | Subscription can specify `reply` |
+| Reply route | Subscriber CloudEvent replies are republished to the same Broker | Subscription can specify `reply` |
 | Delivery controls | Broker defaults and per-Trigger overrides | Per-Subscription delivery settings |
 | Ordering and persistence | Depend on Broker class | Depend on Channel implementation |
 | Typical use | Namespace event mesh and content-based routing | Explicit stream, pipeline edge, or fan-out topology |
