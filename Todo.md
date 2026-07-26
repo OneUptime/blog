@@ -2,24 +2,23 @@
 
 ## StarRocks
 
-1. How Do You Choose Bucketing Columns and Bucket Counts in StarRocks?
-2. Duplicate, Aggregate, Unique, or Primary Key: Which StarRocks Table Type Fits Your Workload?
-3. Why Are StarRocks Primary Key Upserts Slowing Down? Index, Compaction, and Schema Checks
-4. StarRocks Memory Limit Exceeded: How to Diagnose Joins, Aggregations, and Spill
-5. How to Fix Data Skew in StarRocks Hash Joins and Distributed Tables
-6. Why Isn’t StarRocks Using My Materialized View? Diagnose Query Rewrite with TRACE
-7. StarRocks Materialized View Refresh Failed: How to Find and Fix the Root Cause
-8. How to Keep StarRocks Materialized Views Fresh Without Full-Refresh Overload
-9. Synchronous vs Asynchronous Materialized Views in StarRocks: Which One Should You Use?
-10. StarRocks Routine Load Is PAUSED: Fix Kafka Offset, Error-Row, and Parsing Failures
-11. Why Does StarRocks Routine Load Say “Bad Message Format”?
-12. StarRocks Routine Load Reports “TOO MANY TASKS”: How to Tune Concurrency and Batch Size
-13. Does StarRocks Kafka Routine Load Really Provide Exactly-Once Ingestion?
-14. Flink CDC to StarRocks Keeps Failing: A Connector and Stream Load Troubleshooting Checklist
-15. How to Run Zero-Downtime Schema Changes on Large StarRocks Tables
-16. Why Are StarRocks Iceberg Queries Slow? Metadata Cache, Statistics, and File-Pruning Fixes
-17. How to Tune StarRocks for High-Concurrency BI Dashboards with Resource Groups
-18. How to Export a Consistent StarRocks Snapshot to CSV or JSON While Data Is Changing
+1. Duplicate, Aggregate, Unique, or Primary Key: Which StarRocks Table Type Fits Your Workload?
+2. Why Are StarRocks Primary Key Upserts Slowing Down? Index, Compaction, and Schema Checks
+3. StarRocks Memory Limit Exceeded: How to Diagnose Joins, Aggregations, and Spill
+4. How to Fix Data Skew in StarRocks Hash Joins and Distributed Tables
+5. Why Isn’t StarRocks Using My Materialized View? Diagnose Query Rewrite with TRACE
+6. StarRocks Materialized View Refresh Failed: How to Find and Fix the Root Cause
+7. How to Keep StarRocks Materialized Views Fresh Without Full-Refresh Overload
+8. Synchronous vs Asynchronous Materialized Views in StarRocks: Which One Should You Use?
+9. StarRocks Routine Load Is PAUSED: Fix Kafka Offset, Error-Row, and Parsing Failures
+10. Why Does StarRocks Routine Load Say “Bad Message Format”?
+11. StarRocks Routine Load Reports “TOO MANY TASKS”: How to Tune Concurrency and Batch Size
+12. Does StarRocks Kafka Routine Load Really Provide Exactly-Once Ingestion?
+13. Flink CDC to StarRocks Keeps Failing: A Connector and Stream Load Troubleshooting Checklist
+14. How to Run Zero-Downtime Schema Changes on Large StarRocks Tables
+15. Why Are StarRocks Iceberg Queries Slow? Metadata Cache, Statistics, and File-Pruning Fixes
+16. How to Tune StarRocks for High-Concurrency BI Dashboards with Resource Groups
+17. How to Export a Consistent StarRocks Snapshot to CSV or JSON While Data Is Changing
 
 ## Knative Eventing
 
