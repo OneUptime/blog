@@ -189,7 +189,7 @@ ALTER TABLE orders
 DISTRIBUTED BY HASH(tenant_id, order_id) BUCKETS 64;
 ```
 
-This is asynchronous and rewrites layout. StarRocks' documentation notes that shared-data mode does not currently support this post-creation distribution optimization. Check `SHOW ALTER TABLE` and plan capacity before relying on it.
+This is asynchronous and rewrites layout. StarRocks' documentation notes that shared-data mode does not currently support this post-creation distribution optimization. Check `SHOW ALTER TABLE OPTIMIZE` and plan capacity before relying on it.
 
 ## Use a Repeatable Decision Sequence
 
