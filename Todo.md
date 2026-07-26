@@ -2,9 +2,8 @@
 
 ## Percona Server
 
-1. When Should You Enable Percona Server’s Thread Pool—and How Do You Size It?
-2. How to Diagnose Slow Queries with the Slow Log, Performance Schema, and PMM
-3. How to Configure Percona Server Audit Log Filtering and Rotation Without Filling the Disk
+1. How to Diagnose Slow Queries with the Slow Log, Performance Schema, and PMM
+2. How to Configure Percona Server Audit Log Filtering and Rotation Without Filling the Disk
 
 ## StarRocks
 
