@@ -118,7 +118,7 @@ PROPERTIES (
 );
 ```
 
-The primary key has uniqueness and `NOT NULL` semantics. A newer row with the same key replaces the old logical row. StarRocks uses a primary-key index to find previous locations and delete vectors to mark old versions, allowing queries to read the latest state without Unique Key's merge-on-read.
+The primary key has uniqueness and `NOT NULL` semantics. By default, a later committed upsert with the same key replaces the old logical row; the `updated_at` sort column does not determine update order. StarRocks uses a primary-key index to find previous locations and delete vectors to mark old versions, allowing queries to read the latest state without Unique Key's merge-on-read.
 
 Choose it when:
 
@@ -133,7 +133,7 @@ Schema constraints matter:
 - key columns must be declared before value columns;
 - key columns are `NOT NULL`;
 - encoded primary keys have a documented default maximum length of 128 bytes;
-- Primary Key tables use hash, not random, bucketing.
+- Primary Key tables do not support random bucketing. They require hash bucketing under the default distribution semantics; from v4.1, range-based bucketing is also available when the FE configuration `enable_range_distribution` is enabled.
 
 Since v3.0, the Primary Key sort key is decoupled from the primary key. Use `ORDER BY` for common filters while keeping the primary key focused on row identity plus required distribution columns.
 
