@@ -10,7 +10,7 @@ Description: Plan online StarRocks schema changes with fast evolution, monitored
 
 Zero downtime is an operational outcome, not a property of every `ALTER TABLE`. StarRocks can apply some changes through metadata or linked schemas, while others create tablets and rewrite large amounts of data before an internal swap.
 
-Choose the migration path from the actual execution mode, client compatibility, and change stream. A successful DDL submission only means an asynchronous job was accepted.
+Choose the migration path from the actual execution mode, client compatibility, and change stream. For an asynchronous path, a successful DDL submission only means a job was accepted.
 
 ## Classify the Change Before Running It
 
@@ -93,7 +93,7 @@ Fast evolution does not make every schema operation metadata-only. Sort-key chan
 
 ## Monitor a Standard In-Place ALTER
 
-Column, bucket, and rollup changes are asynchronous. Submit one controlled change:
+Outside synchronous paths such as Fast Schema Evolution v2, column, bucket, and rollup changes are asynchronous. Submit one controlled change:
 
 ```sql
 ALTER TABLE analytics.orders
@@ -122,7 +122,7 @@ StarRocks permits only one ongoing schema change on a table. Column, partition, 
 
 During a rewrite, monitor:
 
-- `schema_change_mem_bytes`
+- `starrocks_be_schema_change_mem_bytes`
 - BE CPU, memory, disk I/O, and free space
 - new tablet creation and unhealthy replicas
 - compaction score and tablet versions
@@ -155,13 +155,13 @@ validate and drain lag
 ALTER TABLE orders SWAP WITH orders_next
 ```
 
-Create the new schema explicitly or begin from:
+Create the new schema explicitly. If the table model, primary key, and other characteristics copied by `LIKE` already match the target, you can begin from:
 
 ```sql
 CREATE TABLE analytics.orders_next LIKE analytics.orders;
 ```
 
-Then make the desired changes before loading it. Backfill:
+Then apply any supported changes before loading it. Backfill:
 
 ```sql
 INSERT INTO analytics.orders_next
@@ -184,10 +184,10 @@ The cutover is synchronous and atomic:
 
 ```sql
 ALTER TABLE analytics.orders
-SWAP WITH analytics.orders_next;
+SWAP WITH orders_next;
 ```
 
-After the swap, the old data is under the other table name. Do not drop it immediately. First verify new reads, writes, privileges, loaders, statistics, and dependent views.
+After the swap, the old data is under the other table name. Dependent materialized views are automatically set inactive, so review and reactivate or rebuild them. Do not drop the old table immediately. First verify new reads, writes, privileges, loaders, statistics, and dependent views.
 
 An immediate swap back is not a complete rollback if new writes have landed only in the new table. Keep change capture or dual-writing active until the rollback window closes, or those writes must be replayed.
 
