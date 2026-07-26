@@ -135,7 +135,7 @@ BROKER_URL="$(kubectl get broker orders -n production \
   -o jsonpath='{.status.address.url}')"
 
 kubectl run fanout-test -n production \
-  --image=curlimages/curl:8.12.1 \
+  --image=curlimages/curl:8.21.0 \
   --restart=Never --rm -it -- \
   curl --fail-with-body --include \
     -H 'content-type: application/json' \
