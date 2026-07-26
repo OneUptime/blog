@@ -25,28 +25,28 @@ kubectl describe trigger order-created -n production
 Check that:
 
 - the Broker and Trigger report `Ready=True`;
-- `spec.broker` identifies the Broker that received the event;
+- `spec.broker`, or `spec.brokerRef` when cross-namespace event links are enabled, identifies the Broker that received the event;
 - the filter matches the event's exact CloudEvent attributes;
 - the subscriber reference resolves to the endpoint you tested;
-- the delivery policy appears under this Trigger's `spec.delivery`.
+- the delivery policy appears under this Trigger's `spec.delivery`, or under the Broker's `spec.delivery` if the Trigger has no delivery override.
 
 A Trigger filter mismatch is not a delivery failure. It means the Trigger never selected the event, so its dead letter sink has nothing to receive.
 
 ## 2. Prove the Subscriber Actually Failed
 
-Knative acknowledges any `2xx` subscriber response. An application that logs an error but returns `200` or `204` has told Knative that delivery succeeded.
+An empty `2xx` subscriber response acknowledges delivery. An application that logs an error but returns an empty `200` or `204` has told Knative that delivery succeeded. A malformed non-empty response can still fail if the data plane tries to parse it as a reply event.
 
 Correlate requests with the CloudEvent `source` and `id`, and record the HTTP result:
 
 ```bash
 kubectl logs -n production \
   -l serving.knative.dev/service=order-worker \
-  -c user-container --since=15m
+  -c user-container --since=15m --tail=-1
 ```
 
 Test with a deterministic response such as `503 Service Unavailable`. Do not use a random application exception, because a framework-level error handler may translate it into `200`, close the connection, or replace the status.
 
-Also distinguish subscriber failure from a reply event. A valid CloudEvent in a successful HTTP response is a reply, not a failed delivery.
+Also distinguish subscriber failure from a reply event. A valid CloudEvent returned with `200 OK` on a reply-capable path is a reply, not a failed delivery.
 
 ## 3. Wait for the Retry Budget to Finish
 
@@ -75,19 +75,21 @@ Read both spec and status:
 ```bash
 kubectl get trigger order-created -n production \
   -o jsonpath='{.spec.delivery.deadLetterSink}{"\n"}'
+kubectl get broker orders -n production \
+  -o jsonpath='{.spec.delivery.deadLetterSink}{"\n"}'
 kubectl get trigger order-created -n production -o yaml
 kubectl get ksvc order-dead-letter -n production
 ```
 
-Look for a ready condition and a resolved dead letter sink URI in status. If resolution failed, common causes are:
+Look for the Trigger's ready condition and resolved dead letter sink URI in status, then check the destination's readiness. If the URI is missing or the endpoint is not ready, common causes are:
 
 - misspelled `apiVersion`, `kind`, or `name`;
-- a resource in a different namespace without an allowed cross-namespace link;
+- a `ref.namespace` that differs from the Trigger's namespace;
 - an Addressable resource that has not published an address;
 - a Knative Service whose latest Revision is not ready;
 - an admission or authorization policy blocking the reference.
 
-Omitting `namespace` defaults a `Destination` reference to the namespace of the object that contains it. Do not assume it finds a similarly named Service elsewhere.
+Omitting `namespace` defaults a `Destination` reference to the namespace of the object that contains it. A Trigger's `Destination` object references must use that namespace; cross-namespace event links apply to its Broker reference, not to its subscriber or dead letter sink. Do not assume it finds a similarly named Service elsewhere.
 
 ## 5. Check Transport Support
 
@@ -138,7 +140,7 @@ kubectl get pods -A | grep -E 'broker|dispatcher|channel|kafka'
 
 Then search dispatcher logs for the subscriber URL, dead letter URL, CloudEvent ID, final response code, or text such as `dead letter`. Names and labels differ by implementation and installation mode.
 
-Monitor Eventing delivery and retry metrics, plus application-side counts. An increase in failed or retried events without a matching dead letter write is an alert condition.
+Monitor the delivery metrics exposed by your Eventing implementation, plus application-side attempt and dead letter counts. An increase in failed or retried events without a matching dead letter write is an alert condition.
 
 ## 8. Do Not Require Optional Error Extensions
 
