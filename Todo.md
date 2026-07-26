@@ -1,9 +1,5 @@
 # Blog Post Ideas
 
-## StarRocks
-
-1. How to Export a Consistent StarRocks Snapshot to CSV or JSON While Data Is Changing
-
 ## Knative Eventing
 
 1. Knative Eventing Broker vs Channel: Which Production Routing Model Should You Choose?
