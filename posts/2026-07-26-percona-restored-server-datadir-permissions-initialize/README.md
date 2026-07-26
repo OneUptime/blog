@@ -18,6 +18,8 @@ Use initialization only once for a brand-new empty datadir. For a restore, prepa
 
 Do not repeatedly restart the service before capturing the error:
 
+The examples below use the `mysql` service unit. On systems where the installed unit is `mysqld`, substitute that name in every `systemctl` and `journalctl -u` command.
+
 ```bash
 systemctl status mysql --no-pager -l
 journalctl -u mysql -b --no-pager -n 200
@@ -135,7 +137,7 @@ Add a deliberate rule for a custom data path and reload the profile. Also inspec
 
 ## Treat Encryption and External Tablespaces as Part of the Datadir
 
-An encrypted backup needs the same keyring component configuration and key material during prepare and startup. A copied keyring file is sensitive recovery material; protect and restore it according to the Percona keyring documentation.
+For Percona XtraBackup 8.4, a backup of encrypted InnoDB tablespaces needs access to the matching keyring component configuration and key material during prepare and copy-back; the server needs access at startup. Backup-level encryption (the `--encrypt` option) is separate and must be decrypted with its backup encryption key before prepare. For a file-backed keyring, XtraBackup does not include the keyring file in the backup; it is sensitive recovery material, so protect and restore it separately according to the Percona keyring documentation.
 
 Physical backups can also reference general or file-per-table tablespaces outside the main datadir. Inspect `xtrabackup_tablespaces` and the saved `backup-my.cnf`. Confirm the external paths exist, are mounted, are owned by `mysql`, and are allowed by SELinux/AppArmor before startup.
 
