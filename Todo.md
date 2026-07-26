@@ -2,26 +2,25 @@
 
 ## Knative Eventing
 
-1. Knative Eventing Broker vs Channel: Which Production Routing Model Should You Choose?
-2. Knative Broker Is Not Ready: How to Diagnose Configuration, Channel, and Data-Plane Failures
-3. Trigger Is Ready but No Events Arrive: A Knative Eventing Debugging Checklist
-4. Why Doesn’t My Knative Trigger Filter Match the CloudEvent?
-5. How to Send a Valid CloudEvent to a Knative Broker with curl
-6. How to Fan Out One CloudEvent to Multiple Knative Services Safely
-7. How to Deliver Knative Events Across Kubernetes Namespaces
-8. How to Expose a Knative Kafka Broker Outside the Cluster Without Breaking CloudEvents
-9. Knative Event Delivery Retries: Which HTTP Status Codes Trigger Redelivery?
-10. How to Configure Exponential Backoff and a Dead Letter Sink in Knative Eventing
-11. Knative Dead Letter Sink Is Not Receiving Failed Events: What to Check
-12. Why Dead Letter Handling Fails Inside Knative Sequences—and How to Fix Each Step
-13. Does Knative Eventing Guarantee Exactly-Once Delivery? Design for Duplicates Instead
-14. How to Preserve Kafka Partition Ordering in Knative Eventing
-15. Knative KafkaSource Consumer Lag Keeps Growing: How to Find the Bottleneck
-16. Kafka Broker vs MTChannelBasedBroker in Knative: Durability, Latency, and Operations
-17. How to Connect Knative Eventing to Strimzi or Redpanda Kafka
-18. How to Prevent Knative Scale-to-Zero Cold Starts from Causing Event Retries
-19. How to Run Long-Lived or Asynchronous Jobs from Knative Events
-20. What Happens to a Knative Trigger Subscriber’s Reply Event?
+1. Knative Broker Is Not Ready: How to Diagnose Configuration, Channel, and Data-Plane Failures
+2. Trigger Is Ready but No Events Arrive: A Knative Eventing Debugging Checklist
+3. Why Doesn’t My Knative Trigger Filter Match the CloudEvent?
+4. How to Send a Valid CloudEvent to a Knative Broker with curl
+5. How to Fan Out One CloudEvent to Multiple Knative Services Safely
+6. How to Deliver Knative Events Across Kubernetes Namespaces
+7. How to Expose a Knative Kafka Broker Outside the Cluster Without Breaking CloudEvents
+8. Knative Event Delivery Retries: Which HTTP Status Codes Trigger Redelivery?
+9. How to Configure Exponential Backoff and a Dead Letter Sink in Knative Eventing
+10. Knative Dead Letter Sink Is Not Receiving Failed Events: What to Check
+11. Why Dead Letter Handling Fails Inside Knative Sequences—and How to Fix Each Step
+12. Does Knative Eventing Guarantee Exactly-Once Delivery? Design for Duplicates Instead
+13. How to Preserve Kafka Partition Ordering in Knative Eventing
+14. Knative KafkaSource Consumer Lag Keeps Growing: How to Find the Bottleneck
+15. Kafka Broker vs MTChannelBasedBroker in Knative: Durability, Latency, and Operations
+16. How to Connect Knative Eventing to Strimzi or Redpanda Kafka
+17. How to Prevent Knative Scale-to-Zero Cold Starts from Causing Event Retries
+18. How to Run Long-Lived or Asynchronous Jobs from Knative Events
+19. What Happens to a Knative Trigger Subscriber’s Reply Event?
 
 ## Savings Plans
 
