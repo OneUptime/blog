@@ -8,7 +8,7 @@ Description: Choose between StarRocks synchronous rollups and asynchronous mater
 
 ---
 
-StarRocks uses the term materialized view for two distinct mechanisms. A synchronous materialized view is a rollup index maintained with its single native base table. An asynchronous materialized view is a physical table populated by a refresh task and can represent joins, external data, and more complex aggregation.
+StarRocks uses the term materialized view for two distinct mechanisms. A synchronous materialized view is a rollup index maintained with its single native base table. An asynchronous materialized view is a physical table populated by a refresh task and can represent joins, external data, other asynchronous materialized views, and more complex aggregation.
 
 The choice is not simply "real time versus batch." It changes the supported query shape, load cost, operational surface, and how the object is queried.
 
@@ -16,7 +16,7 @@ The choice is not simply "real time versus batch." It changes the supported quer
 
 | Requirement | Synchronous MV (rollup) | Asynchronous MV |
 | --- | --- | --- |
-| Base objects | One native table in the default catalog | Multiple native or supported external tables, views, and other MVs |
+| Base objects | One native table in the default catalog | One or more native tables, supported external tables, views, and other asynchronous MVs |
 | Freshness | Updated as base-table data is loaded | Automatic, scheduled, or manual refresh |
 | Join support | No | Yes |
 | Aggregations | Limited supported aggregate forms | Broad SQL and aggregation support |
@@ -25,7 +25,7 @@ The choice is not simply "real time versus batch." It changes the supported quer
 | Query rewrite | Transparent when eligible | Transparent when eligible and fresh enough |
 | Operational work | Build status and load amplification | Refresh scheduling, failures, lag, and resource control |
 
-Both are built asynchronously after their `CREATE` statement is submitted. "Synchronous" describes how subsequent base-table changes maintain the rollup, not whether the initial DDL blocks until construction finishes.
+Creating either type is an asynchronous operation: a successful `CREATE` reports task submission, not completed construction. By default, an asynchronous view starts its first refresh immediately; `REFRESH DEFERRED` postpones it. "Synchronous" describes how subsequent base-table changes maintain the rollup, not whether the initial DDL blocks until construction finishes.
 
 ## Choose a Synchronous View for a Native Single-Table Rollup
 
@@ -65,13 +65,13 @@ Synchronous views are supported on Duplicate Key and Aggregate tables. A `WHERE`
 
 ## Choose an Asynchronous View for Joins or Independent Refresh
 
-An asynchronous view is the normal choice for star-schema joins, complex metric layers, external catalogs, and expensive computations whose maintenance should be separated from ingestion:
+An asynchronous view is the normal choice for star-schema joins, complex metric layers, external catalogs, and expensive computations whose maintenance should be separated from ingestion. This partitioned example assumes `analytics.orders` is partitioned using `order_time` as its partitioning key:
 
 ```sql
 CREATE MATERIALIZED VIEW analytics.mv_daily_customer_sales
 PARTITION BY order_date
 DISTRIBUTED BY HASH(customer_id)
-REFRESH ASYNC EVERY (INTERVAL 10 MINUTE)
+REFRESH SCHEDULE EVERY (INTERVAL 10 MINUTE)
 AS
 SELECT
   date_trunc('day', o.order_time) AS order_date,
@@ -84,7 +84,7 @@ JOIN analytics.customers AS c
 GROUP BY date_trunc('day', o.order_time), o.customer_id, c.segment;
 ```
 
-This object can be queried directly:
+After its first refresh completes, this object can be queried directly:
 
 ```sql
 SELECT * FROM analytics.mv_daily_customer_sales;
@@ -97,7 +97,7 @@ Use an asynchronous view when:
 - The definition joins multiple tables.
 - The source is a supported Hive, Iceberg, Hudi, Paimon, or other documented catalog.
 - The refresh cadence should differ from ingestion cadence.
-- You need partition-level incremental refresh, TTL, nested materialization, or a dedicated refresh resource group.
+- You need partition-level refresh, TTL, nested materialization, or a dedicated refresh resource group.
 - The SQL is beyond the synchronous rollup's supported aggregate forms.
 
 Asynchronous views are supported from v2.4, with capabilities added over later releases. Check the feature-support matrix rather than assuming a recent example works on an older cluster.
