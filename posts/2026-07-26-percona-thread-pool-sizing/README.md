@@ -30,7 +30,7 @@ LIMIT 20;
 At the host:
 
 ```bash
-pidstat -w -u -p "$(pidof mysqld)" 1
+pidstat -w -u -p "$(pidof -s mysqld)" 1
 vmstat 1
 ```
 
@@ -93,7 +93,7 @@ Too few groups can leave CPU idle when workers block. Too many can restore the c
 
 ## Tune Oversubscription and Stall Detection Together
 
-`thread_pool_oversubscribe` controls how many threads may run simultaneously within a group; the 8.4 default is `3`. Percona warns that values below 3 can cause excessive sleep/wake activity.
+`thread_pool_oversubscribe` controls how many additional active worker threads are allowed within a group; the 8.4 default is `3`. Percona warns that values below 3 can cause excessive sleep/wake activity.
 
 ```sql
 SET GLOBAL thread_pool_oversubscribe = 3;
@@ -101,14 +101,20 @@ SET GLOBAL thread_pool_oversubscribe = 3;
 
 Raise it only when profiles show groups regularly blocked on I/O or network waits while CPU remains available. If CPU is already saturated, more oversubscription usually increases contention.
 
-`thread_pool_stall_limit` is the number of milliseconds before a running thread is considered stalled. The documented 8.4 default is 500 ms and the variable is not dynamic:
+`thread_pool_stall_limit` is the number of milliseconds before an executing non-yielding thread is considered stalled. The 8.4 default is 500 ms. Although the current 8.4 documentation marks the variable as not dynamic, released 8.4 source and tests implement it as a dynamic global variable. Verify that behavior on your exact build before relying on an online change:
+
+```sql
+SET GLOBAL thread_pool_stall_limit = 500;
+```
+
+Persist the selected value in configuration:
 
 ```ini
 [mysqld]
 thread_pool_stall_limit=500
 ```
 
-A lower value reacts sooner to blocking work but can create more threads under normal query latency. A higher value limits thread growth but lets one long statement hold a group longer. Choose it from the expected latency distribution of normal OLTP statements, then test with long queries and slow clients.
+A lower value reacts sooner to non-yielding work but can create more threads under normal query latency. A higher value limits thread growth but lets one long statement hold a group longer. Choose it from the expected latency distribution of normal OLTP statements, then test with long queries and slow clients.
 
 `thread_pool_max_threads` is a safety ceiling, not a target:
 
@@ -126,11 +132,11 @@ Available modes are:
 
 - `transactions`: prioritize eligible statements in active transactions;
 - `statements`: put individual statements into the high-priority queue;
-- `none`: disable priority-queue use for the connection.
+- `none`: disable priority-queue use for a non-admin connection.
 
 `thread_pool_high_prio_tickets` controls how many high-priority admissions a new connection receives. Changing policy can starve low-priority work or erase the benefit of transaction prioritization, so leave defaults until a profile demonstrates a queueing problem.
 
-For monitoring sessions that should not consume high-priority tickets:
+For non-admin monitoring sessions that should not consume high-priority tickets:
 
 ```sql
 SET SESSION thread_pool_high_prio_mode = 'none';
