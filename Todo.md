@@ -2,8 +2,7 @@
 
 ## Knative Eventing
 
-1. How to Run Long-Lived or Asynchronous Jobs from Knative Events
-2. What Happens to a Knative Trigger Subscriber’s Reply Event?
+1. What Happens to a Knative Trigger Subscriber’s Reply Event?
 
 ## Savings Plans
 
