@@ -10,14 +10,14 @@ Description: Trace a failed StarRocks asynchronous materialized-view refresh fro
 
 A failed asynchronous materialized-view refresh is a query failure with scheduling and dependency context around it. The fastest diagnosis is to identify the exact task run, preserve its error and query ID, and classify the failure before retrying.
 
-Repeatedly issuing `REFRESH MATERIALIZED VIEW ... FORCE` is risky. It can repeat an expensive full computation, increase queue pressure, and erase the most useful timing signal.
+Repeatedly issuing `REFRESH MATERIALIZED VIEW ... FORCE` is risky. It can repeat an expensive full computation, increase queue pressure, and add retry records that obscure the original timing signal.
 
 ## Capture the View State
 
 Inspect the view before changing it:
 
 ```sql
-SHOW MATERIALIZED VIEWS WHERE NAME = 'mv_daily_sales'\G
+SHOW MATERIALIZED VIEWS FROM analytics WHERE NAME = 'mv_daily_sales'\G
 
 SELECT
   table_schema,
@@ -42,7 +42,7 @@ Distinguish these states:
 - `PENDING` or `RUNNING` may indicate queueing or a long query rather than a failure.
 - `MERGED` means a newly scheduled run was combined with an existing pending run.
 - `SKIPPED` means StarRocks detected no relevant base-table change.
-- `is_active = false` means the view cannot be refreshed or used until its dependency or definition problem is repaired.
+- `is_active = false` means the view cannot be refreshed or used for automatic query rewrite. It can still be queried directly, but its data may be inconsistent until the dependency or definition problem is repaired and the view is active again.
 
 ## Find the Exact Task Run
 
@@ -129,13 +129,15 @@ Only one refresh task for a given materialized view runs at a time. Short schedu
 
 ## Retry the Smallest Safe Scope
 
-For a partitioned view, retry only the affected time range:
+For a partitioned view backed by native StarRocks tables, retry only the affected time range:
 
 ```sql
 REFRESH MATERIALIZED VIEW analytics.mv_daily_sales
 PARTITION START ('2026-07-25') END ('2026-07-26')
 WITH SYNC MODE;
 ```
+
+For a view built on external catalogs, check the behavior of your release before relying on this range to limit the work. The current `REFRESH MATERIALIZED VIEW` reference warns that StarRocks refreshes all materialized-view partitions for these views.
 
 `WITH SYNC MODE` makes the SQL call wait for success or failure, which is useful for a controlled repair. Use `FORCE` only when you intentionally need to bypass the normal base-partition change check:
 
