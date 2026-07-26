@@ -17,7 +17,8 @@ Use a repeatable sequence: prove that the view is usable, prove that rewrite is 
 Start with metadata rather than query timing:
 
 ```sql
-SHOW MATERIALIZED VIEWS WHERE NAME = 'mv_daily_revenue'\G
+SHOW MATERIALIZED VIEWS FROM analytics
+WHERE NAME = 'mv_daily_revenue'\G
 
 SELECT
   table_schema,
@@ -25,15 +26,15 @@ SELECT
   is_active,
   inactive_reason,
   last_refresh_state,
-  last_refresh_time,
+  last_refresh_finished_time,
   last_refresh_error_message,
-  query_rewrite_status
+  table_rows
 FROM information_schema.materialized_views
 WHERE table_schema = 'analytics'
   AND table_name = 'mv_daily_revenue';
 ```
 
-An asynchronous view must be active and have materialized data before it can accelerate a query. A failed initial refresh, a base-table schema change, or a missing dependency can leave it inactive. Fix the reported cause first. Do not run `ALTER MATERIALIZED VIEW ... ACTIVE` as a substitute for fixing a broken definition.
+An asynchronous view must be active and have completed its first refresh before it can accelerate a query. A failed refresh is reported by `last_refresh_state` and `last_refresh_error_message`; it does not by itself mean that the view is inactive. Base-table schema changes or changed dependencies can make a view inactive. Fix the reported cause first. After a compatible base-table change, run `ALTER MATERIALIZED VIEW ... ACTIVE`; if activation does not take effect because the definition is no longer valid, recreate the view.
 
 Confirm the definition you are actually testing:
 
@@ -109,7 +110,7 @@ For regular asynchronous rewrite, StarRocks primarily matches select-project-joi
 
 From v3.3, text-based rewrite can match a query or subquery whose abstract syntax tree matches a materialized-view definition. It supports shapes beyond the regular SPJG path, but the match is intentionally sensitive to the SQL structure. Avoid unnecessary `ORDER BY` inside the matching subquery, because StarRocks normally removes subquery ordering.
 
-If the view is based on a complex logical view, `enable_view_based_mv_rewrite` is disabled by default. Enable it only after verifying that the deployed StarRocks version supports the required pattern:
+From v3.3.0, StarRocks can rewrite more complex materialized views built on logical views, but `enable_view_based_mv_rewrite` is disabled by default. Enable it only after verifying that the deployed StarRocks version supports the required pattern:
 
 ```sql
 SET enable_view_based_mv_rewrite = true;
@@ -126,9 +127,9 @@ ALTER MATERIALIZED VIEW analytics.mv_daily_revenue
 SET ('mv_rewrite_staleness_second' = '300');
 ```
 
-That setting explicitly permits a five-minute staleness window. It is a product decision, not a generic performance fix. Record the freshness SLO and ensure dashboard users understand it.
+While the last refresh remains within that five-minute interval, StarRocks can use the view without checking whether the base tables changed. That tolerance is a product decision, not a generic performance fix. Record the freshness SLO and ensure dashboard users understand it.
 
-`query_rewrite_consistency = 'LOOSE'` weakens consistency checks further. Do not use it merely to make TRACE quiet.
+The materialized-view property `query_rewrite_consistency = 'LOOSE'` disables consistency checks. Do not use it merely to make TRACE quiet.
 
 External catalogs require extra care. StarRocks cannot provide the same strong consistency guarantee for external data, and JDBC-catalog-based asynchronous materialized views do not support query rewrite. Verify the external-catalog support matrix for your release before tuning.
 
@@ -151,7 +152,7 @@ Then verify all of the following:
 
 1. The scan names the expected view.
 2. The result matches the base-table query at the required freshness point.
-3. The profile shows fewer scanned rows and lower operator cost.
+3. The profile shows fewer scanned rows or bytes and lower CPU or operator time.
 4. Refresh cost does not overwhelm the performance saved by rewrite.
 5. The application session has the same rewrite variables as the test session.
 
