@@ -165,7 +165,7 @@ ALTER TABLE fact_orders
 DISTRIBUTED BY HASH(tenant_id, order_id) BUCKETS 64;
 ```
 
-The operation is asynchronous and rewrites data. Current documentation says this post-creation distribution optimization is not supported in shared-data mode. Capacity-test and monitor `SHOW ALTER TABLE`; for unsupported cases, build a replacement table and migrate.
+The operation is asynchronous and rewrites data. Current documentation says this post-creation distribution optimization is not supported in shared-data mode. Capacity-test and monitor `SHOW ALTER TABLE OPTIMIZE`; for unsupported cases, build a replacement table and migrate.
 
 ## Choose the Right Join Strategy
 
