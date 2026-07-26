@@ -61,7 +61,7 @@ The batch may contain records from several partitions, but each partition is ass
 
 ### Duplicate records already present in Kafka
 
-Kafka offsets identify records, not business events. If a producer writes the same `event_id` twice at offsets 100 and 101, Routine Load correctly processes two distinct Kafka records. A Duplicate Key table retains both rows.
+A `(topic, partition, offset)` coordinate identifies a Kafka record, not a business event. If a producer writes the same `event_id` twice at offsets 100 and 101 in one partition, Routine Load correctly processes two distinct Kafka records. A Duplicate Key table retains both rows.
 
 Use a Primary Key table keyed by a stable business identifier when the desired state is one row per entity, or land raw events first and deduplicate with an explicit rule. Be clear that Primary Key loading is UPSERT behavior, not proof that the producer emitted only once.
 
@@ -72,7 +72,7 @@ Two jobs can consume the same topic and load the same table. Each has its own pr
 Inventory jobs before creating another:
 
 ```sql
-SHOW ALL ROUTINE LOAD;
+SHOW ALL ROUTINE LOAD FROM ingestion;
 ```
 
 Use meaningful unique job names and alert on overlapping topic-to-table assignments.
@@ -94,7 +94,7 @@ Treat the handoff as a data migration, not routine restart.
 
 Exactly-once does not mean every Kafka record becomes a destination row. A `WHERE` clause deliberately excludes records. Parsing and conversion failures can be filtered within configured `max_error_number` and `max_filter_ratio` limits.
 
-Monitor error rows and preserve the rejected-record log. A job can provide exact transaction semantics while intentionally dropping bad input under its configured quality policy.
+Monitor error rows. Before expecting a rejected-record log, configure `log_rejected_record_num` to a positive value or `-1` for all rejected rows; its default value `0` logs none. A job can provide exact transaction semantics while intentionally dropping bad input under its configured quality policy.
 
 ### External side effects
 
@@ -106,7 +106,7 @@ If Kafka deletes an offset before StarRocks consumes it, Routine Load reports an
 
 ## Store Source Coordinates for Audit and Replay
 
-Current StarRocks documentation supports loading Kafka metadata for JSON and Avro Routine Load jobs. A raw landing table can use source coordinates as a Primary Key:
+The current Latest-4.1 documentation describes loading Kafka metadata for JSON and Avro Routine Load jobs. However, support was merged to `main` in July 2026 in [#73840](https://github.com/StarRocks/starrocks/pull/73840), after v4.1.1, and as of July 26, 2026 it is not in a published StarRocks release. Run the following example only on a later release or build that contains that change. A raw landing table can use source coordinates as a Primary Key:
 
 ```sql
 CREATE TABLE ingestion.orders_raw (
@@ -149,7 +149,7 @@ FROM KAFKA (
 );
 ```
 
-`source_stream` must distinguish topic lifecycles and environments. Kafka offsets can be reused if a topic is deleted and recreated, so `(topic, partition, offset)` alone is not a globally permanent event ID.
+`source_stream` must distinguish Kafka clusters, environments, and topic lifecycles. Kafka offsets can be reused if a topic is deleted and recreated, so `(topic, partition, offset)` alone is not a globally permanent event ID.
 
 This landing design gives operators evidence for gap and duplicate checks. It also makes an accidental replay from a replacement job idempotent at the raw source-coordinate key, assuming the same record maps deterministically.
 
