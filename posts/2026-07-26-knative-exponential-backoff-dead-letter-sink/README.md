@@ -10,7 +10,7 @@ Description: Configure bounded exponential retries and a recoverable dead letter
 
 Knative delivery policy has four independent decisions: how many times to retry, how the delay grows, where an event goes after failure, and whether the chosen event transport implements those settings. A useful production policy sets all four deliberately.
 
-The following Trigger retries a failed subscriber delivery five times with exponential backoff, then sends the event to a dead letter Service:
+The following Trigger requests up to five retries for subscriber failures that the transport considers retryable, with exponential backoff, then sends an event that still cannot be delivered to a dead letter Service. A non-retryable failure can go to the dead letter sink without using the full retry budget:
 
 ```yaml
 apiVersion: eventing.knative.dev/v1
@@ -54,7 +54,7 @@ Do not send production traffic until both resources report `Ready=True`.
 
 ## Understand Every Delivery Field
 
-`retry: 5` requests five retry attempts after the initial delivery, not five total attempts. The normal maximum is therefore six delivery attempts.
+`retry: 5` requests up to five retry attempts after the initial delivery for a retryable failure, not five total attempts. The normal maximum is therefore six delivery attempts.
 
 `backoffPolicy: exponential` makes the delay grow as the retry number increases. With `backoffDelay: PT1S`, the API describes a delay based on:
 
@@ -79,7 +79,7 @@ A delivery policy belongs to the resource making a particular delivery:
 
 Do not assume a policy on a source or an upstream Trigger automatically governs every downstream hop. For a multi-step topology, draw each HTTP delivery edge and decide which resource owns its retries and dead letter sink.
 
-If a Trigger has its own delivery settings, use its rendered manifest and the installed API behavior to confirm how they interact with Broker defaults:
+A Trigger-level delivery spec overrides the Broker-level delivery spec for that Trigger; it is not a field-by-field merge with the Broker defaults. Use the rendered manifests to confirm which spec is configured:
 
 ```bash
 kubectl get broker payments -n production -o yaml
@@ -130,7 +130,7 @@ Make the subscriber return `503 Service Unavailable` for one known CloudEvent. R
 4. the dead letter sink acknowledges only after persistence;
 5. replaying the record does not duplicate business state.
 
-Inspect the resource status and Eventing metrics:
+Inspect the resource status and application logs:
 
 ```bash
 kubectl describe trigger payment-authorized -n production
@@ -144,11 +144,11 @@ kubectl logs -n production \
 
 Label selectors and data-plane component names differ between Broker implementations. Use `kubectl get pods -A` and the resource status to identify the actual dispatcher before reading its logs.
 
-Finally, test a permanent non-retryable `4xx`, a retryable `5xx`, and a network timeout. They exercise different branches of the sender.
+Finally, test a non-retryable `400 Bad Request`, a retryable `503 Service Unavailable`, and a network timeout. They exercise different branches of Knative's shared HTTP sender; verify response classification separately for transports that do not use it.
 
 ## Optional `Retry-After` Support
 
-Knative's alpha `delivery-retryafter` feature can let `429` and `503` responses influence the delay through `Retry-After`. When the feature is enabled, `retryAfterMax` bounds the accepted header value. Support is implementation-dependent, so verify the feature gate and your transport before relying on it.
+Knative's alpha `delivery-retryafter` feature can let `429` and `503` responses influence the delay through `Retry-After`. While the feature is alpha, the feature gate must be enabled, retries must be configured, and a positive ISO 8601 `retryAfterMax` must be set to opt in. That field caps the header-derived duration, not the normal backoff; Knative uses the larger of the normal backoff and the capped `Retry-After` duration. Support is implementation-dependent, so verify the feature gate and your transport before relying on it.
 
 Exponential backoff protects a temporarily unhealthy subscriber. A durable dead letter sink protects the events that outlive that retry budget. Production systems need both, plus idempotent subscribers, monitoring, and a rehearsed replay procedure.
 
