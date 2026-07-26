@@ -2,16 +2,15 @@
 
 ## StarRocks
 
-1. Synchronous vs Asynchronous Materialized Views in StarRocks: Which One Should You Use?
-2. StarRocks Routine Load Is PAUSED: Fix Kafka Offset, Error-Row, and Parsing Failures
-3. Why Does StarRocks Routine Load Say “Bad Message Format”?
-4. StarRocks Routine Load Reports “TOO MANY TASKS”: How to Tune Concurrency and Batch Size
-5. Does StarRocks Kafka Routine Load Really Provide Exactly-Once Ingestion?
-6. Flink CDC to StarRocks Keeps Failing: A Connector and Stream Load Troubleshooting Checklist
-7. How to Run Zero-Downtime Schema Changes on Large StarRocks Tables
-8. Why Are StarRocks Iceberg Queries Slow? Metadata Cache, Statistics, and File-Pruning Fixes
-9. How to Tune StarRocks for High-Concurrency BI Dashboards with Resource Groups
-10. How to Export a Consistent StarRocks Snapshot to CSV or JSON While Data Is Changing
+1. StarRocks Routine Load Is PAUSED: Fix Kafka Offset, Error-Row, and Parsing Failures
+2. Why Does StarRocks Routine Load Say “Bad Message Format”?
+3. StarRocks Routine Load Reports “TOO MANY TASKS”: How to Tune Concurrency and Batch Size
+4. Does StarRocks Kafka Routine Load Really Provide Exactly-Once Ingestion?
+5. Flink CDC to StarRocks Keeps Failing: A Connector and Stream Load Troubleshooting Checklist
+6. How to Run Zero-Downtime Schema Changes on Large StarRocks Tables
+7. Why Are StarRocks Iceberg Queries Slow? Metadata Cache, Statistics, and File-Pruning Fixes
+8. How to Tune StarRocks for High-Concurrency BI Dashboards with Resource Groups
+9. How to Export a Consistent StarRocks Snapshot to CSV or JSON While Data Is Changing
 
 ## Knative Eventing
 
