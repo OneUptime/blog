@@ -15,7 +15,7 @@ StarRocks exposes two different kinds of evidence:
 
 Use both. A plan can look sensible but run badly because statistics are wrong, one node receives skewed data, a build-side hash table is much larger than estimated, or storage is slow. Conversely, a slow operator in a profile may be downstream of the real cause, such as a scan that failed to prune.
 
-`EXPLAIN ANALYZE` is supported from StarRocks v3.1. It really runs the query. SELECT results are discarded; an analyzed `INSERT INTO` transaction is aborted by default. Still use a production-safe account and statement, because execution consumes cluster resources.
+`EXPLAIN ANALYZE` is supported from StarRocks v3.1. It really runs the query. SELECT results are discarded; `INSERT INTO` is supported only for internal tables in the default catalog, and its transaction is aborted by default. Still use a production-safe account and statement, because execution consumes cluster resources.
 
 ## Capture a Reproducible Query
 
@@ -42,7 +42,7 @@ From v3.3.5, `COSTS` is the default detail level. `EXPLAIN VERBOSE` is useful fo
 
 Look for:
 
-- `partitionsRatio`/`partitions` and `tabletRatio`;
+- `partitionRatio`/`partitionsRatio`/`partitions` and `tabletRatio`/`tabletsRatio`;
 - pushed `PREDICATES`;
 - estimated `cardinality`;
 - `BROADCAST`, `SHUFFLE`, `BUCKET_SHUFFLE`, or colocate join;
@@ -78,7 +78,7 @@ Operator time can be cumulative across parallel drivers, so it can exceed wall-c
 
 Check:
 
-- `QueryExecutionWallTime`: user-visible execution time;
+- `QueryExecutionWallTime`: wall-clock execution time;
 - `QueryCumulativeCpuTime`: CPU consumed across workers;
 - `QueryPeakMemoryUsagePerNode`: worst per-node peak;
 - `QueryCumulativeNetworkTime`: time attributed to exchanges;
@@ -111,7 +111,7 @@ For an `OlapScan` operator, compare:
 
 If almost every partition or tablet is scanned, fix pruning or table layout before tuning the later aggregation. If many rows are read and very few survive, inspect sort keys, indexes, predicate types, and whether a function or cast prevented pushdown.
 
-For shared-data clusters, high remote read bytes and `IOTimeRemote` can identify a cold cache or object-storage bottleneck. That is different from a CPU-heavy scan.
+For shared-data clusters, high `CompressedBytesReadRemote` and `IOTimeRemote` can identify a cold cache or object-storage bottleneck. That is different from a CPU-heavy scan.
 
 ## Diagnose Joins from Build and Probe
 
@@ -163,7 +163,7 @@ Profile metrics are aggregated by default (`pipeline_profile_level=1`). If merge
 SET pipeline_profile_level = 2;
 ```
 
-Level 2 retains the original structure and produces much larger profiles; do not leave it enabled globally.
+Level 2 retains the original structure and produces much larger profiles; return the session to level 1 after the focused diagnostic.
 
 Data skew typically appears as one driver with much larger input rows, peak memory, or operator time while peers finish early. Confirm the heavy key values in SQL before changing bucketing or adding a skew hint.
 
@@ -181,7 +181,7 @@ SHOW PROFILELIST;
 SELECT get_query_profile('<query-id>')\G
 ```
 
-Profiles are also available from the FE web UI. Global profiling adds overhead, so StarRocks recommends not leaving it globally enabled for long production periods. Capture only slow queries with:
+Profiles are also available from the FE web UI. Enabling `enable_profile` globally adds overhead, so StarRocks recommends not leaving it enabled globally for long production periods. With `enable_profile` left `false`, capture only slow queries with:
 
 ```sql
 SET GLOBAL big_query_profile_threshold = '30s';
