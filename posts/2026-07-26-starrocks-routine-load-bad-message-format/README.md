@@ -16,7 +16,7 @@ Start with Kafka metadata and network identity. Investigate payload parsing only
 
 ```sql
 SHOW ROUTINE LOAD FOR ingestion.kafka_orders\G
-SHOW ROUTINE LOAD TASK WHERE JobName = 'kafka_orders';
+SHOW ROUTINE LOAD TASK FROM ingestion WHERE JobName = 'kafka_orders';
 ```
 
 Record:
@@ -64,7 +64,7 @@ nc -vz kafka-1.internal.example 9092
 nc -vz kafka-2.internal.example 9092
 ```
 
-`getent` checks the host's configured resolver path, including DNS and `/etc/hosts`. A successful `ping` is not required and is not sufficient; Kafka needs the configured TCP listener.
+`getent` checks the host's Name Service Switch path as configured in `/etc/nsswitch.conf`, which commonly includes `/etc/hosts` and DNS. A successful `ping` is not required and is not sufficient; Kafka needs the configured TCP listener.
 
 Use a Kafka-aware client with the same security protocol to display returned metadata:
 
@@ -106,6 +106,8 @@ For TLS listeners, inspect the certificate presented from a BE:
 openssl s_client \
   -connect kafka-0.internal.example:9093 \
   -servername kafka-0.internal.example \
+  -verify_hostname kafka-0.internal.example \
+  -verify_return_error \
   -CAfile /etc/kafka/ca.pem \
   </dev/null
 ```
@@ -124,7 +126,7 @@ The job should move through `NEED_SCHEDULE` to `RUNNING`. Confirm:
 
 ```sql
 SHOW ROUTINE LOAD FOR ingestion.kafka_orders\G
-SHOW ROUTINE LOAD TASK WHERE JobName = 'kafka_orders';
+SHOW ROUTINE LOAD TASK FROM ingestion WHERE JobName = 'kafka_orders';
 ```
 
 Check that every configured partition advances. A job can appear healthy while one advertised broker remains inaccessible and its partitions lag.
