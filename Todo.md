@@ -1,9 +1,5 @@
 # Blog Post Ideas
 
-## Percona Server
-
-1. How to Configure Percona Server Audit Log Filtering and Rotation Without Filling the Disk
-
 ## StarRocks
 
 1. StarRocks Query Is Slow: How to Read EXPLAIN ANALYZE and Query Profiles
