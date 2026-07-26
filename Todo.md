@@ -2,20 +2,19 @@
 
 ## Knative Eventing
 
-1. How to Deliver Knative Events Across Kubernetes Namespaces
-2. How to Expose a Knative Kafka Broker Outside the Cluster Without Breaking CloudEvents
-3. Knative Event Delivery Retries: Which HTTP Status Codes Trigger Redelivery?
-4. How to Configure Exponential Backoff and a Dead Letter Sink in Knative Eventing
-5. Knative Dead Letter Sink Is Not Receiving Failed Events: What to Check
-6. Why Dead Letter Handling Fails Inside Knative Sequences—and How to Fix Each Step
-7. Does Knative Eventing Guarantee Exactly-Once Delivery? Design for Duplicates Instead
-8. How to Preserve Kafka Partition Ordering in Knative Eventing
-9. Knative KafkaSource Consumer Lag Keeps Growing: How to Find the Bottleneck
-10. Kafka Broker vs MTChannelBasedBroker in Knative: Durability, Latency, and Operations
-11. How to Connect Knative Eventing to Strimzi or Redpanda Kafka
-12. How to Prevent Knative Scale-to-Zero Cold Starts from Causing Event Retries
-13. How to Run Long-Lived or Asynchronous Jobs from Knative Events
-14. What Happens to a Knative Trigger Subscriber’s Reply Event?
+1. How to Expose a Knative Kafka Broker Outside the Cluster Without Breaking CloudEvents
+2. Knative Event Delivery Retries: Which HTTP Status Codes Trigger Redelivery?
+3. How to Configure Exponential Backoff and a Dead Letter Sink in Knative Eventing
+4. Knative Dead Letter Sink Is Not Receiving Failed Events: What to Check
+5. Why Dead Letter Handling Fails Inside Knative Sequences—and How to Fix Each Step
+6. Does Knative Eventing Guarantee Exactly-Once Delivery? Design for Duplicates Instead
+7. How to Preserve Kafka Partition Ordering in Knative Eventing
+8. Knative KafkaSource Consumer Lag Keeps Growing: How to Find the Bottleneck
+9. Kafka Broker vs MTChannelBasedBroker in Knative: Durability, Latency, and Operations
+10. How to Connect Knative Eventing to Strimzi or Redpanda Kafka
+11. How to Prevent Knative Scale-to-Zero Cold Starts from Causing Event Retries
+12. How to Run Long-Lived or Asynchronous Jobs from Knative Events
+13. What Happens to a Knative Trigger Subscriber’s Reply Event?
 
 ## Savings Plans
 
