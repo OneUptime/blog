@@ -81,9 +81,9 @@ spec:
           port: 80
 ```
 
-Replace the GatewayClass and port with values supported by your installation. If Eventing transport encryption is strict, configure the gateway-to-backend TLS behavior and trusted CA for the HTTPS service address rather than silently downgrading it.
+Replace `example-gateway-class` with a GatewayClass installed in your cluster, and confirm that its implementation supports the Extended `HTTPRoutePathRewrite` feature used by `URLRewrite`. The backend port must match the Service port. If Eventing transport encryption is `strict`, change `backendRefs[].port` to `443` and configure a `BackendTLSPolicy` for `kafka-broker-ingress` with the cluster-local hostname and the CA advertised in the Broker's `.status.address.CACerts`; do not silently downgrade to HTTP.
 
-Placing the Gateway in another namespace requires its listener to allow the route namespace. A backend in a different namespace also requires the appropriate Gateway API cross-namespace reference authorization. Keep the example same-namespace unless your platform team intentionally manages those boundaries.
+Placing the Gateway in another namespace requires `parentRefs[].namespace` and its listener to allow the route namespace. A backend in a different namespace requires `backendRefs[].namespace` and a `ReferenceGrant` in the backend namespace. Keep the example same-namespace unless your platform team intentionally manages those boundaries.
 
 ## Preserve the CloudEvent
 
