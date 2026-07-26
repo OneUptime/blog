@@ -2,8 +2,7 @@
 
 ## StarRocks
 
-1. How to Tune StarRocks for High-Concurrency BI Dashboards with Resource Groups
-2. How to Export a Consistent StarRocks Snapshot to CSV or JSON While Data Is Changing
+1. How to Export a Consistent StarRocks Snapshot to CSV or JSON While Data Is Changing
 
 ## Knative Eventing
 
