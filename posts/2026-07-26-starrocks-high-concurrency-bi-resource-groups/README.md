@@ -39,7 +39,7 @@ WITH (
 );
 ```
 
-These values are examples, not defaults. `mem_limit` is a percentage of query memory on each BE, and `cpu_weight` is a relative scheduling weight on each BE. Neither value reserves that percentage of the entire cluster for a dashboard.
+These values are examples, not defaults. `mem_limit` is a percentage of query memory on each BE, and `cpu_weight` is a relative scheduling weight on each BE. A `cpu_weight` value must not exceed the average number of CPU cores across the BEs, so validate the example value against the target cluster. Neither value reserves that percentage of the entire cluster for a dashboard.
 
 Create a separate group for ad hoc users instead of adding broad classifiers to the dashboard group:
 
@@ -76,7 +76,7 @@ SHOW PROC '/current_queries';
 SHOW PROC '/global_current_queries';
 ```
 
-The `ResourceGroup` field shows the actual match. After completion, the FE audit log records `ResourceGroup`. An empty value means resource-group management did not apply; `default_wg` means management applied but no user-defined classifier matched.
+The `ResourceGroup` field shows the actual match. `/global_current_queries` is available from 3.3.3; use `/current_queries` on earlier releases. After completion, the FE audit log records `ResourceGroup`. An empty value means resource-group management did not apply; `default_wg` means management applied but no user-defined classifier matched.
 
 If a connection pool reuses sessions for several tenants, routing by `user` may be too coarse. Use separate credentials or roles, or set a group explicitly for the session:
 
@@ -101,13 +101,13 @@ WITH (
 );
 ```
 
-Only one of `cpu_weight` and `exclusive_cpu_cores` can be greater than zero. An exclusive group remains quota-limited to its reserved cores. By default, the BE setting `enable_resource_group_cpu_borrowing=true` allows shared groups to borrow exclusive cores while their owner is idle; set it to `false` if those idle cores must remain unavailable. Begin with a shared group unless a measured noisy-neighbor problem justifies dedicated cores.
+`exclusive_cpu_cores` must not exceed the minimum number of CPU cores across the BEs minus one, so the example value requires every BE to have at least nine cores. Only one of `cpu_weight` and `exclusive_cpu_cores` can be greater than zero. An exclusive group remains quota-limited to its reserved cores. By default, the BE setting `enable_resource_group_cpu_borrowing=true` allows shared groups to borrow exclusive cores while their owner is idle; set it to `false` if those idle cores must remain unavailable. Begin with a shared group unless a measured noisy-neighbor problem justifies dedicated cores.
 
 StarRocks 4.1 adds percentage-based CPU controls, including `cpu_weight_percent` and `exclusive_cpu_percent`. Use the syntax and valid combinations documented for the deployed minor version; do not mix the older core-count and newer percentage controls by guesswork.
 
 ## Queue the Burst Instead of Running Everything
 
-`concurrency_limit` is an admission boundary, not a target. A useful starting value is the number of concurrent dashboard queries the cluster can run while meeting the latency objective, not the number a connection pool can open.
+With Query Queue v1 and resource-group-level queues enabled, `concurrency_limit` is an admission boundary, not a target. A useful starting value is the number of concurrent dashboard queries the cluster can run while meeting the latency objective, not the number a connection pool can open.
 
 For Query Queue v1, resource-group-level queuing is available from 3.1.4. Enable SELECT queues and group-level queues:
 
@@ -125,7 +125,7 @@ SET GLOBAL query_queue_max_queued_queries = 2000;
 
 Align the dashboard HTTP timeout, database driver's query timeout, StarRocks pending timeout, and retry policy. If the web request gives up after five seconds while StarRocks queues for 300 seconds, abandoned work can continue to occupy the queue.
 
-Query Queue v2, available from 3.3 and enabled by default from 4.1, uses estimated logical slots instead of the v1 fixed CPU, memory, and concurrency triggers. When v2 is active, v1 variables such as `query_queue_concurrency_limit`, `query_queue_mem_used_pct_limit`, and `query_queue_cpu_used_permille_limit` do not trigger admission. Check `enable_query_queue_v2` on every FE and tune v2's `query_queue_v2_concurrency_level` from load-test results. It is a relative logical-concurrency setting, not a count of dashboard queries.
+Query Queue v2, available from 3.3.4 and enabled by default from 4.1, uses estimated logical slots instead of the v1 fixed CPU, memory, and concurrency triggers. When v2 is active, resource-group thresholds such as `concurrency_limit` and `max_cpu_cores`, and global v1 variables such as `query_queue_concurrency_limit`, `query_queue_mem_used_pct_limit`, and `query_queue_cpu_used_permille_limit`, do not trigger admission. Check `enable_query_queue_v2` on every FE and tune v2's `query_queue_v2_concurrency_level` from load-test results. It is a relative logical-concurrency setting, not a count of dashboard queries.
 
 Do not combine snippets from the two queue versions without checking which scheduler is active.
 
@@ -158,7 +158,7 @@ SHOW RUNNING QUERIES;
 SHOW PROCESSLIST;
 ```
 
-`SHOW USAGE RESOURCE GROUPS` reports approximate CPU, memory, and running-query usage by BE. `SHOW RUNNING QUERIES` distinguishes `PENDING` from `RUNNING` and shows requested slots when Query Queue v2 is active.
+`SHOW USAGE RESOURCE GROUPS` reports CPU, memory, and running-query usage by BE; the CPU value is an approximate estimate. `SHOW RUNNING QUERIES` distinguishes `PENDING` from `RUNNING` and shows requested slots when Query Queue v2 is active.
 
 Alert on:
 
@@ -190,7 +190,7 @@ If queue time is high but execution time remains stable, more capacity or fewer 
 - Resource groups require Pipeline Engine. Pipeline Engine and resource groups are enabled by default from 3.1, but older clusters need their documented session settings.
 - The old `short_query` type was deprecated and converted to exclusive resource groups from 3.3.5.
 - Query Queue v1 group-level queuing begins in 3.1.4.
-- Query Queue v2 begins in 3.3 and defaults to enabled from 4.1; changing `enable_query_queue_v2` requires FE restart.
+- Query Queue v2 begins in 3.3.4 and defaults to enabled from 4.1; changing `enable_query_queue_v2` requires FE restart.
 - Resource limits apply per BE where documented. Validate behavior on heterogeneous clusters.
 - Roll out classifier and limit changes to a canary service account first. A broad classifier can move unrelated production queries.
 
