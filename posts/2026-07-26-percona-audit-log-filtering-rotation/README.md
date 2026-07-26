@@ -12,7 +12,7 @@ Percona Server 8.4 uses the `component_audit_log_filter` component as the recomm
 
 Treat configuration as both a security control and a storage budget. A filter that accidentally logs everything can generate sustained write I/O and fill the disk; a filter that accidentally logs nothing creates a compliance gap.
 
-This article targets the 8.4 component, not the deprecated audit-log plugin. Names, defaults, and validation behavior differ between releases. Percona Server 8.4.9-9 added stricter filter-definition validation and changed the default event mode to `REDUCED`; check the exact server build before rollout.
+This article targets the 8.4 component, not the deprecated audit-log plugin. Names, defaults, and validation behavior differ between releases. Percona Server 8.4.9-9 was not released; 8.4.10-10 is the first released build with stricter filter-definition validation and the `audit_log_filter.event_mode` variable, whose default is `REDUCED`. Check the exact server build before rollout.
 
 ## Install the Component and Its Tables
 
@@ -54,9 +54,11 @@ SELECT audit_log_filter_set_filter(
 );
 
 SELECT audit_log_filter_set_user('%', 'log_all');
+
+SELECT audit_log_filter_flush();
 ```
 
-Both calls are necessary. A stored but unassigned filter does not affect sessions. Filter selection happens at connection time, so reconnect a test client after assignment.
+All three calls are necessary for a deterministic reload. A stored but unassigned filter does not affect sessions, and `audit_log_filter_flush()` reloads the persisted definitions and assignments into the component. In 8.4.10-10 and later, a flush detaches existing sessions from their filters until they reconnect or run `CHANGE_USER`; earlier 8.4 builds had different active-session behavior. Coordinate production reconnects and always use a new test connection after the flush.
 
 Generate a harmless event and verify the configured file:
 
@@ -81,12 +83,13 @@ Deploy new filters through:
 ```sql
 SELECT audit_log_filter_set_filter('security_events', '<validated-json>');
 SELECT audit_log_filter_set_user('app_user@%', 'security_events');
+SELECT audit_log_filter_flush();
 ```
 
 Important version caveats:
 
 - host wildcards in assignment patterns are supported from Percona Server 8.4.4;
-- 8.4.9-9 and later reject unknown keys, event classes, empty arrays, and invalid fields;
+- 8.4.10-10 and later, the first released builds containing the validation changes documented for the unreleased 8.4.9-9 line, reject unknown keys, event classes, empty arrays, and invalid fields;
 - earlier 8.4 builds can silently ignore misspelled structural keys and fall back to broader behavior;
 - `REDUCED` mode accepts fewer event classes than `FULL`.
 
@@ -172,7 +175,7 @@ Alert on:
 - parse failures in the downstream collector;
 - failed rotation or unexpected file ownership.
 
-The default `ASYNCHRONOUS` strategy waits for buffer space but has a crash window for buffered records. `PERFORMANCE` can drop complete events when the buffer is full. `SYNCHRONOUS` calls `fsync()` before returning audited statements and can add substantial write latency. Choose durability deliberately and test production throughput.
+The default `ASYNCHRONOUS` strategy waits for buffer space but has a crash window for buffered records. `PERFORMANCE` can drop complete events when the buffer is full. In 8.4.10-10 and later, `SYNCHRONOUS` calls `fsync()` before returning audited statements and can add substantial write latency. Through 8.4.8-8, the `SYNCHRONOUS` setting did not issue the per-event `fsync()` and behaved like `SEMISYNCHRONOUS`. Choose durability deliberately and test production throughput.
 
 If logs are shipped, deletion from the database host should depend on confirmed ingestion and retention policy. Component pruning does not know whether an external collector successfully indexed an archive.
 
@@ -197,3 +200,4 @@ Keep an out-of-band way to access the server if a filter or audit strategy cause
 - [Write filter definitions](https://docs.percona.com/percona-server/8.4/write-filter-definitions.html)
 - [Audit Log Filter functions, options, and variables](https://docs.percona.com/percona-server/8.4/audit-log-filter-variables.html)
 - [Manage Audit Log Filter files](https://docs.percona.com/percona-server/8.4/manage-audit-log-filter.html)
+- [Percona Server for MySQL 8.4.10-10 release notes](https://docs.percona.com/percona-server/8.4/release-notes/8.4.10-10.html)
