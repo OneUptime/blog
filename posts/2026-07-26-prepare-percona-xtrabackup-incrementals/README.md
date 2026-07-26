@@ -25,30 +25,27 @@ Preparation modifies `/backup/full`. It never turns `/backup/inc2` into a comple
 Take the full backup:
 
 ```bash
-xtrabackup \
+xtrabackup --login-path=backup \
   --backup \
-  --target-dir=/backup/full \
-  --login-path=backup
+  --target-dir=/backup/full
 ```
 
 Create the first incremental from that directory:
 
 ```bash
-xtrabackup \
+xtrabackup --login-path=backup \
   --backup \
   --target-dir=/backup/inc1 \
-  --incremental-basedir=/backup/full \
-  --login-path=backup
+  --incremental-basedir=/backup/full
 ```
 
 Create the next incremental from `inc1`, not from the original full:
 
 ```bash
-xtrabackup \
+xtrabackup --login-path=backup \
   --backup \
   --target-dir=/backup/inc2 \
-  --incremental-basedir=/backup/inc1 \
-  --login-path=backup
+  --incremental-basedir=/backup/inc1
 ```
 
 `--incremental-basedir` reads the parent's checkpoint. You can instead use an explicit `--incremental-lsn`, but deriving it from a cataloged directory reduces transcription mistakes. Do not reuse a target directory; XtraBackup does not overwrite existing backup files.
@@ -88,7 +85,7 @@ Preparation changes the full backup as deltas are merged. Preserve immutable sou
 
 Percona also warns not to use the same incremental directory to prepare two different copies of a backup. Keep one clean incremental set per rehearsal, or clone the protected source set before each run.
 
-If the backups are compressed or encrypted, perform the documented decrypt/decompress steps before prepare and supply the required keyring configuration. Do not mix those transformations into an improvised chain.
+If the backup files are compressed or encrypted, perform the documented decrypt/decompress steps before prepare. If the source uses encrypted InnoDB tablespaces, supply the required keyring component configuration during prepare and restore. Do not mix those transformations into an improvised chain.
 
 ## Apply Redo Without Rolling Back Too Early
 
@@ -158,7 +155,7 @@ If a prepare fails, do not experiment on the only copy. Discard the working dire
 
 ## Restore-Test the Final Base
 
-The only restore source after merging is `/restore-work/full`:
+The only restore source after merging is `/restore-work/full`. Stop MySQL and ensure the destination datadir is empty before copying it back:
 
 ```bash
 systemctl stop mysql
