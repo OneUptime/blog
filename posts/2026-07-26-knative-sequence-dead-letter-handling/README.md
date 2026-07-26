@@ -88,13 +88,13 @@ spec:
       name: orders
 ```
 
-Install the Kafka Channel implementation before applying this manifest. Match `apiVersion` to the CRD installed by your Knative Kafka release. If `channelTemplate` is omitted, Knative uses the namespace or cluster default Channel; do not allow that to resolve to an InMemoryChannel in production.
+Install the Kafka Channel implementation before applying this manifest. Match `apiVersion` to the CRD installed by your Knative Kafka release. The referenced Knative Services and `orders` Broker must already exist, and `replicationFactor: 3` requires at least three Kafka brokers. If `channelTemplate` is omitted, Knative uses the namespace or cluster default Channel; do not allow that to resolve to an InMemoryChannel in production.
 
 Separate dead letter destinations make ownership and replay position unambiguous. A shared dead letter store also works if it persists a required stage identifier and the intended next destination.
 
 ## A Step Must Return a CloudEvent to Continue
 
-Sequence progression uses subscriber replies. A successful HTTP response that contains a valid reply CloudEvent feeds the next Channel. A `2xx` response with no CloudEvent is a successful delivery with no output, so the Sequence stops at that step.
+Sequence progression uses subscriber replies. A successful HTTP response that contains a valid reply CloudEvent feeds the next Channel. A `2xx` response with no CloudEvent headers and an empty body is a successful delivery with no output, so the Sequence stops at that step. A malformed non-empty response can instead be treated as a delivery failure by the Channel implementation.
 
 That is not a delivery failure and will not activate the dead letter sink.
 
@@ -104,7 +104,7 @@ Also keep subscriber request handling synchronous enough to return the reply wit
 
 ## Understand What Reaches the Dead Letter Sink
 
-When a step exhausts its attempts, the dead letter sink receives the event being delivered at that hop. That may not be the original event sent to the Sequence:
+When a step delivery fails after any applicable retries, the dead letter sink receives the input event to that step's Subscription. This is also true if the subscriber succeeds but forwarding its reply fails: the dead letter event is the step input, not the reply CloudEvent. That input may not be the original event sent to the Sequence:
 
 - `validate-order` sees the ingress event;
 - `enrich-order` sees the CloudEvent returned by validation;
@@ -121,7 +121,7 @@ Replaying every dead letter event to the Sequence ingress can repeat earlier sid
 - Sequence name and generation;
 - failed step index and logical stage name;
 - original and current CloudEvent `(source, id)`;
-- intended subscriber URI;
+- failed subscriber or reply destination URI;
 - failure code and diagnostic body;
 - number and time of replay attempts.
 
