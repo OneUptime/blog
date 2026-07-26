@@ -10,7 +10,7 @@ Description: Diagnose growing KafkaSource lag by partition, then distinguish sin
 
 Kafka consumer lag is the difference between a partition's latest offset and the offset committed by a consumer group. A growing total says only that production is outpacing committed consumption. The partition pattern and commit behavior reveal why.
 
-A Knative `KafkaSource` preserves order within each topic partition by waiting for a successful HTTP response from its sink before delivering the next record in that partition. That makes sink latency and failures part of Kafka consumption throughput.
+A Knative `KafkaSource` preserves order within each topic partition by serializing delivery in that partition. It waits for each sink delivery attempt, including configured retries and dead letter handling, to finish before delivering the next record in that partition. That makes sink latency and failures part of Kafka consumption throughput.
 
 ## Start with the Exact Source Identity
 
@@ -55,7 +55,7 @@ Capture `TOPIC`, `PARTITION`, `CURRENT-OFFSET`, `LOG-END-OFFSET`, `LAG`, `CONSUM
 | No active consumer IDs | dispatcher unavailable, source not placed, authentication/network failure, or rebalancing |
 | Every partition grows similarly | insufficient aggregate throughput or a generally slow sink |
 | One partition grows while others drain | hot key, poison event, or slow ordered work on that partition |
-| Current offset is fixed while deliveries repeat | sink is failing or timing out and the source is retrying |
+| Current offset is fixed while deliveries repeat | sink is failing or timing out during configured retries |
 | Consumer IDs constantly change | Pod churn, unstable networking, or repeated group rebalances |
 | Lag falls only when producers stop | sustainable consume rate is lower than produce rate |
 
@@ -63,7 +63,7 @@ One total-lag graph can hide a single blocked partition. Alert and debug at part
 
 ## Check the HTTP Sink Before Adding Consumers
 
-Because KafkaSource waits for success before advancing a partition, inspect sink response codes and latency:
+Because KafkaSource serializes delivery within a partition, inspect sink response codes and latency:
 
 ```bash
 kubectl get kafkasource orders -n production \
@@ -77,7 +77,7 @@ kubectl logs -n production \
 
 Look for:
 
-- `5xx`, `404`, `408`, `409`, or `429` responses causing redelivery;
+- `5xx`, `404`, `408`, `409`, or `429` responses, which are retryable when `spec.delivery.retry` is greater than zero;
 - connection and request timeouts;
 - a Knative Service repeatedly scaling from zero;
 - exhausted database connection pools;
@@ -85,13 +85,13 @@ Look for:
 - a single message whose processing never succeeds;
 - a handler that starts asynchronous work but delays its acknowledgement.
 
-Knative source metrics include sent event counts and retry event counts with response dimensions. The official metrics page warns that metric names are migrating from OpenCensus to OpenTelemetry, so verify the actual names exported by your installed release.
+The generic Knative Eventing metrics reference lists source sent-event and retry-event counts with response dimensions. Kafka dispatcher releases can export different metrics, and the official metrics page warns that names are migrating from OpenCensus to OpenTelemetry, so verify the actual names exported by your installed release.
 
 If the sink can safely accept work into a durable internal queue, acknowledge after that enqueue rather than after a long downstream workflow. Keep the downstream queue observable and idempotent.
 
 ## Account for Ordered Head-of-Line Blocking
 
-A KafkaSource blocks only the affected partition while it waits for a successful sink response, so one poison record can produce a distinctive single-partition backlog.
+A KafkaSource blocks only the affected partition while a sink attempt and its configured retries are in progress, so one poison record with a large retry budget or long backoff can produce a distinctive single-partition backlog.
 
 Configure a bounded failure policy:
 
@@ -108,7 +108,7 @@ spec:
         name: orders-dead-letter
 ```
 
-After attempts are exhausted and the dead letter sink accepts the failed event, consumption can move on. That restores transport progress, but later records may depend on business state that the failed record should have created. Decide whether the domain permits skipping a poison event or requires quarantining that ordering key.
+After sink attempts are exhausted, the current dispatcher attempts delivery to the dead letter sink and then commits the record so consumption can move on, even if dead letter delivery fails. Monitor the dead letter sink so a failed quarantine copy is not mistaken for successful handling. That restores transport progress, but later records may depend on business state that the failed record should have created. Decide whether the domain permits skipping a poison event or requires quarantining that ordering key.
 
 ## Scale Only When Parallelism Is the Limit
 
@@ -189,7 +189,7 @@ Changing `spec.consumerGroup` creates a different logical consumer. It does not 
 
 Likewise, changing `initialOffset` does not reset an existing group. Knative honors `initialOffset` only when there are no committed offsets for that consumer group.
 
-Offset resets are data operations. Pause producers or consumers as required, record the exact partitions and target offsets, understand duplicate or loss consequences, and use the Kafka administration procedure for your installed version.
+Offset resets are data operations. Stop the consumer instances before using Kafka's offset reset tool, pause producers too if your procedure requires a stable end offset, record the exact partitions and target offsets, understand duplicate or loss consequences, and use the Kafka administration procedure for your installed version.
 
 The fastest diagnosis is usually: describe lag per partition, correlate the stuck offsets with sink attempts, and only then decide whether to fix a poison event, accelerate the sink, stabilize consumers, rebalance keys, or add useful consumer parallelism.
 
@@ -198,5 +198,5 @@ The fastest diagnosis is usually: describe lag per partition, correlate the stuc
 - [Knative KafkaSource behavior, scaling, and delivery](https://knative.dev/docs/eventing/sources/kafka-source/)
 - [Knative KEDA autoscaling for Kafka resources](https://knative.dev/docs/eventing/configuration/keda-configuration/)
 - [Knative Eventing metrics reference](https://knative.dev/docs/eventing/observability/metrics/eventing-metrics/)
-- [Apache Kafka consumer group operations](https://kafka.apache.org/41/operations/basic-kafka-operations/)
+- [Apache Kafka consumer group operations](https://kafka.apache.org/43/operations/basic-kafka-operations/)
 - [Knative handling delivery failure](https://knative.dev/docs/eventing/event-delivery/)
