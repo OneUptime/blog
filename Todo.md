@@ -2,18 +2,17 @@
 
 ## Knative Eventing
 
-1. Knative Event Delivery Retries: Which HTTP Status Codes Trigger Redelivery?
-2. How to Configure Exponential Backoff and a Dead Letter Sink in Knative Eventing
-3. Knative Dead Letter Sink Is Not Receiving Failed Events: What to Check
-4. Why Dead Letter Handling Fails Inside Knative Sequences—and How to Fix Each Step
-5. Does Knative Eventing Guarantee Exactly-Once Delivery? Design for Duplicates Instead
-6. How to Preserve Kafka Partition Ordering in Knative Eventing
-7. Knative KafkaSource Consumer Lag Keeps Growing: How to Find the Bottleneck
-8. Kafka Broker vs MTChannelBasedBroker in Knative: Durability, Latency, and Operations
-9. How to Connect Knative Eventing to Strimzi or Redpanda Kafka
-10. How to Prevent Knative Scale-to-Zero Cold Starts from Causing Event Retries
-11. How to Run Long-Lived or Asynchronous Jobs from Knative Events
-12. What Happens to a Knative Trigger Subscriber’s Reply Event?
+1. How to Configure Exponential Backoff and a Dead Letter Sink in Knative Eventing
+2. Knative Dead Letter Sink Is Not Receiving Failed Events: What to Check
+3. Why Dead Letter Handling Fails Inside Knative Sequences—and How to Fix Each Step
+4. Does Knative Eventing Guarantee Exactly-Once Delivery? Design for Duplicates Instead
+5. How to Preserve Kafka Partition Ordering in Knative Eventing
+6. Knative KafkaSource Consumer Lag Keeps Growing: How to Find the Bottleneck
+7. Kafka Broker vs MTChannelBasedBroker in Knative: Durability, Latency, and Operations
+8. How to Connect Knative Eventing to Strimzi or Redpanda Kafka
+9. How to Prevent Knative Scale-to-Zero Cold Starts from Causing Event Retries
+10. How to Run Long-Lived or Asynchronous Jobs from Knative Events
+11. What Happens to a Knative Trigger Subscriber’s Reply Event?
 
 ## Savings Plans
 
