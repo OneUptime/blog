@@ -206,6 +206,26 @@
 18. Fixing Missing Filesystem Metrics and `node_filesystem_device_error` in Containerized Node Exporter
 19. How to Exclude Pseudo-Filesystems, Loop Devices, and Ephemeral Mounts from Disk Alerts
 20. Why Host and Container CPU Metrics Disagree—and How to Compare Them Correctly
+21. How to Alert When an Expected Host Metric Disappears Without Treating No Data as Zero
+22. Host Down or Node Exporter Down? How to Distinguish Machine Failure from a Broken Scrape
+23. How to Calculate Server Downtime Over a Time Window Without Misreading Short Scrape Gaps
+24. How to Detect Hosts That Vanished from Service Discovery Before Their `up` Series Goes Stale
+25. How to Secure Node Exporter Metrics Across Public or Segmented Networks
+26. One Prometheus or One per Network? How to Collect Infrastructure Metrics Across Isolated Environments
+27. Can Node Exporter Use Different Scrape Intervals for CPU, Disk, and Network Metrics?
+28. How to Monitor Infrastructure Jobs That Produce Metrics Only Once per Day
+29. Why Does a Prometheus Instant Query Return No Data for Slowly Scraped Infrastructure Metrics?
+30. How to Count Live Kubernetes Nodes and Alert on Unexpected Fleet-Size Changes
+31. How to Aggregate CPU, Memory, and Disk Metrics Across a Cluster Without Averaging Percentages Incorrectly
+32. How to Calculate Interface Bandwidth from Byte Counters Without Spikes After Restarts
+33. Which Network Interface Should You Graph When Bonds, Bridges, Veths, and VLANs Duplicate Traffic?
+34. How to Detect Counter Resets and Wraparound in High-Speed Network Infrastructure Metrics
+35. How to Measure Infrastructure Metric Cardinality Before It Overloads Prometheus
+36. How to Find Unused Infrastructure Metrics Before Adding `metric_relabel_configs` Drop Rules
+37. How to Set Per-Job Scrape Intervals Without Making Alerts Blind to Stale Series
+38. How to Monitor the Monitoring Server So Prometheus Failure Cannot Silence Host-Down Alerts
+39. How to Build Recording Rules for Fleet-Wide Infrastructure Dashboards Without Expensive Live Queries
+40. How to Preserve Host Identity Across Autoscaling, Reboots, and Changing IP Addresses
 
 ## kOps
 
@@ -1034,3 +1054,210 @@
 18. Why Is `get_historical_features` Slow or Memory-Hungry on a Large Entity DataFrame?
 19. Python Feature Server or Alpha Go Server: How Should Non-Python Clients Read Feast Features?
 20. How Do You Evolve a Feast FeatureView Schema Without Type Mismatches or Broken Consumers?
+
+## Headless Services
+
+1. Why Does a Kubernetes Headless Service Return No Pod IPs? Checking Selectors, EndpointSlices, and Readiness
+2. How to Resolve One Specific StatefulSet Pod with `<pod>.<service>.<namespace>.svc`
+3. How to Query A, AAAA, and SRV Records for a Headless Service with `dig`
+4. How to Publish StatefulSet Peers Before They Are Ready with `publishNotReadyAddresses`
+5. How to Keep Terminating Pod IPs from Breaking Headless Service Clients
+6. Headless Service Plus ClusterIP: How to Separate Stateful Peer Discovery from Client Traffic
+7. Why a Headless Service Does Not Load-Balance Requests—and How Clients Should Select Endpoints
+8. How to Handle DNS Caching When Pods Behind a Headless Service Roll
+9. How to Tune CoreDNS Cache TTLs for Fast Headless Service Updates Without a Query Storm
+10. How to Point a Selectorless Headless Service at an External IP with EndpointSlices
+11. Why a Selectorless Headless Service Has No DNS Records: Labels, Addresses, and Port Matching
+12. How to Reach Headless Service Endpoints Across Namespaces with the Correct FQDN
+13. Why Deployment Pods Do Not Get Stable DNS Names from a Headless Service—and When to Use StatefulSet
+14. Do Headless Services Need Ports? How Named Ports Produce SRV Records
+15. How Does an Ingress Route to a Headless Service? Following EndpointSlices Instead of a ClusterIP
+16. How to Avoid a StatefulSet Bootstrap Deadlock When Peer DNS Requires Readiness
+17. How to Verify Headless Service Membership with `kubectl get endpointslice` and `dig`
+18. How Dual-Stack Headless Services Publish A and AAAA Records for Every Pod
+19. How to Give Indexed Job Pods Stable DNS Names with a Headless Service
+20. How to Build StatefulSet Headless Service FQDNs When the Cluster Domain Is Not `cluster.local`
+
+## vCluster
+
+1. How to Expose the vCluster Kubernetes API Through Ingress with the Correct TLS SAN and Kubeconfig Server
+2. How to Register a vCluster in Argo CD Without a Fragile Local Port-Forward
+3. How to Sync vCluster Ingresses to a Shared Host-Cluster Ingress Controller
+4. How to Publish vCluster Gateway API Routes Through a Host-Cluster Gateway
+5. How to Map a Host-Cluster Service into a vCluster Without Duplicating the Workload
+6. How to Share cert-manager with vCluster Using Generic CRD Syncing Instead of Installing It per Tenant
+7. How to Allowlist Host Secrets into vCluster with Reference Patches
+8. Why Is a vCluster PVC Pending? Debugging StorageClass Sync, Selectors, and Provisioners
+9. How to Restrict vCluster Tenants to Approved StorageClasses with Label Selectors
+10. How to Back Up a vCluster Control Plane and Workload Volumes Without Assuming One Snapshot Covers Both
+11. How to Clone or Restore a vCluster from an OCI Snapshot and Reapply `vcluster.yaml`
+12. How to Upgrade vCluster Across Minor Versions Without Breaking Resource Sync
+13. How to Check Host and Tenant Kubernetes Version Compatibility Before a vCluster Upgrade
+14. How to Debug vCluster Syncer Lag, Watch Timeouts, and `403 Forbidden` API Calls
+15. How to Run a Highly Available vCluster Control Plane with etcd and PodDisruptionBudgets
+16. How to Enforce ResourceQuota, LimitRange, Pod Security, and NetworkPolicy Around a vCluster Tenant
+17. Why a NetworkPolicy Inside vCluster May Not Isolate Host Traffic—and Where to Enforce It
+18. How to Debug AWS IRSA for ServiceAccounts Synced from vCluster to EKS
+19. How to Pin vCluster Workloads to Dedicated Host Nodes with Labels, Taints, and Tolerations
+20. How to Sleep and Wake an Idle vCluster Without Breaking Ingress-Driven Wakeups
+
+## Flannel
+
+1. Why Does a Kubernetes Node Stay NotReady After Installing Flannel? A CNI Config and DaemonSet Checklist
+2. How to Fix Flannel `failed to acquire lease: node pod cidr not assigned`
+3. Why Is `/run/flannel/subnet.env` Missing? Tracing the Flannel CNI Initialization Path
+4. How to Fix `cni0 already has an IP Address Different from` the Flannel Subnet
+5. How to Remove Stale Calico Routes and CNI State Before Switching to Flannel
+6. Why Can Flannel Pods Communicate on One Node but Not Across Nodes? Testing VXLAN Port 8472
+7. How to Select the Correct Flannel Interface on Multi-NIC Nodes with `--iface` and `--iface-regex`
+8. How to Calculate the Right Flannel VXLAN MTU Behind a Cloud Network, VLAN, or VPN
+9. How to Trace a Flannel VXLAN Packet with Routes, FDB Entries, Neighbor Tables, and `tcpdump`
+10. Why Can Flannel Pods Reach Pod IPs but Not ClusterIP Services? Checking kube-proxy and Hairpin Paths
+11. How to Recover When a Reboot or NetworkManager Deletes `flannel.1` Routes
+12. How to Run Flannel with firewalld and nftables Without Dropping Forwarded Pod Traffic
+13. How to Verify `br_netfilter`, IP Forwarding, and the FORWARD Chain Before Blaming Flannel
+14. How to Fix `failed to find plugin "flannel" in path` by Aligning CNI Binary Directories
+15. How to Install Flannel in an Air-Gapped kubeadm Cluster with Pinned Images and CNI Binaries
+16. How to Detect Pod CIDR Collisions Between Flannel, Your LAN, and a Corporate VPN
+17. How to Preserve or Masquerade Pod Source IPs with Flannel `ip-masq` Settings
+18. How to Route an External Network to Flannel Pod CIDRs Without a LoadBalancer
+19. How to Upgrade the Flannel DaemonSet Without Leaving Stale Routes on Drained Nodes
+20. Why Did Flannel Stop Allocating Pod IPs? Diagnosing Subnet Lease Exhaustion and Duplicate Node CIDRs
+
+## Apache Hudi
+
+1. How to Choose Apache Hudi Record Keys, Ordering Fields, and Partition Paths for Correct Upserts
+2. How to Stop Duplicate Apache Hudi Records Across Files and Partitions
+3. Apache Hudi Copy-on-Write vs Merge-on-Read: How to Choose from Update Rate, Read Latency, and Compaction Cost
+4. How to Run Asynchronous Hudi Compaction Without Blocking Spark Structured Streaming
+5. How to Tune Hudi Compaction with Delta-Commit and Log-Size Triggers
+6. How to Merge Small Hudi Parquet Files After `bulk_insert` Using Clustering
+7. How to Size Hudi Files and Write Parallelism for S3 Without Creating Tiny Files
+8. How to Checkpoint Hudi Incremental Queries by Completion Time Without Missing or Reprocessing Commits
+9. Hudi Incremental `latest_state` vs CDC: How to Return Final Rows or Every Before-and-After Change
+10. How to Preserve Hudi Time Travel Beyond Cleaner Retention with Savepoints
+11. How to Evolve Hudi Schemas Safely: Add, Drop, Rename, and Widen Columns in Spark
+12. How to Fix Hudi Hive Sync “Schema Difference Found” on Partitioned Tables
+13. How to Sync Hudi to AWS Glue Without Exhausting Catalog Table Versions
+14. How to Choose a Hudi Index: Bloom, Simple, Global, or Record-Level
+15. How to Enable Hudi Metadata and Column-Stats Indexes Without Overloading Writers
+16. How to Configure Hudi Multi-Writer Concurrency with OCC and an External Lock Provider
+17. How to Apply Upserts and Deletes in One Hudi Batch with `_hoodie_is_deleted`
+18. How to Ingest Late and Out-of-Order CDC Events into Hudi Without Overwriting Newer Rows
+19. How to Query Hudi Merge-on-Read Tables Correctly from Athena and Trino
+20. How to Match Hudi, Spark, Scala, and AWS Glue Bundle Versions to Avoid Class-Loading Failures
+
+## MTTR
+
+1. How to Define the MTTR Clock: Impact Start, Detection, Mitigation, Restoration, or Ticket Closure?
+2. How to Calculate MTTR Across Incident Reopens, Flapping Recoveries, and Multiple Impact Windows
+3. How to Measure MTTR When a Service Is Partially Restored Before Full Recovery
+4. Which Incidents Belong in MTTR? Handling False Positives, Planned Maintenance, Tests, and Near Misses
+5. How to Segment MTTR by Service, Severity, and Failure Mode Without Hiding Outliers
+6. Why Median, p75, and p90 Recovery Time Tell More Than Mean MTTR
+7. How to Add Sample Size and Confidence Bounds to MTTR Trend Reports
+8. How to Calculate Impact-Weighted Recovery Time from User-Minutes and Error-Budget Burn
+9. How to Build a Canonical Incident Timeline for MTTR from PagerDuty, Jira, Slack, and Observability Events
+10. How to Audit Missing, Backfilled, and Time-Zone-Skewed Incident Timestamps Before Calculating MTTR
+11. DORA Failed Deployment Recovery Time vs Incident MTTR: How to Link Failures to Production Changes
+12. How to Build a Grafana MTTR Dashboard from Completed Incident Durations Instead of Live Gauges
+13. How to Set a Recovery-Time Target from Service SLOs and RTOs Instead of Industry Benchmarks
+14. How to Track Time to Mitigation Separately from Time to Permanent Resolution
+15. How to Decompose MTTR into Detection, Acknowledgment, Assembly, Diagnosis, and Mitigation Time
+16. How to Reduce MTTR with Automated Rollbacks and Feature-Flag Kill Switches Before Root-Cause Analysis
+17. How to Test Whether Runbooks Reduce MTTR Using Comparable Incident Cohorts
+18. How to Attribute MTTR for Multi-Service Incidents Without Double-Counting a Shared Outage
+19. How to Report MTTR Without Creating Perverse Incentives or Ranking Individual Responders
+20. How to Pair MTTR with SLO Impact, Incident Frequency, Reactive Hours, and Recovery Success Rate
+
+## API Testing
+
+1. Postman Collections or Tests in Code: When Does an API Suite Outgrow the GUI?
+2. How to Turn an OpenAPI Specification into API Tests Without Mistaking Schema Coverage for Behavior Coverage
+3. How to Refresh Expired OAuth Tokens in Parallel API Tests Without a Login Stampede
+4. How to Test API Authorization for Roles, Tenants, and Object-Level Access
+5. How to Chain Dependent API Requests Without Making the Entire Test Suite Order-Dependent
+6. Should API Tests Create Fixtures Through the API or Load Data Directly into the Database?
+7. How to Clean Up API Test Data Without Deleting Another Parallel Test’s Records
+8. How to Test Eventually Consistent APIs with Polling Instead of Fixed Sleeps
+9. How to Test an Asynchronous API That Returns `202 Accepted` and a Status URL
+10. How to Capture and Verify Webhooks in API Tests, Including Retries and Signatures
+11. How to Test Cursor Pagination for Missing, Duplicate, and Reordered Records
+12. How to Prove an Idempotency Key Prevents Duplicate Writes Under Concurrent Requests
+13. How to Test `ETag` and `If-Match` Handling for Concurrent API Updates
+14. How to Detect Breaking API Changes with Consumer-Driven Contract Tests
+15. How to Stop Mock APIs from Drifting Away from the Real Provider
+16. How to Generate Useful Negative and Boundary Tests from an OpenAPI Schema
+17. How to Test Rate Limits Without Making the CI Suite Slow or Unreliable
+18. How to Test Multipart File Uploads for Size Limits, Content Types, and Partial Failures
+19. Why Do API Tests Pass Locally but Fail in CI? Debugging URLs, Secrets, Clocks, and Shared State
+20. How to Make API Test Failures Reproducible with Request, Response, Correlation ID, and Seed Capture
+
+## Telegraf
+
+1. How to Test Telegraf Service Inputs When `--test` Produces No Metrics
+2. How to Debug a Telegraf Configuration That Works in the Shell but Fails as a systemd Service
+3. How to Fix Telegraf `outputs.influxdb_v2` 401 Errors Caused by Missing Service Environment Variables
+4. How to Route Different Telegraf Inputs to Separate Outputs with `tagpass`, `namepass`, and Aliases
+5. How to Parse Nested JSON Arrays in Telegraf with `json_v2` and GJSON Paths
+6. How to Fix Telegraf JSON `field type conflict` Errors Without Dropping New Points
+7. How to Extract Measurement Names, Tags, and Fields from MQTT Topics in Telegraf
+8. How to Prevent Telegraf MQTT Data Loss with QoS, Persistent Sessions, and `max_undelivered_messages`
+9. How to Size and Monitor Telegraf Memory or Disk Buffers So Backend Outages Do Not Drop Metrics
+10. How to Tune Telegraf `interval`, `flush_interval`, Batch Size, and Jitter for Steady Writes
+11. How to Run Telegraf `inputs.exec` Reliably with Timeouts, Exit Codes, and Parser-Safe Output
+12. How to Collect SNMP Tables in Containerized Telegraf with `gosmi` and Custom MIB Paths
+13. How to Receive SNMP Traps on Port 162 with Telegraf Without Running It as Root
+14. How to Remove One High-Cardinality Tag from One Telegraf Measurement with `namepass` and Starlark
+15. How to Hot-Reload Telegraf Configurations Safely with `--watch-config` and a Config Directory
+16. How to Store Telegraf Tokens and Passwords with systemd Credentials, Docker Secrets, or the OS Keyring
+17. How to Preserve Device Timestamps in Telegraf JSON Without Nanosecond, Time-Zone, or Precision Errors
+18. How to Give Containerized Telegraf Access to the Docker Socket Without Running `--privileged`
+19. How to Debug Telegraf HTTP 400 Responses When the Same Request Works with curl
+20. How to Stop Telegraf StatsD Packet Drops with `number_workers_threads`, Queue, and Socket-Buffer Tuning
+
+## Database Monitoring
+
+1. Why Does `pg_stat_activity` Look Frozen? Refreshing PostgreSQL Statistics Snapshots Correctly
+2. How to Alert on PostgreSQL `idle in transaction` Sessions Before They Block VACUUM and DDL
+3. How to Identify the Blocking Query in PostgreSQL with `pg_blocking_pids()`, `pg_locks`, and Wait Events
+4. How to Calculate `pg_stat_statements` Rates Without False Spikes After Statistics Resets
+5. How to Run `postgres_exporter` Without Superuser Using `pg_monitor` and File-Based Credentials
+6. How to Monitor PostgreSQL Autovacuum Progress and Tell a Slow Vacuum from a Blocked One
+7. How to Alert on PostgreSQL Transaction-ID Wraparound Risk with `age(datfrozenxid)` and `autovacuum_freeze_max_age`
+8. How to Measure PostgreSQL Buffer-Cache Effectiveness Without Mistaking the OS Page Cache for Disk Reads
+9. Why the MySQL Slow Query Log Misses Initial Lock Waits—and What to Collect from Performance Schema Instead
+10. How to Bound `mysqld_exporter` Query-Digest Cardinality with Statement Limits and Time Windows
+11. How to Detect MySQL Connection Churn Before `Threads_connected` Reaches `max_connections`
+12. How to Separate MySQL Query CPU Time from I/O and Lock Wait Time with Performance Schema Events
+13. How to Sample MongoDB Slow Operations with `slowms`, `sampleRate`, and Filters Without Overloading Production
+14. How to Detect MongoDB WiredTiger Saturation with Ticket Queues, Cache Eviction, and Dirty Bytes
+15. How to Redact SQL Text and Bind Values Before Sending Database Monitoring Data to a Shared Backend
+16. How to Monitor SQL Server Query Store Quota Before It Silently Switches to Read-Only
+17. How to Detect SQL Server Plan Regressions by Comparing Query Store Runtime Intervals
+18. How to Capture SQL Server Blocking Chains with Blocked Process Reports and Extended Events
+19. How to Monitor Read-Only Workloads on SQL Server Availability Group Secondaries with Query Store
+20. How to Correlate Application Pool Checkout Latency with Database Session Saturation
+
+## Trace Sampling
+
+1. How to Size OpenTelemetry Tail Sampling `decision_wait`, `num_traces`, and Decision Caches from Real Traffic
+2. How to Fix `sampling_trace_dropped_too_early` Without Blindly Adding Collector Memory
+3. How to Keep Late-Arriving Spans from Splitting One Trace into Conflicting Sampling Decisions
+4. OpenTelemetry `trace-complete` vs `span-ingest`: Which Tail-Sampling Strategy Fits Your Pipeline?
+5. How to Use `decision_wait_after_root_received` to Reduce Tail-Sampling Delay Without Truncating Long Traces
+6. How to Protect the OpenTelemetry Collector from Giant Traces with `maximum_trace_size_bytes`
+7. How to Cap Tail-Sampled Output by Bytes per Second Instead of Trace or Span Count
+8. How to Move Tail-Sampling State Out of Memory with the Experimental `tail_storage` Extension
+9. How to Replace Deprecated `invert_match` Tail-Sampling Rules with `drop` and `not` Policies
+10. Why Multiple Tail-Sampling Policies Do Not Behave Like a Simple OR—and How Drop Vetoes Work
+11. How to Record Which OpenTelemetry Tail-Sampling Policy Kept Each Trace with `recordpolicy`
+12. How to Drop Liveness and Readiness Traces Without Hiding Errors in Their Child Spans
+13. Where to Place the Span Metrics Connector Relative to Tail Sampling to Avoid Biased RED Metrics
+14. Why Tail Sampling Cannot Recover an Error Trace Dropped by the SDK—and How to Set the Upstream Sampler
+15. How to Keep Probabilistic Sampling Deterministic Across Collectors by Pinning `hash_seed`
+16. How to Preserve Unbiased Request-Rate Metrics When Tail Sampling Favors Errors and Slow Traces
+17. How to Enforce Per-Service Trace Budgets with Composite Tail-Sampling Rate Allocation
+18. How to Force-Sample One OpenTelemetry Trace with an Attribute While Preserving a Hard Do-Not-Sample Rule
+19. Why an HTTP 500 Trace Can Miss a `status_code: ERROR` Tail-Sampling Policy
+20. How to Handle Pending Tail-Sampling Decisions During Collector Shutdowns and Rolling Deployments
