@@ -2,11 +2,10 @@
 
 ## Percona Server
 
-1. Should You Run XtraBackup on the Primary or a Dedicated Percona Replica?
-2. How to Size the InnoDB Buffer Pool Without Causing Swap or OOM on Percona Server
-3. When Should You Enable Percona Server’s Thread Pool—and How Do You Size It?
-4. How to Diagnose Slow Queries with the Slow Log, Performance Schema, and PMM
-5. How to Configure Percona Server Audit Log Filtering and Rotation Without Filling the Disk
+1. How to Size the InnoDB Buffer Pool Without Causing Swap or OOM on Percona Server
+2. When Should You Enable Percona Server’s Thread Pool—and How Do You Size It?
+3. How to Diagnose Slow Queries with the Slow Log, Performance Schema, and PMM
+4. How to Configure Percona Server Audit Log Filtering and Rotation Without Filling the Disk
 
 ## StarRocks
 
