@@ -68,7 +68,7 @@ The destination must be unique per attempt. Do not point retries at a prefix alr
 `EXPORT` is asynchronous. Capture the query ID immediately and poll that exact job:
 
 ```sql
-SHOW EXPORT
+SHOW EXPORT FROM analytics
 WHERE queryid = "edee47f0-abe1-11ec-b9d1-00163e1e238f";
 ```
 
@@ -97,7 +97,7 @@ Validate at least:
 - column count and data types;
 - correct decoding of delimiter, line endings, nulls, and embedded text.
 
-`EXPORT` does not add CSV headers and does not expose the `enclose` and `escape` controls available in `INSERT INTO FILES`. If string values can contain separators or line breaks, test the exact resulting encoding with the downstream parser. A safer interchange format for complex text may be Parquet via `INSERT INTO FILES`, followed by conversion.
+By default, `EXPORT` does not add CSV headers. Recent point releases add an optional `with_header` property, but `EXPORT` does not expose the `csv.enclose` and `csv.escape` controls available in current `INSERT INTO FILES` releases. It writes string fields without enclosure or escaping, so a value containing the chosen column or line delimiter makes the output ambiguous. Choose delimiters guaranteed not to occur in the data, or use Parquet via `INSERT INTO FILES`, followed by conversion.
 
 The official guidance recommends keeping each `EXPORT` job to no more than a few dozen GB. For a large table, export a few partitions per job. Each job has its own consistent snapshot; separate partition jobs are not automatically one shared cross-job point in time. If the consumer requires a single table-wide point, use one job or first materialize an immutable staging table under an application-controlled cutoff.
 
@@ -117,11 +117,11 @@ INSERT INTO FILES (
 )
 SELECT order_id, customer_id, order_time, status, net_amount
 FROM analytics.orders
-WHERE order_time >= TIMESTAMP '2026-07-01 00:00:00'
-  AND order_time <  TIMESTAMP '2026-08-01 00:00:00';
+WHERE order_time >= DATETIME '2026-07-01 00:00:00'
+  AND order_time <  DATETIME '2026-08-01 00:00:00';
 ```
 
-`INSERT INTO FILES` is available from 3.2. CSV output is available from 3.3, as are ORC output and CSV controls such as `include_header`; Parquet output begins in 3.2. Keep the unload in one statement. Do not implement it as repeated `LIMIT` and `OFFSET` queries while the source is changing.
+`INSERT INTO FILES` is available from 3.2, with Parquet output beginning in 3.2. The `target_max_file_size` property is available from 3.2.7. CSV and ORC output are available from 3.3. Header output arrived later: `EXPORT`'s `with_header` and `INSERT INTO FILES`'s `csv.include_header` require 3.5.13+, 4.0.6+, or 4.1.0+. CSV field enclosure and escaping for `INSERT INTO FILES` (`csv.enclose` and `csv.escape`) require 3.5.17+, 4.0.10+, or 4.1.1+. Keep the unload in one statement. Do not implement it as repeated `LIMIT` and `OFFSET` queries while the source is changing.
 
 If an audit requires the same snapshot to feed several output jobs or formats, first copy the desired result into a dedicated base table, stop modifying that table, validate it, and export from it. Record the staging-table version or cutoff in the manifest. This makes the cross-job consistency boundary operationally explicit.
 
@@ -152,11 +152,11 @@ This method is unsuitable for very large exports when the client, network connec
 
 ### Serialize a JSON Value as a Column
 
-StarRocks has `to_json` for converting supported complex values to JSON text. That can be useful inside a query or staging table, but unloading a `VARCHAR` column through CSV is still CSV transport. CSV delimiters, quoting, and line handling can prevent the result from being valid NDJSON. Test it explicitly rather than labeling the file `.json`.
+StarRocks has `to_json` for converting a `MAP` or `STRUCT` value to a JSON value. That can be useful inside a query or staging table, but unloading the resulting value through CSV is still CSV transport. CSV delimiters, quoting, and line handling can prevent the result from being valid NDJSON. Test it explicitly rather than labeling the file `.json`.
 
 ## Failure and Load Considerations
 
-- An export scans data and consumes I/O, so schedule it through an appropriate resource group or low-traffic window.
+- An export scans data and consumes I/O, so schedule it during a low-traffic window.
 - Base-table materialized views are not exported by `EXPORT`; select the base table or use a query unload where supported.
 - The source snapshot is consistent, but destination object-store listing and downstream publication are separate concerns. Use a manifest or success marker.
 - A retry must be idempotent at the workflow level. Use a new run ID, then atomically switch a catalog pointer or manifest reference.
