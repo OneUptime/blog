@@ -2,13 +2,12 @@
 
 ## StarRocks
 
-1. StarRocks Routine Load Reports “TOO MANY TASKS”: How to Tune Concurrency and Batch Size
-2. Does StarRocks Kafka Routine Load Really Provide Exactly-Once Ingestion?
-3. Flink CDC to StarRocks Keeps Failing: A Connector and Stream Load Troubleshooting Checklist
-4. How to Run Zero-Downtime Schema Changes on Large StarRocks Tables
-5. Why Are StarRocks Iceberg Queries Slow? Metadata Cache, Statistics, and File-Pruning Fixes
-6. How to Tune StarRocks for High-Concurrency BI Dashboards with Resource Groups
-7. How to Export a Consistent StarRocks Snapshot to CSV or JSON While Data Is Changing
+1. Does StarRocks Kafka Routine Load Really Provide Exactly-Once Ingestion?
+2. Flink CDC to StarRocks Keeps Failing: A Connector and Stream Load Troubleshooting Checklist
+3. How to Run Zero-Downtime Schema Changes on Large StarRocks Tables
+4. Why Are StarRocks Iceberg Queries Slow? Metadata Cache, Statistics, and File-Pruning Fixes
+5. How to Tune StarRocks for High-Concurrency BI Dashboards with Resource Groups
+6. How to Export a Consistent StarRocks Snapshot to CSV or JSON While Data Is Changing
 
 ## Knative Eventing
 
