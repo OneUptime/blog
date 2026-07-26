@@ -20,22 +20,25 @@ Debug the event in travel order. Use one unique CloudEvents `id` and a narrow ti
 
 ## Record the Exact Route
 
-Export the three control-plane objects before changing anything:
+Capture the two control-plane objects and the Trigger description before changing anything:
 
 ```bash
 namespace=production
+broker_namespace=production
 broker=commerce
 trigger=order-created
 
-kubectl -n "$namespace" get broker "$broker" -o yaml
+kubectl -n "$broker_namespace" get broker "$broker" -o yaml
 kubectl -n "$namespace" get trigger "$trigger" -o yaml
 kubectl -n "$namespace" describe trigger "$trigger"
 ```
 
+Set `broker_namespace` to `spec.brokerRef.namespace` when using a cross-namespace Broker.
+
 Verify:
 
-- the Broker and Trigger are in the intended namespace;
-- `spec.broker` names the intended Broker, or `brokerRef` is correct;
+- the Broker and Trigger are in the intended namespaces;
+- `spec.broker` names the intended same-namespace Broker, or the feature-gated `brokerRef` correctly references a cross-namespace Broker;
 - Broker and Trigger both report `Ready=True`;
 - `status.observedGeneration` matches `metadata.generation`;
 - `status.subscriberUri` is the expected resolved target;
@@ -45,7 +48,7 @@ Verify:
 Extract the key values:
 
 ```bash
-kubectl -n "$namespace" get broker "$broker" \
+kubectl -n "$broker_namespace" get broker "$broker" \
   -o jsonpath='{.status.address.url}{"\n"}'
 
 kubectl -n "$namespace" get trigger "$trigger" \
@@ -59,10 +62,10 @@ If the Trigger is Ready but the resolved URI points to the wrong Service, fix th
 For a Knative Source, inspect both its desired sink and resolved sink URI:
 
 ```bash
-kubectl -n "$namespace" get pingsource,kafkasource,apiserversource -o yaml
+kubectl -n "$namespace" get sources -o yaml
 ```
 
-The exact Source kind depends on what is installed. Confirm its conditions are current and Ready, then compare its resolved sink with the Broker address.
+The `sources` resource category expands to the Source kinds installed in the cluster. Confirm the relevant Source's conditions are current and Ready, then compare its resolved sink with the Broker address.
 
 For an application producer, inspect its deployed configuration, not a workstation environment file. Common mistakes include:
 
@@ -76,10 +79,10 @@ Check producer logs for the destination, CloudEvents `id`, response status, and 
 
 ## Send a Known CloudEvent Directly
 
-Test from a temporary pod in the producer's network context:
+Test from a temporary pod in the producer's namespace:
 
 ```bash
-broker_url=$(kubectl -n "$namespace" get broker "$broker" \
+broker_url=$(kubectl -n "$broker_namespace" get broker "$broker" \
   -o jsonpath='{.status.address.url}')
 
 kubectl -n "$namespace" run event-probe \
@@ -95,16 +98,16 @@ kubectl -n "$namespace" run event-probe \
     --data '{"orderId":"debug-001"}'
 ```
 
-Use an approved image in restricted clusters. The request above is a binary-mode CloudEvent: context attributes are HTTP headers and `data` is the JSON body.
+Use an approved image in restricted clusters. If NetworkPolicy or mesh policy depends on pod labels or service accounts, give the probe equivalent labels and identity; a pod created by `kubectl run` does not inherit them. The request above is a binary-mode CloudEvent: context attributes are HTTP headers and `data` is the JSON body.
 
 Interpret the result precisely:
 
 - DNS or connection error: Broker Service, cluster DNS, NetworkPolicy, or mesh routing.
 - `4xx`: malformed CloudEvent, authorization, policy, or wrong ingress.
-- `5xx`: Broker receiver or backing implementation problem.
+- `5xx`: Broker receiver, backing route, or a downstream delivery failure surfaced synchronously by the implementation.
 - `2xx`: ingress accepted the event; continue through filtering and delivery.
 
-A `2xx` response is not an end-to-end acknowledgement from the Trigger subscriber.
+Do not treat a `2xx` response as a portable end-to-end acknowledgement from the Trigger subscriber. A Broker implementation may acknowledge after enqueueing the event or after synchronous downstream delivery.
 
 ## Compare the Filter with the Event Envelope
 
@@ -130,9 +133,11 @@ Both values must match CloudEvents context attributes or extensions. The filter 
 
 If both `spec.filter` and `spec.filters` are present, the newer `filters` array overrides the legacy filter. Multiple entries in `filters` are combined as logical AND, so every entry must evaluate to true.
 
+The newer filter dialects are currently supported by the Apache Kafka Broker and MTChannelBasedBroker. For other Broker implementations, use the legacy attributes filter unless that implementation documents support.
+
 To observe the actual envelope, route a copy to a controlled event-display or logging sink using a temporary catch-all Trigger in a non-production Broker or an approved diagnostic namespace. Do not log sensitive event bodies. Compare `specversion`, `id`, `source`, `type`, `subject`, and extensions with the filter.
 
-If a catch-all Trigger receives the probe but the filtered Trigger does not, the problem is filter semantics rather than ingress.
+If a catch-all Trigger receives the probe, Broker ingress works. If the filtered Trigger still does not deliver it, compare the filter first, then confirm that Trigger's registration and delivery path.
 
 ## Verify Trigger Registration in the Implementation
 
@@ -140,9 +145,10 @@ The generic Trigger can be Ready while an implementation is restarting or its da
 
 ```bash
 kubectl -n knative-eventing get deployment,pod
-kubectl -n knative-eventing get events --sort-by=.lastTimestamp
+kubectl -n knative-eventing get events \
+  --sort-by=.metadata.creationTimestamp
 kubectl -n knative-eventing logs -l app=eventing-controller \
-  --since=30m --all-containers=true
+  --since=30m --tail=-1 --all-containers=true
 ```
 
 Then inspect receiver, filter, dispatcher, and Broker-specific controller logs for the selected Broker class. Discover deployments from the installed manifests and Broker documentation; KafkaBroker and MTChannelBasedBroker do not use identical components or labels.
@@ -162,7 +168,7 @@ Confirm the Trigger's current generation has propagated after any edit. Restarti
 First inspect the resolved object:
 
 ```bash
-kubectl -n "$namespace" get service,endpoints,endpointslices
+kubectl -n "$namespace" get service,endpointslices
 kubectl -n "$namespace" get kservice
 kubectl -n "$namespace" get pod
 ```
@@ -192,7 +198,7 @@ Inspect the effective delivery configuration:
 
 ```bash
 kubectl -n "$namespace" get trigger "$trigger" -o yaml
-kubectl -n "$namespace" get broker "$broker" -o yaml
+kubectl -n "$broker_namespace" get broker "$broker" -o yaml
 ```
 
 Per-Trigger delivery settings override Broker delivery settings where documented. Check retry count, backoff policy, delay, timeout features enabled in the installed version, and dead-letter sink readiness.
@@ -201,7 +207,7 @@ Correlate repeated attempts by the same CloudEvents `id`. Expect duplicate deliv
 
 ## Use Metrics to Locate the Gap
 
-Knative Eventing publishes implementation-specific ingress, dispatch, retry, and latency metrics. Compare counters over the probe window:
+Knative Eventing can export implementation-specific ingress, dispatch, retry, and latency metrics. After confirming that metric export and collection are working, compare counters over the probe window:
 
 1. Did the source or producer send?
 2. Did Broker ingress receive and accept?
@@ -219,11 +225,11 @@ Use these tests in order:
 1. Send a unique event directly to the real Broker.
 2. Confirm a catch-all diagnostic Trigger can receive it.
 3. Compare the event envelope with the production filter.
-4. Send the same event directly to the resolved subscriber.
+4. Send an equivalent event with a second unique `id` directly to the resolved subscriber so deduplication does not hide the probe.
 5. Correlate Broker data-plane and subscriber logs by event ID.
 6. Exercise a deliberate subscriber failure and confirm retry or dead-letter behavior.
 
-Each step bypasses exactly one layer. That makes the first failing edge clear.
+Together, these tests isolate the path layer by layer and make the first failing edge clear.
 
 ## Official Documentation
 
