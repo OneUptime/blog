@@ -8,7 +8,7 @@ Description: Trace a StarRocks full-partition scan from the physical plan back t
 
 ---
 
-StarRocks prunes partitions in the Frontend (FE) before scan tasks are scheduled. If `EXPLAIN` shows every partition, adding executor memory or more Backends will only make the unnecessary scan more expensive.
+StarRocks prunes partitions in the Frontend (FE) before scan tasks are scheduled. If `EXPLAIN` shows every partition, adding executor memory or more Backends will not reduce the amount of data selected for scanning.
 
 Start by distinguishing two layers:
 
@@ -21,7 +21,7 @@ In a scan node, a result such as:
 partitionsRatio=1/365, tabletsRatio=4/64
 ```
 
-means both layers worked. `365/365` is a partition problem. `1/365` with `64/64` may be entirely correct if the query has no equality condition on the hash bucketing column.
+means both layers worked. For a query expected to select one day, `365/365` means partition pruning did not narrow the scan. `1/365` with `64/64` may be entirely correct if the query has no equality condition on the hash bucketing column.
 
 ## Prove What the Planner Selected
 
@@ -64,9 +64,9 @@ CREATE TABLE analytics.orders (
   order_id BIGINT,
   amount DECIMAL(18,2)
 )
-ORDER BY (tenant_id, event_time)
 PARTITION BY date_trunc('day', event_time)
-DISTRIBUTED BY HASH(tenant_id);
+DISTRIBUTED BY HASH(tenant_id)
+ORDER BY (tenant_id, event_time);
 ```
 
 Use a direct, typed half-open range on the source column:
@@ -149,7 +149,7 @@ For legacy range partitioning, inspect each partition's upper bound. `VALUES LES
 
 For list partitioning, confirm that the query literal exactly matches the stored partition value and type. A multi-column list or expression partition requires all relevant constraints for the narrowest pruning.
 
-Also check for a default or future partition that spans far more data than expected. Dynamic/expression partition creation does not fix historical rows loaded into an incorrectly defined partition.
+Also check for a `MAXVALUE` catch-all or an unusually wide future partition that spans far more data than expected. Dynamic/expression partition creation does not fix historical rows loaded into an incorrectly defined partition.
 
 ## Understand Time Zones
 
@@ -185,7 +185,11 @@ Once `EXPLAIN` shows a narrow partition ratio, use `EXPLAIN ANALYZE` or a captur
 
 ```sql
 EXPLAIN ANALYZE
-SELECT ...
+SELECT tenant_id, SUM(amount)
+FROM analytics.orders
+WHERE event_time >= '2026-07-25 00:00:00'
+  AND event_time <  '2026-07-26 00:00:00'
+GROUP BY tenant_id;
 ```
 
 Confirm actual scan rows and bytes fell. Partition pruning can work while segment/page pruning remains weak because the sort key does not match filters. Likewise, a low partition ratio with a high tablet ratio is not necessarily wrong: hash bucket pruning generally needs equality on the bucketing key.
