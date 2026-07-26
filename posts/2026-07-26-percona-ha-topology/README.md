@@ -14,7 +14,7 @@ The three common choices solve different problems:
 
 | Topology | Commit path | Normal write endpoint | Main advantage | Main trade-off |
 | --- | --- | --- | --- | --- |
-| Asynchronous source/replica | Source commits before replicas apply | One source | Simple, efficient, and WAN-friendly | A promoted replica can be behind |
+| Asynchronous source/replica | Source does not wait for replica receipt or apply | One source | Simple, efficient, and WAN-friendly | A promoted replica can be behind |
 | Group Replication | Group orders and certifies transactions | One primary by default; multi-primary is optional | Membership, election, and consistency are integrated | More constraints and coordination overhead |
 | Percona XtraDB Cluster (PXC) | Galera certifies write sets across a primary component | One node is operationally safest; multiple writers are possible | Virtually synchronous replication and automatic node provisioning | Conflict retries, flow control, and LAN-like latency requirements |
 
@@ -46,7 +46,7 @@ Do not make `Seconds_Behind_Source` the only gate. Also check the receiver and a
 
 MySQL Group Replication is available with Percona Server because Percona Server is compatible with the upstream MySQL replication stack. It uses group membership and transaction certification to maintain a fault-tolerant group.
 
-Single-primary mode is the default and is normally the safest application model: one member is read/write and the others are `super_read_only`. If the primary leaves, an eligible member can be elected. Multi-primary mode lets all members accept writes, but concurrent writes can conflict, and MySQL documents additional limitations such as cascading foreign-key restrictions and distributed-lock caveats.
+Single-primary mode is the default and is normally the safest application model: one member is read/write and the others are `super_read_only`. If the primary leaves, an eligible member can be elected. Multi-primary mode lets all members accept writes, but concurrent writes can conflict, and MySQL documents additional limitations such as cascading foreign-key restrictions and the fact that certification does not account for table or named locks.
 
 Use Group Replication when:
 
@@ -70,17 +70,17 @@ A member being `ONLINE` is necessary, but it is not a complete service check. Mo
 
 ## Choose PXC for a Galera-Based, Virtually Synchronous Cluster
 
-Percona XtraDB Cluster packages Percona Server with Galera write-set replication. Transactions execute locally, then their write sets are certified and replicated. PXC documentation describes this as virtually synchronous: nodes maintain a consistent cluster state, but it is not a distributed shared-lock manager.
+Percona XtraDB Cluster packages Percona Server with Galera write-set replication. Transactions execute locally, then their write sets are certified and replicated. PXC documentation describes this as virtually synchronous: a commit requires write-set replication and certification, not physical commit on every node, and the cluster is not a distributed shared-lock manager.
 
 PXC is a strong fit when:
 
-- the recovery point objective inside one low-latency site is effectively zero;
+- the recovery point objective for loss of a node is effectively zero while a primary component survives;
 - automatic state transfer for joining nodes is valuable;
 - the workload is mostly InnoDB and uses primary keys consistently;
 - clients can retry certification failures such as error 1213;
-- all voting nodes have comparable capacity.
+- all data-bearing nodes have comparable capacity.
 
-Use an odd number of voting members; three is the common minimum. Two data nodes plus `garbd` can provide a third vote, but the arbitrator stores no data and does not add restore capacity. A proxy such as ProxySQL is still required to route around failed or desynchronized nodes.
+Use an odd number of voting members; three is the common minimum. Two data nodes plus `garbd` can provide a third vote, but the arbitrator stores no data and does not add restore capacity. A proxy such as ProxySQL, or equivalent connector or application routing, is still required to route around failed or desynchronized nodes.
 
 Inspect the cluster component before treating a node as writable:
 
@@ -95,7 +95,7 @@ SHOW GLOBAL STATUS WHERE Variable_name IN (
 );
 ```
 
-The healthy write state is a `Primary` component with `wsrep_ready=ON`, `wsrep_connected=ON`, and the local node `Synced`. A slow member can trigger flow control and limit the whole cluster. PXC also requires InnoDB for replicated writes, does not support every MySQL locking pattern, and can reject one of two conflicting transactions at commit.
+The healthy wsrep state is a `Primary` component with `wsrep_ready=ON`, `wsrep_connected=ON`, and the local node `Synced`. Also ensure MySQL's `read_only` and `super_read_only` settings match the intended routing policy. A slow member can trigger flow control and limit the whole cluster. PXC also requires InnoDB for replicated writes, does not support every MySQL locking pattern, and can reject one of two conflicting transactions at commit.
 
 ## Decide with Failure Scenarios, Not Feature Lists
 
