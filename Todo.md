@@ -2,11 +2,10 @@
 
 ## Knative Eventing
 
-1. Kafka Broker vs MTChannelBasedBroker in Knative: Durability, Latency, and Operations
-2. How to Connect Knative Eventing to Strimzi or Redpanda Kafka
-3. How to Prevent Knative Scale-to-Zero Cold Starts from Causing Event Retries
-4. How to Run Long-Lived or Asynchronous Jobs from Knative Events
-5. What Happens to a Knative Trigger Subscriber’s Reply Event?
+1. How to Connect Knative Eventing to Strimzi or Redpanda Kafka
+2. How to Prevent Knative Scale-to-Zero Cold Starts from Causing Event Retries
+3. How to Run Long-Lived or Asynchronous Jobs from Knative Events
+4. What Happens to a Knative Trigger Subscriber’s Reply Event?
 
 ## Savings Plans
 
