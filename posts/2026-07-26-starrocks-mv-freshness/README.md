@@ -30,10 +30,10 @@ Suppose `fact_orders` is partitioned daily on `order_time`. A daily materialized
 CREATE MATERIALIZED VIEW analytics.mv_daily_region_revenue
 PARTITION BY order_date
 DISTRIBUTED BY HASH(region)
-REFRESH ASYNC EVERY (INTERVAL 5 MINUTE)
+REFRESH SCHEDULE EVERY (INTERVAL 5 MINUTE)
 PROPERTIES (
   'partition_refresh_number' = '1',
-  'partition_refresh_strategy' = 'adaptive',
+  'partition_refresh_strategy' = 'strict',
   'auto_refresh_partitions_limit' = '7'
 )
 AS
@@ -51,9 +51,9 @@ When a tracked base partition changes, StarRocks can refresh the related view pa
 
 ## Bound Each Refresh Run
 
-`partition_refresh_number` limits how many partitions a refresh batch processes. In StarRocks v3.3 and later its default changed to `1`, so one logical refresh can appear as several closely spaced entries in `information_schema.task_runs`.
+Under the default `strict` partition refresh strategy, `partition_refresh_number` limits how many partitions a refresh batch processes. In StarRocks v3.3 and later its default changed to `1`, so one logical refresh can appear as several closely spaced entries in `information_schema.task_runs`.
 
-The `adaptive` partition refresh strategy can vary the batch size based on source data volume. Use it only on a version that supports the property, and confirm the actual `adaptivePartitionRefreshNumber` in task-run details.
+The `adaptive` partition refresh strategy chooses the batch size based on source data volume instead of strictly enforcing `partition_refresh_number`. Use it only on a version that supports the property, and confirm the actual `adaptivePartitionRefreshNumber` in task-run details.
 
 `auto_refresh_partitions_limit` limits the most recent partitions considered by automatic refresh. It is an upper limit, not a promise to refresh exactly that many. If only two tracked base partitions changed, only those partitions need work.
 
@@ -72,7 +72,7 @@ Avoid `FORCE` unless the base-partition version check is known to be insufficien
 StarRocks supports:
 
 - `REFRESH ASYNC`, triggered when relevant base data changes.
-- `REFRESH ASYNC EVERY (...)`, checked on a schedule.
+- `REFRESH SCHEDULE EVERY (...)`, checked on a schedule.
 - `REFRESH MANUAL`, triggered by an operator or external scheduler.
 
 Only one refresh task per materialized view can run at a time. If a refresh takes longer than its interval, new pending work can be merged or wait behind the running task. Therefore, a one-minute interval cannot produce one-minute freshness when each refresh needs eight minutes.
@@ -116,7 +116,7 @@ TTL reduces refresh and storage cost, but queries outside the materialized windo
 
 ## Isolate and Protect Refresh Work
 
-Refresh joins and aggregations can use substantial memory. Assign refresh to an appropriate resource group and enable spill only after provisioning spill capacity:
+Refresh joins and aggregations can use substantial memory. Assign refresh to an appropriate resource group. Intermediate-result spilling is enabled by default from v3.1, but it still requires adequately provisioned spill capacity. If it has been disabled for this view, enable it with:
 
 ```sql
 ALTER MATERIALIZED VIEW analytics.mv_daily_region_revenue
