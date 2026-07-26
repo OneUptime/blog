@@ -1,9 +1,5 @@
 # Blog Post Ideas
 
-## Knative Eventing
-
-1. What Happens to a Knative Trigger Subscriber’s Reply Event?
-
 ## Savings Plans
 
 1. AWS Compute Savings Plans vs EC2 Instance Savings Plans: Which Commitment Is Safer?
