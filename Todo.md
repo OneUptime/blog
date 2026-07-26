@@ -2,15 +2,14 @@
 
 ## Knative Eventing
 
-1. Why Dead Letter Handling Fails Inside Knative Sequences—and How to Fix Each Step
-2. Does Knative Eventing Guarantee Exactly-Once Delivery? Design for Duplicates Instead
-3. How to Preserve Kafka Partition Ordering in Knative Eventing
-4. Knative KafkaSource Consumer Lag Keeps Growing: How to Find the Bottleneck
-5. Kafka Broker vs MTChannelBasedBroker in Knative: Durability, Latency, and Operations
-6. How to Connect Knative Eventing to Strimzi or Redpanda Kafka
-7. How to Prevent Knative Scale-to-Zero Cold Starts from Causing Event Retries
-8. How to Run Long-Lived or Asynchronous Jobs from Knative Events
-9. What Happens to a Knative Trigger Subscriber’s Reply Event?
+1. Does Knative Eventing Guarantee Exactly-Once Delivery? Design for Duplicates Instead
+2. How to Preserve Kafka Partition Ordering in Knative Eventing
+3. Knative KafkaSource Consumer Lag Keeps Growing: How to Find the Bottleneck
+4. Kafka Broker vs MTChannelBasedBroker in Knative: Durability, Latency, and Operations
+5. How to Connect Knative Eventing to Strimzi or Redpanda Kafka
+6. How to Prevent Knative Scale-to-Zero Cold Starts from Causing Event Retries
+7. How to Run Long-Lived or Asynchronous Jobs from Knative Events
+8. What Happens to a Knative Trigger Subscriber’s Reply Event?
 
 ## Savings Plans
 
