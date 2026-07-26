@@ -124,7 +124,7 @@ kubectl logs -n production \
   -c user-container --tail=100
 ```
 
-Check that the received `id`, `source`, `type`, subject, content type, and data match what was sent.
+Check that the received `id`, `source`, `type`, `subject`, `datacontenttype`, and data match what was sent.
 
 ## Diagnose Rejected Requests
 
