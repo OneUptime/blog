@@ -37,6 +37,8 @@ Duplicate connector versions can produce class-loading and method errors. After 
 
 Flink CDC 3.0 integration as the StarRocks Pipeline Connector begins with StarRocks connector 1.2.9. Do not combine a Flink CDC 3 pipeline definition with an older StarRocks sink and expect automatic database, table, or schema-change handling.
 
+The Flink CDC StarRocks Pipeline Connector and the ordinary StarRocks Flink sink have different options and delivery guarantees. The Pipeline Connector supports at-least-once delivery and relies on a Primary Key table for idempotent writes; `sink.semantic`, `sink.version`, and the exactly-once guidance below apply to Flink SQL, Table API, or DataStream jobs that use the ordinary sink connector.
+
 ## Separate the Two StarRocks Endpoints
 
 A typical sink needs both:
@@ -78,7 +80,7 @@ SHOW CREATE TABLE analytics.orders;
 
 The account needs the documented privileges to read metadata and load the destination. Confirm database and table name casing, especially when source and sink catalogs derive names automatically.
 
-For CDC, the StarRocks destination is usually a Primary Key table:
+The Flink CDC StarRocks Pipeline Connector supports only Primary Key destinations, and the source table must have a primary key. Direct Flink CDC setups also usually use a Primary Key destination so that updates and deletes can be applied:
 
 ```sql
 CREATE TABLE analytics.orders (
@@ -88,10 +90,10 @@ CREATE TABLE analytics.orders (
   updated_at DATETIME NULL
 )
 PRIMARY KEY (order_id)
-DISTRIBUTED BY HASH(order_id);
+DISTRIBUTED BY HASH(order_id) BUCKETS 8;
 ```
 
-The Flink table should declare the matching key:
+A direct Flink SQL table should declare the matching key:
 
 ```sql
 PRIMARY KEY (order_id) NOT ENFORCED
@@ -110,25 +112,28 @@ In the Flink exception, preserve:
 - `ErrorURL` or rejected-row sample
 - current checkpoint ID
 
-On StarRocks, inspect recent load activity:
+On current StarRocks 4.1, inspect recent load activity:
 
 ```sql
 SELECT
   label,
   state,
   type,
+  profile_id,
+  runtime_details,
   create_time,
   load_start_time,
   load_finish_time,
   error_msg,
-  tracking_url
+  tracking_sql,
+  rejected_record_path
 FROM information_schema.loads
 WHERE db_name = 'analytics'
 ORDER BY create_time DESC
 LIMIT 50;
 ```
 
-Use the schema shown by `DESC information_schema.loads` on the deployed release because available columns evolve. Query Profile, FE audit logs, and BE logs should be correlated by label, query ID, or transaction ID.
+Use the schema shown by `DESC information_schema.loads` on the deployed release because available columns evolve. For example, StarRocks 3.4 uses `DATABASE_NAME` and `TRACKING_URL` instead of several fields shown above, and older releases do not expose all Stream Load activity through this view. On those releases, rely on the Stream Load response and the version-specific transaction views and logs. Load Profiles, FE logs, and BE logs should be correlated by label, profile or load ID, or transaction ID.
 
 Common Stream Load causes include:
 
@@ -144,6 +149,8 @@ Do not raise `max_filter_ratio` simply to make checkpoints complete. That conver
 
 ## Diagnose Exactly-Once Checkpoint Failures
 
+This section applies to the ordinary StarRocks Flink sink. The Flink CDC StarRocks Pipeline Connector does not support exactly-once delivery.
+
 With:
 
 ```sql
@@ -152,12 +159,12 @@ With:
 
 the connector flushes when Flink triggers a checkpoint. The ordinary byte, row, and interval flush controls do not drive exactly-once flushes.
 
-Require:
+Check:
 
 1. Flink checkpointing is enabled and completing.
 2. The checkpoint interval creates a tolerable batch size and latency.
 3. Connector 1.2.4 or later and StarRocks 2.5 or later are used for the recommended transaction-interface implementation.
-4. Connector 1.2.8 or later sets a unique `sink.label-prefix`.
+4. With connector 1.2.8 or later, the recommended unique `sink.label-prefix` is set.
 
 Example:
 
@@ -175,7 +182,7 @@ The prepared-transaction timeout must exceed the maximum planned Flink downtime.
 'sink.properties.prepared_timeout' = '86400'
 ```
 
-Also keep StarRocks label history longer than the recovery window. If a prepared transaction or its label expires before Flink restores its checkpoint, recovery may be unable to determine whether data committed.
+Also keep StarRocks label history longer than the recovery window. If a prepared transaction expires before Flink restores its checkpoint, its data can be lost. If its label history expires, recovery may be unable to determine whether the transaction committed.
 
 Do not enable Merge Commit with exactly-once. StarRocks' current connector documentation states that Merge Commit provides at-least-once semantics only.
 
@@ -197,9 +204,9 @@ Pause source DDL automation if a failed schema change is blocking the stream. Do
 
 ## Tune Throughput Without Creating Transaction Pressure
 
-For at-least-once mode, flush occurs on byte, row, interval, or checkpoint boundaries. Very small batches and high `sink.parallelism` create many transactions and tablet versions.
+For at-least-once mode, flush occurs on byte, interval, or checkpoint boundaries; the row threshold also applies when `sink.version` is `V1`. Very small batches and high `sink.parallelism` create many transactions and tablet versions.
 
-For connector 1.2.14+, Merge Commit can combine subtasks into fewer transactions:
+For the ordinary sink connector 1.2.14+ with StarRocks 3.4.0+, Merge Commit can combine subtasks into fewer transactions:
 
 ```sql
 'sink.semantic' = 'at-least-once',
