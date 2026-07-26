@@ -2,11 +2,10 @@
 
 ## StarRocks
 
-1. Flink CDC to StarRocks Keeps Failing: A Connector and Stream Load Troubleshooting Checklist
-2. How to Run Zero-Downtime Schema Changes on Large StarRocks Tables
-3. Why Are StarRocks Iceberg Queries Slow? Metadata Cache, Statistics, and File-Pruning Fixes
-4. How to Tune StarRocks for High-Concurrency BI Dashboards with Resource Groups
-5. How to Export a Consistent StarRocks Snapshot to CSV or JSON While Data Is Changing
+1. How to Run Zero-Downtime Schema Changes on Large StarRocks Tables
+2. Why Are StarRocks Iceberg Queries Slow? Metadata Cache, Statistics, and File-Pruning Fixes
+3. How to Tune StarRocks for High-Concurrency BI Dashboards with Resource Groups
+4. How to Export a Consistent StarRocks Snapshot to CSV or JSON While Data Is Changing
 
 ## Knative Eventing
 
