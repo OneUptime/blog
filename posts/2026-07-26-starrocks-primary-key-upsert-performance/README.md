@@ -8,7 +8,7 @@ Description: Diagnose slowing StarRocks Primary Key upserts by separating primar
 
 ---
 
-Primary Key upserts do more than append a row. StarRocks locates the previous row through the primary-key index, writes a new version, and records the old location in a delete vector. Compaction later merges rowsets and cleans up versions.
+Primary Key upserts do more than append a row. StarRocks locates the previous row through the primary-key index, marks that row as deleted in a DelVector, writes the replacement row to a new data file, and updates the index to point to the replacement. Compaction later merges rowsets from different data-file versions, reducing the number of small files.
 
 When upserts slow, increasing load concurrency can make the feedback loop worse:
 
@@ -39,7 +39,7 @@ For shared-data clusters, inspect running transaction messages:
 SHOW PROC '/transactions/analytics/running';
 ```
 
-An `ErrMsg` such as:
+An entry in the transaction's `Reason` field such as:
 
 ```text
 Partition's compaction score is larger than 100.0,
