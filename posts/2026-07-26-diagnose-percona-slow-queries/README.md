@@ -26,7 +26,7 @@ Record the incident window, endpoint, expected latency, concurrency, and whether
 - a regression after a plan, schema, or data-volume change;
 - cluster-wide saturation.
 
-Do not begin by running `EXPLAIN ANALYZE` on an unknown write statement in production. Capture and classify first.
+Do not begin by running `EXPLAIN ANALYZE` on an unknown or potentially expensive `SELECT` in production. Capture and classify first.
 
 ## Enable a Controlled Slow Log
 
@@ -38,6 +38,8 @@ SET GLOBAL slow_query_log = ON;
 SET GLOBAL long_query_time = 1;
 SET GLOBAL min_examined_row_limit = 100;
 ```
+
+`long_query_time` and `min_examined_row_limit` have both global and session values. Changing the global values affects sessions opened afterward, not existing pooled connections; set the session values through the application or reconnect those clients if the diagnostic window must include them.
 
 Confirm:
 
@@ -61,16 +63,16 @@ Percona Server's extended slow log can add:
 log_slow_verbosity=full
 log_slow_rate_type=query
 log_slow_rate_limit=100
-slow_query_log_always_write_time=1
+slow_query_log_always_write_time=10
 ```
 
-Sampling reduces overhead at high QPS: a rate limit of 100 logs approximately one in 100 eligible queries when the rate type is `query`, while `slow_query_log_always_write_time` preserves especially slow queries. Validate the exact semantics on your installed release and make thresholds match the investigation.
+Sampling reduces overhead at high QPS: a rate limit of 100 logs approximately one in 100 eligible queries when the rate type is `query`, while `slow_query_log_always_write_time=10` exempts queries longer than 10 seconds from sampling. Keep this threshold above `long_query_time`; otherwise, every query eligible by time bypasses sampling. Validate the exact semantics on your installed release and make thresholds match the investigation.
 
 Avoid leaving `long_query_time=0` globally without sizing disk and overhead. PMM's example uses it to capture all queries, but that is an explicit observability trade-off. Rotate the file through PMM's `--size-slow-logs` setting or a tested server/log-management procedure.
 
 ## Rank Query Digests in Performance Schema
 
-Performance Schema can show expensive patterns even when no slow log was enabled during the incident:
+Performance Schema can show expensive patterns even when no slow log was enabled during the incident, provided statement instrumentation and the statement-digest consumer were enabled:
 
 ```sql
 SELECT
@@ -92,7 +94,7 @@ LIMIT 20;
 
 This answers a different question from "what had the highest average latency?" A 5 ms query called ten million times can consume more capacity than one 5-second report.
 
-Also inspect current work and waits:
+Also inspect current statements and their table-lock time:
 
 ```sql
 SELECT THREAD_ID, EVENT_NAME, TIMER_WAIT, LOCK_TIME,
@@ -102,7 +104,7 @@ WHERE SQL_TEXT IS NOT NULL
 ORDER BY TIMER_WAIT DESC;
 ```
 
-Performance Schema summaries are cumulative and have bounded history. Record the server uptime, take interval deltas, and understand whether a restart or table truncation reset them.
+Performance Schema summaries are cumulative, and the digest table has a bounded number of rows. Record the server uptime, take interval deltas, check whether unmatched digests are accumulating in the `DIGEST IS NULL` catch-all row, and understand whether a restart or table truncation reset the statistics.
 
 ## Read Each Slow-Log Entry as Evidence
 
@@ -120,7 +122,8 @@ Interpret combinations:
 | Evidence | Likely direction |
 | --- | --- |
 | High `Rows_examined`, tiny `Rows_sent` | Poor selectivity, missing/unused index, late filtering |
-| High `Lock_time` or record-lock wait | Blocking transaction or hot rows |
+| High `Lock_time` | Table-lock contention |
+| High InnoDB record-lock wait | Blocking transaction or hot rows |
 | `Tmp_table_on_disk=Yes` | Large grouping/sort, row width, or temp-memory limit |
 | High InnoDB read wait | Cache miss or storage latency |
 | Full join | Missing usable join predicate/index |
@@ -151,7 +154,7 @@ In Query Analytics:
 
 1. select the exact incident window;
 2. rank by load/total time, not average alone;
-3. compare calls, rows examined, rows sent, and latency percentiles;
+3. compare calls, rows examined, rows sent, and average, p99, and maximum latency;
 4. correlate with CPU, disk latency, buffer-pool reads, connections, and locks;
 5. compare the same fingerprint before and after the suspected change.
 
