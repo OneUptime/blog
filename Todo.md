@@ -2,20 +2,19 @@
 
 ## StarRocks
 
-1. How to Fix Data Skew in StarRocks Hash Joins and Distributed Tables
-2. Why Isn’t StarRocks Using My Materialized View? Diagnose Query Rewrite with TRACE
-3. StarRocks Materialized View Refresh Failed: How to Find and Fix the Root Cause
-4. How to Keep StarRocks Materialized Views Fresh Without Full-Refresh Overload
-5. Synchronous vs Asynchronous Materialized Views in StarRocks: Which One Should You Use?
-6. StarRocks Routine Load Is PAUSED: Fix Kafka Offset, Error-Row, and Parsing Failures
-7. Why Does StarRocks Routine Load Say “Bad Message Format”?
-8. StarRocks Routine Load Reports “TOO MANY TASKS”: How to Tune Concurrency and Batch Size
-9. Does StarRocks Kafka Routine Load Really Provide Exactly-Once Ingestion?
-10. Flink CDC to StarRocks Keeps Failing: A Connector and Stream Load Troubleshooting Checklist
-11. How to Run Zero-Downtime Schema Changes on Large StarRocks Tables
-12. Why Are StarRocks Iceberg Queries Slow? Metadata Cache, Statistics, and File-Pruning Fixes
-13. How to Tune StarRocks for High-Concurrency BI Dashboards with Resource Groups
-14. How to Export a Consistent StarRocks Snapshot to CSV or JSON While Data Is Changing
+1. Why Isn’t StarRocks Using My Materialized View? Diagnose Query Rewrite with TRACE
+2. StarRocks Materialized View Refresh Failed: How to Find and Fix the Root Cause
+3. How to Keep StarRocks Materialized Views Fresh Without Full-Refresh Overload
+4. Synchronous vs Asynchronous Materialized Views in StarRocks: Which One Should You Use?
+5. StarRocks Routine Load Is PAUSED: Fix Kafka Offset, Error-Row, and Parsing Failures
+6. Why Does StarRocks Routine Load Say “Bad Message Format”?
+7. StarRocks Routine Load Reports “TOO MANY TASKS”: How to Tune Concurrency and Batch Size
+8. Does StarRocks Kafka Routine Load Really Provide Exactly-Once Ingestion?
+9. Flink CDC to StarRocks Keeps Failing: A Connector and Stream Load Troubleshooting Checklist
+10. How to Run Zero-Downtime Schema Changes on Large StarRocks Tables
+11. Why Are StarRocks Iceberg Queries Slow? Metadata Cache, Statistics, and File-Pruning Fixes
+12. How to Tune StarRocks for High-Concurrency BI Dashboards with Resource Groups
+13. How to Export a Consistent StarRocks Snapshot to CSV or JSON While Data Is Changing
 
 ## Knative Eventing
 
