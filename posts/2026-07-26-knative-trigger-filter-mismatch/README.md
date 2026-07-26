@@ -168,7 +168,7 @@ Use `all` when nesting makes the intended AND explicit:
 filters:
   - all:
       - prefix:
-          source: urn:example:
+          source: "urn:example:"
       - not:
           exact:
             region: test
@@ -211,8 +211,8 @@ broker_url=$(kubectl -n "$namespace" get broker commerce \
   -o jsonpath='{.status.address.url}')
 
 kubectl -n "$namespace" run filter-probe \
-  --image=curlimages/curl:8.12.1 \
-  --restart=Never --rm -i -- \
+  --image=curlimages/curl:8.21.0 \
+  --restart=Never --rm -i --command -- \
   curl -v -X POST "$broker_url" \
     -H 'Ce-Specversion: 1.0' \
     -H 'Ce-Id: filter-debug-001' \
@@ -239,7 +239,7 @@ The object in producer code may not be the event received by the Broker. Confirm
 
 - the CloudEvents SDK sets `type`, `source`, and extensions on the event context;
 - a gateway does not drop `ce-*` extension headers;
-- structured-mode `Content-Type` is `application/cloudevents+json`;
+- structured JSON mode uses `Content-Type: application/cloudevents+json`;
 - binary-mode `Content-Type` describes `data`, with required `ce-*` headers separate;
 - a transformation step does not rename or overwrite attributes;
 - the producer sends to the Broker and namespace tested.
