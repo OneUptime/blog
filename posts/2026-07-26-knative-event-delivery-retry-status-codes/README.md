@@ -116,7 +116,7 @@ If a supposedly retryable result is delivered once, check that `spec.delivery.re
 
 ## Account for `Retry-After`
 
-Knative has an alpha `delivery-retryafter` feature. When enabled and supported, `spec.delivery.retryAfterMax` allows a `429` or `503` response's `Retry-After` header to influence the delay. The sender uses the larger of its normal backoff and the accepted header value, capped by `retryAfterMax`.
+Knative has an alpha `delivery-retryafter` feature. When enabled and supported, `spec.delivery.retryAfterMax` allows a `429` or `503` response's `Retry-After` header to influence the delay. The sender caps the header-derived delay at `retryAfterMax`, then uses the larger of that value and its normal backoff.
 
 Do not put `retryAfterMax` into production manifests until you have enabled the feature and verified implementation support. Without it, design around the configured `backoffPolicy` and `backoffDelay`.
 
