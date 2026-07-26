@@ -25,19 +25,28 @@ safe buffer pool =
   - burst safety margin
 ```
 
-The effective limit is the smallest of physical RAM, VM/container limit, and any service manager limit.
+The effective hard limit is the smallest of physical RAM, a VM/container limit, and an effective service-manager `MemoryMax`. Treat a lower `MemoryHigh` as a pressure threshold even though it is not a hard OOM limit.
 
 Collect the host view:
 
 ```bash
 free -h
 swapon --show
-systemctl show mysql -p MemoryMax -p MemoryHigh
 
-# cgroup v2; use the paths for the mysql service/container.
-cat /sys/fs/cgroup/memory.max
-cat /sys/fs/cgroup/memory.current
+# Debian/Ubuntu packages usually use mysql.service; RHEL-like packages
+# may use mysqld.service.
+mysql_unit=mysql.service
+systemctl show "$mysql_unit" \
+  -p EffectiveMemoryMax -p EffectiveMemoryHigh -p ControlGroup
+
+# cgroup v2 on a systemd host.
+mysql_cgroup=$(systemctl show "$mysql_unit" -p ControlGroup --value)
+mysql_cgroup_dir="/sys/fs/cgroup${mysql_cgroup}"
+cat "$mysql_cgroup_dir/memory.max"
+cat "$mysql_cgroup_dir/memory.current"
 ```
+
+Inside a container without systemd, the same cgroup v2 files are commonly exposed at `/sys/fs/cgroup/`; set `mysql_cgroup_dir=/sys/fs/cgroup` in that case.
 
 On a 64 GiB dedicated host, a defensible initial budget might be:
 
@@ -65,12 +74,12 @@ SHOW GLOBAL STATUS LIKE 'Threads_connected';
 SHOW GLOBAL STATUS LIKE 'Max_used_connections';
 ```
 
-At the OS level, monitor RSS, anonymous memory, page faults, swap-in/out, and cgroup `memory.events`. `VmRSS` is more useful for physical pressure than virtual address size:
+At the OS level, monitor RSS, anonymous memory, page faults, swap-in/out, and cgroup `memory.events`. `VmRSS` is more relevant to physical pressure than virtual address size, but procfs documents it as approximate; use cgroup `memory.current` for the cgroup-wide charge:
 
 ```bash
-pid=$(pidof mysqld)
-grep -E 'VmRSS|VmSwap|VmSize' "/proc/$pid/status"
-cat /sys/fs/cgroup/memory.events
+pid=$(pidof -s mysqld)
+grep -E 'VmRSS|RssAnon|VmSwap|VmSize' "/proc/$pid/status"
+cat "$mysql_cgroup_dir/memory.events"
 ```
 
 Any sustained swap activity on a latency-sensitive database is a strong signal to reduce pressure. A past cgroup `oom_kill` means the budget already failed, even if the process looks healthy after restart.
@@ -83,28 +92,36 @@ Review:
 
 ```sql
 SELECT
-  @@max_connections,
-  @@sort_buffer_size,
-  @@join_buffer_size,
-  @@read_buffer_size,
-  @@read_rnd_buffer_size,
-  @@tmp_table_size,
-  @@max_heap_table_size,
-  @@performance_schema;
+  @@GLOBAL.max_connections,
+  @@GLOBAL.thread_stack,
+  @@GLOBAL.net_buffer_length,
+  @@GLOBAL.max_allowed_packet,
+  @@GLOBAL.sort_buffer_size,
+  @@GLOBAL.join_buffer_size,
+  @@GLOBAL.read_buffer_size,
+  @@GLOBAL.read_rnd_buffer_size,
+  @@GLOBAL.internal_tmp_mem_storage_engine,
+  @@GLOBAL.tmp_table_size,
+  @@GLOBAL.max_heap_table_size,
+  @@GLOBAL.temptable_max_ram,
+  @@GLOBAL.temptable_max_mmap,
+  @@GLOBAL.performance_schema;
 ```
 
-Use Performance Schema memory summaries and PMM to observe actual allocation instead of relying on a worst-case multiplication:
+For MySQL 8.4's default `TempTable` engine, `temptable_max_ram` is the main global in-RAM limit and `tmp_table_size` limits each internal temporary table. `max_heap_table_size` limits internal temporary tables only when `internal_tmp_mem_storage_engine=MEMORY`; it does not limit `TempTable`.
+
+Use Performance Schema memory summaries and PMM to observe instrumented allocation instead of relying on a worst-case multiplication. Most Performance Schema memory instruments are disabled by default. To count startup allocations, enable the required instruments in configuration before restart; MySQL documents `performance-schema-instrument='memory/%=COUNTED'` to enable all memory instruments.
 
 ```sql
 SELECT event_name, current_alloc, high_alloc
-FROM sys.memory_global_by_current_bytes
+FROM sys.x$memory_global_by_current_bytes
 ORDER BY current_alloc DESC
 LIMIT 20;
 ```
 
 Account separately for:
 
-- adaptive hash and change-buffer structures;
+- additional InnoDB buffers and control structures outside the configured pool;
 - Performance Schema instrumentation;
 - table/open-file caches and dictionary metadata;
 - replication appliers and binary/relay log caches;
@@ -145,7 +162,7 @@ FROM performance_schema.global_status
 WHERE LOWER(variable_name) LIKE 'innodb_buffer_pool_resize%';
 ```
 
-Persist an accepted value through configuration management; a runtime-only `SET GLOBAL` does not necessarily survive restart.
+Persist an accepted value through configuration management; a runtime-only `SET GLOBAL` does not survive restart.
 
 ## Tune from Miss Cost, Not Hit Ratio Alone
 
