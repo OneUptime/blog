@@ -57,31 +57,31 @@ Require:
 
 ## Use Replica-Aware XtraBackup Options Deliberately
 
-For a replica backup, Percona documents `--safe-slave-backup` and `--slave-info` (the option names retain the older terminology).
+For a replica backup, Percona documents `--safe-slave-backup` and `--slave-info` (the option names retain the older terminology). The safe option is relevant when statement-based replication can create replicated temporary tables.
 
 ```bash
 xtrabackup \
+  --login-path=backup \
   --backup \
   --target-dir=/backup/2026-07-26T020000Z \
-  --login-path=backup \
   --safe-slave-backup \
   --safe-slave-backup-timeout=600 \
   --slave-info
 ```
 
-`--safe-slave-backup` stops the replication SQL thread and waits until `Slave_open_temp_tables` is zero. This avoids capturing problematic replica temporary-table state. XtraBackup restarts the SQL thread when the backup finishes; alert separately if replication is not running afterward.
+`--safe-slave-backup` stops the replication SQL thread and waits until `Replica_open_temp_tables` is zero, starting and stopping the thread again if necessary until the temporary tables close. This avoids capturing problematic replica temporary-table state. XtraBackup restarts the SQL thread when the backup finishes; alert separately if replication is not running afterward.
 
 `--slave-info` writes source coordinates to `xtrabackup_slave_info`, which can help provision another replica. On GTID-managed deployments, catalog the GTID state too and validate the recovered node's intended role before starting replication.
 
-Percona recommends `--safe-slave-backup` when backing up a replica. Its timeout should fail the job rather than leave it waiting indefinitely while the recovery point grows stale.
+Use `--safe-slave-backup` when statement-based replication can create replicated temporary tables. Percona's current option reference says it is unnecessary with row-based replication, so omit it there if there is no other reason to stop apply. Its timeout should fail the job rather than leave it waiting indefinitely while the recovery point grows stale.
 
 ## Account for the Lag Introduced by the Backup
 
-Stopping apply creates a lag window, and heavy backup reads may slow apply even after it resumes. Record:
+When `--safe-slave-backup` is used, stopping apply creates a lag window, and heavy backup reads may slow apply even after it resumes. Record:
 
 ```sql
 SELECT NOW(6), @@server_uuid, @@global.gtid_executed;
-SHOW GLOBAL STATUS LIKE 'Slave_open_temp_tables';
+SHOW GLOBAL STATUS LIKE 'Replica_open_temp_tables';
 ```
 
 Run the same replication health gate after backup. A successful `xtrabackup` exit with a broken replica is an operational failure.
@@ -91,7 +91,7 @@ If the replica cannot stay inside the RPO during a full backup:
 - improve its storage or CPU;
 - reduce XtraBackup parallelism;
 - schedule during a quieter period;
-- use a longer incremental strategy with periodic fulls;
+- use an incremental-backup strategy with periodic fulls;
 - add another replica rather than weakening correctness checks.
 
 Do not hide the symptom by accepting unlimited lag.
@@ -127,7 +127,7 @@ The best source is not the server with the lowest CPU graph. It is the server th
 
 ## Official Documentation
 
-- [Percona XtraBackup backups in replication environments](https://docs.percona.com/percona-xtrabackup/8.0/make-backup-in-replication-env.html)
+- [Percona XtraBackup backups in replication environments](https://docs.percona.com/percona-xtrabackup/8.4/make-backup-in-replication-env.html)
 - [XtraBackup option reference](https://docs.percona.com/percona-xtrabackup/8.4/xtrabackup-option-reference.html)
 - [How Percona XtraBackup works](https://docs.percona.com/percona-xtrabackup/8.4/how-xtrabackup-works.html)
 - [XtraBackup generated files](https://docs.percona.com/percona-xtrabackup/8.4/generated-files.html)
