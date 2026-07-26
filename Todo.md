@@ -2,9 +2,8 @@
 
 ## StarRocks
 
-1. Why Are StarRocks Iceberg Queries Slow? Metadata Cache, Statistics, and File-Pruning Fixes
-2. How to Tune StarRocks for High-Concurrency BI Dashboards with Resource Groups
-3. How to Export a Consistent StarRocks Snapshot to CSV or JSON While Data Is Changing
+1. How to Tune StarRocks for High-Concurrency BI Dashboards with Resource Groups
+2. How to Export a Consistent StarRocks Snapshot to CSV or JSON While Data Is Changing
 
 ## Knative Eventing
 
