@@ -2,13 +2,12 @@
 
 ## Knative Eventing
 
-1. How to Preserve Kafka Partition Ordering in Knative Eventing
-2. Knative KafkaSource Consumer Lag Keeps Growing: How to Find the Bottleneck
-3. Kafka Broker vs MTChannelBasedBroker in Knative: Durability, Latency, and Operations
-4. How to Connect Knative Eventing to Strimzi or Redpanda Kafka
-5. How to Prevent Knative Scale-to-Zero Cold Starts from Causing Event Retries
-6. How to Run Long-Lived or Asynchronous Jobs from Knative Events
-7. What Happens to a Knative Trigger Subscriber’s Reply Event?
+1. Knative KafkaSource Consumer Lag Keeps Growing: How to Find the Bottleneck
+2. Kafka Broker vs MTChannelBasedBroker in Knative: Durability, Latency, and Operations
+3. How to Connect Knative Eventing to Strimzi or Redpanda Kafka
+4. How to Prevent Knative Scale-to-Zero Cold Starts from Causing Event Retries
+5. How to Run Long-Lived or Asynchronous Jobs from Knative Events
+6. What Happens to a Knative Trigger Subscriber’s Reply Event?
 
 ## Savings Plans
 
