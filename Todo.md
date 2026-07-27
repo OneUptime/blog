@@ -1261,3 +1261,233 @@
 18. How to Force-Sample One OpenTelemetry Trace with an Attribute While Preserving a Hard Do-Not-Sample Rule
 19. Why an HTTP 500 Trace Can Miss a `status_code: ERROR` Tail-Sampling Policy
 20. How to Handle Pending Tail-Sampling Decisions During Collector Shutdowns and Rolling Deployments
+
+## VPA
+
+1. Why Did VPA Change Its Recommendation but Not Recreate the Pod? Understanding Bounds and Eviction Thresholds
+2. How to Debug a VPA with No Recommendation: Metrics Server, TargetRef, and Container History Checks
+3. How to Prevent VPA Recommendations from Making Pods Unschedulable on Available Node Sizes
+4. Why Won’t VPA Update a Single-Replica Pod? Check minReplicas, PodDisruptionBudgets, and Controller Ownership
+5. How to Use InPlaceOrRecreate VPA and Diagnose a Disabled InPlacePodVerticalScaling Feature Gate
+6. Why VPA Cannot Downsize Memory In Place: resizePolicy and Eviction Fallback Explained
+7. How to Keep VPA from Changing Container Limits with controlledValues: RequestsOnly
+8. Why VPA Multiplies Resource Limits When Requests Rise: Preserved Request-to-Limit Ratios Explained
+9. How to Exclude Sidecars from VPA or Manage CPU and Memory Per Container
+10. How to Export VPA Target, Lower, Upper, and Uncapped Recommendations to Prometheus
+11. How to Seed VPA with Prometheus History After a Recommender Restart
+12. How to Right-Size Short-Lived Jobs and CronJobs When VPA Lacks Enough History
+13. How to Run VPA Safely for StatefulSets and Databases Without Surprise Downtime
+14. Why VPA Cannot Manage Static or Bare Pods: Fixing an Unsupported targetRef
+15. How LimitRanges and ResourceQuotas Alter—or Reject—VPA Recommendations
+16. How to Tune VPA Eviction Tolerance, Updater Interval, and Eviction Rate for Production
+17. How to Troubleshoot the VPA Admission Webhook: CA Bundles, Certificates, and Mutation Failures
+18. How to Read VPA RecommendationProvided, NoPodsMatched, and LowConfidence Conditions
+19. How to Coordinate VPA with Cluster Autoscaler When Right-Sized Pods Need Larger Nodes
+20. How to Account for Startup Spikes and OOM Events in VPA Memory Recommendations
+
+## Fulcio
+
+1. How Fulcio Turns an OIDC Identity Token into a 10-Minute Code-Signing Certificate
+2. How to Configure a Private Fulcio Instance with Your Own OIDC Issuer
+3. Why Fulcio Rejects an OIDC Token: Debugging iss, aud, sub, exp, and nbf Claims
+4. How to Request a Fulcio Certificate from GitHub Actions with id-token: write
+5. How to Verify the Exact CI Workflow Behind a Fulcio Certificate Using Build Signer OIDs
+6. How to Inspect Fulcio SANs and Sigstore OID Extensions with OpenSSL
+7. Email, URI, Kubernetes, and SPIFFE Identities in Fulcio: Which SAN Will Be Issued?
+8. How to Avoid Publishing Sensitive Email or Repository Identity Data in Fulcio’s Public CT Log
+9. How to Monitor Fulcio’s Certificate Transparency Log for Unauthorized Certificates for Your Identity
+10. How to Run Fulcio Locally with Docker Compose—and Why the Ephemeral CA Is Test-Only
+11. How to Back a Production Fulcio CA with AWS KMS, Google Cloud KMS, Azure Key Vault, or Vault
+12. How to Configure Fulcio as an Intermediate CA Beneath an Offline Root
+13. How to Use a PKCS#11 HSM as Fulcio’s Certificate-Signing Backend
+14. How to Rotate a File-Backed Fulcio Signing Key and Certificate Chain Without Restarting the Server
+15. How to Distribute a Private Fulcio Trust Root to Cosign Clients with TUF
+16. How to Fix x509: Certificate Signed by Unknown Authority Across Public, Staging, and Private Fulcio
+17. Why Cosign Cannot Verify a Private Fulcio Certificate Without Rekor and CT Log Trust Material
+18. How to Configure Embedded SCTs for a Self-Hosted Fulcio Certificate Transparency Log
+19. How to Validate a Fulcio Root and Intermediate Chain Against Sigstore’s Certificate Profile
+20. How to Troubleshoot Fulcio Proof-of-Possession Failures and CSR Key Mismatches
+
+## SSL Monitoring
+
+1. Why Your SSL Monitor Sees the Wrong Certificate: Send the Correct SNI Hostname
+2. How to Alert on probe_ssl_earliest_cert_expiry with Prometheus Blackbox Exporter
+3. Why Blackbox Exporter Reports x509: Certificate Signed by Unknown Authority: Monitoring Private CAs Safely
+4. How to Monitor TLS Certificates Inside Kubernetes Secrets Before They Reach an Ingress
+5. How to Monitor SMTP, IMAP, LDAP, and FTP Certificates That Require STARTTLS
+6. How to Monitor mTLS Endpoints with a Client Certificate and Private Key
+7. How to Detect an Incomplete or Expiring Intermediate Certificate Chain Before Clients Fail
+8. How to Monitor OCSP Stapling and Certificate Revocation Without Treating notAfter as Enough
+9. How to Check Every SAN on a Multi-Domain Certificate—and Detect Missing Hostnames After Renewal
+10. How to Inventory and Monitor Wildcard Certificates Across Every Deployment Location
+11. How to Catch Certificate Changes in Serial Number, Fingerprint, Issuer, or Key After Rotation
+12. Why Internal and External SSL Monitors Disagree: Split DNS, Firewalls, CDNs, and Load Balancers
+13. How to Detect Different TLS Certificates Served over IPv4 and IPv6
+14. How to Monitor the Origin Certificate Behind a CDN or TLS-Terminating Load Balancer
+15. How to Design Warning and Critical Certificate-Expiry Alerts Without Notification Storms
+16. How to Discover Untracked Certificates Before They Expire: Network Scanning vs CA Inventory
+17. How to Monitor Certificates Stored in Windows Certificate Stores, Java Keystores, and PEM Files
+18. How to Alert When Automated Let’s Encrypt Renewal Succeeds but the Service Still Serves the Old Certificate
+19. How to Monitor TLS Version and Cipher Regressions Alongside Certificate Expiry
+20. What Should an SSL Monitor Validate Besides Expiry? Hostname, Trust Chain, Revocation, and Key Strength
+
+## CockroachDB Operator
+
+1. How to Diagnose a CockroachDB Operator Scale-Down Stuck After Node Decommissioning
+2. Why Upscaling During a CockroachDB Operator Downscale Can Leave a Node in `DECOMMISSIONING`
+3. How to Stop CockroachDB Operator Scale-Down from Orphaning or Reusing the Wrong PVC
+4. How to Upgrade CockroachDB with the Operator Without an OOMKilled `vcheck` Job
+5. How to Roll Back a CockroachDB Operator Major Upgrade Before Auto-Finalization
+6. How to Migrate from the Public CockroachDB Operator Without Deleting StatefulSets or PVCs
+7. How to Supply a Custom CA to the CockroachDB Operator Without Breaking Readiness Probes
+8. How to Rotate CockroachDB Operator Node and Client Certificates with cert-manager
+9. How to Secure the CockroachDB Operator Admission Webhooks with Your Own CA
+10. Why Is the CockroachDB Operator Ready Before Its Admission Webhook Accepts Requests?
+11. How to Run the CockroachDB Operator Under Kubernetes Restricted Pod Security
+12. How to Fix `Permission Denied` on `/cockroach/cockroach-data` in Operator-Managed Pods
+13. How to Expand CockroachDB Storage When the Operator Does Not Resize the PVC
+14. How to Expose CockroachDB SQL and the DB Console Through Separate Ingresses
+15. How to Spread Operator-Managed CockroachDB Pods Evenly Across Availability Zones
+16. How to Add Init Containers, Sidecars, and Volumes with the CockroachDB Operator `podTemplate`
+17. How to Set a Custom Scheduler and PriorityClass for CockroachDB Operator Pods
+18. How to Choose a CockroachDB Image Version Supported by Your Operator Release
+19. How to Run the CockroachDB Operator Outside the Default Namespace Without Broken Service DNS
+20. How to Create SQL Users and Client Certificates in an Operator-Managed CockroachDB Cluster
+
+## Google Cloud
+
+1. `gcloud auth login` vs `gcloud auth application-default login`: Which Credentials Does Your Code Use?
+2. How to Fix ADC Quota Project Mismatch When Switching Between gcloud Configurations
+3. How to Fix Google API Quota Errors in Raw REST Calls with the `x-goog-user-project` Header
+4. How to Pass Local Google Application Default Credentials into Docker Without Baking In a Key
+5. Why Does `google.auth.default()` Find Credentials but Return No Google Cloud Project ID?
+6. How to Fix `docker-credential-gcloud Not in System PATH` for Artifact Registry
+7. Why Artifact Registry Returns `uploadArtifacts` Denied After `gcloud auth configure-docker`
+8. How to Fix Google Cloud Storage Signed URL `SignatureDoesNotMatch` by Matching Signed Headers
+9. How to Fix BigQuery `Cannot Read and Write in Different Locations` for External Cloud Storage Tables
+10. Why BigQuery Says `Dataset Was Not Found in Location US` When the Dataset Exists
+11. How to Fix `iam.serviceAccounts.actAs` When Deploying Cloud Run with a Custom Service Account
+12. How to Diagnose Cloud Run `The Request Was Aborted Because There Was No Available Instance`
+13. How to Fix Pub/Sub Push 403s to an Authenticated Cloud Run Service
+14. How to Fix `iam.serviceAccounts.getAccessToken` 403 in GKE Workload Identity
+15. How to Fix Cloud Run Shared VPC `Permission Denied on Subnetwork` by Granting the Service Agent
+16. Why a Cloud Run VPC Connector Fails with `Resource Readiness Deadline Exceeded` Across Regions
+17. How to Fix `Request Had Insufficient Authentication Scopes` on a GCE VM with Correct IAM Roles
+18. How to Recover from `The Zone Does Not Have Enough Resources Available` in Compute Engine
+19. How to Fix Google Cloud SDK `apt update` GPG Signature Errors After a Repository Key Rotation
+20. How to Diagnose an Unhealthy Google Cloud Load Balancer Backend When the Firewall Rule Looks Correct
+
+## ServiceMonitors
+
+1. Why Does Prometheus Ignore a ServiceMonitor That Exists in Kubernetes?
+2. How to Debug a ServiceMonitor with Zero Discovered Targets from Service to EndpointSlice
+3. `serviceMonitorSelector` vs `spec.selector`: Which Labels Must a ServiceMonitor Match?
+4. How to Discover ServiceMonitors and Scrape Services Across Different Namespaces
+5. Why a ServiceMonitor Endpoint Must Reference the Named Service Port, Not the Container Port
+6. ServiceMonitor vs PodMonitor: Which One Should Scrape Your Kubernetes Workload?
+7. How to Scrape an External VM or FQDN with Prometheus Operator: ServiceMonitor or ScrapeConfig?
+8. How to Configure Basic Authentication in a ServiceMonitor Without Secret Newline Failures
+9. How to Scrape an mTLS Metrics Endpoint with ServiceMonitor `tlsConfig`
+10. How to Send an OAuth2 or Bearer Token from a ServiceMonitor Without Using Forbidden File Paths
+11. `relabelings` vs `metricRelabelings` in ServiceMonitor: When Does Each Run?
+12. How to Copy Kubernetes Service and Pod Labels onto Prometheus Metrics with ServiceMonitor
+13. Why Do ServiceMonitor Label Conflicts Produce `exported_*`, and When Should You Set `honorLabels`?
+14. How to Limit Cardinality per ServiceMonitor with Sample, Target, and Label Limits
+15. How to Scrape Multiple Ports and Metrics Paths with One ServiceMonitor
+16. Why a ServiceMonitor Cannot Probe Multiple Arbitrary URLs—and When to Use the Probe CRD
+17. How to Migrate ServiceMonitor Discovery from Endpoints to EndpointSlices
+18. How to Fix `No Matches for Kind ServiceMonitor` During Helm or Argo CD Installation
+19. Why Did Prometheus Reject a ServiceMonitor and Keep Its Last Known Good Configuration?
+20. Nil vs Empty `{}` ServiceMonitor Selectors in kube-prometheus-stack: Why Your Targets Disappear
+
+## Ephemeral Volumes
+
+1. emptyDir vs Generic Ephemeral vs CSI Ephemeral Volumes: How to Choose in Kubernetes
+2. Why emptyDir sizeLimit Does Not Change df -h—and How Kubernetes Enforces It
+3. How Kubernetes Accounts for Ephemeral Storage Across Logs, Writable Layers, and emptyDir
+4. How to Size a Memory-Backed emptyDir Without Triggering a Pod OOM
+5. Does emptyDir Survive a Container Restart? Understanding Pod and Container Lifecycles
+6. How to Share Build Artifacts Between Init Containers and App Containers with emptyDir
+7. How to Make /tmp Writable with emptyDir When readOnlyRootFilesystem Is Enabled
+8. How to Monitor emptyDir Usage per Pod with Kubelet and Prometheus Metrics
+9. How to Diagnose DiskPressure and Inode Evictions Caused by Pod Ephemeral Storage
+10. How to Guarantee Fixed Scratch-Disk Capacity with a Generic Ephemeral Volume
+11. How to Schedule Generic Ephemeral Volumes with WaitForFirstConsumer and Storage Topology
+12. Why a Generic Ephemeral Volume PVC Stays Pending—and How to Debug Provisioning
+13. How to Back Kubernetes Scratch Space with Local NVMe and Automatic Pod-Lifecycle Cleanup
+14. emptyDir sizeLimit vs ephemeral-storage Limit: Which Limit Evicts the Pod First?
+15. How to Enforce Namespace Defaults and Quotas for Kubernetes Ephemeral Storage
+16. How to Prevent Generic Ephemeral PVC Name Collisions and Ownership Conflicts
+17. How to Rescue Files from an emptyDir Before a Failing Pod Is Deleted
+18. How Generic Ephemeral Volumes Are Cleaned Up After Jobs and CronJobs
+19. How to Migrate a Workload from emptyDir to Generic Ephemeral Storage
+20. Why Local Ephemeral Storage Shows Less Allocatable Space Than Node Disk Capacity
+
+## Qdrant
+
+1. Cosine, Dot Product, or Euclidean: How to Choose a Qdrant Distance Metric
+2. How to Fix “Too Many Open Files” in a Qdrant Docker or Kubernetes Deployment
+3. How to Upsert New Qdrant Points Without Recreating the Collection
+4. How to Generate Deterministic Qdrant Point IDs and Prevent Duplicate RAG Chunks
+5. Why a Qdrant Payload Filter Returns No Results When LangChain Nests Metadata
+6. How to Filter Qdrant Arrays and Nested Objects with Correct AND Semantics
+7. How to Create Qdrant Payload Indexes for Fast Filtered Vector Search
+8. How to Paginate an Entire Qdrant Collection Safely with the Scroll API
+9. How to Delete Qdrant Points by Payload Filter and Wait for the Update to Finish
+10. How to Build Dense-and-Sparse Hybrid Search in Qdrant with RRF Fusion
+11. How to Tune Qdrant HNSW ef, m, and exact Search for Recall vs Latency
+12. How to Reduce Qdrant RAM Usage with On-Disk Vectors, Payloads, and Quantization
+13. Why Qdrant Data Disappears or Corrupts After a Docker Restart on Windows
+14. How to Back Up and Restore Qdrant Collections with Snapshots
+15. How to Change a Qdrant Embedding Dimension with a New Collection and Alias Swap
+16. One Collection per Tenant or Payload Partitioning? Designing Qdrant Multitenancy
+17. How to Enforce Tenant Isolation in Qdrant with JWT RBAC Payload Filters
+18. How to Choose Qdrant Shard, Replication, and Write-Consistency Settings
+19. How to Use the Qdrant Python gRPC Client Safely with Multiprocessing
+20. Why Qdrant Filtered Queries Time Out: Payload Indexes, exact Search, and HNSW
+
+## SLOs
+
+1. Why Averaging Per-Minute Success Rates Produces the Wrong SLO
+2. How to Define an SLO for a Service with Zero or Very Low Traffic
+3. How to Set a Latency SLO from User Expectations Instead of Historical P99
+4. Should Third-Party API Failures Burn Your Error Budget? How to Model Dependencies
+5. Which HTTP Status Codes Belong in an Availability SLI? Handling 4xx, 5xx, and Cancellations
+6. Should Planned Maintenance Count Against an SLO? A Decision Framework
+7. Rolling vs Calendar-Aligned SLO Windows: Which One Should Drive Operations?
+8. When Does a Rolling Error Budget Recover After an Incident?
+9. 14, 28, or 30 Days? How to Choose an SLO Evaluation Window
+10. How to Write Outcome-Based SLOs for Batch Jobs, Queues, and Async Pipelines
+11. End-to-End Journey SLOs vs Service SLOs: Where Should You Measure Reliability?
+12. How to Calculate a User-Journey SLO Across Sequential and Redundant Dependencies
+13. How to Stop a Global SLO from Hiding Reliability Problems for Small Customers
+14. How to Manage SLO Definitions as Code Without Letting Dashboards Drift
+15. Who Owns an SLO That Spans Multiple Teams? Designing Alerts and Escalation
+16. How to Review and Retire SLOs That Never Trigger an Engineering Decision
+17. No Traffic or Broken Telemetry? How Missing Data Should Affect an SLO
+18. Why histogram_quantile Is the Wrong PromQL for a Threshold-Based Latency SLO
+19. How to Keep Low-Traffic Burn-Rate Alerts from Paging on a Single Failed Request
+20. How to Count Retries, Synthetic Checks, and Load-Balancer Results in an Availability SLI
+
+## MFA
+
+1. How to Generate, Hash, Consume, and Rotate Single-Use MFA Recovery Codes
+2. Why You Cannot Hash a TOTP Secret—and How to Encrypt It Safely at Rest
+3. How to Handle TOTP Clock Drift Without Making the Acceptance Window Unsafe
+4. How to Block Reuse of a TOTP Code During Its 30-Second Validity Window
+5. How to Rate-Limit MFA Code Attempts Without Creating an Account-Lockout DoS
+6. How to Verify TOTP Enrollment Before Enforcing MFA on the Next Login
+7. How to Secure MFA Factor Changes Against Session Hijacking
+8. How to Design Lost-Device MFA Recovery Without Turning Support into an Authentication Bypass
+9. How to Build a Revocable “Trust This Browser” Cookie for MFA
+10. How to Require Step-Up MFA Only for Sensitive Actions and APIs
+11. How to Enroll Multiple WebAuthn Security Keys Without Weakening Account Recovery
+12. How to Migrate Users from SMS and Push MFA to Phishing-Resistant Passkeys
+13. How to Stop MFA Push-Fatigue Attacks with Number Matching and Login Context
+14. Is Email OTP Really a Second Factor? How to Keep Authentication Channels Independent
+15. How to Authenticate CI/CD and Service Accounts When Human Users Must Use MFA
+16. How to Test MFA Flows End to End Without Hard-Coding Production Bypasses
+17. How to Represent Pre-MFA and Fully Authenticated Sessions Safely in JWT Claims
+18. How to Revoke Sessions and Trusted Devices After MFA Recovery or Factor Replacement
+19. One Shared TOTP Secret or One Credential per Device? Designing Multi-Device MFA
+20. How to Audit MFA Enrollment and Recovery Events Without Logging Secrets
