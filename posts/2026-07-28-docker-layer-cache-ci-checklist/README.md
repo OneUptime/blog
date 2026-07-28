@@ -21,7 +21,7 @@ Configure both directions:
 - `cache-from` imports candidates;
 - `cache-to` exports results for future builds.
 
-For GitHub Actions:
+For GitHub Actions, after checking out the repository and logging in to the target registry:
 
 ```yaml
 - uses: docker/setup-buildx-action@v4
@@ -178,7 +178,7 @@ RUN --mount=type=cache,target=/root/.cache/pip \
     pip install -r requirements.txt
 ```
 
-Cache mounts help when a layer must rerun. Their persistence still depends on the builder/cache arrangement in ephemeral CI. Configure and test the supported backend pattern rather than assuming a local mount survives a new runner.
+Cache mounts help when a layer must rerun. BuildKit does not preserve cache mounts in the GitHub Actions cache by default. On an ephemeral runner, persist the builder state or use a separate supported mechanism to save and restore the mount rather than assuming `cache-to: type=gha` preserves it.
 
 Use locking options for package managers that require exclusive cache access; Docker's examples use `sharing=locked` for APT cache mounts.
 
