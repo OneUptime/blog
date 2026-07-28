@@ -49,7 +49,7 @@ A workflow action is executable build input. A moving branch or tag can change w
 GitHub supports referencing an action by tag, branch, or full commit SHA. The full SHA is immutable and must not be abbreviated:
 
 ```yaml
-- uses: owner/action@a824008085750b8e136effc585c3cd6082bd575f
+- uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
 ```
 
 Keep a comment with the human-readable release version, and use an update tool or reviewed pull request to refresh the SHA. For first-party examples, GitHub documentation may show major tags for readability; choose SHA pins for a controlled supply-chain policy.
@@ -61,7 +61,7 @@ Pin reusable workflows from other repositories for the same reason. A same-repos
 Use one version declaration locally and in CI when possible:
 
 ```yaml
-- uses: actions/setup-node@v7
+- uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
   with:
     node-version: '22.14.0'
 ```
@@ -114,7 +114,7 @@ A cache must not bypass lock enforcement. Restore package bytes, then let the lo
 A Docker tag is mutable. A digest selects exact image content:
 
 ```dockerfile
-FROM node:22.14.0@sha256:...
+FROM node:22.14.0@sha256:e5ddf893cc6aeab0e5126e4edae35aa43893e2836d1d246140167ccc2616f5d7
 ```
 
 The tag remains useful context; the digest enforces identity. Pin every external image in `FROM` and `COPY --from`, not only the final runtime base.
