@@ -128,7 +128,7 @@ Some behavior must be tested on the provider:
 - required-check naming;
 - OIDC and deployment credentials.
 
-Create a canary path that cannot deploy:
+For a workflow file that already supports `workflow_dispatch` on the default branch, use a manually dispatched canary path that cannot deploy:
 
 ```yaml
 on:
@@ -156,7 +156,7 @@ Maintain small fixture files for:
 - tag;
 - manual dispatch.
 
-Keep only fields the logic consumes. Feed them to local modules or the emulator, and assert the selected jobs and permissions. Treat all values from issue titles, branch names, PR bodies, and event payloads as untrusted input; do not interpolate them directly into shell code.
+Keep only fields the logic consumes. Feed them to local modules or the emulator, and assert the selected jobs; verify effective permissions remotely. Treat all values from issue titles, branch names, PR bodies, and event payloads as untrusted input; do not interpolate them directly into shell code.
 
 ## Verify Failure Paths
 
