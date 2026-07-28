@@ -169,7 +169,7 @@ Correlate the five-tuple and timestamp. NAT can change source addresses and port
 | --- | --- |
 | Repeated SYN, none at destination | Routing, egress/ingress drop, network policy |
 | SYN reaches destination, no SYN-ACK returns | Host firewall, listen state, kernel pressure |
-| SYN/SYN-ACK leave destination, client sees no reply | Return path, asymmetric/stateful filtering |
+| SYN reaches destination and SYN-ACK leaves, client sees no reply | Return path, asymmetric/stateful filtering |
 | TCP establishes, TLS ClientHello gets no response | TLS terminator, post-connect filtering, overload |
 | TLS and request bytes reach host, no app event | Accept/worker/parser/logging boundary |
 | App sends response, client never receives it | Reverse path, intermediary, midstream close |
