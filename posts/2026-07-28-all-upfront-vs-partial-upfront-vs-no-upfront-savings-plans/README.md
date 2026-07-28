@@ -8,17 +8,17 @@ Description: Compare Savings Plans payment options using actual total cost, paym
 
 ---
 
-For otherwise comparable Compute, EC2 Instance, or SageMaker AI Savings Plans, All Upfront offers the lowest AWS price, Partial Upfront offers a middle ground, and No Upfront avoids an initial payment but has the highest nominal plan price. The cheapest business choice can still differ after considering cash flow, cost of capital, accounting, and utilization risk.
+For the same eligible usage profile and otherwise comparable Compute, EC2 Instance, or SageMaker AI Savings Plans, All Upfront offers the lowest AWS price, Partial Upfront offers a middle ground, and No Upfront avoids an initial payment but has the highest nominal plan price. The cheapest business choice can still differ after considering cash flow, cost of capital, accounting, and utilization risk.
 
 AWS's current FAQ notes an exception: Database Savings Plans use a one-year, No Upfront model. The three-way comparison in this article applies to Savings Plan offerings where all three payment options are available.
 
 ## What Each Option Means
 
-| Payment option | Initial payment | Later payment | General price relationship |
+| Payment option | Initial payment | Later payment | General rate relationship |
 | --- | --- | --- | --- |
-| All Upfront | Entire commitment | No recurring commitment payment | Lowest offered price |
-| Partial Upfront | At least half upfront | Remaining amount monthly | Lower than No Upfront |
-| No Upfront | None | Commitment charged monthly | Highest of the three comparable prices |
+| All Upfront | Entire commitment | No recurring commitment payment | Lowest offered rates |
+| Partial Upfront | At least half upfront | Remaining amount monthly | Lower rates than No Upfront |
+| No Upfront | None | Commitment charged monthly | Highest of the three comparable rates |
 
 These options do not change the basic obligation. Each is still a one- or three-year commitment to a dollar amount per hour. No Upfront is not On-Demand and is not cancellable month to month.
 
@@ -29,7 +29,7 @@ The Savings Plans cart displays the upfront payment, monthly payment, total cost
 Hold these variables constant:
 
 - Savings Plan type;
-- hourly commitment;
+- eligible usage profile and coverage target;
 - term;
 - EC2 instance family and Region where applicable;
 - start date;
@@ -44,11 +44,13 @@ Then record for each payment option:
 - expected eligible usage covered;
 - expected net savings relative to On-Demand.
 
+Do not hold the purchased hourly commitment constant. AWS defines that input at the Savings Plans rate, not at the On-Demand rate. For a fixed term, an equal dollar-per-hour commitment produces the same nominal commitment total regardless of payment schedule, but lower All Upfront rates allow that commitment to cover more of the same usage. To compare equivalent coverage, calculate the hourly commitment required under each option's rates.
+
 Do not compare a three-year All Upfront plan with a one-year No Upfront plan and attribute the whole difference to prepayment. Both term and payment option affect rates.
 
 ## Nominal Total Cost Favors All Upfront
 
-If the goal is simply to minimize the sum of payments shown by AWS for an identical configuration, All Upfront costs least. AWS says it provides the lowest prices. Partial Upfront provides lower prices than No Upfront while requiring at least half of the commitment at purchase, and No Upfront charges the commitment monthly.
+If the goal is simply to minimize the sum of payments shown by AWS for the same eligible usage profile, plan type, term, and coverage target, All Upfront costs least because it has the lowest Savings Plans rates. Partial Upfront provides lower rates than No Upfront while requiring at least half of the commitment at purchase, and No Upfront charges the commitment monthly.
 
 This conclusion assumes the plan remains fully useful. Paying a lower rate for commitment that becomes unused can still be more expensive than choosing a smaller plan or remaining On-Demand.
 
@@ -66,7 +68,7 @@ present value
 
 Use the organization's approved discount rate and accounting convention. The correct periodic conversion depends on that convention, so it should come from finance rather than a cloud team.
 
-All Upfront retains the lowest AWS invoice total, but discounting future No Upfront payments narrows the economic difference. If the organization has constrained capital or a high opportunity cost, liquidity may justify paying a higher nominal AWS price.
+All Upfront retains the lowest AWS invoice total for equivalent coverage, but discounting future No Upfront payments narrows the economic difference. If the organization has constrained capital or a high opportunity cost, liquidity may justify paying a higher nominal AWS price.
 
 Report both:
 
@@ -144,7 +146,7 @@ Before submitting:
 
 AWS supports a narrow return mechanism for eligible recent purchase errors, but it is limited to plans with commitments of `$100` per hour or less, within seven days and the same UTC calendar month, subject to quota and other restrictions. It is not a substitute for this review.
 
-All Upfront costs least in nominal AWS terms for comparable offerings. Choose it only after confirming that the commitment itself is safe; then use cash-flow analysis to decide whether the lowest rate is also the best use of the organization's money.
+All Upfront costs least in nominal AWS terms for equivalent eligible usage under otherwise comparable offerings. Choose it only after confirming that the commitment itself is safe; then use cash-flow analysis to decide whether the lowest rate is also the best use of the organization's money.
 
 ## Official Documentation
 
