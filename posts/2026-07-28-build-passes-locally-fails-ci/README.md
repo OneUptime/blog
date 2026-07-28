@@ -40,7 +40,7 @@ Add a temporary diagnostic step that prints non-secret facts:
 
 ```bash
 uname -a
-printf 'shell=%s\n' "$SHELL"
+ps -p "$$" -o command= || true
 git rev-parse HEAD
 node --version || true
 npm --version || true
@@ -86,7 +86,7 @@ Do not conclude that a restored cache proves dependencies are correct. Bypass th
 
 ## Compare the Command, Shell, and Working Directory
 
-Copy the exact CI command and run it from the same repository directory. `npm test`, `npm run test`, and a direct test-runner invocation need not have identical defaults. A CI wrapper may add flags for coverage, sharding, strict warnings, or a production build.
+Copy the exact CI command and run it from the same repository directory. `npm test` and `npm run test` both invoke the package's `test` script, but a direct test-runner invocation need not have identical defaults. A CI wrapper may add flags for coverage, sharding, strict warnings, or a production build.
 
 Shell behavior matters too. Quoting, glob expansion, pipelines, path separators, and error propagation differ among Bash, PowerShell, and `cmd.exe`. GitHub Actions also runs each `run` step in a new process, so a `cd`, shell variable, or alias from one step does not automatically become process state in the next.
 
