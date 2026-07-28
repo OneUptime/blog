@@ -19,9 +19,9 @@ The recommendation depends on more than the lookback:
 - selected plan type: Compute, Database, EC2 Instance, or SageMaker AI Savings Plans;
 - an available term and payment option for that plan type;
 - management-account or member-account scope;
-- current RI and Savings Plans inventory;
+- current Savings Plans inventory and existing RI coverage;
 - discount-sharing preferences;
-- usage and offering rates in the chosen period.
+- eligible usage in the chosen period and Savings Plans rates for the selected offering.
 
 AWS generates management-account recommendations from participating organization usage under the sharing configuration. Member-account recommendations optimize that account in isolation.
 
