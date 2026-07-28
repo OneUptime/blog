@@ -77,24 +77,24 @@ jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/setup-build
       - run: ./scripts/build lint
 
   unit:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/setup-build
       - run: ./scripts/build unit
 
   package:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/setup-build
       - run: ./scripts/build package
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@v7
         with:
           name: app-${{ github.sha }}
           path: dist/
@@ -110,6 +110,7 @@ Do not make build behavior depend on an accidental forest of CI variables:
 
 ```bash
 if [ -n "${GITHUB_ACTIONS:-}" ]; then
+  :
   # completely different build
 fi
 ```
