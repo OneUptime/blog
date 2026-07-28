@@ -2,21 +2,20 @@
 
 ## Savings Plans
 
-1. Why Unused Savings Plans Commitment Does Not Roll Over to the Next Hour
-2. How to Size Savings Plans for Workloads That Scale Up by Day and Down at Night
-3. Can You Cancel, Modify, Transfer, or Return an AWS Savings Plan?
-4. One-Year vs Three-Year AWS Savings Plans: How to Quantify Lock-In Risk
-5. All Upfront vs Partial Upfront vs No Upfront Savings Plans: Which Costs Least?
-6. AWS Savings Plans Coverage vs Utilization: What Is the Difference?
-7. Why Did Savings Plans Coverage Drop While Utilization Stayed High?
-8. How to Pick a 7-, 30-, or 60-Day Lookback for AWS Savings Plans Recommendations
-9. Why Cost Explorer Savings Plans Recommendations Can Overcommit Seasonal Workloads
-10. How to Buy Savings Plans in Small Layers Instead of Making One Large Commitment
-11. Should You Buy Savings Plans in the AWS Management Account or a Member Account?
-12. How Does Savings Plans Discount Sharing Work Across AWS Organizations?
-13. How to Allocate Shared Savings Plans Discounts for Chargeback and Showback
-14. Which EC2, Fargate, Lambda, EMR, ECS, and EKS Charges Are Covered by Compute Savings Plans?
-15. Do AWS Savings Plans Apply to Spot Instances or On-Demand Capacity Reservations?
+1. How to Size Savings Plans for Workloads That Scale Up by Day and Down at Night
+2. Can You Cancel, Modify, Transfer, or Return an AWS Savings Plan?
+3. One-Year vs Three-Year AWS Savings Plans: How to Quantify Lock-In Risk
+4. All Upfront vs Partial Upfront vs No Upfront Savings Plans: Which Costs Least?
+5. AWS Savings Plans Coverage vs Utilization: What Is the Difference?
+6. Why Did Savings Plans Coverage Drop While Utilization Stayed High?
+7. How to Pick a 7-, 30-, or 60-Day Lookback for AWS Savings Plans Recommendations
+8. Why Cost Explorer Savings Plans Recommendations Can Overcommit Seasonal Workloads
+9. How to Buy Savings Plans in Small Layers Instead of Making One Large Commitment
+10. Should You Buy Savings Plans in the AWS Management Account or a Member Account?
+11. How Does Savings Plans Discount Sharing Work Across AWS Organizations?
+12. How to Allocate Shared Savings Plans Discounts for Chargeback and Showback
+13. Which EC2, Fargate, Lambda, EMR, ECS, and EKS Charges Are Covered by Compute Savings Plans?
+14. Do AWS Savings Plans Apply to Spot Instances or On-Demand Capacity Reservations?
 
 ## Build Automation
 
