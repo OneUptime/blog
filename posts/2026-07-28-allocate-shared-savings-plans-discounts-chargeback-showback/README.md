@@ -70,7 +70,7 @@ For each billing period:
 4. Attribute that sum as the plan cost consumed by the usage account.
 5. Reconcile all beneficiary sums with used commitment.
 
-A simplified query shape is:
+A simplified query shape for June 2026 is:
 
 ```sql
 SELECT
@@ -79,17 +79,17 @@ SELECT
   SUM(savings_plan_savings_plan_effective_cost) AS allocated_plan_cost
 FROM cur2
 WHERE line_item_line_item_type = 'SavingsPlanCoveredUsage'
-  AND bill_billing_period_start_date = DATE 'YYYY-MM-01'
+  AND bill_billing_period_start_date = TIMESTAMP '2026-06-01 00:00:00'
 GROUP BY 1, 2;
 ```
 
 Column spelling depends on the Data Exports table schema. Inspect the generated table rather than copying a name blindly.
 
-For net views where applicable discounts are present, review `savingsPlan/NetSavingsPlanEffectiveCost` and align the chosen cost basis with finance policy. Do not mix net and non-net values in one reconciliation.
+For net views where applicable discounts are present, use `savingsPlan/NetSavingsPlanEffectiveCost` with `savingsPlan/NetRecurringCommitmentForBillingPeriod` and `savingsPlan/NetAmortizedUpfrontCommitmentForBillingPeriod`. AWS does not document a net equivalent of `UsedCommitment`, so derive net unused commitment as the net plan fee minus the sum of net effective cost. Align the chosen cost basis with finance policy, and do not mix net and non-net values in one reconciliation.
 
 ## Calculate and Assign Unused Commitment
 
-The plan fee can exceed the effective cost allocated to covered usage. At a high level:
+The plan fee can exceed the effective cost allocated to covered usage. On a non-net basis:
 
 ```text
 plan fee
