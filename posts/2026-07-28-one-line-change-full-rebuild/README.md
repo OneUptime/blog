@@ -69,7 +69,7 @@ Use reverse-dependency queries:
 
 - Nx project/affected graph;
 - Turborepo package queries and dependency-change reasons;
-- Bazel `rdeps` or `allrdeps`;
+- Bazel `rdeps`, or `allrdeps` in Sky Query;
 - Pants `dependents` or changed transitive dependents.
 
 Inspect the path, not only the dependent count. One accidental edge near the root may explain thousands of tasks.
@@ -94,7 +94,7 @@ Fix the layer where the broadness originates.
 
 Turborepo calculates global and task hashes. Root task configuration, relevant lockfile changes, `globalDependencies`, listed global environment variables, behavior-changing flags, and passthrough arguments can affect broad sets of tasks.
 
-Global invalidators commonly include:
+Depending on the tool and its configuration, broad invalidators commonly include:
 
 - root `package.json` or lockfile;
 - `turbo.json`, `nx.json`, or common build configuration;
@@ -136,7 +136,7 @@ Take one task that should have hit and compare two runs:
 
 The first unexpected difference is usually the root cause. For Bazel remote cache diagnosis, execution logs can be compared between repeated builds; non-hermetic actions often produce different action keys.
 
-If fingerprints are identical but the remote cache misses, investigate cache availability, authentication, write policy, eviction, namespace, and platform properties. That is a storage problem, not a dependency graph problem.
+If fingerprints are identical but the remote cache misses, investigate cache availability, authentication, read/write policy, eviction, and namespace. That is a storage problem, not a dependency graph problem. If platform properties differ, the fingerprints or action keys are not identical; treat that as another input difference.
 
 ## Test a Narrower Model Safely
 
