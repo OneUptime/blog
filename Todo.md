@@ -2,20 +2,19 @@
 
 ## Build Automation
 
-1. Fail Fast or Run Every Check? Designing Useful Parallel CI Gates
-2. How to Run Only Affected Builds in a Monorepo Without Missing Shared-Library Changes
-3. When Is a Monorepo Ready for Bazel, Pants, Nx, or Turborepo?
-4. How to Test CI Pipeline Changes Locally Without Commit-Push-Wait Loops
-5. Why Did a One-Line Change Trigger a Full Rebuild? Diagnosing an Incorrect Dependency Graph
-6. How to Generate C and C++ Header Dependencies Automatically in GNU Make
-7. Why Does `make -j` Produce Race Conditions? Fixing Missing and Order-Only Prerequisites
-8. How to Cancel Superseded CI Runs Without Canceling the Latest Deployment
-9. How to Build Forked Pull Requests Safely When CI Tests Need Secrets
-10. How to Share Build Logic Between Developer Machines and CI Without Duplicating YAML
-11. How to Pin Compilers, Runtimes, and Lockfiles for Deterministic Builds
-12. Why Does Docker Ignore the Layer Cache in CI? A Cache-Invalidation Checklist
-13. How to Use a Remote Build Cache Across Ephemeral CI Runners
-14. How to Quarantine Flaky Tests Without Training the Team to Ignore Red Builds
+1. How to Run Only Affected Builds in a Monorepo Without Missing Shared-Library Changes
+2. When Is a Monorepo Ready for Bazel, Pants, Nx, or Turborepo?
+3. How to Test CI Pipeline Changes Locally Without Commit-Push-Wait Loops
+4. Why Did a One-Line Change Trigger a Full Rebuild? Diagnosing an Incorrect Dependency Graph
+5. How to Generate C and C++ Header Dependencies Automatically in GNU Make
+6. Why Does `make -j` Produce Race Conditions? Fixing Missing and Order-Only Prerequisites
+7. How to Cancel Superseded CI Runs Without Canceling the Latest Deployment
+8. How to Build Forked Pull Requests Safely When CI Tests Need Secrets
+9. How to Share Build Logic Between Developer Machines and CI Without Duplicating YAML
+10. How to Pin Compilers, Runtimes, and Lockfiles for Deterministic Builds
+11. Why Does Docker Ignore the Layer Cache in CI? A Cache-Invalidation Checklist
+12. How to Use a Remote Build Cache Across Ephemeral CI Runners
+13. How to Quarantine Flaky Tests Without Training the Team to Ignore Red Builds
 
 ## Timeouts
 
