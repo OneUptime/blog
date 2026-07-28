@@ -47,7 +47,7 @@ Potential drawbacks include:
 - Savings Plans purchasing access in the sensitive management account;
 - internal chargeback is required when member accounts receive benefit;
 - owner-first application can consume benefit if the management account itself has eligible workload;
-- current group-sharing requirements need careful review because the payer account cannot belong to a Cost Category sharing group.
+- current group-sharing requirements need careful review because the management account cannot belong to a Cost Category sharing group.
 
 The management account should normally be reserved for organization administration rather than workloads. If it is already tightly protected, granting a FinOps team purchasing permissions there may conflict with security policy.
 
@@ -64,7 +64,7 @@ It still requires:
 
 - discount sharing activated for the owner account and intended beneficiaries;
 - a chargeback or showback policy;
-- monitoring for the dedicated account leaving or moving within the organization;
+- monitoring for the dedicated account leaving the organization;
 - intentional Cost Category group membership when group sharing is used.
 
 Because group sharing uses account-based Cost Categories and each account can belong to only one sharing group, place a dedicated purchasing account in the group whose usage should be prioritized or restricted. Validate the exact sharing outcome in the current Billing console before purchase.
@@ -92,9 +92,9 @@ Decentralized purchasing works best when business units are financially independ
 
 ## Use Current Sharing Modes Intentionally
 
-AWS Billing supports:
+AWS Billing supports the following sharing controls. Group sharing is available in all AWS Regions except AWS GovCloud (US) and China Regions:
 
-- **Organization-wide sharing:** owner first, then other sharing-activated accounts.
+- **Open (organization-wide) sharing:** owner first, then other sharing-activated accounts.
 - **Prioritized group sharing:** owner first, then accounts in its defined group, then the wider eligible organization.
 - **Restricted group sharing:** owner first, then only accounts in the defined group; unused benefit does not escape the group.
 - **Account-level activation:** the management account can activate or deactivate individual accounts for sharing.
@@ -102,7 +102,7 @@ AWS Billing supports:
 Group sharing uses Cost Categories. AWS documents these constraints:
 
 - each account can belong to only one sharing group;
-- the payer account cannot belong to a group;
+- the management account cannot belong to a group;
 - the grouping Cost Category uses the Accounts dimension;
 - both owner and beneficiary accounts must have sharing activated;
 - the Savings Plans owner must remain active in sharing preferences.
@@ -113,7 +113,7 @@ Restricted sharing improves financial isolation but can reduce utilization. Prio
 
 | Governance need | Likely model |
 | --- | --- |
-| Maximize organization-wide utilization | Central account with organization-wide sharing |
+| Maximize organization-wide utilization | Central account with open (organization-wide) sharing |
 | Protect management-account access | Dedicated central member account |
 | Keep benefits within a business unit | Member account plus restricted group sharing |
 | Give a unit priority but retain overflow | Member account plus prioritized group sharing |
