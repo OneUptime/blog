@@ -34,6 +34,7 @@ jobs:
         runtime: [20, 22, 24]
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v7
       - run: ./scripts/test-runtime '${{ matrix.runtime }}'
 ```
 
