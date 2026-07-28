@@ -127,7 +127,7 @@ Repeat with smaller custom commitments in Purchase Analyzer. The analyzer suppor
 
 Seasonality can be diversified across accounts. A central Compute Savings Plan might remain utilized if one business unit's trough coincides with another's peak.
 
-Validate this at hourly granularity and under current sharing rules. Open, prioritized-group, and restricted-group sharing can make different account pools eligible for benefit. A group change can remove the diversification the model depended on.
+Validate this at hourly granularity and under current sharing rules. Open, prioritized-group, and restricted-group sharing apply benefits across different account scopes and priority orders. A group change can remove the diversification the model depended on.
 
 Also consider account departures, acquisitions, and billing-transfer boundaries. Savings Plans cannot be shared across separate AWS Organizations merely because one external account pays bills.
 
