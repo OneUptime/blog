@@ -2,24 +2,23 @@
 
 ## Build Automation
 
-1. How to Design CI Cache Keys That Speed Builds Without Restoring Stale Dependencies
-2. CI Cache vs Build Artifact: Which Should You Use Between Jobs and Workflow Runs?
-3. Build Once, Promote Everywhere: How to Stop Rebuilding Artifacts for Each Environment
-4. How to Parallelize Build Jobs Without Violating Dependency Order
-5. Fail Fast or Run Every Check? Designing Useful Parallel CI Gates
-6. How to Run Only Affected Builds in a Monorepo Without Missing Shared-Library Changes
-7. When Is a Monorepo Ready for Bazel, Pants, Nx, or Turborepo?
-8. How to Test CI Pipeline Changes Locally Without Commit-Push-Wait Loops
-9. Why Did a One-Line Change Trigger a Full Rebuild? Diagnosing an Incorrect Dependency Graph
-10. How to Generate C and C++ Header Dependencies Automatically in GNU Make
-11. Why Does `make -j` Produce Race Conditions? Fixing Missing and Order-Only Prerequisites
-12. How to Cancel Superseded CI Runs Without Canceling the Latest Deployment
-13. How to Build Forked Pull Requests Safely When CI Tests Need Secrets
-14. How to Share Build Logic Between Developer Machines and CI Without Duplicating YAML
-15. How to Pin Compilers, Runtimes, and Lockfiles for Deterministic Builds
-16. Why Does Docker Ignore the Layer Cache in CI? A Cache-Invalidation Checklist
-17. How to Use a Remote Build Cache Across Ephemeral CI Runners
-18. How to Quarantine Flaky Tests Without Training the Team to Ignore Red Builds
+1. CI Cache vs Build Artifact: Which Should You Use Between Jobs and Workflow Runs?
+2. Build Once, Promote Everywhere: How to Stop Rebuilding Artifacts for Each Environment
+3. How to Parallelize Build Jobs Without Violating Dependency Order
+4. Fail Fast or Run Every Check? Designing Useful Parallel CI Gates
+5. How to Run Only Affected Builds in a Monorepo Without Missing Shared-Library Changes
+6. When Is a Monorepo Ready for Bazel, Pants, Nx, or Turborepo?
+7. How to Test CI Pipeline Changes Locally Without Commit-Push-Wait Loops
+8. Why Did a One-Line Change Trigger a Full Rebuild? Diagnosing an Incorrect Dependency Graph
+9. How to Generate C and C++ Header Dependencies Automatically in GNU Make
+10. Why Does `make -j` Produce Race Conditions? Fixing Missing and Order-Only Prerequisites
+11. How to Cancel Superseded CI Runs Without Canceling the Latest Deployment
+12. How to Build Forked Pull Requests Safely When CI Tests Need Secrets
+13. How to Share Build Logic Between Developer Machines and CI Without Duplicating YAML
+14. How to Pin Compilers, Runtimes, and Lockfiles for Deterministic Builds
+15. Why Does Docker Ignore the Layer Cache in CI? A Cache-Invalidation Checklist
+16. How to Use a Remote Build Cache Across Ephemeral CI Runners
+17. How to Quarantine Flaky Tests Without Training the Team to Ignore Red Builds
 
 ## Timeouts
 
