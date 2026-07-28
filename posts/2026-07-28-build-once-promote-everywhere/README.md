@@ -10,7 +10,7 @@ Description: Build and verify one immutable artifact, then move its recorded ide
 
 If staging and production rebuild the same commit independently, they do not necessarily deploy the same software. A mutable dependency, base image, compiler, timestamp, generated file, or network response can change between builds.
 
-"Build once, promote everywhere" gives every environment the same tested bytes. Environment-specific configuration is supplied at deployment or runtime; it is not compiled into a fresh artifact.
+"Build once, promote everywhere" gives every environment the same tested artifact identity. For a multi-platform container image, one top-level digest can identify an image index containing different platform-specific images, so test each target platform before promotion. Environment-specific configuration is supplied at deployment or runtime; it is not compiled into a fresh artifact.
 
 ## Define the Unit of Promotion
 
@@ -21,7 +21,7 @@ Choose an object with an immutable identity:
 - archive or binary by artifact ID and cryptographic digest;
 - infrastructure module by version and digest.
 
-A Git commit identifies source, not the resulting binary. A tag such as `app:1.8` is a convenient name but can be moved. Docker supports pulling by digest, which selects an exact image:
+A Git commit identifies source, not the resulting binary. A tag such as `app:1.8` is a convenient name but can be moved. Docker supports pulling by digest, which selects an exact image manifest or image index:
 
 ```text
 registry.example.com/payments@sha256:...
@@ -48,7 +48,7 @@ source commit
 
 The build stage should produce one release candidate. Integration and acceptance tests should consume that candidate rather than compiling a private copy. Once checks pass, promotion changes environment state or metadata, not artifact content.
 
-For a container build, capture the digest returned by the registry push:
+After checking out the source and authenticating to the target registry, capture the digest returned by the registry push:
 
 ```yaml
 - name: Build and push
@@ -63,7 +63,7 @@ For a container build, capture the digest returned by the registry push:
   run: printf '%s\n' '${{ steps.image.outputs.digest }}' > image.digest
 ```
 
-Pass `image.digest` as a job output or artifact, then deploy `repository@digest`. The tag can remain for discovery, but the deployment record should use the digest.
+Pass the recorded digest value as a job output, or upload `image.digest` as a workflow artifact, then deploy `repository@digest`. The tag can remain for discovery, but the deployment record should use the digest.
 
 ## Keep Configuration Outside the Artifact
 
@@ -182,7 +182,7 @@ Move incrementally:
 6. Remove source checkout and build tools from deploy jobs.
 7. Add provenance, retention, rollback, and policy controls.
 
-The outcome is stronger than faster deployment. It gives an auditable statement: the bytes in production are the bytes that passed the release gates.
+The outcome is stronger than faster deployment. It gives an auditable statement: for each tested target platform, the bytes in production are the bytes that passed the release gates.
 
 ## Official Documentation
 
