@@ -2,14 +2,13 @@
 
 ## Build Automation
 
-1. Why Does `make -j` Produce Race Conditions? Fixing Missing and Order-Only Prerequisites
-2. How to Cancel Superseded CI Runs Without Canceling the Latest Deployment
-3. How to Build Forked Pull Requests Safely When CI Tests Need Secrets
-4. How to Share Build Logic Between Developer Machines and CI Without Duplicating YAML
-5. How to Pin Compilers, Runtimes, and Lockfiles for Deterministic Builds
-6. Why Does Docker Ignore the Layer Cache in CI? A Cache-Invalidation Checklist
-7. How to Use a Remote Build Cache Across Ephemeral CI Runners
-8. How to Quarantine Flaky Tests Without Training the Team to Ignore Red Builds
+1. How to Cancel Superseded CI Runs Without Canceling the Latest Deployment
+2. How to Build Forked Pull Requests Safely When CI Tests Need Secrets
+3. How to Share Build Logic Between Developer Machines and CI Without Duplicating YAML
+4. How to Pin Compilers, Runtimes, and Lockfiles for Deterministic Builds
+5. Why Does Docker Ignore the Layer Cache in CI? A Cache-Invalidation Checklist
+6. How to Use a Remote Build Cache Across Ephemeral CI Runners
+7. How to Quarantine Flaky Tests Without Training the Team to Ignore Red Builds
 
 ## Timeouts
 
