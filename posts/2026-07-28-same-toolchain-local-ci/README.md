@@ -40,7 +40,7 @@ Do not accept an unexamined default runtime from a workstation or runner image. 
 
 ```yaml
 steps:
-  - uses: actions/checkout@v6
+  - uses: actions/checkout@v7
   - uses: actions/setup-node@v7
     with:
       node-version-file: '.nvmrc'
@@ -98,7 +98,7 @@ Use the CI provider to fan out jobs when useful, but have each job invoke the sa
 
 ## Freeze Dependency Resolution, Not Dependency Downloads
 
-Commit the ecosystem's lockfiles and use frozen installation. For npm, `npm ci` fails if the manifest and lockfile disagree and does not update either file. That is different from a cache: a cache accelerates fetching but must not choose dependency versions.
+Commit the ecosystem's lockfiles and use frozen installation. For npm, `npm ci` fails if the dependency declarations in `package.json` and the lockfile disagree and does not update either file. That is different from a cache: a cache accelerates fetching but must not choose dependency versions.
 
 A sound sequence is:
 
@@ -155,7 +155,7 @@ Add cheap assertions before expensive work:
 ```bash
 node --version
 npm --version
-git diff --exit-code
+test -z "$(git status --porcelain=v1 --untracked-files=all)"
 ./scripts/check-toolchain
 ```
 
