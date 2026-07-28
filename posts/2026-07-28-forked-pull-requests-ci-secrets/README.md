@@ -16,7 +16,7 @@ The safe architecture separates untrusted computation from privileged operations
 
 ## Use the Default Secretless Pull-Request Lane
 
-On GitHub, a workflow triggered by `pull_request` from a fork does not receive Actions secrets. Its `GITHUB_TOKEN` is read-only by default unless an administrator enables broader fork permissions.
+On GitHub, a workflow triggered by `pull_request` from a fork receives a read-only `GITHUB_TOKEN` and no Actions secrets by default. Private repositories can opt in to sending write tokens or secrets to fork workflows; do not enable those options for this lane.
 
 Keep this lane useful:
 
@@ -40,7 +40,7 @@ jobs:
   untrusted-test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - run: ./scripts/test-untrusted
 ```
 
@@ -67,17 +67,23 @@ Treat any credential exposed to fork code as compromised by design. Do not reuse
 
 GitHub's `pull_request_target` event runs in the context of the base repository and can have access to secrets and a more privileged token. It is suitable for carefully designed operations on pull-request metadata, such as labeling or commenting.
 
-It is dangerous to check out the fork's head and run it:
+Current `actions/checkout@v7` releases refuse this checkout by default. Bypassing that protection and running the fork's head is dangerous:
 
 ```yaml
 # Unsafe design: privileged event plus untrusted execution
-on: pull_request_target
-steps:
-  - uses: actions/checkout@v6
-    with:
-      ref: ${{ github.event.pull_request.head.sha }}
-  - run: npm ci
-  - run: npm test
+on:
+  pull_request_target:
+
+jobs:
+  unsafe-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          allow-unsafe-pr-checkout: true
+      - run: npm ci
+      - run: npm test
 ```
 
 `npm ci` can execute lifecycle scripts controlled by the pull request. So can Makefiles, test configuration, compiler plugins, and code generators. "We only run tests" is still arbitrary code execution.
