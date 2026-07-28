@@ -19,7 +19,7 @@ That distinction narrows an investigation. It does not identify the faulty machi
 
 ## What `Connection Refused` Actually Says
 
-RFC 9293 specifies that a TCP endpoint in the closed state sends a reset in response to an incoming segment other than another reset. When a valid reset answers an active open, TCP reports that the connection was refused. On Linux, `connect(2)` describes `ECONNREFUSED` as finding no listener at the remote address.
+RFC 9293 specifies that a TCP endpoint in the closed state sends a reset in response to an incoming segment other than another reset. On Linux, `connect(2)` describes `ECONNREFUSED` as finding no listener at the remote address.
 
 A typical exchange is short:
 
