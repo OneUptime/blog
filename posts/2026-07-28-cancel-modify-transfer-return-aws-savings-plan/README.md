@@ -81,7 +81,7 @@ A queued purchase can be deleted at any time before its start date. This is the 
 
 Use future dating carefully:
 
-- the purchase is validated and invoiced at its start time;
+- the purchase is processed and validated at its start time;
 - it must complete within the same calendar month as the start date;
 - a failed payment can leave it without providing discounts;
 - recommendations do not account for queued purchases.
