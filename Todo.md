@@ -2,8 +2,7 @@
 
 ## Build Automation
 
-1. How to Use a Remote Build Cache Across Ephemeral CI Runners
-2. How to Quarantine Flaky Tests Without Training the Team to Ignore Red Builds
+1. How to Quarantine Flaky Tests Without Training the Team to Ignore Red Builds
 
 ## Timeouts
 
