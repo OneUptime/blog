@@ -30,7 +30,7 @@ For a proxied HTTP request, NGINX has several relevant controls:
 - `proxy_connect_timeout`: establishing the upstream connection;
 - `proxy_send_timeout`: inactivity between writes of the request to the upstream;
 - `proxy_read_timeout`: inactivity between reads from the upstream;
-- `proxy_next_upstream_timeout`: total time allowed while trying eligible alternative upstreams.
+- `proxy_next_upstream_timeout`: cumulative time window in which NGINX may pass the request to eligible alternative upstreams; it does not abort an attempt already in progress.
 
 Do not call all of them “the NGINX timeout.” Their failure locations differ.
 
@@ -80,9 +80,9 @@ NGINX defines:
 - `$upstream_connect_time`: time to establish the upstream connection, including upstream SSL handshake when used;
 - `$upstream_header_time`: time until upstream response headers;
 - `$upstream_response_time`: time spent receiving the upstream response;
-- `$upstream_status`: upstream status, if one was received.
+- `$upstream_status`: status associated with the upstream attempt; NGINX can record a generated 502 or 504 for an error or timeout even when the upstream sent no status.
 
-Several values separated by commas or colons can represent multiple upstream attempts. Preserve the sequence.
+Commas separate servers contacted during request processing. Colons separate upstream server groups when an internal redirect, such as `X-Accel-Redirect` or `error_page`, changes groups. Preserve the sequence.
 
 ## Read the Timing Pattern
 
@@ -93,7 +93,7 @@ Use the error log and timing values together:
 | Connect time absent; error while connecting | Upstream TCP/TLS connection did not complete |
 | Connect time small; header time absent; response time near read timeout | Upstream accepted connection but sent no response headers in time |
 | Header time present; body later stalls | Mid-response inactivity or streaming problem |
-| Several upstream addresses/statuses | Retry or failover changed total behavior |
+| Several upstream addresses/statuses | Retry, failover, or an internal redirect involved multiple upstream attempts or groups |
 | Application has matching request with long queue/pool wait | Delay is inside or below application |
 | No application request record, but connect succeeded | Check accept/worker queue, proxy-to-app protocol, wrong instance, and logging boundary |
 
