@@ -2,17 +2,16 @@
 
 ## Timeouts
 
-1. Why Does an API Call Time Out in Code but Succeed with curl or Postman?
-2. How to Set Separate Connect and Read Timeouts in Python Requests
-3. Why Can Python `requests.get()` Hang Forever? Adding Safe Session Defaults
-4. Database Connection, Login, Command, Socket, and Pool Timeouts Explained
-5. Why Does a Database Time Out Only During Traffic Spikes? Diagnosing Connection-Pool Exhaustion
-6. Which Timeout Failures Are Safe to Retry, and Which Should Fail Fast?
-7. How Retries Amplify a Timeout Outage: Setting a Retry Budget Across Service Layers
-8. How to Prevent Duplicate Writes When a Client Retries After Timing Out
-9. Why Does gRPC Return `DEADLINE_EXCEEDED` After Work Has Already Started?
-10. How to Stop Server Work When a gRPC Client Deadline Expires
-11. Why Does `kubectl` Fail with `TLS handshake timeout`? A Network-Path Checklist
+1. How to Set Separate Connect and Read Timeouts in Python Requests
+2. Why Can Python `requests.get()` Hang Forever? Adding Safe Session Defaults
+3. Database Connection, Login, Command, Socket, and Pool Timeouts Explained
+4. Why Does a Database Time Out Only During Traffic Spikes? Diagnosing Connection-Pool Exhaustion
+5. Which Timeout Failures Are Safe to Retry, and Which Should Fail Fast?
+6. How Retries Amplify a Timeout Outage: Setting a Retry Budget Across Service Layers
+7. How to Prevent Duplicate Writes When a Client Retries After Timing Out
+8. Why Does gRPC Return `DEADLINE_EXCEEDED` After Work Has Already Started?
+9. How to Stop Server Work When a gRPC Client Deadline Expires
+10. Why Does `kubectl` Fail with `TLS handshake timeout`? A Network-Path Checklist
 
 ## Chainguard
 
