@@ -32,7 +32,7 @@ Consider four documented controls:
 
 Matching their numeric values does not align their semantics.
 
-Even two total timers race because they start at different points. The user-side client begins before DNS and connection setup. An ingress handler begins after TLS and request upload. A database command begins after application queueing and validation. All can be configured for 60 seconds while their absolute expiry times differ by hundreds of milliseconds or more.
+Even two total timers race because they start at different points. The user-side client begins before DNS and connection setup. An ingress timer begins only when the request reaches that layer, which may be before or after the full request body has arrived. A database command begins after application queueing and validation. All can be configured for 60 seconds while their absolute expiry times differ by hundreds of milliseconds or more.
 
 ## How the Race Hides the Cause
 
@@ -40,12 +40,12 @@ Imagine an application waiting on an exhausted database connection pool:
 
 ```text
 00.000  client starts a 60 s total timeout
-00.120  load balancer receives request; 60 s idle timer begins
+00.120  load balancer receives the last request byte; client-side 60 s idle interval begins
 00.145  ingress sends request upstream; 60 s read-inactivity timer begins
 00.180  application starts handler; 60 s handler timeout begins
 00.210  application enters database-pool queue
 60.000  client cancels and records "request timed out"
-60.120  load balancer can close its connection
+60.120  load balancer can close its client-facing connection
 60.145  ingress can report upstream timed out
 60.180  application handler can cancel
 ```
@@ -74,7 +74,7 @@ At each hop:
 
 ```text
 effective deadline =
-  min(incoming deadline, local operation maximum)
+  min(incoming deadline, current time + local operation maximum)
 ```
 
 Before starting a child call:
@@ -160,7 +160,7 @@ request_id=...
 trace_id=...
 ```
 
-For NGINX, log:
+In NGINX's `http` context, define an upstream timing format:
 
 ```nginx
 log_format upstream_timing
@@ -171,9 +171,11 @@ log_format upstream_timing
   'upstream_response=$upstream_response_time';
 ```
 
+Select `upstream_timing` in the appropriate `access_log` directive.
+
 At cloud layers, retain gateway and target/origin status. AWS load-balancer logs distinguish them and expose separate processing times; no target status differs from a target returning 504.
 
-Distributed traces should show the propagated absolute deadline and child budget. A child span continuing after the parent deadline is a cancellation defect or intentionally detached work that should be labeled as such.
+Distributed traces should show the propagated absolute deadline and child budget. A child span continuing useful request work after the parent deadline can indicate a cancellation defect. Bounded cleanup can legitimately outlive the deadline; intentionally detached work should be labeled as such.
 
 ## Coordinate Retries with the Same Deadline
 
