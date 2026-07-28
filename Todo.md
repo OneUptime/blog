@@ -2,16 +2,15 @@
 
 ## Build Automation
 
-1. Why Did a One-Line Change Trigger a Full Rebuild? Diagnosing an Incorrect Dependency Graph
-2. How to Generate C and C++ Header Dependencies Automatically in GNU Make
-3. Why Does `make -j` Produce Race Conditions? Fixing Missing and Order-Only Prerequisites
-4. How to Cancel Superseded CI Runs Without Canceling the Latest Deployment
-5. How to Build Forked Pull Requests Safely When CI Tests Need Secrets
-6. How to Share Build Logic Between Developer Machines and CI Without Duplicating YAML
-7. How to Pin Compilers, Runtimes, and Lockfiles for Deterministic Builds
-8. Why Does Docker Ignore the Layer Cache in CI? A Cache-Invalidation Checklist
-9. How to Use a Remote Build Cache Across Ephemeral CI Runners
-10. How to Quarantine Flaky Tests Without Training the Team to Ignore Red Builds
+1. How to Generate C and C++ Header Dependencies Automatically in GNU Make
+2. Why Does `make -j` Produce Race Conditions? Fixing Missing and Order-Only Prerequisites
+3. How to Cancel Superseded CI Runs Without Canceling the Latest Deployment
+4. How to Build Forked Pull Requests Safely When CI Tests Need Secrets
+5. How to Share Build Logic Between Developer Machines and CI Without Duplicating YAML
+6. How to Pin Compilers, Runtimes, and Lockfiles for Deterministic Builds
+7. Why Does Docker Ignore the Layer Cache in CI? A Cache-Invalidation Checklist
+8. How to Use a Remote Build Cache Across Ephemeral CI Runners
+9. How to Quarantine Flaky Tests Without Training the Team to Ignore Red Builds
 
 ## Timeouts
 
