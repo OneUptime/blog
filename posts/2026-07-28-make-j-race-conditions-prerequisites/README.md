@@ -17,12 +17,16 @@ GNU Make may run any two ready targets concurrently. If target B requires a file
 Suppose this works with `make` but intermittently fails with `make -j8`:
 
 ```make
+.PHONY: all generate compile
+
 all: generate compile
 
 generate:
-	./generate-config > include/config.h
+	@mkdir -p include
+	./scripts/generate-config config/schema.json > include/config.h
 
 compile:
+	@mkdir -p build
 	$(CC) -Iinclude -c src/main.c -o build/main.o
 ```
 
@@ -31,6 +35,8 @@ Both prerequisites of `all` are ready at the same time. `compile` may start befo
 Model the file, not a vague phase:
 
 ```make
+.PHONY: all
+
 all: build/main.o
 
 include/config.h: config/schema.json scripts/generate-config
@@ -95,9 +101,9 @@ Hand-written object rules often list only `.c` or `.cpp` files:
 build/main.o: src/main.c
 ```
 
-Then a header may be generated in parallel or edited without rebuilding the object. Use compiler-generated `.d` files with GCC-compatible `-MMD -MP` options so every direct and transitive user header becomes a normal prerequisite.
+Then a header may be generated in parallel or edited without rebuilding the object. Compile with GCC-compatible `-MMD -MP` options, then include the emitted `.d` files in the makefile, for example with `-include build/*.d`. `-MMD` records user-header dependencies while omitting system headers; reading those `.d` files makes the recorded headers normal prerequisites. `-MP` also emits dummy rules for headers so removing one does not produce an error from a stale dependency file.
 
-Generated headers still need explicit production rules. The compiler cannot discover a header that does not yet exist on the first build.
+Generated headers still need explicit production rules: `-MMD` does not tell Make how to create a missing header before the compiler tries to include it on the first build.
 
 ## Give Each Recipe Exclusive Outputs
 
@@ -114,6 +120,8 @@ test-b:
 Give each target a unique output:
 
 ```make
+.PHONY: test-a test-b
+
 test-a: test-results/a.xml
 test-b: test-results/b.xml
 
@@ -154,7 +162,7 @@ It may rebuild `main.o` every time and still hide which file the compiler consum
 
 ## Model Multi-Output Generators Carefully
 
-One generator may create `parser.c` and `parser.h`. Two independent recipes invoking the generator can race. Current GNU Make supports grouped targets with `&:`, which state that one recipe invocation updates every listed target:
+One generator may create `parser.c` and `parser.h`. Two independent recipes invoking the generator can race. GNU Make 4.3 and later support grouped targets with `&:`, which state that one recipe invocation updates every listed target:
 
 ```make
 generated/parser.c generated/parser.h &: grammar/parser.y
@@ -181,7 +189,7 @@ Recursive directory ordering can also hide missing cross-directory dependencies.
 
 ## Use Serialization Only as a Diagnostic or Narrow Constraint
 
-`.NOTPARALLEL` can serialize an entire invocation or selected prerequisite sets. `.WAIT` can create a barrier inside a prerequisite list in current GNU Make.
+`.NOTPARALLEL` can serialize an entire invocation. GNU Make 4.4 and later also allow it to serialize selected prerequisite sets, and provide `.WAIT` to create a barrier inside a prerequisite list.
 
 They are useful when an external tool truly cannot run concurrently and no finer resource lock exists. They are poor default fixes for a missing file edge: they discard parallelism and leave the graph semantically incomplete.
 
@@ -189,7 +197,7 @@ Start by identifying the exact shared resource. Serialize only its owning target
 
 ## Shake Out Hidden Ordering
 
-GNU Make's `--shuffle` option reorders goals and prerequisites while preserving declared target/prerequisite relationships. Repeated shuffled parallel builds help expose dependencies that happen to match file or declaration order:
+GNU Make 4.4 and later provide the `--shuffle` option, which reorders goals and prerequisites while preserving declared target/prerequisite relationships. Repeated shuffled parallel builds help expose dependencies that happen to match file or declaration order:
 
 ```bash
 make clean
