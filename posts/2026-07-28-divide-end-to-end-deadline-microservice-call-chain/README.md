@@ -15,8 +15,8 @@ If an API has a two-second deadline and each of four services independently gran
 A practical allocation model is:
 
 ```text
-child deadline =
-  min(parent deadline - return reserve, local operation cap)
+child budget =
+  min(parent deadline - now - return reserve, local operation cap)
 ```
 
 Every hop spends from the same decreasing wall-clock budget. It does not receive a fresh budget.
@@ -43,7 +43,7 @@ Do not accept an unbounded public deadline header as authority. Authenticate tru
 
 ```text
 effective deadline =
-  min(trusted incoming deadline, route maximum deadline)
+  min(trusted incoming deadline, now + route maximum duration)
 ```
 
 If no trusted deadline arrives, apply the local route default.
@@ -112,7 +112,7 @@ Inventory and pricing run in parallel, so their caps overlap in wall time. The d
 1,220-1,500  outer transport and safety margin
 ```
 
-At runtime, each child receives the smaller of its operation cap and actual remaining time minus the service's reserve. If pricing starts late with only 300 ms available, it receives less than its normal 650 ms cap.
+At runtime, each child receives a budget equal to the smaller of its operation cap and actual remaining time minus the service's reserve. If pricing starts late with only 300 ms available, it receives less than its normal 650 ms cap.
 
 Derive these numbers from measured distributions. A reserve must name and cover specific local work.
 
@@ -145,8 +145,8 @@ Parallel children can receive overlapping deadlines, but they still consume shar
 For two required branches:
 
 ```text
-branch deadline =
-  min(parent deadline - join/response reserve, branch cap)
+branch budget =
+  min(parent deadline - now - join/response reserve, branch cap)
 ```
 
 Cancel the sibling when one branch fails in a way that makes the result impossible. Google SRE guidance recommends cancelling other RPCs in a call tree when the overall result can no longer be fulfilled, avoiding work that cannot earn a successful response.

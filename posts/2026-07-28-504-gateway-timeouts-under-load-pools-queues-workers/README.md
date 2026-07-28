@@ -80,7 +80,10 @@ Inspect:
 
 ```bash
 nginx -T
-cat /proc/$(pgrep -o nginx)/limits
+for pid in $(pgrep -x nginx); do
+  echo "PID $pid"
+  grep 'Max open files' "/proc/$pid/limits"
+done
 ss -s
 ```
 
@@ -98,7 +101,7 @@ Observe:
 
 ```bash
 ss -lnt
-nstat -az | egrep 'ListenOverflows|ListenDrops'
+nstat -az | grep -E 'ListenOverflows|ListenDrops'
 ```
 
 Validate counter names and availability for the deployed kernel. Rising listen drops or overflows during the failure window is stronger evidence than the configured backlog alone.
@@ -161,7 +164,7 @@ If the pool is full:
 
 Increasing a 50-connection pool to 200 can move the queue into the database, increase lock/contention costs, and reduce total throughput. Size pools for downstream capacity and number of instances, not merely current waiter count.
 
-Apply the same analysis to outbound HTTP pools. Go's `http.Transport`, for example, can limit total connections per host; when that limit is reached, dialing waits. Reuse client transports and fully close/read response bodies according to library guidance so connections can be reused.
+Apply the same analysis to outbound HTTP pools. Go's `http.Transport`, for example, can limit total connections per host; when that limit is reached, dialing waits. Reuse clients and transports, and read response bodies to EOF and close them according to library guidance so connections can be reused.
 
 ## Find Imbalance and Hot Targets
 
@@ -170,11 +173,14 @@ Aggregate capacity can look healthy while one backend is saturated. Break proxy 
 Check:
 
 ```bash
-kubectl get pods -n <namespace> -o wide
+NAMESPACE=your-namespace
+SERVICE=your-service
+
+kubectl get pods -n "$NAMESPACE" -o wide
 kubectl get endpointslices \
-  -n <namespace> \
-  -l kubernetes.io/service-name=<service>
-kubectl top pods -n <namespace>
+  -n "$NAMESPACE" \
+  -l "kubernetes.io/service-name=$SERVICE"
+kubectl top pods -n "$NAMESPACE"
 ```
 
 Look for:
@@ -208,7 +214,7 @@ Keep all attempts within one end-to-end deadline. Retry only safe operations and
 
 ## Prefer Bounded Queues and Early Shedding
 
-Google's SRE guidance describes how long queues consume memory and increase latency, recommending small queues and early rejection when a server cannot sustain load. A deliberate 503 or 429 returned quickly is often more useful than accepting work that becomes a 504 thirty seconds later.
+Google's SRE guidance describes how long queues consume memory and increase latency, recommending small queues and early rejection when a server cannot sustain load. A deliberate 503, or a 429 when enforcing a client rate limit, is often more useful when returned quickly than accepting work that becomes a 504 thirty seconds later.
 
 Fixes follow the constrained resource:
 
