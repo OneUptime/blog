@@ -23,7 +23,7 @@ The option name alone is not enough. Timeout semantics are implementation-specif
 A new HTTPS request usually looks like this:
 
 ```text
-DNS -> TCP/QUIC connect -> TLS -> request headers/body
+DNS -> TCP connect -> TLS (or QUIC with integrated TLS) -> request headers/body
     -> server work -> response headers/body -> reusable idle connection
 ```
 
@@ -33,7 +33,7 @@ Use a phase table before changing configuration:
 
 | Timer family | Protected operation | Typical symptom |
 | --- | --- | --- |
-| Connect | Establishing a usable connection | No established socket before the limit |
+| Connect | Establishing a usable connection | No usable connection before the limit |
 | TLS handshake | Negotiating TLS on a connected transport | TCP established, no completed TLS session |
 | Write/send | Making progress transmitting request bytes | Peer is not consuming headers or body |
 | Read/response | Receiving response bytes or headers | Request sent, response absent or stalled |
@@ -67,11 +67,11 @@ For NGINX proxying, `proxy_connect_timeout` is specifically the time allowed to 
 
 ## TLS Handshake Timeout
 
-TLS begins after TCP, unless QUIC is in use. A handshake can stall because of packet loss, filtering, an overloaded terminator, a protocol mismatch, or a proxy that accepts TCP without progressing the tunnel.
+TLS begins after TCP; with QUIC, the transport and TLS handshakes are integrated. A handshake can stall because of packet loss, filtering, an overloaded terminator, a protocol mismatch, or a proxy that accepts TCP without progressing the tunnel.
 
 Go's `http.Transport` exposes `TLSHandshakeTimeout` separately from dial and response-header controls. Other stacks roll it into connect or total time. Therefore, “TLS handshake timeout after 10 seconds” in Go and “curl connect timeout after 10 seconds” can cover overlapping but non-identical intervals.
 
-Confirm with packet or TLS diagnostics. A completed TCP handshake followed by ClientHello retransmissions without a ServerHello points beyond TCP connect. A TLS alert is an explicit failure, not a timeout.
+Confirm with packet or TLS diagnostics. A completed TCP handshake followed by retransmitted TCP segments carrying a ClientHello, without a ServerHello, points beyond TCP connect. A TLS alert is an explicit failure, not a timeout.
 
 ## Write or Send Timeout
 
