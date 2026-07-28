@@ -2,14 +2,13 @@
 
 ## Savings Plans
 
-1. How to Pick a 7-, 30-, or 60-Day Lookback for AWS Savings Plans Recommendations
-2. Why Cost Explorer Savings Plans Recommendations Can Overcommit Seasonal Workloads
-3. How to Buy Savings Plans in Small Layers Instead of Making One Large Commitment
-4. Should You Buy Savings Plans in the AWS Management Account or a Member Account?
-5. How Does Savings Plans Discount Sharing Work Across AWS Organizations?
-6. How to Allocate Shared Savings Plans Discounts for Chargeback and Showback
-7. Which EC2, Fargate, Lambda, EMR, ECS, and EKS Charges Are Covered by Compute Savings Plans?
-8. Do AWS Savings Plans Apply to Spot Instances or On-Demand Capacity Reservations?
+1. Why Cost Explorer Savings Plans Recommendations Can Overcommit Seasonal Workloads
+2. How to Buy Savings Plans in Small Layers Instead of Making One Large Commitment
+3. Should You Buy Savings Plans in the AWS Management Account or a Member Account?
+4. How Does Savings Plans Discount Sharing Work Across AWS Organizations?
+5. How to Allocate Shared Savings Plans Discounts for Chargeback and Showback
+6. Which EC2, Fargate, Lambda, EMR, ECS, and EKS Charges Are Covered by Compute Savings Plans?
+7. Do AWS Savings Plans Apply to Spot Instances or On-Demand Capacity Reservations?
 
 ## Build Automation
 
