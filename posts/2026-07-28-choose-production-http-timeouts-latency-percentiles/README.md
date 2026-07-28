@@ -1,4 +1,4 @@
-# How to Choose Production HTTP Timeouts from Latency Percentiles Instead of Guesswork
+# How to Choose Production HTTP Timeouts from Latency Percentiles
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

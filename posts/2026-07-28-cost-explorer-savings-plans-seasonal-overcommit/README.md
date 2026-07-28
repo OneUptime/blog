@@ -1,4 +1,4 @@
-# Why Cost Explorer Savings Plans Recommendations Can Overcommit Seasonal Workloads
+# Why Cost Explorer Savings Plans Advice Can Overcommit Seasonal Workloads
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

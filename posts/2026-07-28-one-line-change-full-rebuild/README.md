@@ -1,4 +1,4 @@
-# Why Did a One-Line Change Trigger a Full Rebuild? Diagnosing an Incorrect Dependency Graph
+# Why Did a One-Line Change Trigger a Full Rebuild? Fixing Dependency Graphs
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

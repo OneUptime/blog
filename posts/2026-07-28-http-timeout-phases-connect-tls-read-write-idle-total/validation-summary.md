@@ -1,4 +1,4 @@
-# Validation Summary: Connect, TLS Handshake, Read, Write, Idle, and Total Timeouts: Which One Actually Fired?
+# Validation Summary: Connect, TLS, Read, Write, Idle, and Total Timeouts: Which One Fired?
 
 ## Status
 validated

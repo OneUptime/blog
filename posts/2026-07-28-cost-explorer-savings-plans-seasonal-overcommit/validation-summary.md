@@ -1,4 +1,4 @@
-# Validation Summary: Why Cost Explorer Savings Plans Recommendations Can Overcommit Seasonal Workloads
+# Validation Summary: Why Cost Explorer Savings Plans Advice Can Overcommit Seasonal Workloads
 
 ## Status
 validated

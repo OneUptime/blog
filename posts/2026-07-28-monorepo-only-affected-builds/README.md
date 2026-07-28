@@ -1,4 +1,4 @@
-# How to Run Only Affected Builds in a Monorepo Without Missing Shared-Library Changes
+# Run Only Affected Monorepo Builds Without Missing Shared-Library Changes
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -21,12 +21,12 @@ For each changed input, include:
 
 - the project that owns it;
 - every transitive dependent project;
-- the tasks in those projects whose declared inputs include the change;
+- the requested tasks in those projects, with any task-level filtering the tool supports;
 - any global tasks invalidated by repository-wide configuration.
 
 The direction matters. If `app -> ui -> tokens`, then changing `tokens` affects `tokens`, `ui`, and `app`. Changing `app` does not require rebuilding `tokens`.
 
-Task granularity matters too. A documentation edit in `ui` may affect its docs task but not its production build if task inputs are modeled separately.
+Task granularity is tool-specific. Nx `affected` selects projects and runs each requested target for that subset; target inputs then govern task hashing and cache reuse. Turborepo's `--affected` also operates at package level by default. Its `futureFlags.affectedUsingTaskInputs` mode, and `turbo query affected --tasks ...`, can use task inputs, so a documentation edit in `ui` may affect its docs task but not its production build when those inputs are modeled separately.
 
 ## Choose the Correct Git Baseline
 
@@ -40,7 +40,7 @@ Record:
 - whether the checkout contains the necessary history;
 - the resulting changed-file list.
 
-Nx `affected` accepts `base` and `head` values and uses Git history plus the project graph. Turborepo's `--affected` uses a base/head comparison and documents that insufficient checkout history causes all packages to be treated as changed—a safe fallback. Pants provides `--changed-since` and `--changed-dependents=transitive`.
+Nx `affected` accepts `base` and `head` values and uses Git history plus the project graph. Turborepo's `--affected` uses a base/head comparison and documents that insufficient checkout history causes all packages to be treated as changed, a safe fallback. Pants provides `--changed-since` and `--changed-dependents=transitive`.
 
 Fetch enough Git history. A shallow clone that lacks the base can produce an error, an empty diff, or a conservative full run depending on the tool and wrapper. A full run is slower; an empty run is dangerous.
 

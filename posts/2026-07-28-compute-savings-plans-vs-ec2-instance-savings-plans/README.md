@@ -1,4 +1,4 @@
-# AWS Compute Savings Plans vs EC2 Instance Savings Plans: Which Commitment Is Safer?
+# AWS Compute vs EC2 Instance Savings Plans: Which Commitment Is Safer?
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

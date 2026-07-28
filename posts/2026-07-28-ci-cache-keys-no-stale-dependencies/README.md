@@ -1,4 +1,4 @@
-# How to Design CI Cache Keys That Speed Builds Without Restoring Stale Dependencies
+# How to Design CI Cache Keys Without Restoring Stale Dependencies
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

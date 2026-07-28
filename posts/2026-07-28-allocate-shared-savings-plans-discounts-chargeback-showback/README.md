@@ -52,7 +52,7 @@ Protect the export because it contains account and cost data. Version the alloca
 
 - `savingsPlan/SavingsPlanEffectiveCost`.
 
-AWS defines effective cost as the proportion of the plan's monthly commitment amount—upfront and recurring—allocated to each covered-usage line. In CUR 2.0 Athena naming, it commonly appears as:
+AWS defines effective cost as the proportion of the plan's monthly commitment amount (upfront and recurring) allocated to each covered-usage line. In CUR 2.0 Athena naming, it commonly appears as:
 
 ```text
 savings_plan_savings_plan_effective_cost

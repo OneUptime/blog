@@ -1,4 +1,4 @@
-# Why Does My Build Pass Locally but Fail in CI? A Systematic Environment-Diff Checklist
+# Why Does My Build Pass Locally but Fail in CI? An Environment-Diff Checklist
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

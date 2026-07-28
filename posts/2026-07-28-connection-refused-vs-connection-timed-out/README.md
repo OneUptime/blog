@@ -1,4 +1,4 @@
-# Connection Refused vs Connection Timed Out: What Each Error Reveals About Failure Location
+# Connection Refused vs Timed Out: What Each Error Reveals
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -187,7 +187,7 @@ Use this order during an incident:
 
 Retry policy should follow the diagnosis. Repeatedly retrying a wrong port that is consistently refused adds noise. A transient connection timeout may be retryable for an idempotent operation, but retries need a bounded deadline, backoff, and capacity budget. Neither error justifies an unlimited retry loop.
 
-The useful signal is not simply “fast failure versus slow failure.” A refusal is an explicit negative response; a timeout is missing evidence. Find who produced—or failed to produce—that evidence, and the failure domain becomes much smaller.
+The useful signal is not simply “fast failure versus slow failure.” A refusal is an explicit negative response; a timeout is missing evidence. Find who produced that evidence, or failed to produce it, and the failure domain becomes much smaller.
 
 ## Official Documentation
 

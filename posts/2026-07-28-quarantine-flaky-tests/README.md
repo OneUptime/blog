@@ -206,7 +206,7 @@ Track:
 
 Publish a concise trend, not a wall of ignored failure notifications. Route an incident to the owning team when a known signature changes or a budget is exceeded.
 
-Quarantine works only when it protects the meaning of the main green check while making flaky behavior harder—not easier—to forget.
+Quarantine works only when it protects the meaning of the main green check while making flaky behavior harder, not easier, to forget.
 
 ## Official Documentation
 

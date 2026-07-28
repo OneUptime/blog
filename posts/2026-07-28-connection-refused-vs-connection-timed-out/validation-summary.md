@@ -1,4 +1,4 @@
-# Validation Summary: Connection Refused vs Connection Timed Out: What Each Error Reveals About Failure Location
+# Validation Summary: Connection Refused vs Timed Out: What Each Error Reveals
 
 ## Status
 validated

@@ -1,4 +1,4 @@
-# Validation Summary: Which EC2, Fargate, Lambda, EMR, ECS, and EKS Charges Are Covered by Compute Savings Plans?
+# Validation Summary: Are EC2, Fargate, Lambda, EMR, ECS, and EKS Covered by Compute Savings Plans?
 
 ## Status
 validated

@@ -1,4 +1,4 @@
-# Why Do 504 Gateway Timeouts Appear Only Under Load? Checking Pools, Queues, and Worker Limits
+# Why 504 Gateway Timeouts Appear Under Load: Pools, Queues, and Worker Limits
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

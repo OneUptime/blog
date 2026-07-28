@@ -131,7 +131,7 @@ case "$BUILD_MODE" in
 esac
 ```
 
-Do not silently let `CI=true` select a completely different build. It is reasonable for CI to change presentation—disable colors, use a machine-readable reporter, avoid watch mode—but compilation and test semantics should be controlled by explicit flags that also work locally.
+Do not silently let `CI=true` select a completely different build. It is reasonable for CI to change presentation by disabling colors, using a machine-readable reporter, and avoiding watch mode, but compilation and test semantics should be controlled by explicit flags that also work locally.
 
 Secrets are runtime inputs, not source. Keep unit builds and most tests secretless. Put integrations that truly require credentials in separate trusted jobs, with least-privilege and environment protections.
 

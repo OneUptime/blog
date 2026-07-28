@@ -1,4 +1,4 @@
-# Validation Summary: AWS Compute Savings Plans vs EC2 Instance Savings Plans: Which Commitment Is Safer?
+# Validation Summary: AWS Compute vs EC2 Instance Savings Plans: Which Commitment Is Safer?
 
 ## Status
 validated

@@ -1,4 +1,4 @@
-# How to Trace a 504 Across CDN, Load Balancer, Ingress, Reverse Proxy, and Application
+# How to Trace a 504 Across CDN, Load Balancer, Ingress, Proxy, and App
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -43,7 +43,7 @@ Do not log secrets, authorization headers, or sensitive bodies. Use a stable req
 
 Vendor identifiers help at their own boundary. Cloudflare adds a `cf-ray` value to requests sent toward the origin and documents Ray ID lookup in its logs. AWS Application Load Balancer adds or updates `X-Amzn-Trace-Id` and records it in access logs. These IDs are not automatically one universal trace.
 
-For service-to-service correlation, propagate W3C `traceparent` through components that support it and include trace ID in structured logs. Preserve vendor IDs as span or log attributes.
+For service-to-service correlation, propagate W3C `traceparent` and any accompanying `tracestate` through components that support them, and include trace ID in structured logs. Preserve vendor IDs as span or log attributes.
 
 ## Build a Hop Ledger
 
@@ -91,7 +91,7 @@ AWS Application Load Balancer access logs illustrate the fields needed:
 
 An ELB 504 with no target status differs from a target returning 504 that the load balancer forwards. AWS documents load-balancer 504 causes including inability to establish a target connection within the applicable timeout and a connected target not responding before idle timeout.
 
-Access-log delivery can be delayed and is documented as best effort. Search a bounded time window across all load-balancer nodes and account for clock and delivery behavior. No line is evidence only after logging coverage is verified.
+Access-log delivery can be delayed and is documented as best effort. Search a bounded time window across all load-balancer nodes and account for clock and delivery behavior. Even after logging coverage and delivery are verified, the absence of a line is supporting evidence, not proof that the request never reached the load balancer.
 
 Other cloud load balancers use different timeout meanings. Google Cloud, for example, documents HTTP(S) backend service timeouts as request/response timeouts, while proxy network load balancers use an inactivity meaning. Do not transfer AWS field semantics to another provider.
 
@@ -130,11 +130,13 @@ This supports an ingress-local upstream read timeout after connecting. Exact ren
 Several upstream addresses or statuses can represent retries. Map each endpoint:
 
 ```bash
+namespace=your-namespace
+service=your-service
 kubectl get endpointslices \
-  -n <namespace> \
-  -l kubernetes.io/service-name=<service> \
+  -n "$namespace" \
+  -l "kubernetes.io/service-name=$service" \
   -o wide
-kubectl get pods -n <namespace> -o wide
+kubectl get pods -n "$namespace" -o wide
 ```
 
 Kubernetes' debugging guide recommends bypassing the Service and testing individual Pod endpoints. Do so from a representative Pod and preserve the original Host, protocol, TLS name, headers, and body; otherwise the bypass is not the same request.
@@ -153,6 +155,7 @@ log_format trace504
 
 proxy_set_header X-Request-ID $request_id;
 proxy_set_header traceparent $http_traceparent;
+proxy_set_header tracestate $http_tracestate;
 ```
 
 In a real deployment, preserve a validated incoming request ID or generate one according to your trust model. A client-controlled ID can collide or inject unsafe log content if accepted blindly.
@@ -196,7 +199,7 @@ Test progressively:
 5. individual Pod IP and target port;
 6. application loopback only as a final local comparison.
 
-Each bypass changes something—network source, DNS, TLS termination, headers, protocol version, connection reuse, or load-balancing choice. State those differences in the result.
+Each bypass changes something: network source, DNS, TLS termination, headers, protocol version, connection reuse, or load-balancing choice. State those differences in the result.
 
 curl `--resolve` can force an address while retaining URL hostname semantics:
 

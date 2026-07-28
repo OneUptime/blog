@@ -1,4 +1,4 @@
-# Validation Summary: Why Do 504 Gateway Timeouts Appear Only Under Load? Checking Pools, Queues, and Worker Limits
+# Validation Summary: Why 504 Gateway Timeouts Appear Under Load: Pools, Queues, and Worker Limits
 
 ## Status
 

@@ -1,4 +1,4 @@
-# Connect, TLS Handshake, Read, Write, Idle, and Total Timeouts: Which One Actually Fired?
+# Connect, TLS, Read, Write, Idle, and Total Timeouts: Which One Fired?
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

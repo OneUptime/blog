@@ -8,7 +8,7 @@ Description: Choose a monorepo build system from repository languages, graph acc
 
 ---
 
-A monorepo is ready for a graph-aware build tool when duplicated work and implicit dependencies are measurable problems—and when the team can own a new build model.
+A monorepo is ready for a graph-aware build tool when duplicated work and implicit dependencies are measurable problems and when the team can own a new build model.
 
 There is no universal threshold of projects, developers, or CI minutes. A 20-project repository with slow native builds may justify Bazel; a 500-package JavaScript workspace may be well served by Turborepo. The deciding factors are ecosystem fit, required isolation, graph detail, and operating cost.
 
@@ -156,7 +156,7 @@ Delay adoption if:
 
 You can still prepare by pinning tools, committing locks, separating outputs, and making one local/CI entrypoint. Those improvements help every build system.
 
-The repository is ready when the expected savings and correctness benefits exceed both migration and permanent platform cost—and a representative pilot proves that claim.
+The repository is ready when the expected savings and correctness benefits exceed both migration and permanent platform cost, and a representative pilot proves that claim.
 
 ## Official Documentation
 

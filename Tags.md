@@ -696,6 +696,7 @@
 - Amazon Connect
 - Amazon Detective
 - Amazon DocumentDB
+- Amazon EC2
 - Amazon ECR
 - Amazon ECS
 - Amazon eks
@@ -2648,6 +2649,7 @@
 - CASE WHEN
 - Case-Insensitive
 - Case-sensitive
+- Cash Flow
 - Cashier
 - Cassandra
 - Cassandra-compatible
@@ -3604,6 +3606,7 @@
 - Compute Engine
 - Compute Environment
 - Compute Optimizer
+- Compute Savings Plans
 - Compute@Edge
 - Computed Attributes
 - Computed Column
@@ -3780,6 +3783,7 @@
 - Console Assistance
 - Console Exporter
 - Console Server
+- Consolidated Billing
 - Consolidation
 - Const
 - Const Evaluation
@@ -4085,6 +4089,7 @@
 - Cost Allocation
 - Cost Analysis
 - Cost Analytics
+- Cost and Usage Report
 - Cost Anomaly Detection
 - Cost Attribution
 - Cost Calculation
@@ -5411,6 +5416,7 @@
 - DisconnectException
 - Disconnection
 - Discord
+- Discount Sharing
 - Discounts
 - Discover Mode
 - Discovery
@@ -5976,6 +5982,7 @@
 - EC2
 - EC2 Fleet
 - EC2 Image Builder
+- EC2 Spot
 - ECDSA
 - Echo
 - Echo App
@@ -6919,6 +6926,7 @@
 - Financial Applications
 - Financial Calculation
 - Financial Data
+- Financial Modeling
 - Financial Regulations
 - Financial Reporting
 - Financial Services
@@ -8250,6 +8258,7 @@
 - Hotspots
 - Hotwire
 - Hour Minute Second
+- Hourly Commitment
 - How-To
 - HP Aruba
 - HPA
@@ -15329,6 +15338,7 @@
 - Rolled Throughput Yield
 - Rolling
 - Rolling Average
+- Rolling Commitments
 - Rolling Deployment
 - Rolling Maintenance
 - Rolling Reboots
@@ -15835,6 +15845,7 @@
 - Search-As-You-Type
 - Searchable Snapshots
 - Searchkick
+- Seasonality
 - SeaweedFS
 - SEC 17a-4
 - Sec To Time

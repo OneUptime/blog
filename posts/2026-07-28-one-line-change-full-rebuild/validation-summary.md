@@ -1,4 +1,4 @@
-# Validation Summary: Why Did a One-Line Change Trigger a Full Rebuild? Diagnosing an Incorrect Dependency Graph
+# Validation Summary: Why Did a One-Line Change Trigger a Full Rebuild? Fixing Dependency Graphs
 
 ## Status
 

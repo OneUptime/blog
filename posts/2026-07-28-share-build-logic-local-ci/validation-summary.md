@@ -1,4 +1,4 @@
-# Validation Summary: How to Share Build Logic Between Developer Machines and CI Without Duplicating YAML
+# Validation Summary: How to Share Build Logic Between Local Development and CI
 
 ## Status
 

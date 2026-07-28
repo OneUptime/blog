@@ -1,4 +1,4 @@
-# Validation Summary: How to Choose Production HTTP Timeouts from Latency Percentiles Instead of Guesswork
+# Validation Summary: How to Choose Production HTTP Timeouts from Latency Percentiles
 
 ## Status
 validated

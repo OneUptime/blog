@@ -1,4 +1,4 @@
-# Validation Summary: How to Design CI Cache Keys That Speed Builds Without Restoring Stale Dependencies
+# Validation Summary: How to Design CI Cache Keys Without Restoring Stale Dependencies
 
 ## Status
 

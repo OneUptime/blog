@@ -1,4 +1,4 @@
-# Why Does `make -j` Produce Race Conditions? Fixing Missing and Order-Only Prerequisites
+# Why Does `make -j` Race? Fixing Missing and Order-Only Prerequisites
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

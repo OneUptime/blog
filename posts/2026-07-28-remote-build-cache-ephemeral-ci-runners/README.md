@@ -17,7 +17,7 @@ action key = hash(command + declared inputs + relevant environment + toolchain +
 action key -> result metadata + content-addressed output blobs
 ```
 
-If the key matches, the runner restores exactly those outputs. If it misses—or if the service is unavailable and the client is configured to bypass cache errors—the task executes locally and remains correct.
+If the key matches, the runner restores exactly those outputs. If it misses, or if the service is unavailable and the client is configured to bypass cache errors, the task executes locally and remains correct.
 
 ## Use the Build Tool's Native Cache
 
@@ -164,7 +164,7 @@ The first run for a new input set must execute. A trusted default-branch workflo
 
 Avoid a nightly job that invents different flags from real CI. Warm the same targets, toolchains, and platforms users request. Prewarming every possible key wastes storage and eviction bandwidth.
 
-Import from more than one safe source when supported—for example, a branch-specific cache first and a default-branch cache as fallback—without allowing an old fallback to bypass full input validation.
+Import from more than one safe source when supported, for example, a branch-specific cache first and a default-branch cache as fallback, without allowing an old fallback to bypass full input validation.
 
 ## Measure End-to-End Value
 
@@ -203,7 +203,7 @@ On a suspicious hit:
 4. inspect undeclared inputs and writers;
 5. rotate or isolate the cache namespace if poisoning is possible.
 
-A remote cache pays off when a clean runner can trust an exact computation performed elsewhere—not when it inherits an opaque directory from the last job.
+A remote cache pays off when a clean runner can trust an exact computation performed elsewhere, not when it inherits an opaque directory from the last job.
 
 ## Official Documentation
 

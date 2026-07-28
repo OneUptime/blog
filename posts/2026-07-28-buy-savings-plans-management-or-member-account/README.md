@@ -8,7 +8,7 @@ Description: Choose a Savings Plans purchasing account by balancing organization
 
 ---
 
-For centralized FinOps, buy Savings Plans centrally—often in a dedicated member account with little or no workload—using management-account recommendations and intentional discount sharing. Buy in a workload member account when that business unit must own the commitment and receive its benefit first.
+For centralized FinOps, buy Savings Plans centrally, often in a dedicated member account with little or no workload, using management-account recommendations and intentional discount sharing. Buy in a workload member account when that business unit must own the commitment and receive its benefit first.
 
 AWS allows Savings Plans purchases in accounts within an AWS Organizations consolidated billing family. The account that purchases the plan owns the commitment and is responsible for it, even when billing transfer or the management account handles payment. The benefit applies to the owner account's eligible usage first.
 
@@ -26,7 +26,7 @@ The fee remains attributed to the purchasing account even when other accounts re
 
 ## Management-Account Recommendations and Member Recommendations Differ
 
-AWS calculates management-account recommendations using eligible usage across sharing-enabled accounts in the organization. This view can combine complementary patterns—for example, one account's daytime workload and another account's night-time batch usage.
+AWS calculates management-account recommendations using eligible usage across sharing-enabled accounts in the organization. This view can combine complementary patterns; for example, one account's daytime workload and another account's night-time batch usage.
 
 Member-account recommendations optimize each account in isolation. Independently adding all member recommendations can produce a different and potentially larger total commitment than the management view because each account loses cross-account diversification.
 

@@ -1,4 +1,4 @@
-# Validation Summary: Build Once, Promote Everywhere: How to Stop Rebuilding Artifacts for Each Environment
+# Validation Summary: Build Once, Promote Everywhere: Stop Rebuilding Artifacts per Environment
 
 ## Status
 

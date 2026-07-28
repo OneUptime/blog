@@ -1,4 +1,4 @@
-# Validation Summary: Why Does `make -j` Produce Race Conditions? Fixing Missing and Order-Only Prerequisites
+# Validation Summary: Why Does `make -j` Race? Fixing Missing and Order-Only Prerequisites
 
 ## Status
 validated
