@@ -72,7 +72,7 @@ Fargate pricing can also include:
 
 Do not assume those separate charges receive the same benefit. AWS's pricing page specifically names vCPU and memory for Savings Plans application. Inspect the current rate sheet for the exact platform configuration.
 
-Fargate Spot is a separate Spot-priced option and is not a way to consume Savings Plans commitment. A portfolio can use Savings Plans for stable Fargate vCPU and memory while using Fargate Spot for appropriate interruptible demand.
+Fargate Spot is a separate Spot-priced option for Amazon ECS; it is not available for Amazon EKS and is not a way to consume Savings Plans commitment. An ECS portfolio can use Savings Plans for stable Fargate vCPU and memory while using Fargate Spot for appropriate interruptible demand.
 
 ## AWS Lambda
 
@@ -142,7 +142,7 @@ Eligible does not mean every charge receives a discount. AWS:
 4. uses the lowest Savings Plans rate as a tie-breaker;
 5. charges remaining usage On-Demand when commitment is exhausted.
 
-In an organization, owner-account usage is considered before sharing under current preferences.
+In a consolidated billing family, Savings Plans apply first to the owner account's usage and then to other accounts only when sharing is enabled.
 
 This means an eligible Lambda duration line can remain On-Demand because higher-discount EC2 usage consumed the full commitment first.
 
