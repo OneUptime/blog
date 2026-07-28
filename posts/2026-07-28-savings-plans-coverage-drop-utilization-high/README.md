@@ -38,7 +38,7 @@ Because coverage uses On-Demand-equivalent values while utilization uses commitm
 
 ## Cause 1: A New Persistent Workload
 
-A launch, acquisition, new account, or traffic increase can add eligible EC2, Fargate, or Lambda usage. The active plan continues to be fully consumed, while the new layer remains On-Demand after the hourly commitment is exhausted.
+A launch, acquisition, new account, or traffic increase can add eligible EC2, Fargate, or Lambda usage. The active plan continues to be fully consumed, while the additional demand causes some eligible usage to remain On-Demand after the hourly commitment is exhausted. Which usage remains On-Demand depends on AWS's benefit-application order.
 
 Confirm with:
 
@@ -52,9 +52,9 @@ Do not immediately purchase for the peak. Establish whether it is a durable floo
 
 ## Cause 2: A Commitment or RI Expired
 
-When a Savings Plan expires, total available commitment falls. The remaining plans may still be fully utilized, but usage formerly covered by the expired plan moves to On-Demand, lowering coverage.
+When a Savings Plan expires, total available commitment falls. The remaining plans may still be fully utilized, but some usage that was covered before the expiration moves to On-Demand, lowering coverage. AWS's benefit-application order determines which usage remains covered.
 
-An RI expiration can also alter the usage that reaches Savings Plans. AWS applies EC2 RIs before Savings Plans. When an RI expires, more EC2 usage becomes available for plans; those plans may be consumed earlier, leaving other eligible usage On-Demand.
+An RI expiration can also alter the usage that reaches Savings Plans. AWS applies EC2 RIs before Savings Plans. When an RI expires, more EC2 usage becomes available for plans; that usage may consume more of their hourly commitment, leaving other eligible usage On-Demand.
 
 Review exact activation and expiration timestamps. Monthly reports can blur a mid-period change.
 
