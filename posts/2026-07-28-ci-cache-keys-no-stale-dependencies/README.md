@@ -115,7 +115,7 @@ For generated build outputs, let a build tool calculate action keys when possibl
 
 ## Treat Restored Caches as Untrusted
 
-Cache scope is not a security boundary. GitHub documents that anyone able to open a pull request can read base-branch caches, including from a fork. Restored cache content is not signed or verified and can influence later execution.
+Do not treat cache scope as a secrets boundary. GitHub documents that anyone able to open a pull request can read base-branch caches, including from a fork. Any run that can read a cache restores its contents as-is, so restored files are untrusted input that can influence later execution.
 
 Therefore:
 
