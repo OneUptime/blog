@@ -13,11 +13,11 @@ An ephemeral runner starts without the previous machine's local cache. A remote 
 The safe model is not "archive the build directory and restore the latest one." It is:
 
 ```text
-action key = hash(command + declared inputs + toolchain + platform)
-action key -> immutable result metadata + output blobs
+action key = hash(command + declared inputs + relevant environment + toolchain + platform)
+action key -> result metadata + content-addressed output blobs
 ```
 
-If the key matches, the runner restores exactly those outputs. If it misses or the service is unavailable, the task executes locally and remains correct.
+If the key matches, the runner restores exactly those outputs. If it misses—or if the service is unavailable and the client is configured to bypass cache errors—the task executes locally and remains correct.
 
 ## Use the Build Tool's Native Cache
 
@@ -134,7 +134,7 @@ Bazel separates action-cache metadata from content-addressed blobs. On a hit, ou
 
 ## Example: Docker BuildKit Registry Cache
 
-For disposable Docker builders:
+For disposable Docker builders, use a Buildx driver that supports the registry cache exporter. With the default `docker` driver, registry cache export requires the containerd image store to be enabled.
 
 ```bash
 docker buildx build \
