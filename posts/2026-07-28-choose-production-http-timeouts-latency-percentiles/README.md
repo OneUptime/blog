@@ -92,7 +92,7 @@ Preserve deadline and phase errors, elapsed time at cancellation, late responses
 
 To estimate a previously hidden tail, use a safe canary or load-test environment with a larger observation deadline, bounded concurrency, and no automatic retry storm. Do not remove production limits globally merely to collect cleaner statistics.
 
-A fast 503 is not successful latency, but it is important overload evidence. A successful-request percentile alone is not a service objective.
+A fast 503 is not successful latency. It can indicate temporary overload or maintenance, and a successful-request percentile alone does not capture availability.
 
 ## Add Padding for Real Variability
 
@@ -127,12 +127,14 @@ If the dependency's candidate timeout from its p99.9 plus padding is 600 ms, it 
 - change the product-level deadline;
 - avoid the dependency on that path.
 
-For a sequential call chain, each child receives the minimum of its normal per-operation cap and the parent time remaining minus a return-path reserve:
+For a sequential call chain, each child receives a budget equal to the minimum of its normal per-operation cap and the parent time remaining minus a return-path reserve:
 
 ```text
-child deadline =
+child budget =
   min(operation cap, parent remaining - response reserve)
 ```
+
+If this result is not positive, do not start the child call.
 
 Parallel calls can share wall-clock budget, but fan-out increases load and tail-failure probability.
 
