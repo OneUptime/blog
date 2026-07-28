@@ -1,9 +1,5 @@
 # Blog Post Ideas
 
-## Build Automation
-
-1. How to Quarantine Flaky Tests Without Training the Team to Ignore Red Builds
-
 ## Timeouts
 
 1. Connection Refused vs Connection Timed Out: What Each Error Reveals About Failure Location
