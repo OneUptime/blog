@@ -25,7 +25,7 @@ Do not quarantine every inconvenient failure. First distinguish:
 
 Preserve the first failure's logs, seed, shard, worker, timing, screenshots, traces, and environment. Retry the same test with the same source and configuration. Playwright classifies a test as "flaky" when it fails initially but passes on retry; this is useful evidence, not proof of root cause.
 
-Run repetition and order changes:
+For example, repeat the Playwright test, or have pytest exit immediately if the selected test fails:
 
 ```bash
 npx playwright test tests/checkout.spec.ts --repeat-each=20
@@ -52,7 +52,7 @@ Keep metadata next to the test or in a reviewed manifest:
 
 ```yaml
 tests/checkout.spec.ts::submits order:
-  issue: ENG-4821
+  issue: https://issues.example.com/browse/ENG-4821
   owner: payments
   expires: 2026-08-11
   signature: "spinner remains visible"
@@ -136,7 +136,7 @@ export default defineConfig({
 });
 ```
 
-Report first-attempt failures separately even if the retry passes. A green required gate that hides 50 retry recoveries is operationally red.
+Report first-attempt failures separately even if the retry passes. If retries are enabled in the stable gate, use Playwright's `--fail-on-flaky-tests` option so retry-recovered tests fail the check. A green required gate that hides 50 retry recoveries is operationally red.
 
 Use small retry counts. Multiple retries can turn a 20% pass probability into frequent apparent success while multiplying runtime. Never retry destructive integration tests unless their setup, action, and cleanup are idempotent and isolated.
 
