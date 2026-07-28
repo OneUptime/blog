@@ -24,7 +24,7 @@ Do not apply a generic percentage to the whole bill. Retrieve the current offeri
 
 AWS advertises maximum savings of up to 66% for Compute Savings Plans and up to 72% for EC2 Instance Savings Plans, but actual rates vary. The three-year advantage is the difference between the two relevant offerings, not the difference between two headline maximums.
 
-Calculate total contractual cost from the cart's upfront payment, monthly payment, and total cost fields. For cash-flow analysis, place payments on their actual dates rather than treating All Upfront and No Upfront as equivalent timing.
+Use the cart's total cost field for nominal contractual cost; use its upfront payment and monthly payment fields to model payment timing. For cash-flow analysis, place payments on their actual dates rather than treating All Upfront and No Upfront as equivalent timing.
 
 ## Model Hourly Utilization through Each Term
 
@@ -34,6 +34,8 @@ For each candidate commitment `C` and each future hour `h`, estimate eligible us
 used(h)   = min(C, eligible_plan_rate_usage(h))
 unused(h) = max(0, C - eligible_plan_rate_usage(h))
 ```
+
+Derive `eligible_plan_rate_usage(h)` from a portfolio simulation rather than simply summing all eligible usage. Mirror AWS's application order: Amazon EC2 Reserved Instances apply first, EC2 Instance Savings Plans apply before Compute Savings Plans, and commitments then apply to eligible usage with the highest savings percentage first. If savings percentages are equal, AWS applies the commitment to the usage with the lowest Savings Plans rate first. Each hour's unused commitment expires and cannot be carried forward.
 
 Then calculate:
 
@@ -112,7 +114,7 @@ present value = Σ(payment at time t / (1 + discount rate)^t)
 
 Use finance's actual convention for periodicity and taxes. Do not invent a discount rate. Compare present value, nominal total cost, and downside exposure separately.
 
-The No Upfront option improves liquidity but does not make the plan cancellable. It remains a term commitment.
+The No Upfront option improves liquidity but does not make the plan freely cancellable. AWS permits an eligible Savings Plan with an hourly commitment of $100 or less to be returned only within seven days of purchase, in the same calendar month, and within the applicable return quota. Otherwise, it remains a term commitment.
 
 ## Prefer One Year When Change Is Valuable
 
@@ -162,5 +164,7 @@ The correct term is the one that produces acceptable realized savings after the 
 - [AWS Savings Plans FAQ](https://aws.amazon.com/savingsplans/faqs/)
 - [Savings Plans types](https://docs.aws.amazon.com/savingsplans/latest/userguide/plan-types.html)
 - [Reviewing and finalizing Savings Plans purchases](https://docs.aws.amazon.com/savingsplans/latest/userguide/review-purchase-cart.html)
+- [Understanding how Savings Plans apply to your usage](https://docs.aws.amazon.com/savingsplans/latest/userguide/sp-applying.html)
 - [Understanding Savings Plans recommendation calculations](https://docs.aws.amazon.com/savingsplans/latest/userguide/sp-rec-calculations.html)
 - [Running a Savings Plan purchase analysis](https://docs.aws.amazon.com/savingsplans/latest/userguide/sp-purchase-analysis.html)
+- [Returning a purchased Savings Plan](https://docs.aws.amazon.com/savingsplans/latest/userguide/return-sp.html)
