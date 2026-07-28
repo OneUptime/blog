@@ -1,9 +1,5 @@
 # Blog Post Ideas
 
-## Savings Plans
-
-1. Do AWS Savings Plans Apply to Spot Instances or On-Demand Capacity Reservations?
-
 ## Build Automation
 
 1. Why Does My Build Pass Locally but Fail in CI? A Systematic Environment-Diff Checklist
