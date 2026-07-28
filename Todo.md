@@ -2,10 +2,9 @@
 
 ## Build Automation
 
-1. How to Pin Compilers, Runtimes, and Lockfiles for Deterministic Builds
-2. Why Does Docker Ignore the Layer Cache in CI? A Cache-Invalidation Checklist
-3. How to Use a Remote Build Cache Across Ephemeral CI Runners
-4. How to Quarantine Flaky Tests Without Training the Team to Ignore Red Builds
+1. Why Does Docker Ignore the Layer Cache in CI? A Cache-Invalidation Checklist
+2. How to Use a Remote Build Cache Across Ephemeral CI Runners
+3. How to Quarantine Flaky Tests Without Training the Team to Ignore Red Builds
 
 ## Timeouts
 
