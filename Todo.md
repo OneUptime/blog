@@ -2,12 +2,11 @@
 
 ## Savings Plans
 
-1. How to Buy Savings Plans in Small Layers Instead of Making One Large Commitment
-2. Should You Buy Savings Plans in the AWS Management Account or a Member Account?
-3. How Does Savings Plans Discount Sharing Work Across AWS Organizations?
-4. How to Allocate Shared Savings Plans Discounts for Chargeback and Showback
-5. Which EC2, Fargate, Lambda, EMR, ECS, and EKS Charges Are Covered by Compute Savings Plans?
-6. Do AWS Savings Plans Apply to Spot Instances or On-Demand Capacity Reservations?
+1. Should You Buy Savings Plans in the AWS Management Account or a Member Account?
+2. How Does Savings Plans Discount Sharing Work Across AWS Organizations?
+3. How to Allocate Shared Savings Plans Discounts for Chargeback and Showback
+4. Which EC2, Fargate, Lambda, EMR, ECS, and EKS Charges Are Covered by Compute Savings Plans?
+5. Do AWS Savings Plans Apply to Spot Instances or On-Demand Capacity Reservations?
 
 ## Build Automation
 
