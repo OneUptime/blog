@@ -2,8 +2,7 @@
 
 ## Savings Plans
 
-1. Which EC2, Fargate, Lambda, EMR, ECS, and EKS Charges Are Covered by Compute Savings Plans?
-2. Do AWS Savings Plans Apply to Spot Instances or On-Demand Capacity Reservations?
+1. Do AWS Savings Plans Apply to Spot Instances or On-Demand Capacity Reservations?
 
 ## Build Automation
 
