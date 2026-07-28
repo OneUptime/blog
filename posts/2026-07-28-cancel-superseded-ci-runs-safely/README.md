@@ -37,7 +37,7 @@ Including `github.workflow` prevents a run in another workflow with the same ref
 
 The ref separates branches, tags, and pull-request merge refs. If using an event-specific value such as `github.head_ref`, provide a fallback for events where it is undefined.
 
-GitHub's default concurrency behavior permits one running and one pending run per group, replacing an older pending run when a new one arrives. Current GitHub-hosted documentation also supports `queue: max` for queuing pending runs, but it cannot be combined with `cancel-in-progress: true`. Choose supersession or ordered queuing deliberately.
+GitHub's default concurrency behavior permits one running and one pending run per group, replacing an older pending run when a new one arrives. Current GitHub.com documentation also supports `queue: max` for queuing pending runs, but it cannot be combined with `cancel-in-progress: true`. GitHub Enterprise Server 3.20 does not list this option, so verify support before using it on GHES. Queued runs are processed FIFO by when they began waiting, not by workflow dispatch time, so exact dispatch ordering is not guaranteed. Choose supersession or an expanded queue deliberately.
 
 ## Keep Deployment Concurrency Separate
 
@@ -58,7 +58,7 @@ jobs:
 
 This serializes production while allowing other jobs in the workflow to proceed. GitHub environments and concurrency are independent: using an environment does not automatically serialize all workflows that deploy to it. Every deployment path must use the agreed concurrency policy.
 
-If the organization wants "latest production candidate wins," do not assume interruption is safe. Prefer leaving the active deployment to reach a known state, then skip obsolete queued candidates before they start. Ordered queuing may deploy intermediate versions; a custom queue or deployment controller can coalesce them when that behavior is required.
+If the organization wants "latest production candidate wins," do not assume interruption is safe. Prefer leaving the active deployment to reach a known state, then skip obsolete queued candidates before they start. An expanded queue may deploy intermediate versions; a custom queue or deployment controller can coalesce them when that behavior is required.
 
 ## Add a Stale-Candidate Guard
 
@@ -82,7 +82,7 @@ Check before provisioning and again before traffic or alias mutation. Use compar
 
 ## Make Side Effects Idempotent and Observable
 
-A canceled shell process does not prove remote work stopped. Cloud APIs may continue an operation, package uploads may finish, and child processes on a self-hosted runner may outlive the job.
+A canceled shell process does not prove remote work stopped. Cloud APIs may continue an operation, package uploads may finish, and processes deliberately detached from the runner's process tree on a persistent self-hosted runner may outlive the job.
 
 General engineering recommendations:
 
@@ -105,7 +105,7 @@ It is often useful to cancel pull-request or feature-branch work while retaining
 - scheduled full suites;
 - production deployments.
 
-GitHub permits an expression for `cancel-in-progress`. Keep the group stable, but make cancellation conditional:
+GitHub permits an expression for `cancel-in-progress`. Keep the group stable, but make cancellation conditional. For example, retain tags and `main` while canceling other branch refs:
 
 ```yaml
 concurrency:
@@ -117,23 +117,30 @@ Validate expressions against every event the workflow handles. Undefined context
 
 ## Configure GitLab Interruptibility
 
-GitLab can auto-cancel redundant pipelines on the same branch. Mark jobs that can be stopped:
+GitLab can auto-cancel redundant pipelines on the same branch. With the Auto-cancel redundant pipelines feature enabled, mark jobs that can be stopped and place deployment in a later stage:
 
 ```yaml
+stages:
+  - test
+  - deploy
+
 lint:
+  stage: test
   interruptible: true
   script: ./scripts/lint
 
 unit:
+  stage: test
   interruptible: true
   script: ./scripts/unit
 
 deploy:
+  stage: deploy
   interruptible: false
   script: ./scripts/deploy
 ```
 
-GitLab documents that after a job with `interruptible: false` starts, the entire pipeline is no longer considered interruptible. Place non-interruptible jobs after required validation so stale pipelines can be canceled while they are still doing safe CI work.
+With the default `workflow:auto_cancel:on_new_commit: conservative` behavior, after a job with `interruptible: false` starts, the entire pipeline is no longer considered interruptible. In `on_new_commit: interruptible` mode, GitLab instead cancels only jobs marked `interruptible: true`. Place non-interruptible jobs after required validation so stale pipelines can be canceled while they are still doing safe CI work.
 
 Review parent/child pipeline behavior and trigger strategies as part of the design; cancellation does not automatically mean every downstream external pipeline or service stopped.
 
@@ -174,7 +181,7 @@ Log the concurrency key, commit, artifact digest, deployment ID, and target envi
 
 ## A Safe Default Policy
 
-For pull-request checks, group by workflow and ref and enable `cancel-in-progress`. For production, use a separate environment-level group, serialize operations, keep active state transitions non-interruptible unless proven otherwise, and check candidate freshness before mutation.
+For pull-request checks, group by workflow and ref and enable `cancel-in-progress`. For production, use a separate deployment concurrency group, serialize operations, keep active state transitions non-interruptible unless proven otherwise, and check candidate freshness before mutation.
 
 That saves runner time without confusing "the job was canceled" with "the system was rolled back."
 
