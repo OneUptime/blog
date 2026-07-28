@@ -64,7 +64,7 @@ Coverage answers: **How much of our eligible usage received the benefit?**
 | Utilization | Coverage | Typical interpretation |
 | --- | --- | --- |
 | High | High | Existing commitment is well used and covers most eligible demand |
-| High | Low | Commitment is fully consumed, but substantial eligible usage remains On-Demand |
+| High | Low | Commitment is well used, but substantial eligible usage remains On-Demand |
 | Low | High | Most eligible usage is covered, but the commitment is larger than current demand |
 | Low | Low | Scope, sizing, workload, or allocation needs investigation |
 
@@ -72,7 +72,7 @@ These are diagnostic patterns, not automatic purchase instructions.
 
 ### High utilization, low coverage
 
-The plan is fully consumed, so utilization looks healthy. Eligible demand beyond the commitment remains On-Demand, reducing coverage. This can be a conservative and intentional design for bursty workloads.
+The commitment is nearly or fully consumed, so utilization looks healthy. Eligible demand beyond the commitment remains On-Demand, reducing coverage. This can be a conservative and intentional design for bursty workloads.
 
 Before buying more, determine whether uncovered usage is a persistent hourly floor or a peak. A larger plan can improve coverage but create unused commitment in quiet hours.
 
@@ -96,7 +96,7 @@ Utilization uses commitment dollars at Savings Plans economics. Coverage uses th
 
 For example, a commitment can be fully consumed by usage with a large discount percentage, producing 100% utilization, while a much larger amount of lower-discount eligible usage remains On-Demand. Coverage may still be low.
 
-AWS applies Savings Plans to usage with the highest potential savings percentage first, after EC2 Reserved Instances and narrow EC2 Instance Savings Plans are considered. The ordering seeks to maximize benefit but can make account or service allocation differ from an intuitive “largest bill first” assumption.
+Savings Plans apply after EC2 Reserved Instances. Within Savings Plans, EC2 Instance Savings Plans apply before Compute Savings Plans, and AWS applies commitments to eligible usage with the highest potential savings percentage first. The ordering seeks to maximize benefit but can make account or service allocation differ from an intuitive “largest bill first” assumption.
 
 ## Scope and Filters Can Change the Story
 
@@ -110,7 +110,7 @@ Always record:
 - discount-sharing settings;
 - plan and RI activations or expirations during the period.
 
-A management-account aggregate can show high utilization because another member account consumes excess commitment. The purchasing account alone may show a different usage pattern. Likewise, changing from a 7-day to a 30-day report can blend a recent drop with an earlier stable period.
+A management-account aggregate can show high utilization because another member account consumes excess commitment when discount sharing is enabled. The purchasing account alone may show a different usage pattern. Likewise, changing from a 7-day to a 30-day report can blend a recent drop with an earlier stable period.
 
 When Billing Conductor or billing transfer is involved, AWS documents that some Savings Plans reports show pro forma data. Confirm which cost view the audience expects.
 
@@ -122,8 +122,8 @@ A sound review sequence is:
 2. If utilization is low, do not add commitment until the cause is understood.
 3. If utilization is high, inspect coverage and uncovered On-Demand spend.
 4. Analyze uncovered usage hourly to identify the durable floor.
-5. Remove anomalies, waste, and planned retirements.
-6. Model only the remaining floor in Purchase Analyzer.
+5. Exclude anomalies, waste, and planned retirements from the commitment estimate.
+6. Enter a custom commitment sized to the remaining floor in Purchase Analyzer, remembering that the analysis still uses historical usage.
 7. Stress the candidate against lower demand.
 
 Coverage is an opportunity signal, not a target that must reach 100%. The more variable the demand, the more On-Demand coverage can be intentional.
@@ -140,7 +140,7 @@ Track time series for:
 - plan and RI inventory changes;
 - service, family, Region, and account mix.
 
-Use AWS Budgets to alert when utilization falls below a chosen threshold or coverage moves outside policy. AWS notes that Savings Plans utilization and coverage metrics can take up to 48 hours to generate, so allow for reporting delay.
+Use AWS Budgets to alert when utilization or coverage falls below a chosen threshold. AWS notes that Savings Plans utilization and coverage metrics can take up to 48 hours to generate, so allow for reporting delay.
 
 Export CSV data for deeper analysis and retain the filters with each report. A percentage without scope is not reproducible.
 
