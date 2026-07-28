@@ -60,7 +60,7 @@ Those paths can use different:
 - CDN region;
 - credentials and client certificates.
 
-Run curl from the same pod image or a controlled debug container in the same namespace and node/network class. If that is impossible, record the differences rather than saying “curl works.”
+Run curl in the application container or an ephemeral debug container attached to the same pod, so it shares the pod's network namespace. If that is impossible, use a controlled debug pod with matching labels, sidecar or service-mesh configuration, service account, namespace, and node/network class, and record the remaining differences rather than saying “curl works.”
 
 Postman can use system or custom proxy settings, and its web app can use different agents. Record the agent and proxy.
 
@@ -218,6 +218,8 @@ curl -sS -o /dev/null \
   -w 'ip=%{remote_ip} dns=%{time_namelookup} tcp=%{time_connect} tls=%{time_appconnect} first=%{time_starttransfer} total=%{time_total}\n' \
   https://api.example.com/resource
 ```
+
+These `time_*` values are cumulative milestones measured from the start of the transfer; subtract adjacent milestones to calculate individual phase durations.
 
 Add equivalent telemetry to code. Compare completed phases, not just totals:
 
