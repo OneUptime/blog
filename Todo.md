@@ -2,19 +2,18 @@
 
 ## Savings Plans
 
-1. Can You Cancel, Modify, Transfer, or Return an AWS Savings Plan?
-2. One-Year vs Three-Year AWS Savings Plans: How to Quantify Lock-In Risk
-3. All Upfront vs Partial Upfront vs No Upfront Savings Plans: Which Costs Least?
-4. AWS Savings Plans Coverage vs Utilization: What Is the Difference?
-5. Why Did Savings Plans Coverage Drop While Utilization Stayed High?
-6. How to Pick a 7-, 30-, or 60-Day Lookback for AWS Savings Plans Recommendations
-7. Why Cost Explorer Savings Plans Recommendations Can Overcommit Seasonal Workloads
-8. How to Buy Savings Plans in Small Layers Instead of Making One Large Commitment
-9. Should You Buy Savings Plans in the AWS Management Account or a Member Account?
-10. How Does Savings Plans Discount Sharing Work Across AWS Organizations?
-11. How to Allocate Shared Savings Plans Discounts for Chargeback and Showback
-12. Which EC2, Fargate, Lambda, EMR, ECS, and EKS Charges Are Covered by Compute Savings Plans?
-13. Do AWS Savings Plans Apply to Spot Instances or On-Demand Capacity Reservations?
+1. One-Year vs Three-Year AWS Savings Plans: How to Quantify Lock-In Risk
+2. All Upfront vs Partial Upfront vs No Upfront Savings Plans: Which Costs Least?
+3. AWS Savings Plans Coverage vs Utilization: What Is the Difference?
+4. Why Did Savings Plans Coverage Drop While Utilization Stayed High?
+5. How to Pick a 7-, 30-, or 60-Day Lookback for AWS Savings Plans Recommendations
+6. Why Cost Explorer Savings Plans Recommendations Can Overcommit Seasonal Workloads
+7. How to Buy Savings Plans in Small Layers Instead of Making One Large Commitment
+8. Should You Buy Savings Plans in the AWS Management Account or a Member Account?
+9. How Does Savings Plans Discount Sharing Work Across AWS Organizations?
+10. How to Allocate Shared Savings Plans Discounts for Chargeback and Showback
+11. Which EC2, Fargate, Lambda, EMR, ECS, and EKS Charges Are Covered by Compute Savings Plans?
+12. Do AWS Savings Plans Apply to Spot Instances or On-Demand Capacity Reservations?
 
 ## Build Automation
 
