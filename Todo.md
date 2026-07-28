@@ -1435,3 +1435,233 @@
 18. How to Revoke Sessions and Trusted Devices After MFA Recovery or Factor Replacement
 19. One Shared TOTP Secret or One Credential per Device? Designing Multi-Device MFA
 20. How to Audit MFA Enrollment and Recovery Events Without Logging Secrets
+
+## Postgres HA
+
+1. How to Build a Three-Node PostgreSQL HA Cluster with Patroni, etcd, and HAProxy
+2. Patroni, PgBouncer, and HAProxy: Which Layer Handles Failover, Pooling, and Traffic Routing?
+3. How to Size and Place an etcd Quorum for a Patroni Cluster Without Creating a New Single Point of Failure
+4. Why Does Patroni Demote a Healthy Primary When etcd Is Unavailable? Configuring DCS Failsafe Mode
+5. How to Prevent PostgreSQL Split Brain with Patroni Leader Locks, Watchdog Fencing, and Quorum
+6. Patroni Switchover vs Failover: How to Move the Primary Safely for Planned Maintenance
+7. How to Rejoin the Old PostgreSQL Primary After Patroni Failover with `pg_rewind`
+8. Why Does `pg_rewind` Fail After a Patroni Failover? Checking Checksums, WAL, and Timeline History
+9. How to Configure HAProxy Health Checks Against Patroni's Primary and Replica Endpoints
+10. Why Does Patroni's HAProxy Health Check Return 503? Diagnosing REST API Role and Leader State
+11. How to Give Applications One Stable PostgreSQL Endpoint with HAProxy and Keepalived
+12. Where Should PgBouncer Sit in a Patroni Stack: Before or After HAProxy?
+13. How to Drain or Kill Stale Client Sessions During a PostgreSQL Primary Failover
+14. How to Split Read and Write Traffic in a Patroni Cluster Without Sending Writes to a Replica
+15. How to Exclude a Patroni Replica from Promotion While Keeping It Available for Reads
+16. How to Set `maximum_lag_on_failover` So Patroni Does Not Promote a Stale Replica
+17. How to Pause Patroni for Maintenance Without Triggering an Accidental Failover
+18. How to Test PostgreSQL HA Safely: Primary Crash, Network Partition, DCS Loss, and Proxy Failure
+19. How to Design Patroni Across Two Data Centers Without Losing Quorum or Promoting Both Sides
+20. Why Won't Patroni Reinitialize a Failed Replica? Debugging Bootstrap Methods, Slots, and Permissions
+
+## Grafana Beyla
+
+1. How to Deploy Grafana Beyla as a Kubernetes DaemonSet for Cluster-Wide eBPF Auto-Instrumentation
+2. How to Run Grafana Beyla Beside a Dockerized Service Without Modifying Application Code
+3. How to Configure the `beyla.ebpf` Component in Grafana Alloy and Export Traces to Tempo
+4. Why Does Beyla Emit Metrics but No Traces? Following the OTLP Pipeline from Alloy to Tempo
+5. How to Fix Beyla's "Operation Not Permitted" eBPF Error in Kubernetes
+6. Which Linux Capabilities, `hostPID`, and AppArmor Settings Does Beyla Need Without Privileged Mode?
+7. Why Does Beyla Report "MEMLOCK May Be Too Low"? Fixing eBPF Map Creation Failures
+8. How to Discover Beyla Services by Kubernetes Namespace, Pod Label, Executable Path, or Open Port
+9. Why Did Beyla Instrument Alloy, Tempo, and Itself? Excluding Observability Processes from Discovery
+10. How to Assign Stable `service.name` and `service.namespace` Attributes to Beyla Telemetry
+11. Why Does a Beyla Trace Contain Only One Span? Enabling and Verifying Trace-Context Propagation
+12. How to Combine Beyla with OpenTelemetry SDK Instrumentation Without Duplicate Spans or Metrics
+13. How to Normalize Dynamic URL Paths in Beyla Before They Explode Prometheus Cardinality
+14. How to Exclude Health Checks, Metrics Endpoints, and Noisy Routes from Beyla Telemetry
+15. How to Add Kubernetes Pod, Deployment, Namespace, and Node Metadata to Beyla Metrics and Traces
+16. How to Export Beyla RED Metrics to Prometheus and Traces to Tempo Through Grafana Alloy
+17. Why Is Grafana's Service Graph Empty Even Though Beyla Traces Reach Tempo?
+18. How to Use Beyla Network Flow Metrics to Map Kubernetes Service-to-Service Traffic
+19. How to Reduce Beyla CPU and Memory Usage with Narrower Discovery, Filters, and Trace Sampling
+20. Beyla or OpenTelemetry Auto-Instrumentation: How to Choose for HTTP, gRPC, Database, and Messaging Workloads
+
+## Rundeck
+
+1. How to Add Linux Nodes to Rundeck with SSH Keys Stored in Key Storage
+2. Why Does Rundeck Say "SSH Key File Does Not Exist" or "Invalid Private Key"?
+3. How to Import an Ansible Inventory into Rundeck and Fix "No Matched Nodes"
+4. Why Does Rundeck Miss New or Changed Inventory Hosts? Controlling Node Source Refresh
+5. How to Pass a Job Option into a Rundeck Node Filter for Dynamic Target Selection
+6. How to Build Secure Rundeck Job Options for Passwords, Files, and Allowed Values
+7. How to Copy a User-Uploaded File to Remote Nodes Before Running a Rundeck Command
+8. Why Does a Command Work in Your Shell but Fail in Rundeck? Comparing Users, PATH, TTY, and Environment
+9. How to Create a Least-Privilege Rundeck ACL That Lets a Group Run Only Selected Jobs
+10. Why Is a Rundeck Job Invisible Even Though the ACL Allows `run`? Application vs Project Contexts
+11. How to Trigger a Rundeck Job from a Monitoring Alert with a Webhook
+12. Why Does a Rundeck Webhook Return "Failed Webhook Authorization" or HTTP 400?
+13. How to Run a Rundeck Job Through the API with Options and a Dynamic Node Filter
+14. How to Chain Rundeck Jobs and Pass Options and Data Between Job Reference Steps
+15. Why Doesn't Rundeck Retry a Failed Job Reference? Designing Retries at the Right Level
+16. How to Call a Remediation Job from a Rundeck Step Error Handler Without Hiding the Failure
+17. How to Prevent Overlapping Rundeck Executions for Long-Running Scheduled Jobs
+18. How to Put Rundeck Behind an HTTPS Reverse Proxy Without Broken Redirects or Exposed Port 4440
+19. How to Back Up Rundeck Projects, Job Definitions, Key Storage, and Execution History Before an Upgrade
+20. Why Does Rundeck Start with an Empty Project List After a Database Migration? Recovering Jobs and History
+
+## KubeVela
+
+1. How to Install KubeVela with Helm and Fix “Failed to Download kubevela/vela-core”
+2. Why Does `helm list` Show No KubeVela Release? Checking Namespaces, Repositories, and Existing Names
+3. How to Run KubeVela on a kind Cluster with a Custom Pod CIDR
+4. How to Package a Multi-Service Kubernetes Application with KubeVela Components and Traits
+5. KubeVela ComponentDefinition vs TraitDefinition: How to Design a Reusable Platform API
+6. How to Debug CUE Evaluation Errors in a KubeVela ComponentDefinition
+7. How to Expose a KubeVela Webservice with Ports, Services, and Ingress Traits
+8. How to Pass Environment-Specific Overrides to One KubeVela Application
+9. How to Promote a KubeVela Application Across Dev, Staging, and Production
+10. How to Deploy One KubeVela Application to Multiple Kubernetes Clusters
+11. Why Is a KubeVela Multi-Cluster Application Stuck? Debugging Topology Policies and Placement
+12. How to Register, Label, and Select Managed Clusters in KubeVela
+13. How to Build a KubeVela Workflow That Waits for Infrastructure Before Deploying the App
+14. Why Did a KubeVela Workflow Stop at `suspend` or `wait`? Inspecting Step Status and Conditions
+15. How to Roll Back a Failed KubeVela Application Revision Safely
+16. How to Import and Customize a Helm Chart as a KubeVela Application
+17. How to Use KubeVela with Argo CD Without Creating Two Competing Reconcilers
+18. How to Keep Secrets Out of KubeVela Application Manifests in a GitOps Workflow
+19. How to Create a Custom KubeVela Trait for KEDA Autoscaling
+20. How to Troubleshoot a KubeVela Addon That Fails to Enable or Stays Unhealthy
+
+## LLM Evaluation
+
+1. How to Build a Golden Evaluation Dataset from Real LLM Production Failures
+2. Why Did Your LLM Golden Dataset Go Stale? A Maintenance and Sampling Workflow
+3. How to Turn LLM Evaluation into a Reliable CI Regression Gate
+4. Why Do LLM Eval Scores Change Between Runs? Measuring Variance Before Setting Thresholds
+5. How to Calibrate an LLM-as-a-Judge Against Human Labels with Cohen’s Kappa
+6. How to Detect and Reduce Position Bias in Pairwise LLM Evaluations
+7. Why Do LLM Judges Prefer Longer Answers? Testing and Controlling Verbosity Bias
+8. Pointwise vs Pairwise LLM Evaluation: How to Choose the More Reliable Scoring Method
+9. How to Write a Single-Criterion Rubric That an LLM Judge Can Apply Consistently
+10. How to Evaluate an LLM Judge Before Trusting Its Scores
+11. How to Measure RAG Faithfulness Without Confusing Retrieval Quality with Answer Quality
+12. Context Precision vs Context Recall: How to Evaluate the Retriever in a RAG Pipeline
+13. Why Does Ragas `answer_relevancy` Return NaN? Debugging Judge Failures and Token Limits
+14. How to Fix Ragas “LLM Is None” and Metric Initialization Errors
+15. How to Evaluate a RAG System with a Local LLM That Produces Invalid JSON
+16. How to Build Ground Truth for RAG Evaluation When No Reference Answers Exist
+17. How to Evaluate Hallucinations by Checking LLM Answers Against Retrieved Sources
+18. How to Evaluate Tool-Calling Agents for Correct Tool Choice, Arguments, and Final Answers
+19. How to Compare Prompts or Models with Confidence Intervals Instead of Average Scores
+20. How to Control LLM Evaluation Cost with Sampling, Caching, and Cascaded Judges
+
+## Apache Geode
+
+1. How to Fix Apache Geode “Region Not Found” When a Client Can Connect but Cannot Put Data
+2. Why Does `gfsh list members` Show the Locator but Not the Geode Server?
+3. How to Configure Geode Locator and Server Bind Addresses in Docker
+4. How to Set a Connection Timeout for an Apache Geode Client When No Locator Is Available
+5. Replicated vs Partitioned Regions in Apache Geode: How to Choose for Read and Write Workloads
+6. How to Colocate Apache Geode Partitioned Regions for Transactions and Join-Like Access
+7. Why Does Geode Throw `TransactionDataNotColocatedException`? Fixing Keys and Partition Resolvers
+8. How to Rebalance an Apache Geode Cluster After Adding Servers or Bulk Loading Data
+9. How to Speed Up Slow Apache Geode OQL Joins with Colocation, Keys, Indexes, and Functions
+10. Why Is an Apache Geode Query Ignoring the Region You Requested? `Region.query` vs `QueryService`
+11. How to Serialize Cross-Language Objects in Apache Geode with PDX
+12. Why Does a Geode Continuous Query Fail with a Serialization Mismatch? Checking CQ Dependencies and PDX
+13. How to Receive Server-Side Region Events in a Geode Client with Continuous Queries
+14. How to Configure Persistent Regions and Disk Stores Without Filling the Disk
+15. Why Doesn’t Geode Disk Usage Shrink After Entries Are Deleted? Oplogs and Compaction Explained
+16. How to Back Up and Restore Apache Geode Persistent Regions with `gfsh backup disk-store`
+17. How to Configure Active-Active WAN Replication with Geode Gateway Senders and Receivers
+18. Why Does Geode Reject Inconsistent Gateway Sender IDs Across Region Hosts?
+19. How to Add Mutual TLS and Certificate-Based Authentication to Apache Geode
+20. How to Prevent Out-of-Memory Errors When Reading Large Geode Regions Through the REST API
+
+## OpenSearch Observability
+
+1. How to Send OpenTelemetry Logs, Metrics, and Traces to OpenSearch Through a Single Collector
+2. Why Are OpenSearch Logs Visible in Discover but Missing from Observability? Fixing Data Source and Field Mapping
+3. How to Build an OpenSearch Dashboard That Links a Metric Spike to Its Logs and Traces
+4. How to Propagate Trace and Span IDs into OpenSearch Log Documents for Cross-Signal Correlation
+5. Why Is Filebeat Harvesting Files but Not Creating an OpenSearch Index? A Pipeline Debugging Guide
+6. How to Use OpenSearch Data Streams for Time-Series Logs Without Breaking Dashboard Index Patterns
+7. Why Does an OpenSearch Dashboard Show “Could Not Locate That Index Pattern”? Repairing Saved Objects Safely
+8. How to Grant Least-Privilege Access to OpenSearch Dashboards Without Hiding Discover Data
+9. How to Create OpenSearch Alert Messages That Include Matching Log Fields and a Dashboard Link
+10. Why Does an OpenSearch Per-Document Monitor Omit Source Fields? Fixing Trigger Context and Templates
+11. How to Alert Only When an OpenSearch Monitor Changes State and Avoid Repeat Notifications
+12. How to Query OpenSearch Alert History and Build a Dashboard for Flapping Monitors
+13. Why Is the `.opensearch-observability` Index Read-Only? Recovering from Flood-Stage Disk Watermarks
+14. How to Reduce OpenSearch Observability Costs with Rollover, Retention, and Tiered Storage
+15. Why Are OpenSearch Dashboard Queries Slow During Incidents? Diagnosing Shards, Mappings, and Expensive Aggregations
+16. How to Normalize Kubernetes Log Fields Before Indexing Them in OpenSearch
+17. How to Troubleshoot Missing OpenTelemetry Spans Between the Collector and OpenSearch
+18. How to Design OpenSearch Index Templates for High-Cardinality Observability Data
+19. Why Did an OpenSearch Alert Stop Firing After an Index Rollover? Fixing Aliases and Monitor Queries
+20. How to Export and Recreate OpenSearch Dashboards, Visualizations, and Index Patterns Across Environments
+
+## Recovery Engineering
+
+1. How to Turn Business RTO and RPO Targets into a Testable Recovery Architecture
+2. Why a Successful Backup Job Does Not Prove Recoverability: Designing Automated Restore Tests
+3. How to Run a Full Disaster Recovery Drill Without Sending Restored Services to Production Dependencies
+4. How to Measure Actual RTO and RPO During a Recovery Exercise
+5. Why Does Infrastructure as Code Fail to Rebuild Production? Detecting Drift Before a Disaster
+6. How to Reconstruct Service Dependency Order for a Reliable Recovery Runbook
+7. How to Keep Disaster Recovery Runbooks Current as Infrastructure and Credentials Change
+8. How to Write a Recovery Runbook an Unfamiliar On-Call Engineer Can Execute at 3 A.M.
+9. How to Automate a Disaster Recovery Runbook Without Creating a Dangerous One-Click Failover
+10. How to Test Database Restores for Data Integrity, Not Just Startup Success
+11. Why Did the Restored Environment Start but the Application Still Fail? Finding Missing Secrets, DNS, and Certificates
+12. How to Validate Kubernetes Recovery by Restoring etcd and Rebuilding the Control Plane
+13. How to Design Cross-Region Failover for Stateful Services Without Violating RPO
+14. How to Test DNS Cutover, Traffic Draining, and TTLs Before a Regional Failover
+15. How to Prevent Split-Brain and Stale Writes During Failover and Failback
+16. How to Plan a Safe Failback After the Disaster Recovery Site Becomes Primary
+17. How to Build an Isolated Recovery Test Environment with Limited Cloud Budget
+18. How Often Should You Run Restore Tests, Tabletop Exercises, and Full Failover Drills?
+19. How to Turn Recovery Drill Failures into Reliability Backlog with Owners and Deadlines
+20. How to Prove a Recovered Service Is Ready with Synthetic Transactions and Data Reconciliation
+
+## Kube-hunter
+
+1. How to Run kube-hunter Remotely Against a Kubernetes Cluster Without Exposing the Scanner
+2. How to Run kube-hunter as an In-Cluster Pod for an Attacker’s-Eye View
+3. kube-hunter Passive vs Active Hunting: How to Choose a Safe Scan Mode
+4. How to Scope kube-hunter Active Tests to Avoid Disrupting Production Workloads
+5. Why Does kube-hunter Report “No Vulnerabilities” but List Open Kubelet and etcd Services?
+6. How to Verify Whether a kube-hunter Open Kubelet Finding Is Actually Exploitable
+7. How to Fix Anonymous Kubelet Access Detected by kube-hunter
+8. How to Remediate Kubelet `AlwaysAllow` Authorization Findings from kube-hunter
+9. How to Investigate an Exposed etcd Port Reported by kube-hunter
+10. How to Confirm Kubernetes API Anonymous Access After a kube-hunter Finding
+11. How to Test Network Policies with kube-hunter from Multiple Namespaces and Network Zones
+12. Why Can kube-hunter Reach a Node Port That Should Be Private? Debugging Firewalls and Security Groups
+13. How to Run kube-hunter Against Private EKS, AKS, or GKE Endpoints from CI
+14. How to Export kube-hunter JSON Results and Fail CI Only on Actionable Findings
+15. How to Baseline kube-hunter Results Across Multiple Clusters Without Duplicating Noise
+16. Why Does kube-hunter Time Out While kubectl Works? Troubleshooting DNS, Routing, and API Endpoint Access
+17. How to Reproduce a kube-hunter Finding Safely in an Isolated Kubernetes Lab
+18. How to Distinguish kube-hunter Service Discovery from a Confirmed Vulnerability
+19. kube-hunter vs kube-bench: How to Combine Attack-Surface Testing with CIS Configuration Audits
+20. How to Validate kube-hunter Remediation with a Targeted Rescan and Regression Gate
+
+## Signal Correlation
+
+1. How to Propagate W3C Trace Context Across HTTP Services for End-to-End Signal Correlation
+2. How to Carry Trace and Correlation IDs Through Kafka or RabbitMQ Without Breaking Async Traces
+3. Trace ID vs Correlation ID: How to Choose Identifiers for Requests, Messages, and Long-Running Workflows
+4. Why Do Correlation IDs Disappear in Async Threads? Preserving Context Across Executors and Callbacks
+5. Why Do Trace IDs in Logs Fail to Link to Traces? Checking Formats, Sampling, and Data Sources
+6. Why Do Multiple Queue Messages Share One Trace ID? Modeling Producer and Consumer Span Links Correctly
+7. How to Correlate Logs, Metrics, and Traces When Metrics Have No Trace ID
+8. How to Standardize Service, Environment, Cluster, and Deployment Labels Across Telemetry Signals
+9. How to Jump from an Alert to the Exact Logs and Trace Using a Correlation-Aware Dashboard
+10. How to Enrich Alert Notifications with the Operation ID, Trace Link, and Matching Logs
+11. How to Correlate a Metric Spike with Deployments, Configuration Changes, and Kubernetes Events
+12. How to Group Alert Storms by Service, Dependency, and Time Window Without Hiding Root Causes
+13. How to Deduplicate the Same Incident Across Prometheus, CloudWatch, and Application Monitoring
+14. Why Does Time-Window Alert Correlation Merge Unrelated Incidents? Tuning Keys and Boundaries
+15. How to Use a Service Dependency Graph to Separate Root-Cause Alerts from Downstream Symptoms
+16. How to Correlate Partial Traces After Head or Tail Sampling Drops Spans
+17. How to Preserve Signal Correlation Across Retries, Dead-Letter Queues, and Redeliveries
+18. How to Correlate One HTTP Request with Multiple Message Consumers at Both Request and Message Level
+19. How to Validate Alert Correlation Rules Against Historical Incidents Before Production
+20. How to Measure Whether Signal Correlation Reduces Noise Without Silencing Important Alerts
