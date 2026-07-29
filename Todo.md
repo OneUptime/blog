@@ -2,20 +2,19 @@
 
 ## Azure VMs
 
-1. Why Are Ports 22 or 3389 Open in the NSG but SSH or RDP Still Times Out?
-2. What to Do When the Azure VMAccess Extension Fails and You Still Can’t Log In
-3. Azure VM Agent `Not Ready`: How to Check DHCP, 168.63.129.16, Firewalls, and Proxies
-4. Why Is an Azure VM Extension Stuck in `Provisioning failed`? Logs, Reapply, and Rerun
-5. Why Won’t Azure Custom Script Extension Run the Same Script Twice?
-6. Why Does an Azure VM Start or Redeploy Operation Hang While the Guest OS Is Online?
-7. How to Repair an Unbootable Azure Windows VM by Attaching Its OS Disk to a Repair VM
-8. How to Recover an Azure Linux VM from a Broken `fstab`, GRUB, or Kernel Update
-9. What Data Can You Safely Store on an Azure VM Temporary Disk?
-10. Why Does a Resized Azure Disk Show the New Size in the Portal but Not in the Guest OS?
-11. How to Diagnose Azure VM Disk Throttling When CPU and Memory Look Healthy
-12. Azure VM Disk Host Caching: When to Use None, ReadOnly, or ReadWrite
-13. How to Get a Managed Identity Token from Azure VM IMDS Without Client Secrets
-14. Why Does `az login --identity` Say “No Subscriptions” When Key Vault Access Is Configured?
+1. What to Do When the Azure VMAccess Extension Fails and You Still Can’t Log In
+2. Azure VM Agent `Not Ready`: How to Check DHCP, 168.63.129.16, Firewalls, and Proxies
+3. Why Is an Azure VM Extension Stuck in `Provisioning failed`? Logs, Reapply, and Rerun
+4. Why Won’t Azure Custom Script Extension Run the Same Script Twice?
+5. Why Does an Azure VM Start or Redeploy Operation Hang While the Guest OS Is Online?
+6. How to Repair an Unbootable Azure Windows VM by Attaching Its OS Disk to a Repair VM
+7. How to Recover an Azure Linux VM from a Broken `fstab`, GRUB, or Kernel Update
+8. What Data Can You Safely Store on an Azure VM Temporary Disk?
+9. Why Does a Resized Azure Disk Show the New Size in the Portal but Not in the Guest OS?
+10. How to Diagnose Azure VM Disk Throttling When CPU and Memory Look Healthy
+11. Azure VM Disk Host Caching: When to Use None, ReadOnly, or ReadWrite
+12. How to Get a Managed Identity Token from Azure VM IMDS Without Client Secrets
+13. Why Does `az login --identity` Say “No Subscriptions” When Key Vault Access Is Configured?
 
 ## Platform Metrics
 
