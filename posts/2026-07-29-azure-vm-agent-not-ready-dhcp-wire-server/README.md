@@ -157,7 +157,7 @@ Extensions are applications in their own right. Even when the agent reaches Wire
 
 ## Update or reinstall only after connectivity is sound
 
-On Linux, Microsoft recommends installing the distribution's `walinuxagent` package first and keeping auto-update enabled:
+On Linux, Microsoft recommends installing the Azure Linux Agent package from the distribution's repository first and keeping auto-update enabled:
 
 ```bash
 sudo grep -i '^AutoUpdate.Enabled' /etc/waagent.conf
