@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Chainguard, Cosign, Image Signing, Supply Chain Security, Container Image
 
-Description: Verify public and organization-specific Chainguard Container signatures by enforcing the expected Sigstore issuer and signer identity.
+Description: Verify public and organization-specific Chainguard Container signatures by enforcing the expected OIDC issuer and signer identity.
 
 ---
 
@@ -35,7 +35,7 @@ For a multi-platform tag, be clear whether policy pins the image-index digest or
 
 ## Verify a public Chainguard Container
 
-Chainguard's current public verification policy uses GitHub Actions as the certificate issuer and the public image release workflow as the exact certificate identity:
+Chainguard's current public verification policy uses GitHub Actions' token service as the OIDC issuer and the public image release workflow as the exact certificate identity:
 
 ```bash
 cosign verify \
@@ -44,7 +44,7 @@ cosign verify \
   "$IMAGE"
 ```
 
-Cosign exits nonzero if the signature, certificate chain, claims, transparency-log evidence, issuer, or identity does not satisfy the policy.
+Cosign exits nonzero if it cannot find at least one signature whose certificate chain, claims, transparency-log evidence, OIDC issuer, and identity satisfy the policy.
 
 If formatting the output with `jq` in CI, preserve the verifier's exit status:
 
@@ -92,18 +92,18 @@ IMAGE=cgr.dev/example.com/python@sha256:REPLACE_WITH_RESOLVED_DIGEST
 
 cosign verify \
   --certificate-oidc-issuer=https://issuer.enforce.dev \
-  --certificate-identity-regexp="https://issuer.enforce.dev/(${CATALOG_SYNCER}|${APKO_BUILDER})" \
+  --certificate-identity-regexp="^https://issuer\.enforce\.dev/(${CATALOG_SYNCER}|${APKO_BUILDER})$" \
   "$IMAGE"
 ```
 
-Use the UID paths returned for the organization. Do not replace the expression with `.*`, as that would trust unrelated identities issued by the same issuer.
+Use the UID paths returned for the organization. Do not replace the anchored expression with `.*`, as that would trust unrelated identities issued by the same OIDC issuer.
 
 ## Read the verification result
 
 Cosign returns one or more verified signature payloads. Confirm:
 
 - the image digest in the claim matches the pinned reference;
-- the certificate issuer matches the policy;
+- the certificate's OIDC issuer claim matches the policy;
 - the certificate subject matches the expected public workflow or organization identity;
 - transparency-log verification was performed as required by the policy;
 - the command exited successfully.
@@ -112,7 +112,7 @@ Do not parse a human-readable success phrase while ignoring the exit code.
 
 ## Verify attestations separately
 
-An image signature authenticates the image manifest. An SBOM or provenance statement is a separate signed attestation and needs its own verification:
+An image signature authenticates the referenced image index or manifest. An SBOM or provenance statement is a separate signed attestation and needs its own verification:
 
 ```bash
 cosign verify-attestation \
