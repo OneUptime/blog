@@ -1,9 +1,5 @@
 # Blog Post Ideas
 
-## Azure VMs
-
-1. Why Does `az login --identity` Say “No Subscriptions” When Key Vault Access Is Configured?
-
 ## Platform Metrics
 
 1. Which Platform Engineering Metrics Actually Prove an Internal Developer Platform Is Working?
