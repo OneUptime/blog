@@ -8,7 +8,7 @@ Description: Diagnose Azure VM extension provisioning failures using instance st
 
 ---
 
-`Provisioning failed` is the status reported by an extension handler after Azure asked the guest agent to install, enable, or update it. The useful error is usually one level deeper: agent connectivity, handler logs, invalid settings, a missing dependency, a nonzero script exit, a package-manager lock, or a timeout.
+`Provisioning failed` means Azure could not complete an extension install, enable, or update operation. The useful error is usually one level deeper: agent connectivity, handler logs, invalid settings, a missing dependency, a nonzero script exit, a package-manager lock, or a timeout.
 
 Do not start by clicking rerun repeatedly. Capture the failing version, settings change, status message, and logs so the retry does not erase the best evidence.
 
@@ -110,7 +110,7 @@ Reapply does not repair an invalid script or magically change an extension's seq
 
 **Extension rerun** means asking a particular handler to process a new configuration or force-update tag. The method is extension-specific. Azure CLI exposes `--force-update` on `az vm extension set`, but use it only after consulting the extension's documentation and making the handler action safe to repeat.
 
-For example:
+For example, for an extension that has both public and protected settings:
 
 ```bash
 az vm extension set \
@@ -120,10 +120,11 @@ az vm extension set \
   --extension-instance-name myExtension \
   --publisher myPublisher \
   --settings @settings.json \
+  --protected-settings @protected-settings.json \
   --force-update
 ```
 
-Confirm the correct publisher, type, instance name, version policy, and protected settings before running this against production.
+Extensions that do not use protected settings should omit that argument. Confirm the correct publisher, type, instance name, version policy, and complete settings before running this against production.
 
 ## When removal and reinstallation are appropriate
 
