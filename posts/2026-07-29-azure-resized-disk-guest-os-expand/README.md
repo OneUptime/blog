@@ -10,13 +10,13 @@ Description: Finish an Azure managed disk expansion by rescanning the guest, ext
 
 Increasing an Azure managed disk changes the virtual block device's capacity. It does not automatically enlarge every structure inside the guest.
 
-The full path is:
+The possible layers are:
 
 ```text
 Azure managed disk
   -> guest block device
-  -> partition table or LVM physical volume
-  -> logical volume
+  -> partition (if used)
+  -> LVM physical volume -> volume group -> logical volume (if used)
   -> filesystem
   -> mounted volume or drive letter
 ```
@@ -84,7 +84,7 @@ echo 1 | sudo tee /sys/class/block/sda/device/rescan
 sudo fdisk -l /dev/sda
 ```
 
-A reboot can also make the guest rediscover geometry, but it does not expand the partition or filesystem.
+A reboot can also make the guest rediscover geometry. On images configured for automatic root-disk growth, cloud-init may expand the root partition and filesystem during boot; otherwise, a reboot alone does not perform those steps.
 
 ## Linux: expand a normal partition and filesystem
 
@@ -152,7 +152,7 @@ Get-Disk | Format-Table Number, FriendlyName, PartitionStyle, Size
 Get-Partition | Format-Table DiskNumber, PartitionNumber, DriveLetter, Size
 ```
 
-For a simple volume whose unallocated space is directly after the partition:
+For a basic-disk NTFS or ReFS partition whose unallocated space is directly after it:
 
 ```powershell
 $supported = Get-PartitionSupportedSize -DriveLetter C
@@ -165,13 +165,13 @@ Replace `C` only after identifying the correct volume. Verify:
 Get-Volume | Format-Table DriveLetter, FileSystem, HealthStatus, Size, SizeRemaining
 ```
 
-If **Extend Volume** is greyed out, common reasons include:
+If **Extend Volume** is greyed out or the simple `Resize-Partition` workflow is not appropriate, common reasons include:
 
 - a recovery or other partition lies between the volume and unallocated space;
 - MBR's 2 TiB partition limit;
-- NTFS allocation-unit size limit;
-- the disk is dynamic, shared, encrypted, or part of Storage Spaces;
-- the workload is a SQL Server marketplace VM with a managed storage pool.
+- the volume uses a filesystem other than NTFS or ReFS, or has reached an NTFS allocation-unit size limit;
+- Azure Disk Encryption has placed a System Reserved partition after the OS volume, or the volume belongs to a clustered shared disk or Storage Spaces layout that requires its own procedure;
+- the workload is a SQL Server marketplace VM with a preconfigured storage pool.
 
 Do not delete a recovery partition without the Windows/Azure procedure for the specific layout.
 
@@ -187,8 +187,9 @@ Azure managed OS disks support up to 4,095 GiB, but an MBR guest layout can make
 |---|---|
 | Azure disk still has old size | Control-plane resize failed or wrong disk selected |
 | Azure size new, guest disk old | Guest rescan or reboot |
-| Guest disk new, partition old | Partition or PV expansion |
-| Partition new, filesystem old | Filesystem expansion |
+| Guest disk new, partition old | Partition expansion |
+| Partition or guest disk new, LVM PV or LV old | `pvresize` or logical-volume expansion |
+| Partition or LV new, filesystem old | Filesystem expansion |
 | Filesystem new, application still full | Wrong mount, quota, reserved blocks, or app config |
 
 After completion, validate application I/O, monitoring, backup, and a controlled reboot. Keep the snapshot until the workload is healthy, then manage its retention deliberately.
@@ -199,4 +200,3 @@ After completion, validate application I/O, monitoring, backup, and a controlled
 - [Manage and expand Windows VM data disks](https://learn.microsoft.com/en-us/azure/virtual-machines/windows/tutorial-manage-data-disk)
 - [Troubleshoot Azure disk resize failures](https://learn.microsoft.com/en-us/troubleshoot/azure/virtual-machines/windows/troubleshoot-disk-resize)
 - [Troubleshoot a Windows volume that cannot be extended](https://learn.microsoft.com/en-us/troubleshoot/azure/virtual-machines/windows/cannot-extend-volume-windows-vm)
-
