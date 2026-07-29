@@ -43,6 +43,7 @@ az vm show \
   --query "{
     id:id,
     location:location,
+    zones:zones,
     size:hardwareProfile.vmSize,
     image:storageProfile.imageReference,
     osDisk:storageProfile.osDisk,
@@ -52,7 +53,7 @@ az vm show \
   --output json
 ```
 
-The image reference identifies the source publisher, offer, SKU, and version; it does not establish the deployed disk's boot generation. Resolve the managed OS disk and query that resource directly:
+When populated for a platform image, the image reference identifies the source publisher, offer, SKU, and version; it does not establish the deployed disk's boot generation. Resolve the managed OS disk and query that resource directly:
 
 ```bash
 OS_DISK_ID="$(
@@ -86,8 +87,7 @@ Encryption changes the supported workflow. Microsoft's VM repair commands suppor
 Install or update the CLI extension:
 
 ```bash
-az extension add --name vm-repair
-az extension update --name vm-repair
+az extension add --name vm-repair --upgrade
 ```
 
 Create the repair VM and a copy of the broken OS disk:
@@ -201,7 +201,7 @@ az vm repair restore \
   --verbose
 ```
 
-This swaps the repaired copy into the original VM. Verify the VM model points to the expected OS disk, then start and watch Boot diagnostics.
+This swaps the repaired copy into the original VM. Verify the VM model points to the expected OS disk, then ensure the VM completes a stop/start cycle and watch Boot diagnostics. Microsoft notes that Boot diagnostics requires a stop/start after an OS-disk swap.
 
 ## Validate beyond a successful boot
 
