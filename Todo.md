@@ -2,17 +2,16 @@
 
 ## Chainguard
 
-1. Why Does a Native Python or Node Module Work in the Builder but Fail in the Chainguard Runtime?
-2. How to Find the Wolfi APK Package That Provides a Missing Command
-3. What to Do When the Package or Version You Need Is Missing from Wolfi
-4. Why Does `apk.cgr.dev` Fail Intermittently Behind Nexus or Artifactory?
-5. How to Avoid APK Version Conflicts When Extending Nightly Rebuilt Chainguard Images
-6. Chainguard vs Alpine vs Google Distroless: What Changes for libc, Debugging, and Compatibility?
-7. How to Verify a Chainguard Image Signature with Cosign
-8. How to Download the Correct Architecture-Specific SBOM for a Chainguard Image
-9. Why Does a Vulnerability Scanner Still Report CVEs in a Chainguard-Based Image?
-10. How to Pin Chainguard Images by Digest Without Missing Security Rebuilds
-11. How to Inspect Chainguard Tag History and See What Changed Between Rebuilds
+1. How to Find the Wolfi APK Package That Provides a Missing Command
+2. What to Do When the Package or Version You Need Is Missing from Wolfi
+3. Why Does `apk.cgr.dev` Fail Intermittently Behind Nexus or Artifactory?
+4. How to Avoid APK Version Conflicts When Extending Nightly Rebuilt Chainguard Images
+5. Chainguard vs Alpine vs Google Distroless: What Changes for libc, Debugging, and Compatibility?
+6. How to Verify a Chainguard Image Signature with Cosign
+7. How to Download the Correct Architecture-Specific SBOM for a Chainguard Image
+8. Why Does a Vulnerability Scanner Still Report CVEs in a Chainguard-Based Image?
+9. How to Pin Chainguard Images by Digest Without Missing Security Rebuilds
+10. How to Inspect Chainguard Tag History and See What Changed Between Rebuilds
 
 ## Azure VMs
 
