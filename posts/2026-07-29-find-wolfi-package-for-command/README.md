@@ -8,7 +8,7 @@ Description: Search Wolfi's APK index by command, shared library, or package nam
 
 ---
 
-When a migrated Dockerfile reports `command not found`, the package usually has a different name or the utility was split out of a minimal BusyBox package. Searching for the command name as ordinary text can return unrelated descriptions. APK's `cmd:` capability searches packages that declare they provide that executable.
+When a migrated Dockerfile reports `command not found`, the package usually has a different name or the utility was split out of a minimal BusyBox package. A plain `apk search` matches package names, not executable filenames. APK's `cmd:` capability searches packages that declare they provide that executable.
 
 ## Search from a disposable Wolfi environment
 
@@ -51,7 +51,7 @@ apk --print-arch
 apk policy shadow
 ```
 
-Chainguard Free development images normally reference the public Wolfi repository. Chainguard customers can also have organization-specific public URLs, an authenticated private APK repository, and access to the Extra Packages repository. A package visible to one organization is not necessarily visible to an anonymous public build.
+Chainguard Free development images normally reference the public Wolfi repository. The public Extra Packages repository is not enabled in Free images by default. Chainguard customers can also have organization-specific public URLs and an authenticated private APK repository scoped to their entitlements. A package visible to one organization is not necessarily visible to an anonymous public build.
 
 Run the search in the same repository context and architecture as the real build.
 
@@ -64,7 +64,7 @@ APK indexes more than package names:
 | Executable named `useradd` | `apk search cmd:useradd` |
 | Shared object such as libxml2 | `apk search 'so:libxml2.so*'` |
 | pkg-config metadata | `apk search 'pc:libcurl'` |
-| Package name or description | `apk search curl` |
+| Package name | `apk search curl` |
 
 Quote wildcard expressions so the local shell does not expand them before `apk` sees them.
 
@@ -72,11 +72,11 @@ For example, a native extension that reports a missing library can be traced wit
 
 ```bash
 apk search 'so:libpq.so.5'
-apk policy libpq
-apk info -R libpq
+apk policy libpq-18
+apk info -R libpq-18
 ```
 
-`apk info -R` shows dependencies. It helps distinguish a build package such as `postgresql-dev` from the smaller runtime provider.
+Use the concrete provider returned by the first command; `libpq-18` is the current default version stream. `apk info -R` shows dependencies. It helps distinguish a build package such as `postgresql-18-dev` from the smaller runtime provider.
 
 ## Find the owner of an installed file
 
