@@ -2,19 +2,18 @@
 
 ## Chainguard
 
-1. Why Did My Container Entrypoint Break After Switching to a Chainguard Image?
-2. How to Build a Chainguard Python Runtime with uv, a Relocatable Virtualenv, and No pip
-3. Why Does a Native Python or Node Module Work in the Builder but Fail in the Chainguard Runtime?
-4. How to Find the Wolfi APK Package That Provides a Missing Command
-5. What to Do When the Package or Version You Need Is Missing from Wolfi
-6. Why Does `apk.cgr.dev` Fail Intermittently Behind Nexus or Artifactory?
-7. How to Avoid APK Version Conflicts When Extending Nightly Rebuilt Chainguard Images
-8. Chainguard vs Alpine vs Google Distroless: What Changes for libc, Debugging, and Compatibility?
-9. How to Verify a Chainguard Image Signature with Cosign
-10. How to Download the Correct Architecture-Specific SBOM for a Chainguard Image
-11. Why Does a Vulnerability Scanner Still Report CVEs in a Chainguard-Based Image?
-12. How to Pin Chainguard Images by Digest Without Missing Security Rebuilds
-13. How to Inspect Chainguard Tag History and See What Changed Between Rebuilds
+1. How to Build a Chainguard Python Runtime with uv, a Relocatable Virtualenv, and No pip
+2. Why Does a Native Python or Node Module Work in the Builder but Fail in the Chainguard Runtime?
+3. How to Find the Wolfi APK Package That Provides a Missing Command
+4. What to Do When the Package or Version You Need Is Missing from Wolfi
+5. Why Does `apk.cgr.dev` Fail Intermittently Behind Nexus or Artifactory?
+6. How to Avoid APK Version Conflicts When Extending Nightly Rebuilt Chainguard Images
+7. Chainguard vs Alpine vs Google Distroless: What Changes for libc, Debugging, and Compatibility?
+8. How to Verify a Chainguard Image Signature with Cosign
+9. How to Download the Correct Architecture-Specific SBOM for a Chainguard Image
+10. Why Does a Vulnerability Scanner Still Report CVEs in a Chainguard-Based Image?
+11. How to Pin Chainguard Images by Digest Without Missing Security Rebuilds
+12. How to Inspect Chainguard Tag History and See What Changed Between Rebuilds
 
 ## Azure VMs
 
