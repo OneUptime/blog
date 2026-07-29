@@ -2,21 +2,20 @@
 
 ## Chainguard
 
-1. How to Copy Application Files into a Chainguard Image with Correct Nonroot Ownership
-2. How to Write a Docker Health Check When the Chainguard Image Has No curl, wget, or Shell
-3. Why Did My Container Entrypoint Break After Switching to a Chainguard Image?
-4. How to Build a Chainguard Python Runtime with uv, a Relocatable Virtualenv, and No pip
-5. Why Does a Native Python or Node Module Work in the Builder but Fail in the Chainguard Runtime?
-6. How to Find the Wolfi APK Package That Provides a Missing Command
-7. What to Do When the Package or Version You Need Is Missing from Wolfi
-8. Why Does `apk.cgr.dev` Fail Intermittently Behind Nexus or Artifactory?
-9. How to Avoid APK Version Conflicts When Extending Nightly Rebuilt Chainguard Images
-10. Chainguard vs Alpine vs Google Distroless: What Changes for libc, Debugging, and Compatibility?
-11. How to Verify a Chainguard Image Signature with Cosign
-12. How to Download the Correct Architecture-Specific SBOM for a Chainguard Image
-13. Why Does a Vulnerability Scanner Still Report CVEs in a Chainguard-Based Image?
-14. How to Pin Chainguard Images by Digest Without Missing Security Rebuilds
-15. How to Inspect Chainguard Tag History and See What Changed Between Rebuilds
+1. How to Write a Docker Health Check When the Chainguard Image Has No curl, wget, or Shell
+2. Why Did My Container Entrypoint Break After Switching to a Chainguard Image?
+3. How to Build a Chainguard Python Runtime with uv, a Relocatable Virtualenv, and No pip
+4. Why Does a Native Python or Node Module Work in the Builder but Fail in the Chainguard Runtime?
+5. How to Find the Wolfi APK Package That Provides a Missing Command
+6. What to Do When the Package or Version You Need Is Missing from Wolfi
+7. Why Does `apk.cgr.dev` Fail Intermittently Behind Nexus or Artifactory?
+8. How to Avoid APK Version Conflicts When Extending Nightly Rebuilt Chainguard Images
+9. Chainguard vs Alpine vs Google Distroless: What Changes for libc, Debugging, and Compatibility?
+10. How to Verify a Chainguard Image Signature with Cosign
+11. How to Download the Correct Architecture-Specific SBOM for a Chainguard Image
+12. Why Does a Vulnerability Scanner Still Report CVEs in a Chainguard-Based Image?
+13. How to Pin Chainguard Images by Digest Without Missing Security Rebuilds
+14. How to Inspect Chainguard Tag History and See What Changed Between Rebuilds
 
 ## Azure VMs
 
