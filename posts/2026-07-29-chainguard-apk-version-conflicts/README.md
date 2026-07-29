@@ -32,11 +32,16 @@ Chainguard documents that such windows can close when the next compatible base b
 
 ```bash
 docker image inspect "$BASE_IMAGE" \
-  --format '{{index .RepoDigests 0}}'
+  --format '{{json .RepoDigests}}'
 
-cat /etc/apk/repositories
-apk policy openssl libcrypto3
-apk info
+docker run --rm \
+  --user root \
+  --entrypoint /bin/sh \
+  "$BASE_IMAGE" -c '
+    cat /etc/apk/repositories
+    apk policy openssl libcrypto3
+    apk info -v
+  '
 ```
 
 The exact package names vary. Use the error output and `apk policy` rather than assuming the example names.
@@ -55,9 +60,9 @@ Use manual `apk add` when the team accepts responsibility for:
 - image rebuilds;
 - tracking which additions remain covered by support commitments.
 
-## Pull a coherent fresh pair
+## Refresh a floating base before retrying
 
-For development builds that use a Chainguard `-dev` variant:
+For development builds whose Dockerfile uses a floating Chainguard `-dev` tag:
 
 ```bash
 docker build --pull --no-cache -t app:test .
@@ -112,7 +117,7 @@ apk add --allow-untrusted package-name
 apk upgrade --available
 ```
 
-`--force-overwrite` can leave files owned by competing packages. `--allow-untrusted` disables signature enforcement. A broad upgrade can replace packages selected and tested by the base-image build, effectively creating an unreviewed distribution upgrade in a Docker layer.
+`--force-overwrite` overwrites files owned by other packages, masking a packaging conflict. `--allow-untrusted` permits packages with an untrusted signature or no signature. A broad upgrade can replace packages selected and tested by the base-image build, effectively creating an unreviewed distribution upgrade in a Docker layer.
 
 Also never add Alpine repositories to obtain another version. Wolfi and Alpine packages are not supported as a mixed package graph.
 
