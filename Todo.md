@@ -2,11 +2,10 @@
 
 ## Azure VMs
 
-1. Why Does a Resized Azure Disk Show the New Size in the Portal but Not in the Guest OS?
-2. How to Diagnose Azure VM Disk Throttling When CPU and Memory Look Healthy
-3. Azure VM Disk Host Caching: When to Use None, ReadOnly, or ReadWrite
-4. How to Get a Managed Identity Token from Azure VM IMDS Without Client Secrets
-5. Why Does `az login --identity` Say “No Subscriptions” When Key Vault Access Is Configured?
+1. How to Diagnose Azure VM Disk Throttling When CPU and Memory Look Healthy
+2. Azure VM Disk Host Caching: When to Use None, ReadOnly, or ReadWrite
+3. How to Get a Managed Identity Token from Azure VM IMDS Without Client Secrets
+4. Why Does `az login --identity` Say “No Subscriptions” When Key Vault Access Is Configured?
 
 ## Platform Metrics
 
