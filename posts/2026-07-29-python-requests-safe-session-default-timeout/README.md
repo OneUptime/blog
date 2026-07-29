@@ -34,11 +34,9 @@ For a codebase with many call sites, a small `Session` subclass provides a safer
 Requests does not document a `Session.timeout` configuration attribute. Setting one does not cause `Session.get()` to use it. Instead, override `request()`, which is the common path used by the Session convenience methods:
 
 ```python
-from typing import TypeAlias
-
 import requests
 
-TimeoutValue: TypeAlias = float | tuple[float, float]
+TimeoutValue = float | tuple[float, float]
 
 
 class TimeoutSession(requests.Session):
@@ -74,7 +72,7 @@ with TimeoutSession(default_timeout=(3.05, 20)) as session:
 
 An explicit `timeout=None` also remains an override and disables the Requests timeout for that call. That escape hatch should be rare and reviewed, but preserving it makes the class behavior honest and predictable.
 
-For Python versions before 3.10, replace the union syntax with `Union[float, Tuple[float, float]]`, or omit the annotation.
+For Python versions before 3.10, import `Tuple` and `Union` from `typing` and define the alias as `TimeoutValue = Union[float, Tuple[float, float]]`, or omit the annotation.
 
 ## Why Use a Session?
 
@@ -142,7 +140,7 @@ adapter = HTTPAdapter(max_retries=retry)
 session.mount("https://", adapter)
 ```
 
-This example permits a small number of retries for selected idempotent methods and disables automatic read retries. It is still only a starting point. Check the upstream API contract, the meaning of each status, and whether another layer already retries.
+This example permits status retries for selected idempotent methods, permits connection-error retries before a request is sent, and disables automatic read retries. It is still only a starting point. Check the upstream API contract, the meaning of each status, and whether another layer already retries.
 
 The `total` value in urllib3 is a retry count limit, not the total elapsed-time budget. Timeout values, backoff, and the initial attempt all contribute to elapsed time.
 
@@ -188,7 +186,7 @@ Also test the behavior of `timeout=None` if the application permits it.
 
 - Route outbound calls through the defaulted Session or a narrower application client.
 - Permit overrides only where an endpoint has measured, different behavior.
-- Record connect and read timeout exceptions separately.
+- Record connect and read phases separately where possible; a body-read timeout can surface as `ConnectionError`.
 - Include attempt count and elapsed time in telemetry.
 - Close streamed responses so pooled connections are returned.
 - Audit low-level `send()` calls that bypass the `request()` override.
