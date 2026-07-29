@@ -40,6 +40,7 @@ POST /v1/orders HTTP/1.1
 Host: api.example.com
 Idempotency-Key: 1b835e1a-a701-44ca-a175-9e968a3250e2
 Content-Type: application/json
+Content-Length: 58
 
 {"customer_id":"c-42","items":[{"sku":"A7","quantity":2}]}
 ```
@@ -69,7 +70,7 @@ CREATE TABLE idempotency_records (
 
 The primary key is the concurrency primitive. Two servers can receive the same retry at once, but only one can create the key record.
 
-Also store a hash of the normalized operation inputs. If a client reuses a key with different parameters, reject it rather than returning a result from an unrelated request. Stripe documents the same parameter-consistency principle for its idempotency layer.
+Also store a collision-resistant hash of the operation identity and normalized inputs, including the method, canonical route, and all parameters that affect behavior. If a client reuses a key with different parameters, reject it rather than returning a result from an unrelated request. Stripe documents the same parameter-consistency principle for its idempotency layer.
 
 Do not put credentials, email addresses, or other sensitive values directly into keys.
 
@@ -108,19 +109,19 @@ WHERE tenant_id = $1
 COMMIT;
 ```
 
-Application logic must branch on whether the first `INSERT ... RETURNING` produced a row:
+At PostgreSQL's default `READ COMMITTED` isolation level, application logic must branch on whether the first `INSERT ... RETURNING` produced a row:
 
 - row returned: this transaction owns the new operation;
-- no row returned: load the existing record, verify the request hash, and return or wait for its result;
+- no row returned: after the conflicting transaction commits, a following command gets a new snapshot and can load the existing record, verify the request hash, and return its result;
 - transaction rolled back: neither the business write nor the key record should remain.
 
-PostgreSQL documents that `ON CONFLICT DO NOTHING` avoids a unique-constraint error, and that `ON CONFLICT DO UPDATE` provides an atomic insert-or-update outcome. The exact concurrency flow should be tested with the application's isolation level and driver.
+PostgreSQL documents that `ON CONFLICT DO NOTHING` avoids a unique-constraint error, and that `ON CONFLICT DO UPDATE` provides an atomic insert-or-update outcome. At `REPEATABLE READ` or `SERIALIZABLE`, a concurrent conflict can instead require retrying the whole transaction after a serialization failure. The exact concurrency flow should be tested with the application's isolation level and driver.
 
 Never insert the order in one transaction and the idempotency record in a later transaction. A crash between them leaves an unrecognized successful write.
 
 ## Handle Concurrent Retries
 
-The duplicate request can arrive while the first transaction is still running. Define an explicit policy:
+The duplicate request can arrive while the first transaction is still running. Define an explicit policy. The first option follows directly from the transaction above; the other two require a separate coordination mechanism or a deliberately committed `processing` record:
 
 1. Let the unique-index conflict wait for the first transaction to finish, then read its record.
 2. Return an operation-in-progress response and let the client poll.
@@ -174,7 +175,7 @@ Use one of these patterns:
 - give the downstream command a stable business identifier and deduplicate there;
 - reconcile local and remote state after an ambiguous failure.
 
-An outbox makes local state and the intent to publish atomic:
+An outbox makes local state and the intent to publish atomic. In the request path, include the idempotency-record insert and completion update from the earlier example in this same transaction; they are omitted here only to highlight the outbox writes:
 
 ```sql
 BEGIN;
@@ -249,7 +250,7 @@ Cache eviction, restart, replication lag, or two application replicas can admit 
 
 ### Assuming PUT or DELETE solves all duplication
 
-HTTP defines these methods as idempotent in their intended effect, but application-specific side effects can still violate that promise. Test the actual endpoint contract.
+HTTP defines these methods as idempotent in their intended effect, but an endpoint implementation can still violate those semantics by performing a user-visible effect on every retry. Test the actual endpoint contract.
 
 ## Validation Checklist
 
