@@ -91,12 +91,12 @@ az vm extension set \
   --extension-instance-name customScript \
   --name CustomScript \
   --publisher Microsoft.Azure.Extensions \
-  --protected-settings @custom-script-settings.json
+  --settings @custom-script-settings.json
 ```
 
-Any integer is acceptable as long as it differs from the previous value. Store it in infrastructure as code so the value changes only when an operator intends another execution.
+Any 32-bit integer is acceptable as long as it differs from the previous value. Store it in infrastructure as code so the value changes only when an operator intends another execution.
 
-Put `fileUris`, `commandToExecute`, and inline script content in either public or protected settings, not both. Use protected settings when a command or URI contains secrets. A protected setting reduces control-plane exposure, but the script must still avoid echoing secrets into its logs.
+Keep `timestamp` in public settings. Put `fileUris`, `commandToExecute`, and inline script content in either public or protected settings, not both. Use protected settings when a command or URI contains secrets. A protected setting reduces control-plane exposure, but the script must still avoid echoing secrets into its logs.
 
 ## Force a rerun on Windows
 
@@ -146,16 +146,19 @@ set -euo pipefail
 
 install -d -m 0755 /opt/myapp
 
-if ! systemctl list-unit-files myapp.service >/dev/null 2>&1; then
+if ! cmp -s ./myapp.service /etc/systemd/system/myapp.service; then
   install -m 0644 ./myapp.service /etc/systemd/system/myapp.service
   systemctl daemon-reload
+  systemctl enable myapp.service
+  systemctl restart myapp.service
+else
+  systemctl enable --now myapp.service
 fi
 
-systemctl enable --now myapp.service
 systemctl is-active --quiet myapp.service
 ```
 
-The exact unit-file check may need adjustment for the distribution, but the pattern is important: observe, converge, then verify.
+The exact paths and service commands may need adjustment for the distribution, but the pattern is important: observe, converge, then verify.
 
 ## Respect extension runtime limits
 
@@ -170,7 +173,7 @@ Microsoft gives Custom Script a 90-minute execution window. Avoid:
 
 If the configuration requires a reboot, schedule it through a separate, managed mechanism after the extension has completed. The extension does not resume automatically across the reboot.
 
-Use explicit network timeouts and retries for external downloads. A script URI must be reachable from the VM. Managed identity can be used for supported Linux Custom Script downloads from Azure Storage, and should be supplied through protected settings.
+Use explicit network timeouts and retries for external downloads. A script URI must be reachable from the VM. In Linux Custom Script version 2.1 and later, managed identity can be used for supported downloads from Azure Storage, and should be supplied through protected settings.
 
 ## Use another mechanism for recurring work
 
@@ -189,7 +192,7 @@ The extension can bootstrap that durable mechanism once.
 Do not stop at `Provisioning succeeded`. Verify:
 
 1. the instance view has a new execution result;
-2. logs show the expected timestamp or force update;
+2. logs show a new handler execution for the expected sequence number;
 3. the script exit code is zero;
 4. the intended service, file, package, or configuration exists;
 5. the workload's own health check passes.
