@@ -1606,3 +1606,233 @@
 18. How to Correlate One HTTP Request with Multiple Message Consumers at Both Request and Message Level
 19. How to Validate Alert Correlation Rules Against Historical Incidents Before Production
 20. How to Measure Whether Signal Correlation Reduces Noise Without Silencing Important Alerts
+
+## API Server
+
+1. `kubectl` Falls Back to localhost:8080: How to Repair a Missing or Mis-Merged Kubeconfig
+2. Kubernetes API Server Returns 401 Unauthorized: Trace Token Issuer, Audience, and Clock Skew
+3. 401 or 403? How to Separate Kubernetes API Authentication Failures from RBAC Denials
+4. `/readyz` Fails While `/livez` Passes: Reading Kubernetes API Server Health Checks
+5. How to Health-Check an HA Kubernetes API Server Without Routing to an Unready Control-Plane Node
+6. kube-apiserver Static Pod Keeps Restarting: Recover It with `crictl` When `kubectl` Is Unavailable
+7. kubeadm Says "API Server Is Not Healthy": Check Kubelet, cgroups, etcd, and Static-Pod Logs
+8. Add a Load-Balancer Address to kube-apiserver Certificates Without Breaking TLS SAN Validation
+9. Kubernetes API Connections Reset Intermittently: Find Socket Saturation, Restarts, and Broken Load-Balancer Health Checks
+10. Why Kubernetes Watches Return 410 Gone—and How Controllers Should Relist and Reconcile Current State
+11. How to Prevent Controller List-Watch Storms from Overloading the Kubernetes API Server
+12. "Couldn't Get Current Server API Group List": Clear Stale Discovery and Find Broken APIService Registrations
+13. Which Admission Webhook Is Blocking `kubectl`? Trace the API Request and Test Control-Plane Reachability
+14. kube-apiserver Is OOMKilled During Large LIST Requests: Measure Watch-Cache and Serialization Memory
+15. Kubernetes Rejects a 3 MB Object: Redesign Oversized ConfigMaps and Custom Resources
+16. Kubernetes Events Never Expire: Verify `--event-ttl` and Reclaim etcd Space Safely
+17. How to Rate-Limit Kubernetes Event Floods Before They Saturate the API Server
+18. `kubectl get` Works but `logs` and `exec` Fail: Repair the API Server-to-Kubelet Certificate Path
+19. kube-apiserver Cannot Create the Storage Backend: Trace etcd DNS, Certificates, and Port 2379
+20. How to Benchmark Kubernetes API Server Capacity with Realistic LIST, WATCH, and Mutation Workloads
+
+## CloudStack
+
+1. How to Install Apache CloudStack with KVM on a Small Linux Lab
+2. How to Fix libvirtd Startup Failures When Adding a KVM Host to CloudStack
+3. How to Troubleshoot a CloudStack Host That Fails to Join a Cluster
+4. How to Recover CloudStack System VMs Stuck in the Starting State
+5. How to Fix the CloudStack UI When It Returns HTTP 503 or 500
+6. How to Restore Console Access When CloudStack System VMs Are Running but Unreachable
+7. How to Fix a CloudStack VM That Has Console Access but No Ping or SSH Connectivity
+8. How to Let CloudStack Guest VMs Reach the Physical Gateway
+9. How to Repair VM Network Rules After a CloudStack Upgrade
+10. How to Register an ISO or Template That Never Becomes Ready in CloudStack
+11. How to Diagnose a Secondary Storage VM That Cannot Download System Templates
+12. How to Replace or Readdress CloudStack Secondary Storage Without Breaking Templates
+13. How to Create a Reusable CloudStack Template from a VM Root Volume
+14. How to Fix `InsufficientServerCapacity` When Deploying from a Custom CloudStack Template
+15. How to Attach a Data Volume When CloudStack Reports a QEMU or NFS Path Error
+16. How to Choose Local, NFS, or Ceph Primary Storage for CloudStack VM High Availability
+17. How to Back Up CloudStack VMs with Recurring Volume Snapshots and Off-Cluster Copies
+18. How to Sign CloudStack API Requests Correctly When Parameters Contain URLs
+19. How to Deploy Multiple CloudStack VMs in Parallel Through the API
+20. How to Deploy CloudStack VMs with Custom CPU, vCPU, and Memory Through the API
+
+## Erasure Coding
+
+1. How to Enable Erasure Coding for Selected HDFS Directories and Verify the Active Policy
+2. How to Mix Replicated and Erasure-Coded Directories Safely in One HDFS Cluster
+3. How to Choose an HDFS Erasure Coding Policy with Replication-Equivalent Durability
+4. How to Measure the Read-Performance Cost of HDFS Erasure Coding Before Migration
+5. How to Replace a Failed MinIO Drive and Trigger Automatic Erasure-Code Healing
+6. How to Verify MinIO Recognizes a Replacement Drive After Healing
+7. How to Keep MinIO Writes Durable While an Erasure Set Is Degraded
+8. How to Size MinIO Parity So a Full Node Failure Stays Within Write Quorum
+9. How to Prevent MinIO Healing from Saturating the Storage Network
+10. How to Estimate Stranded Capacity When Erasure Coding Uses Mixed-Size Drives
+11. How to Build PAR2 Recovery Files for Long-Term Archives and Test a Restore
+12. How to Update PAR2 Parity After Archived Files Change Without Losing Recoverability
+13. How to Detect Which Reed-Solomon Shards Are Corrupt Before Decoding
+14. How to Recover Missing Reed-Solomon Shards and Verify the Reconstructed File
+15. How to Decode Reed-Solomon Data When Errors and Erasures Occur Together
+16. How to Calculate the Reed-Solomon Error-and-Erasure Correction Limit
+17. How to Split a File into Reed-Solomon Data and Parity Shards in JavaScript
+18. How to Implement Reed-Solomon Encoding and Decoding in Java
+19. How to Choose Reed-Solomon Shard Size and Packet Size for CPU-Efficient Encoding
+20. How to Benchmark Erasure-Coding Throughput Before Deploying It on SSD Storage
+
+## Data Plane
+
+1. Envoy Data Plane Is Stuck Not Ready: Diagnose xDS gRPC Status 14, DNS, and `initial_fetch_timeout`
+2. The Application Starts Before Istio Proxy: Gate Startup with `holdApplicationUntilProxyStarts` or Native Sidecars
+3. Istio Proxy Readiness Returns 503: Verify Service Ports, Endpoints, and Envoy Configuration
+4. Does Envoy Pull or Does Istiod Push? Trace the Long-Lived xDS Stream from Bootstrap to ACK and NACK
+5. Istio Sidecar Injection Webhook Times Out: Test the API-Server-to-istiod Network Path, CA Bundle, and Endpoints
+6. Istio Injects Its Own Control Plane and Breaks the Webhook: Recover from a Mislabelled `istio-system` Namespace
+7. Kubernetes Service Has Endpoints but Envoy EDS Is Empty: Trace Port Names, Subsets, and Discovery Scope
+8. Envoy Reports `WRONG_VERSION_NUMBER` During TLS Origination: Align Application, ServiceEntry, and DestinationRule Ports
+9. gRPC Through Istio Fails with 503 UR: Diagnose HTTP/2 Negotiation, mTLS, and Upstream Resets
+10. Envoy Gateway Returns `NR filter_chain_not_found` Behind HAProxy: Preserve SNI and Listener Matching
+11. Strict mTLS Breaks One Workload: Find Sidecar Gaps and PeerAuthentication Scope
+12. Init-Container Egress Skips the Mesh: Secure Pre-Proxy Traffic with Istio CNI or Native Sidecars
+13. How to Prove Pod Traffic Cannot Bypass Envoy: Lock Down `NET_ADMIN`, Egress, and NetworkPolicy
+14. Why Istio Cannot Route Directly from One VirtualService to Another—and What to Model Instead
+15. Multi-Container Pod Metrics Vanish Under Strict mTLS: Build a Secure Fan-In Scrape Endpoint
+16. Istio Sidecar Cannot Resolve istiod: Trace Pod DNS, Bootstrap Configuration, and xDS Cluster Health
+17. Istio Proxy Connects to istiod but Receives No Routes: Compare Configuration Scope, Revisions, and Namespaces
+18. Traffic Works Outside the Mesh but Times Out Inside: Walk Envoy's Listener-to-Cluster-to-Endpoint Chain
+19. Envoy Has an Endpoint but Still Returns 503: Check Outlier Ejection, Health Flags, and Circuit-Breaker State
+20. How to Capture a Data-Plane Packet Trace in a Distroless Envoy Pod with Ephemeral Containers
+
+## ko
+
+1. How to Push ko-Built Go Images to a Private Registry with `KO_DOCKER_REPO` and `ko login`
+2. How to Use ko in Google Cloud Build Without a Docker Daemon or Missing-Shell Errors
+3. How to Load ko Images Directly into Docker or kind Without Pushing to a Registry
+4. How to Deploy `ko://` Image References with `ko resolve` and `ko apply`
+5. How to Build amd64 and arm64 Go Images with ko as a Multi-Platform Manifest
+6. How to Make ko Work with CGO by Choosing a Compatible Base Image
+7. How to Replace ko's Chainguard Static Base When Your Go App Needs OS Packages or a Shell
+8. How to Debug a ko Container That Has No Shell, Package Manager, or Debug Utilities
+9. How to Configure Different Base Images and Build Flags for Multiple Go Commands in `.ko.yaml`
+10. How to Stamp Git Commit and Version Metadata into a ko Image with `ldflags` and OCI Labels
+11. How to Avoid ko Image-Name Collisions with `--preserve-import-paths`, `--base-import-paths`, and `--bare`
+12. How to Tag ko Images for Releases While Keeping Digest-Pinned Deployments
+13. How to Speed Up Repeated ko Builds in CI with `KOCACHE` and Shared Go Caches
+14. How to Build and Push a Go Image to GHCR with ko in GitHub Actions
+15. How to Build Multiple Go Services from a Monorepo with ko and Multiple `go.mod` Files
+16. How to Bundle Templates and Static Files with ko's `kodata` and `KO_DATA_PATH`
+17. How to Add a Corporate Root CA to a ko-Built Go Container
+18. How to Generate, Download, and Verify SPDX SBOMs for ko Images
+19. How to Export a ko Image as an OCI Layout for Air-Gapped Delivery
+20. How to Embed ko's `pkg/build` and `pkg/publish` APIs in a Go Tool
+
+## yq
+
+1. How to Tell Which yq You Installed—and Translate Commands to Mike Farah yq v4
+2. How to Read a YAML Key That Contains Dots, Dashes, or Other Special Characters with yq
+3. How to Use a Bash Variable as a Dynamic yq Key Without Getting `null`
+4. How to Inject Environment Variables with yq While Preserving String, Number, and Boolean Types
+5. How to Edit YAML In Place with yq Without Truncating the File on Failure
+6. How to Return an Empty String—or Fail CI—When a yq Path Is Missing
+7. How to Update Only the Array Object Matching a Name, Label, or Other Field with yq
+8. How to Upsert a YAML Array Item with yq When the Object May Not Exist
+9. How to Append to a yq List Only If the Value Is Not Already Present
+10. How to Build YAML Arrays and Nested Objects from Bash Data with yq
+11. How to Deep-Merge Multiple YAML Files with Explicit Override Precedence in yq
+12. How to Merge YAML Arrays by a Unique Key Instead of Replacing Them with yq
+13. How to Keep Every Conflicting Value When Merging YAML Files with yq
+14. How to Select and Modify One Kubernetes Resource in a Multi-Document YAML File with yq
+15. How to Split a Kubernetes YAML Bundle into Files Named by Kind and Resource Name with yq
+16. How to Move or Rename a Nested YAML Key Without Losing Its Children in yq
+17. How to Update Every Nested Key Matching a Name Pattern with Recursive yq Queries
+18. How to Edit YAML Comments, Anchors, Aliases, and Scalar Styles with Mike Farah yq
+19. How to Validate YAML with yq and Return a Clean Exit Code in CI
+20. How to Convert Selected YAML Fields to CSV with yq Without Losing Quoting
+
+## Contour
+
+1. Why a Contour HTTPProxy Says `unresolved service reference`: Fixing Service Names, Ports, and Namespaces
+2. How to Enable WebSockets and SignalR on a Specific Contour Route
+3. How to Expose gRPC-Web Through Contour with HTTP/2, TLS, and a Safe CORS Policy
+4. How to Add Basic Auth or OIDC to Contour with an External Authorization Service
+5. How to Issue and Renew Let's Encrypt Certificates for Contour with cert-manager
+6. How to Share a Wildcard TLS Secret Across Namespaces with Contour Certificate Delegation
+7. How to Encrypt and Verify Contour-to-Upstream Traffic with a Custom CA and SNI
+8. How to Require Client Certificates with Contour mTLS and HTTPProxy
+9. How to Strip or Replace a URL Prefix in Contour Without Breaking Application Redirects
+10. Why Contour Returns 504 for Long Requests: Aligning Response, Idle, and Retry Timeouts
+11. How to Mirror Contour Traffic to a Service in Another Cluster Without Host-Header 404s
+12. How to Delegate Contour Routes to Application Namespaces with HTTPProxy Includes
+13. How to Diagnose an Invalid HTTPProxy with Status Conditions and Contour's Configuration Graph
+14. How to Troubleshoot Contour 503 and Envoy `connection failure` Errors from Route to Endpoint
+15. How to Preserve the Original Client IP Through Contour with PROXY Protocol and Trusted Hops
+16. How to Run Separate Public and Private Contour Ingress Classes in One Kubernetes Cluster
+17. How to Route Raw TCP and TLS-Passthrough Services with Contour `TCPProxy`
+18. How to Configure Contour Active Health Checks Without Confusing Them with Kubernetes Probes
+19. How to Deploy Kubernetes Gateway API with Contour Using `GatewayClass`, `Gateway`, and `HTTPRoute`
+20. How to Migrate NGINX Ingress Annotations to Contour HTTPProxy Without Silent No-Ops
+
+## OneUptime
+
+1. How to Self-Host OneUptime with Docker Compose Behind an Existing Reverse Proxy
+2. OneUptime Docker Compose Won’t Start: How to Diagnose Unhealthy Containers, Port Conflicts, and Invalid Secrets
+3. How to Configure SMTP for a Self-Hosted OneUptime Instance and Troubleshoot Missing Email Alerts
+4. How to Deploy OneUptime on Kubernetes with Helm and Production-Ready Persistent Storage
+5. How to Size CPU, Memory, and Storage for a Self-Hosted OneUptime Deployment
+6. How to Upgrade Self-Hosted OneUptime Without Losing Monitors, Incidents, or Telemetry
+7. How to Back Up and Restore OneUptime’s PostgreSQL, ClickHouse, and Object Storage Data
+8. How to Monitor Private LAN Services with OneUptime Probes Without Exposing Them Publicly
+9. How to Run OneUptime Probes in Multiple Regions and Avoid False Outage Alerts
+10. How to Import Existing Uptime Kuma Monitors into OneUptime
+11. How to Run a OneUptime Probe Through an HTTP Proxy in an Egress-Restricted Network
+12. How to Configure On-Call Rotations, Overrides, and Escalation Policies in OneUptime
+13. How to Prevent Alert Storms in OneUptime with Dependencies, Acknowledgements, and Cooldowns
+14. How to Send OpenTelemetry Logs, Metrics, and Traces to a Self-Hosted OneUptime Collector
+15. How to Create an Authenticated API Monitor in OneUptime with Headers and JSON Assertions
+16. How to Monitor a Login Flow in OneUptime When the Site Uses SSO
+17. How to Provision Monitors and Status Pages Automatically with the OneUptime API
+18. How to Add a Custom Domain and Subscriber Notifications to a OneUptime Status Page
+19. How to Build a OneUptime Dashboard That Correlates Incidents, Alerts, Logs, and Traces
+20. How to Troubleshoot Missing Telemetry in OneUptime from Collector to Dashboard
+
+## Rightsizing
+
+1. How to Choose a Rightsizing Observation Window That Captures Peaks, Seasonality, and Deployments
+2. P95, P99, or Maximum? How to Turn Utilization History into Safe Rightsizing Recommendations
+3. How to Add Headroom to Rightsizing Recommendations Without Preserving Chronic Waste
+4. How to Rightsize Bursty Workloads Without Optimizing Away Their Capacity to Spike
+5. How to Rightsize Batch Jobs When Every Run Has a Different CPU and Memory Profile
+6. How to Rightsize Kubernetes Pods Without Breaking HPA Scaling Behavior
+7. How to Compare Kubernetes Rightsizing Recommendations When VPA, Goldilocks, and Cloud Tools Disagree
+8. How to Roll Out Kubernetes Rightsizing Changes Safely with Canaries and Rollback Gates
+9. How to Rightsize Guaranteed QoS Pods Without Losing Their Kubernetes QoS Class
+10. How to Account for Init Containers, DaemonSets, and System Reservations in Node Rightsizing
+11. Why Lower Pod Requests Did Not Reduce Your Cloud Bill—and How to Fix Bin-Packing Waste
+12. How to Measure Kubernetes Resource Fragmentation Before Changing Node Shapes
+13. How to Choose CPU-Optimized vs Memory-Optimized Nodes from Workload Request Ratios
+14. How to Rightsize JVM Containers Without Triggering Heap OOMs or CPU Throttling
+15. How to Rightsize Stateful Databases Using Connections, Cache Hit Rate, IOPS, and Latency
+16. How to Rightsize Cloud Storage Without Trading Capacity Savings for an IOPS Bottleneck
+17. How to Rightsize GPU Workloads Using Utilization, Memory, and Queue Time
+18. How to Rightsize Serverless Functions from Duration, Concurrency, Memory, and Cold Starts
+19. How to Validate Rightsizing Savings Before Changing Reserved Instances or Savings Plans
+20. How to Build a Rightsizing Policy with Minimum Samples, Confidence Scores, and Approval Gates
+
+## Colocation
+
+1. How to Compare Colocation Quotes: Space, Power, Bandwidth, Cross-Connects, and Hidden Fees
+2. How to Calculate Colocation Power Requirements from Real Server Draw, Not PSU Nameplates
+3. How to Size A and B Power Circuits Without Violating the 80 Percent Continuous-Load Rule
+4. How to Choose Between Per-Amp, Metered-kWh, and Flat-Rate Colocation Power Pricing
+5. How to Estimate How Many Servers a Colocation Rack Can Actually Support
+6. How to Choose Between 95th-Percentile, Committed, and Unmetered Colocation Bandwidth
+7. How to Test a Colocation Provider’s Bandwidth, Latency, Peering, and Packet Loss
+8. How to Design Redundant Internet Connectivity for a Single Colocation Rack
+9. How to Connect an Office to a Colocation Facility with VPN, Metro Ethernet, or SD-WAN
+10. How to Bring Your Own IP Addresses and BGP to a Colocation Provider
+11. How to Build Out-of-Band Management for Colocated Servers with IPMI, Console, and Smart PDUs
+12. How to Secure IPMI and Remote Management in a Shared Colocation Network
+13. How to Write a Remote-Hands Runbook That Technicians Can Execute Without Guesswork
+14. How to Stock and Track Spare Parts at a Colocation Facility for Fast Repairs
+15. How to Label Rack Units, Power Feeds, Ports, and Cables Before a Colocation Move
+16. How to Plan a Low-Downtime Migration from an On-Premises Server Room to Colocation
+17. How to Pack and Transport Servers for a Colocation Move Without Damaging Drives or Rails
+18. How to Verify Colocation Resilience: UPS, Generators, Cooling, Fire Suppression, and SLAs
+19. How to Audit Physical Access and Tenant Isolation in a Shared Colocation Facility
+20. How to Decide Whether Colocation or Dedicated Servers Cost Less for Your Workload
