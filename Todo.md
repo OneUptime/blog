@@ -2,14 +2,13 @@
 
 ## Chainguard
 
-1. Why Does `apk.cgr.dev` Fail Intermittently Behind Nexus or Artifactory?
-2. How to Avoid APK Version Conflicts When Extending Nightly Rebuilt Chainguard Images
-3. Chainguard vs Alpine vs Google Distroless: What Changes for libc, Debugging, and Compatibility?
-4. How to Verify a Chainguard Image Signature with Cosign
-5. How to Download the Correct Architecture-Specific SBOM for a Chainguard Image
-6. Why Does a Vulnerability Scanner Still Report CVEs in a Chainguard-Based Image?
-7. How to Pin Chainguard Images by Digest Without Missing Security Rebuilds
-8. How to Inspect Chainguard Tag History and See What Changed Between Rebuilds
+1. How to Avoid APK Version Conflicts When Extending Nightly Rebuilt Chainguard Images
+2. Chainguard vs Alpine vs Google Distroless: What Changes for libc, Debugging, and Compatibility?
+3. How to Verify a Chainguard Image Signature with Cosign
+4. How to Download the Correct Architecture-Specific SBOM for a Chainguard Image
+5. Why Does a Vulnerability Scanner Still Report CVEs in a Chainguard-Based Image?
+6. How to Pin Chainguard Images by Digest Without Missing Security Rebuilds
+7. How to Inspect Chainguard Tag History and See What Changed Between Rebuilds
 
 ## Azure VMs
 
