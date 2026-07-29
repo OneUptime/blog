@@ -36,6 +36,8 @@ A single slow request can be latency-bound without reaching an IOPS limit. A lar
 
 On the VM's **Metrics** page, chart these at one-minute granularity and split disk metrics by LUN where available:
 
+These consumed-percentage metrics are available only on VM series that support Premium Storage.
+
 - **OS Disk IOPS Consumed Percentage**;
 - **OS Disk Bandwidth Consumed Percentage**;
 - **Data Disk IOPS Consumed Percentage**;
@@ -51,7 +53,7 @@ Also graph:
 
 - disk read/write operations per second;
 - disk read/write bytes per second;
-- read/write latency;
+- disk latency, noting that the OS and data disk latency metrics are in preview and unavailable for disks attached through an NVMe controller;
 - queue depth;
 - burst IOPS and bandwidth targets;
 - used burst-credit percentages for the disk and VM.
@@ -137,7 +139,7 @@ Guest tools show what the OS experiences. Azure metrics show where platform limi
 
 ## Check bursting
 
-Eligible Azure disks and VM sizes can temporarily exceed baseline performance using credits or on-demand bursting. A workload may look healthy after deployment, then slow down when accumulated credits reach zero.
+Eligible Azure disks can temporarily exceed baseline performance through credit-based or on-demand bursting. Eligible VM sizes use only credit-based bursting. A credit-based workload may look healthy after deployment, then slow down when its credit bucket is depleted and the applicable used burst-credit percentage approaches 100%.
 
 Graph:
 
@@ -211,4 +213,3 @@ CPU and memory dashboards answer different questions. Disk consumed percentages 
 - [Virtual machine and disk performance](https://learn.microsoft.com/en-us/azure/virtual-machines/disks-performance)
 - [Azure Disk Storage scalability and performance targets](https://learn.microsoft.com/en-us/azure/virtual-machines/disks-scalability-targets)
 - [Design Azure Premium Storage for high performance](https://learn.microsoft.com/en-us/azure/virtual-machines/premium-storage-performance)
-
