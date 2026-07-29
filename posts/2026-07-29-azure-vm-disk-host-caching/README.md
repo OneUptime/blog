@@ -13,7 +13,7 @@ Azure VM host caching uses storage on the physical host to serve managed-disk I/
 Choose caching per disk and workload:
 
 - **None** for an uncached remote-storage path;
-- **ReadOnly** for read-heavy data where stale-cache and write behavior are supported;
+- **ReadOnly** for read-heavy data where its cache and write behavior are appropriate;
 - **ReadWrite** only when the application correctly preserves required writes to persistent storage.
 
 Do not select the mode from a generic performance checklist alone. Database data, logs, operating systems, and scratch workloads have different correctness requirements.
@@ -22,10 +22,12 @@ Do not select the mode from a generic performance checklist alone. Database data
 
 ### None
 
-Reads and writes use the uncached managed-disk path and are subject to:
+On data disks, reads and writes use the uncached managed-disk path and are subject to:
 
 - the disk's IOPS and bandwidth limits;
 - the VM size's uncached IOPS and bandwidth limits.
+
+None is not supported on OS disks. If it is selected for an OS disk, Azure internally uses ReadOnly instead.
 
 Use None when host-cache benefit is low, unsupported, or unsafe. Write-heavy transaction logs are a common example because ReadOnly provides little benefit and write durability is critical.
 
@@ -35,7 +37,7 @@ Reads first check the host cache:
 
 - a cache hit is served from the host cache and its cached I/O limits;
 - a cache miss reads from the managed disk and fills the cache;
-- writes continue to persistent storage and invalidate affected cached content as required by the platform.
+- a write is complete only after it reaches both the cache and the managed disk, and it counts against both the VM's cached and uncached limits.
 
 Microsoft recommends ReadOnly for read-heavy Premium Storage workloads and uses SQL Server data files as an example. Reads served from cache do not count against the managed disk's IOPS and throughput, which can free remote-disk capacity for misses and writes.
 
@@ -97,6 +99,8 @@ Use Azure Monitor:
 - VM Uncached Bandwidth Consumed Percentage;
 - per-disk IOPS, bandwidth, latency, and queue depth.
 
+Metric availability depends on the disk controller. In particular, the OS Disk Latency and Data Disk Latency metrics are in preview and are not available for disks attached through an NVMe controller.
+
 Inside Linux, correlate with `iostat -xz`. On Windows, use PhysicalDisk performance counters. Benchmark the application's real read/write mix, not only a synthetic test with an unrealistically small working set that fits entirely in cache.
 
 Record:
@@ -112,7 +116,7 @@ Record:
 
 ## Change caching as a controlled operation
 
-Changing a disk's cache setting can detach and reattach the target disk or require VM state changes in some scenarios. Treat it as disruptive unless current documentation for the exact configuration proves otherwise.
+Changing a disk's cache setting detaches and reattaches the target disk. If it is the OS disk, Azure also restarts the VM. Treat the change as disruptive.
 
 Before changing:
 
