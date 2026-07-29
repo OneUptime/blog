@@ -2,14 +2,13 @@
 
 ## Azure VMs
 
-1. How to Repair an Unbootable Azure Windows VM by Attaching Its OS Disk to a Repair VM
-2. How to Recover an Azure Linux VM from a Broken `fstab`, GRUB, or Kernel Update
-3. What Data Can You Safely Store on an Azure VM Temporary Disk?
-4. Why Does a Resized Azure Disk Show the New Size in the Portal but Not in the Guest OS?
-5. How to Diagnose Azure VM Disk Throttling When CPU and Memory Look Healthy
-6. Azure VM Disk Host Caching: When to Use None, ReadOnly, or ReadWrite
-7. How to Get a Managed Identity Token from Azure VM IMDS Without Client Secrets
-8. Why Does `az login --identity` Say “No Subscriptions” When Key Vault Access Is Configured?
+1. How to Recover an Azure Linux VM from a Broken `fstab`, GRUB, or Kernel Update
+2. What Data Can You Safely Store on an Azure VM Temporary Disk?
+3. Why Does a Resized Azure Disk Show the New Size in the Portal but Not in the Guest OS?
+4. How to Diagnose Azure VM Disk Throttling When CPU and Memory Look Healthy
+5. Azure VM Disk Host Caching: When to Use None, ReadOnly, or ReadWrite
+6. How to Get a Managed Identity Token from Azure VM IMDS Without Client Secrets
+7. Why Does `az login --identity` Say “No Subscriptions” When Key Vault Access Is Configured?
 
 ## Platform Metrics
 
