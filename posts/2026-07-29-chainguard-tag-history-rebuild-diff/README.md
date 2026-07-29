@@ -77,7 +77,7 @@ Specify the platform. An index update can affect one architecture differently fr
 
 ## Compare two builds
 
-`chainctl images diff` compares SBOM packages by package URL and runs Grype vulnerability scans:
+`chainctl images diff` compares SBOM packages by package URL (PURL) and version and runs Grype vulnerability scans:
 
 ```bash
 chainctl images diff \
@@ -102,7 +102,7 @@ Vulnerability results are time-sensitive because Grype's database changes. Store
 
 ## Compare image configuration
 
-An SBOM diff does not show every behavioral setting. Inspect both manifests:
+An SBOM diff does not show every behavioral setting. Inspect the local configuration of both platform-selected images:
 
 ```bash
 docker pull --platform linux/amd64 "$OLD"
@@ -134,11 +134,11 @@ jq '.[0].Config | {
 diff -u old-config.json new-config.json
 ```
 
-Also compare layer sizes and manifests with `docker buildx imagetools inspect`. A digest changes whenever the manifest changes, even if the application-visible files appear equivalent.
+Also compare the raw index and platform-specific manifests, including layer descriptor sizes, with `docker buildx imagetools inspect --raw`. A digest changes whenever the manifest changes, even if the application-visible files appear equivalent.
 
 ## Query the Tag History API
 
-For public images, obtain an anonymous repository-scoped registry token:
+For a Free public image such as `python:latest`, obtain an anonymous repository-scoped registry token:
 
 ```bash
 IMAGE=python
@@ -168,12 +168,15 @@ Treat registry tokens as secrets and do not print them in CI logs.
 Download the signed SPDX attestation for the same platform from each digest:
 
 ```bash
-for ref in "$OLD" "$NEW"; do
-  cosign download attestation \
-    --platform linux/amd64 \
-    --predicate-type https://spdx.dev/Document \
-    "$ref"
-done
+cosign download attestation \
+  --platform linux/amd64 \
+  --predicate-type https://spdx.dev/Document \
+  "$OLD" > old-attestation.jsonl
+
+cosign download attestation \
+  --platform linux/amd64 \
+  --predicate-type https://spdx.dev/Document \
+  "$NEW" > new-attestation.jsonl
 ```
 
 Verify the attestation signer before relying on its contents. Then normalize package names, versions, and PURLs and compare them. Keep the original signed envelopes as evidence, not only the transformed TSV output.
