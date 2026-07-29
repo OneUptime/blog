@@ -8,13 +8,13 @@ Description: Diagnose a deallocated Azure VM that cannot start because of capaci
 
 ---
 
-A deallocated Azure VM has released its physical host allocation. Starting it is therefore a new allocation request, not merely a guest boot. The VM's disks and configuration can be healthy while Azure is temporarily unable to place the requested size under all of its existing constraints.
+A deallocated Azure VM has released its own compute allocation. Starting it is therefore a new allocation request, not merely a guest boot. The VM's disks and configuration can be healthy while Azure is temporarily unable to place the requested size under all of its existing constraints.
 
 First capture the exact error from the Activity log. `AllocationFailed`, `ZonalAllocationFailed`, `OverconstrainedAllocationRequest`, `SkuNotAvailable`, and quota errors describe different problems and require different fixes.
 
-## Deallocation trades placement for lower cost
+## Deallocation usually trades placement for lower cost
 
-While a VM is `Stopped (deallocated)`, Azure does not bill its compute instance and does not hold a host slot for it. At the next start, the Compute platform must find hardware that satisfies properties such as:
+While a VM is `Stopped (deallocated)`, Azure does not bill the VM compute instance and normally does not hold a host slot for it. Other resources can continue to incur charges: a provisioned Dedicated Host remains billed even without running VMs, and an on-demand Capacity Reservation remains billed while preserving its reserved capacity independently of the VM's power state. At the next start, the Compute platform must find hardware that satisfies properties such as:
 
 - VM size and processor generation;
 - region and availability zone;
@@ -80,8 +80,17 @@ Azure may have capacity for the size but not for the combination of size, zone, 
 az vm show \
   --resource-group myResourceGroup \
   --name myVM \
-  --query "{size:hardwareProfile.vmSize,zones:zones,ppg:proximityPlacementGroup.id,host:host.id,capacityReservation:capacityReservation.capacityReservationGroup.id,storage:storageProfile,network:networkProfile}" \
+  --query "{size:hardwareProfile.vmSize,zones:zones,availabilitySet:availabilitySet.id,scaleSet:virtualMachineScaleSet.id,ppg:proximityPlacementGroup.id,host:host.id,hostGroup:hostGroup.id,capacityReservation:capacityReservation.capacityReservationGroup.id,storage:storageProfile,networkInterfaces:networkProfile.networkInterfaces[].id}" \
   --output json
+
+az network nic show \
+  --ids $(az vm show \
+    --resource-group myResourceGroup \
+    --name myVM \
+    --query "networkProfile.networkInterfaces[].id" \
+    --output tsv) \
+  --query "[].{name:name,acceleratedNetworking:enableAcceleratedNetworking}" \
+  --output table
 ```
 
 Relax only constraints the workload does not need. Removing accelerated networking or specialized disk requirements can affect performance and may require other model changes.
@@ -120,7 +129,7 @@ A deallocated Azure Spot VM has no capacity guarantee. Starting it can fail beca
 
 Design Spot workloads so another instance, size, zone, or region can replace the VM. A manually retained Spot VM is not a reliable recovery plan.
 
-## Capacity reservations are the proactive answer
+## Capacity reservations are a proactive answer for supported workloads
 
 On-demand Capacity Reservation reserves a specific VM size in a region or zone. It is distinct from an Azure Reservation:
 
@@ -128,6 +137,8 @@ On-demand Capacity Reservation reserves a specific VM size in a region or zone. 
 - a Reserved VM Instance is a billing discount and does not by itself guarantee capacity.
 
 The capacity reservation must exist and match the VM properties, and creating one is itself subject to quota and available capacity. It is a preventive control, not a guaranteed way to recover after a region is already constrained.
+
+Capacity reservations do not support every placement model. Current exclusions include Spot VMs, availability sets, Dedicated Host nodes and VMs, proximity placement groups, Ultra Disk, and single-placement-group scale sets.
 
 ## Safe recovery order
 
@@ -140,7 +151,7 @@ Use the least disruptive option that meets the workload's requirements:
 5. Review and, when safe, remove optional constraints.
 6. For an availability set or PPG, coordinate full deallocation and startup order.
 7. Recreate or migrate in another zone or region if the recovery objective requires it.
-8. Use on-demand Capacity Reservation for future critical starts.
+8. Where the workload is supported, use on-demand Capacity Reservation for future critical starts.
 
 Do not delete a VM merely because Start failed. Preserve its managed disks and configuration until a tested replacement is online.
 
