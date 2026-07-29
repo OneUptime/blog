@@ -8,11 +8,11 @@ Description: Choose among Chainguard standard, development, and full container v
 
 ---
 
-The three names describe different package profiles, not security grades:
+The three names describe different image profiles, not security grades:
 
 - A standard tag such as `:latest` is normally the minimal runtime variant.
 - A development tag such as `:latest-dev` adds tools for building, testing, or debugging.
-- A full tag ending in `-full` is available for selected containers and more closely maps the package set users expect from the upstream image.
+- A full tag ending in `-full` is available for selected containers and more closely maps the packages and configuration users expect from the upstream image.
 
 Always confirm a repository's actual variants in the Chainguard Directory. Not every image offers all three, and some repositories have additional workload-specific variants.
 
@@ -33,6 +33,7 @@ The exact entrypoint and default user are image-specific. Inspect them instead o
 ```bash
 IMAGE=cgr.dev/chainguard/node:latest
 
+docker pull "$IMAGE"
 docker image inspect "$IMAGE" \
   --format 'user={{json .Config.User}} entrypoint={{json .Config.Entrypoint}} cmd={{json .Config.Cmd}}'
 ```
@@ -63,7 +64,7 @@ Many development variants still default to a nonroot user. Package installation 
 
 ## What `-full` means
 
-Chainguard offers full variants for a subset of popular containers. Their purpose is migration compatibility: the package selection maps more closely to the corresponding third-party upstream image.
+Chainguard offers full variants for a subset of popular containers. Their purpose is migration compatibility: the packages, environment variables, and entrypoint scripts map more closely to the corresponding third-party upstream image.
 
 A full variant is useful when an application depends on utilities that were implicitly present in its former base image and the standard or development Chainguard variant does not include them. It can reduce the number of variables during an initial migration.
 
@@ -102,7 +103,7 @@ Use matching language version streams in both stages. Test native modules carefu
 | Minimal production runtime | Standard | Contains only the runtime-focused package set |
 | Build or test tooling | Development | Includes shell, package manager, and ecosystem tools |
 | Interactive migration diagnosis | Development | Closest convenient diagnostic environment |
-| Closer parity with a third-party image | Full, if offered | Includes more expected upstream-compatible packages |
+| Closer parity with a third-party image | Full, if offered | Includes more expected upstream-compatible packages and configuration |
 | One or two extra system packages | Custom Assembly or documented distroless extension | Keeps additions explicit and maintained |
 | Reproducible production release | Any suitable variant pinned by digest | A tag alone can move |
 
