@@ -88,7 +88,7 @@ Changing several properties at once can make a retry succeed without revealing w
 | C | Original | Original | Off if supported | Original | Original |
 | D | Original | Original | Original | None | Original |
 
-Not every property can be edited in place. A zonal VM cannot normally be moved to another zone by changing a field. Ephemeral OS disk placement and some disk capabilities are creation-time architectural choices. Test those alternatives with a cloned disk or replacement deployment.
+Not every property can be edited in place. A zonal VM cannot normally be moved to another zone by changing a field. Ephemeral OS disk placement and some disk capabilities are creation-time architectural choices. Test ephemeral OS disk alternatives with a replacement deployment; for a persistent managed OS disk, a disk copy can be used.
 
 ## Size and hardware generation
 
@@ -110,7 +110,7 @@ For an in-place resize, the current cluster also matters. Deallocating first can
 
 ## Zone constraints
 
-A zonal request can use only compatible hardware in that zone. If another zone works for the workload, deploy a replacement VM there using a copied OS disk or supported migration workflow.
+A zonal request can use only compatible hardware in that zone. If another zone works for the workload, deploy a replacement VM there using a copied persistent OS disk or supported migration workflow. An ephemeral OS disk cannot be copied or snapshotted, so recreate that workload from its image or infrastructure as code.
 
 Do not remove a zone merely to make a command pass without revisiting availability design. A regional VM and a zonal VM have different failure-domain behavior.
 
@@ -118,11 +118,11 @@ Do not remove a zone merely to make a command pass without revisiting availabili
 
 PPGs reduce network latency by collocating resources, but they can bind the request to a datacenter that lacks a particular SKU.
 
-For a fully deallocated PPG, Microsoft recommends starting the most restrictive size first. If the PPG is optional, remove the association and retry after evaluating latency. If it is required, keep an approved size set and avoid introducing a rare SKU after the group is anchored.
+When all resources in a PPG are deallocated, Microsoft recommends starting the most restrictive size first. If the PPG is optional, remove the association and retry after evaluating latency. If it is required, keep an approved size set and avoid introducing a rare SKU after the group is anchored.
 
 ## Accelerated networking
 
-Accelerated networking requires a supported VM size and network path. Microsoft includes it among common overconstraint contributors. Disabling it can widen options, but may reduce throughput, increase latency, and return packet processing to the vCPU path.
+Accelerated networking requires a supported VM size and operating system. Microsoft includes it among common overconstraint contributors. Disabling it can widen options, but may reduce throughput, increase latency, and increase CPU utilization.
 
 Verify both the intended size's support and the NIC configuration. For a production network-intensive workload, choosing another size that supports accelerated networking is usually safer than silently disabling the feature.
 
@@ -142,7 +142,7 @@ Confirm:
 
 ## Availability sets and scale sets
 
-An availability set with some VMs still allocated can constrain a resize or restart to its existing cluster. Coordinated full deallocation allows Azure to search compatible clusters when restarting, but takes down the whole set.
+An availability set with some VMs still allocated can constrain a resize or the start of a deallocated VM to its existing cluster. Coordinated full deallocation allows Azure to search compatible clusters when starting all the VMs, but takes down the whole set.
 
 A single-placement-group scale set is also more constrained than a scale set that can span placement groups. For large scale-out requests, smaller batches or a multiple-placement-group design can improve allocation probability. Review orchestration and fault-domain implications before changing an existing scale set.
 
@@ -156,13 +156,13 @@ A single-placement-group scale set is also more constrained than a scale set tha
 6. Prefer another accelerated-networking-capable size before disabling the feature.
 7. Rework ephemeral or specialized disk requirements only with a migration plan.
 8. Coordinate whole-set deallocation when an availability set or PPG requires it.
-9. Create an on-demand Capacity Reservation ahead of future critical deployments.
+9. For a supported deployment, create an on-demand Capacity Reservation with sufficient matching capacity ahead of future critical deployments and associate the VM or scale set with its reservation group.
 
 If constraints are mandatory and no alternative placement meets them, provide the correlation IDs and timestamps to Azure Support. Repeatedly submitting the same request does not make an incompatible placement valid.
 
 ## Prevent the next incident
 
-Maintain a tested fallback SKU for each critical workload and zone. Validate quota for both the primary and fallback family. Use capacity reservations where restart or scale-out must be predictable, and keep placement constraints in infrastructure as code so responders can see why the candidate pool is narrow.
+Maintain a tested fallback SKU for each critical workload and zone. Validate quota for both the primary and fallback family. Use capacity reservations for supported VM sizes and deployment types where start or planned scale-out must be predictable, reserve sufficient matching capacity, and explicitly associate the VM or scale set with the reservation group. Capacity reservations do not support availability sets, PPGs, Ultra Disk, or single-placement-group scale sets. Keep placement constraints in infrastructure as code so responders can see why the candidate pool is narrow.
 
 ## Official Documentation
 
