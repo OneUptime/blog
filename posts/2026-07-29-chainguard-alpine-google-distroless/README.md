@@ -93,7 +93,7 @@ Do not compare only whether a shell exists. Compare whether the debug variant us
 
 Alpine is a general-purpose, independent Linux distribution with stable release branches and a broad repository. It intentionally uses musl and BusyBox for simplicity and size.
 
-Google Distroless assembles language-focused runtimes from Debian components but leaves out shells and package managers. The project publishes Debian-versioned repositories and `debug` variants.
+Google Distroless assembles language-focused runtimes from Debian components but leaves out shells and package managers. The project publishes Debian-versioned image families and `debug` variants.
 
 Chainguard Containers are based on Wolfi, an undistro designed for container composition and supply-chain metadata. Standard variants are commonly distroless, while development variants add build and diagnostic tools. Chainguard publishes SBOMs and signatures and rebuilds Containers frequently. Free public Containers focus on current builds; Production access adds supported version streams and service commitments.
 
