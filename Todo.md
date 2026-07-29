@@ -2,8 +2,7 @@
 
 ## Azure VMs
 
-1. How to Get a Managed Identity Token from Azure VM IMDS Without Client Secrets
-2. Why Does `az login --identity` Say “No Subscriptions” When Key Vault Access Is Configured?
+1. Why Does `az login --identity` Say “No Subscriptions” When Key Vault Access Is Configured?
 
 ## Platform Metrics
 
