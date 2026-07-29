@@ -4366,6 +4366,7 @@
 - Custom AMI
 - Custom Analyzer
 - Custom APIs
+- Custom Assembly
 - Custom Attributes
 - Custom Bridge
 - Custom Builders
@@ -12079,6 +12080,7 @@
 - None-network
 - NoneType
 - Nonparametric Test
+- Nonroot
 - NOPASSWD
 - Normalization
 - Normalizers
@@ -14118,6 +14120,7 @@
 - Python
 - Python 3
 - Python Connector
+- Python Requests
 - Python REST API
 - Python Templates
 - Python Testing
@@ -19697,6 +19700,7 @@
 - WMS
 - WNBD
 - WoL
+- Wolfi APK
 - Wondershaper
 - WooCommerce
 - Woodpecker

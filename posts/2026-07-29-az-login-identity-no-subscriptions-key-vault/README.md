@@ -37,7 +37,7 @@ Key Vault has two interfaces:
 | Control plane | `management.azure.com` | Create vault, change settings, tags, networking | Azure RBAC Actions |
 | Data plane | `<vault>.vault.azure.net` | Get secret, use key, retrieve certificate | Key Vault RBAC DataActions or legacy access policy |
 
-`Key Vault Contributor` is a control-plane role and does not grant access to secret values. `Key Vault Secrets User` grants secret-read data actions but is not a general subscription reader. Legacy access policies are also data-plane configuration and do not give the identity an ARM role.
+`Key Vault Contributor` is a control-plane role and does not grant access to secret values. `Key Vault Secrets User` grants secret-read data actions but is not a general subscription reader. Legacy access policies authorize data-plane operations and do not give the identity an ARM role.
 
 ## Confirm which identity Azure CLI uses
 
@@ -68,7 +68,7 @@ az vm identity show \
 
 If several user-assigned identities are attached and none is selected, authentication can fail or choose an unintended context.
 
-## Login without subscription discovery
+## Login when no subscriptions are found
 
 When the workload needs tenant-level or data-plane access but has no ARM subscription role, Azure CLI supports:
 
@@ -173,7 +173,7 @@ Interpret responses:
 
 - no-subscriptions message: CLI/ARM context;
 - IMDS identity error: identity assignment or selector;
-- Key Vault 401: token/audience/authentication;
+- persistent Key Vault 401: token/audience/authentication (an SDK's initial 401 challenge can be expected);
 - Key Vault 403: permission, firewall, or network policy;
 - DNS/timeout: connectivity or private endpoint path.
 
