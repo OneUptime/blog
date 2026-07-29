@@ -41,6 +41,7 @@ RUN uv venv \
       --relocatable \
       /app/venv \
     && uv pip sync \
+      --require-hashes \
       --python /app/venv/bin/python \
       /app/requirements.lock
 
@@ -58,7 +59,7 @@ At the time of writing, `--relocatable` requires a recent uv release. Pin the uv
 
 `UV_PYTHON_DOWNLOADS=never` forces uv to use the Python already supplied by Chainguard instead of downloading a separate managed interpreter. This is important because the final stage expects the environment to run against the matching Chainguard runtime.
 
-`UV_LINK_MODE=copy` prevents the installed environment from depending on hardlinks or symlinks into uv's cache. This matters when only `/app/venv` is copied to another stage.
+`UV_LINK_MODE=copy` makes uv copy package files from its cache into the environment. This avoids the tight cache coupling of symlink mode and cross-filesystem link warnings when using a cache mount.
 
 ## Create a real lock input
 
@@ -66,12 +67,16 @@ At the time of writing, `--relocatable` requires a recent uv release. Pin the uv
 
 ```bash
 uv pip compile \
+  --universal \
+  --python-version 3.14 \
   --generate-hashes \
   pyproject.toml \
   -o requirements.lock
 ```
 
-If the installed uv version supports and enforces the selected hash workflow, use its hash-checking option during synchronization. The important properties are that dependency versions are resolved before the image build and that the lock input is committed and reviewed.
+Replace `3.14` with the Python minor version in the pinned Chainguard runtime. A universal resolution is appropriate when the same lock file drives both the AMD64 and ARM64 builds below; otherwise, compile a separate lock file for each target platform.
+
+`uv` 0.11.32 supports `--require-hashes`, which makes synchronization require a matching hash for every requirement. Hash-checking mode does not support Git or editable dependencies or local directories. The important properties are that dependency versions are resolved before the image build and that the lock input is committed and reviewed.
 
 For a native uv project using `uv.lock`, use `uv sync --locked --no-dev --no-editable`. Set an explicit project environment path and keep it identical in both stages. Astral recommends `--no-editable` for deployment because an editable install retains a dependency on the source tree.
 
@@ -90,7 +95,7 @@ docker run --rm \
   -c 'import importlib.util; print(importlib.util.find_spec("pip"))'
 ```
 
-Expected output is `None`. Then import the actual native and pure-Python dependencies:
+Expected output is `None`, provided `requirements.lock` does not itself include `pip`. Then import the actual native and pure-Python dependencies:
 
 ```bash
 docker run --rm \
@@ -128,15 +133,16 @@ Copy the lock input before application source so dependency installation is cach
 
 ```dockerfile
 COPY requirements.lock /app/requirements.lock
-RUN --mount=type=cache,target=/home/nonroot/.cache/uv \
+RUN --mount=type=cache,target=/home/nonroot/.cache/uv,uid=65532,gid=65532 \
     uv pip sync \
+      --require-hashes \
       --python /app/venv/bin/python \
       /app/requirements.lock
 
 COPY src/ /app/src/
 ```
 
-With a cache mount, retain `UV_LINK_MODE=copy` so the final environment owns independent files. Ensure the cache target is writable by the selected build user.
+With a cache mount, retain `UV_LINK_MODE=copy` so the environment contains independent package files. The `uid` and `gid` mount options make the cache writable by the selected build user.
 
 ## Official Documentation
 
