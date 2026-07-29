@@ -1,9 +1,5 @@
 # Blog Post Ideas
 
-## Chainguard
-
-1. How to Inspect Chainguard Tag History and See What Changed Between Rebuilds
-
 ## Azure VMs
 
 1. Why Is My Azure VM Still Charging After Shutdown? Stopped vs Deallocated Explained
