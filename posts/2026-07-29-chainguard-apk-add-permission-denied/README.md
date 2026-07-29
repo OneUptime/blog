@@ -22,6 +22,8 @@ Inspect the exact reference used by the build:
 ```bash
 IMAGE=cgr.dev/chainguard/python:latest-dev
 
+docker pull "$IMAGE"
+
 docker image inspect "$IMAGE" \
   --format 'user={{json .Config.User}} entrypoint={{json .Config.Entrypoint}}'
 
@@ -52,6 +54,7 @@ FROM cgr.dev/chainguard/python:latest-dev AS build
 
 USER root
 RUN apk add --no-cache build-base libffi-dev
+RUN mkdir -p /app && chown 65532:65532 /app
 
 USER 65532
 WORKDIR /app
@@ -96,7 +99,7 @@ If `USER root` does not fix the build, check the surrounding environment:
 
 ### A read-only container filesystem
 
-Kubernetes `readOnlyRootFilesystem: true` prevents runtime writes even for UID 0. That is expected. Build the packages into the image rather than installing them when the Pod starts.
+Kubernetes `readOnlyRootFilesystem: true` prevents writes to the container's root filesystem even for UID 0. Separately mounted writable volumes are unaffected. Build the packages into the image rather than installing them when the Pod starts.
 
 ### A rootless build engine
 
@@ -132,6 +135,6 @@ If the final image has no `id` executable, inspect it from the development varia
 ## Official Documentation
 
 - [Chainguard container variants](https://edu.chainguard.dev/chainguard/chainguard-images/about/differences-development-production/)
-- [Tips for migrating to Chainguard Containers](https://edu.chainguard.dev/chainguard/migration/migration-tips/)
-- [How to port an application to Chainguard Containers](https://edu.chainguard.dev/chainguard/migration/porting-apps-to-chainguard/)
+- [Tips for migrating to Chainguard Containers](https://edu.chainguard.dev/get-started/migration/migration-tips/)
+- [How to port an application to Chainguard Containers](https://edu.chainguard.dev/get-started/migration/porting-apps-to-chainguard/)
 - [Dockerfile `USER` reference](https://docs.docker.com/reference/dockerfile/#user)
