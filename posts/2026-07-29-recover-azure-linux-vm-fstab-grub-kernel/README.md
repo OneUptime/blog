@@ -66,8 +66,7 @@ Azure Linux Auto Repair, or ALAR, runs through the `vm-repair` CLI extension aga
 Install or update the extension:
 
 ```bash
-az extension add --name vm-repair
-az extension update --name vm-repair
+az extension add --name vm-repair --upgrade
 ```
 
 Create the repair VM:
@@ -134,7 +133,7 @@ The safe workflow is:
 Never assume device names. Identify the copied disk:
 
 ```bash
-lsblk -o NAME,SIZE,TYPE,FSTYPE,LABEL,UUID,MOUNTPOINTS
+lsblk -o NAME,SIZE,TYPE,FSTYPE,LABEL,UUID,MOUNTPOINT
 sudo blkid
 sudo pvs
 sudo vgs
@@ -146,14 +145,16 @@ Device names can change after attachment. If LVM volume-group names collide with
 An illustrative mount layout is:
 
 ```bash
+sudo mkdir -p /mnt/repair
 sudo mount /dev/mapper/rootvg-rootlv /mnt/repair
 sudo mount /dev/sdc2 /mnt/repair/boot
 sudo mount /dev/sdc1 /mnt/repair/boot/efi
 
-for path in dev proc sys run; do
-  sudo mount --bind "/$path" "/mnt/repair/$path"
-done
-
+sudo mount -t proc /proc /mnt/repair/proc
+sudo mount -t sysfs /sys /mnt/repair/sys
+sudo mount --bind /dev /mnt/repair/dev
+sudo mount --bind /dev/pts /mnt/repair/dev/pts
+sudo mount --bind /run /mnt/repair/run
 sudo chroot /mnt/repair
 ```
 
@@ -188,7 +189,7 @@ ALAR `kernel` can select a previously installed version, while `initrd` targets 
 
 Do not run a repair tool on a mounted filesystem. Identify its type:
 
-- use `e2fsck` for unmounted ext filesystems;
+- use `e2fsck` for unmounted ext2, ext3, and ext4 filesystems;
 - use `xfs_repair` for unmounted XFS according to XFS guidance.
 
 Filesystem repair can lose data. Preserve a snapshot and use the filesystem-specific Microsoft troubleshooting flow.
@@ -223,4 +224,3 @@ Use UUIDs in `fstab`, retain at least one known-good kernel, test kernel updates
 - [Troubleshoot Azure Linux VM boot errors](https://learn.microsoft.com/en-us/troubleshoot/azure/virtual-machines/linux/boot-error-troubleshoot-linux)
 - [Recover from kernel-related boot issues](https://learn.microsoft.com/en-us/troubleshoot/azure/virtual-machines/linux/kernel-related-boot-issues)
 - [Use a Linux troubleshooting VM](https://learn.microsoft.com/en-us/troubleshoot/azure/virtual-machines/linux/troubleshoot-recovery-disks-linux)
-
