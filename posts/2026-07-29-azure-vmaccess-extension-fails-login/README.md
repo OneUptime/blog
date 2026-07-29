@@ -25,7 +25,7 @@ List extensions and their provisioning state:
 az vm extension list \
   --resource-group myResourceGroup \
   --vm-name myVM \
-  --query "[].{name:name,publisher:publisher,type:virtualMachineExtensionType,state:provisioningState}" \
+  --query "[].{name:name,publisher:publisher,type:typePropertiesType,state:provisioningState}" \
   --output table
 ```
 
@@ -59,7 +59,7 @@ If every extension is failing or stale, the shared agent path is the stronger hy
 
 ## Read the in-guest logs when another path works
 
-Windows VMAccess logs:
+Windows VMAccess logs and files:
 
 ```text
 C:\WindowsAzure\Logs\Plugins\Microsoft.Compute.VMAccessAgent\
@@ -67,7 +67,7 @@ C:\WindowsAzure\Logs\WaAppAgent\
 C:\Packages\Plugins\Microsoft.Compute.VMAccessAgent\
 ```
 
-Linux VMAccess logs:
+Linux VMAccess logs and files:
 
 ```text
 /var/log/waagent.log
@@ -91,7 +91,7 @@ VMAccess for Windows does not support domain controllers. Use documented domain-
 
 ## Retry with the supported high-level command
 
-For a Linux SSH key reset:
+For a Linux SSH key update:
 
 ```bash
 az vm user update \
@@ -117,7 +117,7 @@ For Windows, the portal's **Reset password** page can reset credentials or reset
 
 Only one version of VMAccess can be applied to a VM. Update the existing extension resource for another action rather than creating competing names.
 
-If VMAccess reset is used after the Microsoft Entra login extension, Microsoft instructs you to rerun the Entra login extension to re-enable that login integration.
+If VMAccess is used to reset a password after the Microsoft Entra login extension is installed, Microsoft instructs you to rerun the Entra login extension to re-enable that login integration.
 
 ## Use a path that does not depend on VMAccess
 
@@ -131,11 +131,11 @@ Serial Console is designed for network and SSH/RDP failure scenarios. It does no
 - fix an invalid route or interface configuration;
 - enter Linux single-user mode where supported.
 
-It still requires the operating system to reach a usable console and appropriate credentials or recovery access.
+It still requires the VM to be running and the guest image or bootloader to expose a usable serial console. Signing in to the guest normally requires appropriate credentials or recovery access.
 
 ### Azure Bastion
 
-Bastion bypasses the VM's public internet path, but it still needs the guest listener, private network reachability, NSG rules, and valid credentials. It helps when the problem is public exposure, not when `sshd` or RDP is broken.
+Bastion bypasses the VM's public internet path, but it still needs the guest listener, private network reachability, traffic permitted by any applicable NSGs, and valid credentials. It helps when the problem is public exposure, not when `sshd` or RDP is broken.
 
 ### Run Command
 
@@ -147,7 +147,7 @@ When the guest will not boot or the agent and login path are both unavailable, m
 
 For Windows, repair registry, firewall, RDP, filesystem, or update state on the copied disk. For Linux, mount the filesystems and use a chroot where appropriate to repair accounts, SSH configuration, `fstab`, bootloader, or packages.
 
-Operate on a copy when possible. Preserve encryption requirements, disk generation, LUN mapping, and the repair command's tags so restore can complete.
+Operate on a copy when possible. Preserve encryption requirements, disk generation, LUN mapping, and any tags created by the repair commands so restore can complete.
 
 ## Choose the next step from the evidence
 
