@@ -2,17 +2,16 @@
 
 ## Azure VMs
 
-1. Why Is an Azure VM Extension Stuck in `Provisioning failed`? Logs, Reapply, and Rerun
-2. Why Won’t Azure Custom Script Extension Run the Same Script Twice?
-3. Why Does an Azure VM Start or Redeploy Operation Hang While the Guest OS Is Online?
-4. How to Repair an Unbootable Azure Windows VM by Attaching Its OS Disk to a Repair VM
-5. How to Recover an Azure Linux VM from a Broken `fstab`, GRUB, or Kernel Update
-6. What Data Can You Safely Store on an Azure VM Temporary Disk?
-7. Why Does a Resized Azure Disk Show the New Size in the Portal but Not in the Guest OS?
-8. How to Diagnose Azure VM Disk Throttling When CPU and Memory Look Healthy
-9. Azure VM Disk Host Caching: When to Use None, ReadOnly, or ReadWrite
-10. How to Get a Managed Identity Token from Azure VM IMDS Without Client Secrets
-11. Why Does `az login --identity` Say “No Subscriptions” When Key Vault Access Is Configured?
+1. Why Won’t Azure Custom Script Extension Run the Same Script Twice?
+2. Why Does an Azure VM Start or Redeploy Operation Hang While the Guest OS Is Online?
+3. How to Repair an Unbootable Azure Windows VM by Attaching Its OS Disk to a Repair VM
+4. How to Recover an Azure Linux VM from a Broken `fstab`, GRUB, or Kernel Update
+5. What Data Can You Safely Store on an Azure VM Temporary Disk?
+6. Why Does a Resized Azure Disk Show the New Size in the Portal but Not in the Guest OS?
+7. How to Diagnose Azure VM Disk Throttling When CPU and Memory Look Healthy
+8. Azure VM Disk Host Caching: When to Use None, ReadOnly, or ReadWrite
+9. How to Get a Managed Identity Token from Azure VM IMDS Without Client Secrets
+10. Why Does `az login --identity` Say “No Subscriptions” When Key Vault Access Is Configured?
 
 ## Platform Metrics
 
