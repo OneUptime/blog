@@ -10,7 +10,7 @@ Description: Convert a Debian or Ubuntu Dockerfile to Chainguard safely by trans
 
 Replacing `apt-get` with `apk add` is only one part of a Chainguard migration. Package names, libc, default users, entrypoints, available utilities, and the presence of a shell can all differ.
 
-Chainguard Containers are based on Wolfi and use the APK package format. Wolfi is glibc-based, unlike Alpine's usual musl environment. Wolfi and Alpine packages are not interchangeable even though both use `apk`.
+Chainguard Containers use the APK package format and are built with packages from Wolfi or Chainguard OS. The public images used in this guide are Wolfi-based. Wolfi is glibc-based, unlike Alpine's usual musl environment. Wolfi and Alpine packages are not interchangeable even though both use `apk`.
 
 ## Inventory the original image first
 
@@ -18,8 +18,8 @@ Before editing the Dockerfile, record what the current build and runtime actuall
 
 ```bash
 docker image inspect old-app:current
-docker run --rm old-app:current id
-docker run --rm old-app:current env
+docker run --rm --entrypoint id old-app:current
+docker run --rm --entrypoint env old-app:current
 ```
 
 Separate requirements into four groups:
