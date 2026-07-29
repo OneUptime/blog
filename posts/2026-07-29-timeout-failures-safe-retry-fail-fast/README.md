@@ -124,11 +124,11 @@ Account for DNS results, multiple addresses, load balancers, and the fact that a
 
 ### Read or socket timeout
 
-If the request was sent, its outcome is unknown. Reads are generally safe to repeat. Writes require idempotency, a precondition, a transaction identifier, or a status check.
+If the request was sent, its outcome is unknown. Idempotent reads are generally safe to repeat. Writes require idempotency, a precondition, a transaction identifier, or a status check.
 
 ### Database statement timeout
 
-The database received the statement and attempted cancellation. The transaction state after an error is database and driver specific. In PostgreSQL, an error aborts the current transaction, which must be rolled back before reuse.
+A server-side statement timeout means the database received the statement; it then cancels or aborts the statement according to database-specific semantics. A client- or driver-side execution timeout can instead leave the outcome unknown. The transaction state after an error is database and driver specific. In PostgreSQL, an error inside an explicit transaction leaves it aborted; issue `ROLLBACK`, or `ROLLBACK TO SAVEPOINT` when a suitable savepoint exists, before more work can proceed in it.
 
 Retry a lock or serialization conflict only according to the database contract and from the correct transaction boundary. A query that is consistently slower than its timeout is not transient.
 
@@ -168,18 +168,17 @@ class Failure:
 
 
 def may_retry(failure: Failure, remaining_seconds: float) -> bool:
-    repeatable = (
-        failure.operation_is_idempotent
-        or failure.idempotency_key_enforced
+    known_not_applied = failure.outcome in (
+        Outcome.NOT_STARTED,
+        Outcome.FAILED_ATOMICALLY,
     )
-    outcome_safe = (
-        failure.outcome is not Outcome.UNKNOWN
+    duplicates_controlled = (
+        failure.operation_is_idempotent
         or failure.idempotency_key_enforced
     )
     return (
         failure.transient
-        and repeatable
-        and outcome_safe
+        and (known_not_applied or duplicates_controlled)
         and remaining_seconds > 0
     )
 ```
