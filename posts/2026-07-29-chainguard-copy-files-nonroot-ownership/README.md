@@ -19,6 +19,8 @@ Do not assume that every Chainguard repository uses the same username:
 ```bash
 IMAGE=cgr.dev/chainguard/python:latest-dev
 
+docker pull "$IMAGE"
+
 docker image inspect "$IMAGE" \
   --format 'configured user={{json .Config.User}}'
 
@@ -47,7 +49,7 @@ For artifacts from a builder:
 FROM cgr.dev/chainguard/python:latest-dev AS build
 
 USER 65532
-WORKDIR /home/nonroot/build
+WORKDIR /home/nonroot
 RUN python -m venv venv
 COPY requirements.txt .
 RUN venv/bin/pip install --no-cache-dir -r requirements.txt
@@ -56,7 +58,7 @@ FROM cgr.dev/chainguard/python:latest
 
 WORKDIR /app
 COPY --from=build --chown=65532:65532 \
-  /home/nonroot/build/venv /app/venv
+  /home/nonroot/venv /app/venv
 COPY --chown=65532:65532 app.py /app/app.py
 
 ENTRYPOINT ["/app/venv/bin/python", "/app/app.py"]
@@ -96,9 +98,9 @@ ENTRYPOINT ["python", "/app/app.py"]
 
 ## Watch for `WORKDIR` and parent directories
 
-`WORKDIR /app` can create a missing directory, but that does not mean it becomes owned by the configured nonroot user. A later copy with `--chown` owns the copied children, while the parent may remain root-owned.
+`WORKDIR /app` creates a missing directory. Current BuildKit versions create it for the active `USER`, but a directory that already exists keeps its existing ownership, and other builders may differ. A later copy with `--chown` owns the copied children, not a pre-existing parent directory.
 
-That is fine when the application only reads `/app`. It fails if the application expects to create `/app/cache`. Prefer a dedicated state directory:
+A root-owned `/app` is fine when the application only reads it. It fails if the application expects to create `/app/cache`. Prefer a dedicated state directory:
 
 ```dockerfile
 ENV APP_CACHE_DIR=/var/lib/myapp/cache
@@ -125,7 +127,7 @@ spec:
         readOnlyRootFilesystem: true
 ```
 
-`fsGroup` behavior is volume and driver dependent. Validate it with the actual storage class. For OpenShift's arbitrary UID model, Chainguard documents a separate pattern based on group `0` ownership and group permissions, such as `--chown=65532:0`.
+`fsGroup` behavior is volume and driver dependent. Validate it with the actual storage class. For OpenShift's arbitrary UID model, Chainguard documents a separate pattern based on group `0` ownership and matching group permissions, such as `--chown=65532:0` when copying plus `chmod -R g=u` on paths the arbitrary UID must access.
 
 ## Diagnose without adding a shell
 
