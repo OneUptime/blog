@@ -112,8 +112,8 @@ Plan for loss during:
 - Spot eviction with deallocation or deletion behavior;
 - host failure;
 - maintenance that cannot use live migration;
-- scale-set reimage or healing;
-- ephemeral OS disk reprovisioning, when that separate feature is used.
+- scale-set replacement or another repair action that recreates the instance;
+- reimage of a VM that uses an ephemeral OS disk, when that separate feature is used.
 
 A guest reboot may leave the same host-local content present, but that observation is not a durability guarantee. Software must behave correctly even if the next reboot coincides with host movement.
 
