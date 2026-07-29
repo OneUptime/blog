@@ -2,12 +2,11 @@
 
 ## Timeouts
 
-1. Which Timeout Failures Are Safe to Retry, and Which Should Fail Fast?
-2. How Retries Amplify a Timeout Outage: Setting a Retry Budget Across Service Layers
-3. How to Prevent Duplicate Writes When a Client Retries After Timing Out
-4. Why Does gRPC Return `DEADLINE_EXCEEDED` After Work Has Already Started?
-5. How to Stop Server Work When a gRPC Client Deadline Expires
-6. Why Does `kubectl` Fail with `TLS handshake timeout`? A Network-Path Checklist
+1. How Retries Amplify a Timeout Outage: Setting a Retry Budget Across Service Layers
+2. How to Prevent Duplicate Writes When a Client Retries After Timing Out
+3. Why Does gRPC Return `DEADLINE_EXCEEDED` After Work Has Already Started?
+4. How to Stop Server Work When a gRPC Client Deadline Expires
+5. Why Does `kubectl` Fail with `TLS handshake timeout`? A Network-Path Checklist
 
 ## Chainguard
 
