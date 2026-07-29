@@ -14,16 +14,19 @@ Chainguard publishes signed SBOM attestations for its Container builds. Use Cosi
 
 ## Identify the deployment platform
 
-For Docker:
+For Docker, inspect the daemon's native platform. If the workload uses an explicit `--platform`, use that value instead:
 
 ```bash
 docker info --format '{{.OSType}}/{{.Architecture}}'
 ```
 
-For Kubernetes, list the architectures actually used by schedulable nodes:
+Docker can report `x86_64` or `aarch64` here; the corresponding OCI architecture names used by Cosign are `amd64` and `arm64`.
+
+For Kubernetes, list the architectures on nodes that are not cordoned, then account for the workload's node selectors, affinity, taints, and tolerations:
 
 ```bash
 kubectl get nodes \
+  --field-selector='spec.unschedulable=false' \
   -o custom-columns=NAME:.metadata.name,OS:.status.nodeInfo.operatingSystem,ARCH:.status.nodeInfo.architecture
 ```
 
