@@ -2,22 +2,21 @@
 
 ## Azure VMs
 
-1. Why Did My Azure VM Public IP Change After Stop and Start?
-2. Why Can I RDP to an Azure VM from a Mobile Hotspot but Not the Office Network?
-3. Why Are Ports 22 or 3389 Open in the NSG but SSH or RDP Still Times Out?
-4. What to Do When the Azure VMAccess Extension Fails and You Still Can’t Log In
-5. Azure VM Agent `Not Ready`: How to Check DHCP, 168.63.129.16, Firewalls, and Proxies
-6. Why Is an Azure VM Extension Stuck in `Provisioning failed`? Logs, Reapply, and Rerun
-7. Why Won’t Azure Custom Script Extension Run the Same Script Twice?
-8. Why Does an Azure VM Start or Redeploy Operation Hang While the Guest OS Is Online?
-9. How to Repair an Unbootable Azure Windows VM by Attaching Its OS Disk to a Repair VM
-10. How to Recover an Azure Linux VM from a Broken `fstab`, GRUB, or Kernel Update
-11. What Data Can You Safely Store on an Azure VM Temporary Disk?
-12. Why Does a Resized Azure Disk Show the New Size in the Portal but Not in the Guest OS?
-13. How to Diagnose Azure VM Disk Throttling When CPU and Memory Look Healthy
-14. Azure VM Disk Host Caching: When to Use None, ReadOnly, or ReadWrite
-15. How to Get a Managed Identity Token from Azure VM IMDS Without Client Secrets
-16. Why Does `az login --identity` Say “No Subscriptions” When Key Vault Access Is Configured?
+1. Why Can I RDP to an Azure VM from a Mobile Hotspot but Not the Office Network?
+2. Why Are Ports 22 or 3389 Open in the NSG but SSH or RDP Still Times Out?
+3. What to Do When the Azure VMAccess Extension Fails and You Still Can’t Log In
+4. Azure VM Agent `Not Ready`: How to Check DHCP, 168.63.129.16, Firewalls, and Proxies
+5. Why Is an Azure VM Extension Stuck in `Provisioning failed`? Logs, Reapply, and Rerun
+6. Why Won’t Azure Custom Script Extension Run the Same Script Twice?
+7. Why Does an Azure VM Start or Redeploy Operation Hang While the Guest OS Is Online?
+8. How to Repair an Unbootable Azure Windows VM by Attaching Its OS Disk to a Repair VM
+9. How to Recover an Azure Linux VM from a Broken `fstab`, GRUB, or Kernel Update
+10. What Data Can You Safely Store on an Azure VM Temporary Disk?
+11. Why Does a Resized Azure Disk Show the New Size in the Portal but Not in the Guest OS?
+12. How to Diagnose Azure VM Disk Throttling When CPU and Memory Look Healthy
+13. Azure VM Disk Host Caching: When to Use None, ReadOnly, or ReadWrite
+14. How to Get a Managed Identity Token from Azure VM IMDS Without Client Secrets
+15. Why Does `az login --identity` Say “No Subscriptions” When Key Vault Access Is Configured?
 
 ## Platform Metrics
 
