@@ -2,25 +2,24 @@
 
 ## Azure VMs
 
-1. Why Won’t a Deallocated Azure VM Start Again? Capacity, Quota, and Placement Constraints
-2. Azure VM Quota vs Regional Capacity: Why a Deployment Can Fail with Free vCPUs
-3. How to Fix `OverconstrainedAllocationRequest` When Creating or Resizing an Azure VM
-4. Why Did My Azure VM Public IP Change After Stop and Start?
-5. Why Can I RDP to an Azure VM from a Mobile Hotspot but Not the Office Network?
-6. Why Are Ports 22 or 3389 Open in the NSG but SSH or RDP Still Times Out?
-7. What to Do When the Azure VMAccess Extension Fails and You Still Can’t Log In
-8. Azure VM Agent `Not Ready`: How to Check DHCP, 168.63.129.16, Firewalls, and Proxies
-9. Why Is an Azure VM Extension Stuck in `Provisioning failed`? Logs, Reapply, and Rerun
-10. Why Won’t Azure Custom Script Extension Run the Same Script Twice?
-11. Why Does an Azure VM Start or Redeploy Operation Hang While the Guest OS Is Online?
-12. How to Repair an Unbootable Azure Windows VM by Attaching Its OS Disk to a Repair VM
-13. How to Recover an Azure Linux VM from a Broken `fstab`, GRUB, or Kernel Update
-14. What Data Can You Safely Store on an Azure VM Temporary Disk?
-15. Why Does a Resized Azure Disk Show the New Size in the Portal but Not in the Guest OS?
-16. How to Diagnose Azure VM Disk Throttling When CPU and Memory Look Healthy
-17. Azure VM Disk Host Caching: When to Use None, ReadOnly, or ReadWrite
-18. How to Get a Managed Identity Token from Azure VM IMDS Without Client Secrets
-19. Why Does `az login --identity` Say “No Subscriptions” When Key Vault Access Is Configured?
+1. Azure VM Quota vs Regional Capacity: Why a Deployment Can Fail with Free vCPUs
+2. How to Fix `OverconstrainedAllocationRequest` When Creating or Resizing an Azure VM
+3. Why Did My Azure VM Public IP Change After Stop and Start?
+4. Why Can I RDP to an Azure VM from a Mobile Hotspot but Not the Office Network?
+5. Why Are Ports 22 or 3389 Open in the NSG but SSH or RDP Still Times Out?
+6. What to Do When the Azure VMAccess Extension Fails and You Still Can’t Log In
+7. Azure VM Agent `Not Ready`: How to Check DHCP, 168.63.129.16, Firewalls, and Proxies
+8. Why Is an Azure VM Extension Stuck in `Provisioning failed`? Logs, Reapply, and Rerun
+9. Why Won’t Azure Custom Script Extension Run the Same Script Twice?
+10. Why Does an Azure VM Start or Redeploy Operation Hang While the Guest OS Is Online?
+11. How to Repair an Unbootable Azure Windows VM by Attaching Its OS Disk to a Repair VM
+12. How to Recover an Azure Linux VM from a Broken `fstab`, GRUB, or Kernel Update
+13. What Data Can You Safely Store on an Azure VM Temporary Disk?
+14. Why Does a Resized Azure Disk Show the New Size in the Portal but Not in the Guest OS?
+15. How to Diagnose Azure VM Disk Throttling When CPU and Memory Look Healthy
+16. Azure VM Disk Host Caching: When to Use None, ReadOnly, or ReadWrite
+17. How to Get a Managed Identity Token from Azure VM IMDS Without Client Secrets
+18. Why Does `az login --identity` Say “No Subscriptions” When Key Vault Access Is Configured?
 
 ## Platform Metrics
 
