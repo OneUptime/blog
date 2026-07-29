@@ -241,7 +241,7 @@ func (s *Server) Export(
 
 The exporter must close its output channel on every exit path. A producer blocked forever while sending to a channel after the consumer exits is still a leak.
 
-For client-streaming and bidirectional methods, `Recv()` and `Send()` errors are also termination signals. Do not continue business work after the stream has ended unless the API explicitly accepted durable asynchronous work.
+For client-streaming and bidirectional methods, any non-`io.EOF` `Recv()` error or any `Send()` error is a termination signal. A `Recv()` result of `io.EOF` is a normal client half-close: stop receiving, then complete the method's defined response behavior, such as calling `SendAndClose()` in a client-streaming handler. Do not continue business work after the RPC itself has ended unless the API explicitly accepted durable asynchronous work.
 
 ## Cancellation Cannot Undo a Commit
 
@@ -304,11 +304,12 @@ func (r *BlockingRepository) ListDocuments(
 
 The test should:
 
-1. create a context with a short deadline or explicit cancel;
-2. invoke the handler;
-3. wait for the handler to return;
-4. assert that the dependency observed cancellation;
-5. check that request-owned goroutines and resources returned to baseline.
+1. create a context with a short deadline or a cancel function;
+2. invoke the handler in a goroutine;
+3. call the cancel function, or let the deadline expire;
+4. wait for the handler to return;
+5. assert that the dependency observed cancellation;
+6. check that request-owned goroutines and resources returned to baseline.
 
 Also integration-test a real driver and downstream gRPC service. A fake proves propagation in your code, not the cancellation behavior of external libraries.
 
@@ -334,8 +335,8 @@ Alert when cancellation-to-stop latency grows or canceled calls continue consumi
 3. Check cancellation inside CPU loops and custom queues.
 4. Derive child contexts from the parent, never from a background context.
 5. Coordinate and wait for child goroutines.
-6. Close rows, streams, files, and pooled resources on every exit.
-7. Stop when stream send or receive fails.
+6. Close rows, files, and pooled resources on every exit, and terminate server streams by returning from the handler.
+7. Return on stream send errors and non-`io.EOF` receive errors; handle `io.EOF` as a normal half-close.
 8. Protect irreversible writes with idempotency.
 9. Give durable jobs an explicit operation API and lifecycle.
 10. Test and measure how quickly real dependencies stop.
