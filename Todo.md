@@ -2,11 +2,10 @@
 
 ## Chainguard
 
-1. How to Verify a Chainguard Image Signature with Cosign
-2. How to Download the Correct Architecture-Specific SBOM for a Chainguard Image
-3. Why Does a Vulnerability Scanner Still Report CVEs in a Chainguard-Based Image?
-4. How to Pin Chainguard Images by Digest Without Missing Security Rebuilds
-5. How to Inspect Chainguard Tag History and See What Changed Between Rebuilds
+1. How to Download the Correct Architecture-Specific SBOM for a Chainguard Image
+2. Why Does a Vulnerability Scanner Still Report CVEs in a Chainguard-Based Image?
+3. How to Pin Chainguard Images by Digest Without Missing Security Rebuilds
+4. How to Inspect Chainguard Tag History and See What Changed Between Rebuilds
 
 ## Azure VMs
 
