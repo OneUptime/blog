@@ -150,7 +150,7 @@ A health check, an interactive lookup, and a multi-gigabyte export have differen
 Start with measurements rather than folklore:
 
 1. Measure connection setup and response latency separately where your telemetry allows it.
-2. Choose a connect limit that covers normal DNS, routing, proxy, TCP, and TLS variation without occupying workers through a broken path for too long.
+2. Choose a connect limit that covers normal routing, proxy, TCP, and TLS variation without occupying workers through a broken path for too long. Account separately for DNS resolution because Python's DNS resolver does not obey the socket timeout.
 3. Choose a read-inactivity limit that covers the endpoint's expected first-byte and inter-byte behavior.
 4. Keep enough caller budget for parsing, fallback behavior, and any permitted retry.
 5. Load test the policy during slow responses and partial network failures.
