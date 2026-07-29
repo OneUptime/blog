@@ -27,13 +27,17 @@ kubectl config view --minify \
 
 If scripts set `KUBECONFIG` or pass `--kubeconfig`, the effective configuration may differ from the default file. Kubernetes documents that multiple files in `KUBECONFIG` are merged, while `--kubeconfig` selects one explicit file.
 
-Check the environment without printing credentials:
+Check the environment and the selected cluster's TLS and proxy settings locally:
 
 ```bash
 printf 'KUBECONFIG=%s\n' "${KUBECONFIG:-<default>}"
 kubectl config view --minify \
+  -o jsonpath='{.clusters[0].cluster.tls-server-name}{"\n"}'
+kubectl config view --minify \
   -o jsonpath='{.clusters[0].cluster.proxy-url}{"\n"}'
 ```
+
+Proxy environment variables and `proxy-url` can themselves contain credentials. Redact user information before sharing their values.
 
 Do not paste the output of `kubectl config view --raw` into tickets. Kubeconfig files can contain bearer tokens, client keys, and other credentials.
 
@@ -41,7 +45,7 @@ An old context may point to a decommissioned load balancer, a private endpoint, 
 
 ## 2. Separate DNS, TCP, and TLS
 
-Extract the hostname and port from the displayed server URL, then test each layer with platform-appropriate tools.
+Extract the hostname and port from the displayed server URL, then test each layer with platform-appropriate tools. If kubeconfig sets `tls-server-name`, use that name for SNI and certificate validation; otherwise, use the server URL's hostname.
 
 DNS:
 
@@ -64,12 +68,14 @@ openssl s_client \
   -brief
 ```
 
+This is a handshake-response probe, not proof that kubectl's certificate verification will succeed. `-servername` sends SNI, but it does not make OpenSSL use the kubeconfig CA or enable hostname verification. Also, `s_client` normally continues after certificate verification errors unless `-verify_return_error` is used.
+
 Interpret the first failing boundary:
 
 - no DNS answer: resolver, split-horizon DNS, stale kubeconfig, or VPN DNS;
 - DNS works but TCP does not: route, firewall, security group, VPN, endpoint, or listener;
 - TCP connects but TLS stalls: proxy, load balancer, packet loss, MTU, TLS termination, or server overload;
-- TLS returns a certificate error: CA, expiry, hostname, or client configuration;
+- TLS responds but OpenSSL reports a certificate verification error: validate with the kubeconfig CA and expected server name, because OpenSSL's trust store may differ;
 - TLS succeeds but Kubernetes rejects the call: authentication or authorization is now in scope.
 
 `ping` is not decisive. An endpoint can drop ICMP while serving TCP, or answer ICMP while the API port is blocked.
@@ -187,7 +193,7 @@ An overloaded API server or TLS terminator can accept connections too slowly to 
 
 For managed Kubernetes, use the provider's control-plane status, endpoint health, and support diagnostics rather than assuming node access implies control-plane health.
 
-## 8. Validate Certificates After the Handshake Works
+## 8. Validate Certificates After the TLS Endpoint Responds
 
 The Kubernetes troubleshooting guide shows how to inspect certificate dates embedded in kubeconfig:
 
