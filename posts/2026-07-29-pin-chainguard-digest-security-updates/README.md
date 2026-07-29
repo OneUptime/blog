@@ -114,7 +114,7 @@ Review:
 - fixed and newly reported vulnerabilities;
 - image size and platform coverage.
 
-A changed digest alone does not prove changed contents, and unchanged application source does not prove a base rebuild is behaviorally identical.
+A changed digest proves that the referenced manifest or index bytes changed, but not necessarily that package or application contents changed. Unchanged application source does not prove a base rebuild is behaviorally identical.
 
 ## Test and promote
 
