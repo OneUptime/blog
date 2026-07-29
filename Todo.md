@@ -2,8 +2,7 @@
 
 ## Timeouts
 
-1. How to Stop Server Work When a gRPC Client Deadline Expires
-2. Why Does `kubectl` Fail with `TLS handshake timeout`? A Network-Path Checklist
+1. Why Does `kubectl` Fail with `TLS handshake timeout`? A Network-Path Checklist
 
 ## Chainguard
 
