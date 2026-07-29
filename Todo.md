@@ -2,9 +2,8 @@
 
 ## Azure VMs
 
-1. Azure VM Disk Host Caching: When to Use None, ReadOnly, or ReadWrite
-2. How to Get a Managed Identity Token from Azure VM IMDS Without Client Secrets
-3. Why Does `az login --identity` Say “No Subscriptions” When Key Vault Access Is Configured?
+1. How to Get a Managed Identity Token from Azure VM IMDS Without Client Secrets
+2. Why Does `az login --identity` Say “No Subscriptions” When Key Vault Access Is Configured?
 
 ## Platform Metrics
 
