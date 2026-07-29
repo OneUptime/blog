@@ -143,13 +143,15 @@ The server enforces a uniqueness constraint on `(tenant_id, operation_id)` and s
 Alternatively, expose a status lookup:
 
 ```protobuf
-rpc CreateOrder(CreateOrderRequest) returns (CreateOrderResponse);
-rpc GetOperation(GetOperationRequest) returns (Operation);
+service OrderService {
+  rpc CreateOrder(CreateOrderRequest) returns (CreateOrderResponse);
+  rpc GetOperation(GetOperationRequest) returns (Operation);
+}
 ```
 
 After an ambiguous deadline, the client can reconcile by operation ID.
 
-gRPC retry configuration is per method and per status code. A retry policy does not make a method idempotent. The service contract must supply that safety.
+gRPC retry policies are configured through Service Config at per-method granularity and list the retryable status codes. A retry policy does not make a method idempotent. The service contract must supply that safety.
 
 ## Separate Synchronous and Durable Work
 
