@@ -2,9 +2,8 @@
 
 ## Timeouts
 
-1. Why Does gRPC Return `DEADLINE_EXCEEDED` After Work Has Already Started?
-2. How to Stop Server Work When a gRPC Client Deadline Expires
-3. Why Does `kubectl` Fail with `TLS handshake timeout`? A Network-Path Checklist
+1. How to Stop Server Work When a gRPC Client Deadline Expires
+2. Why Does `kubectl` Fail with `TLS handshake timeout`? A Network-Path Checklist
 
 ## Chainguard
 
