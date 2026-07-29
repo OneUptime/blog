@@ -45,7 +45,7 @@ required concurrent connections
   ~= database operations per second * average connection hold time in seconds
 ```
 
-At 100 operations per second and a 50-millisecond hold time, the average occupancy is about five connections. If hold time rises to 400 milliseconds during a lock event, average occupancy rises to about 40. A 20-connection pool now has a queue even if incoming traffic did not change.
+At 100 operations per second and a 50-millisecond hold time, the average occupancy is about five connections. If hold time rises to 400 milliseconds during a lock event, the same offered load would require about 40 connections to avoid queueing. A 20-connection pool instead reaches its maximum and builds a queue even if incoming traffic did not change.
 
 This approximation uses averages and does not size the pool safely on its own. Bursts, tail latency, transaction fan-out, and uneven work all matter. Its value is showing that pool pressure can come from either more arrivals or slower releases.
 
