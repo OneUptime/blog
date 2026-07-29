@@ -2,22 +2,21 @@
 
 ## Chainguard
 
-1. Why Does `apk add` Return Permission Denied in a Chainguard Image?
-2. How to Copy Application Files into a Chainguard Image with Correct Nonroot Ownership
-3. How to Write a Docker Health Check When the Chainguard Image Has No curl, wget, or Shell
-4. Why Did My Container Entrypoint Break After Switching to a Chainguard Image?
-5. How to Build a Chainguard Python Runtime with uv, a Relocatable Virtualenv, and No pip
-6. Why Does a Native Python or Node Module Work in the Builder but Fail in the Chainguard Runtime?
-7. How to Find the Wolfi APK Package That Provides a Missing Command
-8. What to Do When the Package or Version You Need Is Missing from Wolfi
-9. Why Does `apk.cgr.dev` Fail Intermittently Behind Nexus or Artifactory?
-10. How to Avoid APK Version Conflicts When Extending Nightly Rebuilt Chainguard Images
-11. Chainguard vs Alpine vs Google Distroless: What Changes for libc, Debugging, and Compatibility?
-12. How to Verify a Chainguard Image Signature with Cosign
-13. How to Download the Correct Architecture-Specific SBOM for a Chainguard Image
-14. Why Does a Vulnerability Scanner Still Report CVEs in a Chainguard-Based Image?
-15. How to Pin Chainguard Images by Digest Without Missing Security Rebuilds
-16. How to Inspect Chainguard Tag History and See What Changed Between Rebuilds
+1. How to Copy Application Files into a Chainguard Image with Correct Nonroot Ownership
+2. How to Write a Docker Health Check When the Chainguard Image Has No curl, wget, or Shell
+3. Why Did My Container Entrypoint Break After Switching to a Chainguard Image?
+4. How to Build a Chainguard Python Runtime with uv, a Relocatable Virtualenv, and No pip
+5. Why Does a Native Python or Node Module Work in the Builder but Fail in the Chainguard Runtime?
+6. How to Find the Wolfi APK Package That Provides a Missing Command
+7. What to Do When the Package or Version You Need Is Missing from Wolfi
+8. Why Does `apk.cgr.dev` Fail Intermittently Behind Nexus or Artifactory?
+9. How to Avoid APK Version Conflicts When Extending Nightly Rebuilt Chainguard Images
+10. Chainguard vs Alpine vs Google Distroless: What Changes for libc, Debugging, and Compatibility?
+11. How to Verify a Chainguard Image Signature with Cosign
+12. How to Download the Correct Architecture-Specific SBOM for a Chainguard Image
+13. Why Does a Vulnerability Scanner Still Report CVEs in a Chainguard-Based Image?
+14. How to Pin Chainguard Images by Digest Without Missing Security Rebuilds
+15. How to Inspect Chainguard Tag History and See What Changed Between Rebuilds
 
 ## Azure VMs
 
