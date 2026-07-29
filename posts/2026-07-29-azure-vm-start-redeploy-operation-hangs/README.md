@@ -41,7 +41,7 @@ Do not tell users the operation is harmless merely because the guest responds. A
 Open the VM's **Activity log**, select the Start or Redeploy event, and record:
 
 - operation and status;
-- submitted and last-updated time;
+- event timestamp for each related entry;
 - correlation ID;
 - caller;
 - error details, if present.
@@ -58,7 +58,7 @@ VM_ID=$(az vm show \
 az monitor activity-log list \
   --resource-id "$VM_ID" \
   --offset 4h \
-  --query "[].{time:eventTimestamp,operation:operationName.localizedValue,status:status.localizedValue,correlationId:correlationId}" \
+  --query "[].{time:eventTimestamp,operation:operationName.localizedValue,status:status.localizedValue,caller:caller,correlationId:correlationId}" \
   --output table
 ```
 
@@ -93,16 +93,16 @@ Windows:
 
 ```text
 C:\WindowsAzure\Logs\WaAppAgent.log
-C:\WindowsAzure\Logs\Plugins\<Publisher>.<Type>\
-C:\Packages\Plugins\<Publisher>.<Type>\
+C:\WindowsAzure\Logs\Plugins\<ExtensionName>\
+C:\Packages\Plugins\<ExtensionName>\
 ```
 
 Linux:
 
 ```text
 /var/log/waagent.log
-/var/log/azure/<Publisher>.<Type>/
-/var/lib/waagent/<Publisher>.<Type>-<Version>/
+/var/log/azure/<ExtensionName>/
+/var/lib/waagent/<HandlerName>-<Version>/
 ```
 
 Use the guest connection that still works. Preserve logs before retrying. Look for:
@@ -153,7 +153,7 @@ az vm redeploy \
   --name myVM
 ```
 
-Redeploy is disruptive. Data on the temporary disk is lost, and dynamic IP addresses can change. It can fix a host issue, but if a guest extension is broken, the new host can trigger the same failed handler again.
+Redeploy is disruptive. Data on the temporary disk is lost, and dynamic IP addresses can change. On VMs that use an Ephemeral OS disk, redeploy also deletes the OS disk data and reprovisions the OS. It can fix a host issue, but if a guest extension is broken, the new host can trigger the same failed handler again.
 
 If the current Redeploy is the operation that is waiting, do not submit another Redeploy as a blind retry.
 
@@ -162,7 +162,7 @@ If the current Redeploy is the operation that is waiting, do not submit another 
 Failed extensions are not the only reason operations take time. Also check:
 
 - regional or zonal allocation delays and failures;
-- a partially allocated availability set;
+- allocation constraints when starting partially stopped (deallocated) VMs in an availability set;
 - network-resource update failures;
 - platform maintenance;
 - a guest stuck booting even though one old health signal remains green;
