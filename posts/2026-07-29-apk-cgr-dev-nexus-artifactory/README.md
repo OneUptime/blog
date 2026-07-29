@@ -8,7 +8,7 @@ Description: Diagnose APK proxy failures caused by stale indexes, URL rewriting,
 
 ---
 
-Intermittent APK failures behind a repository manager are often consistency failures, not random outages. `apk` first downloads `APKINDEX.tar.gz`, then requests exact package paths named by that index. If a proxy caches the index and package objects differently, rewrites a signed URL, or applies negative caching, the client can see an index entry whose package request fails.
+Intermittent APK failures behind a repository manager are often consistency failures, not random outages. `apk` first downloads `APKINDEX.tar.gz`, selects a package name, version, and architecture from it, then requests the corresponding `.apk` object. If a proxy caches the index and package objects differently, rewrites a signed URL, or applies negative caching, the client can see an index entry whose package request fails.
 
 Typical errors include:
 
@@ -45,7 +45,7 @@ Private organization repositories follow a separate authenticated model:
 https://apk.cgr.dev/ORGANIZATION
 ```
 
-The `virtualapk.cgr.dev` tracking endpoints use the organization UID. The authenticated `apk.cgr.dev` repository uses the organization or repository name shown in the Chainguard Console. Capture the exact upstream and proxy URLs before troubleshooting.
+The `virtualapk.cgr.dev` tracking endpoints require the organization UID. For the authenticated `apk.cgr.dev` repository, copy the exact private APK repository address from the Chainguard Console; Chainguard-generated `/etc/apk/repositories` files can contain an equivalent UID-based `apk.cgr.dev` address. Capture the exact upstream and proxy URLs before troubleshooting.
 
 ## Separate direct access from proxy behavior
 
@@ -95,7 +95,7 @@ RUN --mount=type=secret,id=repo_token \
     && printf '%s\n' \
        "https://build-user:${token}@repo.example.com/artifactory/cg-chainguard/" \
        > /etc/apk/repositories \
-    && apk add --no-cache libpq \
+    && apk --no-cache add libpq \
     && rm -f /etc/apk/repositories
 ```
 
@@ -106,19 +106,20 @@ The secret mount is not persisted as a layer. Avoid logging the expanded URL.
 APK verifies repository and package signatures against keys in the image. Chainguard documents that:
 
 - Artifactory remote repositories can preserve the original Chainguard signatures;
-- Artifactory virtual repositories add their own signing key;
-- Sonatype Nexus Alpine repositories require their own signing key.
+- Artifactory virtual repositories re-sign repository metadata with their configured RSA key;
+- Nexus Repository 3.93.0 and later support Alpine repositories, and signed Nexus metadata uses a repository-specific RSA key.
 
-The latter two are not automatically trusted by a Chainguard Custom Assembly image that contains only the Chainguard key. A resulting `UNTRUSTED signature` is deterministic, even if it appears intermittent because some clients or paths bypass the re-signing repository.
+The Artifactory virtual and signed Nexus metadata are not automatically trusted by a Chainguard Custom Assembly image that contains only the Chainguard key. A resulting `UNTRUSTED signature` is deterministic, even if it appears intermittent because some clients or paths bypass the re-signing repository.
 
-The correct fix is to design and distribute a trusted internal keyring through a reviewed image-building process, or use a signature-preserving remote repository. `apk --allow-untrusted` disables the assurance and should not be the routine workaround.
+The correct fix is to configure the repository manager's public key as a Custom Assembly custom runtime key, distribute a trusted internal keyring through another reviewed image-building process, or use a signature-preserving remote repository. `apk --allow-untrusted` disables the assurance and should not be the routine workaround.
 
 ## Fix index and object cache skew
 
 An APK index and the packages it references should be refreshed as a coherent set. Check repository-manager settings for:
 
-- metadata TTL versus binary-object TTL;
-- negative caching of a package path before it became available;
+- Artifactory **Metadata Retrieval Cache Period** and **Missed Retrieval Cache Period**;
+- Nexus **Maximum Metadata Age**, **Maximum Component Age**, and **Not Found Cache TTL**;
+- cleanup or retention of cached package objects;
 - remote checksum validation;
 - query-string stripping;
 - path normalization or collapsed path segments;
@@ -133,7 +134,7 @@ Then force a clean client-side check:
 ```bash
 rm -f /var/cache/apk/*
 apk --no-cache update
-apk fetch --no-cache target-package
+apk --no-cache fetch target-package
 ```
 
 Run this only in a disposable debug container or build stage.
