@@ -56,7 +56,7 @@ az vm list-ip-addresses \
   --output table
 ```
 
-If the VM uses a dynamic public IP, deallocation or redeployment might have changed it. Fix stale DNS or attach a static Standard public IP. Do not widen firewall rules to compensate for an incorrect destination.
+If the VM still uses a dynamic Basic public IP, deallocation or redeployment might have changed it. Basic public IPs were retired on September 30, 2025 and are unsupported. Fix stale DNS and migrate to a Standard public IP, which uses static allocation. Do not widen firewall rules to compensate for an incorrect destination.
 
 ## Test the office's real public source IP
 
@@ -77,6 +77,8 @@ Review effective inbound NSG rules on both the NIC and subnet. If NSGs exist at 
 ## Use IP flow verify with the failing source
 
 Azure Network Watcher IP flow verify evaluates Azure's effective security rules for a hypothetical packet. Use the VM's private IP as the local address, the office public egress address as remote, and an arbitrary high client source port:
+
+Network Watcher must be enabled in the VM's region. The CLI command accepts IPv4 addresses only; for an IPv6 path, inspect the effective security rules instead.
 
 ```bash
 az network watcher test-ip-flow \
@@ -179,4 +181,3 @@ The hotspot result is valuable evidence. It narrows the fault domain, but it doe
 - [Diagnose VM traffic filtering with IP flow verify](https://learn.microsoft.com/en-us/azure/network-watcher/diagnose-vm-network-traffic-filtering-problem)
 - [Azure network security groups overview](https://learn.microsoft.com/en-us/azure/virtual-network/network-security-groups-overview)
 - [Azure Bastion overview](https://learn.microsoft.com/en-us/azure/bastion/bastion-overview)
-
