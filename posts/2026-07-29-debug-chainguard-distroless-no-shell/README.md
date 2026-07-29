@@ -19,6 +19,8 @@ First inspect the image configuration and reproduce the failure without changing
 ```bash
 IMAGE=cgr.dev/chainguard/python:latest
 
+docker pull "$IMAGE"
+
 docker image inspect "$IMAGE" \
   --format 'user={{json .Config.User}} entrypoint={{json .Config.Entrypoint}} cmd={{json .Config.Cmd}}'
 
@@ -65,11 +67,11 @@ kubectl debug -it pod/api \
   --target=api
 ```
 
-From the debug container, inspect networking and processes with the tools available there. If the container runtime shares the target process namespace, the target filesystem may be reachable through its process root:
+From the debug container, inspect networking and processes with the tools available there. If the container runtime supports `--target` and places the debug container in the target's process namespace, the target filesystem may be reachable through its process root:
 
 ```bash
 ps
-ls -la /proc/1/root/app
+ls -la /proc/1/root/
 cat /proc/1/root/etc/os-release
 ```
 
@@ -90,7 +92,7 @@ Many useful checks do not require a shell in the target:
 kubectl logs pod/api -c api --previous
 kubectl describe pod/api
 kubectl get pod/api -o yaml
-kubectl get events --sort-by=.lastTimestamp
+kubectl get events --sort-by=.metadata.creationTimestamp
 ```
 
 You can also inspect an image offline:
