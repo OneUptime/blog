@@ -49,7 +49,7 @@ If this timer fires only under load, inspect active, idle, total, and waiting co
 
 ## Connect and Login Timeouts
 
-A connect timeout generally bounds physical connection establishment. PostgreSQL libpq exposes `connect_timeout` in seconds:
+A setting called a connect timeout may cover only a socket connect or a broader startup sequence. PostgreSQL libpq exposes `connect_timeout` in seconds. Its scope is the libpq connection attempt, not only the TCP handshake:
 
 ```text
 host=db.example.internal port=5432 dbname=orders connect_timeout=5
@@ -88,16 +88,20 @@ try (Connection connection = dataSource.getConnection();
 }
 ```
 
-JDBC specifies that the driver has at least attempted to cancel the running statement when it reports `SQLTimeoutException`. Cancellation semantics ultimately depend on the driver and database.
+JDBC requires this limit to apply to `execute`, `executeQuery`, and `executeUpdate`. Whether it also applies while consuming `ResultSet` rows is driver-specific. JDBC specifies that the driver has at least attempted to cancel the running statement when it reports `SQLTimeoutException`. Cancellation semantics ultimately depend on the driver and database.
 
 PostgreSQL also provides server-side `statement_timeout`:
 
 ```sql
+BEGIN;
+
 SET LOCAL statement_timeout = '2s';
 
 SELECT id, total
 FROM orders
-WHERE customer_id = $1;
+WHERE customer_id = 'customer-123';
+
+COMMIT;
 ```
 
 `SET LOCAL` scopes the value to the current transaction. PostgreSQL measures `statement_timeout` from command arrival at the server until server completion. It is not the same clock as a client-side timer and does not include waiting for a pool slot before the command is sent.
