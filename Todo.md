@@ -1,9 +1,5 @@
 # Blog Post Ideas
 
-## Timeouts
-
-1. Why Does `kubectl` Fail with `TLS handshake timeout`? A Network-Path Checklist
-
 ## Chainguard
 
 1. How to Debug a Chainguard Distroless Container When `/bin/sh` Is Missing
