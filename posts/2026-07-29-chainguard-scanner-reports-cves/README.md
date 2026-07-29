@@ -26,12 +26,15 @@ Record:
 - reported fixed version.
 
 ```bash
-docker pull registry.example.com/app:production
+SCAN_PLATFORM=linux/amd64
+docker pull --platform "$SCAN_PLATFORM" registry.example.com/app:production
 docker image inspect registry.example.com/app:production \
-  --format '{{index .RepoDigests 0}}'
+  --format '{{index .RepoDigests 0}} {{.Os}}/{{.Architecture}}'
 
 grype version
-grype registry.example.com/app@sha256:REPLACE_WITH_DIGEST -o json \
+grype db status -o json > grype-db-status.json
+grype --platform "$SCAN_PLATFORM" \
+  registry.example.com/app@sha256:REPLACE_WITH_DIGEST -o json \
   > grype-result.json
 ```
 
@@ -73,7 +76,7 @@ False positives often begin with an imprecise match:
 - a scanner treats a backported fix as vulnerable because the upstream version string looks old;
 - a file is identified twice as an APK and a language package;
 - a source archive or test fixture is mistaken for an installed component;
-- the scanner lacks current Wolfi advisory data;
+- the scanner lacks current Wolfi or Chainguard advisory data;
 - architecture or package namespace is wrong.
 
 Find the component in the SBOM:
@@ -107,15 +110,17 @@ Look up both the package and CVE. A `not affected` determination is evidence for
 
 Scanner data and Chainguard advisory data can update at different times. Preserve the advisory URL and timestamp used for a decision.
 
-## Rescan with a current, Wolfi-aware tool
+## Rescan with a current, Wolfi- and Chainguard-aware tool
 
 Update the scanner and its database, then compare at least one second scanner if organizational policy requires corroboration:
 
 ```bash
+SCAN_PLATFORM=linux/amd64
 grype db update
-grype cgr.dev/chainguard/python@sha256:REPLACE_WITH_DIGEST
+grype --platform "$SCAN_PLATFORM" \
+  cgr.dev/chainguard/python@sha256:REPLACE_WITH_DIGEST
 
-trivy image \
+trivy image --platform "$SCAN_PLATFORM" \
   cgr.dev/chainguard/python@sha256:REPLACE_WITH_DIGEST
 ```
 
@@ -147,7 +152,7 @@ Continue scanning suppressed findings. A package update or new evidence can inva
 | Chainguard advisory says affected | Follow the available fix or documented remediation state |
 | Advisory says not affected | Record evidence and apply a scoped VEX/exception |
 | No upstream fix | Reduce exposure, monitor, and plan an upgrade or replacement |
-| Scanner cannot identify Wolfi package correctly | Update scanner/database and report the matching defect |
+| Scanner cannot identify a Wolfi or Chainguard package correctly | Update scanner/database and report the matching defect |
 | Finding only in another architecture | Scan and manage each deployed platform separately |
 
 The goal is not to force the report to zero. It is to make every remaining result accurate, owned, and actionable.
