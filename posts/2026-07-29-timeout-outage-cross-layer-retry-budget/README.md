@@ -112,7 +112,7 @@ Limit retry traffic across many calls, not just within one request. A token buck
 
 AWS SDK standard retry mode uses a retry quota based on a token bucket. gRPC service config supports retry throttling with tokens that decrease on failed RPCs and recover gradually on successful RPCs.
 
-This population control is critical because a per-call limit of two retries can still double traffic when every request fails at once.
+This population control is critical because a per-call limit of two retries can still triple dependency traffic when every request fails at once.
 
 ## Fit Attempts Inside One Deadline
 
@@ -245,7 +245,7 @@ Attach one logical operation ID across attempts, plus a unique attempt ID for ea
 1. Inventory SDK, proxy, mesh, application, database, and queue retries.
 2. Normalize every setting to total attempts.
 3. Assign one owner for policy-level retries.
-4. Propagate one absolute deadline through the call chain.
+4. Propagate the remaining budget from one end-to-end deadline through the call chain.
 5. Retry only documented transient failures on repeatable operations.
 6. Add exponential backoff with jitter.
 7. Enforce a population token budget.
