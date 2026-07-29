@@ -8,7 +8,7 @@ Description: Explain Azure VM stopped and deallocated states, identify charges t
 
 ---
 
-Shutting down an Azure virtual machine from inside Windows or Linux does not necessarily release its host. If Azure reports the VM as **Stopped**, the VM is powered off but still allocated to a host, so compute billing continues. Compute billing stops only when the VM reaches **Stopped (deallocated)**, also shown by the instance-view power state `PowerState/deallocated`.
+Shutting down an Azure virtual machine from inside Windows or Linux does not necessarily release its host. If Azure reports the VM as **Stopped**, the VM is powered off but still allocated to a host, so compute billing continues. To confirm that the allocation has been fully released, wait until the VM reaches **Stopped (deallocated)**, also shown by the instance-view power state `PowerState/deallocated`. Azure also marks the transitional **Deallocating** state as not billed for VM instance usage.
 
 Deallocation does not delete the VM. Its configuration and persistent managed disks remain. Those retained resources explain why a deallocated VM can still produce a bill.
 
@@ -29,7 +29,7 @@ By contrast, the Azure portal **Stop** action and the Azure deallocate API relea
 
 ## Verify the state Azure is billing
 
-In the portal, open **Virtual machines**, select the VM, and check **Status** on the Overview page. The value that ends compute billing is **Stopped (deallocated)**.
+In the portal, open **Virtual machines**, select the VM, and check **Status** on the Overview page. The stable terminal value that confirms the allocation has been released is **Stopped (deallocated)**.
 
 With Azure CLI, query instance view rather than only the resource's provisioning state:
 
@@ -41,7 +41,7 @@ az vm get-instance-view \
   --output table
 ```
 
-`ProvisioningState/succeeded` means that the Azure resource model is provisioned successfully. It does not mean the VM is running, and it is not a billing state.
+`ProvisioningState/succeeded` means that the most recent control-plane operation on the VM succeeded. It does not mean the VM is running, and it is not a billing state.
 
 To release compute:
 
