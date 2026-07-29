@@ -104,9 +104,9 @@ curl --silent --show-error --fail \
   'http://169.254.169.254/metadata/identity/oauth2/token?api-version=2018-02-01&resource=https%3A%2F%2Fmanagement.azure.com%2F&client_id=00000000-0000-0000-0000-000000000000'
 ```
 
-IMDS also supports selectors based on object ID or the managed identity Azure resource ID. URL-encode a resource ID before placing it in `mi_res_id`.
+IMDS also supports selectors based on object ID or the managed identity Azure resource ID. URL-encode a resource ID before placing it in `msi_res_id`.
 
-Choose the identity by configuration, not by assuming the first returned identity. This avoids an application silently acquiring a broader or wrong identity after another identity is attached to the VM.
+Choose the user-assigned identity by configuration rather than relying on implicit selection. IMDS defaults to the system-assigned identity when one is enabled; otherwise, it uses a sole user-assigned identity but rejects the request as ambiguous if another is attached. Explicit selection keeps the application's identity choice stable as assignments change.
 
 ## IMDS must bypass proxies
 
@@ -142,9 +142,10 @@ Typical outcomes:
 - **400 missing metadata header**: send exactly `Metadata: true`;
 - **400 invalid resource**: correct the service audience;
 - **401 unauthorized client**: enable or correctly select the VM identity;
-- **404 or connection failure**: confirm the request is on an Azure VM and bypasses proxies;
-- **429**: respect `Retry-After` and use exponential backoff;
-- **5xx**: retry with bounded exponential backoff and jitter.
+- **404**: retry with bounded exponential backoff because the IMDS endpoint may be updating;
+- **connection failure**: confirm the request is on an Azure VM, uses its primary NIC and primary IP with DHCP enabled, and bypasses proxies;
+- **429**: use bounded exponential backoff;
+- **5xx**: wait at least one second, then retry with bounded exponential backoff and jitter.
 
 Do not retry permanent 400 errors indefinitely. Cache tokens so normal traffic does not pressure IMDS or Microsoft Entra ID.
 
@@ -171,4 +172,3 @@ Managed identity removes credential storage. It does not remove the need for pro
 - [Azure Instance Metadata Service](https://learn.microsoft.com/en-us/azure/virtual-machines/instance-metadata-service)
 - [How managed identities work with Azure VMs](https://learn.microsoft.com/en-us/entra/identity/managed-identities-azure-resources/how-managed-identities-work-vm)
 - [Configure managed identities on Azure VMs](https://learn.microsoft.com/en-us/entra/identity/managed-identities-azure-resources/how-to-configure-managed-identities)
-
