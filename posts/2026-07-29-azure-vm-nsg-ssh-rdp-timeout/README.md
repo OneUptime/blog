@@ -8,7 +8,7 @@ Description: Trace SSH and RDP timeouts beyond an NSG allow rule through public 
 
 ---
 
-An inbound NSG Allow for TCP 22 or 3389 proves only that one Azure packet-filtering layer permits matching traffic. It does not create a public endpoint, start `sshd` or Remote Desktop Services, open the guest firewall, repair a route, or make the operating system boot.
+An effective inbound NSG Allow result for TCP 22 or 3389 proves only that one Azure packet-filtering layer permits matching traffic. It does not create a public endpoint, start `sshd` or Remote Desktop Services, open the guest firewall, repair a route, or make the operating system boot.
 
 Troubleshoot the path in order:
 
@@ -68,7 +68,7 @@ For a load balancer, verify that the frontend, rule or inbound NAT rule, backend
 
 NSGs can be associated with both the subnet and NIC. Inbound traffic must be allowed at each scope. Rules are evaluated by priority, with lower numbers evaluated first. A priority 100 deny wins before a priority 300 allow.
 
-Use Network Watcher IP flow verify with the real client public IP:
+Use Network Watcher IP flow verify with the source IP Azure sees: the client's public NAT address for an internet connection, or the source address presented over VPN or ExpressRoute:
 
 ```bash
 az network watcher test-ip-flow \
@@ -77,7 +77,7 @@ az network watcher test-ip-flow \
   --direction Inbound \
   --protocol TCP \
   --local 10.0.0.4:22 \
-  --remote 198.51.100.25:54000 \
+  --remote '198.51.100.25:*' \
   --output json
 ```
 
@@ -93,7 +93,7 @@ Common mistakes include:
 - an application security group has the wrong NIC membership;
 - an Azure Firewall or NVA rule is mistaken for an NSG rule.
 
-NSGs are stateful. Return traffic for an allowed established flow does not require a mirror inbound rule, but another firewall or asymmetric path can still drop it.
+NSGs are stateful. Return traffic for an allowed inbound flow does not require a mirror outbound rule, but another firewall or asymmetric path can still drop it.
 
 ## Verify routes and appliances
 
@@ -128,8 +128,8 @@ Windows:
 ```powershell
 Get-Service TermService
 Get-NetTCPConnection -State Listen -LocalPort 3389
-Get-NetFirewallRule -DisplayGroup 'Remote Desktop' |
-  Select-Object DisplayName, Enabled, Direction, Action
+Get-NetFirewallRule -PolicyStore ActiveStore -Group '@FirewallAPI.dll,-28752' |
+  Select-Object DisplayName, Enabled, Direction, Action, Profile
 ```
 
 If nothing listens, fix the service configuration before changing Azure networking. If it listens only on loopback or another address, remote packets cannot reach it.
@@ -158,7 +158,7 @@ If the guest is healthy but inaccessible:
 2. use VMAccess to reset SSH/RDP only if the VM Agent is Ready;
 3. use offline OS-disk repair when both network access and the agent path are unavailable.
 
-Redeploying moves the VM to another Azure host and can help with an underlying host issue, but it loses temporary-disk data and can update dynamic IPs. It is not the first fix for a clearly stopped service.
+Redeploying moves the VM to another Azure host and can help with an underlying host issue, but it loses data on temporary disks and ephemeral OS disks and updates dynamic IP addresses associated with the NIC. It is not the first fix for a clearly stopped service.
 
 ## Secure the final design
 

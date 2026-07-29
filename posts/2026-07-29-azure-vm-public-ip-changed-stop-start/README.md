@@ -45,7 +45,7 @@ If a public IP resource is attached, inspect it:
 az network public-ip show \
   --resource-group myResourceGroup \
   --name myPublicIP \
-  --query "{address:ipAddress,allocation:publicIPAllocationMethod,sku:sku.name,dns:fqdn}" \
+  --query "{address:ipAddress,allocation:publicIPAllocationMethod,sku:sku.name,dns:dnsSettings.fqdn}" \
   --output table
 ```
 
@@ -75,14 +75,23 @@ Use a stable DNS name for service discovery, but remember that partner IP allowl
 
 ## Use a static public IP when the address is a contract
 
-For current deployments, create a Standard public IP with static allocation and associate it with the NIC or service frontend:
+Basic SKU public IPs were retired on September 30, 2025. Existing Basic addresses can remain operational, but Microsoft treats them as unsupported and without SLA coverage, so replace or upgrade one instead of continuing to rely on it.
+
+For current deployments, create a Standard public IP with static allocation in the same region as the NIC and associate it with the NIC or service frontend:
 
 ```bash
+NIC_LOCATION=$(az network nic show \
+  --resource-group myResourceGroup \
+  --name myNic \
+  --query location \
+  --output tsv)
+
 az network public-ip create \
   --resource-group myResourceGroup \
   --name myPublicIP \
   --sku Standard \
-  --allocation-method Static
+  --allocation-method Static \
+  --location "$NIC_LOCATION"
 ```
 
 Association is performed on the NIC IP configuration:
@@ -133,6 +142,7 @@ For administration, eliminate internet-exposed ports when possible. A changing R
 ## Official Documentation
 
 - [Create, change, or delete an Azure public IP address](https://learn.microsoft.com/en-us/azure/virtual-network/ip-services/virtual-network-public-ip-address)
+- [Upgrade Basic Public IP Address to Standard SKU in Azure](https://learn.microsoft.com/en-us/azure/virtual-network/ip-services/public-ip-basic-upgrade-guidance)
 - [Configure IP addresses for an Azure network interface](https://learn.microsoft.com/en-us/azure/virtual-network/ip-services/virtual-network-network-interface-addresses)
 - [Redeploy a Windows VM to a new Azure node](https://learn.microsoft.com/en-us/troubleshoot/azure/virtual-machines/windows/redeploy-to-new-node-windows)
 - [Azure Bastion overview](https://learn.microsoft.com/en-us/azure/bastion/bastion-overview)
