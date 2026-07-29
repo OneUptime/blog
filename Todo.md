@@ -2,26 +2,25 @@
 
 ## Chainguard
 
-1. How to Debug a Chainguard Distroless Container When `/bin/sh` Is Missing
-2. Chainguard `latest`, `latest-dev`, and `-full`: Which Image Variant Should You Use?
-3. How to Migrate an `apt`-Based Dockerfile to Chainguard and `apk`
-4. How to Install Extra APK Packages in a Distroless Chainguard Runtime
-5. Why Does `apk add` Return Permission Denied in a Chainguard Image?
-6. How to Copy Application Files into a Chainguard Image with Correct Nonroot Ownership
-7. How to Write a Docker Health Check When the Chainguard Image Has No curl, wget, or Shell
-8. Why Did My Container Entrypoint Break After Switching to a Chainguard Image?
-9. How to Build a Chainguard Python Runtime with uv, a Relocatable Virtualenv, and No pip
-10. Why Does a Native Python or Node Module Work in the Builder but Fail in the Chainguard Runtime?
-11. How to Find the Wolfi APK Package That Provides a Missing Command
-12. What to Do When the Package or Version You Need Is Missing from Wolfi
-13. Why Does `apk.cgr.dev` Fail Intermittently Behind Nexus or Artifactory?
-14. How to Avoid APK Version Conflicts When Extending Nightly Rebuilt Chainguard Images
-15. Chainguard vs Alpine vs Google Distroless: What Changes for libc, Debugging, and Compatibility?
-16. How to Verify a Chainguard Image Signature with Cosign
-17. How to Download the Correct Architecture-Specific SBOM for a Chainguard Image
-18. Why Does a Vulnerability Scanner Still Report CVEs in a Chainguard-Based Image?
-19. How to Pin Chainguard Images by Digest Without Missing Security Rebuilds
-20. How to Inspect Chainguard Tag History and See What Changed Between Rebuilds
+1. Chainguard `latest`, `latest-dev`, and `-full`: Which Image Variant Should You Use?
+2. How to Migrate an `apt`-Based Dockerfile to Chainguard and `apk`
+3. How to Install Extra APK Packages in a Distroless Chainguard Runtime
+4. Why Does `apk add` Return Permission Denied in a Chainguard Image?
+5. How to Copy Application Files into a Chainguard Image with Correct Nonroot Ownership
+6. How to Write a Docker Health Check When the Chainguard Image Has No curl, wget, or Shell
+7. Why Did My Container Entrypoint Break After Switching to a Chainguard Image?
+8. How to Build a Chainguard Python Runtime with uv, a Relocatable Virtualenv, and No pip
+9. Why Does a Native Python or Node Module Work in the Builder but Fail in the Chainguard Runtime?
+10. How to Find the Wolfi APK Package That Provides a Missing Command
+11. What to Do When the Package or Version You Need Is Missing from Wolfi
+12. Why Does `apk.cgr.dev` Fail Intermittently Behind Nexus or Artifactory?
+13. How to Avoid APK Version Conflicts When Extending Nightly Rebuilt Chainguard Images
+14. Chainguard vs Alpine vs Google Distroless: What Changes for libc, Debugging, and Compatibility?
+15. How to Verify a Chainguard Image Signature with Cosign
+16. How to Download the Correct Architecture-Specific SBOM for a Chainguard Image
+17. Why Does a Vulnerability Scanner Still Report CVEs in a Chainguard-Based Image?
+18. How to Pin Chainguard Images by Digest Without Missing Security Rebuilds
+19. How to Inspect Chainguard Tag History and See What Changed Between Rebuilds
 
 ## Azure VMs
 
