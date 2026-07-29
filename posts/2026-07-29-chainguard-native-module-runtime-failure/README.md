@@ -83,11 +83,15 @@ Major or minor language equality is not always sufficient. Compare the actual AB
 
 ## Inspect native dependencies in the builder
 
-Install diagnostic tools in the disposable builder, not the runtime:
+Install diagnostic tools as root in the disposable builder, then switch back to the non-root user:
+
+```dockerfile
+USER root
+RUN apk add --no-cache file binutils cmd:ldd
+USER 65532
+```
 
 ```bash
-apk add --no-cache file binutils cmd:ldd
-
 file path/to/extension.so
 readelf -d path/to/extension.so
 ldd path/to/extension.so
@@ -98,17 +102,20 @@ Look for:
 - the expected `x86-64` or `aarch64` machine;
 - `NEEDED` entries for runtime libraries;
 - `not found` in `ldd`;
-- an interpreter such as `/lib/ld-linux-aarch64.so.1`;
 - RPATH or RUNPATH entries tied to a builder-only directory.
+
+Shared objects do not normally contain a `PT_INTERP` entry. The Python or Node.js executable selects the dynamic loader.
 
 `ldd` evaluates loading behavior, so use it only on artifacts you trust. `readelf -d` is a safer static first look.
 
-Next compare the required libraries with the runtime SBOM. Search the APK index by shared-object capability:
+Next compare the required libraries with the runtime SBOM. Search the APK index by shared-object capability as root in a disposable matching `-dev` image:
 
 ```bash
-apk update
-apk search 'so:libpq.so.5'
-apk search 'so:libvips.so*'
+docker run --rm \
+  --user root \
+  --entrypoint /bin/sh \
+  cgr.dev/chainguard/node:latest-dev \
+  -c "apk update && apk search 'so:libpq.so.5' && apk search 'so:libvips.so*'"
 ```
 
 The `-dev` package normally supplies headers and linker metadata. The package without `-dev` normally supplies runtime libraries, but confirm through the package index rather than relying on naming alone.
@@ -117,22 +124,23 @@ The `-dev` package normally supplies headers and linker metadata. The package wi
 
 If the runtime needs an APK, use Chainguard Custom Assembly or the documented multi-stage method for adding APKs to a distroless filesystem. Do not retain `gcc`, headers, `npm`, `pip`, or `apk` merely because they were needed to build.
 
-Also check whether the dependency offers a compatible prebuilt wheel or addon. Wolfi uses glibc, so a `manylinux` Python wheel can be a better fit than a musl-targeted artifact. Wheel tags encode Python ABI, minimum glibc family, and architecture. A filename ending in `aarch64.whl` cannot run on `x86_64`.
+Also check whether the dependency offers a compatible prebuilt wheel or addon. Wolfi uses glibc, so a `manylinux` Python wheel can be a better fit than a musl-targeted artifact. Wheel filenames carry Python, ABI, and platform tags; a `manylinux_x_y_arch` platform tag encodes the minimum supported glibc version and architecture. A filename ending in `aarch64.whl` cannot run on `x86_64`.
 
 ## Test the import in the final stage
 
-Make native imports a build or CI gate:
+Make native imports a build or CI gate. When Psycopg was installed with its `c` extra, force that implementation so it cannot fall back to the pure-Python implementation:
 
 ```bash
 docker run --rm \
+  --env PSYCOPG_IMPL=c \
   --entrypoint /app/venv/bin/python \
   python-app:test \
-  -c 'import psycopg, cryptography; print("native imports ok")'
+  -c 'import psycopg; from cryptography.hazmat.primitives import hashes; hashes.Hash(hashes.SHA256()); print("native imports ok")'
 
 docker run --rm \
   --entrypoint /usr/bin/node \
   node-app:test \
-  -e 'require("better-sqlite3"); console.log("native imports ok")'
+  -e 'const db = require("better-sqlite3")(":memory:"); db.close(); console.log("native imports ok")'
 ```
 
 Run one test image per deployment architecture. A multi-platform manifest can contain a correct `amd64` image and a broken `arm64` image while a local test exercises only one.
