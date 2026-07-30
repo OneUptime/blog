@@ -2,8 +2,7 @@
 
 ## ActiveMQ
 
-1. Taming a Fast Producer and Slow Consumer with ActiveMQ Flow Control and Pending Limits
-2. Why an ActiveMQ Queue Keeps Growing—and How to Find the Bottleneck
+1. Why an ActiveMQ Queue Keeps Growing—and How to Find the Bottleneck
 
 ## Blameless Postmortems
 
