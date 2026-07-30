@@ -23,8 +23,8 @@ Useful broker attributes include:
 - `TotalConsumerCount` and `TotalProducerCount`;
 - `MemoryPercentUsage`;
 - `StorePercentUsage`;
-- connector connection counts;
-- health status.
+- `TempPercentUsage`;
+- `CurrentConnectionsCount` and `TotalConnectionsCount`.
 
 Useful queue attributes include:
 
@@ -92,14 +92,14 @@ Broker `StorePercentUsage` measures use relative to the configured store limit. 
 
 Classic's `AverageEnqueueTime`, `MinEnqueueTime`, and `MaxEnqueueTime` describe time messages spent at the destination as observed by its statistics. They are useful latency signals, but `MaxEnqueueTime` is not guaranteed to be the current oldest outstanding message's age.
 
-For a true oldest-pending age SLI:
+For robust message-age monitoring:
 
 - have producers stamp an immutable event-created or enqueue timestamp;
-- have consumers emit `now - timestamp` for every processed message;
-- periodically inspect a bounded queue sample through management when operationally safe;
-- or maintain an application-level backlog-age metric keyed only by bounded queue/workload labels.
+- have consumers emit `now - timestamp` for every processed message as a processed-age metric;
+- maintain an application-level oldest-pending metric keyed only by bounded queue/workload labels if you need a true current-backlog SLI;
+- periodically inspect a bounded queue sample through management when operationally safe, treating it as a diagnostic sample rather than a guaranteed oldest-message measurement.
 
-JMS `JMSTimestamp` is provider-set send time and can help, but business event age may begin earlier. Clock synchronization matters. Do not run an unbounded queue browse on a hot production broker merely to calculate one metric.
+JMS `JMSTimestamp` records when the message was handed to the provider for sending and can help, but it may be zero when message timestamps are disabled and is not the broker's arrival time. Business event age may begin earlier. Clock synchronization matters. Do not run an unbounded queue browse on a hot production broker merely to calculate one metric.
 
 ## Build alerts from symptoms and progress
 
