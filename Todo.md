@@ -2,21 +2,20 @@
 
 ## Blameless Postmortems
 
-1. Who Should Attend a Blameless Postmortem—and Who Should Facilitate It?
-2. How to Keep Senior Leaders from Turning a Postmortem into a Blame Session
-3. A Practical Blameless Postmortem Agenda for a 60-Minute Review
-4. What Belongs in a Blameless Postmortem Template? Impact, Timeline, Factors, and Actions
-5. How to Reconstruct an Incident Timeline from Slack, Alerts, Logs, and Deployments
-6. How to Write a Factual Timeline Without Naming and Shaming Individuals
-7. Why “Human Error” Is Not a Root Cause—and What to Investigate Instead
-8. Five Whys or Causal Tree? Choosing a Better Analysis for Complex Incidents
-9. Root Cause vs Contributing Factors: How to Avoid a Single-Cause Story
-10. How to Turn “Improve Monitoring” into a Specific, Testable Postmortem Action Item
-11. Postmortem Action Items Keep Dying in the Backlog: How to Get Them Prioritized
-12. Assigning Owners and Deadlines Without Reintroducing Blame
-13. How to Verify That Postmortem Actions Actually Prevented a Repeat Incident
-14. What to Do When the Same Incident Happens After a Previous Postmortem
-15. How to Make Postmortems Worth Reading Instead of Letting Them Rot in Confluence
+1. How to Keep Senior Leaders from Turning a Postmortem into a Blame Session
+2. A Practical Blameless Postmortem Agenda for a 60-Minute Review
+3. What Belongs in a Blameless Postmortem Template? Impact, Timeline, Factors, and Actions
+4. How to Reconstruct an Incident Timeline from Slack, Alerts, Logs, and Deployments
+5. How to Write a Factual Timeline Without Naming and Shaming Individuals
+6. Why “Human Error” Is Not a Root Cause—and What to Investigate Instead
+7. Five Whys or Causal Tree? Choosing a Better Analysis for Complex Incidents
+8. Root Cause vs Contributing Factors: How to Avoid a Single-Cause Story
+9. How to Turn “Improve Monitoring” into a Specific, Testable Postmortem Action Item
+10. Postmortem Action Items Keep Dying in the Backlog: How to Get Them Prioritized
+11. Assigning Owners and Deadlines Without Reintroducing Blame
+12. How to Verify That Postmortem Actions Actually Prevented a Repeat Incident
+13. What to Do When the Same Incident Happens After a Previous Postmortem
+14. How to Make Postmortems Worth Reading Instead of Letting Them Rot in Confluence
 
 ## Infrastructure Metrics
 
