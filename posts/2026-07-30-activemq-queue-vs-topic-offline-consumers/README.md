@@ -8,7 +8,7 @@ Description: Understand which queue and topic messages remain available while co
 
 ---
 
-A queue keeps work for an eligible consumer. A topic publishes a copy to each subscription that exists at the time of publication. That simple distinction explains most offline-consumer behavior, but three separate concepts are often mixed together:
+A queue keeps work for an eligible consumer. A topic publishes a copy to each matching subscription that exists at the time of publication. That simple distinction explains most offline-consumer behavior, but three separate concepts are often mixed together:
 
 1. the destination pattern—queue or topic;
 2. the subscription lifetime—non-durable or durable;
@@ -20,9 +20,9 @@ You need all three to predict what survives an offline interval or broker restar
 
 | Destination and subscription | Consumer offline when message arrives | After broker failure/restart |
 | --- | --- | --- |
-| JMS queue | Message remains for a future eligible queue consumer, subject to expiry and broker retention policy | Persistent messages are designed to survive; non-persistent messages may be lost |
+| JMS queue | If no eligible consumer is available, the message remains for a future eligible queue consumer, subject to expiry and broker retention policy | Persistent messages are designed to survive; non-persistent messages may be lost |
 | Topic, non-durable subscription | Offline consumer gets no copy | No subscription backlog exists to recover |
-| Topic, existing durable subscription | Broker retains a copy for that subscription | Use persistent delivery and durable broker storage when the copy must survive provider failure |
+| Topic, existing durable subscription | Broker retains matching messages for that subscription; delivery of non-persistent messages is not guaranteed while it is inactive | Use persistent delivery and durable broker storage when the copy must survive provider failure |
 | Topic, durable subscription not yet created | No historical copy is created for a future subscription | Nothing to recover |
 
 “Durable topic” is imprecise. The durable object is a **subscription** with an identity. Other subscribers on the same topic have their own independent lifetimes.
@@ -34,18 +34,18 @@ Jakarta Messaging queue semantics are point-to-point. A message is delivered to 
 Those removal rules matter:
 
 - a time-to-live can expire the message;
-- an administrative retention or capacity policy can discard or reject it;
+- an administrative retention or capacity policy can discard it or reject the send;
 - a dead-letter policy can move it after failed deliveries;
 - an operator can purge or move it;
 - a non-persistent message can be lost if the provider fails.
 
 If a consumer receives a message but disconnects before acknowledgement, the broker makes it eligible for redelivery according to acknowledgement, transaction, and redelivery policy. A message prefetched to an offline or failed client may therefore look absent from the ready list while remaining unacknowledged.
 
-Multiple queue consumers compete. If consumer A is offline, consumer B can process the work. The broker does not reserve a queue message for A unless another feature—such as an exclusive consumer, message group, selector, or consumer priority—makes B ineligible.
+Multiple queue consumers compete. If consumer A is offline, consumer B can process the work. Features such as an exclusive consumer, message group, selector, or consumer priority can constrain or influence which consumer receives it.
 
 ## Non-Durable Topic Subscription: Offline Means No Copy
 
-A normal topic subscription exists only while its consumer is active. Messages published before it connects or while it is disconnected are not saved for that consumer.
+An unshared non-durable topic subscription exists only for the lifetime of its consumer. A shared non-durable subscription exists only while it has at least one consumer. Messages published when the subscription does not exist are not saved for a later consumer.
 
 For example:
 
@@ -84,7 +84,7 @@ For Classic 5.x the imports are normally from `javax.jms`; Classic 6.x and a Jak
 
 Reconnect with the same identity and a compatible topic/selector/no-local definition. Accidentally changing the client ID or subscription name creates or addresses a different subscription and leaves the original backlog untouched.
 
-The Jakarta Messaging specification adds an important durability caveat: delivery of a non-persistent message to a queue or to an inactive durable subscription is not guaranteed if the provider shuts down and restarts. If the offline backlog must survive provider failure, send persistent messages and use durable broker storage with sufficient retention.
+The Jakarta Messaging specification adds an important durability caveat: delivery of a non-persistent message to a durable subscription is not guaranteed once the subscription becomes inactive. Delivery of a non-persistent message to a queue or durable subscription is also not guaranteed if the provider shuts down and restarts. If the offline backlog must survive provider failure, send persistent messages and use durable broker storage with sufficient retention.
 
 ## How ActiveMQ Classic Represents This
 
