@@ -2,24 +2,23 @@
 
 ## Blameless Postmortems
 
-1. Blameless Does Not Mean Consequence-Free: Handling Negligence and Repeated Mistakes
-2. Which Incidents Need a Postmortem? Setting Severity, Impact, and Near-Miss Triggers
-3. When Should You Hold a Postmortem? Choosing a Deadline While Evidence Is Fresh
-4. Who Should Attend a Blameless Postmortem—and Who Should Facilitate It?
-5. How to Keep Senior Leaders from Turning a Postmortem into a Blame Session
-6. A Practical Blameless Postmortem Agenda for a 60-Minute Review
-7. What Belongs in a Blameless Postmortem Template? Impact, Timeline, Factors, and Actions
-8. How to Reconstruct an Incident Timeline from Slack, Alerts, Logs, and Deployments
-9. How to Write a Factual Timeline Without Naming and Shaming Individuals
-10. Why “Human Error” Is Not a Root Cause—and What to Investigate Instead
-11. Five Whys or Causal Tree? Choosing a Better Analysis for Complex Incidents
-12. Root Cause vs Contributing Factors: How to Avoid a Single-Cause Story
-13. How to Turn “Improve Monitoring” into a Specific, Testable Postmortem Action Item
-14. Postmortem Action Items Keep Dying in the Backlog: How to Get Them Prioritized
-15. Assigning Owners and Deadlines Without Reintroducing Blame
-16. How to Verify That Postmortem Actions Actually Prevented a Repeat Incident
-17. What to Do When the Same Incident Happens After a Previous Postmortem
-18. How to Make Postmortems Worth Reading Instead of Letting Them Rot in Confluence
+1. Which Incidents Need a Postmortem? Setting Severity, Impact, and Near-Miss Triggers
+2. When Should You Hold a Postmortem? Choosing a Deadline While Evidence Is Fresh
+3. Who Should Attend a Blameless Postmortem—and Who Should Facilitate It?
+4. How to Keep Senior Leaders from Turning a Postmortem into a Blame Session
+5. A Practical Blameless Postmortem Agenda for a 60-Minute Review
+6. What Belongs in a Blameless Postmortem Template? Impact, Timeline, Factors, and Actions
+7. How to Reconstruct an Incident Timeline from Slack, Alerts, Logs, and Deployments
+8. How to Write a Factual Timeline Without Naming and Shaming Individuals
+9. Why “Human Error” Is Not a Root Cause—and What to Investigate Instead
+10. Five Whys or Causal Tree? Choosing a Better Analysis for Complex Incidents
+11. Root Cause vs Contributing Factors: How to Avoid a Single-Cause Story
+12. How to Turn “Improve Monitoring” into a Specific, Testable Postmortem Action Item
+13. Postmortem Action Items Keep Dying in the Backlog: How to Get Them Prioritized
+14. Assigning Owners and Deadlines Without Reintroducing Blame
+15. How to Verify That Postmortem Actions Actually Prevented a Repeat Incident
+16. What to Do When the Same Incident Happens After a Previous Postmortem
+17. How to Make Postmortems Worth Reading Instead of Letting Them Rot in Confluence
 
 ## Infrastructure Metrics
 
