@@ -16,7 +16,7 @@ This article covers ActiveMQ Classic. Artemis represents durable subscriptions a
 
 ## Identify a durable subscription correctly
 
-In JMS, a durable subscription is identified by more than a topic name. For a classic durable subscriber, the client identifier and subscription name form the durable identity; the topic and selector define what it receives.
+In JMS, a durable subscription is identified by more than a topic name. For a classic durable subscriber, the client identifier and subscription name form the durable identity; the topic, selector, and `noLocal` setting define what it receives.
 
 If a deployment changes its client ID or subscription name, the broker does not infer a rename. It creates a new durable subscription and leaves the old one offline. Random or per-pod client IDs are therefore dangerous for durable consumers.
 
@@ -56,7 +56,7 @@ Deleting the subscription discards its retained backlog. Recreating the same ide
 
 ## Remove one subscription manually
 
-Classic supports manual unsubscribe through management tools such as JConsole and the web console. A JMS application can also call `Session.unsubscribe(subscriptionName)` in the correct client-ID context, subject to the Jakarta Messaging rules: the durable subscription must not have an active consumer.
+Classic supports manual unsubscribe through management tools such as JConsole and the web console. A JMS application can also call `Session.unsubscribe(subscriptionName)` in the correct client-ID context, subject to the Jakarta Messaging rules: the durable subscription must not have an active consumer, and no message received from it may be part of a current transaction or remain unacknowledged in the session.
 
 A safe manual sequence is:
 
@@ -115,7 +115,7 @@ client ID: billing-ledger-prod
 subscription: invoice-events-v2
 ```
 
-Avoid hostnames, container IDs, random UUIDs, or rollout hashes unless every instance is intentionally a separate durable subscription. For horizontally scaled processing of one retained stream, confirm whether a shared durable subscription, virtual topic, or queue better represents the desired delivery semantics.
+Avoid hostnames, container IDs, random UUIDs, or rollout hashes unless every instance is intentionally a separate durable subscription. For horizontally scaled processing of one retained stream, confirm whether a virtual topic or queue better represents the desired delivery semantics; ActiveMQ Classic does not currently implement shared topic consumers.
 
 Treat an identity change like a data migration:
 
