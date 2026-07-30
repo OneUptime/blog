@@ -2,12 +2,11 @@
 
 ## Platform Metrics
 
-1. Platform SLOs and Error Budgets: Measuring the Reliability of Shared Developer Services
-2. How to Measure Platform Toil Through Support Tickets, Interruptions, and Manual Approvals
-3. Cost per Service, Deployment, or Environment: Building Useful Platform Unit Economics
-4. How to Prove Platform ROI Without Inventing Fake Revenue Attribution
-5. How to Measure the Success of Platform Documentation and Discoverability
-6. Policy Guardrail Metrics: Tracking Failed Checks, Exceptions, and Time to Compliance
+1. How to Measure Platform Toil Through Support Tickets, Interruptions, and Manual Approvals
+2. Cost per Service, Deployment, or Environment: Building Useful Platform Unit Economics
+3. How to Prove Platform ROI Without Inventing Fake Revenue Attribution
+4. How to Measure the Success of Platform Documentation and Discoverability
+5. Policy Guardrail Metrics: Tracking Failed Checks, Exceptions, and Time to Compliance
 
 ## ActiveMQ
 
