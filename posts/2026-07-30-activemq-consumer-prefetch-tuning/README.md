@@ -21,7 +21,7 @@ There is no broker-independent `prefetch=10` rule. ActiveMQ Classic and Artemis 
 
 ## ActiveMQ Classic Prefetch Is a Message Count
 
-The Classic OpenWire client uses a push model. Its prefetch limit is the maximum number of messages the broker can dispatch to an individual consumer before acknowledgements replenish credit.
+The Classic OpenWire client uses a push model. Its prefetch limit is the nominal message-count window the broker uses when dispatching to an individual consumer before acknowledgements replenish credit.
 
 Classic documents this refill behavior:
 
@@ -29,14 +29,18 @@ Classic documents this refill behavior:
 2. it stops dispatching to that consumer;
 3. after acknowledgements reach at least half the prefetch value, the broker sends another half-window to top the buffer up.
 
-Current documented defaults are:
+This base refill model is not a hard cap on all delivered-but-unacknowledged work. The broker destination policy `usePrefetchExtension` is enabled by default, and it can allow a transaction batch to exceed the configured prefetch.
+
+The supported 5.19.8 and 6.2.7 OpenWire Java clients use these base `ActiveMQPrefetchPolicy` defaults:
 
 | Classic consumer type | Default prefetch |
 | --- | ---: |
-| Persistent queue | 1000 |
-| Non-persistent queue | 1000 |
-| Persistent topic | 100 |
-| Non-persistent topic | `Short.MAX_VALUE - 1` |
+| Queue or temporary queue | 1000 |
+| Queue browser | 500 |
+| Durable topic subscription | 100 |
+| Non-durable topic subscription | `Short.MAX_VALUE` (32767) |
+
+An auto-acknowledged durable topic subscriber uses the separate `optimizeDurableTopicPrefetch` default of 1000 while `optimizedMessageDispatch` is active. The Classic prefetch page still lists the non-durable topic default as `Short.MAX_VALUE - 1`, but the current supported client source defines it as `Short.MAX_VALUE`.
 
 Those values favor throughput. A queue worker that spends 30 seconds on each job should not reserve 1000 jobs merely because the default was designed for fast messaging.
 
@@ -66,7 +70,7 @@ These are Classic client options. They do not configure an Artemis Core client, 
 
 ### Prefetch `1`
 
-Use one as the initial trial for long-running or highly variable tasks. One worker reserves one message, which usually produces fairer distribution and limits failure redelivery. It still uses push delivery.
+Use one as the initial trial for long-running or highly variable tasks. It keeps the nominal prefetch window to one message, which usually produces fairer distribution and limits failure redelivery. It still uses push delivery.
 
 ### Prefetch `0`
 
@@ -86,7 +90,7 @@ The values mean:
 
 - `-1`: unbounded client buffer;
 - `0`: no client-side buffer;
-- a positive number: maximum buffered payload size in bytes.
+- a positive number: maximum aggregate message size buffered, in bytes.
 
 For example:
 
@@ -94,7 +98,7 @@ For example:
 tcp://broker.example:61616?consumerWindowSize=0
 ```
 
-With zero, messages remain server-side until the consumer is ready, giving deterministic distribution among consumers at the cost of more network coordination. An unbounded window can maximize a demonstrably fast consumer's throughput, but Artemis explicitly warns that it can overflow client memory if processing falls behind.
+With zero, messages remain server-side until the consumer is ready, which can give deterministic distribution among consumers at the cost of more network coordination. An unbounded window can maximize a demonstrably fast consumer's throughput, but Artemis explicitly warns that it can overflow client memory if processing falls behind.
 
 Do not confuse this with `consumerMaxRate`, which limits messages consumed per second. A low rate limit plus a large byte window can still fill the client's internal buffer.
 
@@ -138,7 +142,7 @@ These are planning estimates, not exact heap formulas, but they reveal when a se
 Prefetch governs dispatch, not completion. A message remains in flight until the relevant acknowledgement reaches the broker:
 
 - in `AUTO_ACKNOWLEDGE`, successful listener return normally drives acknowledgement;
-- in `CLIENT_ACKNOWLEDGE`, a call to `acknowledge()` acknowledges messages consumed by that session, not just an arbitrary single item;
+- in `CLIENT_ACKNOWLEDGE`, a call to `acknowledge()` acknowledges all messages delivered by that session, not just an arbitrary single item;
 - in a transacted session, commit acknowledges the transaction's consumed messages and rollback makes them eligible for redelivery;
 - framework containers may batch acknowledgements or hold a transaction open around several deliveries.
 
