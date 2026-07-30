@@ -42,9 +42,9 @@ Classic has a destination audit that can detect a duplicate while paging message
 
 This failure is not the same as a business handler rejecting a payload. Investigate network connectors, failover, broker version, and the destination's `DuplicateFromStoreCount`.
 
-### Broker policy deliberately routed or discarded the message
+### Broker policy selected the DLQ destination—or discarded the message instead
 
-Classic can use a shared DLQ, an individual DLQ prefix such as `DLQ.`, or a discarding strategy. Non-persistent messages are not dead-lettered by default; `processNonPersistent="true"` changes that. Always inspect the effective destination policy instead of assuming all queues behave alike.
+Classic can use a shared DLQ, an individual DLQ prefix such as `DLQ.`, or a discarding strategy that drops the message instead of sending it to a DLQ. Non-persistent messages are not dead-lettered by default; `processNonPersistent="true"` changes that. Always inspect the effective destination policy instead of assuming all queues behave alike.
 
 ## Freeze the evidence before replaying anything
 
@@ -123,7 +123,7 @@ A shared `ActiveMQ.DLQ` is convenient initially but weakens ownership and alerti
 </policyEntry>
 ```
 
-Test the policy in a staging broker and verify authorization for both producing to and administering the resulting DLQs. A wildcard policy can affect every queue.
+Test the policy in a staging broker and verify authorization for browsing and administering the resulting DLQs, as well as writing to the original destinations during replay. A wildcard policy can affect every queue.
 
 ## Diagnose before changing the retry count
 
