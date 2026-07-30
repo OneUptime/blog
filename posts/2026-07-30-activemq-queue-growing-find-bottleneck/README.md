@@ -15,10 +15,10 @@ Queue depth alone cannot distinguish those cases. Diagnose with rates and state:
 ```text
 net backlog change
   ≈ messages added
-  - messages acknowledged or otherwise removed
+  - messages removed after acknowledgement, expiry, DLQ routing, or administration
 ```
 
-Sample counters at two known times. A single cumulative number is not a rate, and most broker counters reset on restart or when an operator resets statistics.
+On an ordinary destructive queue, acknowledgements are the main removal signal. Sample counters at two known times. A single cumulative number is not a rate, and most broker counters reset on restart or when an operator resets statistics.
 
 ## Use the Right Metrics for the Broker
 
@@ -41,14 +41,14 @@ Classic documents these destination attributes:
 Artemis `QueueControl` and management list operations expose:
 
 - `messagesAdded`;
-- `messagesAcknowledged`;
+- `messagesAcknowledged` (`messagesAcked` in `listQueues`);
 - `messageCount`;
 - `deliveringCount`;
 - `consumerCount`;
 - `messagesExpired` and `messagesKilled`;
 - `scheduledCount`;
-- last delivery and acknowledgement times;
-- queue state such as paused, enabled, exclusive, and non-destructive.
+- per-consumer last delivery and acknowledgement times;
+- queue state such as paused, enabled, and exclusive.
 
 Artemis documentation recommends sampling `messageCount` and `messagesAdded` over time or using a metrics plugin rather than treating its internal queue rate as an application metric. Do not sum `messageCount` and `deliveringCount` without checking the current API definition; delivering is a useful state breakdown, not automatically an additional population.
 
@@ -69,7 +69,7 @@ If producers add 1,200 messages/s and consumers acknowledge 900/s:
 growth = 300 messages/s
 ```
 
-At that rate, another million messages arrive in about 55 minutes. The forecast is more actionable than “queue is large.”
+At that rate, the backlog grows by another million messages in about 55 minutes. The forecast is more actionable than “queue is large.”
 
 Account for expiry, administrative moves/removals, DLQ routing, and counter resets when reconciling the equation. Use bytes as well as count. Ten thousand 10 MiB messages are a different incident from ten thousand 200-byte messages.
 
@@ -157,8 +157,8 @@ A poison message can consume capacity without reducing depth:
 1. consumer receives;
 2. handler fails;
 3. transaction rolls back;
-4. broker delays and redelivers;
-5. the cycle repeats until dead-letter policy applies.
+4. the client or broker applies any configured delay and redelivers;
+5. the cycle repeats until a dead-letter or discard limit applies, or indefinitely if retries are unbounded.
 
 Track redelivery count, rollback/error rate, and DLQ movement. Use delayed redelivery to avoid a hot loop, set a deliberate maximum-delivery policy, and make the handler distinguish transient from permanent failure.
 
@@ -171,7 +171,7 @@ Check for:
 - Artemis non-destructive queues, whose consumers do not remove acknowledged messages in the ordinary way;
 - queue browsers mistaken for consumers;
 - retained/latest-value or ring semantics;
-- an inactive durable topic subscription represented by its own queue;
+- an inactive durable topic subscription accumulating pending messages (represented by a queue in Artemis);
 - expiration configured but not yet scanned or forwarded;
 - a replay or audit queue intentionally retaining history.
 
@@ -194,7 +194,7 @@ Message age distinguishes a burst from starvation:
 - depth high, oldest age low, drain rate above input: recovering;
 - depth flat, oldest age rising: no spare capacity;
 - depth rising, oldest age rising: active overload;
-- depth high, age bounded by expiration: intentional time window, if loss is acceptable.
+- depth high, age bounded by expiration: an expiration-bounded window; verify that expiry or forwarding is intentional.
 
 Browse only a bounded page or use a broker metric/plugin designed for age. Scanning millions of messages through a management endpoint can add load during an incident.
 
