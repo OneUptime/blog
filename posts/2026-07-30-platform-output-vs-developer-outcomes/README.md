@@ -133,9 +133,9 @@ Write the baseline and target before release. Otherwise, it is easy to choose a 
 At minimum, compare the same workflow before and after a release. Stronger designs roll out in cohorts and compare adopters with similar teams not yet exposed:
 
 ```text
-relative improvement =
-  adopter before-to-after change
-  - comparison before-to-after change
+difference-in-differences estimate =
+  (adopter after - adopter before)
+  - (comparison after - comparison before)
 ```
 
 Check cohort composition. Early adopters may be more experienced; newly onboarded teams may have different needs. Segment by workflow, platform version, team tenure, and relevant risk class.
