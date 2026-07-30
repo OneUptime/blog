@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Platform Engineering, DORA, Causal Inference, Software Delivery, Metrics, Experimentation
+Tags: Platform Engineering, DORA, Causal Inference, Software Delivery, Metric, Experimentation
 
 Description: Evaluate a platform’s effect on delivery by preserving service-level DORA definitions and estimating a credible counterfactual instead of relying on a before-and-after chart.
 
@@ -36,8 +36,8 @@ failed deployment
   = a deployment followed within the defined window by rollback,
     hotfix, disablement, or other immediate remedial intervention
 
-change lead time
-  = production deployment time - earliest included commit time
+change lead time for each change
+  = production deployment time - that change's commit time
 ```
 
 Version any change to repository mapping, squashed-commit handling, incident linkage, or deployment detection.
@@ -56,7 +56,7 @@ platform_workflow_version
 golden_path_or_exception
 ```
 
-“Invited” supports an intent-to-treat question: what was the effect of offering the platform? “Majority platform deployments” supports a usage question but is more vulnerable to self-selection, because motivated or easier-to-migrate teams may adopt first.
+Under a randomized offer or rollout assignment, “invited” supports an intent-to-treat question: what was the effect of offering the platform? “Majority platform deployments” supports a usage question but is more vulnerable to self-selection, because motivated or easier-to-migrate teams may adopt first.
 
 Choose the question before selecting the exposure definition.
 
@@ -69,9 +69,9 @@ The cleanest practical design is often a staggered rollout:
 3. Randomize the order when operationally acceptable.
 4. Keep measurement definitions identical across waves.
 5. Avoid shipping unrelated delivery changes to only one wave.
-6. Analyze both assigned rollout and actual usage.
+6. Analyze assigned rollout as the primary comparison, and analyze actual usage with its additional selection assumptions made explicit.
 
-Randomization is not always possible. A transparent staged rollout still provides not-yet-treated services as contemporaneous comparisons.
+Randomization is not always possible. A transparent staged rollout still provides not-yet-treated services as potential contemporaneous comparisons, provided teams do not anticipate adoption or receive spillover effects before their assigned wave.
 
 Do not withhold a critical security or reliability fix merely to preserve an experiment. The design must remain operationally and ethically sound.
 
@@ -98,7 +98,7 @@ estimated platform-associated change = -32h - (-8h) = -24h
 
 This is credible only if, absent the rollout, the groups would plausibly have continued on similar trends. Plot multiple pre-rollout periods. If treated services were already improving much faster, the simple estimate is suspect.
 
-Use service and time effects in a formal model when appropriate, cluster uncertainty at the service or team level, and involve someone qualified in experimental or causal analysis for consequential claims.
+Use an estimator appropriate to the design. In a nonrandom staggered rollout, a conventional two-way fixed-effects regression can be biased when effects vary by rollout cohort or time since adoption; use a staggered-adoption estimator robust to that heterogeneity. Cluster uncertainty at the treatment-assignment level, often the service or team, and involve someone qualified in experimental or causal analysis for consequential claims.
 
 ## When No Comparison Group Exists
 
@@ -192,7 +192,7 @@ Before viewing the post-rollout result, record:
 - missing-data treatment;
 - decision threshold.
 
-This prevents switching from lead time to deployment frequency—or from median to average—after discovering which chart looks best.
+This prevents switching from lead time to deployment frequency-or from median to average-after discovering which chart looks best.
 
 ## Report Claims at the Strength of the Design
 

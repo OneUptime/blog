@@ -1,4 +1,4 @@
-# How to Reconstruct an Incident Timeline from Slack, Alerts, Logs, and Deployments
+# Reconstruct an Incident Timeline from Alerts, Logs, and Deployments
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

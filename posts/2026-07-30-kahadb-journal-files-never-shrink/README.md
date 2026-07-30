@@ -1,4 +1,4 @@
-# Why KahaDB Journal Files Never Shrink: Finding the Queue or Subscriber Holding Them Open
+# Why KahaDB Journal Files Never Shrink and What Keeps Them Open
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

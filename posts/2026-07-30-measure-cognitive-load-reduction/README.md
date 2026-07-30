@@ -1,8 +1,8 @@
-# How to Measure Cognitive Load Reduction Without Turning Developer Experience into Guesswork
+# Measure Cognitive Load Reduction Without Guessing Developer Experience
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Platform Engineering, Developer Experience, Cognitive Load, Metrics, Survey, Telemetry
+Tags: Platform Engineering, Developer Experience, Cognitive Load, Metric, Survey, Telemetry
 
 Description: Measure whether a platform reduces avoidable mental effort by pairing stable developer surveys with task-level workflow evidence.
 

@@ -1,4 +1,4 @@
-# DORA Metrics for Platform Teams: What They Measure—and What They Miss
+# DORA Metrics for Platform Teams: What They Measure-and What They Miss
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

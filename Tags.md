@@ -323,6 +323,7 @@
 - Account Management
 - Account Migration
 - Account Vending Machine
+- Accountability
 - Accounting
 - Accounts Payable
 - Accounts Receivable
@@ -377,6 +378,7 @@
 - ActiveJob
 - ActiveMQ
 - ActiveMQ Artemis
+- ActiveMQ Classic
 - ActiveRecord
 - ActiveStorage
 - ActiveSupport
@@ -821,6 +823,7 @@
 - Apache Airflow
 - Apache APISIX
 - Apache Arrow
+- Apache Artemis
 - Apache Atlas
 - Apache Avro
 - Apache Beam
@@ -1229,6 +1232,7 @@
 - Assessment
 - Asset
 - Asset Downloads
+- Asset Inventory
 - Asset Management
 - Asset Tracking
 - Assignment Submission
@@ -2109,6 +2113,7 @@
 - Blacklisting
 - Blade
 - Blameless Culture
+- Blameless Postmortems
 - Blast Radius
 - Blazor
 - Blazor Server
@@ -2306,6 +2311,7 @@
 - Broker Configuration
 - Broker Failure
 - Broker Metrics
+- Broker Operations
 - Bronze Silver Gold
 - Brotli
 - Brownfield
@@ -2662,6 +2668,7 @@
 - Cattle Agent
 - Cattle-system
 - Causal Consistency
+- Causal Inference
 - Causality
 - Cbindgen
 - Cbt CLI
@@ -3812,6 +3819,7 @@
 - Consumer Networking
 - Consumer Offset
 - Consumer Patterns
+- Consumer Prefetch
 - Consumer Rebalance
 - Consumer Seek
 - Consumer Timeout
@@ -4496,6 +4504,7 @@
 - Customer Analytics
 - Customer Data
 - Customer Data Platform
+- Customer Effort Score
 - Customer Experience
 - Customer Feedback
 - Customer Health Score
@@ -5420,6 +5429,7 @@
 - Discount Sharing
 - Discounts
 - Discover Mode
+- Discoverability
 - Discovery
 - Discovery Registry
 - Discovery Selectors
@@ -5896,6 +5906,7 @@
 - Durable Execution
 - Durable Functions
 - Durable Objects
+- Durable Subscription
 - Durable Workflows
 - Duration
 - Duration Calculation
@@ -6667,6 +6678,7 @@
 - Faceted Navigation
 - Faceted Search
 - Facial Detection
+- Facilitation
 - Fact Caching
 - Fact Table
 - Factorio
@@ -6689,6 +6701,7 @@
 - Failover Groups
 - Failover Monitoring
 - Failover Testing
+- Failover Transport
 - Failure
 - Failure Analysis
 - Failure Domain
@@ -8695,6 +8708,7 @@
 - Incident Prevention
 - Incident Remediation
 - Incident Response
+- Incident Timeline
 - Incident-response
 - IncidentManagement
 - Include
@@ -9079,6 +9093,7 @@
 - Inventory Reports
 - Inverted Index
 - Investigation
+- Investment
 - Invisible Index
 - Invoice
 - Invoice Processing
@@ -9311,6 +9326,7 @@
 - Jaeger
 - Jailbreak Detection
 - Jakarta EE
+- Jakarta Messaging
 - JAMstack
 - Jan ai
 - Janus
@@ -9370,6 +9386,8 @@
 - JMESPath
 - JMeter
 - JMS
+- JMS Selectors
+- JMS Transactions
 - JMX
 - JMX Receiver
 - Job
@@ -9490,6 +9508,7 @@
 - JupyterHub
 - JupyterLab
 - Just
+- Just Culture
 - Just-In-Time Access
 - JVM
 - JVM Tuning
@@ -9522,6 +9541,7 @@
 - KafkaSource
 - KafkaTopic
 - KafkaUser
+- KahaDB
 - Kali Linux
 - Kamailio
 - Kaminari
@@ -10820,6 +10840,7 @@
 - MeshConfig
 - Meson
 - Message
+- Message Acknowledgement
 - Message Broadcasting
 - Message Broker
 - Message Bus
@@ -10841,7 +10862,9 @@
 - Message Inspection
 - Message Keys
 - Message Management
+- Message Migration
 - Message Ordering
+- Message Paging
 - Message Passing
 - Message Patterns
 - Message Persistence
@@ -10855,13 +10878,16 @@
 - Message Retry
 - Message Router
 - Message Routing
+- Message Selectors
 - Message Size
+- Message Store
 - Message TTL
 - Message-Queue
 - MessagePack
 - Messaging
 - Messaging Extensions
 - Messaging Patterns
+- Messaging Troubleshooting
 - Messenger
 - Meta
 - META Partition
@@ -11651,6 +11677,7 @@
 - NDP Security
 - NDP Spoofing
 - Near
+- Near Miss
 - Near-Duplicate Detection
 - Near-Full
 - Nearby
@@ -12475,6 +12502,7 @@
 - OpenVAS
 - OpenVPN
 - OpenWhisk
+- OpenWire
 - OpenWrt
 - OpenYurt
 - OpenZFS
@@ -12561,6 +12589,7 @@
 - Organization Policy
 - Organization Security
 - Organization Settings
+- Organizational Culture
 - Organizational Design
 - Origin
 - Origin Authentication
@@ -13274,6 +13303,7 @@
 - Plasma
 - PLAT
 - Platform
+- Platform Adoption
 - Platform API
 - Platform Components
 - Platform Engineering
@@ -13819,6 +13849,7 @@
 - Producer
 - Producer Configuration
 - Producer Consumer
+- Producer Flow Control
 - Producer Retry
 - Producer Timeout
 - Producer Tuning
@@ -13828,6 +13859,8 @@
 - Product Catalog
 - Product Development
 - Product Image
+- Product Management
+- Product Metrics
 - Product Pages
 - Product Search
 - Product-Led Growth
@@ -14014,6 +14047,7 @@
 - PSS
 - PSTN
 - PSUBSCRIBE
+- Psychological Safety
 - Psycopg2
 - PSYNC
 - pt-online-schema-change
@@ -14040,6 +14074,7 @@
 - Public Subnet
 - Publication
 - PUBLISH
+- Publish Subscribe
 - Published
 - Published Ports
 - Publisher Analytics
@@ -14250,6 +14285,7 @@
 - QuestDB
 - Queue
 - Queue Architecture
+- Queue Backlog
 - Queue Chaining
 - Queue Configuration
 - Queue Depth
@@ -16298,6 +16334,7 @@
 - Shading
 - Shadow
 - Shadow Deployment
+- Shadow IT
 - Shadow Testing
 - Shadow Traffic
 - Shadowing
@@ -16680,7 +16717,9 @@
 - Software
 - Software Architecture
 - Software bill of materials
+- Software Catalog
 - Software Collections
+- Software Delivery
 - Software Delivery Shield
 - Software Design
 - Software Development
@@ -19057,6 +19096,7 @@
 - Value at Risk
 - Value Mapping
 - Value Receiver
+- Value Stream
 - Values Files
 - Values Format
 - VALUES Function
@@ -19243,6 +19283,7 @@
 - Virtual Server
 - Virtual Switch
 - Virtual Threads
+- Virtual Topics
 - Virtual Tunnel Interface
 - Virtual Users
 - Virtual WAN

@@ -1,8 +1,8 @@
-# Who Should Attend a Blameless Postmortem—and Who Should Facilitate It?
+# Who Should Attend a Blameless Postmortem-and Who Should Facilitate It?
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Incident Management, Blameless Postmortem, Facilitation, SRE, Psychological Safety
+Tags: Incident Management, Blameless Postmortems, Facilitation, SRE, Psychological Safety
 
 Description: Invite the people who hold evidence, context, impact, and action authority while assigning an impartial facilitator who protects the learning process.
 

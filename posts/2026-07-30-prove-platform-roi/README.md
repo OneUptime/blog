@@ -10,7 +10,7 @@ Description: Build a conservative platform business case from evidenced cost, ca
 
 An internal developer platform rarely sells a product by itself. Claiming that every pound of revenue released after launch belongs to the platform ignores product decisions, market demand, application engineering, sales, and many other causes.
 
-That does not make platform ROI unknowable. It means the business case should distinguish realized financial value, reclaimed capacity, avoided risk, and strategic capability—and state the evidence behind each.
+That does not make platform ROI unknowable. It means the business case should distinguish realized financial value, reclaimed capacity, avoided risk, and strategic capability-and state the evidence behind each.
 
 ## Use the Basic Formula Correctly
 

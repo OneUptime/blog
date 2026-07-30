@@ -10,9 +10,9 @@ Description: Understand which queue and topic messages remain available while co
 
 A queue keeps work for an eligible consumer. A topic publishes a copy to each matching subscription that exists at the time of publication. That simple distinction explains most offline-consumer behavior, but three separate concepts are often mixed together:
 
-1. the destination pattern—queue or topic;
-2. the subscription lifetime—non-durable or durable;
-3. the message delivery mode—persistent or non-persistent.
+1. the destination pattern-queue or topic;
+2. the subscription lifetime-non-durable or durable;
+3. the message delivery mode-persistent or non-persistent.
 
 You need all three to predict what survives an offline interval or broker restart.
 

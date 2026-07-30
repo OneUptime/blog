@@ -1,4 +1,4 @@
-# Platform SLOs and Error Budgets: Measuring the Reliability of Shared Developer Services
+# Platform SLOs and Error Budgets for Shared Developer Services
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

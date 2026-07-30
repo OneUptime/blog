@@ -1,8 +1,8 @@
-# Developer Satisfaction, NPS, or Customer Effort Score: Which Survey Metric Fits an Internal Platform?
+# Choosing Developer Satisfaction, NPS, or Effort for Platform Surveys
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Developer Experience, Platform Engineering, Surveys, NPS, Customer Effort Score
+Tags: Developer Experience, Platform Engineering, Survey, NPS, Customer Effort Score
 
 Description: Choose relationship satisfaction, NPS, or task-level effort based on the platform decision you need to make and pair surveys with workflow telemetry.
 

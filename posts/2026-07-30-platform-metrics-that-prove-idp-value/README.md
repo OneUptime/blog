@@ -1,8 +1,8 @@
-# Which Platform Engineering Metrics Actually Prove an Internal Developer Platform Is Working?
+# Platform Engineering Metrics That Prove an Internal Platform Works
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Platform Engineering, Internal Developer Platform, Developer Experience, DORA, Metrics
+Tags: Platform Engineering, Internal Developer Platform, Developer Experience, DORA, Metric
 
 Description: Build an evidence-based platform scorecard that connects adoption and reliability to less developer friction and better software delivery.
 

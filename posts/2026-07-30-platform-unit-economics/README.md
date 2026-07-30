@@ -1,8 +1,8 @@
-# Cost per Service, Deployment, or Environment: Building Useful Platform Unit Economics
+# Platform Unit Economics: Cost per Service, Deployment, or Environment
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Platform Engineering, FinOps, Unit Economics, Cloud Cost, Allocation, Metrics
+Tags: Platform Engineering, FinOps, Unit Economics, Cloud Cost, Allocation, Metric
 
 Description: Build platform unit costs by reconciling a defined cost pool with stable, decision-relevant service, deployment, and environment units.
 

@@ -243,7 +243,7 @@ If time is short, capture:
 
 That small, honest baseline is more useful than a sophisticated dashboard built from unstable definitions.
 
-A platform baseline is a contract with your future analysis. Define the population, workflow boundaries, evidence, and limitations while the old system still exists. Then the launch can be evaluated against what developers actually experienced—not what the organization later remembers.
+A platform baseline is a contract with your future analysis. Define the population, workflow boundaries, evidence, and limitations while the old system still exists. Then the launch can be evaluated against what developers actually experienced-not what the organization later remembers.
 
 ## Official Documentation
 

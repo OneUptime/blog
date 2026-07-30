@@ -1,4 +1,4 @@
-# Which Incidents Need a Postmortem? Setting Severity, Impact, and Near-Miss Triggers
+# Which Incidents Need a Postmortem? Severity, Impact, and Near Misses
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -186,7 +186,7 @@ The right set of postmortems is not simply the set of worst outcomes. It is the 
 
 ## Official Documentation
 
-- [Google SRE Book: Postmortem Culture—Learning from Failure](https://sre.google/sre-book/postmortem-culture/)
+- [Google SRE Book: Postmortem Culture-Learning from Failure](https://sre.google/sre-book/postmortem-culture/)
 - [Atlassian Incident Management Handbook: Postmortems](https://www.atlassian.com/incident-management/handbook/postmortems)
 - [NIST SP 800-61 Rev. 3: Incident Response Recommendations](https://csrc.nist.gov/pubs/sp/800/61/r3/final)
 - [CISA: Cybersecurity Incident and Vulnerability Response Playbooks](https://www.cisa.gov/sites/default/files/publications/Cybersecurity_Incident_Vulnerability_Response_Playbooks_508C.pdf)

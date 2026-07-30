@@ -1,8 +1,8 @@
-# What Belongs in a Blameless Postmortem Template? Impact, Timeline, Factors, and Actions
+# Blameless Postmortem Template: Impact, Timeline, Factors, and Actions
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Incident Management, Blameless Postmortem, Template, Root Cause Analysis, SRE
+Tags: Incident Management, Blameless Postmortems, Template, Root Cause Analysis, SRE
 
 Description: Use a postmortem template that preserves evidence, distinguishes contributing factors from speculation, and turns learning into verifiable action.
 

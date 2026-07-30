@@ -1,8 +1,8 @@
-# Persistent vs Non-Persistent ActiveMQ Messages: Delivery Guarantees and Performance Tradeoffs
+# Persistent vs Non-Persistent ActiveMQ: Guarantees and Performance
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: ActiveMQ, Message Persistence, JMS, Delivery Guarantees, Performance
+Tags: ActiveMQ, Message Persistence, JMS, Delivery Guarantee, Performance
 
 Description: Select persistent or non-persistent delivery from the acceptable failure outcome, then benchmark the complete acknowledgement and storage path.
 
@@ -97,7 +97,7 @@ For non-transacted Core/JMS sends, current Artemis defaults are:
 - `blockOnDurableSend=true`;
 - `blockOnNonDurableSend=false`.
 
-With `blockOnDurableSend=true`, the client waits for a server response for durable sends. If the durable message reaches a durable queue and `journal-sync-non-transactional=true`—also the documented default—the server waits for durable journal persistence before replying.
+With `blockOnDurableSend=true`, the client waits for a server response for durable sends. If the durable message reaches a durable queue and `journal-sync-non-transactional=true`-also the documented default-the server waits for durable journal persistence before replying.
 
 For a transacted session, the commit is the synchronization point. Artemis documents `journal-sync-transactional=true` as the default. Disabling either journal-sync setting or disabling blocking can improve a benchmark while weakening what a successful return proves during a crash. Treat such changes as reliability changes and test the intended failure window.
 

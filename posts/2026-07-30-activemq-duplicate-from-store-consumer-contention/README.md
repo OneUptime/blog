@@ -1,8 +1,8 @@
-# Why ActiveMQ Reports “Duplicate from Store”—and How Consumer Contention Triggers It
+# Why ActiveMQ Reports “Duplicate from Store” Under Consumer Contention
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: ActiveMQ, ActiveMQ Classic, Duplicate Messages, Message Store, Troubleshooting
+Tags: ActiveMQ, ActiveMQ Classic, Duplicate Message, Message Store, Troubleshooting
 
 Description: Interpret ActiveMQ Classic's duplicate-from-store warning correctly, measure it through JMX, and separate consumer churn from network or store duplication.
 

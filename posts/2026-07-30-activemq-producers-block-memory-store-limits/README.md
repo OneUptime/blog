@@ -150,7 +150,7 @@ Use this sequence:
 
 1. Confirm the blocked call and the exact broker resource at its limit.
 2. Reduce or pause upstream input if the application contract permits.
-3. Restore acknowledgement capacity—repair consumers, downstream dependencies, transactions, or storage.
+3. Restore acknowledgement capacity-repair consumers, downstream dependencies, transactions, or storage.
 4. Drain or deliberately move/expire messages according to business retention policy.
 5. Free disk safely; do not delete broker journal or page files by hand.
 6. Change block/fail/page limits only after calculating backlog and recovery capacity.
@@ -169,7 +169,7 @@ time to limit ≈ remaining usable capacity / backlog byte growth rate
 
 This estimate applies only while the growth rate is positive. For a single queue with roughly uniform message sizes, message backlog growth is the producer message rate minus the acknowledged consumer message rate. For multicast, calculate retention per subscription queue rather than subtracting aggregate acknowledgements from the original publish rate. Include replication, journal/page overhead, message properties, and per-queue reference overhead. Alert on projected time to exhaustion while there is still time to drain or shed load.
 
-Backpressure is the broker preserving a bounded system. The durable fix is to balance input and acknowledgement capacity or choose a documented overload outcome—not to make the bound invisible.
+Backpressure is the broker preserving a bounded system. The durable fix is to balance input and acknowledgement capacity or choose a documented overload outcome-not to make the bound invisible.
 
 ## Official Documentation
 

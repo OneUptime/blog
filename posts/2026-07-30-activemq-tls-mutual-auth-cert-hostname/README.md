@@ -1,8 +1,8 @@
-# Configuring ActiveMQ TLS and Mutual Authentication Without Certificate or Hostname Errors
+# ActiveMQ TLS and Mutual Authentication Without Certificate Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: ActiveMQ, ActiveMQ Classic, TLS, Mutual TLS, Certificates
+Tags: ActiveMQ, ActiveMQ Classic, TLS, Mutual TLS, Certificate
 
 Description: Configure ActiveMQ Classic server and client key stores for TLS or mutual TLS, then diagnose trust, identity, hostname, and protocol failures separately.
 

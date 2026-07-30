@@ -1,4 +1,4 @@
-# How to Calculate Self-Service Rate for Infrastructure, Deployments, and Access Requests
+# Calculate Self-Service Rate for Infrastructure, Deployments, and Access
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -159,7 +159,7 @@ The fulfillment rate uses successful completions:
 310 / (310 + 70 + 50) = 72.1%
 ```
 
-If 360 terminal attempts entered the self-service path—310 successful, 30 failed, and 20 abandoned—the path success rate is:
+If 360 terminal attempts entered the self-service path-310 successful, 30 failed, and 20 abandoned-the path success rate is:
 
 ```text
 310 / 360 = 86.1%

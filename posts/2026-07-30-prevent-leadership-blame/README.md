@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Incident Management, Blameless Postmortem, Leadership, Facilitation, Psychological Safety
+Tags: Incident Management, Blameless Postmortems, Leadership, Facilitation, Psychological Safety
 
 Description: Give leaders a constructive role, establish facilitator authority in advance, and interrupt blame with evidence-based questions about system conditions.
 
@@ -141,7 +141,7 @@ Use a structure that requires:
 - action items tied to conditions;
 - owners and verification criteria.
 
-Avoid fields such as “engineer responsible” or “human error.” AWS’s Correction of Error guidance says that if “human error” appears as a root cause, investigators should ask why the error was possible—for example, what checking or fail-safe mechanism was absent.
+Avoid fields such as “engineer responsible” or “human error.” AWS’s Correction of Error guidance says that if “human error” appears as a root cause, investigators should ask why the error was possible-for example, what checking or fail-safe mechanism was absent.
 
 Use role or team names in narrative unless an individual identity is essential for operational learning. Do not erase accountability: action owners should be named, and decision ownership should be clear.
 

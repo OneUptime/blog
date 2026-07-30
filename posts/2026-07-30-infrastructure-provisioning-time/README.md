@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Platform Engineering, Infrastructure as Code, Provisioning, OpenTelemetry, Metrics
+Tags: Platform Engineering, Infrastructure as Code, Provisioning, OpenTelemetry, Metric
 
 Description: Measure infrastructure provisioning as an end-to-end request-to-ready journey with stage latency, percentiles, and verified outcomes.
 

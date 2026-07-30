@@ -1,4 +1,4 @@
-# Blameless Does Not Mean Consequence-Free: Handling Negligence and Repeated Mistakes
+# Blameless Is Not Consequence-Free: Negligence and Repeated Mistakes
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -90,7 +90,7 @@ If compliant work is substantially slower or impossible, people adapt. Redesign 
 
 ### A Person Repeatedly Chooses a Known Substantial Risk
 
-After expectations are clear, tools are usable, coaching has occurred, and support is available, repeated deliberate risk-taking may warrant formal action. Decide this consistently through the conduct process—not through frustration in a postmortem.
+After expectations are clear, tools are usable, coaching has occurred, and support is available, repeated deliberate risk-taking may warrant formal action. Decide this consistently through the conduct process-not through frustration in a postmortem.
 
 Track whether recurrence involves the same individual, the same role, the same interface, or the same organizational pressure. A pattern across different people is particularly strong system evidence.
 
@@ -172,11 +172,11 @@ Periodically review, with appropriate confidentiality:
 
 A blameless culture that shields senior staff but disciplines junior responders is not blameless. A "no consequences" culture that ignores deliberate risk is not just.
 
-The durable position is more disciplined: learn from every incident, improve the system every time, and evaluate behavior through a fair process when the evidence—not hindsight anger—requires it.
+The durable position is more disciplined: learn from every incident, improve the system every time, and evaluate behavior through a fair process when the evidence-not hindsight anger-requires it.
 
 ## Official Documentation
 
-- [Google SRE Book: Postmortem Culture—Learning from Failure](https://sre.google/sre-book/postmortem-culture/)
+- [Google SRE Book: Postmortem Culture-Learning from Failure](https://sre.google/sre-book/postmortem-culture/)
 - [AHRQ: System-Focused Event Investigation and Analysis Guide](https://www.ahrq.gov/patient-safety/settings/hospital/candor/modules/guide4.html)
 - [AHRQ PSNet: Culture of Safety](https://psnet.ahrq.gov/primer/culture-safety)
 - [FAA: Safety Management Systems, Advisory Circular 120-92D](https://www.faa.gov/documentLibrary/media/Advisory_Circular/AC_120-92D_FAA_Web.pdf)

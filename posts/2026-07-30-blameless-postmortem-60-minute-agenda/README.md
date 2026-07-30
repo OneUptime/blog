@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Incident Management, Blameless Postmortem, Agenda, Facilitation, SRE
+Tags: Incident Management, Blameless Postmortems, Agenda, Facilitation, SRE
 
 Description: Run a focused 60-minute postmortem that validates evidence, examines contributing conditions, and leaves with owned, testable actions.
 

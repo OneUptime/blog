@@ -1,4 +1,4 @@
-# ActiveMQ Failover Transport: Reconnect, Backup Priority, and Transaction Replay Settings
+# ActiveMQ Failover: Reconnect, Backup Priority, and Transaction Replay
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# Why an ActiveMQ Queue Keeps Growing—and How to Find the Bottleneck
+# Why an ActiveMQ Queue Keeps Growing-and How to Find the Bottleneck
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

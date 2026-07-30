@@ -84,7 +84,7 @@ Classic defines a slow consumer as one with more than twice its configured prefe
 
 ## Artemis Core Consumer Flow Control Uses Bytes
 
-For Artemis's Core client—including its JMS/Jakarta Messaging implementation—the analogous setting is `consumerWindowSize`, measured in **bytes**, not messages. Current Artemis documentation gives a 1 MiB default unless an address setting overrides it.
+For Artemis's Core client-including its JMS/Jakarta Messaging implementation-the analogous setting is `consumerWindowSize`, measured in **bytes**, not messages. Current Artemis documentation gives a 1 MiB default unless an address setting overrides it.
 
 The values mean:
 

@@ -17,7 +17,7 @@ Debug from the broker outward. First establish where the message is, then determ
 Capture these values from the running process, not a deployment template:
 
 - broker host, port, protocol, and resolved IP;
-- broker product and version—ActiveMQ Classic or Artemis;
+- broker product and version-ActiveMQ Classic or Artemis;
 - client artifact and version;
 - `javax.jms` or `jakarta.jms` API;
 - client ID, connection ID, session mode, and acknowledgement mode;
@@ -122,7 +122,7 @@ Artemis has two filter locations:
 
 If the queue filter rejects a message, it never contributes to that queue's depth. If a consumer filter rejects ready messages, they can remain for another eligible consumer. Inspect both.
 
-For Classic virtual topics with `selectorAware=true`, verify which active consumer selectors—and, if configured, which selectors in `virtualSelectorCacheBrokerPlugin`—were considered when the broker fanned out the message. Without the cache plugin, disconnected consumers' selectors are not considered. Do not assume a selector added after backlog accumulated will clean up old unmatched messages.
+For Classic virtual topics with `selectorAware=true`, verify which active consumer selectors-and, if configured, which selectors in `virtualSelectorCacheBrokerPlugin`-were considered when the broker fanned out the message. Without the cache plugin, disconnected consumers' selectors are not considered. Do not assume a selector added after backlog accumulated will clean up old unmatched messages.
 
 ## 6. Find Another Consumer Holding the Messages
 

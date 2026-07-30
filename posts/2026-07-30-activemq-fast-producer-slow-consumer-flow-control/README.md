@@ -1,8 +1,8 @@
-# Taming a Fast Producer and Slow Consumer with ActiveMQ Flow Control and Pending Limits
+# ActiveMQ Flow Control for Fast Producers and Slow Consumers
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: ActiveMQ Classic, Apache Artemis, Flow Control, Slow Consumers, Backpressure
+Tags: ActiveMQ Classic, Apache Artemis, Flow Control, Slow Consumer, Backpressure
 
 Description: Bound a producer-consumer rate mismatch with lossless backpressure for work queues and explicit eviction only for data the application permits you to drop.
 

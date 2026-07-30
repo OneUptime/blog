@@ -1,8 +1,8 @@
-# How to Measure Platform Toil Through Support Tickets, Interruptions, and Manual Approvals
+# Measure Platform Toil from Tickets, Interruptions, and Manual Approvals
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Platform Engineering, Toil, Support, Automation, Developer Experience, Metrics
+Tags: Platform Engineering, Toil, Support, Automation, Developer Experience, Metric
 
 Description: Quantify platform toil as human effort and interruption cost while distinguishing repetitive operational work from valuable engineering and support.
 
@@ -12,7 +12,7 @@ A queue containing 800 platform tickets does not mean the platform created 800 u
 
 Google SRE defines toil through characteristics: it tends to be manual, repetitive, automatable, tactical, without enduring value, and scales linearly as the service grows. That definition is a useful filter for platform work too.
 
-Measure the human effort consumed by routine support, interruptions, and approvals—then use workflow categories to identify what can be removed.
+Measure the human effort consumed by routine support, interruptions, and approvals-then use workflow categories to identify what can be removed.
 
 ## Classify Work Before Counting It
 
@@ -241,7 +241,7 @@ Include application-team support effort created by the platform, not only effort
 - **Engineer-level rankings:** people avoid difficult work or underreport time.
 - **Hours saved as cash saved:** reclaimed capacity only becomes financial value when it changes staffing, spend, or delivered work.
 
-Platform toil becomes manageable when the unit is human effort attached to a repeatable workflow. Classify it, sample it, normalize it by demand, and remove the causes that generate the largest avoidable burden—without treating necessary human judgment or developer feedback as failure.
+Platform toil becomes manageable when the unit is human effort attached to a repeatable workflow. Classify it, sample it, normalize it by demand, and remove the causes that generate the largest avoidable burden-without treating necessary human judgment or developer feedback as failure.
 
 ## Official Documentation
 

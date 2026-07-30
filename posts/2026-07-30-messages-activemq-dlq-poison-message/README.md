@@ -1,4 +1,4 @@
-# Why Messages Land in ActiveMQ.DLQ—and How to Diagnose the Poison Message
+# Why Messages Land in ActiveMQ.DLQ-and How to Diagnose the Poison Message
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -42,7 +42,7 @@ Classic has a destination audit that can detect a duplicate while paging message
 
 This failure is not the same as a business handler rejecting a payload. Investigate network connectors, failover, broker version, and the destination's `DuplicateFromStoreCount`.
 
-### Broker policy selected the DLQ destination—or discarded the message instead
+### Broker policy selected the DLQ destination-or discarded the message instead
 
 Classic can use a shared DLQ, an individual DLQ prefix such as `DLQ.`, or a discarding strategy that drops the message instead of sending it to a DLQ. Non-persistent messages are not dead-lettered by default; `processNonPersistent="true"` changes that. Always inspect the effective destination policy instead of assuming all queues behave alike.
 

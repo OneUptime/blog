@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Platform Engineering, Golden Paths, Developer Experience, Adoption Metrics, DORA
+Tags: Platform Engineering, Golden Path, Developer Experience, Adoption Metrics, DORA
 
 Description: Measure whether developers discover, complete, repeat, or bypass golden paths without turning recommended workflows into vanity metrics.
 
@@ -85,7 +85,7 @@ stage conversion = journeys reaching next stage / journeys entering stage
 stage latency = next_stage_at - stage_at
 ```
 
-Retain terminal reasons such as validation failure, platform failure, user cancellation, timeout, or switch to another path. An attempt that begins in the portal and finishes through a ticket should appear as a drop-off and an assisted completion—not disappear.
+Retain terminal reasons such as validation failure, platform failure, user cancellation, timeout, or switch to another path. An attempt that begins in the portal and finishes through a ticket should appear as a drop-off and an assisted completion-not disappear.
 
 ## Locate the Drop-Off, Then Investigate It
 

@@ -1,4 +1,4 @@
-# What Does “Blameless” Really Mean? Accountability Without Scapegoating After Incidents
+# What “Blameless” Means: Accountability Without Incident Scapegoating
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -39,10 +39,10 @@ Google's SRE Workbook explicitly links clear ownership to action. A single postm
 A postmortem becomes useless if it says "the system changed" when an engineer ran a command. Record the action factually:
 
 ```text
-14:07 — The on-call engineer ran deployctl promote payments@8f31
+14:07 - The on-call engineer ran deployctl promote payments@8f31
          after the canary dashboard showed no active alerts.
 
-14:09 — Error rate exceeded 12%. The release controller did not
+14:09 - Error rate exceeded 12%. The release controller did not
          automatically halt because this service had no error-rate gate.
 ```
 
@@ -159,11 +159,11 @@ Look for operational evidence:
 
 If facts disappear, meetings are avoided, or only frontline responders receive actions, the process is not blameless regardless of its title.
 
-Blameless accountability is demanding. It asks people to be candid, leaders to examine the conditions they created, and the organization to finish corrective work. That produces more learning—and more accountability—than finding one person to punish and leaving the same system intact.
+Blameless accountability is demanding. It asks people to be candid, leaders to examine the conditions they created, and the organization to finish corrective work. That produces more learning-and more accountability-than finding one person to punish and leaving the same system intact.
 
 ## Official Documentation
 
-- [Google SRE Book: Postmortem Culture—Learning from Failure](https://sre.google/sre-book/postmortem-culture/)
+- [Google SRE Book: Postmortem Culture-Learning from Failure](https://sre.google/sre-book/postmortem-culture/)
 - [Google SRE Workbook: Postmortem Culture](https://sre.google/workbook/postmortem-culture/)
 - [Atlassian: How to run a blameless postmortem](https://www.atlassian.com/incident-management/postmortem/blameless)
 - [AHRQ: System-Focused Event Investigation and Analysis Guide](https://www.ahrq.gov/patient-safety/settings/hospital/candor/modules/guide4.html)

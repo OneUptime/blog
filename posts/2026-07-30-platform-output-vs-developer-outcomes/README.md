@@ -1,8 +1,8 @@
-# Platform Output vs Developer Outcomes: Stop Counting Features and Start Measuring Friction
+# Platform Output vs Developer Outcomes: Measure Friction, Not Features
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Platform Engineering, Developer Experience, Product Management, Metrics, Value Stream
+Tags: Platform Engineering, Developer Experience, Product Management, Metric, Value Stream
 
 Description: Replace platform feature counts with workflow-level measures that reveal developer waiting, handoffs, failure, and cognitive effort.
 

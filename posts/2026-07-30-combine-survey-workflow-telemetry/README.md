@@ -1,8 +1,8 @@
-# Survey Data vs Workflow Telemetry: How to Combine Qualitative and Quantitative Platform Metrics
+# Combine Survey Data and Workflow Telemetry for Platform Metrics
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Platform Engineering, Developer Experience, Telemetry, Survey, Metrics, Privacy
+Tags: Platform Engineering, Developer Experience, Telemetry, Survey, Metric, Privacy
 
 Description: Combine developer surveys and workflow telemetry through shared questions, stable definitions, and privacy-preserving analysis rather than forcing either source to stand alone.
 
@@ -93,9 +93,11 @@ started
   -> verification_completed
   -> succeeded
 
-any state
+any in-progress state
   -> failed
   -> abandoned
+
+failed or abandoned
   -> resumed
 ```
 
@@ -205,7 +207,7 @@ Publish a plain-language data contract:
 - whether it will be used in performance management;
 - how developers can report a bad event or metric definition.
 
-The safest default is that workflow telemetry improves the product and system, not evaluates an individual. Never place usernames, repository names, branch names, error messages, or free-form input in metric labels. Review surveys for accidental collection of health, personnel, security, or customer data.
+The safest default is that workflow telemetry improves the product and system, not evaluates an individual. Never place usernames, repository names, branch names, error messages, or free-form input in metric attribute values (labels). Review surveys for accidental collection of health, personnel, security, or customer data.
 
 ## Run a Monthly Evidence Review
 

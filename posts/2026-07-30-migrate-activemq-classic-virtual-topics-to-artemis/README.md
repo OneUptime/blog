@@ -54,7 +54,7 @@ VirtualTopic.Orders::Consumer.A.VirtualTopic.Orders
 
 That FQQN identifies the multicast address and the queue for system A. The integer `2` tells the mapping how many path components identify the consumer portion.
 
-This route minimizes application changes, but it is still not “Classic running on Artemis.” Test the exact OpenWire client version and all Classic extensions the application uses. The Artemis documentation lists supported OpenWire behavior feature by feature.
+This route minimizes application changes, but it is still not “Classic running on Artemis.” Test the exact OpenWire client version and all Classic extensions the application uses. The Artemis documentation describes its OpenWire-specific options and examples, but it is not a comprehensive compatibility matrix for every Classic broker extension.
 
 ### Treat selectors as a migration decision
 
@@ -81,7 +81,7 @@ For a controlled migration, pre-create the multicast address and its durable sub
 </addresses>
 ```
 
-Producers send to `VirtualTopic.Orders` with topic/multicast semantics—for example, by using a JMS `Topic` or a protocol-specific multicast indication. Sending with queue/anycast semantics is not interchangeable. A consumer for system A connects to:
+Producers send to `VirtualTopic.Orders` with topic/multicast semantics-for example, by using a JMS `Topic` or a protocol-specific multicast indication. Sending with queue/anycast semantics is not interchangeable. A consumer for system A connects to:
 
 ```java
 Queue systemA =
@@ -125,7 +125,7 @@ Stop or quiesce producers, allow all Classic consumer queues to reach the agreed
 
 ### Bridge or relay at the application/protocol layer
 
-Run a controlled relay that consumes each Classic consumer queue and sends to the corresponding Artemis address or queue. Make the relay idempotent, preserve required headers, and record source message ID, target send result, and acknowledgement. A crash between target send and source acknowledgement can duplicate a message, so downstream processing still needs an idempotency key.
+Run a controlled relay that consumes each Classic consumer queue and sends directly to the corresponding Artemis queue using its FQQN. Do not send each queue's backlog to the multicast address: those messages are already fanned out, so that would create extra copies on every target queue. Make the relay idempotent, preserve required headers, and record source message ID, target send result, and acknowledgement. A crash between target send and source acknowledgement can duplicate a message, so downstream processing still needs an idempotency key.
 
 Avoid simultaneously forwarding both a Classic virtual topic and its fanned-out consumer queues. Classic's virtual-destination documentation warns that bridging both sides of this topology can fan messages out twice.
 
@@ -141,7 +141,7 @@ If the messages can be reconstructed from an authoritative database or event log
 4. Exercise rollback, redelivery, expiration, dead-lettering, and consumer restart.
 5. Measure `messageCount`, `deliveringCount`, `messagesAdded`, and acknowledgements on every target queue.
 6. Quiesce, drain or relay the Classic backlog, then reconcile application-level IDs rather than trusting only cumulative broker counters.
-7. Switch consumers before—or in a tightly controlled sequence with—producers so that no target queue is left unobserved.
+7. Switch consumers before-or in a tightly controlled sequence with-producers so that no target queue is left unobserved.
 8. Retain the Classic store read-only until the reconciliation and rollback window closes.
 
 ## Validation Cases That Catch Real Mistakes

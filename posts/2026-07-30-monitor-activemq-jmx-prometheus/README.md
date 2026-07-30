@@ -1,4 +1,4 @@
-# Monitoring ActiveMQ with JMX and Prometheus: Queue Age, Backlog, Consumer Count, and Store Usage
+# Monitoring ActiveMQ: Queue Age, Backlog, Consumers, and Store Usage
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

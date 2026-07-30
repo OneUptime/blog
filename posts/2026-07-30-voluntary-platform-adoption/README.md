@@ -1,4 +1,4 @@
-# How to Measure Voluntary Platform Adoption Without Confusing Usage with Compliance
+# Measuring Voluntary Platform Adoption Without Confusing Compliance
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

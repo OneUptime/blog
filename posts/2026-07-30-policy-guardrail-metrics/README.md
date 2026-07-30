@@ -1,8 +1,8 @@
-# Policy Guardrail Metrics: Tracking Failed Checks, Exceptions, and Time to Compliance
+# Policy Guardrail Metrics: Failed Checks, Exceptions, and Compliance Time
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Platform Engineering, Policy as Code, Compliance, Kyverno, OPA, Metrics
+Tags: Platform Engineering, Policy as Code, Compliance, Kyverno, OPA, Metric
 
 Description: Measure guardrails as an evaluation-to-remediation system that distinguishes violations, blocked attempts, errors, exceptions, and restored compliance.
 
@@ -34,7 +34,7 @@ At minimum, distinguish:
 - **excepted:** a valid exception caused the rule to be bypassed or treated according to policy;
 - **remediated:** the subject later passed or no longer existed.
 
-Do not merge `skip` or not applicable with `pass`. Kyverno’s PolicyReport documentation explicitly treats a skip as a rule bypass—for example, due to unmet preconditions or a matching `PolicyException`.
+Do not merge `skip` or not applicable with `pass`. Kyverno’s PolicyReport documentation explicitly treats a skip as a rule bypass-for example, due to unmet preconditions or a matching `PolicyException`.
 
 Also separate evaluation from subject state. Ten rejected deployment attempts may concern one noncompliant manifest. One background scan may identify 10,000 existing resources without any new attempt.
 

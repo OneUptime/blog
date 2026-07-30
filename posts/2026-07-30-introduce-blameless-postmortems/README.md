@@ -1,4 +1,4 @@
-# How to Introduce Blameless Postmortems in a Culture That Still Asks “Who Broke It?”
+# Introducing Blameless Postmortems in a “Who Broke It?” Culture
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -185,7 +185,7 @@ People stop asking "who broke it?" when leaders repeatedly show that the more va
 
 ## Official Documentation
 
-- [Google SRE Book: Postmortem Culture—Learning from Failure](https://sre.google/sre-book/postmortem-culture/)
+- [Google SRE Book: Postmortem Culture-Learning from Failure](https://sre.google/sre-book/postmortem-culture/)
 - [Google SRE Workbook: Postmortem Culture](https://sre.google/workbook/postmortem-culture/)
 - [Atlassian Incident Management Handbook: Postmortems](https://www.atlassian.com/incident-management/handbook/postmortems)
 - [Atlassian: How to run a blameless postmortem](https://www.atlassian.com/incident-management/postmortem/blameless)

@@ -1,4 +1,4 @@
-# ActiveMQ Message Selectors Can Make Consumers Appear Hung: Page Size and Prefetch Explained
+# ActiveMQ Message Selectors: Page Size, Prefetch, and Hung Consumers
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

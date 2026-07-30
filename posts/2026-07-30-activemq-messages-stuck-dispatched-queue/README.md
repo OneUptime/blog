@@ -1,4 +1,4 @@
-# Why ActiveMQ Messages Stay in the Dispatched Queue—and How to Release Them
+# Why ActiveMQ Messages Stay in the Dispatched Queue-and How to Release Them
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -107,7 +107,7 @@ Calling `connection.stop()` only pauses delivery; it does not close the consumer
 
 ### Close a verified ghost connection administratively
 
-If the process is gone but the broker still owns its connection, use the Classic connection MBean's administrative `stop` operation—not JMS `Connection.stop()`—or the console to stop that exact connection. Verify client ID and remote address first: one connection can host several sessions and consumers, so closing it may release work from multiple destinations.
+If the process is gone but the broker still owns its connection, use the Classic connection MBean's administrative `stop` operation-not JMS `Connection.stop()`-or the console to stop that exact connection. Verify client ID and remote address first: one connection can host several sessions and consumers, so closing it may release work from multiple destinations.
 
 Expect duplicates whenever there is uncertainty about whether the old consumer completed its side effect before losing the acknowledgement.
 

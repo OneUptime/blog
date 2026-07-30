@@ -1,4 +1,4 @@
-# How to Track Platform Coverage Without Hiding Shadow Tooling and Manual Workarounds
+# Track Platform Coverage Without Hiding Shadow Tooling and Workarounds
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
