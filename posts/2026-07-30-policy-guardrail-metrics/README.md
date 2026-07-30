@@ -26,14 +26,15 @@ At minimum, distinguish:
 
 - **pass:** resource or request was evaluated and compliant;
 - **fail:** evaluation completed and found a violation;
-- **skip/not applicable:** rule was not evaluated for this subject;
+- **not applicable:** subject did not match the rule, so no rule evaluation occurred;
+- **skip:** subject matched, but the rule evaluation was bypassed;
 - **error:** the policy could not be evaluated correctly;
 - **blocked:** enforcement prevented the requested operation;
 - **warned/audited:** operation continued but a violation was recorded;
 - **excepted:** a valid exception caused the rule to be bypassed or treated according to policy;
 - **remediated:** the subject later passed or no longer existed.
 
-Do not merge `skip` with `pass`. Kyverno’s PolicyReport documentation explicitly treats a skip as a rule bypass—for example, due to unmet preconditions or a matching `PolicyException`.
+Do not merge `skip` or not applicable with `pass`. Kyverno’s PolicyReport documentation explicitly treats a skip as a rule bypass—for example, due to unmet preconditions or a matching `PolicyException`.
 
 Also separate evaluation from subject state. Ten rejected deployment attempts may concern one noncompliant manifest. One background scan may identify 10,000 existing resources without any new attempt.
 
