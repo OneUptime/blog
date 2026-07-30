@@ -2,15 +2,14 @@
 
 ## ActiveMQ
 
-1. Migrating ActiveMQ Classic Virtual Topics to Artemis Addresses and Queues
-2. ActiveMQ Queue vs Topic: What Happens When Consumers Are Offline?
-3. Persistent vs Non-Persistent ActiveMQ Messages: Delivery Guarantees and Performance Tradeoffs
-4. ActiveMQ Consumer Prefetch: How to Tune Throughput Without Starving Slow Workers
-5. Why ActiveMQ Messages Stay in the Dispatched Queue—and How to Release Them
-6. ActiveMQ Consumer Is Connected but Not Receiving Messages: A Debugging Checklist
-7. Why ActiveMQ Producers Block When Memory or Store Usage Reaches Its Limit
-8. Taming a Fast Producer and Slow Consumer with ActiveMQ Flow Control and Pending Limits
-9. Why an ActiveMQ Queue Keeps Growing—and How to Find the Bottleneck
+1. ActiveMQ Queue vs Topic: What Happens When Consumers Are Offline?
+2. Persistent vs Non-Persistent ActiveMQ Messages: Delivery Guarantees and Performance Tradeoffs
+3. ActiveMQ Consumer Prefetch: How to Tune Throughput Without Starving Slow Workers
+4. Why ActiveMQ Messages Stay in the Dispatched Queue—and How to Release Them
+5. ActiveMQ Consumer Is Connected but Not Receiving Messages: A Debugging Checklist
+6. Why ActiveMQ Producers Block When Memory or Store Usage Reaches Its Limit
+7. Taming a Fast Producer and Slow Consumer with ActiveMQ Flow Control and Pending Limits
+8. Why an ActiveMQ Queue Keeps Growing—and How to Find the Bottleneck
 
 ## Blameless Postmortems
 
