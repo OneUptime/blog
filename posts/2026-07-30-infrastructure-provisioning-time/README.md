@@ -61,9 +61,9 @@ attempt_id       one execution attempt
 resource_id      resulting resource, when created
 ```
 
-A retried workflow remains one journey with several attempts. An idempotency key prevents the same intent from creating duplicate resources. If the developer abandons one request and starts a materially different request, record a new journey and link it as a replacement.
+A retried workflow remains one journey with several attempts. An idempotency key, when consistently reused and enforced by every side-effecting component, prevents retries of the same intent from creating duplicate resources. If the developer abandons one request and starts a materially different request, record a new journey and link it as a replacement.
 
-Retain terminal states:
+Retain outcome and lifecycle states:
 
 - ready;
 - rejected by policy;
@@ -99,11 +99,11 @@ OpenTelemetry traces and spans provide a standards-based model for an operation 
 Separate:
 
 ```text
-active processing time = sum of execution-stage durations
+active processing time = duration covered by execution-stage intervals
 wait time = total duration - active processing time
 ```
 
-Avoid blindly adding overlapping child spans. Parallel operations can make their sum greater than wall-clock time. Use critical-path or non-overlapping stage durations for decomposition.
+Avoid blindly adding overlapping child spans. Parallel operations can make their sum greater than wall-clock time. Merge overlapping execution intervals, or use an explicit critical-path analysis, before decomposition.
 
 ## Report a Distribution
 
@@ -133,7 +133,7 @@ Ready: successful authenticated query through the consumer network path
 Clock: wall-clock elapsed time, 24x7
 Retries: grouped by journey_id
 Statistics: median, p90, ready within 30 minutes
-Outcomes: ready, rejected, failed, canceled, censored
+Outcomes/observation status: ready, rejected, failed, canceled, or still running (right-censored)
 Definition version: 1.3
 ```
 
@@ -172,10 +172,10 @@ DORA's flexible-infrastructure guidance emphasizes on-demand self-service rather
 
 ## Use Stage Data to Choose Work
 
-If provider provisioning occupies three minutes of a four-hour journey, optimizing Terraform is unlikely to matter. Rank stages by both volume and total developer waiting:
+If provider provisioning occupies three minutes of a four-hour journey, optimizing Terraform is unlikely to matter. Rank stages by both volume and an estimate of developer waiting burden:
 
 ```text
-time-weighted burden =
+estimated time-weighted burden =
   number of affected journeys * median added delay
 ```
 
