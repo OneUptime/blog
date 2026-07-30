@@ -2,10 +2,9 @@
 
 ## Platform Metrics
 
-1. Cost per Service, Deployment, or Environment: Building Useful Platform Unit Economics
-2. How to Prove Platform ROI Without Inventing Fake Revenue Attribution
-3. How to Measure the Success of Platform Documentation and Discoverability
-4. Policy Guardrail Metrics: Tracking Failed Checks, Exceptions, and Time to Compliance
+1. How to Prove Platform ROI Without Inventing Fake Revenue Attribution
+2. How to Measure the Success of Platform Documentation and Discoverability
+3. Policy Guardrail Metrics: Tracking Failed Checks, Exceptions, and Time to Compliance
 
 ## ActiveMQ
 
