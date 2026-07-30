@@ -10,7 +10,7 @@ Description: Replay ActiveMQ Classic dead-letter messages with a canary-first, i
 
 A dead-letter replay is a new production write. It can repeat a side effect that already happened, reorder old work ahead of new work, or immediately recreate the incident that filled the DLQ. “Move everything back” is therefore not a safe runbook.
 
-This article covers ActiveMQ Classic management operations. Artemis has different CLI and management APIs.
+This article covers ActiveMQ Classic management operations for queue-origin DLQ messages. Retrying a topic-origin message to its original destination republishes it to the topic and can affect more subscribers than the one whose delivery failed. Artemis has different CLI and management APIs.
 
 ## Know what the Classic broker can do
 
@@ -37,7 +37,7 @@ Do not replay until all of these are true:
 - an owner can stop the replay immediately;
 - a snapshot or export of the selected message metadata exists.
 
-If a database write may have committed before the acknowledgement was lost, query by the business idempotency key first. A broker message ID identifies a delivery artifact; it does not prove the business operation did not complete.
+If a database write may have committed before the acknowledgement was lost, query by the business idempotency key first. A broker message ID identifies the JMS message; it does not prove the business operation did not complete.
 
 ## Select messages, not just a queue
 
@@ -48,7 +48,7 @@ Build a replay cohort from a bounded browse:
 - producer/schema version;
 - time window;
 - tenant or workload;
-- delivery count;
+- recorded delivery-attempt metadata (ActiveMQ Classic resets its redelivery counter when it resends a message to the DLQ, so the DLQ message's `JMSXDeliveryCount` does not preserve the pre-DLQ count);
 - expiry and business validity;
 - stable operation ID.
 
@@ -106,14 +106,14 @@ The MBean documentation notes that a message already dispatched to a consumer ca
 
 ## Make replay idempotent
 
-Broker delivery is at least once across failure boundaries. Build replay protection at the business layer:
+Message processing can repeat across failure boundaries when business work completes before its delivery is acknowledged. Build replay protection at the business layer:
 
 ```text
 begin transaction
-  if operation_id already completed:
-      return recorded result
-  apply business change
-  record operation_id as completed
+  claim operation_id using a uniqueness constraint
+  if claim acquired:
+      apply business change
+      record operation_id as completed
 commit
 acknowledge message
 ```
