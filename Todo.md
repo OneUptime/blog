@@ -2,19 +2,18 @@
 
 ## Platform Metrics
 
-1. How to Measure Infrastructure Provisioning Time from Request to Ready
-2. How to Track Platform Coverage Without Hiding Shadow Tooling and Manual Workarounds
-3. Developer Satisfaction, NPS, or Customer Effort Score: Which Survey Metric Fits an Internal Platform?
-4. How to Measure Cognitive Load Reduction Without Turning Developer Experience into Guesswork
-5. Survey Data vs Workflow Telemetry: How to Combine Qualitative and Quantitative Platform Metrics
-6. Establishing a Platform Metrics Baseline Before You Launch or Migrate
-7. Did the Platform Improve Delivery? How to Attribute Changes in DORA Metrics
-8. Platform SLOs and Error Budgets: Measuring the Reliability of Shared Developer Services
-9. How to Measure Platform Toil Through Support Tickets, Interruptions, and Manual Approvals
-10. Cost per Service, Deployment, or Environment: Building Useful Platform Unit Economics
-11. How to Prove Platform ROI Without Inventing Fake Revenue Attribution
-12. How to Measure the Success of Platform Documentation and Discoverability
-13. Policy Guardrail Metrics: Tracking Failed Checks, Exceptions, and Time to Compliance
+1. How to Track Platform Coverage Without Hiding Shadow Tooling and Manual Workarounds
+2. Developer Satisfaction, NPS, or Customer Effort Score: Which Survey Metric Fits an Internal Platform?
+3. How to Measure Cognitive Load Reduction Without Turning Developer Experience into Guesswork
+4. Survey Data vs Workflow Telemetry: How to Combine Qualitative and Quantitative Platform Metrics
+5. Establishing a Platform Metrics Baseline Before You Launch or Migrate
+6. Did the Platform Improve Delivery? How to Attribute Changes in DORA Metrics
+7. Platform SLOs and Error Budgets: Measuring the Reliability of Shared Developer Services
+8. How to Measure Platform Toil Through Support Tickets, Interruptions, and Manual Approvals
+9. Cost per Service, Deployment, or Environment: Building Useful Platform Unit Economics
+10. How to Prove Platform ROI Without Inventing Fake Revenue Attribution
+11. How to Measure the Success of Platform Documentation and Discoverability
+12. Policy Guardrail Metrics: Tracking Failed Checks, Exceptions, and Time to Compliance
 
 ## ActiveMQ
 
