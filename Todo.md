@@ -35,11 +35,10 @@
 8. Why ActiveMQ Producers Block When Memory or Store Usage Reaches Its Limit
 9. Taming a Fast Producer and Slow Consumer with ActiveMQ Flow Control and Pending Limits
 10. Why an ActiveMQ Queue Keeps Growing—and How to Find the Bottleneck
-11. Cleaning Up Abandoned Durable Subscribers Before They Exhaust Broker Memory
-12. ActiveMQ Message Selectors Can Make Consumers Appear Hung: Page Size and Prefetch Explained
-13. ActiveMQ Failover Transport: Reconnect, Backup Priority, and Transaction Replay Settings
-14. Configuring ActiveMQ TLS and Mutual Authentication Without Certificate or Hostname Errors
-15. Monitoring ActiveMQ with JMX and Prometheus: Queue Age, Backlog, Consumer Count, and Store Usage
+11. ActiveMQ Message Selectors Can Make Consumers Appear Hung: Page Size and Prefetch Explained
+12. ActiveMQ Failover Transport: Reconnect, Backup Priority, and Transaction Replay Settings
+13. Configuring ActiveMQ TLS and Mutual Authentication Without Certificate or Hostname Errors
+14. Monitoring ActiveMQ with JMX and Prometheus: Queue Age, Backlog, Consumer Count, and Store Usage
 
 ## Blameless Postmortems
 
