@@ -1780,3 +1780,233 @@
 18. How to Verify Colocation Resilience: UPS, Generators, Cooling, Fire Suppression, and SLAs
 19. How to Audit Physical Access and Tenant Isolation in a Shared Colocation Facility
 20. How to Decide Whether Colocation or Dedicated Servers Cost Less for Your Workload
+
+## Data Lineage
+
+1. How to Generate Column-Level Data Lineage from Complex SQL with CTEs, Window Functions, and Temp Tables
+2. How to Capture Runtime Data Lineage for Dynamic SQL That Static Parsers Miss
+3. How to Trace Data Lineage from dbt Models All the Way to Power BI Measures
+4. How to Catch Breaking Column Changes in CI with Lineage-Based Impact Analysis
+5. How to Instrument Airflow with OpenLineage Without Losing Operator Inputs and Outputs
+6. How to Capture PySpark DataFrame Lineage When SQL Parsers Cannot See the Transformations
+7. How to Build Cross-Database Column Lineage for Pipelines That Move Data Between MySQL and PostgreSQL
+8. How to Preserve Historical Data Lineage Across Renames, Drops, and Schema Evolution
+9. How to Track Row-Level Data Provenance Without Exploding Storage Costs
+10. How to Connect Warehouse Lineage to Tableau, Looker, and Power BI Dashboards
+11. How to Reconstruct Data Lineage from Query Logs When Pipeline Code Is Missing
+12. How to Model Data Lineage in a Graph Database for Fast Upstream and Downstream Traversal
+13. How to Add Transformation Expressions and Aggregations to OpenLineage Metadata
+14. How to Debug Missing OpenLineage Events from Spark Jobs
+15. How to Keep a Data Lineage Catalog Fresh When Teams Forget to Update Documentation
+16. How to Validate SQL-Derived Lineage Against What Actually Ran in Production
+17. How to Trace Lineage Through Stored Procedures, Triggers, and Intermediate Tables
+18. How to Design Data Lineage for Batch and Streaming Pipelines in One Metadata Graph
+19. How to Use Data Lineage to Find the Root Cause of a Broken Dashboard
+20. How to Choose Between OpenLineage, DataHub, and OpenMetadata for Column-Level Lineage
+
+## Embedded Databases
+
+1. How to Fix SQLite “Database Is Locked” Errors Under Concurrent Writes
+2. How to Make SQLite Enforce Foreign Keys on Every Application Connection
+3. Why Copying a WAL-Mode SQLite File Produces Incomplete Backups—and How to Fix It
+4. How to Recover a Corrupted SQLite Database with `integrity_check`, `.recover`, and Verified Restores
+5. How to Version and Migrate an Embedded SQLite Schema Across App Upgrades
+6. How to Decide When SQLite Has Outgrown a Production Web Application
+7. How to Detect Unsafe NFS and SMB File Locking Before Hosting an Embedded Database
+8. How to Rotate SQLCipher Encryption Keys Without Exposing a Plaintext SQLite File
+9. How to Survive Sudden Power Loss When SQLite Runs on SD Cards or Flash Storage
+10. How to Reclaim SQLite Disk Space Safely with `VACUUM` and Incremental Auto-Vacuum
+11. How to Choose SQLite, DuckDB, RocksDB, or LMDB for an Embedded Workload
+12. How to Use DuckDB for Embedded Analytics Without Treating It Like an OLTP Database
+13. How to Handle DuckDB’s Single-Process Write Lock in Multi-Worker Applications
+14. How to Stop DuckDB Queries from Exhausting Memory on Large Parquet Datasets
+15. How to Share Prebuilt DuckDB Files Across Read-Only Application Replicas
+16. How to Size an LMDB Map and Recover Cleanly from `MDB_MAP_FULL`
+17. How to Tune RocksDB Compaction to Reduce Write Stalls and Space Amplification
+18. How to Set Cache, Write Buffer, and File Descriptor Budgets for an Embedded RocksDB Instance
+19. How to Design a Single-Writer Queue for Multi-Process Embedded Database Access
+20. How to Migrate from an Embedded Database to PostgreSQL Without SQLite Type and Concurrency Surprises
+
+## Capacity Planning
+
+1. How to Convert Peak RPS and Latency into Concurrency with Little’s Law
+2. How to Build a Production-Realistic Load-Test Model from Sessions, Think Time, and Traffic Mix
+3. How to Find the Saturation Point of a Single Service Instance Before Scaling Out
+4. How to Measure Whether Adding Nodes Actually Produces Linear Throughput
+5. How to Set Capacity Headroom for Traffic Growth, Maintenance, and One-Node Failure
+6. How to Forecast Seasonal Traffic Without Sizing Everything to the Annual Maximum
+7. How to Size Kubernetes Nodes from Pod Requests, DaemonSet Overhead, and Bin-Packing Constraints
+8. How to Reserve Kubernetes Cluster Headroom Without Paying for Permanently Idle Nodes
+9. How to Keep HPA and Cluster Autoscaler from Reacting Too Late to Burst Traffic
+10. How to Pre-Warm Autoscaled Instances Before a Marketing or Launch-Day Spike
+11. How to Calculate Database Connection-Pool Capacity Across Autoscaled Application Replicas
+12. How to Size Worker Pools and Queues from Arrival Rate, Service Time, and Latency SLOs
+13. How to Plan Capacity for Heavy and Light Request Types Instead of Using Average RPS
+14. How to Use Queue-Drain Time and Retry Growth to Detect Hidden Saturation
+15. How to Size CPU from Throttling and Run-Queue Delay Instead of Average Utilization
+16. How to Size Memory for P99 Peaks Without Hiding Leaks Behind Excess Headroom
+17. How to Forecast Storage Capacity from Ingest Rate, Retention, Replication, and Compaction Overhead
+18. How to Plan Network Bandwidth from Payload Size, Fan-Out, and Replication Traffic
+19. How to Turn a Latency SLO into a Maximum Safe Utilization Target
+20. How to Revalidate Capacity After Code, Runtime, or Instance-Type Changes
+
+## etcd
+
+1. How to Recover an etcd Watch After `mvcc: required revision has been compacted` Without Missing Updates
+2. How to Diagnose `etcdserver: request timed out` by Separating Network, Disk, and Quorum Latency
+3. How to Rotate etcd Client and Peer Certificates One Member at a Time Without Losing Quorum
+4. How to Fix `tls: first record does not look like a TLS handshake` by Auditing etcd URLs and Certificate SANs
+5. How to Add an etcd Learner, Verify It Has Caught Up, and Promote It Safely
+6. Why Does an etcd Learner Pass `/readyz` but Reject gRPC Requests? Building an Accurate Health Check
+7. How to Recover an etcd Cluster Stuck at `RAFT NO LEADER` After a Failed Member Join
+8. How to Migrate an etcd Data Directory from a Slow Disk to SSD Without Rebuilding the Cluster
+9. How to Tune etcd Heartbeat and Election Timeouts for High-Latency Networks Without Masking Slow Disks
+10. How to Diagnose Frequent etcd Leader Elections Using WAL fsync, Backend Commit, and Peer RTT Metrics
+11. How to Stream etcd v3 Watch Events Through the gRPC Gateway Without Buffering or Silent Hangs
+12. How to Implement Lease KeepAlive and Automatic Key Cleanup Without Leaking Sessions in etcd
+13. How to Build a Fenced Distributed Lock with etcd Leases and Revisions
+14. How to Use etcd Transactions for Atomic Compare-and-Swap Across Multiple Keys
+15. How to Page Through a Large etcd Prefix with Range End, Limit, and Revision Consistency
+16. How to Isolate Multiple Applications with etcd Users, Roles, and Prefix Permissions
+17. How to Choose Linearizable or Serializable Reads in etcd for the Right Consistency–Latency Tradeoff
+18. How to Verify an etcd Snapshot’s Integrity, Revision, and Version Compatibility Before a Restore
+19. How to Recover etcd from `wal: crc mismatch` Without Forcing a New Cluster Prematurely
+20. How to Drain and Replace an etcd Leader for Planned Maintenance with `move-leader`
+
+## Spot Instances
+
+1. How to Choose Between `capacity-optimized` and `price-capacity-optimized` for EC2 Spot Allocation
+2. How to Diversify a Spot Fleet Across Instance Families, Sizes, and Availability Zones Without Overprovisioning
+3. How to Troubleshoot `InsufficientInstanceCapacity` When an Auto Scaling Group Cannot Launch Spot Instances
+4. Why Doesn’t an AWS Mixed Instances Auto Scaling Group Fall Back to On-Demand When Spot Is Unavailable?
+5. How to Configure On-Demand Base Capacity and Spot Percentage for a Reliable EC2 Auto Scaling Baseline
+6. How to Use Spot Placement Scores Before a Large Scale-Out or Regional Batch Run
+7. How to Interpret EC2 Rebalance Recommendations Versus Two-Minute Interruption Notices
+8. How to Prevent Capacity Rebalancing from Causing Excessive Instance Churn and Temporary Overcapacity
+9. How to Test Spot Interruption Handling Safely with AWS Fault Injection Service
+10. How to Trace a Spot Termination Through EventBridge, Auto Scaling Activity, and CloudTrail
+11. How to Finish In-Flight Kubernetes Requests Before a Spot Node Dies Using `preStop`, Readiness, and Load-Balancer Drain
+12. How to Keep Kubernetes Replicas Out of the Same Spot Capacity Pool with Topology Spread and Multi-AZ Scheduling
+13. How to Keep StatefulSets and Persistent Volumes off Spot Nodes with Taints, Affinity, and Admission Policy
+14. How to Checkpoint and Resume Kubernetes Jobs After Spot Eviction Instead of Restarting from Zero
+15. How to Stop Karpenter Consolidation from Repeatedly Disrupting Long-Running Batch Jobs
+16. How to Size `terminationGracePeriodSeconds` for Spot Nodes with Only Two Minutes to Drain
+17. How to Preserve EBS Data and Reattach Volumes After a Spot Instance Is Terminated
+18. How to Protect CI Runners on Spot Instances from Losing Artifacts, Caches, and Test Results
+19. How to Calculate the Real Savings of Spot Instances After Interruption, Restart, and Data-Transfer Costs
+20. When Should You Use Stop, Hibernate, or Terminate as the EC2 Spot Interruption Behavior?
+
+## OTTL
+
+1. Why Does OTTL Say “invalid metric path expression”? Choosing `metric` Versus `datapoint` Context
+2. How to Split OTTL Statement Groups When Context Inference Cannot Mix Metric and Datapoint Functions
+3. How to Choose `ignore`, `silent`, or `propagate` Error Mode Without Dropping Telemetry
+4. How to Debug an OTTL Rule That Parses Successfully but Never Matches
+5. How to Guard OTTL Converters Against `nil`, Wrong Types, and Mixed Log Bodies
+6. How to Migrate Pre-0.120 Transform Processor Configuration to the Current OTTL Statement Syntax
+7. How to Copy Regex-Matched Resource Attributes into a Nested Map with OTTL Cache
+8. Why Do OTTL Resource Changes Leak Across Log Records? Using `flatten_data` Safely
+9. How to Drop Kubernetes Liveness and Readiness Probe Spans with an OTTL Filter
+10. How to Collapse Escaped Whitespace in SQL Span Attributes with OTTL Without Changing Query Meaning
+11. How to Redact Passwords, Tokens, and URL Query Secrets with OTTL Pattern Replacements
+12. How to Hash Sensitive Attribute Values with OTTL Before Export
+13. How to Coalesce Old and New OpenTelemetry Semantic Convention Keys in One OTTL Rule
+14. How to Convert Exponential Histograms for a Backend That Only Accepts Explicit Buckets
+15. How to Aggregate Metric Data Points by Selected Attributes Without Creating Identity Conflicts
+16. How to Convert Gauge Metrics to Sums in OTTL Without Producing Invalid Temporality
+17. Why Does `IsMatch` Return False for an Existing Attribute? Debugging OTTL Types and Regex Escaping
+18. How to Parse and Normalize Nonstandard Log Timestamps with OTTL `Time` and `FormatTime`
+19. How to Access Array Elements and Nested Maps Safely in OTTL Conditions
+20. When Should You Use the Attributes Processor Instead of OTTL for Simple Enrichment?
+
+## Correlation IDs
+
+1. How to Generate, Validate, or Replace `X-Correlation-ID` at an API Gateway Without Trusting Spoofed Client Values
+2. How to Return a Correlation ID in Every HTTP Response So Users Can Report a Failing Request
+3. How to Run W3C `traceparent` and Legacy `X-Correlation-ID` Side by Side During an OpenTelemetry Migration
+4. How to Avoid Passing Correlation IDs Through Every .NET Method with `Activity.Current` and Logging Scopes
+5. How to Propagate Correlation Context from ASP.NET Core into `BackgroundService` and Queued Work Items
+6. How to Keep Correlation IDs Across Express Promises and Callbacks with Node.js `AsyncLocalStorage`
+7. How to Preserve Correlation IDs Across FastAPI Requests and Celery Tasks with Python `contextvars`
+8. How to Attach Correlation IDs to Go `context.Context` and Enrich HTTP and gRPC Logs
+9. How to Propagate Correlation IDs Through Reactor and `CompletableFuture` Without Losing Java MDC
+10. How to Add and Clear Correlation IDs Correctly in gRPC Unary and Streaming Interceptors
+11. How to Correlate WebSocket Connections, Messages, and Reconnects Without Reusing One ID Forever
+12. How to Model Correlation, Causation, and Message IDs in Fan-Out Event Workflows
+13. Should a Retry Reuse the Same Correlation ID? Adding Attempt IDs Without Breaking the Trace
+14. Idempotency Key vs Correlation ID: How to Use Both for Safe API Retries and Debugging
+15. How to Preserve Original Correlation and Causation IDs When Messages Move to a Dead-Letter Queue
+16. How to Correlate Scheduled Jobs and Batch Runs When There Is No Incoming HTTP Request
+17. How to Propagate Correlation IDs from API Gateway and Lambda into SQS, SNS, and EventBridge
+18. How to Expose Response Correlation IDs to Browser Clients with CORS Without Leaking Internal Trace Context
+19. How to Prevent Correlation ID Log Injection, Unbounded Cardinality, and Oversized Headers
+20. How to Query Correlated Logs in Loki or Elasticsearch When Traces Are Unsampled
+
+## Buildkite
+
+1. How to Pass Runtime Values Between Buildkite Steps with Build Metadata and Dynamic Pipeline Uploads
+2. Why `buildkite-agent env set` Fails with `BUILDKITE_AGENT_JOB_API_SOCKET` Missing—and What to Use Instead
+3. How to Escape `$` Variables Correctly in Dynamically Uploaded Buildkite Pipelines
+4. How to Run Buildkite Steps Only When Files Change in a Monorepo
+5. Buildkite Jobs Stuck on “Waiting for Agent”: How to Debug Queues, Tags, and Targeting Rules
+6. How to Autoscale Self-Hosted Buildkite Agents Without Creating Long Queue Waits
+7. How to Generate a Buildkite Test Matrix with Dynamic Pipelines and Stable Step Keys
+8. How to Trigger a Downstream Buildkite Pipeline Dynamically and Pass Commit, Branch, and Metadata
+9. How to Share Buildkite Artifacts Across Steps, Builds, and Pipelines Without Ambiguous Matches
+10. Why Missing Buildkite Artifact Globs Do Not Fail a Step—and How to Enforce Required Outputs
+11. How to Structure Multiple Buildkite Pipeline YAML Files in One Repository
+12. How to Centralize Shared Buildkite Pipeline Configuration Across Repositories
+13. How to Run Setup and Teardown Exactly Once in Buildkite When Hooks Execute Per Job
+14. `BUILDKITE_GIT_CLONE_FLAGS` Is Ignored: How Agent-Level Git Configuration Actually Works
+15. How to Skip Buildkite Builds for README-Only and Documentation-Only Changes
+16. How to Make a Buildkite Cleanup Step Run After Failures and Cancellations
+17. How to Use Buildkite Input Steps in Both Manual and Scheduled Pipelines
+18. How to Retrieve Buildkite Job Logs and Structured Test Results Through the REST API
+19. Buildkite YAML Pipes and Multiline Commands Not Running: How to Fix Shell and YAML Quoting
+20. Buildkite Parallelism vs Concurrency Groups: How to Cap Load Without Serializing the Whole Pipeline
+
+## Azure SQL
+
+1. Azure SQL “Login Failed for User `<token-identified principal>`”: A Managed Identity Troubleshooting Checklist
+2. How to Use a User-Assigned Managed Identity with Azure SQL from an Azure DevOps Pipeline
+3. How to Use `DefaultAzureCredential` for Azure SQL Locally and Managed Identity in Production
+4. Azure SQL Private Endpoint Resolves to a Public IP: How to Fix Private DNS and VPN Forwarding
+5. Why You Cannot Ping an Azure SQL Private Endpoint—and How to Test Port 1433 Correctly
+6. Connection Timeout or Command Timeout? How to Diagnose the Difference in Azure SQL Clients
+7. How to Fix Azure SQL Connection Pool Blocking Periods After a Failed Login
+8. Azure SQL Serverless Cold Starts: How to Retry Error 40613 and Resume Paused Databases Reliably
+9. Why Azure SQL Serverless Never Auto-Pauses: Finding Health Checks and Pools That Keep It Awake
+10. How to Audit Azure SQL Serverless Pause and Resume History to Verify Cost Savings
+11. Azure SQL Session Limit Reached: How to Find Leaked Connections and Right-Size Application Pools
+12. Azure SQL Error 10928 “Request Limit Reached”: How to Diagnose Worker Exhaustion and MAXDOP
+13. How to Keep Managed Identity Tokens from Fragmenting Azure SQL Connection Pools
+14. Slow Bulk Inserts in Azure SQL: How to Identify `LOG_RATE_GOVERNOR`, I/O, and Network Bottlenecks
+15. How to Secure Azure SQL Elastic Jobs Without Enabling “Allow Azure Services and Resources”
+16. Why Three-Part Cross-Database Names Fail in an Azure SQL Elastic Pool—and How External Tables Work
+17. How to Fix Azure SQL TLS Certificate Errors After `Microsoft.Data.SqlClient` Enables Encryption by Default
+18. Why SQLPackage Adds `REVOKE CONNECT` in Azure SQL—and How to Stop Disabling Users
+19. How to Schedule Maintenance in Azure SQL Database Without SQL Server Agent
+20. How to Grant Managed Identities Azure SQL Access from IaC Without Manual Directory Readers Setup
+
+## LLM Observability
+
+1. Which RAG Stage Failed? How to Correlate Retriever Scores, Assembled Context, and Answer Grounding in One Trace
+2. How to Log the Exact Prompt and Retrieved Context That LangChain Sent to the Model
+3. How to Preserve Parent-Child Traces Across Concurrent Tool Calls and Nested AI Agents
+4. How to Detect Tool-Call Loops, Dead Ends, and Repeated Actions in Production AI Agents
+5. How to Correlate LLM Spans with HTTP, Database, Queue, and Vector Search Traces
+6. Streaming LLM Observability: How to Measure Time to First Token, Tokens per Second, and Total Latency
+7. How to Count Tokens in Streaming LangGraph Runs Without Breaking Existing Callbacks
+8. Why Provider Token Counts and Local Estimates Disagree—and Which Value to Record
+9. How to Debug LLM Failures Without Storing Raw Prompts: Hashes, Templates, and Selective Capture
+10. How to Design Access Controls, Encryption, and Retention for Production LLM Traces
+11. How to Sample High-Volume LLM Traces Without Hiding Rare Hallucinations and Tool Failures
+12. How to Attach Prompt, Model, and Embedding Versions to Traces for Fast Regression Root Cause Analysis
+13. How to Propagate LLM Trace Context Across Queues, Threads, and Background Agent Workers
+14. LangChain Spans Never Close: How to Find Callback and OpenTelemetry Lifecycle Bugs
+15. Why MLflow Autologging Misses Custom LangGraph `StateGraph` Runs—and How to Restore Traces
+16. How to Trace Every Retry and Provider Fallback Without Double-Counting LLM Cost or Latency
+17. How to Classify LLM Failures by Provider, Parser, Retriever, Guardrail, and Tool
+18. How to Join User Feedback and Task-Completion Signals Back to the LLM Trace That Produced Them
+19. How to Set SLOs and Alerts for LLM Latency, Error Rate, Cost, and Answer Quality
+20. Langfuse, LangSmith, Phoenix, or OpenTelemetry: How to Choose an LLM Observability Stack
