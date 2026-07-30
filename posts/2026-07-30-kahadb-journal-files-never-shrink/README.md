@@ -8,9 +8,9 @@ Description: Explain KahaDB's segment cleanup model and use targeted trace loggi
 
 ---
 
-KahaDB journal files do not shrink in place when a message is acknowledged. KahaDB appends records to fixed-size journal segments and later deletes an entire old segment only when nothing still needs any record in it. One long-lived reference can therefore retain a file containing mostly obsolete data.
+KahaDB journal files do not shrink in place when a message is acknowledged. KahaDB appends records to rolling journal segments whose target maximum is configured by `journalMaxFileLength`, and later deletes an entire old segment only when nothing still needs any record in it. One long-lived reference can therefore retain a file containing mostly obsolete data.
 
-That is normal log-structured storage behavior. Unbounded growth is not normal; it means references keep preventing whole-file cleanup or cleanup itself cannot run successfully.
+That is normal log-structured storage behavior. Unbounded growth is not normal unless logs are intentionally being archived; otherwise, it means references keep preventing whole-file cleanup or cleanup itself cannot run successfully.
 
 ## Why a journal segment remains in use
 
@@ -21,9 +21,9 @@ The ActiveMQ Classic KahaDB cleanup guide lists four reasons:
 3. it is referenced by a pending transaction;
 4. it is the current journal file and may receive another write.
 
-This creates a dependency chain. A newer acknowledgement can keep an older message file relevant, while a single very old pending message can retain a series of acknowledgement records.
+This creates a dependency chain. An older in-use message file can keep newer files containing acknowledgements relevant, while a single very old pending message can retain a series of acknowledgement records.
 
-Common operational owners are:
+Common operational causes are:
 
 - an offline durable subscriber retaining topic messages;
 - a queue with an old, unconsumed message;
@@ -31,7 +31,7 @@ Common operational owners are:
 - a slow or stuck consumer with a large backlog;
 - an open transaction;
 - expired messages not yet paged and processed;
-- archived data logs, when archiving is intentionally enabled.
+- eligible data logs being archived rather than deleted, when archiving is intentionally enabled.
 
 ## Do not infer live data from directory size
 
@@ -48,7 +48,7 @@ Before changing anything, record:
 - pending or long-running transactions;
 - recent checkpoint, cleanup, and I/O errors.
 
-Check whether `archiveDataLogs` is enabled. If so, eligible segments are moved to an archive directory instead of deleted; disk usage will not fall unless archive retention is managed separately.
+Check whether `archiveDataLogs` is enabled. If so, eligible segments are moved to `directoryArchive` instead of deleted. Active-store usage can decline, but the archived bytes still consume capacity on the filesystem that holds the archive unless archive retention is managed separately.
 
 ## Use KahaDB cleanup trace logging
 
@@ -58,7 +58,7 @@ The official diagnostic is targeted TRACE logging for:
 org.apache.activemq.store.kahadb.MessageDatabase
 ```
 
-The cleanup trace begins with the set of candidate data-file IDs, then removes IDs still referenced by each destination and transaction. The point where candidate IDs disappear identifies what is retaining them.
+The cleanup trace begins with the set of candidate data-file IDs, then removes IDs still referenced by destinations, transactions, and journal metadata. Destination lines show which queue or topic removes an ID; transaction and acknowledgement-dependency lines identify other retaining references.
 
 The documented destination prefixes in this trace are:
 
@@ -72,21 +72,21 @@ A simplified reading looks like this:
 ```text
 full candidates: [86, 87, 163]
 after dest:0:ORDERS [86, 87]
-after dest:1:EVENTS.DURABLE [87]
+after dest:1:EVENTS [87]
 cleanup removing: [87]
 ```
 
-Here the queue references file 163 and the topic/durable subscription references file 86. File 87 is unreferenced and eligible for removal.
+Here the queue references file 163 and the topic references file 86. File 87 is unreferenced and eligible for removal. A `dest:1:` entry identifies the topic, not a durable-subscription name. Use the durable-subscription MBeans, and on versions that emit them the nearby `sub ... pendingCount` TRACE records, to identify the exact subscriber on that topic.
 
 ## Investigate the retaining destination
 
 ### Queue or DLQ
 
-Use JMX to inspect `QueueSize`, `InFlightCount`, consumer count, enqueue/dequeue rate, and expiry count. Browse a bounded sample to identify very old messages. Do not purge merely to reclaim disk; first decide whether the messages require processing, replay, export, or explicit disposal.
+Use JMX to inspect `QueueSize`, `InFlightCount`, `ConsumerCount`, `EnqueueCount`, `DequeueCount`, and `ExpiredCount`; derive enqueue and dequeue rates by sampling the counters over time. Browse a bounded sample to identify very old messages. Do not purge merely to reclaim disk; first decide whether the messages require processing, replay, export, or explicit disposal.
 
 ### Offline durable subscriber
 
-Classic retains messages published to a durable topic subscription while it is offline. Confirm the subscriber identity and owner. Delete it only after establishing that the application has retired it or can tolerate losing its pending messages.
+Classic retains matching persistent messages in KahaDB for a durable topic subscription while it is offline, until they are consumed or their expiry is processed. Confirm the subscriber identity and owner. Delete it only after establishing that the application has retired it or can tolerate losing its pending messages.
 
 Classic can automatically remove durable subscribers using `offlineDurableSubscriberTimeout`, but its default is `-1`, meaning disabled. Automatic cleanup is a data-retention decision, not a disk-tuning shortcut.
 
@@ -112,7 +112,7 @@ A broker restart can trigger recovery and later cleanup, but it does not remove 
 
 ## Never delete `data-*.log` manually
 
-Manual removal breaks the journal's recovery graph and can cause message loss or an unrecoverable store. If disk pressure is urgent:
+Manual removal can break the journal's recovery graph and cause message loss or an unrecoverable store. If disk pressure is urgent:
 
 - stop or throttle producers;
 - add filesystem capacity through a supported operational procedure;
