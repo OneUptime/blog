@@ -90,15 +90,17 @@ For Artemis:
 - `scheduledCount`;
 - queue `paused` and `enabled` state.
 
+Do not treat `QueueSize` or `messageCount` as a ready-only count. Classic `QueueSize` includes unacknowledged in-flight messages. Artemis `messageCount` includes scheduled, paged, and in-delivery messages, so compare it with `deliveringCount` and `scheduledCount` to isolate ordinary ready work.
+
 Interpret the combinations:
 
 | Evidence | Likely direction |
 | --- | --- |
 | Enqueue/messages-added does not advance | Producer sent elsewhere, transaction did not commit, routing/filter rejected it, or send failed |
-| Ready/message count grows with zero consumers | Consumer attached to another queue/broker or failed to create |
-| Ready grows with consumers but delivery stays zero | Selector/filter, paused dispatch, routing, exclusivity, grouping, or authorization |
+| Derived ready count grows with zero consumers | Consumer attached to another queue/broker or failed to create |
+| Derived ready count grows with consumers but delivery stays zero | Selector, paused dispatch, exclusivity, grouping, consumer priority, or dispatch thresholds |
 | In-flight/delivering is high and acknowledgements are flat | A consumer owns messages but is blocked or not acknowledging |
-| Acknowledgements advance | Another consumer is processing the work |
+| Acknowledgements advance | A consumer is acknowledging work; use per-consumer evidence to identify it |
 
 Cumulative counters can reset on broker restart and cannot identify a particular message. Trace a business ID or message ID through producer logs, broker browse, consumer logs, expiry, and DLQ.
 
@@ -120,7 +122,7 @@ Artemis has two filter locations:
 
 If the queue filter rejects a message, it never contributes to that queue's depth. If a consumer filter rejects ready messages, they can remain for another eligible consumer. Inspect both.
 
-For Classic virtual topics with selector-aware behavior, also verify whether the selector was placed on the consumer queue by the virtual-destination configuration. Do not assume a selector added after backlog accumulated will clean up old unmatched messages.
+For Classic virtual topics with `selectorAware=true`, verify which active consumer selectors—and, if configured, which selectors in `virtualSelectorCacheBrokerPlugin`—were considered when the broker fanned out the message. Without the cache plugin, disconnected consumers' selectors are not considered. Do not assume a selector added after backlog accumulated will clean up old unmatched messages.
 
 ## 6. Find Another Consumer Holding the Messages
 
@@ -135,7 +137,7 @@ Check:
 - pooled consumers that remain open;
 - stale connections waiting for inactivity detection.
 
-Artemis Core/JMS clients use `consumerWindowSize` in bytes; Classic OpenWire uses count-based prefetch. Do not tune one with the other's setting.
+The native Artemis Core client, including the Artemis JMS client built on it, uses `consumerWindowSize` in bytes. The ActiveMQ Classic OpenWire client uses count-based prefetch, including when it connects to Artemis. Tune the setting for the client protocol in use.
 
 ## 7. Check Eligibility Features
 
@@ -144,7 +146,7 @@ An attached consumer can be valid but not selected:
 - an **exclusive consumer/queue** owns all delivery;
 - `JMSXGroupID` pins a message group to another live consumer;
 - consumer priority prefers another subscriber;
-- `noLocal` suppresses messages published from the same connection;
+- `noLocal` on an unshared topic subscription suppresses messages from its own connection; for an unshared durable subscription it also applies to other connections with the same client ID;
 - a durable-topic reconnect used a different client ID or subscription name;
 - Artemis `consumers-before-dispatch` is waiting for more consumers;
 - Artemis `delay-before-dispatch` has not elapsed;
@@ -159,9 +161,9 @@ A producer can log “sent” before the broker makes a message visible:
 
 - a transacted JMS session has not committed;
 - an XA transaction remains active or prepared;
-- asynchronous send later failed;
+- a supported asynchronous send later failed;
 - producer flow control is blocking the send;
-- the message was sent with a delivery delay or broker-specific schedule;
+- the message was sent with a supported JMS delivery delay or broker-specific schedule;
 - its expiration time passed before delivery.
 
 Correlate send/commit completion with broker `messagesAdded` or `EnqueueCount`. In Artemis, `scheduledCount` distinguishes scheduled messages from ordinary ready work.
