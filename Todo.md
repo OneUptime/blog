@@ -1,9 +1,5 @@
 # Blog Post Ideas
 
-## Platform Metrics
-
-1. Policy Guardrail Metrics: Tracking Failed Checks, Exceptions, and Time to Compliance
-
 ## ActiveMQ
 
 1. ActiveMQ Classic or Artemis? How to Choose for a New JMS Workload
