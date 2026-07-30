@@ -2,8 +2,7 @@
 
 ## Platform Metrics
 
-1. How to Measure the Success of Platform Documentation and Discoverability
-2. Policy Guardrail Metrics: Tracking Failed Checks, Exceptions, and Time to Compliance
+1. Policy Guardrail Metrics: Tracking Failed Checks, Exceptions, and Time to Compliance
 
 ## ActiveMQ
 
