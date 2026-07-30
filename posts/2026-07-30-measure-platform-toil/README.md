@@ -10,7 +10,7 @@ Description: Quantify platform toil as human effort and interruption cost while 
 
 A queue containing 800 platform tickets does not mean the platform created 800 units of toil. One ticket may be an automatable access approval that takes two minutes. Another may be a novel architecture consultation that creates lasting value. Counting both as equal “manual work” produces a number that is easy to graph and hard to act on.
 
-Google SRE defines toil through characteristics: it tends to be manual, repetitive, automatable, tactical, without enduring value, and able to grow with service scale. That definition is a useful filter for platform work too.
+Google SRE defines toil through characteristics: it tends to be manual, repetitive, automatable, tactical, without enduring value, and scales linearly as the service grows. That definition is a useful filter for platform work too.
 
 Measure the human effort consumed by routine support, interruptions, and approvals—then use workflow categories to identify what can be removed.
 
@@ -39,7 +39,7 @@ Second, evaluate toil characteristics:
 | Automatable | Could software or a safer process satisfy it? |
 | Tactical | Is it reactive and interrupt-driven? |
 | No enduring value | Is the system essentially unchanged afterward? |
-| Scales with demand | Does work rise with teams, services, or requests? |
+| Scales with demand | Does work rise roughly in proportion to teams, services, or requests? |
 
 Do not call every unpleasant task toil. A first investigation of a new failure mode may be valuable engineering. Repeating the same workaround for its fiftieth occurrence is different.
 
@@ -51,7 +51,7 @@ For each work item, capture:
 created_at
 first_human_touch_at
 resolved_at
-active_human_minutes
+active_person_minutes
 number_of_people_involved
 number_of_handoffs
 interruption_flag
@@ -62,11 +62,11 @@ toil_classification
 automation_candidate
 ```
 
-The core quantity is active human time:
+The core quantity is active human time. Sum each participant's hands-on time, so ten active minutes from two people is twenty person-minutes:
 
 ```text
 toil hours =
-  sum(active human minutes for toil-classified work) / 60
+  sum(active person-minutes for toil-classified work) / 60
 ```
 
 Do not use ticket elapsed time as labor. A request open for three days may contain eight minutes of active work and a long wait for the requester.
@@ -127,9 +127,12 @@ manual approval rate =
   / successful eligible workflows
 
 approval touch time =
-  active reviewer minutes
+  sum(active reviewer person-minutes)
 
-approval wait time =
+initial approval queue time =
+  review start time - approval request time
+
+approval decision lead time =
   approval decision time - approval request time
 
 straight-through rate =
@@ -137,7 +140,7 @@ straight-through rate =
   / eligible completed workflows
 ```
 
-Keep touch time and wait time separate. Automation may remove a three-day queue without reclaiming much labor, or save substantial reviewer time while an external wait remains.
+Keep touch time, initial queue time, and decision lead time separate. Automation may remove a three-day queue without reclaiming much labor, or save substantial reviewer time while an external wait remains.
 
 Measure approval outcomes. A control that approves 99.9% of routine requests may be a candidate for automated policy, while a high rejection rate may indicate valuable review or confusing requirements. The metric starts the investigation; it does not decide the control.
 
@@ -220,7 +223,7 @@ Review:
 
 1. total toil hours and rate per demand unit;
 2. top recurring classes by hours and interruptions;
-3. manual approval rate, touch time, and wait time;
+3. manual approval rate, touch time, initial queue time, and decision lead time;
 4. after-hours and high-severity work;
 5. emerging “other” categories;
 6. automation results and newly created toil;
