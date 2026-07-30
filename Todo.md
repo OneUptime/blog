@@ -2,13 +2,12 @@
 
 ## Platform Metrics
 
-1. Did the Platform Improve Delivery? How to Attribute Changes in DORA Metrics
-2. Platform SLOs and Error Budgets: Measuring the Reliability of Shared Developer Services
-3. How to Measure Platform Toil Through Support Tickets, Interruptions, and Manual Approvals
-4. Cost per Service, Deployment, or Environment: Building Useful Platform Unit Economics
-5. How to Prove Platform ROI Without Inventing Fake Revenue Attribution
-6. How to Measure the Success of Platform Documentation and Discoverability
-7. Policy Guardrail Metrics: Tracking Failed Checks, Exceptions, and Time to Compliance
+1. Platform SLOs and Error Budgets: Measuring the Reliability of Shared Developer Services
+2. How to Measure Platform Toil Through Support Tickets, Interruptions, and Manual Approvals
+3. Cost per Service, Deployment, or Environment: Building Useful Platform Unit Economics
+4. How to Prove Platform ROI Without Inventing Fake Revenue Attribution
+5. How to Measure the Success of Platform Documentation and Discoverability
+6. Policy Guardrail Metrics: Tracking Failed Checks, Exceptions, and Time to Compliance
 
 ## ActiveMQ
 
