@@ -63,9 +63,9 @@ Useful search measures:
 - top zero-result query categories;
 - search-to-support escalation.
 
-Backstage’s Analytics API exposes concepts such as navigation, search, result discovery with rank, and TechDocs not-found events. Those are useful raw events, but your organization still needs to define success.
+Backstage documents Analytics API events for navigation, search, result discovery with rank, and TechDocs not-found responses. Depending on the plugins and components installed, these events may be captured. They are useful raw events, but your organization still needs to define success.
 
-Do not place raw search strings in a metric label. Queries can contain service names, incident details, customer data, or credentials. Store access-controlled event data only when necessary; classify or hash it for aggregate reporting.
+Do not place raw search strings in a metric label. Queries can contain service names, incident details, customer data, or credentials. Store access-controlled event data only when necessary; classify queries into bounded categories for aggregate reporting.
 
 ## Measure Task Success
 
