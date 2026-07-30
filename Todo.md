@@ -1,9 +1,5 @@
 # Blog Post Ideas
 
-## ActiveMQ
-
-1. Why an ActiveMQ Queue Keeps Growing—and How to Find the Bottleneck
-
 ## Blameless Postmortems
 
 1. What Does “Blameless” Really Mean? Accountability Without Scapegoating After Incidents
