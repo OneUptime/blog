@@ -68,13 +68,13 @@ Moving back to a preferred broker is another disruption. Use it only when locali
 
 ## Do not let sends block forever accidentally
 
-Under failover, sends can block while no broker is available. The `timeout` option bounds an individual send operation without terminating the reconnect process:
+Under failover, a send can block while no broker is connected. The `timeout` option bounds how long a message send waits for the failover transport to reconnect without terminating the reconnect process. It is not a general broker-response timeout and does not apply to `commit()`:
 
 ```text
 failover:(tcp://broker-a:61616,tcp://broker-b:61616)?timeout=5000
 ```
 
-After that timeout, the connection may later recover. Retrying the send is still ambiguous: the broker may have accepted the first send but its acknowledgement did not reach the client. Include a business idempotency key in the message and make the consumer deduplicate side effects.
+After that timeout, the connection may later recover. If the send only waited for a connection, it did not reach a broker. If a transmission was attempted as the connection failed, the broker may have accepted it before the failure reached the client, so do not assume every send exception proves non-delivery. Include a business idempotency key in the message and make the consumer deduplicate side effects.
 
 Install a `TransportListener` on the `ActiveMQConnectionFactory` before operations that may perform network work. Use transport events for readiness and observability, not as proof that an in-flight command did or did not commit.
 
@@ -89,7 +89,7 @@ connection fails before reply
 client cannot know whether COMMIT arrived
 ```
 
-From Classic 5.3.1, redelivery order is tracked and commit fails with `TransactionRolledBackException` if outstanding messages are not redelivered as expected. The application must then roll back and replay its unit of work.
+From Classic 5.3.1, redelivery order is tracked and commit fails with `TransactionRolledBackException` if outstanding messages are not redelivered as expected. The application must treat that unit of work as rolled back and replay it.
 
 That protects consistency better than pretending the commit succeeded, but it does not provide exactly-once external side effects. If a transaction includes a database or HTTP call outside the JMS transaction, reconcile it independently.
 
@@ -99,18 +99,18 @@ For consumers:
 - use a stable business operation ID;
 - commit state and deduplication atomically where possible;
 - handle `TransactionRolledBackException` explicitly;
-- never acknowledge a replacement delivery while still applying the stale transaction's result.
+- never commit a replacement delivery while still applying the stale transaction's result.
 
 For producers:
 
-- a failed or timed-out send has an unknown outcome at the network boundary;
+- a send failure after transmission begins can leave the outcome unknown at the network boundary;
 - do not generate a new business ID for each retry;
-- monitor duplicate suppression and destination audit counters;
+- monitor duplicate business operations; broker destination auditing has no business-level deduplication guarantee;
 - prefer an outbox when publishing must be atomic with a database update.
 
 ## Dynamic URI updates need trust boundaries
 
-With `updateClusterClients=true`, a broker transport connector can tell clients about added or removed brokers. Clients accept updates by default through `updateURIsSupported=true`.
+With `updateClusterClients=true`, a broker transport connector can tell clients about brokers added to the network. To send removal updates too, set `updateClusterClientsOnRemove=true`; its default is `false`. Clients accept updates by default through `updateURIsSupported=true`.
 
 This reduces static configuration but makes broker-provided topology part of the client's trust boundary. Restrict broker administration, protect the transport with authentication/TLS, and use `updateClusterFilter` so unrelated network brokers are not advertised.
 
