@@ -8,10 +8,10 @@ Description: Bound a producer-consumer rate mismatch with lossless backpressure 
 
 ---
 
-When producers publish faster than consumers acknowledge, backlog grows at a predictable rate:
+For a queue or an individual topic subscription, when accepted arrivals outpace acknowledged consumption, backlog grows at a predictable rate:
 
 ```text
-backlog growth = accepted production - acknowledged consumption
+backlog growth = accepted arrivals - acknowledged consumption
 ```
 
 No prefetch value removes that imbalance. A broker can buffer it, page it to disk, block producers, reject sends, or discard messages. The correct choice depends on whether the data is durable work or a replaceable stream update.
@@ -63,7 +63,7 @@ Classic's store-backed cursors allow large persistent backlogs without retaining
 
 ### 3. Bound how long a producer waits
 
-`sendFailIfNoSpaceAfterTimeout` lets a send fail after a known interval rather than block forever. The application then needs a bounded retry policy, upstream load shedding, or another durable handoff. An immediate retry loop is not backpressure; it is extra load.
+`sendFailIfNoSpaceAfterTimeout` lets a synchronous send that is subject to flow control fail after a known interval rather than block forever. Asynchronous sends need a configured producer window, or `alwaysSyncSend`, to observe broker resource limits. The application then needs a bounded retry policy, upstream load shedding, or another durable handoff. An immediate retry loop is not backpressure; it is extra load.
 
 ### 4. Scale the actual bottleneck
 
