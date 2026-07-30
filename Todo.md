@@ -2,13 +2,12 @@
 
 ## ActiveMQ
 
-1. Persistent vs Non-Persistent ActiveMQ Messages: Delivery Guarantees and Performance Tradeoffs
-2. ActiveMQ Consumer Prefetch: How to Tune Throughput Without Starving Slow Workers
-3. Why ActiveMQ Messages Stay in the Dispatched Queue—and How to Release Them
-4. ActiveMQ Consumer Is Connected but Not Receiving Messages: A Debugging Checklist
-5. Why ActiveMQ Producers Block When Memory or Store Usage Reaches Its Limit
-6. Taming a Fast Producer and Slow Consumer with ActiveMQ Flow Control and Pending Limits
-7. Why an ActiveMQ Queue Keeps Growing—and How to Find the Bottleneck
+1. ActiveMQ Consumer Prefetch: How to Tune Throughput Without Starving Slow Workers
+2. Why ActiveMQ Messages Stay in the Dispatched Queue—and How to Release Them
+3. ActiveMQ Consumer Is Connected but Not Receiving Messages: A Debugging Checklist
+4. Why ActiveMQ Producers Block When Memory or Store Usage Reaches Its Limit
+5. Taming a Fast Producer and Slow Consumer with ActiveMQ Flow Control and Pending Limits
+6. Why an ActiveMQ Queue Keeps Growing—and How to Find the Bottleneck
 
 ## Blameless Postmortems
 
