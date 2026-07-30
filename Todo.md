@@ -35,13 +35,12 @@
 8. Why ActiveMQ Producers Block When Memory or Store Usage Reaches Its Limit
 9. Taming a Fast Producer and Slow Consumer with ActiveMQ Flow Control and Pending Limits
 10. Why an ActiveMQ Queue Keeps Growing—and How to Find the Bottleneck
-11. Why ActiveMQ Reports “Duplicate from Store”—and How Consumer Contention Triggers It
-12. Why KahaDB Journal Files Never Shrink: Finding the Queue or Subscriber Holding Them Open
-13. Cleaning Up Abandoned Durable Subscribers Before They Exhaust Broker Memory
-14. ActiveMQ Message Selectors Can Make Consumers Appear Hung: Page Size and Prefetch Explained
-15. ActiveMQ Failover Transport: Reconnect, Backup Priority, and Transaction Replay Settings
-16. Configuring ActiveMQ TLS and Mutual Authentication Without Certificate or Hostname Errors
-17. Monitoring ActiveMQ with JMX and Prometheus: Queue Age, Backlog, Consumer Count, and Store Usage
+11. Why KahaDB Journal Files Never Shrink: Finding the Queue or Subscriber Holding Them Open
+12. Cleaning Up Abandoned Durable Subscribers Before They Exhaust Broker Memory
+13. ActiveMQ Message Selectors Can Make Consumers Appear Hung: Page Size and Prefetch Explained
+14. ActiveMQ Failover Transport: Reconnect, Backup Priority, and Transaction Replay Settings
+15. Configuring ActiveMQ TLS and Mutual Authentication Without Certificate or Hostname Errors
+16. Monitoring ActiveMQ with JMX and Prometheus: Queue Age, Backlog, Consumer Count, and Store Usage
 
 ## Blameless Postmortems
 
