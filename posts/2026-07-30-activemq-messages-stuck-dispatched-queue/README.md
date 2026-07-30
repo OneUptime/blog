@@ -55,7 +55,7 @@ A wrapper may return a consumer to a pool while the underlying broker consumer r
 
 ### Redelivery delay hides the returned message
 
-After rollback or consumer failure, redelivery policy may delay the next attempt. A poison message may eventually move to a dead-letter queue. “It disappeared from in-flight but is not ready yet” can be expected redelivery behavior.
+After rollback, Classic's client redelivery policy may delay the next attempt while the message still appears in flight at the broker. With the optional broker redelivery plugin, the broker can instead reschedule redelivery after a delay. A poison message may eventually move to a dead-letter queue. Check which redelivery mechanism is configured before interpreting a change in `InFlightCount`.
 
 ## Find the Consumer Holding the Work
 
@@ -81,7 +81,7 @@ If the handler completed and its side effect is durable, let the correct acknowl
 
 ### Roll back failed work
 
-For a transacted session:
+For an application-managed, locally transacted session:
 
 ```java
 session.rollback();
@@ -89,7 +89,9 @@ session.rollback();
 
 This returns the transaction's consumed messages for redelivery under broker/client redelivery policy.
 
-For an application-owned, non-transacted session, `session.recover()` stops delivery to that session and restarts it with the oldest unacknowledged message marked for redelivery:
+For a transaction controlled by an external transaction manager, including XA, resolve the work through that manager instead. Calling `Session.rollback()` while the session participates in a distributed transaction throws `TransactionInProgressException`.
+
+For an application-owned, non-transacted session, `session.recover()` stops delivery to that session and restarts it with its first unacknowledged message. Messages redelivered because of recovery have `JMSRedelivered` set and `JMSXDeliveryCount` incremented:
 
 ```java
 session.recover();
@@ -99,13 +101,13 @@ Use the method appropriate to the actual session mode. `recover()` is not a subs
 
 ### Close the real consumer or session
 
-Closing the `MessageConsumer`, its `Session`, or its `Connection` cancels unacknowledged deliveries so the broker can make them eligible again. A graceful application shutdown is safer than killing a process because it can stop accepting new work and finish or roll back the current transaction deliberately.
+Closing the real `MessageConsumer` releases messages that ActiveMQ prefetched but has not yet delivered to application code. It does not affect acknowledgement of messages already delivered to the application or a transaction in progress; those are session functions. For delivered work, call `recover()` or `rollback()` as appropriate, or close the `Session` or `Connection`. Closing a locally transacted session rolls back its transaction, while externally managed or XA work must be resolved by its transaction manager. A graceful application shutdown is safer than killing a process because it can stop accepting new work and finish or roll back the current transaction deliberately.
 
 Calling `connection.stop()` only pauses delivery; it does not close the consumer and should not be expected to release prefetched messages.
 
 ### Close a verified ghost connection administratively
 
-If the process is gone but the broker still owns its connection, use the Classic connection MBean or console to stop that exact connection. Verify client ID and remote address first: one connection can host several sessions and consumers, so closing it may release work from multiple destinations.
+If the process is gone but the broker still owns its connection, use the Classic connection MBean's administrative `stop` operation—not JMS `Connection.stop()`—or the console to stop that exact connection. Verify client ID and remote address first: one connection can host several sessions and consumers, so closing it may release work from multiple destinations.
 
 Expect duplicates whenever there is uncertainty about whether the old consumer completed its side effect before losing the acknowledgement.
 
@@ -145,7 +147,7 @@ No timeout can determine whether an external side effect happened just before a 
 
 ## The Artemis Equivalent Is Named Differently
 
-Artemis does not use Classic's queue-MBean vocabulary. Its `QueueControl` exposes `messageCount` and `deliveringCount`; the latter is the number currently being delivered to consumers. Closing a consumer cancels its unacknowledged deliveries back to the queue, subject to transaction and redelivery policy.
+Artemis does not use Classic's queue-MBean vocabulary. Its `QueueControl` exposes `getMessageCount()` and `getDeliveringCount()`; the latter is the number currently being delivered to consumers. For a Jakarta Messaging client, closing only the consumer stops further delivery but does not affect acknowledgement of messages already delivered to the application or a transaction in progress. Use session recovery, transaction rollback, or session/connection closure as appropriate.
 
 For Artemis Core/JMS clients, `consumerWindowSize` is a byte window. Setting it to zero prevents client-side buffering. Do not copy a Classic `queuePrefetch` destination option into Artemis and expect the same result. An OpenWire client connected to Artemis remains an OpenWire-specific case.
 
@@ -156,7 +158,7 @@ For Artemis Core/JMS clients, `consumerWindowSize` is a byte window. Setting it 
 3. Identify the exact consumer holding each sampled message.
 4. Decide whether the business side effect completed.
 5. Commit/acknowledge completed work; roll back failed work.
-6. Gracefully close the faulty consumer, or administratively close only a verified ghost connection.
+6. After resolving its delivered work, gracefully close the faulty consumer and session, or administratively close only a verified ghost connection.
 7. Watch ready, in-flight, acknowledgement, redelivery, and DLQ counts.
 8. Fix prefetch, deadlines, pooling, or acknowledgement logic before restoring full input.
 
