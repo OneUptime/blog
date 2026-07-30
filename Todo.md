@@ -2,25 +2,24 @@
 
 ## Platform Metrics
 
-1. DORA Metrics for Platform Teams: What They Measure—and What They Miss
-2. Platform Output vs Developer Outcomes: Stop Counting Features and Start Measuring Friction
-3. How to Measure Voluntary Platform Adoption Without Confusing Usage with Compliance
-4. How to Calculate Self-Service Rate for Infrastructure, Deployments, and Access Requests
-5. Golden Path Adoption: How to Measure Use, Bypasses, and Drop-Off Points
-6. Time to First Deployment: A Practical Metric for Developer Onboarding
-7. How to Measure Infrastructure Provisioning Time from Request to Ready
-8. How to Track Platform Coverage Without Hiding Shadow Tooling and Manual Workarounds
-9. Developer Satisfaction, NPS, or Customer Effort Score: Which Survey Metric Fits an Internal Platform?
-10. How to Measure Cognitive Load Reduction Without Turning Developer Experience into Guesswork
-11. Survey Data vs Workflow Telemetry: How to Combine Qualitative and Quantitative Platform Metrics
-12. Establishing a Platform Metrics Baseline Before You Launch or Migrate
-13. Did the Platform Improve Delivery? How to Attribute Changes in DORA Metrics
-14. Platform SLOs and Error Budgets: Measuring the Reliability of Shared Developer Services
-15. How to Measure Platform Toil Through Support Tickets, Interruptions, and Manual Approvals
-16. Cost per Service, Deployment, or Environment: Building Useful Platform Unit Economics
-17. How to Prove Platform ROI Without Inventing Fake Revenue Attribution
-18. How to Measure the Success of Platform Documentation and Discoverability
-19. Policy Guardrail Metrics: Tracking Failed Checks, Exceptions, and Time to Compliance
+1. Platform Output vs Developer Outcomes: Stop Counting Features and Start Measuring Friction
+2. How to Measure Voluntary Platform Adoption Without Confusing Usage with Compliance
+3. How to Calculate Self-Service Rate for Infrastructure, Deployments, and Access Requests
+4. Golden Path Adoption: How to Measure Use, Bypasses, and Drop-Off Points
+5. Time to First Deployment: A Practical Metric for Developer Onboarding
+6. How to Measure Infrastructure Provisioning Time from Request to Ready
+7. How to Track Platform Coverage Without Hiding Shadow Tooling and Manual Workarounds
+8. Developer Satisfaction, NPS, or Customer Effort Score: Which Survey Metric Fits an Internal Platform?
+9. How to Measure Cognitive Load Reduction Without Turning Developer Experience into Guesswork
+10. Survey Data vs Workflow Telemetry: How to Combine Qualitative and Quantitative Platform Metrics
+11. Establishing a Platform Metrics Baseline Before You Launch or Migrate
+12. Did the Platform Improve Delivery? How to Attribute Changes in DORA Metrics
+13. Platform SLOs and Error Budgets: Measuring the Reliability of Shared Developer Services
+14. How to Measure Platform Toil Through Support Tickets, Interruptions, and Manual Approvals
+15. Cost per Service, Deployment, or Environment: Building Useful Platform Unit Economics
+16. How to Prove Platform ROI Without Inventing Fake Revenue Attribution
+17. How to Measure the Success of Platform Documentation and Discoverability
+18. Policy Guardrail Metrics: Tracking Failed Checks, Exceptions, and Time to Compliance
 
 ## ActiveMQ
 
