@@ -163,11 +163,11 @@ Never switch from `BLOCK` to `DROP` during an incident unless silent loss is an 
 Let:
 
 ```text
-growth rate = producer rate - acknowledged consumer rate
-time to limit ≈ remaining usable capacity / growth rate
+backlog byte growth rate = retained bytes added per second - retained bytes released per second
+time to limit ≈ remaining usable capacity / backlog byte growth rate
 ```
 
-Use bytes per second for memory/store planning and messages per second for application capacity. Include replication, journal/page overhead, message properties, and every multicast subscription. Alert on projected time to exhaustion while there is still time to drain or shed load.
+This estimate applies only while the growth rate is positive. For a single queue with roughly uniform message sizes, message backlog growth is the producer message rate minus the acknowledged consumer message rate. For multicast, calculate retention per subscription queue rather than subtracting aggregate acknowledgements from the original publish rate. Include replication, journal/page overhead, message properties, and per-queue reference overhead. Alert on projected time to exhaustion while there is still time to drain or shed load.
 
 Backpressure is the broker preserving a bounded system. The durable fix is to balance input and acknowledgement capacity or choose a documented overload outcome—not to make the bound invisible.
 
