@@ -23,10 +23,10 @@ This article covers the Classic `ssl://` OpenWire transport. AMQP, MQTT, NIO, an
 
 | Store | Contains | Used to |
 |---|---|---|
-| Broker key store | Broker private key plus full certificate chain | Prove broker identity |
-| Client trust store | CA certificates that issue broker certificates | Verify broker |
-| Client key store | Client private key plus full certificate chain | Prove client identity for mTLS |
-| Broker trust store | CA certificates that issue client certificates | Verify client for mTLS |
+| Broker key store | Broker private key, leaf certificate, and required intermediate certificates | Prove broker identity |
+| Client trust store | Trusted CA certificates for the broker certificate chain | Verify broker |
+| Client key store | Client private key, leaf certificate, and required intermediate certificates | Prove client identity for mTLS |
+| Broker trust store | Trusted CA certificates for the client certificate chain | Verify client for mTLS |
 
 A key store entry needs the private key, not just a public certificate. A trust store normally contains issuing CA certificates rather than every individual peer certificate. Protect private keys and passwords with filesystem permissions and a secret manager; never commit them with `activemq.xml`.
 
@@ -50,7 +50,7 @@ keytool -list -v \
   -storetype PKCS12
 ```
 
-Confirm alias, entry type, expiry, SANs, key algorithm, and the complete leaf-to-intermediate chain.
+Confirm alias, entry type, expiry, SANs, key algorithm, and the leaf certificate plus required intermediate chain.
 
 ## Configure the Classic broker TLS context
 
@@ -61,8 +61,10 @@ A broker-scoped Spring SSL context avoids applying global JVM settings to unrela
   <sslContext
       keyStore="file:${activemq.conf}/broker.p12"
       keyStorePassword="${broker.keystore.password}"
+      keyStoreType="PKCS12"
       trustStore="file:${activemq.conf}/broker-trust.p12"
-      trustStorePassword="${broker.truststore.password}"/>
+      trustStorePassword="${broker.truststore.password}"
+      trustStoreType="PKCS12"/>
 </sslContext>
 
 <transportConnectors>
@@ -74,7 +76,7 @@ A broker-scoped Spring SSL context avoids applying global JVM settings to unrela
 
 The exact placeholder mechanism depends on the distribution and configuration loader. Verify secret expansion without printing passwords.
 
-Set `transport.needClientAuth=true` only when every client is provisioned with a usable certificate and the broker trust store contains the issuing CA chain. For one-way TLS, clients still need a trust store, but not a client key store.
+Set `transport.needClientAuth=true` only when every client is provisioned with a usable certificate and the broker trust store contains an appropriate trust anchor for the client certificate chain. For one-way TLS, clients still need a trust store, but not a client key store.
 
 The Classic distribution ships dummy stores for examples. Replace or remove them so an example credential cannot be selected accidentally.
 
@@ -87,13 +89,15 @@ ActiveMQSslConnectionFactory factory =
 
 factory.setTrustStore("/run/secrets/client-trust.p12");
 factory.setTrustStorePassword(System.getenv("CLIENT_TRUSTSTORE_PASSWORD"));
+factory.setTrustStoreType("PKCS12");
 
 // Required only when the broker requests client authentication.
 factory.setKeyStore("/run/secrets/client.p12");
 factory.setKeyStorePassword(System.getenv("CLIENT_KEYSTORE_PASSWORD"));
+factory.setKeyStoreType("PKCS12");
 ```
 
-Use the store types and methods supported by the deployed Classic client. Some applications instead set `javax.net.ssl.*` JVM properties, which affect the whole JVM. Avoid mixing both approaches unless precedence has been tested.
+Set PKCS#12 store types explicitly: the broker Spring SSL context defaults to JKS, while the client factory follows the JVM's default key-store type. Some applications instead set `javax.net.ssl.*` JVM properties, which affect the whole JVM. Avoid mixing both approaches unless precedence has been tested.
 
 Keep hostname verification enabled. Classic documents client-side hostname verification as enabled by default from 5.15.6. Disabling it converts an identity check into encryption with an unverified peer and should be limited to a tightly controlled diagnostic, never a production fix.
 
@@ -113,8 +117,8 @@ Check:
 
 - client trust store actually loaded;
 - correct password and store type;
-- issuing root and intermediates present;
-- broker sends the full certificate chain;
+- an appropriate trusted CA certificate is present as a trust anchor;
+- broker sends its leaf certificate and the required intermediates;
 - certificate validity and system clock.
 
 Do not import the certificate returned by an unverified connection blindly. Obtain the CA chain through a trusted channel and verify fingerprints.
@@ -129,7 +133,7 @@ With `needClientAuth=true`, check that:
 
 - the client key store contains a `PrivateKeyEntry`;
 - it includes the leaf and intermediate certificates;
-- the broker trust store contains the client issuer;
+- the broker trust store contains an appropriate trust anchor for the client certificate chain;
 - the client certificate is valid for client authentication;
 - algorithms and TLS versions overlap;
 - revocation policy is reachable and correct if enabled.
@@ -149,7 +153,7 @@ openssl s_client \
   -showcerts
 ```
 
-This confirms the presented chain and SNI path; it does not complete an OpenWire protocol test. For mTLS, use a dedicated non-production diagnostic credential and protect its key.
+This displays the certificate list sent by the broker and sends the requested SNI name; `-showcerts` does not by itself verify the chain or hostname, and `s_client` does not complete an OpenWire protocol test. For mTLS, use a dedicated non-production diagnostic credential and protect its key.
 
 Java can emit handshake detail with:
 
