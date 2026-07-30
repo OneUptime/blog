@@ -21,9 +21,9 @@ ActiveMQ Classic documents these common triggers:
 - a `CLIENT_ACKNOWLEDGE` session calls `recover()`;
 - the connection fails or times out before the broker receives the acknowledgement.
 
-A thrown exception alone is not a JMS acknowledgement decision. Your framework must translate the exception into a rollback, recovery, or rejected acknowledgement. Check the listener container's transaction and acknowledgement configuration before tuning the broker.
+A thrown listener exception is not equivalent to a rollback in every acknowledgement mode. In `AUTO_ACKNOWLEDGE` or `DUPS_OK_ACKNOWLEDGE`, a `RuntimeException` from an asynchronous listener automatically triggers redelivery. In `CLIENT_ACKNOWLEDGE`, the application must call `recover()` to redeliver the unacknowledged message; a transacted session must be rolled back. Frameworks may translate listener failures into those actions, so check the listener container's transaction and acknowledgement configuration before tuning the broker.
 
-On a redelivery, consumers can inspect `JMSRedelivered`. Providers also expose `JMSXDeliveryCount` when supported. Keep application logs keyed by `JMSMessageID` or, preferably, a stable business operation ID so repeated deliveries can be correlated.
+On a redelivery, consumers can inspect `JMSRedelivered`. ActiveMQ Classic also exposes `JMSXDeliveryCount`, which is mandatory in Jakarta Messaging 3.1. Keep application logs keyed by `JMSMessageID` or, preferably, a stable business operation ID so repeated deliveries can be correlated.
 
 ## Understand the delay controls
 
@@ -32,12 +32,12 @@ The principal Classic `RedeliveryPolicy` properties are:
 | Property | Purpose |
 |---|---|
 | `initialRedeliveryDelay` | Wait before the first redelivery |
-| `redeliveryDelay` | Base delay used when the initial delay is zero and for later fixed delays |
+| `redeliveryDelay` | Fixed delay after the first redelivery, or the base returned when the previous delay is zero |
 | `useExponentialBackOff` | Multiply the delay after failures instead of keeping it fixed |
 | `backOffMultiplier` | Multiplier used by exponential backoff |
-| `maximumRedeliveryDelay` | Upper bound for an exponentially growing delay |
-| `useCollisionAvoidance` | Randomize delays so many failing consumers do not retry together |
-| `collisionAvoidanceFactor` | Size of the randomized range |
+| `maximumRedeliveryDelay` | Cap applied to the exponential calculation before collision-avoidance jitter |
+| `useCollisionAvoidance` | Randomize calculated delays after the first redelivery so many failing consumers do not retry together |
+| `collisionAvoidancePercent` | Percentage size of the randomized range |
 | `maximumRedeliveries` | Redeliveries allowed before the client sends a poison acknowledgement |
 
 `maximumRedeliveries` counts redeliveries, not the original delivery. A value of `0` therefore permits the initial attempt but no redelivery. `-1` means unlimited redeliveries and should be used only when an external mechanism can guarantee that an unrecoverable message will not loop forever.
@@ -61,7 +61,7 @@ policy.setUseCollisionAvoidance(true);
 policy.setMaximumRedeliveries(5);
 ```
 
-This produces a bounded sequence rather than an immediate retry loop. The exact randomized interval should be treated as an implementation detail; the operational intent is a delay that grows, is capped, and is slightly different across consumers.
+This produces a bounded sequence rather than an immediate retry loop. The first redelivery waits one second; subsequent delays use exponential backoff and collision-avoidance jitter. `maximumRedeliveryDelay` caps the exponential calculation before jitter, so if a policy has enough redeliveries to reach the cap, an observed randomized delay can be slightly higher. The exact randomized interval should be treated as an implementation detail.
 
 ActiveMQ Classic 5.7 and later can apply different client redelivery policies by destination through `RedeliveryPolicyMap`. That is useful when, for example, an interactive command queue should fail quickly but a queue calling a temporarily unavailable downstream service can tolerate several delayed attempts.
 
