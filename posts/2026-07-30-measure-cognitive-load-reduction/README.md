@@ -10,7 +10,7 @@ Description: Measure whether a platform reduces avoidable mental effort by pairi
 
 An internal developer platform is supposed to let developers spend less attention on infrastructure mechanics and more attention on their product. That promise is easy to repeat and surprisingly easy to measure badly.
 
-Repository activity, deployment count, and time in a portal do not measure cognitive load. A developer can complete a workflow quickly while relying on a memorized maze of exceptions, or spend longer because they are learning a useful new capability. Cognitive load is experienced by a person, so it needs a self-reported signal. It is also produced by concrete workflows, so the survey needs operational evidence beside it.
+Repository activity, deployment count, and time in a portal do not measure cognitive load. A developer can complete a workflow quickly while relying on a memorized maze of exceptions, or spend longer because they are learning a useful new capability. Cognitive load is experienced by a person, so a practical evaluation should include a self-reported signal. It is also produced by concrete workflows, so the survey needs operational evidence beside it.
 
 The practical answer is not one “cognitive load score.” Build a small measurement system that asks developers about specific tasks, observes how those tasks behave, and checks whether both signals move together.
 
@@ -48,7 +48,7 @@ A platform-wide average hides the difference between a polished create-service p
 
 ## Use a Short, Stable Survey
 
-Ask respondents to answer about a task they performed recently, not how they feel about “the platform” in general. A five- or seven-point agreement scale is sufficient if it is used consistently.
+Ask respondents to answer about a task they performed recently, not how they feel about “the platform” in general. A five- or seven-point agreement scale is practical for a repeated pulse survey if it is used consistently.
 
 Useful items include:
 
@@ -165,7 +165,7 @@ Suppose the platform team replaces a six-step environment request with a self-se
 
 ```text
 Primary:
-  median "I knew what to do next" score improves by at least 1 point
+  median "I knew where to start this task" score improves by at least 1 point
 
 Supporting:
   support requests per 100 starts fall by 30%
