@@ -20,7 +20,7 @@ This article covers ActiveMQ Classic. Artemis uses filters and a different pagin
 
 ## Verify the selector before tuning the broker
 
-JMS selectors use a SQL-like expression over headers and message properties, not the body. For example:
+Standard JMS selectors use a SQL-like expression over headers and message properties, not the body. ActiveMQ Classic also provides a non-portable XPath selector extension for XML message bodies. For example:
 
 ```java
 MessageConsumer consumer =
@@ -31,7 +31,7 @@ Common mistakes include:
 
 - property name case mismatch;
 - sending a string such as `"3"` but comparing it as a number;
-- a missing property, which yields unknown rather than a match;
+- a missing property in an ordinary comparison, which yields unknown rather than a match;
 - quoting a numeric or Boolean literal incorrectly;
 - expecting the selector to inspect JSON body fields;
 - setting a transport header rather than a JMS message property;
@@ -65,7 +65,7 @@ This increases the candidate window, but also increases memory and scanning work
 
 ActiveMQ Classic pushes messages to consumers. The prefetch limit controls how many can be dispatched without acknowledgement. The native queue-consumer default is commonly 1000.
 
-If consumer A starts first with a prefetch larger than the backlog, many messages can be dispatched to its local buffer. They count as in flight and are unavailable to consumer B until A acknowledges them, closes, or fails. A selector on B cannot reclaim messages already validly dispatched to A.
+If consumer A starts first with a prefetch larger than the backlog, many messages can be dispatched to its local buffer. They count as in flight rather than available to consumer B. A's acknowledgement removes them from the queue; closing or failing A releases unacknowledged messages for redelivery. A selector on B cannot reclaim messages already validly dispatched to A.
 
 For slow work or competing consumers, configure a smaller prefetch on the client:
 
@@ -89,8 +89,8 @@ For the queue:
 - `QueueSize`: messages not yet acknowledged, including stored and potentially in-flight work;
 - `InFlightCount`: dispatched but unacknowledged;
 - `ConsumerCount`: active subscriptions;
-- `DispatchCount`: cumulative dispatches;
-- `DequeueCount`: acknowledged removals;
+- `DispatchCount`: dispatches since statistics were last reset;
+- `DequeueCount`: removals since statistics were last reset, normally through acknowledgement;
 - cursor memory/full state through `QueueViewMBean`;
 - `MaxPageSize`: effective dispatch page setting.
 
@@ -100,7 +100,7 @@ Typical patterns:
 
 | Observation | Likely direction |
 |---|---|
-| No consumers | Wrong destination, security failure, or connection not started |
+| No consumers | Wrong destination, security failure, consumer creation failure, or disconnected client |
 | Consumer present, no matching sample | Selector/property problem |
 | High in-flight count on another consumer | Prefetch or stuck worker |
 | Large stored backlog, low in-flight, rare match | Page-window/selectivity problem |
@@ -127,7 +127,7 @@ ORDERS.APAC
 
 This gives each backlog independent retention, ownership, alerts, and scaling. Selectors remain useful for occasional filtering and compatible subscribers, but one giant mixed queue couples every category's latency and storage behavior.
 
-If categories must share a queue, ensure at least one consumer can drain each valid property value. Otherwise unmatched messages remain indefinitely and can hold KahaDB journal files open.
+If categories must share a queue, ensure at least one consumer can drain each valid property value. Otherwise unmatched messages remain until they expire or are removed, and can hold KahaDB journal files open.
 
 ## A disciplined tuning sequence
 
