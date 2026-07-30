@@ -20,13 +20,13 @@ Classic destinations keep a pending-message cursor between the persistent store 
 
 An Apache issue describing the original handling gives a representative cause: a network connector forwards a message, the reply is lost, and the forwarding operation is retried after the original has already been dispatched. The store may not reject the retry because the first copy is in flight, but the destination cursor later recognizes the duplicate.
 
-Other possibilities include:
+Other causes and diagnostic factors include:
 
 - a broker or store bug fixed in a later patch release;
 - recovery around an unclean broker failure;
 - network-of-brokers forwarding and replay;
-- a producer or failover client retry at an ambiguous send boundary;
-- audit sizing that is too small for the number of active producers and backlog;
+- a network bridge or failover transport replaying an in-flight send with the same broker message ID;
+- audit sizing that is too small for the number of active producers and backlog, which can let older duplicates escape detection after their audit entry is evicted;
 - an unhealthy persistence store or index.
 
 Do not jump from the warning to KahaDB corruption. Correlate it with broker version, network connectors, failover events, and store logs.
@@ -55,9 +55,9 @@ store cursor -> consumer A prefetch (in flight)
              -> unpaged store backlog
 ```
 
-If A disconnects, its unacknowledged deliveries become eligible for redelivery. If a network or producer send was also ambiguous, the cursor may encounter the repeated message ID while repaging. The warning coincides with consumer turnover, but the audit is reporting duplicate identity at the store/cursor boundary.
+If A disconnects, its unacknowledged deliveries become eligible for redelivery. If a network bridge or failover transport also replayed an in-flight send, the cursor may encounter the repeated message ID while repaging. The warning coincides with consumer turnover, but the audit is reporting duplicate identity at the store/cursor boundary.
 
-Two ordinary competing queue consumers do not receive the same available queue message simultaneously merely because both are connected. At-least-once redelivery can still cause sequential duplicate processing after an acknowledgement is lost, which is a separate condition.
+Two ordinary competing queue consumers do not receive the same available queue message simultaneously merely because both are connected. Redelivery after rollback, disconnect, or an ambiguous acknowledgement can still cause sequential or briefly overlapping duplicate processing, which is a separate condition.
 
 ## Capture the right evidence
 
@@ -73,7 +73,7 @@ For each occurrence, collect:
 - audit settings: `enableAudit`, `maxAuditDepth`, and `maxProducersToAudit`;
 - whether `sendDuplicateFromStoreToDLQ` is explicitly configured.
 
-The `QueueViewMBean` inherits all of these destination counters and settings. Graph the counter's increase rather than alerting on its absolute lifetime value.
+The `QueueViewMBean` inherits the destination counters and effective audit settings from `DestinationViewMBean`. JMX does not distinguish an explicitly configured policy value from its default, so inspect the broker configuration for that distinction. Graph the counter's increase rather than alerting on its absolute cumulative value, which can be reset through `resetStatistics()`.
 
 ## Distinguish three duplicate problems
 
@@ -96,7 +96,7 @@ These cases can overlap, but they require different fixes.
 1. **Check the version boundary.** Determine the effective duplicate-to-DLQ behavior and read release notes/issues between your patch version and the latest supported release.
 2. **Find the event window.** Correlate the counter increase with network bridge interruption, failover, broker recovery, or consumer churn.
 3. **Inspect, do not replay, DLQ evidence.** Verify whether the original business operation already completed.
-4. **Review network connector and producer retries.** Lost replies create an inherently ambiguous send result.
+4. **Review network connector and failover replay.** Lost replies create an inherently ambiguous send result. An application retry that receives a new JMS message ID is a business-level duplicate, not one this cursor audit can detect.
 5. **Review audit capacity.** Increase audit depth only from observed producer and backlog characteristics; larger audits cost memory.
 6. **Check store health.** Look for KahaDB I/O, index, checkpoint, and disk errors. Never delete journal files manually.
 7. **Reproduce safely.** Exercise bridge disconnect and client failover in a test environment with stable business IDs.
@@ -104,7 +104,7 @@ These cases can overlap, but they require different fixes.
 
 ## Protect the business operation anyway
 
-Even after the broker issue is corrected, message delivery remains at least once across failures. Consumers should atomically record a business idempotency key with the resulting state, or pass that key to the downstream service. Use broker message IDs for diagnostics and business IDs for correctness.
+Even after the broker issue is corrected, failures can still cause redelivery or ambiguous send and acknowledgement outcomes. Consumers should atomically record a business idempotency key with the resulting state, or pass that key to the downstream service. Use broker message IDs for diagnostics and business IDs for correctness.
 
 The useful interpretation of `duplicate from store` is narrow: Classic's destination audit protected dispatch when it encountered a repeated stored message identity. Treat consumer contention as context, then trace the real duplication path.
 
