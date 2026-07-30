@@ -196,7 +196,7 @@ Supporting outcomes:
 Guardrails:
   change fail rate does not materially worsen
   policy exception rate does not rise
-  platform SLO remains within budget
+  platform remains within its error budget
 ```
 
 Not every threshold needs to be a formal statistical test, but it must be chosen before the team sees favorable or unfavorable results.
