@@ -2,10 +2,9 @@
 
 ## ActiveMQ
 
-1. ActiveMQ Consumer Is Connected but Not Receiving Messages: A Debugging Checklist
-2. Why ActiveMQ Producers Block When Memory or Store Usage Reaches Its Limit
-3. Taming a Fast Producer and Slow Consumer with ActiveMQ Flow Control and Pending Limits
-4. Why an ActiveMQ Queue Keeps Growing—and How to Find the Bottleneck
+1. Why ActiveMQ Producers Block When Memory or Store Usage Reaches Its Limit
+2. Taming a Fast Producer and Slow Consumer with ActiveMQ Flow Control and Pending Limits
+3. Why an ActiveMQ Queue Keeps Growing—and How to Find the Bottleneck
 
 ## Blameless Postmortems
 
