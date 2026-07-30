@@ -14,9 +14,9 @@ For a greenfield workload, Artemis is usually the stronger starting candidate. T
 
 ## Start with the Compatibility Boundary
 
-As of July 2026, Apache publishes supported Classic 6.2.x and 5.19.x lines. They are not identical client stacks:
+As of July 2026, Apache publishes supported Classic 6.3.x, 6.2.x, and 5.19.x lines. They are not identical client stacks:
 
-- Classic 6.2.x uses the `jakarta.jms` namespace, requires Java 17+, and has partial Jakarta Messaging 3.1/JMS 2 functionality.
+- Classic 6.3.x and 6.2.x use the `jakarta.jms` namespace, require Java 17+, and have partial Jakarta Messaging 3.1/JMS 2 functionality.
 - Classic 5.19.x requires Java 11+ and remains relevant to applications built around the older `javax.jms` ecosystem.
 - Artemis 2.55 provides separate JMS and Jakarta Messaging client artifacts and requires Java 17+ for the broker distribution.
 
