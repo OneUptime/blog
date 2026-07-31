@@ -12,7 +12,7 @@ Agent-based and agentless systems often use the same label—“CPU utilization,
 
 An agent-based host source reads from inside the operating system. Prometheus node exporter, for example, reads Linux kernel interfaces such as `/proc` and `/sys` and is scraped over HTTP.
 
-An agentless source is collected outside the guest or managed host, commonly through:
+An agentless collector commonly runs outside the guest or managed host and obtains data through:
 
 - a cloud platform API;
 - a hypervisor;
@@ -181,7 +181,7 @@ For counters, compare increase over the same nominal interval:
 increase(node_network_receive_bytes_total[30m])
 ```
 
-Prometheus range selectors are left-open and right-closed, and `increase()` extrapolates the observed counter rate to cover the full range. Account for that behavior along with platform timestamp semantics, publication delay, counter resets, and missing samples. An “Average” statistic for a delta metric is not interchangeable with “Sum.”
+In Prometheus 3.x, range selectors are left-open and right-closed; Prometheus 2.x included both boundaries. `increase()` extrapolates the observed counter rate to cover the full range. Account for that behavior along with platform timestamp semantics, publication delay, counter resets, and missing samples. An “Average” statistic for a delta metric is not interchangeable with “Sum.”
 
 AWS EC2 basic monitoring publishes most instance metrics at five-minute periods, while detailed monitoring enables one-minute periods. Azure and Google metrics have their own sampling and visibility delays. Never infer raw resolution from a dashboard's one-minute plotting step.
 
