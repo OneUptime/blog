@@ -73,7 +73,7 @@ count(
 )
 ```
 
-The inner `max` deduplicates the same Node if multiple kube-state-metrics scrape targets expose it. For a multi-cluster Prometheus, preserve the external cluster label:
+The inner `max` deduplicates the same Node if multiple kube-state-metrics scrape targets expose it. For a multi-cluster query layer, preserve the cluster label attached during scraping or remote ingestion:
 
 ```promql
 count by (cluster) (
@@ -94,20 +94,26 @@ count by (cluster) (
 )
 ```
 
-Count unhealthy registered nodes directly:
+Count registered nodes whose Ready condition is not true:
 
 ```promql
 count by (cluster) (
   max by (cluster, node) (
+    kube_node_info
+  )
+  unless on (cluster, node)
+  max by (cluster, node) (
     kube_node_status_condition{
       condition="Ready",
-      status=~"false|unknown"
+      status="true"
     } == 1
   )
 )
 ```
 
 `Unknown` is important. Kubernetes sets Ready to `Unknown` when the node controller stops receiving heartbeats; that is not the same as a definite kubelet-reported `False`.
+
+Using the registered-node set on the left also includes a newly registered Node that has not reported a Ready condition yet. These count expressions return no series when their input set is empty; the recording rules below anchor Ready and not-Ready counts at zero for clusters that still have registered nodes.
 
 ## Record the Counts Once
 
@@ -128,28 +134,52 @@ groups:
 
       - record: cluster:kube_node_ready:count
         expr: |
-          count by (cluster) (
-            max by (cluster, node) (
-              kube_node_status_condition{
-                condition="Ready",
-                status="true"
-              } == 1
+          (
+            count by (cluster) (
+              max by (cluster, node) (
+                kube_node_status_condition{
+                  condition="Ready",
+                  status="true"
+                } == 1
+              )
+            )
+          )
+          or on (cluster)
+          (
+            0 * count by (cluster) (
+              max by (cluster, node) (
+                kube_node_info
+              )
             )
           )
 
       - record: cluster:kube_node_not_ready:count
         expr: |
-          count by (cluster) (
-            max by (cluster, node) (
-              kube_node_status_condition{
-                condition="Ready",
-                status=~"false|unknown"
-              } == 1
+          (
+            count by (cluster) (
+              max by (cluster, node) (
+                kube_node_info
+              )
+              unless on (cluster, node)
+              max by (cluster, node) (
+                kube_node_status_condition{
+                  condition="Ready",
+                  status="true"
+                } == 1
+              )
+            )
+          )
+          or on (cluster)
+          (
+            0 * count by (cluster) (
+              max by (cluster, node) (
+                kube_node_info
+              )
             )
           )
 ```
 
-Keep `cluster` on every kube-state-metrics target. Without it, identically named nodes from different clusters can be combined.
+Ensure `cluster` is present on every kube-state-metrics series in the system where these queries run. Prometheus external labels are attached when communicating with external systems, not to local query results. Without a cluster label, identically named nodes from different clusters can be combined.
 
 ## Alert on NotReady Nodes Separately
 
@@ -158,10 +188,16 @@ A node-health alert should identify each node:
 ```yaml
 - alert: KubernetesNodeNotReady
   expr: |
-    kube_node_status_condition{
-      condition="Ready",
-      status=~"false|unknown"
-    } == 1
+    max by (cluster, node) (
+      kube_node_info
+    )
+    unless on (cluster, node)
+    max by (cluster, node) (
+      kube_node_status_condition{
+        condition="Ready",
+        status="true"
+      } == 1
+    )
   for: 10m
   labels:
     severity: warning
@@ -177,7 +213,19 @@ For a deliberately fixed 20-node cluster:
 
 ```yaml
 - alert: KubernetesFleetSizeUnexpected
-  expr: cluster:kube_node_info:count{cluster="payments-prod"} != 20
+  expr: |
+    (
+      cluster:kube_node_info:count{cluster="payments-prod"}
+      or on ()
+      (
+        0 * max(
+          up{
+            job="kube-state-metrics",
+            cluster="payments-prod"
+          } == 1
+        )
+      )
+    ) != 20
   for: 15m
   labels:
     severity: warning
@@ -185,7 +233,7 @@ For a deliberately fixed 20-node cluster:
     summary: "Registered node count is {{ $value }}, expected 20"
 ```
 
-This is appropriate only if 20 is truly the desired state. Put the expectation in version-controlled configuration and update it with planned capacity changes.
+This is appropriate only if 20 is truly the desired state. The fallback supplies zero when at least one discovered kube-state-metrics target is scraping successfully but no registered-node count exists. Put the expectation in version-controlled configuration and update it with planned capacity changes.
 
 For several fixed clusters, expose an expectation metric instead of embedding a large table in PromQL:
 
@@ -197,7 +245,13 @@ kubernetes_expected_nodes{cluster="search-prod"} 12
 Then compare:
 
 ```promql
-cluster:kube_node_info:count
+(
+  cluster:kube_node_info:count
+  or on (cluster)
+  (
+    0 * kubernetes_expected_nodes
+  )
+)
 != on (cluster)
 kubernetes_expected_nodes
 ```
@@ -230,11 +284,23 @@ For an informational annotation:
 changes(cluster:kube_node_info:count[30m]) > 0
 ```
 
-This says the recorded count changed, not that the change was bad. Route it to a dashboard or event stream. Page only when a policy is violated, such as falling below a resilience floor:
+This says the recorded count changed while its time series was present, not that the change was bad. A transition to no registered-node series is not recorded as a change to zero, so cover disappearance with the presence checks below. Route count changes to a dashboard or event stream. Page only when a policy is violated, such as falling below a resilience floor:
 
 ```yaml
 - alert: KubernetesReadyNodesBelowSafetyFloor
-  expr: cluster:kube_node_ready:count{cluster="payments-prod"} < 15
+  expr: |
+    (
+      cluster:kube_node_ready:count{cluster="payments-prod"}
+      or on ()
+      (
+        0 * max(
+          up{
+            job="kube-state-metrics",
+            cluster="payments-prod"
+          } == 1
+        )
+      )
+    ) < 15
   for: 5m
   labels:
     severity: critical
@@ -242,7 +308,7 @@ This says the recorded count changed, not that the change was bad. Route it to a
 
 ## Guard Against Monitoring Failures
 
-If kube-state-metrics is down, node series can disappear and a broad comparison can produce an empty result. Monitor the collector:
+If kube-state-metrics is down, node series can disappear and a broad comparison can produce an empty result. Monitor failed scrapes for discovered collector targets:
 
 ```promql
 up{job="kube-state-metrics"} == 0
