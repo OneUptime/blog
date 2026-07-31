@@ -89,7 +89,7 @@ rate(node_disk_write_time_seconds_total[5m])
 rate(node_disk_writes_completed_total[5m])
 ```
 
-Combined average completion time:
+Combined average read/write completion time:
 
 ```promql
 (
@@ -157,7 +157,7 @@ Two workloads with the same IOPS can behave very differently if one performs sma
 
 ## Build a Multi-Signal Warning
 
-The following is an **illustrative** rule for a device class whose tested unacceptable point is 50 ms mean completion time with more than two outstanding I/Os and meaningful traffic:
+The following is an **illustrative** rule for a device class whose tested unacceptable point is 50 ms mean read/write completion time with more than two outstanding I/Os and meaningful traffic:
 
 ```yaml
 groups:
@@ -252,7 +252,7 @@ Keep topology labels or inventory so an alert on `dm-3` can be mapped to its vol
 
 ## Summary
 
-Free bytes do not measure I/O performance. Use disk active time to show continuous work, weighted I/O time to estimate outstanding work, cumulative completion time divided by completed operations for mean latency, and IOPS plus throughput to explain the load. Tune all thresholds by device class, avoid double counting stacked devices, and require sustained queueing, latency, PSI, or service impact before calling a disk saturated.
+Free bytes do not measure I/O performance. Use disk active time to show continuous work, weighted I/O time to estimate outstanding work, cumulative read/write completion time divided by completed read/write operations for mean latency, and IOPS plus throughput to explain the load. Tune all thresholds by device class, avoid double counting stacked devices, and require sustained queueing, latency, PSI, or service impact before calling a disk saturated.
 
 ## Official Documentation
 
