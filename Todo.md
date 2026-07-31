@@ -2,10 +2,9 @@
 
 ## Blameless Postmortems
 
-1. Assigning Owners and Deadlines Without Reintroducing Blame
-2. How to Verify That Postmortem Actions Actually Prevented a Repeat Incident
-3. What to Do When the Same Incident Happens After a Previous Postmortem
-4. How to Make Postmortems Worth Reading Instead of Letting Them Rot in Confluence
+1. How to Verify That Postmortem Actions Actually Prevented a Repeat Incident
+2. What to Do When the Same Incident Happens After a Previous Postmortem
+3. How to Make Postmortems Worth Reading Instead of Letting Them Rot in Confluence
 
 ## Infrastructure Metrics
 
