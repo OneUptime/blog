@@ -40,7 +40,7 @@ curl -s \
   'http://prometheus.example.net:9090/api/v1/status/tsdb?limit=100'
 ```
 
-Review `seriesCountByMetricName` and high-value-count labels. Add per-job scrape data:
+Review `seriesCountByMetricName` and `labelValueCountByLabelName` for labels with many distinct values. Add per-job scrape data:
 
 ```promql
 sum by (job) (scrape_samples_scraped)
@@ -51,12 +51,16 @@ sum by (job) (scrape_samples_post_metric_relabeling)
 ```
 
 ```promql
-sum by (job) (scrape_series_added)
+sum by (job) (
+  sum_over_time(scrape_series_added[1h])
+)
 ```
+
+The first two queries aggregate each target's latest scrape sample count. The third sums the approximate number of new series reported by scrapes during the last hour.
 
 Create a candidate table:
 
-| Metric family | Active series | Churn | Job | Suspected dimension | Owner |
+| Metric family | Head series | Churn | Job | Suspected dimension | Owner |
 | --- | ---: | ---: | --- | --- | --- |
 | `example_process_io_bytes_total` | 850,000 | high | node | PID/process | compute |
 | `example_device_sensor_info` | 220,000 | low | node | sensor label | hardware |
@@ -159,10 +163,10 @@ The choice is not always keep everything or drop everything. Consider:
 - keep totals but drop per-process or per-device detail;
 - allowlist useful devices or mount points;
 - drop one unbounded label at instrumentation time;
-- aggregate before remote write;
+- pre-aggregate before the data reaches this Prometheus when local ingestion savings are required;
 - scrape expensive diagnostics in a separate job or Prometheus;
 - retain a metric for a smaller subset of hosts;
-- replace it with a recording rule at the decision's required granularity.
+- retain the raw metric locally and remote-write only a recording-rule aggregate when only downstream cost needs reduction.
 
 Prefer fixing instrumentation when a label is fundamentally unbounded. Relabeling can hide the cost from one Prometheus, but the exporter still creates and transfers the payload.
 
