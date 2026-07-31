@@ -24,7 +24,7 @@ On Linux, Node Exporter gathers metrics from several interfaces:
 | system calls | time, uname, filesystem statistics | capabilities and the namespace of the process |
 | network namespace | interfaces and network counters | container network versus host network |
 
-This is why one plausible metric does not validate the deployment. `node_uname_info` can describe the host kernel while `node_filesystem_size_bytes{mountpoint="/"}` describes the container image. Similarly, the exporter can expose the host's aggregate CPU accounting but omit host interfaces or mounts.
+This is why one plausible metric does not validate the deployment. `node_uname_info` can describe the host kernel while host filesystem series are missing because the filesystem collector excludes the container's `overlay` root by default. Similarly, the exporter can expose the host's aggregate CPU accounting but omit host interfaces or mounts.
 
 `up{job="node"} == 1` means the scrape succeeded. It says nothing about which namespace the exporter inspected.
 
@@ -38,7 +38,7 @@ docker run -d \
   --network host \
   --pid host \
   --mount type=bind,source=/,target=/host,readonly,bind-propagation=rslave \
-  quay.io/prometheus/node-exporter:<pinned-version> \
+  quay.io/prometheus/node-exporter:v1.11.1 \
   --path.rootfs=/host
 ```
 
@@ -46,9 +46,9 @@ Each part has a distinct purpose:
 
 - `--network host` exposes the host network namespace;
 - `--pid host` exposes the host PID namespace and its process mount information;
-- the read-only `/` bind mount makes the host filesystem tree available at `/host`;
+- the `/` bind mount makes the host filesystem tree available at `/host` and requests read-only access; with Docker's default recursive bind behavior, nested submounts become read-only on Linux 5.12 or later but remain read-write on older kernels;
 - `rslave` lets mount and unmount events from the host propagate into the bind mount without propagating container-originated events back; and
-- `--path.rootfs=/host` tells collectors to prefix host filesystem paths with that bind-mount location.
+- `--path.rootfs=/host` tells rootfs-aware collectors to prefix host filesystem paths with that bind-mount location.
 
 The bind target and `--path.rootfs` value must match. Mounting the host at `/host` but passing `--path.rootfs=/rootfs` produces missing files or filesystem-stat errors. Mounting only `/proc` is also not an equivalent replacement: filesystem, device, OS, and other collectors use more than procfs.
 
@@ -64,7 +64,7 @@ spec:
   hostPID: true
   containers:
     - name: node-exporter
-      image: quay.io/prometheus/node-exporter:<pinned-version>
+      image: quay.io/prometheus/node-exporter:v1.11.1
       args:
         - --path.rootfs=/host
       ports:
@@ -88,7 +88,7 @@ spec:
 
 `HostToContainer` is the Kubernetes one-way mount-propagation mode needed for host mounts created after the Pod starts to become visible. Whether `hostPort` is appropriate depends on how Prometheus discovers and reaches the Pod; it is not required when the Pod IP is directly scrapeable.
 
-Host namespaces and a host root mount are powerful permissions. Kubernetes Pod Security Standards do not allow `hostPID` in the restricted profiles, and a host root `hostPath` expands the impact of an exporter compromise even when mounted read-only. Put the DaemonSet in a tightly controlled namespace, use a dedicated service account with no unnecessary API permissions, restrict who can alter the workload, and apply network policy or host firewall controls to port 9100. If that exposure is unacceptable, installing the exporter as a hardened host service is usually simpler to reason about.
+Host namespaces and a host root mount are powerful permissions. This Pod does not comply with the Baseline or Restricted Kubernetes Pod Security Standards because both disallow host namespaces and `hostPath` volumes. A host root `hostPath` expands the impact of an exporter compromise even when mounted read-only. Put the DaemonSet in a tightly controlled namespace, use a dedicated service account with no unnecessary API permissions, and restrict who can alter the workload. NetworkPolicy behavior for `hostNetwork` Pods is implementation-dependent and commonly ignored, so use a CNI with explicit support or host firewall controls to protect port 9100. If that exposure is unacceptable, installing the exporter as a hardened host service is usually simpler to reason about.
 
 ## Verify the Data, Not Just the Pod
 
@@ -154,8 +154,8 @@ Treat namespace configuration as part of the monitoring contract. A green target
 
 ## Official Documentation
 
-- [Node Exporter: Docker deployment and host namespace flags](https://github.com/prometheus/node_exporter#docker)
-- [Node Exporter collectors and include/exclude controls](https://github.com/prometheus/node_exporter#collectors)
+- [Node Exporter v1.11.1: Docker deployment and host namespace flags](https://github.com/prometheus/node_exporter/blob/v1.11.1/README.md#docker)
+- [Node Exporter v1.11.1 collectors and include/exclude controls](https://github.com/prometheus/node_exporter/blob/v1.11.1/README.md#collectors)
 - [Prometheus guide to monitoring Linux hosts with Node Exporter](https://prometheus.io/docs/guides/node-exporter/)
 - [Linux kernel documentation for `/proc/<pid>/mountinfo`](https://docs.kernel.org/filesystems/proc.html#proc-pid-mountinfo-information-about-mounts)
 - [Linux kernel shared-subtree and slave-mount semantics](https://docs.kernel.org/filesystems/sharedsubtree.html)
