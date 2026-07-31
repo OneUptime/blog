@@ -2,14 +2,13 @@
 
 ## Infrastructure Metrics
 
-1. Which Network Interface Should You Graph When Bonds, Bridges, Veths, and VLANs Duplicate Traffic?
-2. How to Detect Counter Resets and Wraparound in High-Speed Network Infrastructure Metrics
-3. How to Measure Infrastructure Metric Cardinality Before It Overloads Prometheus
-4. How to Find Unused Infrastructure Metrics Before Adding `metric_relabel_configs` Drop Rules
-5. How to Set Per-Job Scrape Intervals Without Making Alerts Blind to Stale Series
-6. How to Monitor the Monitoring Server So Prometheus Failure Cannot Silence Host-Down Alerts
-7. How to Build Recording Rules for Fleet-Wide Infrastructure Dashboards Without Expensive Live Queries
-8. How to Preserve Host Identity Across Autoscaling, Reboots, and Changing IP Addresses
+1. How to Detect Counter Resets and Wraparound in High-Speed Network Infrastructure Metrics
+2. How to Measure Infrastructure Metric Cardinality Before It Overloads Prometheus
+3. How to Find Unused Infrastructure Metrics Before Adding `metric_relabel_configs` Drop Rules
+4. How to Set Per-Job Scrape Intervals Without Making Alerts Blind to Stale Series
+5. How to Monitor the Monitoring Server So Prometheus Failure Cannot Silence Host-Down Alerts
+6. How to Build Recording Rules for Fleet-Wide Infrastructure Dashboards Without Expensive Live Queries
+7. How to Preserve Host Identity Across Autoscaling, Reboots, and Changing IP Addresses
 
 ## kOps
 
