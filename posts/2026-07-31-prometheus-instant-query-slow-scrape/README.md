@@ -90,7 +90,9 @@ Now a dashboard can display the last observation while an alert checks whether i
 - alert: InfrastructureInventoryMetricMissing
   expr: |
     group by (job, instance) (
-      up{job="node-inventory"}
+      present_over_time(
+        up{job="node-inventory"}[25m]
+      )
     )
     unless on (job, instance)
     group by (job, instance) (
@@ -107,7 +109,7 @@ Now a dashboard can display the last observation while an alert checks whether i
 
 Choose the range so it is longer than the normal scrape interval. Choose the age threshold from the operational freshness requirement.
 
-The age expression exists only while at least one source sample remains in its subquery range. Without the separate missing rule, it would eventually return an empty vector and a firing stale alert would resolve even though collection had not recovered. The `group by` expression treats every currently configured target as expected regardless of whether its latest scrape succeeded, then reports targets with no metric sample in the range. A target removed from service discovery also loses `up`, so detecting that case still requires the independent expected-target inventory described below.
+The age expression eventually returns an empty vector once its subquery can no longer retrieve a source sample. Because the instant selector at each subquery step uses the ordinary lookback, it can remain present for almost one additional lookback period beyond the nominal subquery range. Without the separate missing rule, a firing stale alert would then resolve even though collection had not recovered. The `group by` expression treats every target with an `up` sample in the range as expected regardless of whether its latest scrape succeeded, then reports targets with no metric sample in the range. A target removed from service discovery eventually loses `up` from that range too, so detecting that case still requires the independent expected-target inventory described below.
 
 ## Do Not Apply Gauge Logic Blindly to Counters
 
@@ -129,13 +131,13 @@ The target is healthy and the series reappears after each slow scrape. An explic
 
 ### The scrape failed
 
-Prometheus creates `up` for every configured target:
+Prometheus writes `up` for every scrape attempt. Because a slowly scraped job's `up` series has the same lookback gap, inspect its last result over an explicit range:
 
 ```promql
-up{job="node-inventory"} == 0
+last_over_time(up{job="node-inventory"}[25m]) == 0
 ```
 
-Inspect the target page and scrape error. Increasing lookback would only make an old application value look current.
+Inspect the target page and scrape error. Do not increase lookback as a response: for ordinary scrape-timestamped series, the failed scrape marks the old application series stale, and a larger lookback does not override that marker. In cases where staleness markers are not tracked, a larger lookback can instead make an old value look current.
 
 ### The target or metric disappeared
 
@@ -158,7 +160,7 @@ Exporters normally let Prometheus timestamp samples at scrape time. Exporters th
 Prometheus supports changing `--query.lookback-delta`, and the query API can accept a `lookback_delta` parameter. Increasing it globally is usually a broad solution to a narrow problem:
 
 - every plain instant selector may accept older data;
-- dashboards can make failed collection look healthy;
+- dashboards can make delayed collection, or failures without tracked staleness, look healthy;
 - alert expressions may retain values longer than their authors intended;
 - the new behavior applies to fast and slow jobs alike.
 
@@ -172,7 +174,7 @@ This expression is tempting:
 infrastructure_asset_info or vector(0)
 ```
 
-It replaces an empty result with an unlabeled zero. It does not preserve the missing host's labels and it turns “unknown” into a numeric measurement. Zero might mean no assets, a failed exporter, a removed target, or an old sample. Those are different states.
+When the selector is empty, this returns an unlabeled zero. When labeled series are present, the unmatched zero can also appear alongside them. It does not preserve a missing host's labels, and it turns “unknown” into a numeric measurement. Zero might mean no assets, a failed exporter, a removed target, or an old sample. Those are different states.
 
 Keep value and availability separate:
 
@@ -181,7 +183,7 @@ last_over_time(infrastructure_asset_info[25m])
 ```
 
 ```promql
-up{job="node-inventory"}
+last_over_time(up{job="node-inventory"}[25m])
 ```
 
 ```promql
