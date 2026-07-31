@@ -12,7 +12,7 @@ For a general Linux host low-memory alert, use `MemAvailable`, not `MemFree`.
 
 `MemFree` is RAM doing nothing at this instant. Linux intentionally uses otherwise idle RAM for page cache and reclaimable kernel caches, so a healthy, busy server can have very little completely unused memory.
 
-`MemAvailable` is the kernel's estimate of how much memory can be supplied to new applications without swapping. It includes immediately free memory plus a conservative estimate of reclaimable memory. That is much closer to the operational question an alert should answer: **can this host satisfy more allocations without entering memory pressure?**
+`MemAvailable` is the kernel's estimate of how much memory can be supplied to new applications without swapping. It includes immediately free memory plus a conservative estimate of reclaimable memory. That is much closer to the operational question an alert should answer: **can this host satisfy more allocations without swapping?**
 
 ## The Metrics Are Not Synonyms
 
@@ -61,7 +61,7 @@ Or calculate unavailable memory:
 )
 ```
 
-These expressions preserve each series' existing labels, normally including `job` and `instance`. Do not sum memory ratios across hosts.
+These expressions preserve each series' ordinary labels, normally including `job` and `instance`, although PromQL arithmetic drops the metric name. Do not sum memory ratios across hosts.
 
 A practical warning rule can start like this:
 
@@ -83,7 +83,7 @@ groups:
           summary: "Available memory is below 10% on {{ $labels.instance }}"
 ```
 
-Ten percent and ten minutes are starting points, not universal constants. A 10% reserve is 800 MiB on an 8 GiB host but 25.6 GiB on a 256 GiB host. Large-memory systems may need a ratio **and** an absolute threshold:
+Ten percent and ten minutes are starting points, not universal constants. A 10% reserve is 819.2 MiB when `MemTotal` is 8 GiB but 25.6 GiB when `MemTotal` is 256 GiB. Large-memory systems may need a ratio **and** an absolute threshold:
 
 ```promql
 (
@@ -196,7 +196,7 @@ Set the warning above the observed danger point with enough time for the runbook
 
 `MemFree` is useful for explaining Linux's current memory composition and for low-level kernel investigations. A sudden change may help correlate boot behavior, cache reclaim, or a workload phase.
 
-It is not useless; it is simply the wrong denominator for the usual “is this host running out of memory?” alert.
+It is not useless; it is simply the wrong input metric for the usual “is this host running out of memory?” alert.
 
 ## Summary
 
