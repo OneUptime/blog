@@ -191,6 +191,6 @@ The best postmortem is not the one with the deepest single root. It is the one t
 
 - [OSHA: Incident Investigation](https://www.osha.gov/incident-investigation)
 - [OSHA: Hazard Identification and Assessment](https://www.osha.gov/safety-management/hazard-identification)
-- [NASA Procedural Requirements 8621.1B: Review and Analyze Data](https://nodis3.gsfc.nasa.gov/displayCA.cfm?Internal_ID=N_PR_8621_001B_&page_name=Chapter5)
+- [NASA Procedural Requirements 8621.1D: Mishap Investigation Process](https://nodis3.gsfc.nasa.gov/displayDir.cfm?Internal_ID=N_PR_8621_001D_&page_name=Chapter4)
 - [NASA Procedural Requirements 8621.1D: Definitions](https://nodis3.gsfc.nasa.gov/displayDir.cfm?Internal_ID=N_PR_8621_001D_&page_name=AppendixA)
 - [Google SRE Workbook: Postmortem Culture](https://sre.google/workbook/postmortem-culture/)
