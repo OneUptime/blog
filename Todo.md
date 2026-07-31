@@ -2,9 +2,8 @@
 
 ## Infrastructure Metrics
 
-1. How to Monitor the Monitoring Server So Prometheus Failure Cannot Silence Host-Down Alerts
-2. How to Build Recording Rules for Fleet-Wide Infrastructure Dashboards Without Expensive Live Queries
-3. How to Preserve Host Identity Across Autoscaling, Reboots, and Changing IP Addresses
+1. How to Build Recording Rules for Fleet-Wide Infrastructure Dashboards Without Expensive Live Queries
+2. How to Preserve Host Identity Across Autoscaling, Reboots, and Changing IP Addresses
 
 ## kOps
 
