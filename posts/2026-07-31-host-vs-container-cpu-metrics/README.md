@@ -35,18 +35,18 @@ Use `rate()` for dashboards and sustained alerts. It handles counter resets and 
 
 ## Calculate Host CPU in Cores
 
-Define “busy” first. This expression excludes both idle and I/O-wait time:
+Define “busy” first. This expression excludes both idle and I/O-wait time but includes `steal`:
 
 ```promql
 sum by (instance) (
   rate(node_cpu_seconds_total{
     job="node",
-    mode!~"idle|iowait|guest|guest_nice"
+    mode!~"idle|iowait"
   }[5m])
 )
 ```
 
-It returns busy logical CPU cores per host. The guest modes are excluded because Linux includes guest time in the corresponding user and nice counters; summing both would count that time twice. If your operating definition treats I/O wait as utilized time, remove only `iowait` from the exclusion while continuing to exclude `idle`, `guest`, and `guest_nice`. Document the choice: Linux notes that the `iowait` value is not reliable and does not simply mean a CPU was executing work.
+By this definition, it returns busy logical CPU cores per host. Current Node Exporter exposes guest time separately as `node_cpu_guest_seconds_total`, not as modes of `node_cpu_seconds_total`. Guest time is already included in the corresponding user and nice counters, so do not add the separate guest metric to this total. If your operating definition treats I/O wait as utilized time, remove `iowait` from the exclusion so that only `idle` remains excluded. Document the choice: Linux notes that the `iowait` value is not reliable and does not simply mean a CPU was executing work.
 
 Calculate observed logical CPU capacity:
 
@@ -63,7 +63,7 @@ Then calculate host busy percentage:
 sum by (instance) (
   rate(node_cpu_seconds_total{
     job="node",
-    mode!~"idle|iowait|guest|guest_nice"
+    mode!~"idle|iowait"
   }[5m])
 )
 /
@@ -99,7 +99,7 @@ Summing parent and child cgroups double-counts usage because cgroup accounting a
 
 ## Normalize Both Sides to the Same Node Identity
 
-The default Node Exporter `instance` is commonly `node-address:9100`, while kubelet series may use a different address, port, or node name. Never join those strings by coincidence. Add a canonical node label during target relabeling:
+The default Node Exporter `instance` is commonly `node-address:9100`, while kubelet series may use a different address, port, or node name. Never join those strings by coincidence. For targets discovered by a `kubernetes_sd_configs` job with `role: node`, add a canonical node label during target relabeling:
 
 ```yaml
 relabel_configs:
@@ -107,14 +107,14 @@ relabel_configs:
     target_label: node
 ```
 
-Apply the same identity to Node Exporter and kubelet targets. With that label, host busy percentage becomes:
+When targets are discovered through another role, use its documented node-name meta label if available, or establish an explicit equivalent mapping. Apply the same identity to Node Exporter and kubelet targets. With that label, host busy percentage becomes:
 
 ```promql
 100 *
 sum by (node) (
   rate(node_cpu_seconds_total{
     job="node",
-    mode!~"idle|iowait|guest|guest_nice"
+    mode!~"idle|iowait"
   }[5m])
 )
 /
@@ -146,9 +146,9 @@ Now both expressions use the same five-minute range, node identity, and host-cap
 
 Even a correct comparison does not require container usage to equal host busy CPU.
 
-Host accounting includes work outside the selected application containers:
+Depending on where components run and which cgroups the query selects, host accounting can include work outside the selected application containers:
 
-- the kernel;
+- kernel work not charged to the selected cgroups;
 - kubelet and the container runtime;
 - Node Exporter and monitoring agents;
 - systemd services;
@@ -202,7 +202,7 @@ On virtual machines, `steal` represents time the hypervisor did not provide to t
 - display it separately when diagnosing host contention; and
 - do not attribute it to containers.
 
-Likewise, guest modes, IRQ, softirq, and I/O wait do not map one-to-one to the cgroup usage total. Keep a mode breakdown next to the headline percentage:
+Likewise, guest time, IRQ, softirq, and I/O wait do not map one-to-one to the cgroup usage total. Keep a mode breakdown next to the headline percentage:
 
 ```promql
 sum by (instance, mode) (
