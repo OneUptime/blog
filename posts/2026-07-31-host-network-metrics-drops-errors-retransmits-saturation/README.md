@@ -61,7 +61,7 @@ rate(node_network_receive_drop_total[5m])
 rate(node_network_transmit_errs_total[5m])
 ```
 
-Never alert on `node_network_receive_drop_total > 0`. A counter preserves events since boot, so one historic drop would keep the condition true forever.
+Never alert on `node_network_receive_drop_total > 0`. A counter is cumulative until it resets, for example when an interface is recreated or the host reboots, so one historic drop can keep the condition true long after the event.
 
 Linux defines generic receive drops as packets received but not processed, for example because of insufficient resources or an unsupported protocol. Transmit drops are packets discarded on their way to transmission. Error counters cover malformed frames and device or protocol failures, but their detailed meaning depends on the driver and interface type.
 
@@ -75,7 +75,7 @@ An absolute rate catches a severe burst:
 rate(node_network_receive_drop_total[5m]) > 100
 ```
 
-A share distinguishes 100 drops during 200 packets from 100 drops during 20 million:
+A normalized diagnostic ratio distinguishes 100 drops during 200 packets from 100 drops during 20 million:
 
 ```promql
 rate(node_network_receive_drop_total[5m])
@@ -87,7 +87,7 @@ rate(node_network_receive_drop_total[5m])
 )
 ```
 
-This is a practical observed receive-drop share based on the kernel's good-packet and dropped-packet counters. It is not a universal end-to-end loss percentage. Driver accounting, hardware filtering, offload, and folded procfs fields affect what reaches these counters.
+This is a practical diagnostic ratio based on the kernel's packet and drop counters. It is not a universal end-to-end loss percentage, and the counters are not guaranteed to be mutually exclusive. For hardware interfaces, `rx_packets` can include good packets that the host later drops, while node exporter's default legacy drop metric folds `rx_missed_errors` into the value. Driver accounting, hardware filtering, offload, and the collection path affect what reaches these counters.
 
 Require a minimum event or traffic rate so an idle interface does not produce a dramatic ratio from one packet:
 
@@ -181,6 +181,8 @@ rate(node_network_transmit_bytes_total[5m])
 ```
 
 The explicit match works even if netdev metrics carry an additional optional label such as `ifalias`, and the comparison removes zero or negative speed values. Format the resulting ratio as percent in the dashboard, or multiply by 100 exactly once.
+
+This is a byte-counter utilization estimate, not exact wire occupancy. For IEEE 802.3 interfaces, Linux defines the byte counters to exclude the frame check sequence, and other on-wire overhead is not represented.
 
 For a full-duplex interface, receive and transmit can each approach the nominal speed at the same time. Adding both directions and dividing by one speed can legitimately exceed one, so keep directions separate unless the medium or enforced limit is shared.
 
