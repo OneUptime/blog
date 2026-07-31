@@ -2,11 +2,10 @@
 
 ## Blameless Postmortems
 
-1. Postmortem Action Items Keep Dying in the Backlog: How to Get Them Prioritized
-2. Assigning Owners and Deadlines Without Reintroducing Blame
-3. How to Verify That Postmortem Actions Actually Prevented a Repeat Incident
-4. What to Do When the Same Incident Happens After a Previous Postmortem
-5. How to Make Postmortems Worth Reading Instead of Letting Them Rot in Confluence
+1. Assigning Owners and Deadlines Without Reintroducing Blame
+2. How to Verify That Postmortem Actions Actually Prevented a Repeat Incident
+3. What to Do When the Same Incident Happens After a Previous Postmortem
+4. How to Make Postmortems Worth Reading Instead of Letting Them Rot in Confluence
 
 ## Infrastructure Metrics
 
