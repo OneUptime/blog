@@ -47,7 +47,7 @@ Metric relabeling drops samples after Prometheus receives the scrape response. I
 
 ## Configure Separate Scrape Jobs
 
-This example scrapes CPU, memory, load, and virtual-memory counters every 15 seconds, while collecting disk, filesystem, and network metrics every minute:
+This Linux example scrapes CPU, memory, load, and virtual-memory counters every 15 seconds, while collecting disk, filesystem, and network metrics every minute:
 
 ```yaml
 scrape_configs:
@@ -90,7 +90,7 @@ Prometheus requires every `job_name` to be unique. Keep the job or `collector_se
 
 ## Expect Common Exporter Metrics in More Than One Job
 
-Node Exporter exposes exporter-process and scrape self-metrics in addition to collector families. Multiple requests can therefore produce series with the same metric name and target address but different `job` or `collector_set` labels.
+By default, Node Exporter exposes exporter-process and scrape self-metrics in addition to collector families. Multiple requests can therefore produce series with the same metric name and target address but different `job` or `collector_set` labels.
 
 Queries must select the intended series:
 
@@ -108,7 +108,7 @@ Avoid broad queries such as:
 sum(rate(process_cpu_seconds_total[5m]))
 ```
 
-when both jobs scrape the same exporter process. That double-counts the exporter self-metric across job labels.
+when both jobs scrape the same exporter process with exporter self-metrics enabled. That double-counts the exporter self-metric across job labels.
 
 ## Choose Rate Windows From the Slowest Input
 
@@ -130,8 +130,8 @@ Splitting collectors creates different sample timestamps and resolutions. Querie
 
 - disk throughput divided by CPU usage;
 - memory pressure correlated with load;
-- filesystem fullness combined with read-only state; or
-- network errors compared with packet rate
+- filesystem fullness compared with disk I/O utilization; or
+- network errors compared with interface link speed
 
 can join values selected at different scrape times. Prometheus's lookback behavior makes many instant queries appear complete, but the latest sample ages can differ by nearly the slow scrape interval.
 
