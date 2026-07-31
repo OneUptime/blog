@@ -47,7 +47,7 @@ finished_at=$(date +%s)
 duration_seconds=183
 success=0
 
-tmp_file=$(mktemp "${metric_dir}/infra_backup_run.prom.XXXXXX")
+tmp_file=$(mktemp "${metric_dir}/infra_backup_run.prom.XXXXXX") || exit 1
 trap 'rm -f "$tmp_file"' EXIT
 
 printf '%s\n' \
@@ -60,9 +60,9 @@ printf '%s\n' \
   '# HELP infra_backup_last_run_success Whether the most recent backup run succeeded.' \
   '# TYPE infra_backup_last_run_success gauge' \
   "infra_backup_last_run_success ${success}" \
-  > "${tmp_file}"
+  > "${tmp_file}" || exit 1
 
-mv "${tmp_file}" "${metric_dir}/infra_backup_run.prom"
+mv "${tmp_file}" "${metric_dir}/infra_backup_run.prom" || exit 1
 trap - EXIT
 ```
 
@@ -72,16 +72,16 @@ On success, update a separate last-success file:
 metric_dir=/var/lib/node_exporter/textfile_collector
 succeeded_at=$(date +%s)
 
-tmp_file=$(mktemp "${metric_dir}/infra_backup_success.prom.XXXXXX")
+tmp_file=$(mktemp "${metric_dir}/infra_backup_success.prom.XXXXXX") || exit 1
 trap 'rm -f "$tmp_file"' EXIT
 
 printf '%s\n' \
   '# HELP infra_backup_last_success_unixtime_seconds Last successful backup as Unix time in seconds.' \
   '# TYPE infra_backup_last_success_unixtime_seconds gauge' \
   "infra_backup_last_success_unixtime_seconds ${succeeded_at}" \
-  > "${tmp_file}"
+  > "${tmp_file}" || exit 1
 
-mv "${tmp_file}" "${metric_dir}/infra_backup_success.prom"
+mv "${tmp_file}" "${metric_dir}/infra_backup_success.prom" || exit 1
 trap - EXIT
 ```
 
@@ -130,7 +130,7 @@ unless on (job, instance)
 infra_backup_last_success_unixtime_seconds{job="node"}
 ```
 
-Use a `for` period to allow initial deployment and atomic file replacement:
+Use a `for` period to allow initial deployment and transient collection delays:
 
 ```yaml
 - alert: InfrastructureBackupMetricMissing
@@ -161,7 +161,7 @@ Unix time zero looks extremely old, but `vector(0)` creates one unlabeled series
 
 Prometheus recommends Pushgateway for a narrow case: a service-level batch job whose lifecycle is not tied to one specific machine. Examples include a global directory reconciliation or a daily tenant billing rollup.
 
-Push the latest state to a stable grouping key:
+After a successful run, push the latest state to a stable grouping key:
 
 ```bash
 finished_at=$(date +%s)
@@ -181,7 +181,7 @@ printf '%s\n' \
 
 Do not add a machine `instance` grouping label for a service-level job unless machine identity is semantically required. Changing instance labels creates persistent groups that must be deleted later.
 
-The Pushgateway automatically exposes `push_time_seconds` for the last successful change to a group. It measures successful delivery to the gateway, not successful business work. If a failed job pushes a failure metric, `push_time_seconds` becomes fresh. Use your own last-success gauge for job outcome.
+The Pushgateway automatically exposes `push_time_seconds` for the last successful `POST` or `PUT` to a group. It measures successful delivery to the gateway, not successful business work. If a failed job pushes a failure metric, `push_time_seconds` becomes fresh. Use your own last-success gauge for job outcome.
 
 Scrape the Pushgateway with label preservation enabled:
 
