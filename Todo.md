@@ -804,6 +804,26 @@
 18. Sequential Retry or Hedged Request: Which Reduces Tail Latency Without Doubling Load?
 19. Should Failed Requests Sleep in Worker Threads or Move to a Delayed Retry Queue?
 20. How Should a Multi-Tenant Client Partition Backoff and Retry Budgets to Avoid Noisy Neighbors?
+21. Why Your RxJS Poller Overlaps Requests During Backoff—and How to Serialize `retry` and `repeat`
+22. How to Reset Exponential Backoff After a Successful Request in a Long-Lived Client
+23. WebSocket Closed Cleanly but Never Reconnected: Turning `onclose` into a Backoff Signal
+24. How to Restore WebSocket Subscriptions and Resume Missed Events After a Backoff Reconnect
+25. Why Catching an Exception Inside a Retry Callback Disables Backoff—and Where to Log Instead
+26. Reactor `Retry.backoff` Exhausted: How to Propagate the Original Failure Instead of a Wrapper
+27. How to Use a Monotonic Clock for Backoff So NTP Adjustments Cannot Break Retry Timing
+28. Preventing Backoff Overflow: Safely Capping `base × 2^attempt` in Long-Running Workers
+29. Why Async Backoff Freezes the Event Loop—and How to Replace Blocking Sleeps
+30. How to Persist Backoff State Across Worker Restarts Without Triggering a Retry Burst
+31. How to Checkpoint a Paginated Data Sync Before Backoff So Retries Resume at the Failed Page
+32. Why HTTP Retries Leak Connections: Drain and Close Failed Responses Before Backoff
+33. How to Retry a Partially Successful Batch with Backoff Without Reprocessing Completed Items
+34. Access Token Expired During Backoff: Refresh Once, Then Replay the Request Safely
+35. Database Deadlock Retries: Recreate the Entire Transaction Before Applying Backoff
+36. How to Back Off a Single Kafka Partition Without Pausing Healthy Partitions
+37. Why Identically Seeded Jitter Synchronizes Every Pod After a Restart—and How to Fix It
+38. How to Ramp Traffic Back Up After an Outage Instead of Releasing Every Backoff at Once
+39. How to Preserve Attempt History in the Final Error Without Logging Every Failure Twice
+40. How to Combine Backoff with a Concurrency Limit So Waiting Retries Cannot Starve New Work
 
 ## Feast
 
@@ -1954,3 +1974,210 @@
 18. How to Join User Feedback and Task-Completion Signals Back to the LLM Trace That Produced Them
 19. How to Set SLOs and Alerts for LLM Latency, Error Rate, Cost, and Answer Quality
 20. Langfuse, LangSmith, Phoenix, or OpenTelemetry: How to Choose an LLM Observability Stack
+
+## Confidential Containers
+
+1. Confidential Containers Installed but No RuntimeClasses Appear: Debugging the Operator, Node Daemon, and CR
+2. `FailedCreatePodSandBox` with Confidential Containers: Trace RuntimeClass, Shim, Hypervisor, and Guest Image Failures
+3. How to Verify AMD SEV-SNP or Intel TDX Host Prerequisites Before Installing Confidential Containers
+4. Confidential Pod Pulls a Public Image but Fails on ECR: Debugging Guest-Side Registry Authentication
+5. How to Pass an Enterprise Registry CA Bundle into Confidential Guest Image Pulls
+6. Encrypted Image Fails with “Media Type Not Supported”: Fixing OCI Layer Formats for CoCo CDH
+7. Confidential Container Cannot Decrypt Its Image: Tracing Key Annotations, KBS Resource Paths, and Guest Pull
+8. `RCAR Handshake Failed` or “Get TEE Evidence Failed”: A CoCo Attestation Troubleshooting Runbook
+9. Intel TDX Attestation Fails with `tee_qv_get_collateral 0xe019`: Check PCCS, PCS, Certificates, and Egress
+10. Trustee Rejects Its Own Self-Signed Certificate: How to Fix KBS Client Trust Without Disabling TLS
+11. Attestation Passed Yesterday but Fails After an Upgrade: Updating Reference Values for Kernel, Firmware, and Guest Images
+12. How to Test a Trustee OPA Attestation Policy Without Accidentally Releasing Production Secrets
+13. How to Bind KBS Secret Release to a Specific Confidential Workload Identity and Image Digest
+14. How to Prove an Encrypted Container Image Was Pulled and Decrypted Inside the Guest, Not on the Host
+15. Large Confidential Images Time Out or Fill Trusted Ephemeral Storage: Sizing and Cache Diagnostics
+16. Pod Starts but `kubectl logs` Is Empty: Collecting CoCo Shim, Guest, Trustee, and Attestation Logs
+17. How to Enable Confidential Guest Debug Logs Without Leaking Secrets to an Untrusted Host
+18. How to Customize and Repack a Kata Confidential Guest Image—and Recalculate Its Measurements
+19. `emptyDir` and Persistent Volumes in SEV-SNP Pods: Which Data Is Actually Confidential?
+20. GPU Passthrough to an SEV-SNP Confidential Container: Debugging IOMMU, VFIO, and vsock Timeouts
+
+## sysfs
+
+1. Why `sudo echo value > /sys/...` Still Says Permission Denied—and When `sudo tee` Is Not Enough
+2. Root Can Read a sysfs Attribute but Cannot Write It: Tracing `EINVAL`, `EPERM`, and the Driver’s `store()` Callback
+3. How to Make a sysfs Setting Survive Reboot, Module Load, Hotplug, and Resume
+4. Why `chmod` and `chown` Changes Under `/sys` Disappear—and How to Reapply Least-Privilege Access Safely
+5. Why a Device’s sysfs Path Changes After Reboot—and How to Match It with `ID_PATH` or Stable udev Symlinks
+6. How to Trace a `/dev` Node Back to Its sysfs Device, Bound Driver, and Kernel Module
+7. How to Decode a USB-over-PCI sysfs Path from Bus and Slot to Port and Interface
+8. How to Unbind and Rebind a PCI Device Through sysfs Without Stranding the Host
+9. sysfs `poll()` Returns Immediately: The Initial Read, `POLLPRI`, `lseek`, and `sysfs_notify()` Fix
+10. How to Add a Safe Read/Write sysfs Attribute to a Linux Device Driver with `DEVICE_ATTR`
+11. `sysfs_create_group()` Leaves Duplicate Filenames After Module Reload: Fixing Probe and Remove Cleanup
+12. `sprintf` vs `sysfs_emit`: How to Avoid PAGE_SIZE Truncation and Buffer Bugs in sysfs `show()`
+13. Text Attribute or `bin_attribute`? Exposing Binary and Multi-Page Driver Data Through sysfs
+14. Why Partial Writes Do Not Work in sysfs—and How to Parse Newlines and Complete Buffers in `store()`
+15. `sysfs_notify()` or a uevent? Choosing How a Driver Signals User Space About Attribute Changes
+16. Which Driver Created This sysfs File? Resolving Class Symlinks and Mapping Attributes Back to Kernel Source
+17. Why a sysfs Attribute Exists on One Kernel but Not Another: Checking Kconfig, Driver Binding, and Hardware Support
+18. How to Expose Only One sysfs Control to an Unprivileged Service Without Granting Broad Root Access
+19. Why `/sys` Is Read-Only Inside Docker Even for Root—and How to Expose Only the Device Attributes You Need
+20. How to Enumerate sysfs Devices Without Double-Counting `/sys/class`, `/sys/bus`, and `/sys/devices` Symlinks
+
+## Cloud Run
+
+1. Cloud Run 504s After a Long Request: How to Separate Platform Timeouts from Load Balancer and Client Deadlines
+2. Why Cloud Run Drops Work After the HTTP Response: Choosing Request-Based CPU, Always-Allocated CPU, or Cloud Tasks
+3. How to Give a Cloud Run Service a Stable Outbound IP with Direct VPC Egress and Cloud NAT
+4. Cloud Run-to-Cloud Run 401s on a Custom Domain: Fixing the OIDC Audience and `run.app` URL
+5. How to Stop Cloud Run Autoscaling from Exhausting Cloud SQL Connections: Pool Size, Concurrency, and Max Instances
+6. Cloud Run WebSockets Closing with Code 1006: Handling Request Deadlines, Reconnects, and Cross-Instance State
+7. Cloud Run Custom Domain Stuck on Certificate Provisioning: Checking CNAMEs, CAA Records, and Cloudflare Proxying
+8. Cloud Scheduler Gets 401 from Cloud Run: Matching the OIDC Audience, Service Account, and Invoker Role
+9. Why Updating a Secret Does Not Change a Running Cloud Run Revision—and How to Roll Out the New Version
+10. Vite Environment Variables Are `undefined` on Cloud Run: Build-Time Injection vs Runtime Container Variables
+11. Cloud Run Job Stuck in Pending Before Every Execution: Image Pulls, Startup Work, Quotas, and Regional Capacity
+12. Direct VPC Egress Works Publicly but Cannot Reach a Private IP: Cloud Run Firewall, Routes, and Network Tags
+13. Where Did My Uploaded File Go? How Cloud Run’s Ephemeral Filesystem, `/tmp`, and Instance Scaling Interact
+14. How to Diagnose an Unexpected Cloud Run Bill: Minimum Instances, CPU Billing, Concurrency, and Egress
+15. Cloud Run Returns 429, 503, or 504: How to Tell Queue Saturation from Container Failure and Timeout
+16. How to Size Cloud Run Concurrency for CPU-Bound vs I/O-Bound Apps Without Causing OOM Kills
+17. Why a Puppeteer Process Keeps Running Between Cloud Run Requests: Idle CPU, Billing, and Browser Cleanup
+18. Why a VM Cannot Open a TCP Connection Back to Cloud Run: Inbound Ports, Return Traffic, and Reverse Calls
+19. How to Export Custom Application Metrics from Cloud Run When Logs Work but Metrics Never Appear
+20. Why Cloud Run Cannot Expose a Second TCP Port—and How to Route Multiple Protocols Through One Ingress
+
+## Idempotency
+
+1. How to Make an Idempotency Record and the Business Write Atomic in One SQL Transaction
+2. Two Requests Arrive with the Same Idempotency Key at Once: Wait, Replay, or Return `409 Conflict`?
+3. Same Idempotency Key, Different Payload: How to Hash Requests and Reject Unsafe Key Reuse
+4. How Long Should Idempotency Keys Live? Choosing a TTL Without Replaying Old Operations
+5. How to Scope Idempotency Keys by Tenant and Endpoint Without Cross-Customer Collisions
+6. Why Generating a New Idempotency Key on Every Retry Defeats Safe Retries—and Where to Create It Instead
+7. Should You Cache Failed Idempotent Requests? Handling Validation Errors, 5xx Responses, and Unknown Outcomes
+8. How to Replay the Original HTTP Status, Headers, and Body for a Duplicate Idempotent Request
+9. Stripe Sends the Same Webhook Twice: How to Claim `event.id` Before Enqueuing Work
+10. Deduplication Is Not Enough: How to Handle Duplicate Webhooks That Arrive Out of Order
+11. Kafka Idempotent Producer vs Idempotent Consumer: Which Duplicates Does Each One Prevent?
+12. How to Build a Transactional Inbox That Records a Message ID and Updates Domain State Atomically
+13. Why the Transactional Outbox Can Publish Twice—and How to Make Downstream Consumers Retry-Safe
+14. How to Retry a Third-Party API That Has No Idempotency Key: Status Queries, Reconciliation, and Compensating Actions
+15. Worker Crashed After the Side Effect but Before ACK: How to Make Queue Consumers Idempotent
+16. How to Prevent Overlapping Cron Runs from Repeating Side Effects with a Stable Business Key
+17. How to Retry Only Failed Items in a Batch Without Reprocessing Successful Ones
+18. How to Test the “Commit Succeeded but the Response Was Lost” Idempotency Failure Mode
+19. How to Monitor Idempotency: First-Execution, Replay, Conflict, and Expired-Key Metrics
+20. How to Add Idempotency to an Existing POST Endpoint Without Breaking Older Clients
+
+## Build Caching
+
+1. GitHub Actions Says “Cache Restored” but `cache-hit` Is False: Exact Keys vs `restore-keys`
+2. Why a GitHub Actions Cache Never Updates Under the Same Key—and How to Version It Safely
+3. How to Keep Forked Pull Requests from Poisoning a Trusted CI Build Cache
+4. How to Find the Exact Dockerfile Instruction That Invalidated BuildKit’s Cache with Plain Progress Logs
+5. BuildKit Cache Mounts Work Locally but Vanish in GitHub Actions: Exporting Package Caches Correctly
+6. Multiple Docker Images Overwrite One GitHub Actions Cache: Using a Separate BuildKit `scope` per Image
+7. Why Only One Architecture Reuses Your Multi-Platform Docker Cache—and How to Split Cache Exports
+8. How to Reuse Docker Layers Across Ephemeral CI Runners with a Registry Cache Manifest
+9. Docker Keeps Reusing an Old Package Download: When `RUN` Cache Ignores Remote URL Changes
+10. Why a BuildKit Local Cache Directory Grows Forever—and How to Rotate Unreferenced Blobs
+11. Build Secrets Changed but the Docker Layer Stayed Cached: Adding Explicit Secret-Version Invalidation
+12. Gradle `FROM-CACHE` vs `UP-TO-DATE` vs Configuration Cache: What Was Actually Reused?
+13. Why Gradle Remote Cache Hits Locally but Misses in CI: Paths, Environment Inputs, and Non-Relocatable Tasks
+14. How to Cache Gradle or Maven Dependencies in Docker Without Baking the Repository into an Image Layer
+15. Bazel Remote Cache Returned an Incompatible Binary: Include Toolchains and Platform State in Action Keys
+16. Bazel Remote Cache Fails Only in CI: Debugging TLS, mTLS, Credentials, and Proxy Configuration
+17. Nx or Turborepo Replays Stale Outputs: Declaring Every Source, Environment Variable, and Generated Input
+18. How to Design Monorepo Cache Keys So One Lockfile Change Does Not Rebuild Every Package
+19. Self-Hosted CI Runner Is Out of Disk: Pruning Build Caches Without Breaking Active Builds
+20. Cross-Platform Dependency Cache Restores but Native Modules Crash: Keying by OS, Architecture, and Toolchain
+
+## Sentry
+
+1. Sentry Events Never Arrive: How to Trace DSN, CORS, Ad Blockers, and Ingest Rejections
+2. How to Proxy Sentry Envelopes Through a Secure Tunnel Without Creating an Open Relay
+3. Sentry Source Maps Uploaded but Stack Traces Stay Minified: Fix Release, Dist, URL, and Debug ID Mismatches
+4. How to Upload Sentry Source Maps in CI Without Publishing Them with Production Assets
+5. How to Stop Development, Localhost, and Staging Errors from Polluting Sentry
+6. How to Filter Noisy Sentry Events Before Ingestion Without Burning Your Quota
+7. Why Sentry `ignoreErrors` Misses Handled Exceptions—and How to Filter Them with `beforeSend`
+8. How to Group Dynamic Sentry Messages with Custom Fingerprints Without Hiding Distinct Root Causes
+9. Why One Sentry Error Splits into Multiple Issues—and How to Normalize URLs, Releases, and Stack Frames
+10. How to Capture `console.error` and Non-Thrown Failures in Sentry Without Double-Reporting
+11. Sentry `beforeSend` Runs Repeatedly: How to Break Recursive Capture Loops
+12. How to Add User, Request, and Business Context to Sentry Without Leaking PII or Secrets
+13. Sentry Events Disappear in Serverless Jobs: How to Flush the SDK Before Process Exit
+14. How to Tune Sentry Error and Trace Sampling Separately Without Losing Rare Failures
+15. How to Configure Actionable Sentry Alerts Without Notification Storms from Regressions
+16. Self-Hosted Sentry Upgrade Fails in Kafka, Snuba, or ClickHouse: A Recovery Checklist
+17. How to Back Up and Restore Self-Hosted Sentry Across PostgreSQL, ClickHouse, and Object Storage
+18. How to Reduce Memory and Disk Pressure in Self-Hosted Sentry Without Dropping Critical Events
+19. Sentry Says “Discarded Session Because of Missing Release”: How to Restore Release Health
+20. How to Debug Missing Native Symbols in Sentry for iOS, Android, Flutter, and Windows
+
+## Drone
+
+1. Drone Pipeline Stuck on Pending: Match Runner Labels, Platform, Type, and Capacity
+2. Drone Runner Cannot Connect to Server: Debug RPC Host, Protocol, Secret, and TLS
+3. Drone Clone Step Cannot Resolve Gitea or GitLab: Fix Runner Networks and DNS
+4. Drone Webhooks Arrive but No Build Starts: Check Repository Activation, Signatures, and Trigger Filters
+5. Why Drone Starts the Same Build Twice—and How to Find Duplicate Webhooks
+6. Drone Secrets Are Empty: Fix `from_secret`, Target Names, and Repository or Organization Scope
+7. How to Pull Private Build Images in Drone with `image_pull_secrets`
+8. Drone Docker Publish Says “No Basic Auth Credentials”: Separate Plugin Secrets from Pull Secrets
+9. “Insufficient Privileges to Use Privileged Mode” in Drone: Trusted Repositories and Runner Security
+10. How to Build Docker Images in Drone Without Exposing an Unrestricted Docker Socket
+11. `trigger` vs. `when` in Drone: How to Filter Pipelines and Individual Steps Correctly
+12. How to Run Drone Pipelines in Sequence with `depends_on` Without Accidental Parallelism
+13. How to Pass Generated Values Between Drone Steps and Pipelines Without Dynamic Environment Variables
+14. How to Cache Maven, npm, and Go Dependencies in Drone Without Reusing Corrupt State
+15. Drone Pipeline Works Locally but Fails on ARM or Windows: Match Architecture, OS, and Runner Type
+16. How to Run and Debug a Drone Pipeline Locally with `drone exec`
+17. How to Stop, Timeout, and Clean Up Hung Drone Builds Without Orphaning Containers
+18. How to Tag Docker Images from Drone Branch, Commit, and Git Tag Events Safely
+19. How to Reach Service Containers from Drone Steps: Hostnames, Ports, Health Checks, and Networks
+20. How to Prevent Secrets from Reaching Untrusted Drone Pull Requests and Forks
+
+## gRPC
+
+1. A gRPC Stream Dies After a Network Blip: How to Reconnect, Resume, and Avoid Duplicate Messages
+2. How to Shut Down a gRPC Server Gracefully Without Terminating Long-Lived Streams
+3. How to Detect gRPC Client Disconnects Without Polling the Underlying TCP Connection
+4. Python gRPC Channels: How to Reuse One Stub and Close It Without Leaking Threads
+5. gRPC Client Stays on a Dead Kubernetes Pod: Fix DNS Re-Resolution, Resolver Schemes, and Channel State
+6. `wait_for_ready` vs. Fail Fast in gRPC: Prevent Startup Races Without Hiding Outages
+7. How to Apply Backpressure to gRPC Streams Before Slow Consumers Exhaust Server Memory
+8. gRPC Hits the HTTP/2 Concurrent-Stream Limit: Tune Connections, Queues, and `MAX_CONCURRENT_STREAMS`
+9. How to Serve gRPC and HTTP/JSON on the Same Port with Protocol Detection and Safe Fallbacks
+10. How to Debug “HTTP/2 Client Preface String Missing or Corrupt” Between gRPC Clients and Proxies
+11. How to Propagate gRPC Cancellation Through Fan-Out Calls Without Leaking Backend Work
+12. How to Send and Read gRPC Trailers for Partial Results, Rate Limits, and Error Diagnostics
+13. How to Refresh Per-Call Authentication Metadata on Long-Lived gRPC Channels
+14. How to Diagnose gRPC Streams That Buffer Messages Instead of Delivering Them in Real Time
+15. How to Test Go gRPC Services In Memory with `bufconn` and `grpc.NewClient`
+16. How to Evolve Proto3 Scalar Fields to `optional` Without Breaking Older gRPC Clients
+17. How to Remove or Rename Protobuf Fields Safely with `deprecated` and `reserved`
+18. How to Avoid Duplicate Protobuf Symbols When Multiple gRPC Packages Share Common Types
+19. How to Distinguish Transport Failures from Application Status Errors in gRPC Clients
+20. How to Drain gRPC Connections During Kubernetes Rolling Updates Without `UNAVAILABLE` Spikes
+
+## PostgreSQL Operator
+
+1. CloudNativePG Failover Does Not Promote a Replica: Diagnose Quorum, WAL, and Instance Health
+2. How to Perform a Planned PostgreSQL Operator Switchover Without Dropping Client Traffic
+3. PgBouncer Still Points to the Old Primary After Operator Failover: DNS, Pool, and Reconnect Fixes
+4. How to Test PostgreSQL Operator Failover and Measure RPO and RTO Before Production
+5. How to Configure Synchronous Replication in CloudNativePG for Zero-Data-Loss Failover
+6. CloudNativePG Backup Is Green but Restore Fails: Validate Base Backups, WAL, and Object-Store Layout
+7. How to Perform Point-in-Time Recovery with CloudNativePG Without Overwriting the Source Cluster
+8. CloudNativePG WAL Archive Keeps Growing: Fix Retention, Failed Uploads, and Orphaned Backups
+9. How to Back Up CloudNativePG to MinIO or S3 with IAM, Custom CAs, and Path-Style URLs
+10. Velero Restore Leaves CloudNativePG in CrashLoopBackOff: Reconcile CRs, PVCs, and `PGDATA`
+11. How to Migrate PostgreSQL into CloudNativePG with Minimal Downtime Using an External Cluster
+12. CloudNativePG Major Upgrade Fails with Timeline or WAL Errors: How to Recover the Cutover
+13. How to Expand a PostgreSQL Operator PVC Safely—and What to Do When the StorageClass Cannot Resize
+14. How to Place PostgreSQL Operator Replicas Across Zones with Anti-Affinity and Topology Spread
+15. How to Keep PostgreSQL Operator Pods Available During Node Drains and Cluster Upgrades
+16. How to Rotate PostgreSQL Operator User Passwords and TLS Certificates Without Downtime
+17. How to Bootstrap Multiple Databases, Roles, and Extensions Declaratively in CloudNativePG
+18. CloudNativePG Rejects a Custom PostgreSQL or TimescaleDB Image: Verify Labels, UID, Binaries, and Extensions
+19. How to Expose CloudNativePG Inside and Outside Kubernetes Without Sending Writes to Read-Only Services
+20. PostgreSQL Operator Cluster Stuck Reconciling: Read Conditions, Events, Instance Logs, and Finalizers
