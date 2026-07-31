@@ -54,7 +54,7 @@ Use actual labels from your hosts. Device names, filesystem types, and runtime p
 
 ## Know the Upstream Defaults
 
-Current Node Exporter Linux source has default filesystem-type exclusions for many pseudo and image filesystems, including procfs, sysfs, cgroups, debugfs, devpts, overlay, squashfs, and iso9660. It also excludes several `/dev`, `/proc`, `/sys`, and container-storage subpaths by mountpoint.
+Current Node Exporter Linux source has default filesystem-type exclusions for many pseudo and image filesystems, including procfs, sysfs, cgroups, debugfs, devpts, overlay, squashfs, EROFS, and iso9660. It also excludes several `/dev`, `/proc`, `/sys`, and container-storage subpaths by mountpoint.
 
 Defaults can change between releases, and distribution packages can add their own flags. Inspect:
 
@@ -70,7 +70,7 @@ Do not duplicate a remembered default and assume it matches the binary in produc
 The filesystem collector accepts regular expressions:
 
 ```text
---collector.filesystem.fs-types-exclude='^(autofs|binfmt_misc|bpf|cgroup2?|configfs|debugfs|devpts|devtmpfs|fusectl|hugetlbfs|iso9660|mqueue|nsfs|overlay|proc|procfs|pstore|rpc_pipefs|securityfs|selinuxfs|squashfs|sysfs|tracefs)$'
+--collector.filesystem.fs-types-exclude='^(autofs|binfmt_misc|bpf|cgroup2?|configfs|debugfs|devpts|devtmpfs|erofs|fusectl|hugetlbfs|iso9660|mqueue|nsfs|overlay|proc|procfs|pstore|rpc_pipefs|securityfs|selinuxfs|squashfs|sysfs|tracefs)$'
 --collector.filesystem.mount-points-exclude='^/(dev|proc|sys|run/credentials/.+|var/lib/docker/.+|var/lib/containers/storage/.+|var/lib/kubelet/.+)($|/)'
 ```
 
@@ -98,14 +98,14 @@ For a query-time policy, repeat the same selectors on numerator and denominator:
   1 -
   node_filesystem_avail_bytes{
     job="node",
-    fstype!~"autofs|binfmt_misc|bpf|cgroup2?|configfs|debugfs|devpts|devtmpfs|fusectl|hugetlbfs|iso9660|mqueue|nsfs|overlay|proc|procfs|pstore|rpc_pipefs|securityfs|selinuxfs|squashfs|sysfs|tmpfs|tracefs",
+    fstype!~"autofs|binfmt_misc|bpf|cgroup2?|configfs|debugfs|devpts|devtmpfs|erofs|fusectl|hugetlbfs|iso9660|mqueue|nsfs|overlay|proc|procfs|pstore|rpc_pipefs|securityfs|selinuxfs|squashfs|sysfs|tmpfs|tracefs",
     device!~"/dev/loop[0-9]+",
     mountpoint!~"/var/lib/(docker|containers/storage|kubelet)/.+"
   }
   /
   node_filesystem_size_bytes{
     job="node",
-    fstype!~"autofs|binfmt_misc|bpf|cgroup2?|configfs|debugfs|devpts|devtmpfs|fusectl|hugetlbfs|iso9660|mqueue|nsfs|overlay|proc|procfs|pstore|rpc_pipefs|securityfs|selinuxfs|squashfs|sysfs|tmpfs|tracefs",
+    fstype!~"autofs|binfmt_misc|bpf|cgroup2?|configfs|debugfs|devpts|devtmpfs|erofs|fusectl|hugetlbfs|iso9660|mqueue|nsfs|overlay|proc|procfs|pstore|rpc_pipefs|securityfs|selinuxfs|squashfs|sysfs|tmpfs|tracefs",
     device!~"/dev/loop[0-9]+",
     mountpoint!~"/var/lib/(docker|containers/storage|kubelet)/.+"
   }
@@ -127,17 +127,19 @@ groups:
           1 -
           node_filesystem_avail_bytes{
             job="node",
-            fstype!~"autofs|binfmt_misc|bpf|cgroup2?|configfs|debugfs|devpts|devtmpfs|fusectl|hugetlbfs|iso9660|mqueue|nsfs|overlay|proc|procfs|pstore|rpc_pipefs|securityfs|selinuxfs|squashfs|sysfs|tmpfs|tracefs",
+            fstype!~"autofs|binfmt_misc|bpf|cgroup2?|configfs|debugfs|devpts|devtmpfs|erofs|fusectl|hugetlbfs|iso9660|mqueue|nsfs|overlay|proc|procfs|pstore|rpc_pipefs|securityfs|selinuxfs|squashfs|sysfs|tmpfs|tracefs",
             device!~"/dev/loop[0-9]+",
             mountpoint!~"/var/lib/(docker|containers/storage|kubelet)/.+"
           }
           /
           node_filesystem_size_bytes{
             job="node",
-            fstype!~"autofs|binfmt_misc|bpf|cgroup2?|configfs|debugfs|devpts|devtmpfs|fusectl|hugetlbfs|iso9660|mqueue|nsfs|overlay|proc|procfs|pstore|rpc_pipefs|securityfs|selinuxfs|squashfs|sysfs|tmpfs|tracefs",
+            fstype!~"autofs|binfmt_misc|bpf|cgroup2?|configfs|debugfs|devpts|devtmpfs|erofs|fusectl|hugetlbfs|iso9660|mqueue|nsfs|overlay|proc|procfs|pstore|rpc_pipefs|securityfs|selinuxfs|squashfs|sysfs|tmpfs|tracefs",
             device!~"/dev/loop[0-9]+",
             mountpoint!~"/var/lib/(docker|containers/storage|kubelet)/.+"
           }
+          and on (job, instance, device, mountpoint, fstype)
+          node_filesystem_size_bytes{job="node"} > 0
 ```
 
 Then alert with a readable condition:
@@ -161,9 +163,21 @@ Byte exclusions should normally be shared with the inode alert:
 
 ```promql
 1 -
-node_filesystem_files_free{<same selectors>}
+node_filesystem_files_free{
+  job="node",
+  fstype!~"autofs|binfmt_misc|bpf|cgroup2?|configfs|debugfs|devpts|devtmpfs|erofs|fusectl|hugetlbfs|iso9660|mqueue|nsfs|overlay|proc|procfs|pstore|rpc_pipefs|securityfs|selinuxfs|squashfs|sysfs|tmpfs|tracefs",
+  device!~"/dev/loop[0-9]+",
+  mountpoint!~"/var/lib/(docker|containers/storage|kubelet)/.+"
+}
 /
-node_filesystem_files{<same selectors>}
+node_filesystem_files{
+  job="node",
+  fstype!~"autofs|binfmt_misc|bpf|cgroup2?|configfs|debugfs|devpts|devtmpfs|erofs|fusectl|hugetlbfs|iso9660|mqueue|nsfs|overlay|proc|procfs|pstore|rpc_pipefs|securityfs|selinuxfs|squashfs|sysfs|tmpfs|tracefs",
+  device!~"/dev/loop[0-9]+",
+  mountpoint!~"/var/lib/(docker|containers/storage|kubelet)/.+"
+}
+and on (job, instance, device, mountpoint, fstype)
+node_filesystem_files{job="node"} > 0
 ```
 
 Keep observation failures separate:
