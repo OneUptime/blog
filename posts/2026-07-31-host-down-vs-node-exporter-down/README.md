@@ -48,7 +48,7 @@ ICMP alone is weak evidence because many networks block it while the host remain
 
 ## Give Every Signal the Same Host Label
 
-The Node Exporter endpoint and probe target often have different `instance` labels. Add a canonical `host` label in service discovery:
+The Node Exporter endpoint and probe target often have different `instance` labels. Add a canonical `host` label in service discovery. This example assumes the Blackbox Exporter has an `icmp` module configured and the permissions required to send ICMP probes:
 
 ```yaml
 scrape_configs:
@@ -97,7 +97,7 @@ and on (host)
 (probe_success{job="host-icmp"} == 0)
 ```
 
-This proves the host was unreachable by both selected methods from the probe location. It does not distinguish a powered-off host from a routing, firewall, DNS, or monitoring-site failure.
+This shows that the Node Exporter scrape and the selected host probe both failed from the monitoring location. It does not distinguish a powered-off host from a routing, firewall, DNS, or monitoring-site failure.
 
 Add a TCP probe of port 9100 to refine the case:
 
@@ -144,7 +144,7 @@ groups:
 
 Allow slack for transient failures. Prometheus alerting guidance recommends avoiding pages for small blips. Choose `for` durations based on scrape interval, probe interval, and recovery objective.
 
-If `HostUnreachableFromMonitoring` fires, inhibit the exporter symptom for the same `host` in Alertmanager. Keep the detailed exporter failure visible in the incident timeline or as a lower-severity alert rather than sending duplicate pages.
+If you also have a generic Node Exporter scrape-failure alert, inhibit that generic symptom for the same `host` when `HostUnreachableFromMonitoring` fires. The two example alerts above are mutually exclusive because they require different `probe_success` values. Keep the detailed exporter failure visible in the incident timeline or as a lower-severity alert rather than sending duplicate pages.
 
 ## Use More Than One Vantage for Critical Hosts
 
@@ -158,7 +158,7 @@ Two probes from the same Prometheus network can share the same failed router, fi
 
 Label each with `vantage` and define the host-down policy explicitly. “All two approved vantages failed” is stronger than “one ICMP request failed.”
 
-Do not combine values until missing telemetry has been handled. If one vantage's `probe_success` series is absent, that is unknown, not failure. Monitor every prober's own `up` series and preserve coverage.
+Do not combine values until missing telemetry has been handled. If one vantage's `probe_success` series is absent, that is unknown, not failure. Scrape each Blackbox Exporter's own `/metrics` endpoint, monitor that target's `up` series, and preserve coverage.
 
 ## Handle Targets That Leave Service Discovery
 
