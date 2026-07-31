@@ -1,4 +1,4 @@
-# Validation Summary: Host Down or Node Exporter Down? How to Distinguish Machine Failure from a Broken Scrape
+# Validation Summary: Host Down or Exporter Down? Distinguishing Machine and Scrape Failures
 
 ## Status
 

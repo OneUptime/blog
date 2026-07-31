@@ -1,4 +1,4 @@
-# Validation Summary: Which Network Interface Should You Graph When Bonds, Bridges, Veths, and VLANs Duplicate Traffic?
+# Validation Summary: Which Network Interface Should You Graph Without Duplicating Traffic?
 
 ## Status
 validated

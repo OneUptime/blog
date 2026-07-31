@@ -1,4 +1,4 @@
-# Validation Summary: How to Detect Hosts That Vanished from Service Discovery Before Their `up` Series Goes Stale
+# Validation Summary: Detect Hosts Missing from Service Discovery Before `up` Goes Stale
 
 ## Status
 validated

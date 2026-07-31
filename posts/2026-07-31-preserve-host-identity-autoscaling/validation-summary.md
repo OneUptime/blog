@@ -1,4 +1,4 @@
-# Validation Summary: How to Preserve Host Identity Across Autoscaling, Reboots, and Changing IP Addresses
+# Validation Summary: Preserve Host Identity Across Autoscaling, Reboots, and IP Changes
 
 ## Status
 validated

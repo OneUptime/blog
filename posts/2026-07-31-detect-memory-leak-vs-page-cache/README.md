@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Linux, Memory Leaks, Page Cache, Prometheus, Node Exporter, Troubleshooting
+Tags: Linux, Memory Leak, Page Cache, Prometheus, Node Exporter, Troubleshooting
 
 Description: Separate retained anonymous or unreclaimable memory from useful Linux page cache by combining composition, trend, reclaim pressure, and workload evidence.
 

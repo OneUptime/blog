@@ -1,8 +1,8 @@
-# How to Calculate Interface Bandwidth from Byte Counters Without Spikes After Restarts
+# Calculate Interface Bandwidth Without Spikes After Restarts
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Prometheus, PromQL, Node Exporter, Network Monitoring, Counters, Bandwidth
+Tags: Prometheus, PromQL, Node Exporter, Network Monitoring, Counter, Bandwidth
 
 Description: Convert node_exporter interface byte counters into reliable bandwidth rates while handling resets, scrape gaps, interface churn, and unit conversion correctly.
 

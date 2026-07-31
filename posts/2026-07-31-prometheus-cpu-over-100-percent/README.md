@@ -1,4 +1,4 @@
-# Why Prometheus CPU Metrics Can Exceed 100%—Cores, Rates, and Aggregation Explained
+# Why Prometheus CPU Metrics Can Exceed 100%: Cores, Rates, and Aggregation
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# Validation Summary: How to Alert When an Expected Host Metric Disappears Without Treating No Data as Zero
+# Validation Summary: Alert When an Expected Host Metric Disappears
 
 ## Status
 

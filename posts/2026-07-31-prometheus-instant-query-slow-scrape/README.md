@@ -1,4 +1,4 @@
-# Why Does a Prometheus Instant Query Return No Data for Slowly Scraped Infrastructure Metrics?
+# Why Slow Metrics Vanish from Prometheus Instant Queries
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

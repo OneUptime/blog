@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Linux, Prometheus, Node Exporter, Filesystems, Disk Space, Alerting
+Tags: Linux, Prometheus, Node Exporter, Filesystem, Disk Space, Alerting
 
 Description: Alert on filesystem space available to the workload, account for reserved blocks, and combine percentage, absolute headroom, and exhaustion forecasts safely.
 

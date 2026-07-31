@@ -1,4 +1,4 @@
-# Validation Summary: Why Containerized Node Exporter Reports Container Metrics Instead of Host Metrics
+# Validation Summary: Why Containerized Node Exporter Reports Container Metrics
 
 ## Status
 

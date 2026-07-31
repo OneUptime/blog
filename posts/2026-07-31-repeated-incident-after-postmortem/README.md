@@ -84,7 +84,7 @@ Reopen it. Identify scope and rollout verification gaps. Add a check that makes 
 
 ### The action worked but addressed only one factor
 
-Record the benefit—for example, one region affected instead of all regions—then address the remaining prevention, amplification, or recovery path.
+Record the benefit-for example, one region affected instead of all regions-then address the remaining prevention, amplification, or recovery path.
 
 ### The action had a bypass
 

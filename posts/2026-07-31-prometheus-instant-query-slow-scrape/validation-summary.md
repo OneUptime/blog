@@ -1,4 +1,4 @@
-# Validation Summary: Why Does a Prometheus Instant Query Return No Data for Slowly Scraped Infrastructure Metrics?
+# Validation Summary: Why Slow Metrics Vanish from Prometheus Instant Queries
 
 ## Status
 

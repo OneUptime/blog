@@ -1,4 +1,4 @@
-# How to Preserve Host Identity Across Autoscaling, Reboots, and Changing IP Addresses
+# Preserve Host Identity Across Autoscaling, Reboots, and IP Changes
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

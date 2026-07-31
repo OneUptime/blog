@@ -1,4 +1,4 @@
-# Validation Summary: Static Thresholds vs Dynamic Baselines: How to Reduce Noisy Infrastructure Alerts
+# Validation Summary: Static Thresholds vs Dynamic Baselines for Less Noisy Alerts
 
 ## Status
 validated

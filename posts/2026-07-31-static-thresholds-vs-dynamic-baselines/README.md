@@ -1,4 +1,4 @@
-# Static Thresholds vs Dynamic Baselines: How to Reduce Noisy Infrastructure Alerts
+# Static Thresholds vs Dynamic Baselines for Less Noisy Alerts
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -42,7 +42,7 @@ Static rules are:
 
 Their main weakness is heterogeneity. The same CPU percentage, free-byte value, or IOPS level can mean different things on hosts with different size, purpose, and workload.
 
-Do not solve that only by creating hundreds of per-host thresholds. Group resources by meaningful class—such as role, storage tier, or instance type—and keep the number of policies reviewable.
+Do not solve that only by creating hundreds of per-host thresholds. Group resources by meaningful class-such as role, storage tier, or instance type-and keep the number of policies reviewable.
 
 ## Where Dynamic Baselines Help
 
@@ -103,7 +103,7 @@ stddev_over_time(
 )
 ```
 
-The one-hour offset keeps the newest hour—the period most likely to contain the current incident—out of the training window. It does not make the baseline immune to a multi-day incident or a gradual regression.
+The one-hour offset keeps the newest hour-the period most likely to contain the current incident-out of the training window. It does not make the baseline immune to a multi-day incident or a gradual regression.
 
 An anomaly condition can require three standard deviations above the mean **and** at least 70% CPU:
 

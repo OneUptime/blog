@@ -1,4 +1,4 @@
-# How to Monitor the Monitoring Server So Prometheus Failure Cannot Silence Host-Down Alerts
+# Monitor Prometheus So Its Failure Cannot Silence Host-Down Alerts
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

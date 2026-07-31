@@ -33,7 +33,7 @@ The person who triggered an event should not automatically receive every follow-
 
 Weak:
 
-> Jordan — fix monitoring by Friday.
+> Jordan - fix monitoring by Friday.
 
 Stronger:
 
@@ -170,7 +170,7 @@ Follow-up reviews should ask:
 
 If a manager needs to address an individual performance issue, use the authorized personnel process. Do not turn the action tracker into a public performance scorecard.
 
-This separation lets teams discuss real delivery problems—underestimated work, missing ownership boundaries, competing priorities—without treating every delay as moral failure.
+This separation lets teams discuss real delivery problems-underestimated work, missing ownership boundaries, competing priorities-without treating every delay as moral failure.
 
 ## Close on Evidence, Not an Owner’s Assertion
 

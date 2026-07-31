@@ -1,4 +1,4 @@
-# How to Turn “Improve Monitoring” into a Specific, Testable Postmortem Action Item
+# Turn “Improve Monitoring” into a Testable Postmortem Action
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -148,7 +148,7 @@ The page should tell the on-call that customer impact requires action. The linke
 
 Do not page independently on every possible lower-level cause if a customer-symptom alert already provides the actionable interruption. Cause metrics can support dashboards, tickets, or targeted capacity warnings.
 
-There are exceptions. A disk with a predictable short time to exhaustion may require action before customer impact. Write that page around the forecast, lead time, and remediation—not merely “disk is high.”
+There are exceptions. A disk with a predictable short time to exhaustion may require action before customer impact. Write that page around the forecast, lead time, and remediation-not merely “disk is high.”
 
 ## Write Completion Criteria Before Implementation
 

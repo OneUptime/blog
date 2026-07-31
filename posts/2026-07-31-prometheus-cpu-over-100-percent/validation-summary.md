@@ -1,4 +1,4 @@
-# Validation Summary: Why Prometheus CPU Metrics Can Exceed 100%—Cores, Rates, and Aggregation Explained
+# Validation Summary: Why Prometheus CPU Metrics Can Exceed 100%: Cores, Rates, and Aggregation
 
 ## Status
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Prometheus, Batch Jobs, Node Exporter, Textfile Collector, Pushgateway, Alerting
+Tags: Prometheus, Batch Job, Node Exporter, Textfile Collector, Pushgateway, Alerting
 
 Description: Persist last-run state from daily infrastructure jobs and alert on timestamp age, metric absence, exporter health, and stale Pushgateway groups.
 
@@ -177,7 +177,7 @@ printf '%s\n' \
       https://pushgateway.example.internal:9091/metrics/job/tenant_reconcile
 ```
 
-`PUT` replaces all metrics in that grouping key, which makes the payload the complete current state. A `POST`—the method curl otherwise chooses for `--data-binary`—replaces only metric families present in the request and can leave removed metric families behind.
+`PUT` replaces all metrics in that grouping key, which makes the payload the complete current state. A `POST`-the method curl otherwise chooses for `--data-binary`-replaces only metric families present in the request and can leave removed metric families behind.
 
 Do not add a machine `instance` grouping label for a service-level job unless machine identity is semantically required. Changing instance labels creates persistent groups that must be deleted later.
 

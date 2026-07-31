@@ -1,8 +1,8 @@
-# Can Node Exporter Use Different Scrape Intervals for CPU, Disk, and Network Metrics?
+# Can Node Exporter Use Different CPU, Disk, and Network Scrape Intervals?
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Prometheus, Node Exporter, Scrape Interval, Collectors, PromQL, Performance
+Tags: Prometheus, Node Exporter, Scrape Interval, Collector, PromQL, Performance
 
 Description: Split Node Exporter collectors across Prometheus scrape jobs when different intervals are justified, while avoiding duplicate series and misleading rates.
 

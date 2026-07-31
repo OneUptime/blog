@@ -1,4 +1,4 @@
-# How to Alert When an Expected Host Metric Disappears Without Treating No Data as Zero
+# Alert When an Expected Host Metric Disappears
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Calculate Per-Host CPU Usage from `node_cpu_seconds_total` Without Misleading Averages
+# Calculate Per-Host CPU from `node_cpu_seconds_total` Correctly
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -161,7 +161,7 @@ avg by (job, instance, mode) (
 
 This returns the average share for each mode on each host. Do not sum `node_cpu_guest_seconds_total` into it; guest accounting is already included in user/nice time.
 
-If your organization defines utilization differently—for example, excluding `iowait` or reporting steal separately—name and document that convention. Do not label two different formulas “CPU usage” on adjacent dashboards.
+If your organization defines utilization differently-for example, excluding `iowait` or reporting steal separately-name and document that convention. Do not label two different formulas “CPU usage” on adjacent dashboards.
 
 ## Avoid These Misleading Queries
 

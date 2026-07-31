@@ -1,4 +1,4 @@
-# Which Infrastructure Metrics Actually Deserve Alerts? A Practical Selection Framework
+# Which Infrastructure Metrics Deserve Alerts? A Practical Framework
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

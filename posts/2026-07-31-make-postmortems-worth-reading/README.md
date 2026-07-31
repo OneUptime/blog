@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Incident Management, Postmortems, Knowledge Sharing, Documentation, SRE
+Tags: Incident Management, Postmortem, Knowledge Sharing, Documentation, SRE
 
 Description: Design postmortems as searchable, evidence-backed learning tools with a clear audience, concise structure, and an active distribution habit.
 
@@ -73,11 +73,11 @@ PagerDuty’s template includes timeline, what went well, what did not, actions,
 
 Use:
 
-> 14:12 UTC — The deployment controller began replacing 30% of instances in `eu-west`; deployment event `dep-9182`.
+> 14:12 UTC - The deployment controller began replacing 30% of instances in `eu-west`; deployment event `dep-9182`.
 
 Avoid:
 
-> 14:12 UTC — The disastrous rollout began.
+> 14:12 UTC - The disastrous rollout began.
 
 Link each material entry to a durable metric query, log interval, deployment event, ticket, or communication. PagerDuty recommends identifying a metric or other data source for timeline items.
 

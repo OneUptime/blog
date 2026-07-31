@@ -1,4 +1,4 @@
-# Validation Summary: Which Infrastructure Metrics Actually Deserve Alerts? A Practical Selection Framework
+# Validation Summary: Which Infrastructure Metrics Deserve Alerts? A Practical Framework
 
 ## Status
 

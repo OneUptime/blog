@@ -1,4 +1,4 @@
-# Validation Summary: How to Exclude Pseudo-Filesystems, Loop Devices, and Ephemeral Mounts from Disk Alerts
+# Validation Summary: Exclude Pseudo-Filesystems and Ephemeral Mounts from Disk Alerts
 
 ## Status
 

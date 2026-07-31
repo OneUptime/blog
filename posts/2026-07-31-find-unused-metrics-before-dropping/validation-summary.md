@@ -1,4 +1,4 @@
-# Validation Summary: How to Find Unused Infrastructure Metrics Before Adding `metric_relabel_configs` Drop Rules
+# Validation Summary: Find Unused Metrics Before Adding `metric_relabel_configs` Drop Rules
 
 ## Status
 validated

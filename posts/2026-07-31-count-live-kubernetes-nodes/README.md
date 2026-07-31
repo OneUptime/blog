@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Prometheus, kube-state-metrics, Nodes, PromQL, Alerting
+Tags: Kubernetes, Prometheus, Kube-state-metrics, Node, PromQL, Alerting
 
 Description: Count registered and Ready Kubernetes nodes correctly with kube-state-metrics, then alert on fleet changes without confusing zero-valued condition series for healthy nodes.
 

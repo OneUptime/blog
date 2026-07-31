@@ -1,8 +1,8 @@
-# How to Build Recording Rules for Fleet-Wide Infrastructure Dashboards Without Expensive Live Queries
+# Build Fast Fleet Dashboards with Prometheus Recording Rules
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Prometheus, Recording Rules, PromQL, Node Exporter, Dashboards, Performance
+Tags: Prometheus, Recording Rules, PromQL, Node Exporter, Dashboard, Performance
 
 Description: Precompute reusable, capacity-correct infrastructure rollups with bounded labels so fleet dashboards stay fast as host and metric counts grow.
 
@@ -290,7 +290,7 @@ After staging, compare the recorded result with the original live expression at 
 6. Keep the source expression documented.
 7. Monitor rule failures, output cardinality, and evaluation time.
 
-New recording rules do not automatically have historical data. Until enough time passes—or a carefully managed backfill is performed—the recorded series has a shorter history than the raw inputs.
+New recording rules do not automatically have historical data. Until enough time passes-or a carefully managed backfill is performed-the recorded series has a shorter history than the raw inputs.
 
 ## Common Mistakes
 

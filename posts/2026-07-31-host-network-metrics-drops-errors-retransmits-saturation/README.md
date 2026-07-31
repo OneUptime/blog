@@ -1,4 +1,4 @@
-# Which Network Metrics Catch Real Host Problems? Drops, Errors, Retransmits, and Saturation
+# Which Network Metrics Catch Host Problems? Drops, Errors, and Saturation
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

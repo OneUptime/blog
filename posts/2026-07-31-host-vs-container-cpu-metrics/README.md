@@ -1,4 +1,4 @@
-# Why Host and Container CPU Metrics Disagree—and How to Compare Them Correctly
+# Why Host and Container CPU Metrics Disagree-and How to Compare Them Correctly
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

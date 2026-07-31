@@ -1,4 +1,4 @@
-# How High-Cardinality Host Labels Inflate Metrics Cost—and What to Drop at Ingest
+# How High-Cardinality Host Labels Inflate Metrics Cost-and What to Drop at Ingest
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

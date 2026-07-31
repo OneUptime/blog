@@ -1,4 +1,4 @@
-# Validation Summary: How to Aggregate CPU, Memory, and Disk Metrics Across a Cluster Without Averaging Percentages Incorrectly
+# Validation Summary: Aggregate Cluster Resource Metrics Without Averaging Percentages
 
 ## Status
 

@@ -2,13 +2,13 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Infrastructure Monitoring, Prometheus, Node Exporter, SNMP, Cloud Monitoring, Metrics
+Tags: Infrastructure Monitoring, Prometheus, Node Exporter, SNMP, Cloud Monitoring, Metric
 
 Description: Reconcile agent and agentless infrastructure metrics by aligning scope, source, units, windows, resource identity, and reset behavior.
 
 ---
 
-Agent-based and agentless systems often use the same label—“CPU utilization,” “disk reads,” or “network bytes”—for measurements taken at different boundaries. Values that do not match are not automatically wrong.
+Agent-based and agentless systems often use the same label-“CPU utilization,” “disk reads,” or “network bytes”-for measurements taken at different boundaries. Values that do not match are not automatically wrong.
 
 An agent-based host source reads from inside the operating system. Prometheus node exporter, for example, reads Linux kernel interfaces such as `/proc` and `/sys` and is scraped over HTTP.
 

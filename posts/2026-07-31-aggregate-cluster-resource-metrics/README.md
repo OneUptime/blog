@@ -1,8 +1,8 @@
-# How to Aggregate CPU, Memory, and Disk Metrics Across a Cluster Without Averaging Percentages Incorrectly
+# Aggregate Cluster Resource Metrics Without Averaging Percentages
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Prometheus, PromQL, Node Exporter, Infrastructure Metrics, Capacity Planning, Clusters
+Tags: Prometheus, PromQL, Node Exporter, Infrastructure Metrics, Capacity Planning, Cluster
 
 Description: Build capacity-weighted cluster CPU, memory, and disk rollups by aggregating numerators and denominators instead of averaging host percentages.
 

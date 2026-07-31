@@ -1,4 +1,4 @@
-# Validation Summary: Which Network Metrics Catch Real Host Problems? Drops, Errors, Retransmits, and Saturation
+# Validation Summary: Which Network Metrics Catch Host Problems? Drops, Errors, and Saturation
 
 ## Status
 validated

@@ -1,4 +1,4 @@
-# Validation Summary: Fixing Missing Filesystem Metrics and `node_filesystem_device_error` in Containerized Node Exporter
+# Validation Summary: Fixing `node_filesystem_device_error` in Containerized Node Exporter
 
 ## Status
 

@@ -1,8 +1,8 @@
-# Fixing Missing Filesystem Metrics and `node_filesystem_device_error` in Containerized Node Exporter
+# Fixing `node_filesystem_device_error` in Containerized Node Exporter
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Prometheus, Node Exporter, Filesystems, Containers, Linux, Troubleshooting
+Tags: Prometheus, Node Exporter, Filesystem, Container, Linux, Troubleshooting
 
 Description: Diagnose missing Node Exporter filesystem series and device errors by checking mount discovery, root-path mapping, propagation, filters, and stat failures.
 

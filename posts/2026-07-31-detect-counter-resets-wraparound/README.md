@@ -1,8 +1,8 @@
-# How to Detect Counter Resets and Wraparound in High-Speed Network Infrastructure Metrics
+# Detect Counter Resets and Wraparound in Network Metrics
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Prometheus, PromQL, Network Monitoring, Counters, Node Exporter, Troubleshooting
+Tags: Prometheus, PromQL, Network Monitoring, Counter, Node Exporter, Troubleshooting
 
 Description: Detect network counter discontinuities, distinguish likely resets from wraparound, and avoid incorrect rates on high-speed interfaces.
 

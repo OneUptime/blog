@@ -1,4 +1,4 @@
-# Why “Human Error” Is Not a Root Cause—and What to Investigate Instead
+# Why “Human Error” Is Not a Root Cause-and What to Investigate Instead
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

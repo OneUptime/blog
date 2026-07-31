@@ -1,4 +1,4 @@
-# Validation Summary: How to Turn “Improve Monitoring” into a Specific, Testable Postmortem Action Item
+# Validation Summary: Turn “Improve Monitoring” into a Testable Postmortem Action
 
 ## Status
 

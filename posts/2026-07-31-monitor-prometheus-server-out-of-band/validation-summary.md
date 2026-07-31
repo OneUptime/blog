@@ -1,4 +1,4 @@
-# Validation Summary: How to Monitor the Monitoring Server So Prometheus Failure Cannot Silence Host-Down Alerts
+# Validation Summary: Monitor Prometheus So Its Failure Cannot Silence Host-Down Alerts
 
 ## Status
 

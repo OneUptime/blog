@@ -1,4 +1,4 @@
-# One Prometheus or One per Network? How to Collect Infrastructure Metrics Across Isolated Environments
+# One Prometheus or One per Network? Monitoring Isolated Environments
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -206,7 +206,7 @@ Choose one central scraper when all answers are yes:
 - Is one trust and failure domain acceptable?
 - Can one service-discovery and credential plane span the environments?
 - Will a central outage not remove required local visibility?
-- Does capacity fit one server or intentional HA pair?
+- Does the target set and cardinality fit each server in a single-server or intentional HA-pair deployment?
 
 Choose local full Prometheus when any environment needs autonomous alerting, querying, or retention. Add federation for a selected aggregate view or remote write for centralized samples.
 

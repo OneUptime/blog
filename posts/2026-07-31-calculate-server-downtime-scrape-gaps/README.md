@@ -1,4 +1,4 @@
-# How to Calculate Server Downtime Over a Time Window Without Misreading Short Scrape Gaps
+# Calculate Server Downtime Without Misreading Short Scrape Gaps
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

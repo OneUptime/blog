@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Linux, Prometheus, Node Exporter, Inodes, Filesystems, Alerting
+Tags: Linux, Prometheus, Node Exporter, Inodes, Filesystem, Alerting
 
 Description: Detect inode exhaustion per filesystem with ratio, absolute headroom, and depletion forecasts before file creation fails despite free bytes.
 

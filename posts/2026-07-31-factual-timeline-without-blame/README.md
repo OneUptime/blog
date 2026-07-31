@@ -90,11 +90,11 @@ For each important decision, record:
 
 For example:
 
-> 14:16 UTC — The database responder delayed failover because replication lag was increasing and the standby health check had not completed. The incident commander requested a traffic reduction while the standby was evaluated.
+> 14:16 UTC - The database responder delayed failover because replication lag was increasing and the standby health check had not completed. The incident commander requested a traffic reduction while the standby was evaluated.
 
 This is more useful than:
 
-> 14:16 UTC — The database responder refused to fail over.
+> 14:16 UTC - The database responder refused to fail over.
 
 The first entry exposes the decision context and the missing assurance. The second invites a judgment about a person.
 
@@ -147,7 +147,7 @@ disproved: tested and inconsistent with evidence
 
 Example:
 
-> 11:03–11:05 UTC — The exact start time is unresolved. The load balancer recorded the first 503 at 11:03:41; application logs began at 11:05:02 after a logging pipeline delay.
+> 11:03–11:05 UTC - The exact start time is unresolved. The load balancer recorded the first 503 at 11:03:41; application logs began at 11:05:02 after a logging pipeline delay.
 
 When accounts conflict, do not choose the most senior person’s memory. Record the conflict, compare source reliability, and state the remaining uncertainty.
 
@@ -155,14 +155,14 @@ When accounts conflict, do not choose the most senior person’s memory. Record 
 
 This timeline row embeds a conclusion:
 
-> 16:20 UTC — A bad retry design caused the outage.
+> 16:20 UTC - A bad retry design caused the outage.
 
 Break it apart:
 
 ```text
-16:20:03 UTC — The client began retrying timed-out requests.
-16:20:21 UTC — Request volume at the dependency reached 4.7 times baseline.
-16:21:04 UTC — Dependency latency crossed its service objective.
+16:20:03 UTC - The client began retrying timed-out requests.
+16:20:21 UTC - Request volume at the dependency reached 4.7 times baseline.
+16:21:04 UTC - Dependency latency crossed its service objective.
 ```
 
 The causal-analysis section can then evaluate whether retry behavior, capacity, timeouts, and failed protective controls contributed. A timeline should supply the facts that analysis uses, not conceal analysis inside factual-looking entries.

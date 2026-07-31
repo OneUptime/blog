@@ -1,8 +1,8 @@
-# Why Containerized Node Exporter Reports Container Metrics Instead of Host Metrics
+# Why Containerized Node Exporter Reports Container Metrics
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Prometheus, Node Exporter, Containers, Linux, Host Monitoring
+Tags: Prometheus, Node Exporter, Container, Linux, Host Monitoring
 
 Description: Configure and verify a containerized Node Exporter so every collector observes the intended host namespaces, filesystems, and devices.
 

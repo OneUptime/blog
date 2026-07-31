@@ -1,4 +1,4 @@
-# Validation Summary: Can Node Exporter Use Different Scrape Intervals for CPU, Disk, and Network Metrics?
+# Validation Summary: Can Node Exporter Use Different CPU, Disk, and Network Scrape Intervals?
 
 ## Status
 validated

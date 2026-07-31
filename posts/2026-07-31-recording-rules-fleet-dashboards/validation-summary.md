@@ -1,4 +1,4 @@
-# Validation Summary: How to Build Recording Rules for Fleet-Wide Infrastructure Dashboards Without Expensive Live Queries
+# Validation Summary: Build Fast Fleet Dashboards with Prometheus Recording Rules
 
 ## Status
 

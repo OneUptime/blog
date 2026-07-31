@@ -1,8 +1,8 @@
-# How to Exclude Pseudo-Filesystems, Loop Devices, and Ephemeral Mounts from Disk Alerts
+# Exclude Pseudo-Filesystems and Ephemeral Mounts from Disk Alerts
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Prometheus, Node Exporter, Disk Alerts, Filesystems, PromQL, Linux
+Tags: Prometheus, Node Exporter, Disk Alerts, Filesystem, PromQL, Linux
 
 Description: Build disk-capacity alerts that exclude non-actionable filesystem series while preserving visibility into the real storage that can exhaust.
 

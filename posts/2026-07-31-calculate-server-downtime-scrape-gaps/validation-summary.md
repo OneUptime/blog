@@ -1,4 +1,4 @@
-# Validation Summary: How to Calculate Server Downtime Over a Time Window Without Misreading Short Scrape Gaps
+# Validation Summary: Calculate Server Downtime Without Misreading Short Scrape Gaps
 
 ## Status
 

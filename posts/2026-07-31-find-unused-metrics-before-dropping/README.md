@@ -1,4 +1,4 @@
-# How to Find Unused Infrastructure Metrics Before Adding `metric_relabel_configs` Drop Rules
+# Find Unused Metrics Before Adding `metric_relabel_configs` Drop Rules
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

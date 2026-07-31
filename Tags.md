@@ -541,6 +541,7 @@
 - Agent Engine
 - Agent Execution
 - Agent Forwarding
+- Agent Mode
 - Agent Monitoring
 - Agent Nodes
 - Agent Pools
@@ -1817,6 +1818,7 @@
 - Backing Image
 - Backint
 - Backlog
+- Backlog Management
 - Backoff
 - Backplane
 - Backpressure
@@ -2667,6 +2669,7 @@
 - Cats Effect
 - Cattle Agent
 - Cattle-system
+- Causal Analysis
 - Causal Consistency
 - Causal Inference
 - Causality
@@ -3987,6 +3990,7 @@
 - Contrib
 - Contrib-test-utils
 - Contributing
+- Contributing Factors
 - Contribution
 - Contributor Insights
 - Control Flow
@@ -5439,6 +5443,7 @@
 - Disease Surveillance
 - Disk
 - Disk Alarms
+- Disk Alerts
 - Disk Cleanup
 - Disk Clone
 - Disk Configuration
@@ -6997,6 +7002,7 @@
 - Fish
 - FISMA
 - Fission
+- Five Whys
 - Fivetran
 - Fix
 - Fixed Address
@@ -8209,6 +8215,7 @@
 - Host Exclusion
 - Host Firewall
 - Host Header
+- Host Identity
 - Host Key Checking
 - Host Management
 - Host Metrics
@@ -8393,6 +8400,7 @@
 - Hugging Face
 - Huginn
 - Human Approval
+- Human Factors
 - Human Resource
 - Human-in-the-Loop
 - Human-Readable
@@ -8830,6 +8838,7 @@
 - Infrastructure Import
 - Infrastructure Maintenance
 - Infrastructure Management
+- Infrastructure Metrics
 - Infrastructure Monitoring
 - Infrastructure Organization
 - Infrastructure Patterns
@@ -8888,6 +8897,7 @@
 - InnoDB ReplicaSet
 - innodb_recursive_triggers
 - Innovation
+- Inodes
 - Inotify
 - Inotifywait
 - INPLACE Algorithm
@@ -10185,6 +10195,7 @@
 - LMTP
 - LNP
 - Load
+- Load Average
 - Load Balancer
 - Load Balancer Controller
 - Load Balancing
@@ -10923,6 +10934,8 @@
 - Metric Alarms
 - Metric Alerts
 - Metric Explorer
+- Metric Relabeling
+- Metric Retention
 - Metric Scraping
 - Metric Streams
 - Metric Views
@@ -11055,6 +11068,7 @@
 - Misp
 - Missing Data
 - Missing Field
+- Missing Metrics
 - Missing Spans
 - Mistakes
 - Mistral
@@ -11253,6 +11267,7 @@
 - Monitor Pattern
 - Monitoring
 - Monitoring API
+- Monitoring Architecture
 - Monitoring Dashboard
 - Monitoring Reports
 - Mono
@@ -12789,6 +12804,7 @@
 - Pacman
 - PACS
 - Pact
+- Page Cache
 - Page Fault
 - Page Load
 - Page Object Pattern
@@ -13593,6 +13609,7 @@
 - Postman
 - Postmark
 - Postmortem
+- Postmortem Actions
 - PostSync Hooks
 - Posture Management
 - Pow Function
@@ -14606,6 +14623,7 @@
 - Recurrence
 - Recurring
 - Recurring Event
+- Recurring Incidents
 - Recurring Tasks
 - Recursion
 - RecursionError
@@ -15803,6 +15821,7 @@
 - Scout Suite
 - SCP
 - SCRAM
+- Scrape Interval
 - Scrape Targets
 - Scraper
 - Scraping
@@ -17826,6 +17845,7 @@
 - Target Allocator
 - Target Groups
 - Target Link-Layer
+- Target Monitoring
 - Target Namespace
 - Target Servers
 - Target Tracking
@@ -18121,6 +18141,7 @@
 - Text Summarization
 - Text-to-Speech
 - Text/template
+- Textfile Collector
 - TextFSM
 - Textract
 - TF_ENCRYPTION

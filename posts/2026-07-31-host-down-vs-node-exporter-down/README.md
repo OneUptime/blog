@@ -1,4 +1,4 @@
-# Host Down or Node Exporter Down? How to Distinguish Machine Failure from a Broken Scrape
+# Host Down or Exporter Down? Distinguishing Machine and Scrape Failures
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

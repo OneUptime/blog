@@ -1,4 +1,4 @@
-# Validation Summary: How to Calculate Interface Bandwidth from Byte Counters Without Spikes After Restarts
+# Validation Summary: Calculate Interface Bandwidth Without Spikes After Restarts
 
 ## Status
 

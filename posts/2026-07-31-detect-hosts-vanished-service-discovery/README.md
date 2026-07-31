@@ -1,4 +1,4 @@
-# How to Detect Hosts That Vanished from Service Discovery Before Their `up` Series Goes Stale
+# Detect Hosts Missing from Service Discovery Before `up` Goes Stale
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

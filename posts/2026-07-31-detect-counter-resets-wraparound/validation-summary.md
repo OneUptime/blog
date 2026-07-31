@@ -1,4 +1,4 @@
-# Validation Summary: How to Detect Counter Resets and Wraparound in High-Speed Network Infrastructure Metrics
+# Validation Summary: Detect Counter Resets and Wraparound in Network Metrics
 
 ## Status
 validated

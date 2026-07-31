@@ -1,4 +1,4 @@
-# Validation Summary: How to Calculate Per-Host CPU Usage from `node_cpu_seconds_total` Without Misleading Averages
+# Validation Summary: Calculate Per-Host CPU from `node_cpu_seconds_total` Correctly
 
 ## Status
 

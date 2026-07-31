@@ -1,8 +1,8 @@
-# Which Network Interface Should You Graph When Bonds, Bridges, Veths, and VLANs Duplicate Traffic?
+# Which Network Interface Should You Graph Without Duplicating Traffic?
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Linux, Prometheus, Node Exporter, Network Monitoring, Bonding, Bridges, VLAN
+Tags: Linux, Prometheus, Node Exporter, Network Monitoring, Bonding, Bridge, VLAN
 
 Description: Choose the Linux interface layer that matches your monitoring question and avoid double counting traffic across stacked physical and virtual devices.
 
