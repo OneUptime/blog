@@ -99,7 +99,7 @@ If coverage is below the approved threshold, mark the downtime result incomplete
 
 ## Materialize a Regular State
 
-For fleet reporting, define one reachability recording rule at a fixed interval:
+For fleet reporting, maintain an inventory metric containing the expected number of selected probe series for each host, then define a reachability recording rule at a fixed interval:
 
 ```yaml
 groups:
@@ -107,23 +107,34 @@ groups:
     interval: 30s
     rules:
       - record: host:reachable
-        expr: max by (host) (
-          probe_success{job=~"host-icmp|host-tcp"}
-        )
+        expr: |
+          max by (host) (
+            probe_success{job=~"host-icmp|host-tcp"}
+          )
+          and on (host)
+          (
+            count by (host) (
+              probe_success{job=~"host-icmp|host-tcp"}
+            )
+            == on (host)
+            expected_host_probe_count{probe_set="host-reachability"}
+          )
 ```
 
-This definition says a host is reachable when at least one selected probe succeeds. If your contract requires every probe, use `min` only after ensuring that the expected probe set is complete. Otherwise a missing probe vanishes from the aggregation and falsely improves the state.
+This definition says a host is reachable when at least one selected probe succeeds, but produces no state when the number of observed probes differs from inventory. If your contract requires every probe, replace `max` with `min` but keep the completeness guard. PromQL aggregations operate only on present series: without the guard, a missing probe can make either aggregate misleading.
 
-Estimate failed intervals over 24 hours:
+Estimate failed intervals over 24 hours from the stored recording-rule samples:
 
 ```promql
-sum_over_time(
-  (host:reachable == bool 0)[24h:30s]
+(
+  count_over_time(host:reachable[24h])
+  -
+  sum_over_time(host:reachable[24h])
 )
 * 30
 ```
 
-The subquery evaluates the Boolean state every 30 seconds. It still cannot create state during periods when the series is absent, and instant selectors can use recent samples according to Prometheus lookback and staleness rules. Report the number of materialized state samples as coverage:
+For a 0/1 gauge, subtracting the sum from the sample count makes each stored zero contribute one failed interval. Unlike a subquery over an instant selector, this does not repeat the last non-stale value across missing rule evaluations through Prometheus lookback. Report the number of materialized state samples as coverage:
 
 ```promql
 count_over_time(
@@ -158,7 +169,7 @@ count_over_time(
 * 30
 ```
 
-The multiplier must match the alert rule group's actual evaluation interval (30 seconds in this example). This measures time the alert was observed firing, including the chosen qualification delay. It is not exact incident duration, and Prometheus outages reduce coverage.
+The multiplier must match the alert rule group's actual evaluation interval (30 seconds in this example). This measures time the alert was observed firing after the chosen qualification delay; it does not count the pending period. It is not exact incident duration, and Prometheus outages reduce coverage.
 
 For audit-grade incident duration, persist state transitions or Alertmanager/incident events in an event system with explicit timestamps and reconciliation. Sampled metrics only locate each transition between the last successful and first failed observation, so each edge has uncertainty on the order of the observation interval.
 
@@ -220,7 +231,7 @@ Publish:
 
 - [Prometheus automatically generated `up` series](https://prometheus.io/docs/concepts/jobs_instances/#automatically-generated-labels-and-time-series)
 - [Prometheus `avg_over_time()`, `sum_over_time()`, and `count_over_time()`](https://prometheus.io/docs/prometheus/latest/querying/functions/#aggregation_over_time)
-- [Prometheus subquery syntax](https://prometheus.io/docs/prometheus/latest/querying/basics/#subquery)
+- [Prometheus range vector selectors](https://prometheus.io/docs/prometheus/latest/querying/basics/#range-vector-selectors)
 - [Prometheus staleness and lookback behavior](https://prometheus.io/docs/prometheus/latest/querying/basics/#staleness)
 - [Prometheus alerting rule `for` behavior and `ALERTS` series](https://prometheus.io/docs/prometheus/latest/configuration/alerting_rules/)
 - [Prometheus Blackbox Exporter](https://github.com/prometheus/blackbox_exporter)
