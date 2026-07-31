@@ -89,7 +89,7 @@ sum(
 )
 ```
 
-This is the total recent append rate. The source counter has a `type` label, so the `sum` combines float and histogram sample types for the storage estimate. Observe normal, peak, deployment, and service-discovery churn periods rather than using one quiet snapshot.
+This is the total recent append rate. The source counter has a `type` label, so the `sum` combines float and native-histogram appends. A native histogram is one structured sample containing a count, sum, and buckets, so do not assume that it has the same bytes-per-sample cost as a float sample. Inspect the rates by `type` and measure actual disk use if native histograms contribute materially. Observe normal, peak, deployment, and service-discovery churn periods rather than using one quiet snapshot.
 
 Also track:
 
