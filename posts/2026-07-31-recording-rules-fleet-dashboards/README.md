@@ -66,13 +66,15 @@ sum by (cluster) (
 )
 ```
 
-Observed logical CPUs:
+Logical CPUs contributing to the idle-rate calculation:
 
 ```promql
 count by (cluster) (
-  node_cpu_seconds_total{mode="idle"}
+  rate(node_cpu_seconds_total{mode="idle"}[5m])
 )
 ```
+
+Count the same rate vector used by the numerator so newly appearing or stale CPU series cannot affect only one side of the ratio.
 
 Fleet utilization:
 
@@ -82,7 +84,7 @@ Fleet utilization:
 (
   cluster:node_cpu_idle_seconds:rate5m
   /
-  cluster:node_cpu_logical:count
+  cluster:node_cpu_logical:count_rate5m
 )
 ```
 
@@ -114,10 +116,10 @@ groups:
             rate(node_cpu_seconds_total{mode="idle"}[5m])
           )
 
-      - record: cluster:node_cpu_logical:count
+      - record: cluster:node_cpu_logical:count_rate5m
         expr: |
           count by (cluster) (
-            node_cpu_seconds_total{mode="idle"}
+            rate(node_cpu_seconds_total{mode="idle"}[5m])
           )
 
       - record: cluster:node_cpu_utilization:ratio
@@ -127,7 +129,7 @@ groups:
           (
             cluster:node_cpu_idle_seconds:rate5m
             /
-            cluster:node_cpu_logical:count
+            cluster:node_cpu_logical:count_rate5m
           )
 
       - record: cluster:node_memory_available_bytes:sum
@@ -242,7 +244,7 @@ The rule-group interval controls result resolution and evaluation cost. It need 
 
 For 30-second node scrapes, a one-minute fleet rollup is often a reasonable starting point. Verify it against dashboard refresh and alert needs.
 
-Prometheus supports `query_offset` for rule groups when source samples arrive late, including through remote write. Use it only after measuring ingestion delay; an offset deliberately makes the rule evaluate older data.
+Prometheus supports `query_offset` for rule groups when source samples arrive late, including when Prometheus is acting as a remote-write receiver. Use it only after measuring ingestion delay; an offset deliberately makes the rule evaluate older data.
 
 Monitor:
 
