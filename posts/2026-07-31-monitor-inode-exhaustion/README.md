@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Linux, Prometheus, Node Exporter, Inodes, Filesystems, Alerting
 
-Description: Detect inode exhaustion per filesystem with ratio, absolute headroom, and creation-rate alerts before file creation fails despite free bytes.
+Description: Detect inode exhaustion per filesystem with ratio, absolute headroom, and depletion forecasts before file creation fails despite free bytes.
 
 ---
 
@@ -83,7 +83,7 @@ and
 )
 ```
 
-The two vectors match by their filesystem labels.
+The two vectors match by their complete non-name label sets, including the filesystem labels.
 
 ## Combine Ratio and Absolute Inode Headroom
 
@@ -213,7 +213,7 @@ Other useful questions:
 - Is file creation continuing while cleanup has stopped?
 - Are filenames distributed across directories as the application expects?
 - Did a retention configuration change?
-- Are deleted files still open? An open-but-unlinked file keeps its inode and data blocks allocated until the last open file description is closed, even though its directory entry is gone.
+- Are deleted files still open? An open-but-unlinked file keeps its inode and data blocks allocated until the last file descriptor referring to it is closed, even though its directory entry is gone.
 - Is the apparent mount an overlay backed by a different host filesystem?
 
 Do not delete files based only on age or a broad wildcard during an incident. Identify the owning service, retention contract, and recovery implications first.
