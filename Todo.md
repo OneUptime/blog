@@ -2,30 +2,29 @@
 
 ## Infrastructure Metrics
 
-1. Why Containerized Node Exporter Reports Container Metrics Instead of Host Metrics
-2. Fixing Missing Filesystem Metrics and `node_filesystem_device_error` in Containerized Node Exporter
-3. How to Exclude Pseudo-Filesystems, Loop Devices, and Ephemeral Mounts from Disk Alerts
-4. Why Host and Container CPU Metrics Disagree—and How to Compare Them Correctly
-5. How to Alert When an Expected Host Metric Disappears Without Treating No Data as Zero
-6. Host Down or Node Exporter Down? How to Distinguish Machine Failure from a Broken Scrape
-7. How to Calculate Server Downtime Over a Time Window Without Misreading Short Scrape Gaps
-8. How to Detect Hosts That Vanished from Service Discovery Before Their `up` Series Goes Stale
-9. How to Secure Node Exporter Metrics Across Public or Segmented Networks
-10. One Prometheus or One per Network? How to Collect Infrastructure Metrics Across Isolated Environments
-11. Can Node Exporter Use Different Scrape Intervals for CPU, Disk, and Network Metrics?
-12. How to Monitor Infrastructure Jobs That Produce Metrics Only Once per Day
-13. Why Does a Prometheus Instant Query Return No Data for Slowly Scraped Infrastructure Metrics?
-14. How to Count Live Kubernetes Nodes and Alert on Unexpected Fleet-Size Changes
-15. How to Aggregate CPU, Memory, and Disk Metrics Across a Cluster Without Averaging Percentages Incorrectly
-16. How to Calculate Interface Bandwidth from Byte Counters Without Spikes After Restarts
-17. Which Network Interface Should You Graph When Bonds, Bridges, Veths, and VLANs Duplicate Traffic?
-18. How to Detect Counter Resets and Wraparound in High-Speed Network Infrastructure Metrics
-19. How to Measure Infrastructure Metric Cardinality Before It Overloads Prometheus
-20. How to Find Unused Infrastructure Metrics Before Adding `metric_relabel_configs` Drop Rules
-21. How to Set Per-Job Scrape Intervals Without Making Alerts Blind to Stale Series
-22. How to Monitor the Monitoring Server So Prometheus Failure Cannot Silence Host-Down Alerts
-23. How to Build Recording Rules for Fleet-Wide Infrastructure Dashboards Without Expensive Live Queries
-24. How to Preserve Host Identity Across Autoscaling, Reboots, and Changing IP Addresses
+1. Fixing Missing Filesystem Metrics and `node_filesystem_device_error` in Containerized Node Exporter
+2. How to Exclude Pseudo-Filesystems, Loop Devices, and Ephemeral Mounts from Disk Alerts
+3. Why Host and Container CPU Metrics Disagree—and How to Compare Them Correctly
+4. How to Alert When an Expected Host Metric Disappears Without Treating No Data as Zero
+5. Host Down or Node Exporter Down? How to Distinguish Machine Failure from a Broken Scrape
+6. How to Calculate Server Downtime Over a Time Window Without Misreading Short Scrape Gaps
+7. How to Detect Hosts That Vanished from Service Discovery Before Their `up` Series Goes Stale
+8. How to Secure Node Exporter Metrics Across Public or Segmented Networks
+9. One Prometheus or One per Network? How to Collect Infrastructure Metrics Across Isolated Environments
+10. Can Node Exporter Use Different Scrape Intervals for CPU, Disk, and Network Metrics?
+11. How to Monitor Infrastructure Jobs That Produce Metrics Only Once per Day
+12. Why Does a Prometheus Instant Query Return No Data for Slowly Scraped Infrastructure Metrics?
+13. How to Count Live Kubernetes Nodes and Alert on Unexpected Fleet-Size Changes
+14. How to Aggregate CPU, Memory, and Disk Metrics Across a Cluster Without Averaging Percentages Incorrectly
+15. How to Calculate Interface Bandwidth from Byte Counters Without Spikes After Restarts
+16. Which Network Interface Should You Graph When Bonds, Bridges, Veths, and VLANs Duplicate Traffic?
+17. How to Detect Counter Resets and Wraparound in High-Speed Network Infrastructure Metrics
+18. How to Measure Infrastructure Metric Cardinality Before It Overloads Prometheus
+19. How to Find Unused Infrastructure Metrics Before Adding `metric_relabel_configs` Drop Rules
+20. How to Set Per-Job Scrape Intervals Without Making Alerts Blind to Stale Series
+21. How to Monitor the Monitoring Server So Prometheus Failure Cannot Silence Host-Down Alerts
+22. How to Build Recording Rules for Fleet-Wide Infrastructure Dashboards Without Expensive Live Queries
+23. How to Preserve Host Identity Across Autoscaling, Reboots, and Changing IP Addresses
 
 ## kOps
 
