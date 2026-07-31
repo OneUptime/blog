@@ -2,18 +2,17 @@
 
 ## Infrastructure Metrics
 
-1. Why Does a Prometheus Instant Query Return No Data for Slowly Scraped Infrastructure Metrics?
-2. How to Count Live Kubernetes Nodes and Alert on Unexpected Fleet-Size Changes
-3. How to Aggregate CPU, Memory, and Disk Metrics Across a Cluster Without Averaging Percentages Incorrectly
-4. How to Calculate Interface Bandwidth from Byte Counters Without Spikes After Restarts
-5. Which Network Interface Should You Graph When Bonds, Bridges, Veths, and VLANs Duplicate Traffic?
-6. How to Detect Counter Resets and Wraparound in High-Speed Network Infrastructure Metrics
-7. How to Measure Infrastructure Metric Cardinality Before It Overloads Prometheus
-8. How to Find Unused Infrastructure Metrics Before Adding `metric_relabel_configs` Drop Rules
-9. How to Set Per-Job Scrape Intervals Without Making Alerts Blind to Stale Series
-10. How to Monitor the Monitoring Server So Prometheus Failure Cannot Silence Host-Down Alerts
-11. How to Build Recording Rules for Fleet-Wide Infrastructure Dashboards Without Expensive Live Queries
-12. How to Preserve Host Identity Across Autoscaling, Reboots, and Changing IP Addresses
+1. How to Count Live Kubernetes Nodes and Alert on Unexpected Fleet-Size Changes
+2. How to Aggregate CPU, Memory, and Disk Metrics Across a Cluster Without Averaging Percentages Incorrectly
+3. How to Calculate Interface Bandwidth from Byte Counters Without Spikes After Restarts
+4. Which Network Interface Should You Graph When Bonds, Bridges, Veths, and VLANs Duplicate Traffic?
+5. How to Detect Counter Resets and Wraparound in High-Speed Network Infrastructure Metrics
+6. How to Measure Infrastructure Metric Cardinality Before It Overloads Prometheus
+7. How to Find Unused Infrastructure Metrics Before Adding `metric_relabel_configs` Drop Rules
+8. How to Set Per-Job Scrape Intervals Without Making Alerts Blind to Stale Series
+9. How to Monitor the Monitoring Server So Prometheus Failure Cannot Silence Host-Down Alerts
+10. How to Build Recording Rules for Fleet-Wide Infrastructure Dashboards Without Expensive Live Queries
+11. How to Preserve Host Identity Across Autoscaling, Reboots, and Changing IP Addresses
 
 ## kOps
 
