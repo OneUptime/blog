@@ -48,7 +48,7 @@ avg by (cluster, instance) (
 )
 ```
 
-The `avg` is across logical CPUs for one host. For a capacity-weighted cluster ratio, sum idle CPU-seconds per second and divide by the number of logical CPU series:
+The `avg` is across logical CPUs for one host. For a capacity-weighted cluster ratio, sum idle CPU-seconds per second and divide by the number of logical CPU series represented in the same rate result:
 
 ```promql
 1
@@ -59,7 +59,7 @@ The `avg` is across logical CPUs for one host. For a capacity-weighted cluster r
   )
   /
   count by (cluster) (
-    node_cpu_seconds_total{mode="idle"}
+    rate(node_cpu_seconds_total{mode="idle"}[5m])
   )
 )
 ```
@@ -68,10 +68,10 @@ Why this works:
 
 - each idle CPU contributes between roughly 0 and 1 CPU-second per second;
 - summing gives idle logical cores;
-- counting the idle-mode series gives observed logical-core capacity;
+- counting the same rate result gives the observed logical-core capacity represented in the numerator;
 - subtracting the idle ratio from 1 gives busy capacity.
 
-Do not sum every non-idle mode without understanding exporter semantics. On Linux, guest time is accounted for within user or nice time by the kernel, so naïvely adding all non-idle modes can double count virtualization-related modes. The idle complement avoids that trap for a general utilization view.
+Do not combine guest CPU counters with every non-idle mode without understanding exporter semantics. On Linux, guest time is accounted for within user or nice time by the kernel. node_exporter exposes that guest time separately as `node_cpu_guest_seconds_total`, so adding it to the non-idle `node_cpu_seconds_total` rates double counts virtualization-related time. The idle complement avoids that trap for a general utilization view.
 
 ### Example
 
@@ -170,10 +170,10 @@ Cluster-wide free disk is a planning metric. Low-space pages should normally ret
 
 ## Keep Fleet Coverage Visible
 
-All three ratios become optimistic if a heavily loaded or failed host disappears from the query. Put coverage beside the aggregate:
+All three ratios can become misleading, and may look optimistic, if a heavily loaded or failed host disappears from the query. Put coverage beside the aggregate:
 
 ```promql
-count by (cluster) (up{job="node"} == 1)
+sum by (cluster) (up{job="node"})
 ```
 
 ```promql
@@ -220,7 +220,7 @@ groups:
       - record: cluster:node_cpu_logical:count
         expr: |
           count by (cluster) (
-            node_cpu_seconds_total{mode="idle"}
+            rate(node_cpu_seconds_total{mode="idle"}[5m])
           )
 
       - record: cluster:node_cpu_utilization:ratio
