@@ -21,7 +21,7 @@ Use the interface whose semantic boundary matches the question:
 | How much service traffic enters this host? | service-facing logical interface, often a bond or VLAN | physical-member errors and link state |
 | Is a bonded link balanced? | each physical bond member | bond aggregate |
 | How much traffic belongs to VLAN 120? | VLAN subinterface | lower physical path |
-| How much traffic crosses a Linux bridge? | bridge or selected bridge ports, depending on direction | member-port topology |
+| How much traffic is forwarded across a Linux bridge? | selected bridge ports for the relevant direction | bridge device for traffic delivered to or originated by the host |
 | Which container endpoint is noisy? | selected veth/workload metrics | host uplink |
 | Is the physical port saturated or faulty? | physical NIC and driver statistics | logical interface throughput |
 
@@ -104,7 +104,7 @@ Use:
 
 - `bond0.120` for traffic attributed to VLAN 120;
 - `bond0` for combined traffic on the logical uplink;
-- physical members for wire-level distribution and errors.
+- physical members for physical-link distribution and errors.
 
 Summing `bond0.120`, other VLAN interfaces, `bond0`, and bond members creates several copies of the same traffic.
 
@@ -112,7 +112,7 @@ Summing `bond0.120`, other VLAN interfaces, `bond0`, and bond members creates se
 
 A Linux bridge forwards frames among member ports. Depending on the question, monitor:
 
-- the bridge device for host-terminated traffic at that logical interface;
+- the bridge device for traffic delivered to or originated by the host at that logical interface;
 - bridge ports for ingress and egress on specific attached segments;
 - physical uplinks for actual link capacity and hardware errors;
 - workload endpoints for per-workload attribution.
@@ -123,7 +123,7 @@ The Linux bridge documentation also supports per-VLAN statistics when configured
 
 ## Veth Devices: High Churn and Workload Scope
 
-A veth pair connects two network namespaces. Container platforms can create and delete many pairs, often with generated host-side names.
+A veth pair consists of two interconnected virtual Ethernet devices, often placed in different network namespaces. Container platforms can create and delete many pairs, often with generated host-side names.
 
 Fleet host dashboards usually exclude them:
 
@@ -146,10 +146,10 @@ Loopback traffic is real host activity, but it does not consume an external NIC.
 Treat these according to purpose:
 
 - `tun`/`tap` and WireGuard devices may be the right boundary for tunnel traffic;
-- a tunnel's lower physical interface also carries the encrypted bytes;
+- a tunnel's underlay interface also carries the encapsulated bytes and tunnel overhead, with encrypted tunnels carrying ciphertext there;
 - `docker0` and CNI bridges represent container networking layers;
 - dummy devices may carry routes without physical traffic;
-- virtual functions and representors can expose hardware-switch views.
+- SR-IOV virtual functions expose their assigned traffic, while representors can expose hardware-switch port views.
 
 Create an inclusion policy rather than an ever-growing exclusion regex.
 
