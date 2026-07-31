@@ -91,7 +91,7 @@ test -d /host
 test -e /host/data
 ```
 
-On current Linux Node Exporter, the collector attempts `/proc/1/mountinfo` and falls back to the exporter's own mount information when that path is unavailable. The host PID namespace helps make PID 1's host mount view available. The host root bind gives `statfs` a path to inspect. Both views must refer to the same mount tree.
+On current Linux Node Exporter, the collector attempts `/proc/1/mountinfo` and falls back to the exporter's own mount information only when that file is missing. The host PID namespace helps make PID 1's host mount view available. The host root bind gives `statfs` a path to inspect. Both views must refer to the same mount tree.
 
 If the host was mounted at `/host/root`, the argument must be:
 
@@ -154,7 +154,7 @@ params:
     - meminfo
 ```
 
-does not request the filesystem collector at all. Metric relabeling can remove `node_filesystem_*` after collection as well, so compare the raw exporter response with Prometheus's `scrape_samples_scraped` and stored series.
+does not request the filesystem collector at all. Metric relabeling can remove `node_filesystem_*` after collection as well, so compare the raw exporter response with Prometheus's `scrape_samples_scraped`, `scrape_samples_post_metric_relabeling`, and stored series.
 
 ## Build Alerts for Both Errors and Absence
 
@@ -208,7 +208,7 @@ Keep the inventory's lifecycle independent from Node Exporter. Deriving expectat
 4. Verify that the host-root bind path equals `--path.rootfs`.
 5. Verify host-to-container mount propagation with a mount created after startup.
 6. Review effective include/exclude flags, request parameters, and metric relabeling.
-7. Check exporter logs for the exact `statfs` error and path.
+7. Inspect the `device_error` label and debug-level exporter logs for the exact `statfs` error and path.
 8. Fix path mapping, permissions, or the underlying mount; do not suppress a real error merely to make an alert green.
 9. Add an explicit expectation for every operationally critical mount.
 
