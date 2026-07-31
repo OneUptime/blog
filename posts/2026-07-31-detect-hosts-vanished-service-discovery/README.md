@@ -47,68 +47,69 @@ The expectation must survive the failure being detected. Exporting it from the s
 An inventory exporter can expose:
 
 ```text
-expected_scrape_target{environment="prod",scrape_job="node",host="db-01",instance="10.20.0.17:9100"} 1
-expected_scrape_target{environment="prod",scrape_job="node",host="db-02",instance="10.20.0.18:9100"} 1
+expected_scrape_target{environment="prod",scrape_job="node",host="db-01",target_instance="10.20.0.17:9100"} 1
+expected_scrape_target{environment="prod",scrape_job="node",host="db-02",target_instance="10.20.0.18:9100"} 1
 ```
 
-Use stable identity labels. An `instance` address can change, so keep a durable `host` or node UID too. Include an environment or Prometheus ownership label where addresses can collide.
+Use `target_instance` rather than `instance` for the desired endpoint. Prometheus adds an `instance` label for the inventory exporter itself; with the default `honor_labels: false`, a conflicting label exposed by the exporter is renamed to `exported_instance`.
+
+An address can change, so join on a durable `host` or node UID when possible. Include an environment or Prometheus ownership label where identities can collide. Every label named in `on (...)` must have the same value on both metrics. Make sure target relabeling adds `environment` and `host` to the node target's `up` series; a label that exists only on the inventory metric will not match.
 
 The basic comparison is:
 
 ```promql
 expected_scrape_target{scrape_job="node"} == 1
-unless on (environment, instance)
+unless on (environment, host)
 up{job="node"}
 ```
 
-This fires after the old `up` series is no longer returned. It is sufficient for many fleets, but a stale or lookback-visible last sample can delay the comparison.
+This fires after the old `up` series is no longer returned. It is sufficient for many fleets, but until Prometheus writes a stale marker, a lookback-visible last sample can delay the comparison.
 
 ## Detect the Lack of Fresh Scrapes
 
 `timestamp(up)` returns the timestamp of the last selected `up` sample. Active targets get a fresh `up` sample on every attempted scrape, even when the value is zero. A removed target stops getting fresh timestamps.
 
-For a 30-second scrape interval:
+When a scrape loop stops, current Prometheus versions wait just over two scrape intervals before writing end-of-run stale markers. For a 30-second scrape interval, an aggressive 45-second freshness threshold can make the expression active before that marker is written:
 
 ```promql
 expected_scrape_target{scrape_job="node"} == 1
-unless on (environment, instance)
+unless on (environment, host)
 (
-  time() - timestamp(up{job="node"}) < 90
+  time() - timestamp(up{job="node"}) < 45
 )
 ```
 
-The right-hand side contains targets with an `up` sample newer than 90 seconds. The `unless` returns expected targets without that fresh evidence. This can identify an aging last sample before a default lookback would otherwise stop returning it, and it works once a stale marker removes the series too.
+The right-hand side contains targets with an `up` sample newer than 45 seconds. The `unless` returns expected targets without that fresh evidence. This can identify an aging last sample before the delayed stale marker under normal timing, and it works once the marker removes the series too.
 
-Choose the freshness threshold from:
+When choosing the freshness threshold, account for:
 
 ```text
 scrape interval
-+ scrape scheduling jitter
-+ service-discovery refresh behavior
-+ rule evaluation interval
++ scrape duration, timeout, and scheduling delay
++ rule evaluation delay
 ```
 
-Keep it above at least two intended scrape opportunities unless a faster detection objective and false-positive budget justify otherwise.
+To detect before the current end-of-run stale-marker delay, the threshold plus rule evaluation delay must fit within slightly more than two scrape intervals. That leaves a narrow margin and may create false positives during slow scrapes. If avoiding false positives requires waiting for at least two missed scrape opportunities, accept that the stale marker may remove the series first; the expression remains valid. Service-discovery refresh adds separate latency before Prometheus stops the scrape loop.
 
 ## Add a Rule Without Confusing It With Target Failure
 
 ```yaml
 groups:
   - name: discovery-integrity
+    interval: 10s
     rules:
       - alert: ExpectedNodeTargetMissingFromScrapePool
         expr: |
           expected_scrape_target{scrape_job="node"} == 1
-          unless on (environment, instance)
+          unless on (environment, host)
           (
-            time() - timestamp(up{job="node"}) < 90
+            time() - timestamp(up{job="node"}) < 45
           )
-        for: 2m
         labels:
           severity: warning
         annotations:
           summary: "Expected node target {{ $labels.host }} is not being scraped"
-          description: "{{ $labels.instance }} has no fresh up sample in the node scrape pool."
+          description: "{{ $labels.target_instance }} has no fresh up sample in the node scrape pool."
 
       - alert: NodeTargetScrapeFailed
         expr: up{job="node"} == 0
@@ -119,7 +120,7 @@ groups:
           summary: "Node target {{ $labels.instance }} is active but failing"
 ```
 
-The first alert preserves labels from the inventory metric. The second preserves labels from the active target. Route them to different runbook branches.
+The first alert preserves labels from the inventory metric. Its 10-second group interval and lack of a `for` clause allow it to become firing on the first evaluation that finds an old timestamp. Adding a `for` delay can move notification past the stale-marker window. The second alert preserves labels from the active target. Route them to different runbook branches.
 
 If the inventory metric itself is missing, neither comparison can work. Alert on the inventory exporter, its scrape, and an expected minimum inventory freshness or revision.
 
@@ -135,13 +136,13 @@ GET /api/v1/targets?state=dropped
 
 The response includes:
 
-- active and dropped targets;
-- labels after relabeling;
-- original discovered labels;
-- scrape pool;
-- last scrape and error;
-- health; and
-- effective scrape interval and timeout.
+- active and dropped target arrays;
+- original discovered labels for both kinds of target;
+- labels after relabeling for active targets;
+- the scrape pool; and
+- for active targets, the last scrape and error, health, and effective scrape interval and timeout.
+
+Dropped target entries do not have active-scrape health or timing fields.
 
 An external reconciler can compare the authoritative inventory with `activeTargets` immediately after a discovery refresh. This is the most direct way to answer “is this identity currently in the scrape pool?” PromQL observes the effects through `up` samples and therefore has interval-related latency.
 
@@ -196,7 +197,7 @@ In a staging scrape pool:
 2. restore it and remove the target from discovery; the missing-from-pool rule should fire;
 3. change a relabel input so the target is dropped; inspect both active and dropped API results;
 4. make the inventory exporter unavailable; the inventory-health alert should fire;
-5. retire a host through the approved state transition; no unexpected-target alert should fire; and
+5. retire a host through the approved state transition; no missing-from-pool alert should fire; and
 6. measure total latency from source change through discovery refresh, scrape freshness threshold, rule interval, and `for`.
 
 The target list itself is production state. Monitor its membership, not just the endpoints that remain in it.
