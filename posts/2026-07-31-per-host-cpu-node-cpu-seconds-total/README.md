@@ -25,7 +25,7 @@ The formula is short. Understanding its labels, counter semantics, and definitio
 
 ## Understand the Metric Shape
 
-On Linux, Node Exporter reads per-CPU accounting from `/proc/stat`. A target normally exposes one `node_cpu_seconds_total` counter for each:
+On Linux, Node Exporter reads per-CPU accounting from `/proc/stat`. After Prometheus scrapes a target, a `node_cpu_seconds_total` series normally has these dimensions:
 
 ```text
 job
@@ -33,6 +33,8 @@ instance
 cpu
 mode
 ```
+
+Node Exporter supplies `cpu` and `mode`; Prometheus normally attaches `job` and `instance` when it scrapes the target.
 
 Typical modes include:
 
@@ -113,7 +115,7 @@ The host’s non-idle fraction is:
 
 Multiplying by 100 gives 25%.
 
-Hosts with different CPU counts remain comparable as a share of each host’s observed logical-CPU time. The query does not give total CPU cores consumed; a 25% result means approximately one fully busy CPU on a four-CPU host and eight on a 32-CPU host.
+Hosts with different CPU counts remain comparable as a share of each host’s observed logical-CPU time. The query reports a normalized share, not a total. A 25% result corresponds to approximately one core-equivalent of non-idle accounting on a four-CPU host and eight on a 32-CPU host.
 
 ## Preserve Every Host-Identity Label You Need
 
@@ -195,7 +197,7 @@ This collapses every CPU on every selected target into one fleet-wide value. A l
 
 This returns CPU-seconds per second multiplied by 100 and scales with the number of logical CPUs. It can legitimately exceed 100, so it is not a host percentage. It also mixes `iowait` and steal into the total.
 
-If you want cores consumed, omit the percentage label and name the unit explicitly.
+If you want the non-idle CPU-seconds-per-second total, omit the multiplication by 100 and name the unit explicitly. Choose a documented set of modes if you intend to measure execution rather than the full non-idle complement.
 
 ### Aggregating before `rate()`
 
@@ -229,7 +231,7 @@ For a frequently used query:
 groups:
   - name: node-cpu
     rules:
-      - record: instance:node_cpu_non_idle:ratio_rate5m
+      - record: job_instance:node_cpu_non_idle:ratio_rate5m
         expr: |
           1 -
           avg by (job, instance) (
@@ -240,10 +242,10 @@ groups:
 The recording rule stores a 0–1 ratio. Multiply by 100 only for a percentage display:
 
 ```promql
-100 * instance:node_cpu_non_idle:ratio_rate5m
+100 * job_instance:node_cpu_non_idle:ratio_rate5m
 ```
 
-If cluster or tenant labels are required for uniqueness, preserve them in both the expression and recording-rule design.
+If cluster or tenant labels are required for uniqueness, preserve them in the expression and reflect them in the aggregation level of the recording-rule name.
 
 ## Keep a Per-CPU View
 
