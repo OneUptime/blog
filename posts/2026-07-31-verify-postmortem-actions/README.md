@@ -121,13 +121,13 @@ Do not recreate customer harm merely to close a ticket. Increase realism only wh
 For a new alert, check:
 
 1. instrumentation emits the intended metric;
-2. labels aggregate at the correct service and region boundary;
-3. the rule becomes pending at the expected time;
+2. the rule expression aggregates at the correct service and region boundary and preserves the labels needed for routing;
+3. if the rule has a `for` clause, it enters the pending state at the expected time;
 4. it fires within the detection target;
 5. Alertmanager routes to the current on-call destination;
 6. the notification contains impact, scope, dashboard, and runbook;
 7. the responder can take a safe first action;
-8. the alert resolves after recovery.
+8. the alert becomes inactive after recovery and any configured `keep_firing_for` duration.
 
 For a rollback action, verify:
 
@@ -170,7 +170,7 @@ Attach to the tracked action:
 - reviewer acceptance;
 - residual risk.
 
-Keep evidence durable. A dashboard that opens a moving time window will not help the team investigating a repeat incident six months later.
+Keep evidence durable. A dashboard link that opens a moving time window does not preserve the incident view for a repeat investigation six months later.
 
 ## Do Not Use “No Repeat” as the Only Proof
 
@@ -243,7 +243,7 @@ Closing an action is not declaring the analysis permanently correct. It records 
 [ ] Customer, system, telemetry, and routing outcomes were observed.
 [ ] Bypass, fail-open, and regression paths were assessed.
 [ ] Evidence is durable and linked from the action.
-[ ] Reviewer recorded verified, partial, failed, or inconclusive.
+[ ] Reviewer recorded verified, partially verified, failed, inconclusive, or superseded.
 [ ] Residual risk and next review date are recorded.
 ```
 
@@ -253,6 +253,6 @@ An action prevents repeats only when a relevant failure meets a control that dem
 
 - [Google SRE Workbook: Postmortem Culture](https://sre.google/workbook/postmortem-culture/)
 - [Microsoft Azure Well-Architected Framework: Incident Management](https://learn.microsoft.com/en-us/azure/well-architected/design-guides/incident-management)
-- [Microsoft Azure Well-Architected Framework: Emergency Response](https://learn.microsoft.com/en-us/power-platform/well-architected/operational-excellence/emergency-response)
+- [Microsoft Power Platform Well-Architected: Emergency Response](https://learn.microsoft.com/en-us/power-platform/well-architected/operational-excellence/emergency-response)
 - [Google SRE: Postmortem Culture](https://sre.google/sre-book/postmortem-culture/)
 - [Prometheus: Unit Testing Rules](https://prometheus.io/docs/prometheus/latest/configuration/unit_testing_rules/)
