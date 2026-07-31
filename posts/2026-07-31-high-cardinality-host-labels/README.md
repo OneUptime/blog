@@ -13,7 +13,7 @@ In Prometheus, every unique metric name plus complete label set is a separate ti
 For host metrics, cost grows through two patterns:
 
 1. **multiplication:** an exporter emits a series for every CPU, mode, device, mount, sensor, queue, or service;
-2. **churn:** a target or metric label changes, so Prometheus creates a new series while the old one remains in historical blocks.
+2. **churn:** a target or metric label changes, so Prometheus creates a new series while the old one remains queryable for earlier time ranges until retention removes it.
 
 High-cardinality labels are labels with many distinct values. Unbounded labels such as request IDs, process IDs, container IDs, pod UIDs, filenames, or timestamps are the most dangerous. Prometheus's naming guidance explicitly warns against using high-cardinality dimensions such as user IDs or email addresses.
 
@@ -85,7 +85,7 @@ topk(
 )
 ```
 
-New series per scrape:
+Approximate new series per scrape:
 
 ```promql
 topk(
@@ -94,7 +94,7 @@ topk(
 )
 ```
 
-An abrupt increase in `scrape_series_added` is a strong churn clue. It can come from service discovery, a changed target label, new devices or mounts, a collector rollout, or an exporter adding a volatile label.
+Sustained or unexpected increases in `scrape_series_added` are a strong churn clue. The metric is approximate and can also spike after a Prometheus restart while its per-target scrape caches are rebuilt. Increases can come from service discovery, a changed target label, new devices or mounts, a collector rollout, or an exporter adding a volatile label.
 
 Compare:
 
