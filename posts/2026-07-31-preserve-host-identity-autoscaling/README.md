@@ -22,8 +22,8 @@ An immutable identifier for one VM or physical machine:
 
 - AWS EC2 instance ID;
 - GCE numeric instance ID;
-- Azure machine ID;
-- provider ID or system UUID for a Kubernetes node;
+- Azure VM unique ID (`vmId`) or a provisioning UUID;
+- a replacement-unique provider ID or machine ID for a Kubernetes node;
 - asset UUID from a bare-metal inventory.
 
 A reboot should normally retain this identity. Replacing the machine should create a new identity.
@@ -87,13 +87,15 @@ GCE:
 Azure:
 
 ```yaml
-- source_labels: [__meta_azure_machine_id]
+- source_labels: [__meta_azure_machine_tag_HostID]
   target_label: host_id
 - source_labels: [__meta_azure_machine_name]
   target_label: host_name
 ```
 
-Kubernetes node discovery:
+Prometheus's `__meta_azure_machine_id` is the Azure Resource Manager resource ID, which is derived from the subscription, resource group, resource type, and resource name. A replacement created with the same name can therefore reuse it. Have provisioning assign a new UUID to the `HostID` tag for each VM creation, or enrich discovery from inventory with Azure's unique `vmId`.
+
+Kubernetes node discovery, when the provider ID is guaranteed to change on replacement:
 
 ```yaml
 - source_labels: [__meta_kubernetes_node_provider_id]
@@ -102,9 +104,9 @@ Kubernetes node discovery:
   target_label: node
 ```
 
-For Kubernetes's `node` discovery role, Prometheus already sets `instance` to the Kubernetes node name. Preserve `provider_id` separately so an underlying replacement is still visible.
+For Kubernetes's `node` discovery role, Prometheus already sets `instance` to the Kubernetes node name. The Kubernetes API defines `providerID` as provider-specific and does not guarantee replacement uniqueness. When that guarantee is absent, publish `.status.nodeInfo.machineID` or another replacement-unique inventory ID through a governed Node label and relabel that value to `host_id`; built-in Kubernetes service discovery does not expose `machineID` directly.
 
-Not every provider ID is present in every environment. Alert on an empty `host_id` rather than silently falling back to a recycled address.
+Not every provider ID is present or replacement-unique in every environment. Alert on an empty `host_id` rather than silently falling back to a recycled address.
 
 ## Static and File-Based Discovery
 
@@ -166,7 +168,7 @@ rate(
 )
 ```
 
-Node-pool capacity:
+Node-pool idle CPU:
 
 ```promql
 sum by (cluster, node_pool) (
@@ -192,11 +194,11 @@ count by (job) (
 ) > 0
 ```
 
-Duplicate active identity:
+Duplicate nonempty identity when at least one other target label differs:
 
 ```promql
 count by (cluster, host_id) (
-  up{job="node"}
+  up{job="node", host_id!=""}
 ) > 1
 ```
 
@@ -206,7 +208,7 @@ Unexpected churn:
 rate(prometheus_tsdb_head_series_created_total[15m])
 ```
 
-Also inspect the Prometheus service-discovery page after relabeling. Confirm that two live targets never end with identical complete label sets.
+Also inspect the Prometheus service-discovery page after relabeling. Targets with identical complete label sets produce indistinguishable `up` series, so the query cannot count them separately. Confirm that two live targets never end with identical complete label sets.
 
 ## Plan Label Migration
 
