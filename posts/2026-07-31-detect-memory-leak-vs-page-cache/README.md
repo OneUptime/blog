@@ -56,7 +56,7 @@ node_memory_Shmem_bytes
 Interpret them carefully:
 
 - `AnonPages` covers pages mapped into user space without file backing, commonly application heaps and stacks;
-- `Cached` is file page cache and excludes `SwapCached`;
+- `Cached` is in-memory cache for files, including tmpfs and shared memory, and excludes `SwapCached`, so it overlaps with `Shmem`;
 - `SReclaimable` is slab memory the kernel may reclaim, such as some filesystem metadata;
 - `SUnreclaim` is slab memory that is not reclaimable;
 - `Shmem` includes tmpfs and shared-memory usage, which consumes RAM but is not ordinary clean file cache.
@@ -139,7 +139,7 @@ Do not use existing swap occupancy alone as proof of current pressure. Linux may
 
 ## Page on Pressure; Ticket on a Leak Trend
 
-A slow trend is usually a capacity or defect signal, not an immediate page. For example, this warning requires both sustained anonymous growth of more than 1 MiB per second across six hours and less than 15% available memory:
+A slow trend is usually a capacity or defect signal, not an immediate page. For example, this warning requires a rolling six-hour anonymous-memory trend of more than 1 MiB per second and less than 15% available memory, with both conditions remaining true for 30 minutes:
 
 ```yaml
 groups:
@@ -165,7 +165,7 @@ groups:
           summary: "Anonymous memory is growing on {{ $labels.instance }}"
 ```
 
-That threshold represents roughly 21.6 GiB over six hours if the trend remains constant, so it must be tuned to the host and expected workload. A better production rule often normalizes by requests, active sessions, jobs, or another workload measure.
+That threshold represents roughly 21.1 GiB over six hours if the trend remains constant, so it must be tuned to the host and expected workload. A better production rule often normalizes by requests, active sessions, jobs, or another workload measure.
 
 Reserve a page for urgent evidence such as:
 
@@ -198,7 +198,7 @@ For a suspected application:
 
 ## Use cgroup Composition for Containers
 
-For cgroup v2, `memory.current` is the cgroup's current accounted memory, while `memory.stat` splits that footprint into keys including:
+For cgroup v2, `memory.current` is the current memory used by the cgroup and its descendants, while `memory.stat` reports current amounts, type-specific details, and event counters through keys including:
 
 - `anon`;
 - `file`;
@@ -208,7 +208,7 @@ For cgroup v2, `memory.current` is the cgroup's current accounted memory, while 
 - `workingset_refault_anon` and `workingset_refault_file`;
 - page-scan, fault, and major-fault counters.
 
-The `file` value is cache charged to that cgroup; it is not automatically a leak. A rising `anon` value that stays high after comparable work ends is more suspicious. Repeated file-cache refaults indicate that reclaimed pages are being needed again, so aggressively shrinking that cache could hurt performance.
+These keys are not mutually exclusive: for example, `kernel` includes slab, and `file` includes the `shmem` subset. The `file` value includes filesystem cache, tmpfs, and shared memory charged to that cgroup; it is not automatically a leak or necessarily ordinary clean file cache. A rising `anon` value that stays high after comparable work ends is more suspicious. Repeated file-cache refaults indicate that reclaimed pages are being needed again, so aggressively shrinking that cache could hurt performance.
 
 Also inspect `memory.events` for `high`, `max`, `oom`, and `oom_kill` events. A container can hit its cgroup limit while system-wide `MemAvailable` remains healthy.
 
