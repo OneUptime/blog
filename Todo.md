@@ -2,8 +2,7 @@
 
 ## Blameless Postmortems
 
-1. What to Do When the Same Incident Happens After a Previous Postmortem
-2. How to Make Postmortems Worth Reading Instead of Letting Them Rot in Confluence
+1. How to Make Postmortems Worth Reading Instead of Letting Them Rot in Confluence
 
 ## Infrastructure Metrics
 
