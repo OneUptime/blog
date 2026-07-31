@@ -1,9 +1,5 @@
 # Blog Post Ideas
 
-## Infrastructure Metrics
-
-1. How to Preserve Host Identity Across Autoscaling, Reboots, and Changing IP Addresses
-
 ## kOps
 
 1. kOps “Cluster Not Found”: How to Recover the Correct `KOPS_STATE_STORE` and Context
