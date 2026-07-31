@@ -2,12 +2,11 @@
 
 ## Infrastructure Metrics
 
-1. How to Measure Infrastructure Metric Cardinality Before It Overloads Prometheus
-2. How to Find Unused Infrastructure Metrics Before Adding `metric_relabel_configs` Drop Rules
-3. How to Set Per-Job Scrape Intervals Without Making Alerts Blind to Stale Series
-4. How to Monitor the Monitoring Server So Prometheus Failure Cannot Silence Host-Down Alerts
-5. How to Build Recording Rules for Fleet-Wide Infrastructure Dashboards Without Expensive Live Queries
-6. How to Preserve Host Identity Across Autoscaling, Reboots, and Changing IP Addresses
+1. How to Find Unused Infrastructure Metrics Before Adding `metric_relabel_configs` Drop Rules
+2. How to Set Per-Job Scrape Intervals Without Making Alerts Blind to Stale Series
+3. How to Monitor the Monitoring Server So Prometheus Failure Cannot Silence Host-Down Alerts
+4. How to Build Recording Rules for Fleet-Wide Infrastructure Dashboards Without Expensive Live Queries
+5. How to Preserve Host Identity Across Autoscaling, Reboots, and Changing IP Addresses
 
 ## kOps
 
