@@ -76,7 +76,7 @@ For slow disk-capacity planning, a one-minute sample may be entirely adequate. F
 
 A gauge such as available memory is observed only at scrape times. A spike that begins and ends between two scrapes can be missed completely.
 
-A counter such as network bytes or CPU seconds preserves cumulative increase, so the next scrape still includes the total work. However, a long interval loses timing detail: Prometheus knows the increase happened somewhere between the two samples, not when inside the interval.
+A counter such as network bytes or CPU seconds preserves cumulative increase as long as it does not reset, so the next scrape still includes the total work between samples. A reset between scrapes can lose unobserved increase before the reset. Even without a reset, a long interval loses timing detail: Prometheus knows the increase happened somewhere between the two samples, not when inside the interval.
 
 Faster scraping therefore helps:
 
@@ -201,7 +201,7 @@ Watch for:
 - Prometheus ingestion or remote-write backlog;
 - rule evaluations that miss their schedule.
 
-If the 99th-percentile scrape duration is close to the interval, first find the slow collector or target. Merely increasing timeout can convert fast failures into overlapping operational pressure.
+If the 99th-percentile scrape duration is close to the interval, first find the slow collector or target. Merely increasing timeout can convert fast failures into prolonged resource pressure across many targets.
 
 ## When to Scrape Faster
 
