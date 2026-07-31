@@ -1,9 +1,5 @@
 # Blog Post Ideas
 
-## Blameless Postmortems
-
-1. How to Make Postmortems Worth Reading Instead of Letting Them Rot in Confluence
-
 ## Infrastructure Metrics
 
 1. Which Infrastructure Metrics Actually Deserve Alerts? A Practical Selection Framework
