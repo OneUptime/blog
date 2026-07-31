@@ -75,7 +75,7 @@ Total currently visible series:
 count({__name__!=""})
 ```
 
-This follows PromQL lookback and staleness semantics. It is not a count of every historical series stored in all retained blocks. Use the TSDB API or offline TSDB tools for storage-wide investigations.
+This follows PromQL lookback and staleness semantics. It is not a count of every historical series stored in all retained blocks. Use offline TSDB tools for investigations of retained on-disk blocks.
 
 Drill into a suspicious family:
 
