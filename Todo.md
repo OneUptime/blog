@@ -2,46 +2,45 @@
 
 ## Infrastructure Metrics
 
-1. Which Infrastructure Metrics Actually Deserve Alerts? A Practical Selection Framework
-2. CPU Utilization vs Load Average: Which Signal Reveals Host Saturation?
-3. How to Calculate Per-Host CPU Usage from `node_cpu_seconds_total` Without Misleading Averages
-4. Why Prometheus CPU Metrics Can Exceed 100%—Cores, Rates, and Aggregation Explained
-5. MemFree vs MemAvailable: Which Linux Memory Metric Should Trigger an Alert?
-6. How to Detect a Memory Leak Without Alerting on Healthy Page Cache
-7. Disk Free vs Disk Available: Choosing the Right Metric for Low-Space Alerts
-8. Disk Busy but Not Full: How to Alert on I/O Saturation, Queueing, and Latency
-9. How to Monitor Inode Exhaustion Before a Server Runs Out of Disk Space
-10. Which Network Metrics Catch Real Host Problems? Drops, Errors, Retransmits, and Saturation
-11. Static Thresholds vs Dynamic Baselines: How to Reduce Noisy Infrastructure Alerts
-12. How Long Should CPU, Memory, and Disk Stay High Before an Alert Fires?
-13. What Is the Right Scrape Interval for Host Metrics?
-14. How to Choose Infrastructure Metric Retention Without Overloading Prometheus
-15. How High-Cardinality Host Labels Inflate Metrics Cost—and What to Drop at Ingest
-16. Agent-Based vs Agentless Infrastructure Metrics: Why the Numbers Do Not Match
-17. Why Containerized Node Exporter Reports Container Metrics Instead of Host Metrics
-18. Fixing Missing Filesystem Metrics and `node_filesystem_device_error` in Containerized Node Exporter
-19. How to Exclude Pseudo-Filesystems, Loop Devices, and Ephemeral Mounts from Disk Alerts
-20. Why Host and Container CPU Metrics Disagree—and How to Compare Them Correctly
-21. How to Alert When an Expected Host Metric Disappears Without Treating No Data as Zero
-22. Host Down or Node Exporter Down? How to Distinguish Machine Failure from a Broken Scrape
-23. How to Calculate Server Downtime Over a Time Window Without Misreading Short Scrape Gaps
-24. How to Detect Hosts That Vanished from Service Discovery Before Their `up` Series Goes Stale
-25. How to Secure Node Exporter Metrics Across Public or Segmented Networks
-26. One Prometheus or One per Network? How to Collect Infrastructure Metrics Across Isolated Environments
-27. Can Node Exporter Use Different Scrape Intervals for CPU, Disk, and Network Metrics?
-28. How to Monitor Infrastructure Jobs That Produce Metrics Only Once per Day
-29. Why Does a Prometheus Instant Query Return No Data for Slowly Scraped Infrastructure Metrics?
-30. How to Count Live Kubernetes Nodes and Alert on Unexpected Fleet-Size Changes
-31. How to Aggregate CPU, Memory, and Disk Metrics Across a Cluster Without Averaging Percentages Incorrectly
-32. How to Calculate Interface Bandwidth from Byte Counters Without Spikes After Restarts
-33. Which Network Interface Should You Graph When Bonds, Bridges, Veths, and VLANs Duplicate Traffic?
-34. How to Detect Counter Resets and Wraparound in High-Speed Network Infrastructure Metrics
-35. How to Measure Infrastructure Metric Cardinality Before It Overloads Prometheus
-36. How to Find Unused Infrastructure Metrics Before Adding `metric_relabel_configs` Drop Rules
-37. How to Set Per-Job Scrape Intervals Without Making Alerts Blind to Stale Series
-38. How to Monitor the Monitoring Server So Prometheus Failure Cannot Silence Host-Down Alerts
-39. How to Build Recording Rules for Fleet-Wide Infrastructure Dashboards Without Expensive Live Queries
-40. How to Preserve Host Identity Across Autoscaling, Reboots, and Changing IP Addresses
+1. CPU Utilization vs Load Average: Which Signal Reveals Host Saturation?
+2. How to Calculate Per-Host CPU Usage from `node_cpu_seconds_total` Without Misleading Averages
+3. Why Prometheus CPU Metrics Can Exceed 100%—Cores, Rates, and Aggregation Explained
+4. MemFree vs MemAvailable: Which Linux Memory Metric Should Trigger an Alert?
+5. How to Detect a Memory Leak Without Alerting on Healthy Page Cache
+6. Disk Free vs Disk Available: Choosing the Right Metric for Low-Space Alerts
+7. Disk Busy but Not Full: How to Alert on I/O Saturation, Queueing, and Latency
+8. How to Monitor Inode Exhaustion Before a Server Runs Out of Disk Space
+9. Which Network Metrics Catch Real Host Problems? Drops, Errors, Retransmits, and Saturation
+10. Static Thresholds vs Dynamic Baselines: How to Reduce Noisy Infrastructure Alerts
+11. How Long Should CPU, Memory, and Disk Stay High Before an Alert Fires?
+12. What Is the Right Scrape Interval for Host Metrics?
+13. How to Choose Infrastructure Metric Retention Without Overloading Prometheus
+14. How High-Cardinality Host Labels Inflate Metrics Cost—and What to Drop at Ingest
+15. Agent-Based vs Agentless Infrastructure Metrics: Why the Numbers Do Not Match
+16. Why Containerized Node Exporter Reports Container Metrics Instead of Host Metrics
+17. Fixing Missing Filesystem Metrics and `node_filesystem_device_error` in Containerized Node Exporter
+18. How to Exclude Pseudo-Filesystems, Loop Devices, and Ephemeral Mounts from Disk Alerts
+19. Why Host and Container CPU Metrics Disagree—and How to Compare Them Correctly
+20. How to Alert When an Expected Host Metric Disappears Without Treating No Data as Zero
+21. Host Down or Node Exporter Down? How to Distinguish Machine Failure from a Broken Scrape
+22. How to Calculate Server Downtime Over a Time Window Without Misreading Short Scrape Gaps
+23. How to Detect Hosts That Vanished from Service Discovery Before Their `up` Series Goes Stale
+24. How to Secure Node Exporter Metrics Across Public or Segmented Networks
+25. One Prometheus or One per Network? How to Collect Infrastructure Metrics Across Isolated Environments
+26. Can Node Exporter Use Different Scrape Intervals for CPU, Disk, and Network Metrics?
+27. How to Monitor Infrastructure Jobs That Produce Metrics Only Once per Day
+28. Why Does a Prometheus Instant Query Return No Data for Slowly Scraped Infrastructure Metrics?
+29. How to Count Live Kubernetes Nodes and Alert on Unexpected Fleet-Size Changes
+30. How to Aggregate CPU, Memory, and Disk Metrics Across a Cluster Without Averaging Percentages Incorrectly
+31. How to Calculate Interface Bandwidth from Byte Counters Without Spikes After Restarts
+32. Which Network Interface Should You Graph When Bonds, Bridges, Veths, and VLANs Duplicate Traffic?
+33. How to Detect Counter Resets and Wraparound in High-Speed Network Infrastructure Metrics
+34. How to Measure Infrastructure Metric Cardinality Before It Overloads Prometheus
+35. How to Find Unused Infrastructure Metrics Before Adding `metric_relabel_configs` Drop Rules
+36. How to Set Per-Job Scrape Intervals Without Making Alerts Blind to Stale Series
+37. How to Monitor the Monitoring Server So Prometheus Failure Cannot Silence Host-Down Alerts
+38. How to Build Recording Rules for Fleet-Wide Infrastructure Dashboards Without Expensive Live Queries
+39. How to Preserve Host Identity Across Autoscaling, Reboots, and Changing IP Addresses
 
 ## kOps
 
