@@ -38,12 +38,20 @@ Two Pods on the same node and disk are two processes, not two failure domains.
 
 ## Run Redundant Prometheus Rule Evaluators
 
-Prometheus's official FAQ recommends running identical Prometheus servers for high availability. Both scrape the same targets and evaluate the same rules. Configure distinct external replica labels if the data is sent to a system that can deduplicate replicas.
+Prometheus's official FAQ recommends running identical Prometheus servers for high availability. Both scrape the same targets and evaluate the same rules. Configure a distinct external replica label on each server if the data is sent to a system that can deduplicate replicas. Because external labels are also added to alerts, drop only the replica label before sending alerts so the two servers produce identical alert label sets for Alertmanager.
 
 Each Prometheus should send alerts to every Alertmanager instance:
 
 ```yaml
+global:
+  external_labels:
+    prometheus_cluster: production
+    prometheus_replica: prometheus-a # Use prometheus-b on the other server.
+
 alerting:
+  alert_relabel_configs:
+    - action: labeldrop
+      regex: prometheus_replica
   alertmanagers:
     - static_configs:
         - targets:
@@ -122,7 +130,7 @@ probe_success{
 
 Place the prober and the Prometheus evaluating this expression outside the target's failure domain. If the same Prometheus under test scrapes the probe result, the design returns to self-monitoring.
 
-For a private Prometheus, use a routed management network, VPN, or approved proxy. Do not expose its administrative API publicly merely to make probing easy.
+For a private Prometheus, use a routed management network, VPN, or approved proxy. Do not expose its HTTP or management endpoints publicly merely to make probing easy.
 
 ## Add a Dead-Man Signal
 
@@ -133,11 +141,12 @@ A dead-man alert is always firing while the evaluation and delivery pipeline wor
   expr: vector(1)
   labels:
     severity: heartbeat
+    heartbeat_source: "{{ $externalLabels.prometheus_replica }}"
   annotations:
     summary: "Prometheus alert pipeline heartbeat"
 ```
 
-Route it to an external service that expects repeated notifications and alerts when they stop. The receiver must distinguish replicas, environment, and Prometheus identity.
+Route it to an external service that expects repeated notifications and alerts when they stop. The receiver must distinguish environment and Prometheus identity. The `heartbeat_source` label preserves per-replica identity even though the external `prometheus_replica` label is dropped before ordinary alerts reach Alertmanager.
 
 This checks more of the pipeline:
 
@@ -229,6 +238,7 @@ The objective is not an immortal monitoring server. It is a monitoring system wh
 
 - [Prometheus FAQ: High availability](https://prometheus.io/docs/introduction/faq/#can-prometheus-be-made-highly-available)
 - [Alertmanager: High availability](https://prometheus.io/docs/alerting/latest/high_availability/)
+- [Prometheus: Configuration](https://prometheus.io/docs/prometheus/latest/configuration/configuration/#alert_relabel_configs)
 - [Prometheus: Multi-target exporter pattern](https://prometheus.io/docs/guides/multi-target-exporter/)
 - [Prometheus: Federation](https://prometheus.io/docs/prometheus/latest/federation/)
 - [Prometheus: Alerting rules](https://prometheus.io/docs/prometheus/latest/configuration/alerting_rules/)
