@@ -65,7 +65,7 @@ The guest modes are excluded because Linux already includes guest time in the `u
 ```promql
 sum by (job, instance) (
   rate(node_cpu_seconds_total{
-    mode=~"user|nice|system|irq|softirq|steal"
+    mode=~"user|nice|system|irq|softirq"
   }[5m])
 )
 ```
