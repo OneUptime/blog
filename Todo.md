@@ -2,13 +2,12 @@
 
 ## Blameless Postmortems
 
-1. Root Cause vs Contributing Factors: How to Avoid a Single-Cause Story
-2. How to Turn “Improve Monitoring” into a Specific, Testable Postmortem Action Item
-3. Postmortem Action Items Keep Dying in the Backlog: How to Get Them Prioritized
-4. Assigning Owners and Deadlines Without Reintroducing Blame
-5. How to Verify That Postmortem Actions Actually Prevented a Repeat Incident
-6. What to Do When the Same Incident Happens After a Previous Postmortem
-7. How to Make Postmortems Worth Reading Instead of Letting Them Rot in Confluence
+1. How to Turn “Improve Monitoring” into a Specific, Testable Postmortem Action Item
+2. Postmortem Action Items Keep Dying in the Backlog: How to Get Them Prioritized
+3. Assigning Owners and Deadlines Without Reintroducing Blame
+4. How to Verify That Postmortem Actions Actually Prevented a Repeat Incident
+5. What to Do When the Same Incident Happens After a Previous Postmortem
+6. How to Make Postmortems Worth Reading Instead of Letting Them Rot in Confluence
 
 ## Infrastructure Metrics
 
