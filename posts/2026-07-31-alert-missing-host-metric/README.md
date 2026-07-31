@@ -127,7 +127,7 @@ node_filesystem_avail_bytes{
 }
 ```
 
-Not every Node Exporter release has a `device_error` label on capacity metrics, so adapt that optional matcher to the release actually deployed. A version-independent form is:
+Not every Node Exporter release has a `device_error` label on capacity metrics. In PromQL, an equality matcher for the empty string also matches series where that label is absent, so the expression remains compatible with those releases. If you do not need the explicit success-label matcher, the simpler form is:
 
 ```promql
 expected_node_filesystem == 1
