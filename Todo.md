@@ -2,15 +2,14 @@
 
 ## Blameless Postmortems
 
-1. Why “Human Error” Is Not a Root Cause—and What to Investigate Instead
-2. Five Whys or Causal Tree? Choosing a Better Analysis for Complex Incidents
-3. Root Cause vs Contributing Factors: How to Avoid a Single-Cause Story
-4. How to Turn “Improve Monitoring” into a Specific, Testable Postmortem Action Item
-5. Postmortem Action Items Keep Dying in the Backlog: How to Get Them Prioritized
-6. Assigning Owners and Deadlines Without Reintroducing Blame
-7. How to Verify That Postmortem Actions Actually Prevented a Repeat Incident
-8. What to Do When the Same Incident Happens After a Previous Postmortem
-9. How to Make Postmortems Worth Reading Instead of Letting Them Rot in Confluence
+1. Five Whys or Causal Tree? Choosing a Better Analysis for Complex Incidents
+2. Root Cause vs Contributing Factors: How to Avoid a Single-Cause Story
+3. How to Turn “Improve Monitoring” into a Specific, Testable Postmortem Action Item
+4. Postmortem Action Items Keep Dying in the Backlog: How to Get Them Prioritized
+5. Assigning Owners and Deadlines Without Reintroducing Blame
+6. How to Verify That Postmortem Actions Actually Prevented a Repeat Incident
+7. What to Do When the Same Incident Happens After a Previous Postmortem
+8. How to Make Postmortems Worth Reading Instead of Letting Them Rot in Confluence
 
 ## Infrastructure Metrics
 
