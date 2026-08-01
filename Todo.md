@@ -2,19 +2,18 @@
 
 ## kOps
 
-1. How to Upgrade a kOps Cluster One Kubernetes Minor Version at a Time
-2. Upgrading kOps to Kubernetes 1.31+: How `reconcile cluster` Avoids Version-Skew Failures
-3. Why a kOps Rolling Update Stops on Cluster Validation—and How to Resume Safely
-4. How to Resize or Change EC2 Types in a kOps InstanceGroup Without Rebuilding the Cluster
-5. Why Setting `minSize` and `maxSize` Does Not Automatically Scale a kOps Node Group
-6. How to Configure Cluster Autoscaler for Multiple kOps InstanceGroups
-7. Building kOps Spot Node Groups with `MixedInstancesPolicy` and On-Demand Fallback
-8. How to Scale a kOps InstanceGroup Without Accidentally Upgrading Kubernetes
-9. How to Run kOps in an Existing AWS VPC Without Recreating Subnets, NAT, or Routes
-10. Public vs Private Topology in kOps: API Access, Bastions, NAT Gateways, and Cost
-11. How to Keep Multiple kOps Clusters from Deleting Shared VPC Resources
-12. kOps with Terraform: Which State Is the Source of Truth and What Must Never Be Hand-Edited?
-13. How to Back Up and Restore kOps etcd with `etcd-manager-ctl`
+1. Upgrading kOps to Kubernetes 1.31+: How `reconcile cluster` Avoids Version-Skew Failures
+2. Why a kOps Rolling Update Stops on Cluster Validation—and How to Resume Safely
+3. How to Resize or Change EC2 Types in a kOps InstanceGroup Without Rebuilding the Cluster
+4. Why Setting `minSize` and `maxSize` Does Not Automatically Scale a kOps Node Group
+5. How to Configure Cluster Autoscaler for Multiple kOps InstanceGroups
+6. Building kOps Spot Node Groups with `MixedInstancesPolicy` and On-Demand Fallback
+7. How to Scale a kOps InstanceGroup Without Accidentally Upgrading Kubernetes
+8. How to Run kOps in an Existing AWS VPC Without Recreating Subnets, NAT, or Routes
+9. Public vs Private Topology in kOps: API Access, Bastions, NAT Gateways, and Cost
+10. How to Keep Multiple kOps Clusters from Deleting Shared VPC Resources
+11. kOps with Terraform: Which State Is the Source of Truth and What Must Never Be Hand-Edited?
+12. How to Back Up and Restore kOps etcd with `etcd-manager-ctl`
 
 ## Sidecars
 
