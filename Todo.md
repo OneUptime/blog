@@ -2,24 +2,23 @@
 
 ## kOps
 
-1. Moving a kOps State Store to a New S3 Bucket Without Stranding Existing Nodes
-2. Why `kops validate cluster` Cannot Resolve the API DNS Name—and How to Fix It
-3. kOps Validation Says “Node Has Not Yet Joined Cluster”: A Layer-by-Layer Troubleshooting Guide
-4. Fixing “Unauthorized” After Exporting or Rotating a kOps Kubeconfig
-5. `kops update`, `rolling-update`, `upgrade`, or `reconcile`: Which Command Should You Run?
-6. How to Upgrade a kOps Cluster One Kubernetes Minor Version at a Time
-7. Upgrading kOps to Kubernetes 1.31+: How `reconcile cluster` Avoids Version-Skew Failures
-8. Why a kOps Rolling Update Stops on Cluster Validation—and How to Resume Safely
-9. How to Resize or Change EC2 Types in a kOps InstanceGroup Without Rebuilding the Cluster
-10. Why Setting `minSize` and `maxSize` Does Not Automatically Scale a kOps Node Group
-11. How to Configure Cluster Autoscaler for Multiple kOps InstanceGroups
-12. Building kOps Spot Node Groups with `MixedInstancesPolicy` and On-Demand Fallback
-13. How to Scale a kOps InstanceGroup Without Accidentally Upgrading Kubernetes
-14. How to Run kOps in an Existing AWS VPC Without Recreating Subnets, NAT, or Routes
-15. Public vs Private Topology in kOps: API Access, Bastions, NAT Gateways, and Cost
-16. How to Keep Multiple kOps Clusters from Deleting Shared VPC Resources
-17. kOps with Terraform: Which State Is the Source of Truth and What Must Never Be Hand-Edited?
-18. How to Back Up and Restore kOps etcd with `etcd-manager-ctl`
+1. Why `kops validate cluster` Cannot Resolve the API DNS Name—and How to Fix It
+2. kOps Validation Says “Node Has Not Yet Joined Cluster”: A Layer-by-Layer Troubleshooting Guide
+3. Fixing “Unauthorized” After Exporting or Rotating a kOps Kubeconfig
+4. `kops update`, `rolling-update`, `upgrade`, or `reconcile`: Which Command Should You Run?
+5. How to Upgrade a kOps Cluster One Kubernetes Minor Version at a Time
+6. Upgrading kOps to Kubernetes 1.31+: How `reconcile cluster` Avoids Version-Skew Failures
+7. Why a kOps Rolling Update Stops on Cluster Validation—and How to Resume Safely
+8. How to Resize or Change EC2 Types in a kOps InstanceGroup Without Rebuilding the Cluster
+9. Why Setting `minSize` and `maxSize` Does Not Automatically Scale a kOps Node Group
+10. How to Configure Cluster Autoscaler for Multiple kOps InstanceGroups
+11. Building kOps Spot Node Groups with `MixedInstancesPolicy` and On-Demand Fallback
+12. How to Scale a kOps InstanceGroup Without Accidentally Upgrading Kubernetes
+13. How to Run kOps in an Existing AWS VPC Without Recreating Subnets, NAT, or Routes
+14. Public vs Private Topology in kOps: API Access, Bastions, NAT Gateways, and Cost
+15. How to Keep Multiple kOps Clusters from Deleting Shared VPC Resources
+16. kOps with Terraform: Which State Is the Source of Truth and What Must Never Be Hand-Edited?
+17. How to Back Up and Restore kOps etcd with `etcd-manager-ctl`
 
 ## Sidecars
 
