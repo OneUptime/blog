@@ -52,7 +52,6 @@ metadata:
 spec:
   securityContext:
     fsGroup: 2000
-    fsGroupChangePolicy: OnRootMismatch
   containers:
     - name: app
       image: example.com/orders@sha256:REPLACE_ME
@@ -114,7 +113,7 @@ Use compatible `runAsUser`, `runAsGroup`, `fsGroup`, and file modes. Do not fix 
 
 ### The file does not exist yet
 
-Container startup is concurrent for ordinary app containers. A reader that exits when its input is absent can enter a restart loop before the app creates the file. Configure the collector to wait or retry. A native sidecar startup probe can protect its own lifecycle, but it cannot make a nonexistent file appear.
+Container startup is concurrent for ordinary app containers. A reader that exits when its input is absent can enter a restart loop before the app creates the file. Configure the collector to wait or retry. A startup probe can defer liveness and readiness checks while a native sidecar starts, but it cannot keep the reader process from exiting or make a nonexistent file appear.
 
 ### The configuration names a directory as a file
 
@@ -136,7 +135,7 @@ kubectl exec "$POD" -c app -- mount
 kubectl exec "$POD" -c log-reader -- mount
 ```
 
-Minimal or distroless images may lack these tools. Use `kubectl debug` with an appropriate debug profile or create a copy of the Pod for investigation instead of modifying the production image.
+Minimal or distroless images may lack these tools. Use `kubectl debug` with a custom profile that mounts the shared volume, or create a copy of the Pod with a debugging container and the same volume mount, instead of modifying the production image.
 
 ## Prefer stdout and stderr When You Can
 
