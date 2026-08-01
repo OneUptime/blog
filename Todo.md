@@ -2,15 +2,14 @@
 
 ## Sidecars
 
-1. Why a Logging Sidecar Cannot Find the App’s Log File—and How to Fix the Mount Path
-2. Logging Sidecar or Node-Level DaemonSet? Choosing the Right Collection Pattern
-3. Can You Add a Sidecar to a Running Pod? What Is Immutable and What Ephemeral Containers Can Do
-4. How to Debug a CrashLooping Sidecar with `kubectl logs`, `--previous`, and `kubectl debug`
-5. Why Sidecar Injection Webhooks Time Out: DNS, TLS, CNI, and Firewall Checks
-6. How to Opt Specific Namespaces and Pods In or Out of Sidecar Injection
-7. How to Prevent Port Conflicts When App and Sidecar Share a Pod Network
-8. How Much Latency, CPU, and Memory Does a Service-Mesh Sidecar Add?
-9. Sidecar or Separate Service? A Decision Checklist for Failure Isolation and Scaling
+1. Logging Sidecar or Node-Level DaemonSet? Choosing the Right Collection Pattern
+2. Can You Add a Sidecar to a Running Pod? What Is Immutable and What Ephemeral Containers Can Do
+3. How to Debug a CrashLooping Sidecar with `kubectl logs`, `--previous`, and `kubectl debug`
+4. Why Sidecar Injection Webhooks Time Out: DNS, TLS, CNI, and Firewall Checks
+5. How to Opt Specific Namespaces and Pods In or Out of Sidecar Injection
+6. How to Prevent Port Conflicts When App and Sidecar Share a Pod Network
+7. How Much Latency, CPU, and Memory Does a Service-Mesh Sidecar Add?
+8. Sidecar or Separate Service? A Decision Checklist for Failure Isolation and Scaling
 
 ## Portainer
 
