@@ -1,9 +1,5 @@
 # Blog Post Ideas
 
-## kOps
-
-1. How to Back Up and Restore kOps etcd with `etcd-manager-ctl`
-
 ## Sidecars
 
 1. Native vs Legacy Kubernetes Sidecars: When to Use `initContainers` with `restartPolicy: Always`
