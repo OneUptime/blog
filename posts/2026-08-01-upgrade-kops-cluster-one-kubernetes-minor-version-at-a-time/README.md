@@ -20,7 +20,7 @@ Each hop should target a current patch in exactly one next minor, use a compatib
 
 ## Build a Version Route Before Changing State
 
-Capture the installed tools, desired version, served API version, and node versions:
+Capture the installed tools, desired version, API-server version, and node versions:
 
 ```bash
 CLUSTER_NAME=prod.example.com
@@ -184,7 +184,7 @@ Do not use the legacy two-command sequence for a 1.31+ target when the current g
 
 ### Terraform target
 
-Use the kOps tutorial’s Terraform-specific sequence from the existing Terraform output directory: generate Terraform, apply control-plane instance-group resources first, roll the control plane, apply the remaining plan, then roll remaining nodes. Direct `reconcile --yes` does not replace the Terraform apply workflow.
+Use the kOps tutorial’s Terraform-specific sequence from the existing Terraform output directory: generate Terraform, apply the instance-group resources whose role is `ControlPlane`, `Master`, or `APIServer` first, roll the control-plane and API-server nodes, apply the remaining plan, then roll remaining nodes. Direct `reconcile --yes` does not replace the Terraform apply workflow.
 
 ## Validate the Entire Hop
 
@@ -196,6 +196,7 @@ kops validate cluster "${CLUSTER_NAME}" \
   --wait 15m \
   --count 3
 
+# Direct cloud target drift preview:
 kops update cluster "${CLUSTER_NAME}" \
   --state "${STATE_STORE}"
 
@@ -207,6 +208,8 @@ kubectl get nodes \
   -o custom-columns='NAME:.metadata.name,KUBELET:.status.nodeInfo.kubeletVersion'
 kubectl get pods --all-namespaces
 ```
+
+For a Terraform target, regenerate the Terraform configuration and run `terraform plan` from the existing output directory instead of using the direct-target `kops update cluster` preview. The other validation commands still apply.
 
 Also run workload-level smoke tests and examine:
 
