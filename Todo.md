@@ -1,9 +1,5 @@
 # Blog Post Ideas
 
-## Sidecars
-
-1. Sidecar or Separate Service? A Decision Checklist for Failure Isolation and Scaling
-
 ## Portainer
 
 1. How to Upgrade Portainer Without Losing Users, Environments, or Stack Definitions
