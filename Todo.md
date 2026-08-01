@@ -2,12 +2,11 @@
 
 ## Sidecars
 
-1. How to Debug a CrashLooping Sidecar with `kubectl logs`, `--previous`, and `kubectl debug`
-2. Why Sidecar Injection Webhooks Time Out: DNS, TLS, CNI, and Firewall Checks
-3. How to Opt Specific Namespaces and Pods In or Out of Sidecar Injection
-4. How to Prevent Port Conflicts When App and Sidecar Share a Pod Network
-5. How Much Latency, CPU, and Memory Does a Service-Mesh Sidecar Add?
-6. Sidecar or Separate Service? A Decision Checklist for Failure Isolation and Scaling
+1. Why Sidecar Injection Webhooks Time Out: DNS, TLS, CNI, and Firewall Checks
+2. How to Opt Specific Namespaces and Pods In or Out of Sidecar Injection
+3. How to Prevent Port Conflicts When App and Sidecar Share a Pod Network
+4. How Much Latency, CPU, and Memory Does a Service-Mesh Sidecar Add?
+5. Sidecar or Separate Service? A Decision Checklist for Failure Isolation and Scaling
 
 ## Portainer
 
