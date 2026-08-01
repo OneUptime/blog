@@ -86,10 +86,18 @@ The rendered output can contain secrets. Keep it out of public logs and use it f
 Inventory the runtime without changing it:
 
 ```bash
+# Docker Compose deployment
 docker compose ls
-docker ps --filter label=com.docker.compose.project=myapp
-docker volume ls
+docker ps --all --filter label=com.docker.compose.project=myapp
+
+# Docker Swarm deployment (run on a manager node)
+docker stack ls
+docker stack services myapp
+
 docker network ls
+
+# Run on each relevant Docker host for node-local volumes
+docker volume ls
 ```
 
 Back up every persistent datastore through an application-consistent method before redeployment.
@@ -101,7 +109,8 @@ If a database volume already exists and must outlive stack replacement, declare 
 ```yaml
 services:
   db:
-    image: postgres@sha256:REPLACE_ME
+    # Example only: retain the image version compatible with the existing data.
+    image: postgres@sha256:a426e44bac0b759c95894d68e1a0ac03ecc20b619f498a91aae373bf06d8508d
     volumes:
       - database-data:/var/lib/postgresql/data
 
@@ -124,13 +133,13 @@ Bind mounts need separate treatment. Confirm the path exists on the Docker host 
 Use a maintenance window when the new Portainer stack will use the same names and resources:
 
 1. verify backups and rollback;
-2. stop the external stack using its original tool without deleting volumes;
+2. remove the external workload using its original tool without deleting persistent volumes, for example with `docker compose down` without `-v` or with `docker stack rm`;
 3. confirm no old containers or services conflict;
 4. deploy the reviewed definition through Portainer;
 5. validate mounts, networks, health, data, and traffic;
 6. retire the old deployment path.
 
-Avoid `docker compose down -v`; `-v` removes named volumes declared by that project.
+Avoid `docker compose down -v`; `-v` removes non-external named volumes declared in the Compose file and anonymous volumes attached to its containers. External volumes are never removed.
 
 ### Parallel migration
 
