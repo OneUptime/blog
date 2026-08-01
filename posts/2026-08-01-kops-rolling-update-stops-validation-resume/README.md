@@ -10,7 +10,7 @@ Description: Diagnose the validation gate that stopped a kOps rolling update, re
 
 A stopped kOps rolling update is often a safety mechanism working as designed.
 
-Before updating an instance group, kOps validates the cluster. After replacing an instance, it waits for the cluster to validate again before moving to the next one. If required nodes or critical pods are not healthy, the default behavior is to stop instead of consuming more capacity.
+Before updating an instance group, kOps validates the cluster. With the default single-node concurrency, after replacing an instance it waits for the cluster to validate again before moving to the next one. If required nodes or critical pods are not healthy, the default behavior is to stop instead of consuming more capacity.
 
 The safe response is not to add `--force`. Preserve the failure, restore a stable validation baseline, preview the remaining work, and rerun the same rolling update.
 
@@ -82,7 +82,7 @@ These gates are related but different:
 | New node is `NotReady` | Node conditions and kubelet events | Runtime, CNI, pressure, cloud-controller initialization |
 | Critical pod not Ready | Validation names pod or component | Pod logs/events, scheduling, dependencies |
 | Drain timeout | Eviction retries or PDB denial | Workload replicas, PDB math, termination behavior |
-| API/DNS/auth failure | kOps cannot query cluster | Operator endpoint and kubeconfig, not node health |
+| API/DNS/auth failure | kOps cannot query cluster | Operator endpoint and kubeconfig, plus API-server reachability and health |
 | Capacity timeout | Replacement cannot launch | Auto Scaling activity, quota, subnet/AZ capacity, image |
 
 A PodDisruptionBudget normally blocks eviction rather than cluster validation. If the output says drain failed, fix the workload or budget; increasing validation timeout will not help.
@@ -164,14 +164,14 @@ kops validate cluster "${CLUSTER_NAME}" \
 
 Also verify application health, spare capacity, PDB allowances, and the fixed replacement path. Validation focuses on kOps’ expected nodes and critical components; it is not a substitute for workload SLOs.
 
-If the repair changed the cluster or instance-group spec, preview and apply the required cloud-resource update before resuming:
+If the repair changed the cluster or instance-group spec, preview and apply the required cloud-resource update before resuming. For a directly managed cluster:
 
 ```bash
 kops update cluster "${CLUSTER_NAME}" \
   --state "${STATE_STORE}"
 ```
 
-Only add `--yes` after reviewing that plan.
+Only add `--yes` after reviewing that plan. For a Terraform-managed cluster, run `kops update cluster --target=terraform` from the Terraform working directory, then review `terraform plan` and apply it before resuming.
 
 ## Preview the Remaining Replacements
 
@@ -218,7 +218,7 @@ Scoping is not completion: run an unscoped preview afterwards so another stale g
 
 ## Special Case: Kubernetes 1.31+ Upgrade
 
-The current kOps guide says Kubernetes 1.31+ upgrades should use `kops reconcile cluster`, which orders control-plane cloud updates and rotations before worker launch configurations. If a manual `update` plus `rolling-update` sequence for such an upgrade has already stopped, do not casually switch commands midstream.
+For directly managed clusters, the current kOps guide says Kubernetes 1.31+ upgrades should use `kops reconcile cluster`, which orders control-plane cloud updates and rotations before worker launch configurations. Terraform-managed clusters are the documented exception and should follow the guide's targeted Terraform apply and rolling-update sequence. If a manual `update` plus `rolling-update` sequence for a directly managed upgrade has already stopped, do not casually switch commands midstream.
 
 Capture actual API-server, kubelet, desired-state, and cloud launch-template versions; then use the target release’s documented recovery path. The central risk is allowing a newer kubelet to contact an older API server.
 
@@ -226,7 +226,7 @@ For a reconcile operation that was interrupted, restore health, preview `kops re
 
 ## Close with a Clean Preview
 
-After completion:
+After completion on a directly managed cluster:
 
 ```bash
 kops validate cluster "${CLUSTER_NAME}" \
@@ -241,7 +241,7 @@ kops rolling-update cluster "${CLUSTER_NAME}" \
   --state "${STATE_STORE}"
 ```
 
-The last two commands are previews. Investigate any remaining cloud drift or selected instance. Then document the failed gate, evidence, durable fix, and whether validation or capacity alerting should catch the same condition before the next maintenance window.
+The last two commands are previews. For a Terraform-managed cluster, regenerate the Terraform configuration and use `terraform plan` for the cloud-drift check instead of the direct `kops update cluster` preview. Investigate any remaining cloud drift or selected instance. Then document the failed gate, evidence, durable fix, and whether validation or capacity alerting should catch the same condition before the next maintenance window.
 
 A safe resume does not mean persuading kOps to ignore health. It means making the health gate true again and letting kOps continue only the work that remains.
 
