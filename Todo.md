@@ -2,20 +2,19 @@
 
 ## Portainer
 
-1. How to Deploy and Update Portainer Stacks from a Git Repository
-2. Fixing Portainer stack.env and .env Variable Substitution in Git Stacks
-3. Portainer Cannot Find a Relative Build Context: How Git Stack Paths Really Work
-4. Portainer “No Such Image” During Stack Deployment: Pull Policies, Registries, and Tags
-5. Why “Re-Pull Image and Redeploy” Fails in Portainer—and What to Check
-6. Portainer API Authentication: JWT Tokens vs. API Keys for Scripts and CI
-7. Portainer Stack API Returns 404 After an Upgrade: Migrating to the New Create Endpoints
-8. How to Back Up and Restore Portainer—and What the Backup Does Not Include
-9. How to Migrate Portainer to a New Host Without Losing Stacks or Volumes
-10. Portainer Behind Nginx, Traefik, or Cloudflare: Fixing Login, WebSocket, and HTTPS Problems
-11. How to Connect Portainer to a Private Registry Without 401 or Certificate Errors
-12. How to Secure Portainer in Production: Docker Socket Access, RBAC, TLS, and Network Exposure
-13. How to Reset a Forgotten Portainer Admin Password Without Losing Configuration
-14. Why a Stack Works with docker compose but Fails in Portainer
+1. Fixing Portainer stack.env and .env Variable Substitution in Git Stacks
+2. Portainer Cannot Find a Relative Build Context: How Git Stack Paths Really Work
+3. Portainer “No Such Image” During Stack Deployment: Pull Policies, Registries, and Tags
+4. Why “Re-Pull Image and Redeploy” Fails in Portainer—and What to Check
+5. Portainer API Authentication: JWT Tokens vs. API Keys for Scripts and CI
+6. Portainer Stack API Returns 404 After an Upgrade: Migrating to the New Create Endpoints
+7. How to Back Up and Restore Portainer—and What the Backup Does Not Include
+8. How to Migrate Portainer to a New Host Without Losing Stacks or Volumes
+9. Portainer Behind Nginx, Traefik, or Cloudflare: Fixing Login, WebSocket, and HTTPS Problems
+10. How to Connect Portainer to a Private Registry Without 401 or Certificate Errors
+11. How to Secure Portainer in Production: Docker Socket Access, RBAC, TLS, and Network Exposure
+12. How to Reset a Forgotten Portainer Admin Password Without Losing Configuration
+13. Why a Stack Works with docker compose but Fails in Portainer
 
 ## Argo Workflows
 
