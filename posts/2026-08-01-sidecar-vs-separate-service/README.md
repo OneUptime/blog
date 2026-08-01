@@ -20,11 +20,11 @@ Choose based on the dependency's semantics, not on the size of its codebase.
 | --- | --- | --- |
 | Locality | Same node and Pod | Any eligible node or zone |
 | Communication | localhost, shared volume, or local socket | Pod network through Service discovery |
-| Replica ratio | Normally one helper per app Pod | Independently chosen replicas |
+| Replica ratio | Normally one helper per app Pod | Independent of app replicas; workload-dependent |
 | Scheduling | Combined Pod resource request | Separate scheduling and placement |
 | Failure | Shares Pod availability and resource pressure | Network and service dependency, but separate process/Pod failure |
-| Rollout | Pod-template change rolls app Pods | Independent image and rollout |
-| Scaling | Follows app replica count | Own HPA or manual scale |
+| Rollout | Sidecar template change is coupled to app Pod replacement | Independent image and rollout |
+| Scaling | Follows app replica count | Own HPA or manual scale for scalable workloads |
 | Security boundary | Shared Pod network and possibly volumes/process view | Separate identity and NetworkPolicy boundary |
 | Cost | Per-app-replica overhead | Shared capacity plus network hop |
 
@@ -100,7 +100,7 @@ For a sidecar, include both containers' requests when analyzing scheduling and n
 
 ## Consider Lifecycle and Deployment
 
-A sidecar image or configuration change modifies the Pod template and replaces application Pods through the controller's rollout. Even when application code is unchanged, capacity and disruption controls must handle the rollout.
+Changing a sidecar image or configuration in a Deployment's Pod template replaces application Pods through the Deployment's rollout. Even when application code is unchanged, capacity and disruption controls must handle the rollout.
 
 A separate service rolls independently, but compatibility becomes an API concern. Define backward-compatible contracts, versioning, and deployment order. Independent release is useful only when clients and servers can coexist across versions.
 
