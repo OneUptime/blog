@@ -2,9 +2,8 @@
 
 ## kOps
 
-1. How to Keep Multiple kOps Clusters from Deleting Shared VPC Resources
-2. kOps with Terraform: Which State Is the Source of Truth and What Must Never Be Hand-Edited?
-3. How to Back Up and Restore kOps etcd with `etcd-manager-ctl`
+1. kOps with Terraform: Which State Is the Source of Truth and What Must Never Be Hand-Edited?
+2. How to Back Up and Restore kOps etcd with `etcd-manager-ctl`
 
 ## Sidecars
 
