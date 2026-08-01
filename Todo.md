@@ -2125,3 +2125,233 @@
 18. CloudNativePG Rejects a Custom PostgreSQL or TimescaleDB Image: Verify Labels, UID, Binaries, and Extensions
 19. How to Expose CloudNativePG Inside and Outside Kubernetes Without Sending Writes to Read-Only Services
 20. PostgreSQL Operator Cluster Stuck Reconciling: Read Conditions, Events, Instance Logs, and Finalizers
+
+## Photon OS
+
+1. How to Deploy Photon OS 5 on ESXi from an OVA
+2. How to Build a Minimal Photon OS 5 Docker Host from the ISO
+3. How to Set a Persistent Static IP, Gateway, and DNS on Photon OS 5 with nmctl
+4. How to Stop a Cloned Photon OS VM from Reusing Its DHCP Identity
+5. How to Configure Photon OS with cloud-init and a NoCloud Seed ISO on vSphere
+6. How to Add, Prioritize, and Troubleshoot tdnf Repositories on Photon OS 5
+7. How to Repair Photon OS Updates After Repository URLs Move or TLS Certificates Fail
+8. How to Automate Photon OS Security Patching with tdnf-automatic
+9. How to Upgrade Photon OS in an Air-Gapped Environment with a Local Repository
+10. How to Upgrade Photon OS 4 to 5 Without Breaking Docker Workloads
+11. How to Install Docker Engine and Docker Compose on Photon OS 5
+12. How to Fix Docker Pull x509 Errors on Photon OS Behind Zscaler or a Corporate Proxy
+13. How to Create a Non-Root User in a Minimal Photon OS Container When useradd Is Missing
+14. How to Troubleshoot Docker Containers That Become Unreachable After a Photon OS Upgrade
+15. How to Run Docker macvlan Containers Across VLANs on Photon OS and a vSphere vDS
+16. How to Expand a Photon OS Root Partition and Filesystem After Growing the VMDK
+17. How to Diagnose File Permission and Missing Log Problems in Photon OS Services
+18. How to Restore tcpdump, netcat, and Other Missing Tools on Minimal Photon OS
+19. How to Manage Photon OS Packages with Ansible When the Generic package Module Fails
+20. How to Reset an Expired or Locked Photon OS Root Password from GRUB
+
+## Data Residency
+
+1. How to Distinguish Data Residency, Data Localization, and Data Sovereignty Before Designing Your Architecture
+2. How to Build a Data Residency Inventory That Finds Copies in Queues, Caches, Logs, and Backups
+3. How to Separate a Global SaaS Control Plane from Regional Customer Data Planes
+4. How to Route Each SaaS Tenant to the Correct Regional Database Using a Residency Registry
+5. How to Choose Between Shared, Schema-per-Tenant, and Database-per-Region Storage for Data Residency
+6. How to Move One SaaS Tenant to a New Data Region with Minimal Downtime
+7. How to Keep Authentication, Sessions, and User Profiles Inside Regional Data Boundaries
+8. How to Restrict Google Cloud Pub/Sub Storage to Allowed Persistence Regions
+9. How to Check Whether Azure Storage Queues, Service Bus, and Functions Keep Data in Your Selected Geography
+10. How to Enforce AWS Data Residency with SCPs, Region-Deny Policies, and IaC Checks
+11. How to Keep Database Backups and Point-in-Time Recovery Data Inside the Required Jurisdiction
+12. How to Design Disaster Recovery When Cross-Region Replication Would Violate Residency Rules
+13. How to Use Region-Scoped KMS Keys Without Breaking Backup Restore or Tenant Migration
+14. How to Prevent PII in Logs, Traces, Metrics, and Error Reports from Leaving a Region
+15. How to Keep CDN Caches, Object Replicas, and Upload Processing Inside a Data Boundary
+16. How to Run Cross-Region Analytics Without Copying Raw Customer Data
+17. How to Give Engineers Auditable Production Access Without Exporting Regional Data
+18. How to Propagate Data Deletion Across Replicas, Search Indexes, Queues, and Backups
+19. How to Continuously Prove Data Residency with Cloud Configuration Evidence and Data-Flow Tests
+20. How to Evaluate a SaaS Vendor’s Data Residency Claims Before Sending Customer Data
+
+## OpenMetrics
+
+1. How to Expose a Valid OpenMetrics 1.0 Endpoint Without a Client Library
+2. How to Implement HTTP Content Negotiation Between OpenMetrics and Prometheus Text Format
+3. How to Fix HTTP 406 Errors When Prometheus Requests application/openmetrics-text
+4. How to Fix Prometheus 3 Scrapes Rejected for a Missing or Incorrect Content-Type
+5. How to Fix the OpenMetrics “Data Does Not End with # EOF” Error
+6. How to Emit HELP, TYPE, and UNIT Metadata in the Correct OpenMetrics Order
+7. How to Escape UTF-8 Metric Names, Label Names, and Label Values in OpenMetrics
+8. How to Choose Between Counter, Gauge, Histogram, Summary, Info, and StateSet Metrics
+9. How to Encode OpenMetrics Histograms with Buckets, sum, count, and the +Inf Boundary
+10. How to Add Trace and Span Exemplars to OpenMetrics Counters and Histograms
+11. How to Bridge OTLP Metrics to an OpenMetrics Scrape Endpoint with the OpenTelemetry Collector
+12. How to Decide Whether to Emit Sample Timestamps or Let Prometheus Stamp Scrape Time
+13. How to Design OpenMetrics Labels Without Causing a Cardinality Explosion
+14. How to Find and Fix Duplicate Time Series in an OpenMetrics Payload
+15. How to Convert a JSON API or Log-Derived Statistics into an OpenMetrics Exporter
+16. How to Parse an OpenMetrics Endpoint in Python Without Bytes-versus-String Errors
+17. How to Validate OpenMetrics with promtool and Locate Line-Level Parse Errors
+18. How to Expose and Scrape OpenMetrics in Kubernetes with a ServiceMonitor
+19. How to Backfill Prometheus TSDB from OpenMetrics Files Without Losing Custom Labels
+20. How to Migrate a Prometheus Text 0.0.4 Endpoint to OpenMetrics 1.0 Without Breaking Scrapes
+
+## Metric Aggregation
+
+1. How to Aggregate Prometheus Counters Across Kubernetes Pods Without Restart Spikes
+2. How to Use `rate()` and `sum()` in the Right Order for Distributed Counters
+3. How to Collapse `instance` and `pod` Labels Without Losing or Duplicating Metrics
+4. How to Preserve the Labels You Need with `sum by()` and `sum without()`
+5. How to Build Recording Rules for Fast, Reusable Metric Aggregations
+6. How to Calculate a Service-Wide p95 or p99 from Prometheus Histogram Buckets
+7. How to Calculate a True Average from Histogram `_sum` and `_count` Series
+8. How to Aggregate Error Rates Without Averaging Ratios
+9. How to Decide Whether a Multi-Instance Gauge Should Be Summed, Averaged, or Deduplicated
+10. How to Combine Two Prometheus Metrics When Their Labels Do Not Match
+11. How to Detect and Remove Double Counting from HA Scrapers and Duplicate Exporters
+12. How to Reduce High-Cardinality Metrics Without Creating Duplicate Time Series
+13. How to Aggregate Metrics Over Time Without Confusing `sum()` and `sum_over_time()`
+14. How to Aggregate Metrics Across Kubernetes Clusters with Federation, Remote Write, or Thanos
+15. How to Pre-Aggregate OpenTelemetry Metrics Across Service Instances in the Collector
+16. How to Convert Delta and Cumulative Metrics Safely Before Aggregation
+17. How to Choose Histogram Buckets That Produce Useful Aggregated Percentiles
+18. How to Roll Up Long-Range Metrics Without Making Grafana Queries Slow
+19. How to Test Prometheus Recording Rules and Aggregation Logic with `promtool`
+20. How to Decide Which Labels to Keep Before Aggregating Metrics
+
+## Single-Leader
+
+1. How to Decide When Single-Leader Replication Is the Right Architecture
+2. How to Choose Between Synchronous, Semi-Synchronous, and Asynchronous Follower Replication
+3. How to Route Writes to the Leader and Reads to Followers Safely
+4. How to Guarantee Read-Your-Writes Consistency When Reads Use Replicas
+5. How to Prevent Stale Reads After a User Switches Between Followers
+6. How to Measure and Alert on Replication Lag Before It Breaks the Application
+7. How to Perform Automatic Failover Without Creating Split Brain
+8. How to Use Quorum and Fencing Tokens to Stop a Stale Leader from Writing
+9. How to Promote the Most Up-to-Date Follower Without Losing Acknowledged Writes
+10. How to Handle Client Writes That Time Out During a Leader Failover
+11. How to Rejoin a Recovered Former Leader Without Overwriting Newer Data
+12. How to Tune Leader-Election Lease, Renew, and Retry Timeouts
+13. How to Implement Leader Election for a Singleton Worker on Kubernetes
+14. How to Drain a Leader Gracefully During Rolling Deployments
+15. How to Test Leader Failover, Network Partitions, and Split-Brain Recovery
+16. How to Back Up from a Follower Without Taking an Inconsistent Snapshot
+17. How to Run Schema Migrations Safely with Single-Leader Replication
+18. How to Design Cross-Region Single-Leader Replication Without Surprise Latency
+19. How to Set a Follower-Read Staleness Budget and Fall Back to the Leader
+20. How to Monitor Leader Changes and Diagnose Election Flapping
+
+## PCI DSS
+
+1. How to Map Cardholder Data Flows and Define Your PCI DSS Scope
+2. How to Choose the Correct PCI DSS SAQ: A, A-EP, C, or D
+3. How to Reduce PCI DSS Scope with a Fully Hosted Checkout Page
+4. How to Keep an Embedded Payment iFrame Eligible for SAQ A
+5. How to Determine Whether Hosted Fields Put Your E-Commerce Site in SAQ A or A-EP
+6. How to Tokenize Card Data So Your Application Never Stores the PAN
+7. How to Store a PAN Safely When Business Requirements Make It Unavoidable
+8. How to Prevent CVV and Full Card Numbers from Leaking into Logs
+9. How to Mask PANs Correctly in Admin Screens, Receipts, and Support Tools
+10. How to Secure Card Data in Transit—and Why HTTPS Alone Does Not Make a Site PCI Compliant
+11. How to Store, Rotate, and Restrict Access to Card-Encryption Keys
+12. How to Segment the Cardholder Data Environment and Validate the Segmentation
+13. How to Apply Least Privilege and MFA to Systems in PCI DSS Scope
+14. How to Build PCI DSS Audit Logs Without Recording Sensitive Authentication Data
+15. How to Determine Whether Your E-Commerce Site Needs Quarterly ASV Scans
+16. How to Remediate Failed PCI Scans Without Disabling Security Controls
+17. How to Meet PCI DSS 4.0.1 Requirements for Payment-Page Scripts and Change Detection
+18. How to Validate a Payment Provider’s PCI Status and Collect AOC Evidence
+19. How to Build a PCI DSS Incident-Response Playbook for Cardholder Data Exposure
+20. How to Turn PCI DSS Evidence Collection into a Repeatable Engineering Workflow
+
+## Quotas
+
+1. How to Trace a Kubernetes “exceeded quota” Admission Error Back to the Exact Workload
+2. How to Find Which Pending and Terminating Pods Are Still Consuming Namespace Quota
+3. How to Pair LimitRange Defaults with ResourceQuota Without Surprise Pod Rejections
+4. How to Predict ResourceQuota Accounting When a Container Sets Limits but Omits Requests
+5. How to Recover Job Object Quota by Expiring Finished Kubernetes Jobs Automatically
+6. How to Diagnose a ResourceQuota Whose status.used Appears Stale or Incorrect
+7. How to Reserve Rolling-Update Headroom in a Namespace with Strict CPU and Memory Quotas
+8. How to Set Object-Count Quotas for Jobs, Secrets, Services, and PVCs Without Breaking Controllers
+9. How to Split Kubernetes Quota by PriorityClass Using ResourceQuota Scope Selectors
+10. How to Audit Hard and Used Quota Across Every Namespace with kubectl and jq
+11. How to Alert Before a Namespace Hits ResourceQuota Using kube-state-metrics and Prometheus
+12. How to Size Namespace Quotas for HPA Bursts Without Defeating Multi-Tenant Fairness
+13. How to Roll Out ResourceQuota Changes Safely When Existing Workloads Already Exceed the New Limit
+14. How to Preflight Kubernetes Manifests Against Remaining Namespace Quota in CI
+15. How to Identify the Exact Regional Cloud Quota Blocking an AWS, Azure, or GCP Deployment
+16. How to Automate AWS Service Quota Increase Requests and Track Their Approval Status
+17. How to Troubleshoot an AWS Service Quota Increase That Is Rejected or Stuck Pending
+18. How to Distinguish a Service Quota Error from Rate Limiting and Regional Capacity Exhaustion
+19. How to Add Cloud Quota Prechecks to Terraform Before Provisioning Fails Mid-Apply
+20. How to Forecast Quota Needs and Request Increases Before a Multi-Region Launch
+
+## Pod Scheduling
+
+1. How to Read “0/n Nodes Are Available” Events and Pinpoint Every Failed Scheduling Reason
+2. How to Identify Which Nodes Failed Each Constraint in a FailedScheduling Event
+3. How to Combine Taints, Tolerations, and Node Affinity for a Truly Dedicated Node Pool
+4. How to Keep a Toleration from Sending Pods to the Wrong Node Pool
+5. How to Choose Between nodeSelector and Required or Preferred Node Affinity
+6. How to Spread Deployment Replicas Across Both Zones and Hosts Without Making Pods Unschedulable
+7. How to Fix Topology Spread Constraints When Labels Do Not Match Their Own Pods
+8. How to Choose Pod Anti-Affinity vs Topology Spread Constraints for High Availability
+9. How to Rebalance Pods After Adding Nodes When the Scheduler Will Not Move Running Workloads
+10. How to Schedule One Pod on Every Eligible Node: DaemonSet vs Anti-Affinity
+11. How to Explain Why Kubernetes Scheduled a Pod on an Apparently Busier Node
+12. How to Bin-Pack Pods with the NodeResourcesFit MostAllocated Scheduler Strategy
+13. How to Fix “Preemption Is Not Helpful for Scheduling” for a High-Priority Pod
+14. How to Use PriorityClasses Without Causing Cascading Pod Preemptions
+15. How to Fix “Volume Node Affinity Conflict” by Delaying PVC Binding Until Scheduling
+16. How to Design Preferred Fallback Scheduling Across On-Demand and Spot Node Pools
+17. How to Schedule GPU Pods When Taints, Device Plugins, and Extended Resources Interact
+18. How to Make Cluster Autoscaler React to Pods Blocked by Affinity or Topology Rules
+19. How to Prevent Control-Plane Taints from Stranding Essential Cluster Add-ons
+20. How to Debug Resource Fragmentation When Cluster Capacity Exists but No Single Node Fits the Pod
+
+## Network Automation
+
+1. How to Build a Read-Only Network Configuration Backup Pipeline with Nornir, Netmiko, and Git
+2. How to Choose Ansible, Nornir, or Netmiko for a Real Network Automation Workflow
+3. How to Turn NetBox into the Source of Truth for Ansible and Nornir Inventories
+4. How to Model Multi-Vendor Network Intent Without Duplicating Every Jinja2 Template
+5. How to Make cisco.ios.ios_config Idempotent with the Right Match and Replace Modes
+6. How to Stop Ansible Network Tasks from Reporting Changed on Every Run
+7. How to Debug Netmiko ReadTimeout and “Prompt Not Found” Errors on Unsupported CLIs
+8. How to Automate Interactive Network Commands That Pause for Confirmation or Pagination
+9. How to Run Network Automation Concurrently Without Overloading Devices or Hiding Partial Failures
+10. How to Retry Configuration Pushes Safely When Remote Network Devices Are Frequently Offline
+11. How to Normalize Saved Configurations Before Git Diffing to Eliminate False Drift
+12. How to Detect and Remediate Network Configuration Drift Against an Intended State
+13. How to Add Pre-Checks, Post-Checks, and Automatic Rollback to a Network Change
+14. How to Test Jinja2-Generated Switch Configurations in CI Before Touching Production
+15. How to Build a Network Change Pipeline with Peer Approval, Audit Logs, and Maintenance Windows
+16. How to Keep Network Device Passwords, Enable Secrets, and SSH Keys Out of Automation Logs
+17. How to Parse Unstructured Show Command Output Reliably with TextFSM or Genie
+18. How to Prefer NETCONF, RESTCONF, or gNMI While Keeping a Safe CLI Fallback
+19. How to Zero-Touch Provision New Switches from DHCP, NetBox, and Generated Configurations
+20. How to Expose Routine Network Changes as a Guardrailed Self-Service Workflow
+
+## Rollouts
+
+1. How to Configure a Zero-Downtime Kubernetes Rollout with Readiness Probes and minReadySeconds
+2. How to Calculate maxSurge and maxUnavailable for Small and Large Deployments
+3. How to Fix a Rollout Stuck on ProgressDeadlineExceeded
+4. How to Trace a Stalled Deployment Through Conditions, Events, ReplicaSets, and Pods
+5. How to Use kubectl rollout status with a Timeout That Fails CI Correctly
+6. How to Trigger a Rolling Restart Without Changing a Deployment’s Container Image
+7. How to Make kubectl rollout restart Pull Fresh Bytes—and Why Immutable Tags Are Safer
+8. How to Update a Deployment Image Safely with kubectl set image and Verify the Result
+9. How to Roll Back to a Specific Deployment Revision and Confirm the Old Version Is Healthy
+10. How to Fix kubectl rollout undo When a Mutable Image Tag Re-deploys the Bad Build
+11. How to Pause and Resume a Kubernetes Deployment for a Controlled Partial Rollout
+12. How to Prevent ResourceQuota from Blocking the Surge Pod During a Rolling Update
+13. How to Break the maxUnavailable: 0 Deadlock When the Cluster Has No Room for a Surge Pod
+14. How to Tune Startup and Readiness Probes So Slow Boots Do Not Stall a Rollout
+15. How to Drain Existing Connections with preStop and terminationGracePeriodSeconds During Rollout
+16. How to Schedule Periodic Rolling Restarts with a Kubernetes CronJob and Least-Privilege RBAC
+17. How to Trigger a Deployment Rollout When a ConfigMap or Secret Changes
+18. How to Tell What a PodDisruptionBudget Protects During a Deployment Rollout—and What It Does Not
+19. How to Auto-Roll Back a Failed Kubernetes Deployment from CI After a Rollout Timeout
+20. How to Diagnose Overlapping Deployment Updates That Leave Multiple ReplicaSets Active
