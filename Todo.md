@@ -2,14 +2,13 @@
 
 ## kOps
 
-1. How to Configure Cluster Autoscaler for Multiple kOps InstanceGroups
-2. Building kOps Spot Node Groups with `MixedInstancesPolicy` and On-Demand Fallback
-3. How to Scale a kOps InstanceGroup Without Accidentally Upgrading Kubernetes
-4. How to Run kOps in an Existing AWS VPC Without Recreating Subnets, NAT, or Routes
-5. Public vs Private Topology in kOps: API Access, Bastions, NAT Gateways, and Cost
-6. How to Keep Multiple kOps Clusters from Deleting Shared VPC Resources
-7. kOps with Terraform: Which State Is the Source of Truth and What Must Never Be Hand-Edited?
-8. How to Back Up and Restore kOps etcd with `etcd-manager-ctl`
+1. Building kOps Spot Node Groups with `MixedInstancesPolicy` and On-Demand Fallback
+2. How to Scale a kOps InstanceGroup Without Accidentally Upgrading Kubernetes
+3. How to Run kOps in an Existing AWS VPC Without Recreating Subnets, NAT, or Routes
+4. Public vs Private Topology in kOps: API Access, Bastions, NAT Gateways, and Cost
+5. How to Keep Multiple kOps Clusters from Deleting Shared VPC Resources
+6. kOps with Terraform: Which State Is the Source of Truth and What Must Never Be Hand-Edited?
+7. How to Back Up and Restore kOps etcd with `etcd-manager-ctl`
 
 ## Sidecars
 
