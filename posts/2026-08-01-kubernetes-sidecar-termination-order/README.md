@@ -8,7 +8,7 @@ Description: Understand the exact native-sidecar shutdown order, how the shared 
 
 ---
 
-For a Pod that uses Kubernetes-native sidecars, main application containers stop before sidecars. Native sidecars then stop in reverse declaration order. For a Pod made only of ordinary application containers—including the pre-native “legacy sidecar” pattern—Kubernetes does not guarantee a termination order.
+For a Pod that uses Kubernetes-native sidecars, the kubelet delays their stop signals until every main application container has stopped. It then signals native sidecars one by one in reverse declaration order. For a Pod made only of ordinary application containers—including the pre-native “legacy sidecar” pattern—Kubernetes does not guarantee a termination order.
 
 That distinction determines whether a proxy, log collector, or secret agent is still available while the application shuts down.
 
@@ -35,14 +35,14 @@ On graceful Pod termination, the dependency order is:
 ```text
 api stops completely
         ↓
-request-proxy stops
+request-proxy receives its stop signal and stops
         ↓
-base-tunnel stops
+base-tunnel receives its stop signal and stops
 ```
 
-Both sidecars started in declaration order during initialization: `base-tunnel`, then `request-proxy`. They stop in the reverse order, allowing the lower-level tunnel to remain available while the higher-level proxy exits.
+Both sidecars started in declaration order during initialization: `base-tunnel`, then `request-proxy`. They receive their stop signals in the reverse order, allowing the lower-level tunnel to remain available while the higher-level proxy exits.
 
-If there are several entries in `spec.containers`, they are all “main” containers for this rule. Kubernetes waits until the last main container has fully terminated before it begins native-sidecar termination, but it does not promise an order among those main containers.
+If there are several entries in `spec.containers`, they are all “main” containers for this rule. Kubernetes waits until the last main container has fully terminated before it begins signaling native sidecars, but it does not promise an order among those main containers.
 
 ## Follow the Graceful Termination Flow
 
@@ -50,13 +50,13 @@ For a normal deletion with the default settings, the important sequence is:
 
 1. The Pod receives a deletion timestamp and enters termination. The default grace period is 30 seconds unless `terminationGracePeriodSeconds` says otherwise.
 2. The termination grace-period countdown starts.
-3. The kubelet invokes any applicable `preStop` hook before asking the runtime to send that container's stop signal. The hook must finish before the signal is sent.
+3. The kubelet invokes any applicable `preStop` hook before asking the runtime to send that container's stop signal. The hook must finish before the signal is sent. Do not assume the sidecar signal ordering delays a sidecar's hook; that hook can run while main containers are still stopping.
 4. Main application containers are asked to terminate. With multiple main containers, do not assume YAML order.
 5. At the same time, the control plane marks the Pod's terminating EndpointSlice entries not ready for ordinary Service traffic.
-6. After every main container has fully stopped, native sidecars are stopped one by one in reverse `initContainers` order.
+6. After every main container has fully stopped, native sidecars receive their stop signals one by one in reverse `initContainers` order.
 7. If the grace period expires, remaining processes are forcibly terminated; ordering can no longer protect dependencies. An overrun `preStop` hook can receive the kubelet's small one-off two-second extension, but that is an emergency allowance rather than a separate shutdown budget.
 
-The container runtime normally sends `SIGTERM` to process 1 on Linux. Kubernetes also supports an image `STOPSIGNAL` and, on versions that support it, a container lifecycle `stopSignal` override. Regardless of the signal chosen, PID 1 must handle or correctly forward it.
+The container runtime normally sends `SIGTERM` to process 1 on Linux. Kubernetes also supports an image `STOPSIGNAL` and a container lifecycle `stopSignal` override. The lifecycle field is alpha, requires the disabled-by-default `ContainerStopSignals` feature gate, and also requires `spec.os.name`; when enabled, it overrides the image signal. Regardless of the signal chosen, PID 1 must handle or correctly forward it.
 
 ## The Grace Period Is Shared
 
@@ -99,7 +99,7 @@ If a `preStop` hook is still running when the configured grace period expires, t
 
 Hooks have at-least-once delivery intent, so make handlers idempotent. Do not use a `preStop` hook as the only place to persist irreplaceable state.
 
-For native sidecars, do not add hooks merely to recreate the sidecar ordering that kubelet already provides. Use them only for container-specific drain behavior.
+For native sidecars, do not add hooks merely to recreate the sidecar signal ordering that kubelet already provides. Use them only for container-specific drain behavior, and remember that a sidecar's hook can run before the main containers have exited.
 
 ## Legacy Sidecars Have No Special Stop Position
 
@@ -127,9 +127,9 @@ Sleeping in one container is not a robust ordering protocol. It assumes timing i
 
 ## Regular Init Containers Are Already Finished
 
-A regular init container runs to completion before application startup. It is not running during ordinary Pod shutdown, so it has no place in termination order.
+A regular init container runs to completion before application startup. Once the application containers have started, it is no longer running, so it has no place in that later termination order. If the Pod is deleted while it is still initializing, however, the currently running regular init container is stopped as part of Pod termination; the application-container/sidecar rule does not define an order between it and native sidecars.
 
-Only entries in `initContainers` whose own `restartPolicy` is `Always` are live sidecars. When reviewing status, both kinds appear in `initContainerStatuses`; check the Pod spec rather than guessing from the status array name.
+Only entries in `initContainers` whose own `restartPolicy` is `Always` are native sidecars that remain running after initialization. When reviewing status, both kinds appear in `initContainerStatuses`; check the Pod spec rather than guessing from the status array name.
 
 ## Forced Deletion Changes the Contract
 
@@ -139,7 +139,7 @@ Avoid treating this command as an ordinary shutdown test:
 kubectl delete pod api-pod --grace-period=0 --force
 ```
 
-A force deletion removes the API object without waiting for kubelet confirmation. The node still attempts cleanup, but graceful application-first, sidecar-last behavior does not have the requested time to run. Node loss, power failure, and an unreachable kubelet likewise cannot provide normal lifecycle guarantees.
+A force deletion removes the API object without waiting for kubelet confirmation. If the kubelet observes the deletion, it begins immediate cleanup, but graceful application-first, sidecar-last behavior does not have the requested time to run. Node loss, power failure, and an unreachable kubelet likewise cannot provide normal lifecycle guarantees.
 
 Applications must therefore recover from abrupt termination even when graceful shutdown is carefully designed. Persist critical state outside ephemeral Pod storage and make work replayable or idempotent.
 
@@ -151,14 +151,17 @@ This endpoint change occurs alongside node-side shutdown; it is not a guarantee 
 
 ## Test the Order Instead of Inferring It
 
-Run a disposable Pod whose containers log signal receipt and exit time. Delete it with a nonzero grace period:
+Run a disposable Pod whose containers log signal receipt and exit time. In separate terminals, start a combined log stream and a Pod watch before deletion:
+
+```bash
+kubectl logs api-pod --all-containers=true --prefix=true --timestamps=true -f
+kubectl get pod api-pod -w
+```
+
+Then, from another terminal, delete the Pod with a nonzero grace period:
 
 ```bash
 kubectl delete pod api-pod --wait=false
-kubectl logs api-pod -c api -f
-kubectl logs api-pod -c request-proxy -f
-kubectl logs api-pod -c base-tunnel -f
-kubectl get pod api-pod -w
 ```
 
 Also test under realistic load. Verify:
