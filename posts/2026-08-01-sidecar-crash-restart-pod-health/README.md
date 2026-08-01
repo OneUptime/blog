@@ -12,7 +12,7 @@ By default, when a Kubernetes-native sidecar crashes, the kubelet restarts that 
 
 The native sidecar's container-level policy is `Always`. It restarts after either a successful exit (`0`) or a failed exit (non-zero), regardless of whether the Pod-level `restartPolicy` is `Always`, `OnFailure`, or `Never`.
 
-Kubernetes 1.36 adds an opt-in exception. If the `RestartAllContainersOnContainerExits` feature is enabled and the sidecar has a matching `restartPolicyRules` action of `RestartAllContainers`, that exit restarts the whole Pod in place. The examples in this article do not configure that rule, so they use normal independent restart behavior.
+Kubernetes 1.36 includes a beta exception that is enabled by default. If the `RestartAllContainersOnContainerExits` feature and its dependent `ContainerRestartRules` and `NodeDeclaredFeatures` feature gates are enabled, and the sidecar has a matching `restartPolicyRules` action of `RestartAllContainers`, that exit restarts the whole Pod in place. The examples in this article do not configure that rule, so they use normal independent restart behavior.
 
 Independent restart does not mean independent health. While the sidecar is down or waiting in restart backoff, it is not ready, so the whole Pod is normally unready and a matching Service endpoint is not used for ordinary traffic.
 
