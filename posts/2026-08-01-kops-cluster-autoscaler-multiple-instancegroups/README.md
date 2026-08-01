@@ -114,9 +114,9 @@ spec:
     scaleDownUnneededTime: 10m
 ```
 
-`least-waste` prefers the option with less unused capacity after placing the triggering Pods. It does not promise the lowest EC2 price. Choose an expander that matches the actual objective rather than inferring cost behavior from its name.
+`least-waste` prefers the option with the least idle CPU after scale-up and, when CPU is tied, the least unused memory. It does not promise the lowest EC2 price. Choose an expander that matches the actual objective rather than inferring cost behavior from its name.
 
-When enabled through kOps, the addon, AWS permissions, and ASG discovery tags are generated from cluster and InstanceGroup state. An InstanceGroup with role `Node` is eligible by default unless `spec.autoscale` is set to `false`; setting `autoscale: true` makes intent visible.
+When enabled through kOps, the addon and AWS permissions are generated from cluster and InstanceGroup state. kOps also registers eligible AWS groups with the managed addon and writes the ASG node-template labels and taints used for scale-from-zero simulation. An InstanceGroup with role `Node` is eligible by default unless `spec.autoscale` is set to `false`; setting `autoscale: true` makes intent visible.
 
 ## Use Priority When Business Preference Matters
 
@@ -166,7 +166,7 @@ Restrict the rolling update with `--instance-group` when only selected groups ch
 
 ## Understand Scale from Zero
 
-At zero nodes, the autoscaler cannot inspect a live node from the group. Its AWS provider derives the template from the launch template and ASG tags. kOps adds node-template labels and taints needed for discovery when it creates the group.
+At zero nodes, the autoscaler cannot inspect a live node from the group. Its AWS provider derives instance capacity from the ASG's launch template and reads labels and taints from ASG node-template tags. kOps adds those node-template tags when it creates the group.
 
 Scale-from-zero failures commonly come from:
 
@@ -188,7 +188,7 @@ Separate materially different sizes into different InstanceGroups. This gives th
 
 ## Balance Similar Groups Deliberately
 
-`balanceSimilarNodeGroups: true` tells Cluster Autoscaler to keep similar groups more evenly balanced. This is useful for equivalent per-zone groups, but similarity includes labels, taints, and allocatable resources. It is not a general multi-AZ availability guarantee.
+`balanceSimilarNodeGroups: true` tells Cluster Autoscaler to keep similar groups more evenly balanced. This is useful for equivalent per-zone groups, but similarity is based on node resources and labels, with provider-specific labels such as zone ignored. Balancing only occurs among groups that can support the same Pending Pods, so scheduling constraints such as taints still matter. It is not a general multi-AZ availability guarantee.
 
 If one multi-AZ ASG backs an InstanceGroup, AWS also runs its own Availability Zone balancing process. kOps documents that `AZRebalance` can launch or terminate unexpectedly relative to Cluster Autoscaler's selection of a specific node; assess whether suspending that ASG process is appropriate for your architecture before doing so.
 

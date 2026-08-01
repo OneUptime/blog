@@ -182,7 +182,7 @@ kops rolling-update cluster "$CLUSTER_NAME" \
   --instance-group spot-workers
 ```
 
-Review before adding `--yes`; a full rotation is disruptive and can create a large, simultaneous Spot-capacity request.
+Review before adding `--yes`; a full rotation is disruptive and can create a large series of Spot-capacity requests.
 
 ## Verify the Actual Mix
 
@@ -191,14 +191,30 @@ Inspect the backing ASG:
 ```bash
 aws autoscaling describe-auto-scaling-groups \
   --auto-scaling-group-names ASG_NAME
+
+aws autoscaling describe-scaling-activities \
+  --auto-scaling-group-name ASG_NAME
 ```
+
+Inspect the EC2 instances to distinguish Spot from On-Demand capacity:
+
+```bash
+aws ec2 describe-instances \
+  --filters \
+    "Name=tag:aws:autoscaling:groupName,Values=ASG_NAME" \
+    "Name=instance-state-name,Values=pending,running" \
+  --query 'Reservations[].Instances[].{InstanceId:InstanceId,InstanceType:InstanceType,PurchaseOption:InstanceLifecycle,AvailabilityZone:Placement.AvailabilityZone}' \
+  --output table
+```
+
+`InstanceLifecycle` is `spot` for a Spot Instance and is absent (`null`) for an On-Demand Instance. Do not confuse it with the ASG's `LifecycleState`, which reports states such as `Pending` or `InService` rather than the purchase option.
 
 Check:
 
 - `MixedInstancesPolicy.InstancesDistribution`;
 - `CapacityRebalance`;
 - desired, minimum, and maximum capacity;
-- launched instance types and lifecycle values;
+- launched instance types and purchase options;
 - failed scaling activities and capacity errors.
 
 Correlate AWS state with Kubernetes:
