@@ -106,7 +106,7 @@ services:
     image: registry.example.com/billing/api:2026.08.01-4f2c8d1
 ```
 
-Build and push an immutable tag, update the Compose file to that tag, review the commit, and let Portainer deploy the changed commit. A digest pin provides even stronger content identity:
+Build and push a unique, never-reused tag, update the Compose file to that tag, review the commit, and let Portainer deploy the changed commit. A digest pin provides even stronger content identity:
 
 ```yaml
 services:
@@ -168,7 +168,7 @@ After deployment, verify:
 6. Verify the deployed commit, service health, and image digest.
 7. Roll back by reverting the deployment commit, not by silently changing the running container.
 
-Git-backed deployment is reliable when every change has a stable identity: a Git commit for configuration, an immutable image tag or digest for code, and explicit Portainer state for environment-specific inputs.
+Git-backed deployment is reliable when every change has a stable identity: a Git commit for configuration, a unique, never-reused image tag or digest for code, and explicit Portainer state for environment-specific inputs.
 
 ## Official Documentation
 
