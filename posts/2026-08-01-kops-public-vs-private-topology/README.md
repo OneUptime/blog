@@ -26,7 +26,7 @@ Choose topology, API load-balancer type, egress, and operator connectivity as fo
 | Node placement | Public subnets | Private subnets |
 | Internet route to nodes | Routable when public IPs/routes exist; security groups still filter traffic | No direct internet ingress route |
 | Outbound internet | Typically direct through an Internet Gateway | Typically through NAT per AZ, centralized egress, proxy, or VPC endpoints |
-| API endpoint | Can be public or separately configured | Public by default for newly created clusters unless changed to internal |
+| API endpoint | Public by default; an internal load balancer also requires at least one Private subnet | Public by default for newly created clusters unless changed to internal |
 | SSH | Directly reachable only if routing, public IP, security groups, and credentials permit | Usually through a bastion, SSM, VPN, or private network |
 | Extra network resources | Fewer NAT resources | Utility subnets and often NAT gateways/EIPs; possibly bastion load balancer |
 | Cost tendency | Lower fixed networking cost | Higher fixed and data-processing cost when NAT/LBs are used |
@@ -135,7 +135,7 @@ Clusters route through a transit gateway or inspection VPC. This can consolidate
 
 ### VPC endpoints plus restricted proxy or NAT
 
-Gateway and interface endpoints keep supported AWS service traffic private. They have their own hourly/data costs and do not cover arbitrary internet endpoints. Build a complete dependency list; one missing registry, STS, or state-store path can prevent nodes from joining.
+Gateway and interface endpoints keep supported AWS service traffic private. Interface endpoints have hourly and data-processing costs; S3 and DynamoDB gateway endpoints have no additional charge. Neither endpoint type covers arbitrary internet endpoints. Build a complete dependency list; one missing registry, STS, or state-store path can prevent nodes from joining.
 
 ## Understand the Cost Difference
 
@@ -145,7 +145,7 @@ Private topology can add:
 
 - NAT gateway hourly charges per AZ;
 - NAT data processing for each byte traversing it;
-- Elastic IPv4 address charges;
+- public IPv4 address charges, including Elastic IP addresses;
 - public or internal load-balancer hours and LCUs/NLCUs;
 - bastion EC2 and load-balancer cost;
 - interface VPC endpoint hours and data processing;
@@ -159,7 +159,7 @@ Use AWS Cost Explorer and cost allocation tags to measure the real design. For l
 
 For both designs:
 
-- restrict `adminAccess` and SSH access to known networks;
+- restrict `kubernetesApiAccess` and `sshAccess` to known networks;
 - use separate security groups for intentional traffic paths;
 - keep control-plane and worker access least-privileged;
 - use private registries or endpoints where practical;
@@ -200,7 +200,7 @@ Choose public topology when its simpler egress and lower fixed cost fit the risk
 - [kOps: Supported network topologies](https://kops.sigs.k8s.io/topology/)
 - [kOps: Bastion setup](https://kops.sigs.k8s.io/bastion/)
 - [kOps: Run in an existing VPC and reuse egress](https://kops.sigs.k8s.io/run_in_existing_vpc/)
-- [kOps: Cluster API load-balancer configuration](https://kops.sigs.k8s.io/cluster_spec/#load-balancer-for-the-kubernetes-api)
+- [kOps: Cluster API load-balancer configuration](https://kops.sigs.k8s.io/cluster_spec/#api)
 - [AWS: NAT gateways](https://docs.aws.amazon.com/vpc/latest/userguide/vpc-nat-gateway.html)
 - [AWS: Compare NAT gateways and NAT instances](https://docs.aws.amazon.com/vpc/latest/userguide/vpc-nat-comparison.html)
 - [AWS: NAT gateway pricing](https://aws.amazon.com/vpc/pricing/)
