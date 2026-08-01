@@ -8,9 +8,9 @@ Description: Understand why kOps size fields are only capacity bounds and enable
 
 ---
 
-Setting an InstanceGroup to `minSize: 2` and `maxSize: 10` does not tell kOps or AWS when to add a third node. Those values define the permitted range for the backing node group. A separate controller must change its desired capacity.
+Setting an ASG-backed InstanceGroup to `minSize: 2` and `maxSize: 10` does not tell kOps or AWS when to add a third node. Those values define the permitted range for the backing node group. A separate controller must change its desired capacity.
 
-On AWS, a kOps InstanceGroup maps to an EC2 Auto Scaling group with minimum, maximum, and desired capacity. Without a scaling policy or Kubernetes node autoscaler, the ASG maintains its current desired capacity and replaces unhealthy instances, but it does not interpret Kubernetes Pod demand.
+On AWS, a kOps InstanceGroup using the default `CloudGroup` manager maps to an EC2 Auto Scaling group with minimum, maximum, and desired capacity. Without a scaling policy or Kubernetes node autoscaler, the ASG maintains its current desired capacity and replaces unhealthy instances, but it does not interpret Kubernetes Pod demand.
 
 ## Bounds Are Not a Scaling Policy
 
@@ -106,7 +106,7 @@ kops update cluster "$CLUSTER_NAME"
 kops update cluster "$CLUSTER_NAME" --yes
 ```
 
-Review the preview before applying it. Enabling the addon may add IAM permissions and Kubernetes resources as well as adjust Auto Scaling group tags.
+Review the preview before applying it. Enabling the addon may add IAM permissions and Kubernetes resources.
 
 ## Verify the Controller, Not Just the Bounds
 
@@ -175,11 +175,11 @@ Do not combine Cluster Autoscaler with an EC2 target-tracking policy, scheduled 
 
 ## Karpenter Is a Different Model
 
-Current kOps releases can also manage AWS workers through Karpenter. Karpenter-managed InstanceGroups use NodePool semantics rather than an ASG controlled by Cluster Autoscaler; in current kOps documentation, omitting `minSize` creates a dynamic NodePool, while a positive `minSize` creates a static one.
+Current kOps releases can also manage AWS workers through Karpenter. Karpenter-managed InstanceGroups use NodePool semantics rather than an ASG controlled by Cluster Autoscaler; in kOps 1.36 and later, omitting `minSize` creates a dynamic NodePool, while a positive `minSize` creates a static one and becomes `NodePool.spec.replicas`. When set, `maxSize` maps to `NodePool.spec.limits.nodes`.
 
 Do not apply ASG troubleshooting steps to a group whose `spec.manager` is `Karpenter`. First identify which node manager owns provisioning.
 
-`minSize` and `maxSize` answer “what range is allowed?” They do not answer “when should capacity change?” Enable exactly one node-provisioning controller and give it schedulable node templates, realistic resource requests, and safe bounds.
+For ASG-backed InstanceGroups, `minSize` and `maxSize` answer “what range is allowed?” They do not answer “when should capacity change?” Enable exactly one node-provisioning controller and give it schedulable node templates, realistic resource requests, and safe bounds.
 
 ## Official Documentation
 
