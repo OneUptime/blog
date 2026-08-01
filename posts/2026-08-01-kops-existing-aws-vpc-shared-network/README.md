@@ -42,7 +42,7 @@ aws ec2 describe-route-tables \
   --filters Name=vpc-id,Values=vpc-0123456789abcdef0
 ```
 
-kOps documentation requires VPC DNS hostnames for the Kubernetes AWS configuration. On a shared VPC, kOps detects the requirement but refuses to change it automatically. Have the VPC owner review and set the AWS attributes deliberately.
+Ensure DNS resolution is enabled in the VPC. Current kOps checks `enableDnsSupport` and refuses to enable it automatically for a shared VPC; the existing-VPC guide also instructs operators to enable DNS hostnames. Have the VPC owner review and set both AWS attributes deliberately.
 
 ```bash
 aws ec2 describe-vpc-attribute \
@@ -133,7 +133,7 @@ kOps requires either all subnets to be pre-created or none of them in this share
 
 ## Declare Existing NAT or External Egress
 
-For an existing NAT gateway, put its ID in the corresponding **private** subnet's `egress` field:
+For an existing zonal public NAT gateway, put its ID in the corresponding **private** subnet's `egress` field:
 
 ```yaml
 spec:
@@ -146,11 +146,11 @@ spec:
       egress: nat-0aaa9999
 ```
 
-Although the NAT gateway lives in a public subnet, `egress` describes the default path used by the private subnet.
+Although a zonal public NAT gateway lives in a public subnet, `egress` describes the default path used by the private subnet.
 
 kOps also recognizes an existing NAT instance ID and, in current documentation, an existing transit gateway ID. Validate the supported forms against the kOps release that operates the cluster.
 
-If route management is entirely external—for example through centralized inspection, a virtual appliance, or another unsupported design—use:
+If route management is entirely external—for example through centralized inspection, a virtual appliance, or another unsupported design—set `egress: External` on every subnet whose egress kOps should ignore, including utility subnets:
 
 ```yaml
 spec:
@@ -161,9 +161,15 @@ spec:
       zone: eu-west-2a
       type: Private
       egress: External
+    - name: utility-eu-west-2a
+      id: subnet-0ddd4444
+      cidr: 10.20.128.0/24
+      zone: eu-west-2a
+      type: Utility
+      egress: External
 ```
 
-`External` means kOps should ignore egress. It does not make a disconnected network functional. Before bootstrap, ensure nodes can reach every required endpoint through NAT, proxies, or VPC endpoints, including the state/discovery stores, image registries, AWS APIs, and the Kubernetes API path.
+`External` means kOps should ignore egress for that subnet. It does not make a disconnected network functional. Before bootstrap, ensure nodes can reach every required endpoint through NAT, proxies, or VPC endpoints, including the state/discovery stores, image registries, AWS APIs, and the Kubernetes API path.
 
 ## Decide Who Owns Subnet Tags
 
