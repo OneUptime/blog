@@ -2,16 +2,15 @@
 
 ## kOps
 
-1. How to Resize or Change EC2 Types in a kOps InstanceGroup Without Rebuilding the Cluster
-2. Why Setting `minSize` and `maxSize` Does Not Automatically Scale a kOps Node Group
-3. How to Configure Cluster Autoscaler for Multiple kOps InstanceGroups
-4. Building kOps Spot Node Groups with `MixedInstancesPolicy` and On-Demand Fallback
-5. How to Scale a kOps InstanceGroup Without Accidentally Upgrading Kubernetes
-6. How to Run kOps in an Existing AWS VPC Without Recreating Subnets, NAT, or Routes
-7. Public vs Private Topology in kOps: API Access, Bastions, NAT Gateways, and Cost
-8. How to Keep Multiple kOps Clusters from Deleting Shared VPC Resources
-9. kOps with Terraform: Which State Is the Source of Truth and What Must Never Be Hand-Edited?
-10. How to Back Up and Restore kOps etcd with `etcd-manager-ctl`
+1. Why Setting `minSize` and `maxSize` Does Not Automatically Scale a kOps Node Group
+2. How to Configure Cluster Autoscaler for Multiple kOps InstanceGroups
+3. Building kOps Spot Node Groups with `MixedInstancesPolicy` and On-Demand Fallback
+4. How to Scale a kOps InstanceGroup Without Accidentally Upgrading Kubernetes
+5. How to Run kOps in an Existing AWS VPC Without Recreating Subnets, NAT, or Routes
+6. Public vs Private Topology in kOps: API Access, Bastions, NAT Gateways, and Cost
+7. How to Keep Multiple kOps Clusters from Deleting Shared VPC Resources
+8. kOps with Terraform: Which State Is the Source of Truth and What Must Never Be Hand-Edited?
+9. How to Back Up and Restore kOps etcd with `etcd-manager-ctl`
 
 ## Sidecars
 
