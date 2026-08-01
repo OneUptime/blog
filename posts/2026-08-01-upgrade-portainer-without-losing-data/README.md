@@ -23,12 +23,17 @@ On Docker Standalone, capture the image, ports, environment, and mounts:
 
 ```bash
 docker inspect portainer \
-  --format 'image={{.Config.Image}} ports={{json .HostConfig.PortBindings}} mounts={{json .Mounts}}'
-docker volume inspect portainer_data
+  --format 'image={{.Config.Image}} ports={{json .HostConfig.PortBindings}} env={{json .Config.Env}} mounts={{json .Mounts}}'
 docker ps --filter name=portainer
 ```
 
-Do not assume the volume is named `portainer_data`. A Compose project may prefix it, and an installation may use a bind mount. The decisive fact is the source mounted at container destination `/data`.
+If `/data` uses a named volume, inspect the volume name reported in `Mounts`:
+
+```bash
+docker volume inspect ACTUAL_VOLUME_NAME
+```
+
+Do not assume the volume is named `portainer_data`. A Compose project may prefix it, and an installation may use a bind mount. The decisive fact is the source mounted at container destination `/data`. Treat the inventory output as sensitive because environment variables can contain secrets.
 
 Also record:
 
@@ -58,7 +63,7 @@ Restore is performed during initialization of a fresh Portainer instance with an
 
 ## Read the Supported Upgrade Path
 
-Check the current Portainer upgrade documentation and release notes before pulling an image. Version 1.x installations require an intermediate migration through 2.0.0 rather than jumping directly to a current 2.x release. For 2.x, confirm whether your source and target releases have a supported direct path and whether you are using LTS or STS.
+Check the current Portainer upgrade documentation and release notes before pulling an image. Version 1.x installations require a staged migration rather than a jump directly to a current 2.x release: versions before 1.24.1 must first update to 1.24.2, and versions 1.24.1 or 1.24.2 must update to 2.0.0 before proceeding to a current release. For 2.x, confirm whether your source and target releases have a supported direct path and whether you are using LTS or STS.
 
 Pinning an exact tested image version in production makes the change reproducible. If your organization intentionally tracks the `lts` channel, resolve and record the image digest before the maintenance window.
 
