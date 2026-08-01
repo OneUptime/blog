@@ -18,14 +18,14 @@ The practical rules are:
 | Process ID namespace | No | Set `spec.shareProcessNamespace: true` if the workload needs it. |
 | Image root filesystem | No | Each container keeps the filesystem from its own image and writable layer. |
 | Kubernetes volumes | Only when mounted | Both containers must mount the same named Pod volume; mount paths can differ. |
-| CPU and memory budget | Pod-level scheduling, container-level enforcement | Each container normally has its own requests and limits. |
+| CPU and memory budget | No shared budget by default | Container requests and limits are normally separate and aggregated for Pod scheduling; Pod-level resources can be configured when supported. |
 | Lifecycle | Co-located but independent | A container can restart without recreating the other containers. |
 
 These distinctions explain many sidecar failures that look mysterious at first.
 
 ## localhost Is Shared
 
-All containers in a Pod share the Pod network namespace. They have one Pod IP and communicate over loopback:
+All containers in a Pod share the Pod network namespace. They share the same Pod IP address for each configured address family and communicate over loopback:
 
 ```text
 app container       http://127.0.0.1:15001       proxy sidecar
@@ -34,7 +34,7 @@ app container       http://127.0.0.1:15001       proxy sidecar
 
 No Kubernetes Service is required for that hop. If the sidecar listens on `127.0.0.1:15001`, the app can connect to that address directly.
 
-The shared namespace also means there is one socket space. The app and sidecar cannot both bind TCP `0.0.0.0:8080`. Declaring two `containerPort: 8080` fields does not create separate namespaces or reserve the port; the processes' actual `bind(2)` calls determine whether a collision occurs.
+The shared namespace also means there is one socket space. The app and sidecar cannot ordinarily both bind TCP `0.0.0.0:8080` unless they deliberately use compatible socket-reuse options. Declaring two `containerPort: 8080` fields does not create separate namespaces or reserve the port; the processes' actual `bind(2)` calls determine whether a collision occurs.
 
 Inspect listeners from a container that has the necessary tool:
 
@@ -43,7 +43,7 @@ kubectl exec checkout-7c9d -c app -- ss -lntup
 kubectl exec checkout-7c9d -c proxy -- ss -lntup
 ```
 
-Both commands inspect the same Pod network namespace, although the images may contain different utilities and permissions.
+Both commands inspect the same Pod network namespace, although the images may contain different utilities and permissions. While PID namespaces are isolated, the `-p` process details may differ or be unavailable for sockets owned by the other container.
 
 ## Processes Are Isolated Unless You Opt In
 
