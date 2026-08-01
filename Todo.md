@@ -2,11 +2,10 @@
 
 ## Sidecars
 
-1. Why Sidecar Injection Webhooks Time Out: DNS, TLS, CNI, and Firewall Checks
-2. How to Opt Specific Namespaces and Pods In or Out of Sidecar Injection
-3. How to Prevent Port Conflicts When App and Sidecar Share a Pod Network
-4. How Much Latency, CPU, and Memory Does a Service-Mesh Sidecar Add?
-5. Sidecar or Separate Service? A Decision Checklist for Failure Isolation and Scaling
+1. How to Opt Specific Namespaces and Pods In or Out of Sidecar Injection
+2. How to Prevent Port Conflicts When App and Sidecar Share a Pod Network
+3. How Much Latency, CPU, and Memory Does a Service-Mesh Sidecar Add?
+4. Sidecar or Separate Service? A Decision Checklist for Failure Isolation and Scaling
 
 ## Portainer
 
