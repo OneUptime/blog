@@ -40,7 +40,8 @@ docker service logs --since=15m PORTAINER_SERVER_SERVICE
 docker service logs --since=15m PORTAINER_AGENT_SERVICE
 ```
 
-Substitute the actual names shown by `docker service ls`; Swarm prefixes service names with the stack name.
+Substitute the actual names shown by `docker service ls`; services deployed with `docker stack deploy` are prefixed with the stack name.
+Run these commands on a Swarm manager. `docker service logs` only reads services that use the `json-file` or `journald` logging driver; use the configured logging backend for other drivers.
 
 Classify the message:
 
@@ -91,7 +92,7 @@ If an IP works but the name does not, fix DNS. If the name resolves but both add
 
 ## Prove TCP 9001 Reachability
 
-Portainer documents that port `9001` on a standard Docker Agent must be accessible from Portainer Server. Test from the Server's host or equivalent network context:
+Portainer documents that port `9001` on a standard Docker Agent must be accessible from Portainer Server. Test from the Server's network namespace or a diagnostics container attached to the same Docker network:
 
 ```bash
 nc -vz agent-01.internal.example 9001
@@ -134,7 +135,7 @@ A container can be `Running` while its process is unhealthy or blocked. Check CP
 
 ## Understand TLS and Clock Skew Correctly
 
-Portainer documents that the standard Agent generates a self-signed certificate and serves its API over HTTPS. However, the Agent's official security documentation also states that Portainer and Agent proxy clients skip TLS server-certificate verification. Agent authorization comes from the initial claim and signed request headers, or from a matching `AGENT_SECRET`.
+Portainer documents that the standard Agent generates a self-signed certificate and serves its API over HTTPS. However, the Agent's official security documentation also states that Portainer and Agent proxy clients skip TLS server-certificate verification. Protected Agent requests are authorized with signed request headers. In default mode, the Agent associates the first valid Portainer public key; with `AGENT_SECRET`, the shared secret is incorporated into signature verification and multiple Portainer instances can connect.
 
 That means the Agent certificate does not need a public CA or a SAN matching the configured DNS name. A manual `curl` without `-k` will normally reject the self-signed certificate even when Portainer can connect successfully. Do not replace the Agent certificate merely to make that diagnostic command trust it.
 
@@ -168,7 +169,7 @@ Portainer's current upgrade documentation also says Agent and Server versions sh
 
 ## Check Swarm-Specific Paths
 
-In a Swarm Agent deployment, Server must reach Agent nodes on 9001, and Agents also coordinate across the overlay to reach a manager. Verify:
+In a Swarm Agent deployment, Server must reach Agent nodes on 9001, and Agents also coordinate across the overlay to reach a manager. From a Swarm manager, verify:
 
 ```bash
 docker service ls
@@ -200,6 +201,6 @@ Each test should eliminate one layer. That is faster and safer than repeatedly r
 - [Portainer: Install Portainer Agent on Docker Swarm](https://docs.portainer.io/admin/environments/add/swarm/agent)
 - [Portainer: Why Have My Agents Stopped Working After Upgrading?](https://docs.portainer.io/faqs/upgrading/why-have-my-agents-stopped-working-after-upgrading-portainer)
 - [Portainer: Agents and Environment Management FAQ](https://docs.portainer.io/faqs/troubleshooting/agents-and-environment-management)
-- [Portainer Agent: Security and TLS behavior](https://github.com/portainer/agent#security)
+- [Portainer Agent: Security and TLS behavior](https://github.com/portainer/agent#encryption)
 - [Portainer: Updating on Docker Standalone](https://docs.portainer.io/start/upgrade/docker)
 - [Docker: Published Ports](https://docs.docker.com/engine/network/port-publishing/)
