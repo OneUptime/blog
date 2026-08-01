@@ -52,7 +52,7 @@ containers:
 
 The app can reach the sidecar at `http://127.0.0.1:9091`. Binding the helper to loopback also avoids exposing it on the Pod IP, but it does not permit another process to bind the same loopback address and port.
 
-TCP and UDP have separate protocol spaces, and specific-address bindings have operating-system nuances. Do not use those nuances as an allocation strategy. Assign every listener an explicit, unique `(protocol, address, port)` contract.
+TCP and UDP have separate protocol spaces, and specific-address bindings have operating-system nuances. Do not use those nuances as an allocation strategy. Give every listener an explicit `(protocol, address, port)` contract and make the bindings non-overlapping. In particular, a wildcard bind such as `0.0.0.0` covers all local IPv4 addresses, so it overlaps specific-address bindings on the same protocol and port.
 
 ## Inventory Ports Before Adding or Injecting a Sidecar
 
@@ -126,7 +126,7 @@ A robust process is:
 6. send traffic through the Service and localhost paths;
 7. alert on container restarts and bind errors after rollout.
 
-When an injected sidecar collides with a fixed legacy port, prefer configuring the injector's supported port setting or changing the app through a controlled release. Do not edit the generated Pod: it is immutable and the controller will replace it from the old template.
+When an injected sidecar collides with a fixed legacy port, prefer configuring the injector's supported port setting or changing the app through a controlled release. Do not try to fix the generated Pod directly: its container command and port fields cannot be updated in place, and a replacement created by the controller would come from the unchanged workload template. Update the controller's Pod template or injector configuration instead.
 
 ## Diagnose an Existing Collision
 
