@@ -2,11 +2,10 @@
 
 ## kOps
 
-1. How to Run kOps in an Existing AWS VPC Without Recreating Subnets, NAT, or Routes
-2. Public vs Private Topology in kOps: API Access, Bastions, NAT Gateways, and Cost
-3. How to Keep Multiple kOps Clusters from Deleting Shared VPC Resources
-4. kOps with Terraform: Which State Is the Source of Truth and What Must Never Be Hand-Edited?
-5. How to Back Up and Restore kOps etcd with `etcd-manager-ctl`
+1. Public vs Private Topology in kOps: API Access, Bastions, NAT Gateways, and Cost
+2. How to Keep Multiple kOps Clusters from Deleting Shared VPC Resources
+3. kOps with Terraform: Which State Is the Source of Truth and What Must Never Be Hand-Edited?
+4. How to Back Up and Restore kOps etcd with `etcd-manager-ctl`
 
 ## Sidecars
 
