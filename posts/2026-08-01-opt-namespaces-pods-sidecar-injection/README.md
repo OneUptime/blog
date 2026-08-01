@@ -106,7 +106,7 @@ kubectl get mutatingwebhookconfigurations
 kubectl get mutatingwebhookconfiguration <injector-name> -o yaml
 ```
 
-Kubernetes warns that object selectors are only appropriate when users cannot bypass policy by choosing labels themselves. A sidecar membership label is often intentionally user-controlled; a security invariant should be checked separately with admission validation and RBAC.
+Kubernetes warns that users may bypass a webhook selected by object labels, so use `objectSelector` only for opt-in webhooks. A sidecar membership label is often intentionally user-controlled; a security invariant should be checked separately with admission validation and RBAC.
 
 Keep the webhook from intercepting its own critical Pods and avoid broad matching of system workloads. Kubernetes' webhook guidance recommends narrow scopes and staged rollout through a test namespace.
 
