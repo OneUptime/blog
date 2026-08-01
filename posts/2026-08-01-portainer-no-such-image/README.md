@@ -36,7 +36,7 @@ services:
     image: ${REGISTRY_HOST}/team/api:${RELEASE_TAG}
 ```
 
-an empty or stale variable can create a different reference from the one tested locally. Make release inputs required:
+an unset or empty variable can create an invalid reference, while a stale variable can create a different reference from the one tested locally. Make release inputs required:
 
 ```yaml
 image: ${REGISTRY_HOST:?Set REGISTRY_HOST}/team/api:${RELEASE_TAG:?Set RELEASE_TAG}
@@ -72,6 +72,8 @@ Docker Compose's service-level `pull_policy` controls how it obtains an image. T
 - `build`: build the image;
 - time-based policies such as `daily`, `weekly`, and `every_12h` in Compose implementations that support them.
 
+These policies apply to Docker Compose deployments, including Portainer stacks on Docker Standalone. `docker stack deploy`, which Portainer uses for Swarm stacks, does not support `pull_policy`; Swarm image resolution and pulling follow the Swarm deployment path instead.
+
 When a service has `image` but no `build`, the default behavior is effectively `missing`. A common self-inflicted failure is:
 
 ```yaml
@@ -97,7 +99,7 @@ Re-pulling does not:
 - grant registry permission;
 - add support for the node's architecture.
 
-For production, publish immutable tags such as a Git commit SHA or pin a digest. Commit that new reference to the Git stack. The deployment history then records which artifact was requested instead of silently changing the contents behind a reused tag.
+For production, enforce immutability in the registry for tags such as a Git commit SHA, or pin a digest. Commit that new reference to the Git stack. The Git history then records which artifact was requested instead of silently changing the contents behind a reused tag.
 
 ## Select the Correct Registry in Portainer
 
@@ -107,9 +109,9 @@ Portainer's stack documentation warns that when more than one registry from the 
 
 The credential also needs permission to read the exact repository path. Successful login to a registry does not imply access to every namespace in it.
 
-## Swarm Must Pull on Every Eligible Node
+## Swarm Needs the Image on Every Eligible Node
 
-A Docker Swarm service can be scheduled on any eligible node. The image therefore needs to be in a registry reachable by those nodes, with credentials available to the deployment.
+A Docker Swarm service can be scheduled on any eligible node. Unless the exact image is deliberately preloaded on every such node, publish it to a registry reachable by those nodes and make the required credentials available to the deployment.
 
 Docker's stack tooling can send registry authentication to Swarm agents with `--with-registry-auth`. In Portainer, choose the appropriate registry credential for the stack so the equivalent deployment path has the credentials it needs.
 
