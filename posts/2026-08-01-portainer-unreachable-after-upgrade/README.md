@@ -58,7 +58,7 @@ Fix the deployment to use the original data. Do not populate the empty instance 
 
 ## 3. Check HTTPS and Published Ports
 
-Portainer enables HTTPS on container port `9443` in current 2.x installations. HTTP on `9000` is optional and may not be exposed by the updated command. Edge Agent communication uses `8000` when required; it is not the UI port.
+Portainer enables HTTPS on container port `9443` in current 2.x installations. HTTP listens on `9000` when enabled, but the recommended update command does not publish that port to the host. Port `8000` is the optional TCP tunnel server for Edge Agents when Edge Compute features require it; it is not the UI port.
 
 Inspect mappings:
 
@@ -70,10 +70,10 @@ docker inspect portainer --format '{{json .HostConfig.PortBindings}}'
 A typical current mapping includes:
 
 ```text
-0.0.0.0:9443 -> 9443/tcp
+9443/tcp -> 0.0.0.0:9443
 ```
 
-Test locally on the host, keeping certificate validation visible:
+Test locally on the host, temporarily bypassing certificate verification while displaying TLS details:
 
 ```bash
 curl -vk https://127.0.0.1:9443/
@@ -86,7 +86,7 @@ Interpret the result:
 - **TLS response with an untrusted certificate:** the service is reachable; fix trust or proxy termination rather than opening ports;
 - **HTTP redirect or UI content:** move outward to proxy and DNS checks.
 
-If you intentionally retain HTTP, the container must be started with port `9000` exposed according to Portainer's upgrade documentation. Do not assume an old `http://host:9000` bookmark remains valid after switching to the recommended HTTPS command.
+If you intentionally retain host-level HTTP access, Portainer must be serving HTTP and container port `9000` must be published according to Portainer's upgrade documentation. Use `--http-enabled` if HTTP was disabled, and remove any `--http-disabled` flag because it takes precedence. Do not assume an old `http://host:9000` bookmark remains valid after switching to the recommended HTTPS command.
 
 ## 4. Test Direct Access Before the Reverse Proxy
 
@@ -102,17 +102,19 @@ If direct access works, the Portainer process and host mapping are healthy. Focu
 
 ## 5. Correct Reverse-Proxy Scheme and Upstream Port
 
-An old proxy may still send plain HTTP to port `9000`, while the upgraded container exposes HTTPS on `9443`. Update the upstream consistently:
+An old proxy that connects through the Docker host may still target plain HTTP on host port `9000` after the recommended update command stops publishing that port. If you move the upstream to `9443`, switch its scheme to HTTPS as well:
 
 ```text
 client HTTPS -> reverse proxy -> Portainer HTTPS:9443
 ```
 
-or, only when you deliberately expose it:
+or, only when you deliberately keep Portainer HTTP enabled:
 
 ```text
 client HTTPS -> reverse proxy -> Portainer HTTP:9000
 ```
+
+Publishing `9000` on the host is required only when the proxy connects through the host mapping. A proxy container on the same Docker network can reach Portainer's enabled HTTP listener directly on container port `9000`.
 
 Do not configure `http://portainer:9443` or `https://portainer:9000` by accident. Check proxy error logs for connection refused, TLS verification, upstream resets, and timeouts.
 
