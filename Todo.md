@@ -2,22 +2,21 @@
 
 ## Portainer
 
-1. Why Portainer Says “Control over This Stack Is Limited”—and How to Regain Full Control
-2. How to Bring an Existing Docker Compose Stack Under Portainer Management
-3. How to Deploy and Update Portainer Stacks from a Git Repository
-4. Fixing Portainer stack.env and .env Variable Substitution in Git Stacks
-5. Portainer Cannot Find a Relative Build Context: How Git Stack Paths Really Work
-6. Portainer “No Such Image” During Stack Deployment: Pull Policies, Registries, and Tags
-7. Why “Re-Pull Image and Redeploy” Fails in Portainer—and What to Check
-8. Portainer API Authentication: JWT Tokens vs. API Keys for Scripts and CI
-9. Portainer Stack API Returns 404 After an Upgrade: Migrating to the New Create Endpoints
-10. How to Back Up and Restore Portainer—and What the Backup Does Not Include
-11. How to Migrate Portainer to a New Host Without Losing Stacks or Volumes
-12. Portainer Behind Nginx, Traefik, or Cloudflare: Fixing Login, WebSocket, and HTTPS Problems
-13. How to Connect Portainer to a Private Registry Without 401 or Certificate Errors
-14. How to Secure Portainer in Production: Docker Socket Access, RBAC, TLS, and Network Exposure
-15. How to Reset a Forgotten Portainer Admin Password Without Losing Configuration
-16. Why a Stack Works with docker compose but Fails in Portainer
+1. How to Bring an Existing Docker Compose Stack Under Portainer Management
+2. How to Deploy and Update Portainer Stacks from a Git Repository
+3. Fixing Portainer stack.env and .env Variable Substitution in Git Stacks
+4. Portainer Cannot Find a Relative Build Context: How Git Stack Paths Really Work
+5. Portainer “No Such Image” During Stack Deployment: Pull Policies, Registries, and Tags
+6. Why “Re-Pull Image and Redeploy” Fails in Portainer—and What to Check
+7. Portainer API Authentication: JWT Tokens vs. API Keys for Scripts and CI
+8. Portainer Stack API Returns 404 After an Upgrade: Migrating to the New Create Endpoints
+9. How to Back Up and Restore Portainer—and What the Backup Does Not Include
+10. How to Migrate Portainer to a New Host Without Losing Stacks or Volumes
+11. Portainer Behind Nginx, Traefik, or Cloudflare: Fixing Login, WebSocket, and HTTPS Problems
+12. How to Connect Portainer to a Private Registry Without 401 or Certificate Errors
+13. How to Secure Portainer in Production: Docker Socket Access, RBAC, TLS, and Network Exposure
+14. How to Reset a Forgotten Portainer Admin Password Without Losing Configuration
+15. Why a Stack Works with docker compose but Fails in Portainer
 
 ## Argo Workflows
 
