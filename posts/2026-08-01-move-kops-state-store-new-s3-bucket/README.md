@@ -52,7 +52,7 @@ aws s3api get-bucket-encryption \
   --bucket "${NEW_KOPS_STATE_STORE#s3://}"
 ```
 
-Also verify destination S3 and, if applicable, KMS permissions for both the operator and the cluster’s node/bootstrap roles. Cross-account SSE-KMS requires a customer-managed key that trusts the relevant external principals.
+Also verify destination S3 and, if applicable, KMS permissions for both the operator and the cluster’s node/bootstrap roles. Cross-account SSE-KMS requires a customer-managed key whose key policy and the external principals’ IAM policies both allow the required KMS operations.
 
 ## Pause Configuration Changes
 
@@ -80,6 +80,8 @@ aws s3 sync \
   "${OLD_KOPS_STATE_STORE}/${CLUSTER_NAME}/" \
   "${NEW_KOPS_STATE_STORE}/${CLUSTER_NAME}/"
 ```
+
+If the buckets are in different AWS Regions, add `--source-region us-east-1 --region us-west-2` to both sync commands, substituting the actual source and destination Regions. Without `--source-region`, the AWS CLI assumes that the source bucket is in the destination Region.
 
 Do not copy only a visible `config` object. kOps keeps additional cluster state below the cluster path, including instance groups and security-sensitive material.
 
@@ -146,6 +148,8 @@ Generate a destination-backed preview and review it carefully:
 kops update cluster "${CLUSTER_NAME}"
 ```
 
+These `kops update` commands use the default direct target. For a Terraform-managed cluster, run `kops update cluster "${CLUSTER_NAME}" --target=terraform --out=.` from the existing Terraform directory, then run `terraform plan` and `terraform apply` there instead of applying the direct target with `--yes`. Use the same target-specific workflow for rollback.
+
 The expected change includes references needed for newly launched instances to use the destination state. Investigate unrelated network, IAM, image, or Kubernetes-version changes before applying.
 
 Once the preview is approved:
@@ -172,7 +176,7 @@ A complete verification covers both management and bootstrap paths:
 - `kops update cluster` has no unexplained pending changes;
 - the Kubernetes API and critical pods validate;
 - at least one controlled new instance can join using destination access;
-- CloudTrail shows expected reads from the new bucket and no unexplained access denials;
+- when S3 read data-event logging is enabled, CloudTrail shows expected reads from the new bucket and no unexplained access denials;
 - automation and runbooks now set the new store explicitly.
 
 Keep the old bucket unchanged during the rollback window. Removing write access after cutover can prevent accidental split-brain administration while retaining recovery access.
