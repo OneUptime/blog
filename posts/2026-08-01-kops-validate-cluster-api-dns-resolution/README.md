@@ -30,7 +30,7 @@ kops get cluster "${CLUSTER_NAME}" \
   --state "${STATE_STORE}" \
   -o yaml
 
-kubectl config view --minify \
+kubectl config view --context "${CLUSTER_NAME}" --minify \
   -o jsonpath='{.clusters[0].cluster.server}{"\n"}'
 ```
 
@@ -123,6 +123,10 @@ Check the result from inside the intended VPC and from the operator workstation.
 
 kOps gossip clusters use a name ending in `.k8s.local` and do not depend on an externally hosted DNS zone for API discovery. The official gossip documentation requires a load balancer and says kOps writes that load balancer’s DNS name into the generated kubeconfig.
 
+Gossip is deprecated in kOps 1.36. kOps 1.37 rejects new gossip clusters, and kOps 1.38 requires existing gossip clusters to migrate before upgrading. Migrate existing gossip clusters to None DNS or a hosted DNS zone. A None-DNS cluster, including one whose name ends in `.k8s.local`, is not a gossip cluster.
+
+Neither gossip nor None DNS publishes an API record in a hosted zone. On AWS, kOps uses the API load balancer endpoint directly in the generated client configuration.
+
 For gossip or a deliberately None-DNS design, inspect the generated kubeconfig and validate with it:
 
 ```bash
@@ -142,7 +146,9 @@ The isolated example uses a one-hour administrator credential because a new kube
 
 ## If the Record Is Missing, Check Control-Plane Creation
 
-With conventional kOps DNS, `dns-controller` manages API records based on the control-plane state. A missing record can therefore be a symptom rather than the original failure.
+With `spec.api.dns`, `dns-controller` creates direct API records from the API server pod annotations. A missing direct record can therefore be a symptom of a control plane that never came up.
+
+With `spec.api.loadBalancer`, kOps creates the Route 53 records that point to the load balancer as part of infrastructure reconciliation; `dns-controller` does not create those load-balancer records. If such a record is missing, inspect the cluster spec and the most recent `kops update cluster --yes` result. Treat load-balancer target health as a separate check.
 
 Use cloud-side evidence:
 
@@ -156,7 +162,7 @@ kops validate cluster "${CLUSTER_NAME}" \
   --wait 2m
 ```
 
-Only use `--api-server` with a hostname that is already an intended certificate name and routes to the correct API. Substituting a raw IP can create TLS hostname failures and is not a DNS repair.
+Pass `--api-server` a full URL that routes to the correct API. When kOps generates the client configuration, it keeps the cluster’s internal API name as the TLS server name even if the override URL uses another hostname or a raw IP. A raw-IP override can therefore be useful for diagnosis, but it is not a DNS repair and must not become the permanent endpoint.
 
 If control-plane instances never bootstrapped, inspect `kops-configuration.service`, API server, etcd, and dns-controller logs as directed by the kOps troubleshooting guide. If a load balancer exists, check its target health and security groups. Repairing Route 53 alone cannot make an unhealthy API serve requests.
 
@@ -183,6 +189,7 @@ The recovery is complete when the intended DNS view returns the intended endpoin
 - [kOps: Getting Started on AWS—Testing DNS](https://kops.sigs.k8s.io/getting_started/aws/#testing-your-dns-setup)
 - [kOps: Cluster Resource API Exposure](https://kops.sigs.k8s.io/cluster_spec/#api)
 - [kOps: Gossip DNS](https://kops.sigs.k8s.io/gossip/)
+- [kOps 1.36 Release Notes](https://kops.sigs.k8s.io/releases/1.36-notes/)
 - [kOps: Troubleshooting](https://kops.sigs.k8s.io/operations/troubleshoot/)
 - [Amazon Route 53: Routing Traffic for Subdomains](https://docs.aws.amazon.com/Route53/latest/DeveloperGuide/dns-routing-traffic-for-subdomains.html)
 - [Amazon Route 53: Checking DNS Responses](https://docs.aws.amazon.com/Route53/latest/DeveloperGuide/dns-test.html)
