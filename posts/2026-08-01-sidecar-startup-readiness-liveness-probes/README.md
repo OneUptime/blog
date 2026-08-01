@@ -35,7 +35,7 @@ spec:
       image: registry.example.com/application:15.0.0
 ```
 
-The kubelet moves through `initContainers` in order. For a native sidecar, it advances once the sidecar is marked started rather than waiting for the container to exit. Without a startup probe, a running process can satisfy that milestone. With a startup probe, success becomes the milestone.
+The kubelet moves through `initContainers` in order. For a native sidecar, it advances once the sidecar is marked started rather than waiting for the container to exit. Without a startup probe, a running process can satisfy that milestone. With a startup probe, its success is required; a configured `postStart` handler must also complete before the sidecar is marked started.
 
 This means a native-sidecar startup probe can gate every later init container and application container. A readiness probe cannot do that.
 
@@ -68,7 +68,7 @@ Do not add a startup probe just to delay a liveness probe by a fixed number of s
 
 ## Use a Readiness Probe Only for a Serving Dependency
 
-A native sidecar's readiness result contributes to the whole Pod's `Ready` condition. When it fails, matching Service EndpointSlices mark the Pod endpoint not ready for ordinary traffic.
+A native sidecar's readiness result contributes to the whole Pod's `Ready` condition. By default, when it fails, matching Service EndpointSlices mark the Pod endpoint not ready for ordinary traffic. A Service with `publishNotReadyAddresses: true` is an explicit exception: its EndpointSlice `ready` condition remains true.
 
 That is desirable when the sidecar is on the request path:
 
@@ -165,7 +165,7 @@ The intended sequence is:
 2. Only its startup probe runs initially.
 3. Once `/health/started` succeeds, kubelet can complete initialization and start `payments`.
 4. Readiness and liveness checks for the proxy begin.
-5. The Pod enters Service traffic only when both proxy and application readiness allow it.
+5. A matching Service sends ordinary traffic to the Pod only when both proxy and application readiness allow it.
 6. A recoverable proxy readiness failure removes the Pod from ordinary Service traffic without a restart.
 7. A sustained proxy liveness failure restarts only the proxy.
 
@@ -187,7 +187,7 @@ Avoid checks that allocate heavily, mutate state, or contend with the workload. 
 
 Kubernetes supports `exec`, HTTP, TCP, and gRPC checks. Select based on what the sidecar exposes:
 
-- `httpGet` validates an HTTP health endpoint at the Pod IP;
+- `httpGet` validates an HTTP health endpoint at the Pod IP by default;
 - `tcpSocket` validates that a connection can be established, not that the protocol is functioning correctly;
 - `grpc` invokes the gRPC health-checking protocol;
 - `exec` runs a command inside the container and succeeds on exit code 0.
