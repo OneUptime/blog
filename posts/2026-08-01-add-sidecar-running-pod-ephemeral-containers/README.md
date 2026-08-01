@@ -10,7 +10,7 @@ Description: Learn why a regular sidecar cannot be appended to an existing Pod, 
 
 You cannot add a regular app container or native sidecar container to a Pod after Kubernetes has created it.
 
-The normal solution is to change the Pod template owned by a Deployment, StatefulSet, Job, or other controller. The controller then creates replacement Pods containing the new sidecar. Kubernetes also supports adding an **ephemeral container** to a running Pod, but that facility is intentionally designed for user-initiated troubleshooting, not for extending the application.
+The normal solution is to change the Pod template owned by a Deployment, StatefulSet, DaemonSet, or another controller that supports template updates. The controller then creates replacement Pods containing the new sidecar according to its update strategy. For a Job, whose Pod template cannot generally be changed to add a container, create a new Job from the updated manifest. Kubernetes also supports adding an **ephemeral container** to a running Pod, but that facility is intentionally designed for user-initiated troubleshooting, not for extending the application.
 
 Those are two different operations with different guarantees.
 
