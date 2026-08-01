@@ -2,22 +2,21 @@
 
 ## Sidecars
 
-1. How to Give a Sidecar Time to Flush Logs During Pod Termination
-2. Does a Sidecar Readiness Probe Make the Whole Pod Unready?
-3. When Should a Sidecar Use `startupProbe`, `readinessProbe`, and `livenessProbe`?
-4. What Happens When a Sidecar Crashes? Independent Restarts and Pod Health Explained
-5. How Kubernetes Calculates Pod CPU and Memory Requests with Init and Sidecar Containers
-6. How Sidecar Resource Requests Affect Scheduling, HPA, and Cluster Cost
-7. Do Sidecars Share localhost, Process Namespaces, and Filesystems with the App Container?
-8. Why a Logging Sidecar Cannot Find the App’s Log File—and How to Fix the Mount Path
-9. Logging Sidecar or Node-Level DaemonSet? Choosing the Right Collection Pattern
-10. Can You Add a Sidecar to a Running Pod? What Is Immutable and What Ephemeral Containers Can Do
-11. How to Debug a CrashLooping Sidecar with `kubectl logs`, `--previous`, and `kubectl debug`
-12. Why Sidecar Injection Webhooks Time Out: DNS, TLS, CNI, and Firewall Checks
-13. How to Opt Specific Namespaces and Pods In or Out of Sidecar Injection
-14. How to Prevent Port Conflicts When App and Sidecar Share a Pod Network
-15. How Much Latency, CPU, and Memory Does a Service-Mesh Sidecar Add?
-16. Sidecar or Separate Service? A Decision Checklist for Failure Isolation and Scaling
+1. Does a Sidecar Readiness Probe Make the Whole Pod Unready?
+2. When Should a Sidecar Use `startupProbe`, `readinessProbe`, and `livenessProbe`?
+3. What Happens When a Sidecar Crashes? Independent Restarts and Pod Health Explained
+4. How Kubernetes Calculates Pod CPU and Memory Requests with Init and Sidecar Containers
+5. How Sidecar Resource Requests Affect Scheduling, HPA, and Cluster Cost
+6. Do Sidecars Share localhost, Process Namespaces, and Filesystems with the App Container?
+7. Why a Logging Sidecar Cannot Find the App’s Log File—and How to Fix the Mount Path
+8. Logging Sidecar or Node-Level DaemonSet? Choosing the Right Collection Pattern
+9. Can You Add a Sidecar to a Running Pod? What Is Immutable and What Ephemeral Containers Can Do
+10. How to Debug a CrashLooping Sidecar with `kubectl logs`, `--previous`, and `kubectl debug`
+11. Why Sidecar Injection Webhooks Time Out: DNS, TLS, CNI, and Firewall Checks
+12. How to Opt Specific Namespaces and Pods In or Out of Sidecar Injection
+13. How to Prevent Port Conflicts When App and Sidecar Share a Pod Network
+14. How Much Latency, CPU, and Memory Does a Service-Mesh Sidecar Add?
+15. Sidecar or Separate Service? A Decision Checklist for Failure Isolation and Scaling
 
 ## Portainer
 
