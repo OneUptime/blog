@@ -8,9 +8,9 @@ Description: Verify kOps-managed etcd backups and perform a controlled, downtime
 
 ---
 
-kOps uses `etcd-manager` to take periodic etcd backups and store them with the cluster configuration in object storage. `etcd-manager-ctl` is the companion recovery tool: it lists available backups and writes a restore command into the backup store for etcd-manager to execute.
+kOps uses `etcd-manager` to take periodic etcd backups and, by default, store them with the cluster configuration in object storage. `etcd-manager-ctl` is the companion recovery tool: it lists available backups and writes a restore command into the backup store for etcd-manager to execute.
 
-The tool does **not** start the restore when `restore-backup` returns. The restore begins only after etcd-manager is restarted on all control-plane nodes and the required peer set can form. This distinction is essential during a disaster.
+The tool does **not** start the restore when `restore-backup` returns. The documented kOps procedure starts it by restarting etcd-manager on every control-plane node; the restore begins after a new etcd-manager leader reads the queued command and enough peers are available. This distinction is essential during a disaster.
 
 An etcd restore causes Kubernetes API downtime, discards Kubernetes changes made after the chosen backup, and is not undone except by performing another restore.
 
@@ -38,7 +38,7 @@ Build separate backup and recovery controls for those systems.
 
 kOps documentation says etcd-manager takes backups periodically and before cluster modifications. By default, backups are taken every 15 minutes; hourly backups are retained for one week and daily backups for 90 days in current documented defaults.
 
-Retention and interval can be configured per etcd cluster:
+The backup interval and daily-backup retention can be configured per etcd cluster:
 
 ```yaml
 spec:
@@ -60,7 +60,7 @@ Apply equivalent policy to `events` and any additional etcd cluster. Choose rete
 
 Protect the S3 state/backup store with:
 
-- versioning;
+- versioning for accidental overwrites and ordinary deletions, while recognizing that etcd-manager retention cleanup removes all versions of an expired backup;
 - encryption and controlled KMS access where used;
 - least-privilege IAM separated from routine workload roles;
 - protection against bucket deletion and lifecycle mistakes;
@@ -71,7 +71,7 @@ A backup in the same account and administrative boundary as the cluster is not s
 
 ## Install a Compatible `etcd-manager-ctl`
 
-Download `etcd-manager-ctl` from the official etcd-manager releases linked by kOps. Prefer the release corresponding to the etcd-manager version used by the cluster rather than an arbitrary old binary.
+Download `etcd-manager-ctl` from the current `kubernetes-sigs/etcd-manager` releases. Prefer the release corresponding to the etcd-manager version used by the cluster rather than an arbitrary old binary.
 
 The CLI does not need to run inside Kubernetes. It needs network and credentials for the object store containing the backup and command prefixes.
 
@@ -84,7 +84,7 @@ export CLUSTER_NAME=prod.example.com
 kops get cluster "$CLUSTER_NAME" -o yaml
 ```
 
-For that example, the documented backup-store paths are:
+Read the `spec.etcdClusters[].backups.backupStore` value for each configured etcd cluster; kOps permits a per-cluster override. With the default stores for this example, the paths are:
 
 ```text
 s3://company-kops-state/prod.example.com/backups/etcd/main
@@ -107,7 +107,7 @@ etcd-manager-ctl \
   list-backups
 ```
 
-The output names are the arguments accepted by `restore-backup`. Save the listing in the incident record and verify that:
+The output names are the arguments accepted by `restore-backup`. `list-backups` discovers names from metadata-object paths; it does not parse the metadata or download the snapshot data. Save the listing in the incident record and separately verify that:
 
 - recent backups exist for every etcd cluster;
 - timestamps meet the recovery-point objective;
@@ -127,7 +127,7 @@ Before queuing anything:
 
 1. declare a maintenance window and stop automated deployers, reconcilers, CronJobs, and external writers where possible;
 2. record current control-plane instances, etcd members, cluster spec, kOps version, etcd-manager version, and selected backups;
-3. preserve the current backup prefixes through S3 versioning or an independent copy;
+3. preserve the selected backups and current backup prefixes in an independent copy; S3 Versioning alone does not protect them from etcd-manager retention cleanup, which removes all object versions;
 4. confirm access to every control-plane node without relying solely on the Kubernetes API;
 5. make sure all expected etcd-manager peers can start and communicate;
 6. establish a rollback decision point—which in practice means selecting another backup and restoring again.
@@ -178,7 +178,7 @@ Do not copy a Docker command blindly onto a cluster using another container runt
 3. restart the etcd-manager unit/container using the runtime-appropriate command;
 4. repeat for every expected member, without leaving one on the old cluster indefinitely.
 
-The restore waits until the configured number of peers is present. Once the peer set forms, etcd-manager creates a new etcd cluster, restores the selected backup, and switches members to it. The Kubernetes API is unavailable during this operation.
+The restore waits until enough etcd-manager peers are present to form the new cluster safely. Restart every expected member as the kOps procedure requires; current etcd-manager can proceed one member short when doing so does not reduce the required quorum. Once the peer set forms, etcd-manager creates a new etcd cluster, restores the selected backup, and switches members to it. The Kubernetes API is unavailable during this operation.
 
 Follow progress in the etcd logs on the current leader. kOps documents:
 
@@ -199,7 +199,7 @@ After the API returns:
 kubectl get --raw='/readyz?verbose'
 kubectl get nodes
 kubectl get pods --all-namespaces
-kubectl get events --all-namespaces --sort-by=.lastTimestamp
+kubectl events --all-namespaces
 kops validate cluster "$CLUSTER_NAME" --wait 15m
 ```
 
@@ -218,10 +218,10 @@ Restoring an older Kubernetes object does not rewind an external database, DNS p
 
 The kOps restore documentation describes a case where obsolete API server leases leave stale addresses in the Kubernetes API endpoint.
 
-Inspect it:
+Inspect the legacy `Endpoints` object used by the documented master-lease procedure. Kubernetes 1.33 and later emit a deprecation warning for this API, but this is the object that kOps tells operators to check:
 
 ```bash
-kubectl get endpoints kubernetes -o yaml
+kubectl -n default get endpoints kubernetes -o yaml
 ```
 
 If it contains more addresses than the live control-plane/API server set, follow the official kOps etcd administration procedure to inspect `/registry/masterleases`. Do not delete etcd keys merely because the endpoint looks unfamiliar. Direct etcd changes bypass Kubernetes validation and require the correct TLS credentials and etcd endpoint.
