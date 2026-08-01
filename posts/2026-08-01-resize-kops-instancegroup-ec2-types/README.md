@@ -8,7 +8,7 @@ Description: Change the EC2 type for one kOps worker group safely by updating it
 
 ---
 
-A kOps `InstanceGroup` is the machine configuration boundary for a set of nodes. On AWS, it maps to an EC2 Auto Scaling group backed by a launch template. You can therefore resize one worker pool without recreating the cluster: edit the InstanceGroup, let kOps update its launch template, and perform a rolling update for that group.
+A kOps `InstanceGroup` is the machine configuration boundary for a set of nodes. On AWS, this procedure applies to the default Auto Scaling group lifecycle, where an InstanceGroup maps to an EC2 Auto Scaling group backed by a launch template. It does not apply to an InstanceGroup with `spec.manager: Karpenter`. You can therefore resize one Auto Scaling group-backed worker pool without recreating the cluster: edit the InstanceGroup, let kOps update its launch template, and perform a rolling update for that group.
 
 The important distinction is that `kops update cluster` changes the cloud configuration used for **new** instances. Existing EC2 instances keep their old type until they are replaced.
 
@@ -82,7 +82,7 @@ spec:
     - eu-west-2a
 ```
 
-If the group uses `mixedInstancesPolicy`, update its allowed instance list deliberately instead of assuming `machineType` is the only input. Keep the listed types close in allocatable CPU and memory when Cluster Autoscaler manages the group; its AWS provider simulates the group using the first override type.
+If the group uses `mixedInstancesPolicy`, update its `instances` list or `instanceRequirements`, as applicable, instead of assuming `machineType` is the only input. When an explicit `instances` list is used and Cluster Autoscaler manages the group, keep the listed types close in allocatable CPU and memory; its AWS provider simulates the group using the first override type.
 
 ## Preview a Scoped Cloud Update
 
@@ -125,7 +125,7 @@ spec:
     maxUnavailable: 0
 ```
 
-`maxSurge` permits temporary extra worker capacity. Confirm that EC2 quotas, subnet IP space, and `maxSize`-related operational expectations can accommodate it. A surge is not a substitute for replicated workloads and valid disruption budgets.
+`maxSurge` permits temporary extra worker capacity. On AWS, kOps implements this by detaching old instances from the Auto Scaling group so that replacements launch; the detached instances keep running until they are drained and terminated. Confirm that EC2 quotas and subnet IP space can accommodate the temporary nodes. The total number of running nodes can temporarily exceed the group's `maxSize` because detached instances no longer count toward the Auto Scaling group. A surge is not a substitute for replicated workloads and valid disruption budgets.
 
 When the preview identifies only the intended group, start the rotation:
 
@@ -173,7 +173,7 @@ That is expected until instances are replaced. Run the scoped rolling-update pre
 
 ### The rolling update stops before replacing a node
 
-Check cluster validation, failed system Pods, PodDisruptionBudgets, unavailable replicas, finalizers, and pods using local storage. Do not bypass these checks reflexively; they are often preventing a real outage.
+Check cluster validation, failed system Pods, PodDisruptionBudgets, unavailable replicas, and finalizers. kOps allows deletion of `emptyDir` data during its drain, so verify before the rotation that node-local data is disposable or safely replicated. Do not bypass drain or validation checks reflexively; they are often preventing a real outage.
 
 ### A new node never becomes Ready
 
@@ -185,7 +185,7 @@ Machine size is only one scheduling input. Check node selectors, affinity, taint
 
 ## Roll Back Safely
 
-If replacement nodes are unhealthy, stop the rolling update. Restore the previous `machineType` in the kOps InstanceGroup, preview and apply the scoped update, then preview a new scoped rolling update.
+If replacement nodes are unhealthy, stop the rolling update. Restore the previous machine-type settings in the kOps InstanceGroup, including the `mixedInstancesPolicy` configuration when applicable, preview and apply the scoped update, then preview a new scoped rolling update.
 
 Do not fix the launch template directly in AWS. kOps state is the intended configuration, and a later kOps update can overwrite an out-of-band edit. Put the rollback in the InstanceGroup spec so the state store and cloud resources agree.
 
