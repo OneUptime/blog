@@ -21,7 +21,7 @@ Confusing these roles creates two competing control planes. Edit desired Kuberne
 ```text
 kOps Cluster + InstanceGroups in state store
                     |
-                    | kops update --target terraform
+                    | kops update cluster ... --target terraform
                     v
           generated .tf configuration
                     |
@@ -37,7 +37,7 @@ Terraform state records what Terraform manages and the last known attributes. It
 
 ## Initialize a Terraform-Target Cluster
 
-Create the kOps desired state and render Terraform to a stable directory:
+Assume both S3 buckets already exist with versioning enabled and Route 53 has a hosted zone that is a suffix of `prod.example.com`. Without `--dns-zone`, kOps selects the longest matching hosted zone. Then create the kOps desired state and render Terraform to a stable directory:
 
 ```bash
 export KOPS_STATE_STORE=s3://company-kops-state
@@ -58,14 +58,15 @@ Add the Terraform backend configuration as a separate, operator-owned `.tf` file
 ```hcl
 terraform {
   backend "s3" {
-    bucket = "company-terraform-state"
-    key    = "kops/prod/terraform.tfstate"
-    region = "eu-west-2"
+    bucket       = "company-terraform-state"
+    key          = "kops/prod/terraform.tfstate"
+    region       = "eu-west-2"
+    use_lockfile = true
   }
 }
 ```
 
-The Terraform backend and `KOPS_STATE_STORE` can both use S3, but they store different data and should use distinct keys, permissions, versioning, and locking/coordination controls.
+The Terraform backend and `KOPS_STATE_STORE` can both use S3, but they store different data and should use distinct keys, permissions, versioning, and locking/coordination controls. Native S3 lock files require Terraform 1.10 or newer. With `use_lockfile = true`, the backend role also needs `s3:GetObject`, `s3:PutObject`, and `s3:DeleteObject` on the `.tflock` object.
 
 Then:
 
@@ -88,8 +89,11 @@ kops edit cluster "$CLUSTER_NAME"
 For a worker change:
 
 ```bash
-kops edit ig workers --name "$CLUSTER_NAME"
+kops get ig --name "$CLUSTER_NAME"
+kops edit ig --name "$CLUSTER_NAME" nodes-eu-west-2a
 ```
+
+By default, kOps names a worker InstanceGroup `nodes-<zone>`; choose the group you intend to change from the `kops get ig` output.
 
 Regenerate into the **same** directory:
 
@@ -132,10 +136,10 @@ kops update cluster "$CLUSTER_NAME" --yes
 and:
 
 ```bash
-terraform apply
+terraform -chdir=./cluster-infrastructure apply
 ```
 
-The first is the direct target and can mutate AWS without updating Terraform state. The next Terraform plan may try to reverse or re-import those changes. Always use `--target terraform --out ...` for cloud-resource generation in this workflow.
+The first is the direct target and can mutate AWS outside Terraform. The next Terraform plan refreshes objects already in state, but it does not automatically import newly created objects that are absent from state; depending on the change, it may propose corrective changes to tracked objects or try to create an existing but unbound object and fail on a name conflict. Always use `--target terraform --out ...` for cloud-resource generation in this workflow.
 
 Similarly, do not attach separate Terraform resources, console changes, and kOps ownership to the same ASG, launch template, security group, or load balancer.
 
@@ -147,17 +151,17 @@ Do not edit S3 objects under the kOps state path. Use `kops edit`, `kops replace
 
 ### kOps-generated Terraform blocks
 
-Do not make a permanent fix inside generated `kubernetes.tf`. The next `kops update --target terraform` can overwrite it, and the kOps state will still express the old intent.
+Do not make a permanent fix inside generated `kubernetes.tf`. The next `kops update cluster "$CLUSTER_NAME" --target terraform --out ...` can overwrite it, and the kOps state will still express the old intent.
 
 kOps documentation permits additional `.tf` files for customization. Keep clearly external resources there, with unambiguous ownership, rather than modifying generated blocks.
 
 ### Terraform state JSON
 
-Do not download and text-edit `terraform.tfstate`. Use documented `terraform import`, `state mv`, `state rm`, or provider migration procedures only for an intentional state operation, with backup and peer review. State commands change Terraform's ownership map; they do not change kOps desired state.
+Do not download and text-edit `terraform.tfstate`. Use documented `terraform import`, `terraform state mv`, `terraform state rm`, or provider migration procedures only for an intentional state operation, with backup and peer review. State commands change Terraform's ownership map; they do not change kOps desired state.
 
 ### kOps-owned AWS resources
 
-Do not resize ASGs, change launch templates, edit security groups, or replace load balancers in the AWS console as a normal workflow. An emergency edit must be reconciled back into kOps state and regenerated Terraform immediately, or the next plan can undo it.
+Do not resize ASGs, change launch templates, edit security groups, or replace load balancers in the AWS console as a normal workflow. An emergency edit must either be reverted or reconciled back into kOps state and regenerated Terraform immediately, or the next plan can undo it.
 
 ## Keep Custom Terraform at a Clean Boundary
 
@@ -179,8 +183,8 @@ Use a consistent sequence:
 
 1. Export the kOps Cluster and InstanceGroups and confirm intended values.
 2. Regenerate Terraform into a clean worktree or compare with committed output.
-3. Run `terraform plan -refresh-only` to inspect external drift without proposing configuration changes, when appropriate for the installed Terraform version.
-4. Run the normal `terraform plan`.
+3. Run `terraform -chdir=./cluster-infrastructure plan -refresh-only` to inspect external drift without proposing changes to remote objects, when appropriate for the installed Terraform version.
+4. Run the normal `terraform -chdir=./cluster-infrastructure plan`.
 5. Decide whether drift should be reverted in AWS or adopted into kOps desired state.
 
 Examples:
@@ -196,7 +200,7 @@ Do not use `lifecycle.ignore_changes` broadly to hide unexplained drift. It can 
 
 A Kubernetes version upgrade changes control-plane and node launch configuration. Follow the kOps upgrade documentation for the target releases, regenerate Terraform, and apply components in the required order.
 
-Current kOps upgrade documentation notes that Terraform users may need targeted Terraform applies for control-plane InstanceGroups, followed by scoped rolling updates, before applying and rolling the rest. Do not replace that sequence with direct `kops reconcile cluster --yes`; it would bypass Terraform ownership.
+For upgrades to Kubernetes 1.31 or newer, current kOps documentation requires Terraform users to target the resources backing control-plane and API-server InstanceGroups, perform a scoped rolling update, and then apply and roll the rest. Do not replace that sequence with direct `kops reconcile cluster "$CLUSTER_NAME" --yes`; it would bypass Terraform ownership.
 
 Use the exact procedure for the installed kOps and Kubernetes versions. Upgrade workflows change across kOps releases.
 
@@ -208,22 +212,23 @@ kOps documentation recommends destroying Terraform-managed infrastructure and th
 terraform -chdir=./cluster-infrastructure plan -destroy
 terraform -chdir=./cluster-infrastructure destroy
 
+kops delete cluster "$CLUSTER_NAME"
 kops delete cluster "$CLUSTER_NAME" --yes
 ```
 
 Review both destruction plans. Workload-created load balancers and persistent volumes may have lifecycles outside generated Terraform, while shared VPC resources must remain protected.
 
-Deleting only Terraform state does not delete kOps desired state. Deleting only kOps state can strand Terraform-managed infrastructure and remove the inputs needed to regenerate it.
+Deleting only Terraform state does not delete kOps desired state. Hand-removing only the kOps state objects can strand Terraform-managed infrastructure and remove the inputs needed to regenerate it.
 
 ## Source-of-Truth Checklist
 
 - Are Cluster and InstanceGroup changes made through kOps?
 - Is one stable output directory used for regeneration?
 - Are generated diffs and Terraform plans both reviewed?
-- Is direct `kops update --yes` prohibited for Terraform-owned cloud resources?
+- Is direct `kops update cluster --yes` prohibited for Terraform-owned cloud resources?
 - Are custom `.tf` resources outside kOps ownership?
 - Is Terraform state changed only through documented state commands?
-- Are emergency AWS edits immediately represented in kOps state?
+- Are emergency AWS edits immediately reverted or represented in kOps state?
 - Are shared VPC resources owned by exactly one network stack?
 - Are rolling updates run after launch-template changes when required?
 - Does teardown account for Terraform state, kOps state, and dynamic Kubernetes resources?
