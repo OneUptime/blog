@@ -10,7 +10,7 @@ Description: Learn exactly how native and legacy sidecar readiness affects Pod c
 
 Yes. A failing readiness probe on a Kubernetes-native sidecar makes the whole Pod unready. Kubernetes explicitly includes the readiness result of a restartable init container in Pod readiness. An ordinary “legacy” sidecar in `spec.containers` also contributes because it is an application container.
 
-For a Pod selected by a Service, an unready result normally causes the EndpointSlice controller to set the Pod endpoint's `ready` condition to false. The effect is not scoped to the container that owns the probe: ordinary Service traffic stops going to that Pod across all matching Services.
+For a Pod selected by a Service that does not set `spec.publishNotReadyAddresses: true`, an unready result causes the EndpointSlice controller to set the Pod endpoint's `ready` condition to false. The effect is not scoped to the container that owns the probe: ordinary Service traffic stops going to that Pod across all matching Services without that setting.
 
 That is correct for a mandatory local proxy and often undesirable for a best-effort telemetry agent.
 
@@ -67,7 +67,7 @@ A failed readiness probe:
 
 - marks that container unready;
 - makes the Pod unready when container readiness is the failing condition;
-- updates matching Service EndpointSlices so ordinary traffic is not routed to that endpoint;
+- updates matching Service EndpointSlices so ordinary traffic is not routed to that endpoint, unless a Service sets `spec.publishNotReadyAddresses: true`;
 - continues to run periodically for the container's lifetime, allowing readiness to recover.
 
 It does **not**:
@@ -147,7 +147,7 @@ An HTTP probe can accidentally reach the wrong process if port ownership is misu
 
 ## Understand Service and Job Effects
 
-For Services, failed readiness removes the endpoint from ordinary traffic. During Pod deletion, Kubernetes also marks terminating endpoints not ready independently of the container probes.
+For Services that do not set `spec.publishNotReadyAddresses: true`, failed readiness removes the endpoint from ordinary traffic. For those Services, Pod deletion also marks terminating endpoints not ready independently of the container probes.
 
 For Jobs, readiness is not the completion criterion. A native sidecar does not block completion once the regular application containers finish, even if the sidecar was designed to run forever. Do not try to make a Job complete by changing a sidecar readiness probe; fix whether the helper is a native sidecar or an ordinary completion-blocking container.
 
