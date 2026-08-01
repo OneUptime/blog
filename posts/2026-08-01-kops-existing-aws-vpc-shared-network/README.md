@@ -1,4 +1,4 @@
-# How to Run kOps in an Existing AWS VPC Without Recreating Subnets, NAT, or Routes
+# Run kOps in an Existing AWS VPC Without Recreating Network Resources
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -150,7 +150,7 @@ Although a zonal public NAT gateway lives in a public subnet, `egress` describes
 
 kOps also recognizes an existing NAT instance ID and, in current documentation, an existing transit gateway ID. Validate the supported forms against the kOps release that operates the cluster.
 
-If route management is entirely external—for example through centralized inspection, a virtual appliance, or another unsupported design—set `egress: External` on every subnet whose egress kOps should ignore, including utility subnets:
+If route management is entirely external-for example through centralized inspection, a virtual appliance, or another unsupported design-set `egress: External` on every subnet whose egress kOps should ignore, including utility subnets:
 
 ```yaml
 spec:

@@ -1,4 +1,4 @@
-# Why a kOps Rolling Update Stops on Cluster Validation—and How to Resume Safely
+# Why a kOps Rolling Update Stops on Cluster Validation-and How to Resume Safely
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

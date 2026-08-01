@@ -1,4 +1,4 @@
-# kOps Validation Says “Node Has Not Yet Joined Cluster”: A Layer-by-Layer Troubleshooting Guide
+# kOps “Node Has Not Yet Joined Cluster”: A Layer-by-Layer Guide
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

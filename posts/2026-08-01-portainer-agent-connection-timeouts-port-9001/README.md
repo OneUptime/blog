@@ -1,4 +1,4 @@
-# Portainer Agent Connection Timeouts: Debugging Port 9001, TLS, DNS, and Clock Skew
+# Portainer Agent Timeouts: Debug Port 9001, TLS, DNS, and Clock Skew
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -156,7 +156,7 @@ Clock skew is not a normal cause of standard Agent server-certificate rejection 
 
 If Portainer Server is started with a custom `AGENT_SECRET`, the same exact value must be supplied to each standard or Edge Agent. Current Portainer documentation calls this out for upgrades.
 
-Compare the presence—not the secret value in shared output—of the variable:
+Compare the presence-not the secret value in shared output-of the variable:
 
 ```bash
 docker inspect portainer --format '{{range .Config.Env}}{{println .}}{{end}}'

@@ -1,4 +1,4 @@
-# Validation Summary: How to Upgrade Portainer Without Losing Users, Environments, or Stack Definitions
+# Validation Summary: Upgrade Portainer Without Losing Users, Environments, or Stacks
 
 ## Status
 

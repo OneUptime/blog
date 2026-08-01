@@ -723,7 +723,8 @@
 - Amazon RDS
 - Amazon Redshift
 - Amazon Rekognition
-- Amazon s3
+- Amazon Route 53
+- Amazon S3
 - Amazon SES
 - Amazon SQS
 - Amazon Textract
@@ -1514,6 +1515,7 @@
 - AWS AppConfig
 - AWS AppSync
 - AWS Auth
+- AWS Auto Scaling
 - AWS Backup
 - AWS Batch
 - AWS Bedrock
@@ -1568,6 +1570,7 @@
 - AWS Services
 - AWS Shield
 - AWS SNS
+- AWS Spot
 - AWS SQS
 - Aws sso
 - AWS Step Function
@@ -3888,6 +3891,7 @@
 - Container Registries
 - Container Registry
 - Container Resources
+- Container Restarts
 - Container Restore
 - Container Routing
 - Container Runtime
@@ -5183,6 +5187,7 @@
 - Deployment Windows
 - Deployment Workflow
 - Deprecated
+- Deprecated APIs
 - Deprecated Features
 - Deprecated Resources
 - Deprecation
@@ -5997,6 +6002,7 @@
 - EBS
 - Ebtables
 - EC2
+- EC2 Auto Scaling
 - EC2 Fleet
 - EC2 Image Builder
 - EC2 Spot
@@ -6394,6 +6400,7 @@
 - ETA Prediction
 - ETag
 - etcd
+- etcd Backup
 - Etcd Security
 - etcdv3
 - Etckeeper
@@ -8957,6 +8964,7 @@
 - Instance Store
 - Instance Templates
 - Instance Types
+- InstanceGroup
 - Instant
 - Instant Algorithm
 - Instant Restore
@@ -9691,7 +9699,8 @@
 - Kong
 - Kong Gateway
 - Kong Plugins
-- Kops
+- kOps
+- KOPS_STATE_STORE
 - Kotest
 - Kotlin
 - Kpatch
@@ -9741,6 +9750,7 @@
 - KubePrism
 - KubeRay
 - Kubernetes
+- Kubernetes 1.31
 - Kubernetes API
 - Kubernetes API Server
 - Kubernetes Auth
@@ -11088,6 +11098,7 @@
 - Mixed Node Pools
 - Mixed OS
 - Mixed Workload
+- MixedInstancesPolicy
 - Mixins
 - ML
 - ML Documentation
@@ -12029,6 +12040,7 @@
 - Node Authentication
 - Node Auto-Provisioning
 - Node Autoscaling
+- Node Bootstrap
 - Node CIDR
 - Node Cleanup
 - Node Conditions
@@ -13395,6 +13407,7 @@
 - Pod Distribution
 - Pod Eviction
 - Pod Hardening
+- Pod Health
 - Pod Identity
 - Pod Labels
 - Pod Lifecycle
@@ -13415,6 +13428,7 @@
 - Pod Startup
 - Pod Subnet
 - Pod Targeting
+- Pod Termination
 - Pod Topology
 - POD Verification
 - Pod-ip
@@ -16386,6 +16400,7 @@
 - Shared Filesystem
 - Shared Flows
 - Shared Image Gallery
+- Shared Infrastructure
 - Shared Libraries
 - Shared Memory
 - Shared Mode
@@ -17195,6 +17210,7 @@
 - State Refresh
 - State Segmentation
 - State Store
+- State Store Migration
 - State Synchronization
 - State Transfer
 - State TTL

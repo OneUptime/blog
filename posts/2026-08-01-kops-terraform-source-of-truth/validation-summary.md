@@ -1,4 +1,4 @@
-# Validation Summary: kOps with Terraform: Which State Is the Source of Truth and What Must Never Be Hand-Edited?
+# Validation Summary: kOps with Terraform: Choosing the Source of Truth and Safe Edit Workflow
 
 ## Status
 validated

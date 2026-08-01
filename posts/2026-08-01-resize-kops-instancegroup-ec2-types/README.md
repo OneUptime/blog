@@ -1,4 +1,4 @@
-# How to Resize or Change EC2 Types in a kOps InstanceGroup Without Rebuilding the Cluster
+# Resize or Change EC2 Types in a kOps InstanceGroup Without Rebuilding
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# Validation Summary: Building kOps Spot Node Groups with `MixedInstancesPolicy` and On-Demand Fallback
+# Validation Summary: kOps Spot Node Groups with `MixedInstancesPolicy` and On-Demand Fallback
 
 ## Status
 

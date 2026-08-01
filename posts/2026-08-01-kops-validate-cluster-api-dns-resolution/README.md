@@ -1,4 +1,4 @@
-# Why `kops validate cluster` Cannot Resolve the API DNS Name—and How to Fix It
+# Why `kops validate cluster` Cannot Resolve the API DNS Name-and How to Fix It
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -186,7 +186,7 @@ The recovery is complete when the intended DNS view returns the intended endpoin
 ## Official Documentation
 
 - [kOps CLI: `kops validate cluster`](https://kops.sigs.k8s.io/cli/kops_validate_cluster/)
-- [kOps: Getting Started on AWS—Testing DNS](https://kops.sigs.k8s.io/getting_started/aws/#testing-your-dns-setup)
+- [kOps: Getting Started on AWS-Testing DNS](https://kops.sigs.k8s.io/getting_started/aws/#testing-your-dns-setup)
 - [kOps: Cluster Resource API Exposure](https://kops.sigs.k8s.io/cluster_spec/#api)
 - [kOps: Gossip DNS](https://kops.sigs.k8s.io/gossip/)
 - [kOps 1.36 Release Notes](https://kops.sigs.k8s.io/releases/1.36-notes/)

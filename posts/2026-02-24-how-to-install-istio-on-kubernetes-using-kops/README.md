@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Kops, Kubernetes, AWS, Service Mesh, Infrastructure
+Tags: Istio, kOps, Kubernetes, AWS, Service Mesh, Infrastructure
 
 Description: How to set up Istio on a Kubernetes cluster provisioned with kops, including cluster creation, networking, and mesh configuration.
 

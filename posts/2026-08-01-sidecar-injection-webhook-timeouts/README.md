@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Sidecars, Admission Webhooks, TLS, Networking, Troubleshooting
+Tags: Kubernetes, Sidecar, Admission Webhook, TLS, Networking, Troubleshooting
 
 Description: Trace sidecar injection timeouts from the API server through webhook selection, Service endpoints, network paths, TLS identity, and injector health without hiding the failure.
 

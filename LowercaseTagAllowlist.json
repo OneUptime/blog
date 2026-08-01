@@ -1266,5 +1266,7 @@
   "zPages",
   "zeros()",
   "zswap",
-  "ztunnel"
+  "ztunnel",
+  "kOps",
+  "etcd Backup"
 ]

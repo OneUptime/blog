@@ -170,7 +170,7 @@ Before a manual scale-down:
 4. plan how the exact instances selected by ASG will be cordoned and drained;
 5. monitor application availability throughout termination.
 
-Cluster Autoscaler is usually safer for elastic scale-down because it selects a removable Node, simulates rescheduling, cordons/drains it, and then decreases the backing group. It can still be blocked by disruption budgets, local storage, system Pods, affinity, or an unhealthy cluster—and those blocks should be investigated rather than bypassed.
+Cluster Autoscaler is usually safer for elastic scale-down because it selects a removable Node, simulates rescheduling, cordons/drains it, and then decreases the backing group. It can still be blocked by disruption budgets, local storage, system Pods, affinity, or an unhealthy cluster-and those blocks should be investigated rather than bypassed.
 
 If an exact manual termination is required, coordinate Kubernetes drain, ASG instance protection/termination selection, and the persistent kOps bounds as one runbook. Simply draining an arbitrary node and lowering `maxSize` does not guarantee AWS terminates the node you drained.
 

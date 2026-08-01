@@ -1,8 +1,8 @@
-# kOps “Cluster Not Found”: How to Recover the Correct `KOPS_STATE_STORE` and Context
+# kOps “Cluster Not Found”: Recover the Correct `KOPS_STATE_STORE` and Context
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: kOps, Kubernetes, KOPS_STATE_STORE, Kubeconfig, AWS S3, Troubleshooting
+Tags: kOps, Kubernetes, KOPS_STATE_STORE, kubeconfig, AWS S3, Troubleshooting
 
 Description: Recover a missing kOps cluster safely by identifying the correct state store, cluster name, AWS identity, and kubeconfig context before making changes.
 

@@ -8,7 +8,7 @@ Description: Understand the exact native-sidecar shutdown order, how the shared 
 
 ---
 
-For a Pod that uses Kubernetes-native sidecars, the kubelet delays their stop signals until every main application container has stopped. It then signals native sidecars one by one in reverse declaration order. For a Pod made only of ordinary application containers—including the pre-native “legacy sidecar” pattern—Kubernetes does not guarantee a termination order.
+For a Pod that uses Kubernetes-native sidecars, the kubelet delays their stop signals until every main application container has stopped. It then signals native sidecars one by one in reverse declaration order. For a Pod made only of ordinary application containers-including the pre-native “legacy sidecar” pattern-Kubernetes does not guarantee a termination order.
 
 That distinction determines whether a proxy, log collector, or secret agent is still available while the application shuts down.
 
@@ -172,7 +172,7 @@ Also test under realistic load. Verify:
 4. a forced expiry does not corrupt persistent state;
 5. monitoring ignores expected sidecar termination exit codes without hiding crashes during normal Pod operation.
 
-The declaration order should reflect dependencies: foundations first, dependents later. Kubernetes then gives that chain the useful symmetry—start foundations first and stop them last—provided the Pod has enough grace time to honor it.
+The declaration order should reflect dependencies: foundations first, dependents later. Kubernetes then gives that chain the useful symmetry-start foundations first and stop them last-provided the Pod has enough grace time to honor it.
 
 ## Official Documentation
 

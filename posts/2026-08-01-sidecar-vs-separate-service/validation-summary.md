@@ -1,4 +1,4 @@
-# Validation Summary: Sidecar or Separate Service? A Decision Checklist for Failure Isolation and Scaling
+# Validation Summary: Sidecar or Service? A Checklist for Isolation and Scaling
 
 ## Status
 validated

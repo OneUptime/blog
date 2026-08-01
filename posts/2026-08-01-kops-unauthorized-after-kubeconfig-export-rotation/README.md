@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: kOps, Kubernetes, Kubeconfig, Authentication, Certificates, Secret Rotation
+Tags: kOps, Kubernetes, kubeconfig, Authentication, Certificate, Secret Rotation
 
 Description: Repair kOps kubeconfig authentication by checking the selected context, credential lifetime, trusted CA set, and rotation stage without weakening TLS or RBAC.
 

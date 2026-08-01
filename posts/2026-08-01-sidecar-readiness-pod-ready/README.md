@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Sidecar Containers, Readiness Probes, Services, EndpointSlices, Pod Health
+Tags: Kubernetes, Sidecar Containers, Readiness Probe, Service, EndpointSlice, Pod Health
 
 Description: Learn exactly how native and legacy sidecar readiness affects Pod conditions and Service endpoints, and decide when that coupling is appropriate.
 
@@ -61,7 +61,7 @@ kubectl get endpointslice -l kubernetes.io/service-name=checkout -o yaml
 
 Native-sidecar state is under `initContainerStatuses`; that location does not exclude it from readiness.
 
-## What a Readiness Failure Does—and Does Not Do
+## What a Readiness Failure Does-and Does Not Do
 
 A failed readiness probe:
 

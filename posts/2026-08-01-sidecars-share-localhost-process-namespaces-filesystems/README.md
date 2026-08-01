@@ -1,8 +1,8 @@
-# Do Sidecars Share localhost, Process Namespaces, and Filesystems with the App Container?
+# What Sidecars Share with App Containers in a Kubernetes Pod
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Sidecars, Pods, Networking, Storage, Linux
+Tags: Kubernetes, Sidecar, Pod, Networking, Storage, Linux
 
 Description: Understand exactly what app and sidecar containers share inside a Kubernetes Pod, including localhost, ports, processes, root filesystems, and explicitly mounted volumes.
 

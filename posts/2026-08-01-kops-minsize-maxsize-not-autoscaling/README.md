@@ -1,4 +1,4 @@
-# Why Setting `minSize` and `maxSize` Does Not Automatically Scale a kOps Node Group
+# Why kOps `minSize` and `maxSize` Do Not Automatically Scale Nodes
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

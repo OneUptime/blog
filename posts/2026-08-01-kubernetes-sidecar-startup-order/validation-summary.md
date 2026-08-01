@@ -1,4 +1,4 @@
-# Validation Summary: How Kubernetes Starts Native Sidecars, Init Containers, and App Containers—in Exact Order
+# Validation Summary: Kubernetes Native Sidecar, Init, and App Container Startup Order
 
 ## Status
 validated

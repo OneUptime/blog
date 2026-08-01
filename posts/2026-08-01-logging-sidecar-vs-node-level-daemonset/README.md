@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Logging, Sidecars, DaemonSet, Observability
+Tags: Kubernetes, Logging, Sidecar, DaemonSet, Observability
 
 Description: Choose between per-Pod logging sidecars and node-level DaemonSet collectors based on log source, transformation needs, isolation, resource cost, operations, and failure behavior.
 

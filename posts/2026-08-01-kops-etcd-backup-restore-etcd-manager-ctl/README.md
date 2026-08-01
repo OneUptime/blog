@@ -21,7 +21,7 @@ Kubernetes stores API state in etcd. A typical kOps AWS cluster has separate etc
 - `main`: Kubernetes objects and primary state;
 - `events`: Kubernetes Events.
 
-The Cluster spec is authoritative—inspect `spec.etcdClusters` rather than assuming there are exactly two stores forever. Repeat the recovery process for every configured etcd cluster that must be restored.
+The Cluster spec is authoritative-inspect `spec.etcdClusters` rather than assuming there are exactly two stores forever. Repeat the recovery process for every configured etcd cluster that must be restored.
 
 etcd backup does not include:
 
@@ -130,7 +130,7 @@ Before queuing anything:
 3. preserve the selected backups and current backup prefixes in an independent copy; S3 Versioning alone does not protect them from etcd-manager retention cleanup, which removes all object versions;
 4. confirm access to every control-plane node without relying solely on the Kubernetes API;
 5. make sure all expected etcd-manager peers can start and communicate;
-6. establish a rollback decision point—which in practice means selecting another backup and restoring again.
+6. establish a rollback decision point-which in practice means selecting another backup and restoring again.
 
 If the cluster is still writable, understand that writes after the chosen snapshot will be lost. Quiesce clients before beginning.
 
@@ -258,7 +258,7 @@ Update the runbook after every test. The first time an operator learns that `res
 - Are stale API server leases checked only after the restore succeeds?
 - Has the entire procedure been rehearsed in isolation?
 
-kOps automates periodic backup creation, but recovery remains an operational event. Verify the objects, queue one deliberate restore per etcd cluster, restart every peer, and validate the whole distributed system—not only etcd health.
+kOps automates periodic backup creation, but recovery remains an operational event. Verify the objects, queue one deliberate restore per etcd cluster, restart every peer, and validate the whole distributed system-not only etcd health.
 
 ## Official Documentation
 

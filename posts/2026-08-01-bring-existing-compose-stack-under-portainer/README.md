@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Portainer, Docker Compose, Stacks, Migration, Volumes, GitOps
+Tags: Portainer, Docker Compose, Stack, Migration, Volumes, GitOps
 
 Description: Safely move a Docker Compose project created outside Portainer into full Portainer stack management without losing persistent data or project identity.
 
@@ -121,7 +121,7 @@ Portainer supports four stack inputs: Web editor, upload, Git repository, and a 
 If using Git, commit:
 
 - the base Compose file and any additional Compose files;
-- non-secret files referenced by relative path;
+- non-secret files referenced by relative path; for bind mounts that use repository-relative paths, enable Portainer's **Enable relative path volumes** feature and configure its host path (this feature requires Portainer Business Edition);
 - safe defaults only;
 - documentation for required Portainer environment variables, secrets, volumes, and registries.
 
@@ -136,7 +136,7 @@ A Docker Standalone cutover is typically:
 1. Stop incoming work or drain the application.
 2. Take and verify the final data backup.
 3. Record current image digests and container health.
-4. From the original project directory, run `docker compose -p billing -f compose.yaml down` **without** `--volumes`.
+4. From the original project directory, use the original interpolation inputs and ordered Compose files, and enable every profile that may have running services. For example, run `docker compose --profile "*" --env-file .env.production -p billing -f compose.yaml -f compose.prod.yaml down` **without** `--volumes`.
 5. Confirm old containers are gone and required named volumes still exist.
 6. In Portainer, open the correct environment, choose **Stacks**, then **Add stack**.
 7. Use the same stack/project name and deploy from the chosen source.
@@ -175,9 +175,9 @@ Portainer access-control labels such as `io.portainer.accesscontrol.teams` are u
 
 Retain the original Compose files, environment inputs, image digests, and a tested backup until the new stack has operated successfully. If deployment fails, remove only the newly created containers and networks, leave the protected volumes intact, and use the original Compose command to restore the prior project.
 
-Portainer versions can offer an option to remove associated volumes when deleting a stack. Leave that option disabled during a migration rollback unless data deletion is explicitly intended and separately backed up.
+Portainer's stack removal flow does not expose a stack-level option to delete Compose volumes. During a migration rollback, do not separately delete volumes unless data deletion is explicitly intended and separately backed up.
 
-The safest ownership transition preserves three identities: the Compose model in source control, the project/stack name that scopes resources, and the persistent volume names that hold data. Portainer can then manage future deployments because it created the stack from those known inputs—not because it inferred intent from already-running containers.
+The safest ownership transition preserves three identities: the Compose model in source control, the project/stack name that scopes resources, and the persistent volume names that hold data. Portainer can then manage future deployments because it created the stack from those known inputs-not because it inferred intent from already-running containers.
 
 ## Official Documentation
 

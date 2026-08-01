@@ -1,4 +1,4 @@
-# Validation Summary: `kops update`, `rolling-update`, `upgrade`, or `reconcile`: Which Command Should You Run?
+# Validation Summary: `kops update`, `rolling-update`, `upgrade`, or `reconcile`: Which to Run?
 
 ## Status
 validated

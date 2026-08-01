@@ -1,4 +1,4 @@
-# Upgrading kOps to Kubernetes 1.31+: How `reconcile cluster` Avoids Version-Skew Failures
+# kOps to Kubernetes 1.31+: Avoid Version Skew with `reconcile cluster`
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -164,7 +164,7 @@ kubectl get nodes -w
 
 Use workload and platform monitoring for control-plane reachability, API errors, node bootstrap, critical pods, CNI/CSI, DNS, and application health. Do not treat a connected watch as the only success criterion.
 
-## What Reconcile Replaces—and What It Does Not
+## What Reconcile Replaces-and What It Does Not
 
 For a direct-target Kubernetes 1.31+ upgrade, reconcile replaces manually applying:
 

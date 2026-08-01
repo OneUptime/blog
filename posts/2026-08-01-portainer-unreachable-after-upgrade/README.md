@@ -1,4 +1,4 @@
-# Portainer Is Unreachable After an Upgrade: A Container, Port, and Proxy Checklist
+# Portainer Unreachable After an Upgrade: Port and Proxy Checklist
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,8 +1,8 @@
-# Sidecar or Separate Service? A Decision Checklist for Failure Isolation and Scaling
+# Sidecar or Service? A Checklist for Isolation and Scaling
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Sidecars, Architecture, Services, Scaling, Reliability
+Tags: Kubernetes, Sidecar, Architecture, Service, Scaling, Reliability
 
 Description: Decide whether a helper belongs in every application Pod or in its own Kubernetes workload by evaluating locality, lifecycle, scaling, failure, deployment, security, and cost.
 

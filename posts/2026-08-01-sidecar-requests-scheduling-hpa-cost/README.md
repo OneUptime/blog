@@ -86,7 +86,7 @@ Cloud billing remains provider-specific. On ordinary node-based clusters, reques
 
 For an HPA metric of type `Resource` with target type `Utilization`, Kubernetes compares Pod resource usage with Pod resource requests. The HPA documentation defines utilization as usage divided by the corresponding request and notes that Pod usage aggregates containers.
 
-Current HPA request accounting includes ordinary app containers and restartable init containers—that is, native sidecars. Regular init containers that completed before steady state are not included in this percentage denominator. If Pod-level resources are configured for the resource, HPA can use that Pod-level request instead.
+Current HPA request accounting includes ordinary app containers and restartable init containers-that is, native sidecars. Regular init containers that completed before steady state are not included in this percentage denominator. If Pod-level resources are configured for the resource, HPA can use that Pod-level request instead.
 
 Consider one replica:
 
@@ -144,7 +144,7 @@ Keep these caveats in view:
 
 - the named container and its request must exist in the relevant Pods;
 - when renaming a container, update the HPA to cover the transition before rolling out the name change;
-- application CPU is not always the bottleneck—a saturated mandatory proxy may justify a second metric;
+- application CPU is not always the bottleneck-a saturated mandatory proxy may justify a second metric;
 - with multiple HPA metrics, Kubernetes calculates each recommendation and normally chooses the largest replica count.
 
 An `AverageValue` target uses a raw per-Pod or per-container value instead of percentage of requests. That avoids request-denominator effects but still requires a threshold tied to capacity.
@@ -153,7 +153,7 @@ An `AverageValue` target uses a raw per-Pod or per-container value instead of pe
 
 For a `Resource` utilization metric, if a participating container lacks the relevant request, Pod utilization is undefined and the HPA cannot act on that metric for the Pod as normal. Sidecar injection without requests can therefore break an HPA that previously worked.
 
-For `ContainerResource`, define the request on the selected container. Do not omit sidecar requests merely to exclude the sidecar from scaling—select the intended metric source instead.
+For `ContainerResource`, define the request on the selected container. Do not omit sidecar requests merely to exclude the sidecar from scaling-select the intended metric source instead.
 
 Also inspect defaults. A `LimitRange` may insert requests, and Kubernetes uses a container limit as its request when the request is omitted and no other default applies. Calculate from the admitted Pod, not only the source Deployment.
 

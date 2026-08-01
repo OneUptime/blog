@@ -1,4 +1,4 @@
-# kOps with Terraform: Which State Is the Source of Truth and What Must Never Be Hand-Edited?
+# kOps with Terraform: Choosing the Source of Truth and Safe Edit Workflow
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -76,7 +76,7 @@ terraform -chdir=./cluster-infrastructure plan
 terraform -chdir=./cluster-infrastructure apply
 ```
 
-Check generated Terraform into version control if that fits the organization's workflow. It provides a reviewable representation, but regeneration—not manual patching—should create changes to kOps-owned blocks.
+Check generated Terraform into version control if that fits the organization's workflow. It provides a reviewable representation, but regeneration-not manual patching-should create changes to kOps-owned blocks.
 
 ## Make Changes at the kOps Layer
 

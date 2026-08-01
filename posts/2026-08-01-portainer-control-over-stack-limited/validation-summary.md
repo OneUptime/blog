@@ -1,4 +1,4 @@
-# Validation Summary: Why Portainer Says “Control over This Stack Is Limited”—and How to Regain Full Control
+# Validation Summary: Portainer Stack Control Is Limited: How to Regain Full Control
 
 ## Status
 validated

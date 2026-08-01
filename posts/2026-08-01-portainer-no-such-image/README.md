@@ -1,8 +1,8 @@
-# Portainer “No Such Image” During Stack Deployment: Pull Policies, Registries, and Tags
+# Portainer “No Such Image”: Pull Policies, Registries, and Tags
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Portainer, Docker, Container Images, Registries, Docker Compose, Troubleshooting
+Tags: Portainer, Docker, Container Image, Registries, Docker Compose, Troubleshooting
 
 Description: Resolve Portainer stack image failures by checking the rendered reference, pull policy, registry credentials, build output, Swarm distribution, and platform manifest.
 

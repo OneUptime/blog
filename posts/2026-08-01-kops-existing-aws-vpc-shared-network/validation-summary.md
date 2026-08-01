@@ -1,4 +1,4 @@
-# Validation Summary: How to Run kOps in an Existing AWS VPC Without Recreating Subnets, NAT, or Routes
+# Validation Summary: Run kOps in an Existing AWS VPC Without Recreating Network Resources
 
 ## Status
 validated

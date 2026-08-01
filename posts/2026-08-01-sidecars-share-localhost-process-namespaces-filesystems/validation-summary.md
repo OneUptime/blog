@@ -1,4 +1,4 @@
-# Validation Summary: Do Sidecars Share localhost, Process Namespaces, and Filesystems with the App Container?
+# Validation Summary: What Sidecars Share with App Containers in a Kubernetes Pod
 
 ## Status
 validated

@@ -1,8 +1,8 @@
-# Why a Logging Sidecar Cannot Find the App’s Log File—and How to Fix the Mount Path
+# Why a Logging Sidecar Cannot Find the App Log File
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Sidecars, Logging, Volumes, Troubleshooting
+Tags: Kubernetes, Sidecar, Logging, Volumes, Troubleshooting
 
 Description: Fix logging sidecars that report missing files by tracing the application path, shared volume, sidecar mount path, permissions, startup timing, and rotation behavior.
 

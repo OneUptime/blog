@@ -1,8 +1,8 @@
-# How to Upgrade Portainer Without Losing Users, Environments, or Stack Definitions
+# Upgrade Portainer Without Losing Users, Environments, or Stacks
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Portainer, Docker, Upgrade, Backup, Operations
+Tags: Portainer, Docker, Upgrade, Backup, Operation
 
 Description: Upgrade Portainer safely by preserving its data volume, taking a restorable configuration backup, following the supported platform path, matching agents, and verifying managed environments.
 
@@ -141,6 +141,6 @@ Keep the old image reference and backup until verification and an observation pe
 - [Portainer: Updating on Docker Standalone](https://docs.portainer.io/start/upgrade/docker)
 - [Portainer: Updating on Docker Swarm](https://docs.portainer.io/start/upgrade/swarm)
 - [Portainer: Updating on Kubernetes](https://docs.portainer.io/start/upgrade/kubernetes)
-- [Portainer: General Settings—Back up Portainer](https://docs.portainer.io/admin/settings/general#back-up-portainer)
+- [Portainer: General Settings-Back up Portainer](https://docs.portainer.io/admin/settings/general#back-up-portainer)
 - [Portainer: What Does Portainer's Backup Include?](https://docs.portainer.io/faqs/getting-started/what-does-portainers-backup-include)
 - [Portainer: Upgrading and Downgrading FAQ](https://docs.portainer.io/faqs/upgrading)

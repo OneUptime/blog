@@ -1,4 +1,4 @@
-# Validation Summary: Can You Add a Sidecar to a Running Pod? What Is Immutable and What Ephemeral Containers Can Do
+# Validation Summary: Adding Sidecars to Running Pods: Immutability and Ephemeral Containers
 
 ## Status
 validated

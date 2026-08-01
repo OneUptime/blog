@@ -1,8 +1,8 @@
-# Native vs Legacy Kubernetes Sidecars: When to Use `initContainers` with `restartPolicy: Always`
+# Native vs Legacy Kubernetes Sidecars: When to Use Native Sidecars
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Sidecar Containers, Init Containers, Pod Lifecycle, Jobs, Containers
+Tags: Kubernetes, Sidecar Containers, Init Container, Pod Lifecycle, Job, Container
 
 Description: Compare native and legacy Kubernetes sidecars, including version support, lifecycle guarantees, Job completion, probes, and a safe migration path.
 
@@ -177,7 +177,7 @@ kubectl describe pod api-with-proxy
 
 Do not classify every running entry in `initContainerStatuses` as a stuck init container. Check its spec: `restartPolicy: Always` is the deliberate marker that makes it a native sidecar.
 
-The practical dividing line is not syntax alone. Native sidecars express an asymmetric contract—start early, run alongside, stop late, and do not block completion. Use that contract when it matches the workload; otherwise, an ordinary multi-container Pod remains a sound design.
+The practical dividing line is not syntax alone. Native sidecars express an asymmetric contract-start early, run alongside, stop late, and do not block completion. Use that contract when it matches the workload; otherwise, an ordinary multi-container Pod remains a sound design.
 
 ## Official Documentation
 

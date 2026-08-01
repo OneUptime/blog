@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Portainer, Docker Compose, Environment Variables, GitOps, Docker Swarm, Troubleshooting
+Tags: Portainer, Docker Compose, Environment Variable, GitOps, Docker Swarm, Troubleshooting
 
 Description: Distinguish Compose interpolation from container environment injection and make Portainer Git-stack variables behave consistently on Standalone and Swarm.
 
@@ -30,7 +30,7 @@ services:
 
 There are two separate operations:
 
-1. **Compose interpolation** replaces `${IMAGE_TAG}`, `${API_PORT}`, and `${LOG_LEVEL}` while Docker Compose builds its application model. Interpolation can affect image names, ports, volume names, and any other YAML value.
+1. **Compose interpolation** replaces `${IMAGE_TAG}`, `${API_PORT}`, and `${LOG_LEVEL}` while Docker Compose builds its application model. Interpolation can affect image names, ports, volume names, and other unquoted or double-quoted YAML values.
 2. **Container environment injection** creates environment variables inside `api`. The `environment` and `env_file` service attributes perform this operation.
 
 An interpolation source does not automatically expose every value to the container. For example, `IMAGE_TAG` can select an image without becoming an environment variable inside that image. Likewise, a key in `runtime.env` can enter the container even though it is not available to interpolate another Compose field.
@@ -55,7 +55,7 @@ Avoid defining one key in the shell, Portainer UI, an uploaded environment file,
 
 ## What Portainer's `stack.env` Does
 
-When environment variables are entered in Portainer or uploaded while creating a stack, Portainer can make those managed values available while processing the stack. On Docker Standalone and Podman, Portainer also documents this pattern for placing all of those values in the container environment:
+When environment variables are entered in Portainer or uploaded while creating a stack, Portainer makes those managed values available for substitution while processing the stack. For Web editor, Upload, and Custom template deployments on Docker Standalone and Podman, Portainer also auto-creates `stack.env` from those values, so this pattern places all of them in the container environment:
 
 ```yaml
 services:
@@ -65,13 +65,13 @@ services:
       - stack.env
 ```
 
-`stack.env` is a Portainer-managed file for this deployment path. It is not the standard Docker Compose default interpolation file, and it should not be treated as a repository file that developers edit. `${IMAGE_TAG}` is resolved from the values Portainer supplies to Compose; `env_file: stack.env` separately injects those values into the container.
+Git-backed stacks are different. For Repository deployments, Portainer does not auto-create `stack.env`; if the Compose file references it, the file must already exist in the Git repository. `${IMAGE_TAG}` can still be resolved from the values Portainer supplies for interpolation, but those UI-managed values are not written to the repository's `stack.env` or automatically exposed inside the container.
 
-Do not commit a hand-written `stack.env` containing secrets to imitate this behavior. Its name has a special purpose in Portainer-managed stacks and plain environment files are not a secret store.
+`stack.env` is not the standard Docker Compose default interpolation file. In a Git stack it is a service-level runtime environment file, with its path resolved relative to the Compose file. If you keep one in the repository, limit it to non-secret values because plain environment files are not a secret store.
 
 ## Docker Swarm Needs a Different Pattern
 
-Portainer's documentation says its `env_file: stack.env` method does not work for Docker Swarm stacks. Docker's `docker stack deploy` workflow also does not automatically perform `.env` substitution in the same way as `docker compose`.
+Portainer's documentation says its auto-created `env_file: stack.env` method is limited to Docker Standalone and Podman and does not work for Docker Swarm stacks. Docker's `docker stack deploy` workflow also does not automatically perform `.env` substitution in the same way as `docker compose`.
 
 For values that must reach a Swarm service, map the Portainer-supplied interpolation values explicitly:
 
@@ -88,7 +88,7 @@ services:
 
 This still involves both phases: Portainer supplies `LOG_LEVEL` while rendering the stack, and the `environment` entry puts the rendered value in each task container.
 
-Use Docker secrets or configs for passwords, API tokens, private keys, and file-shaped configuration. Environment variables can appear in inspection output, support bundles, process environments, and application diagnostics.
+Use Docker secrets for passwords, API tokens, and private keys, and Docker configs for non-sensitive file-shaped configuration. Environment variables can appear in inspection output, support bundles, process environments, and application diagnostics.
 
 ## Use Required Values and Defaults Deliberately
 
@@ -128,7 +128,7 @@ When GitOps updates appear to ignore a `.env` change, check:
 3. whether the key was already defined as a Portainer stack variable;
 4. whether the value is needed for interpolation, runtime injection, or both;
 5. whether the target is Docker Standalone or Swarm;
-6. whether an override Compose file replaces the relevant `environment` or `env_file` entry.
+6. whether an override Compose file changes the relevant `environment` or `env_file` entry under Compose's merge rules.
 
 Portainer's manual **Pull and redeploy** bypasses the normal unchanged-commit check, so it is useful after correcting managed variables. It does not repair incorrect precedence or move a value between the two phases.
 
@@ -145,7 +145,7 @@ A small policy prevents most variable failures:
 - Keep non-secret deployment defaults in a repository `.env` only when every environment should share them.
 - Put environment-specific interpolation values in Portainer, with one authoritative source per key.
 - Map runtime values explicitly under `environment`, or use a reviewed runtime `env_file` on supported Standalone deployments.
-- Use Portainer's `stack.env` pattern only where its documentation supports it, not in Swarm.
+- In Git mode, treat `stack.env` as a repository runtime file and do not expect Portainer to generate it from UI variables; do not use the auto-created pattern in Swarm.
 - Store sensitive material in Docker secrets or another secret manager.
 - Require critical image tags, hostnames, and IDs with `${VAR:?message}`.
 - Review the rendered Compose model before promotion.
@@ -155,7 +155,7 @@ Once interpolation and runtime injection are treated as separate contracts, `sta
 ## Official Documentation
 
 - [Portainer: Add a new stack](https://docs.portainer.io/user/docker/stacks/add)
-- [Portainer: Environment variable management in Docker—.env vs. stack.env](https://docs.portainer.io/faqs/troubleshooting/stacks-deployments-and-updates/environment-variable-management-in-docker-.env-vs.-stack.env)
+- [Portainer: Environment variable management in Docker-.env vs. stack.env](https://docs.portainer.io/faqs/troubleshooting/stacks-deployments-and-updates/environment-variable-management-in-docker-.env-vs.-stack.env)
 - [Portainer: How automatic updates for stacks work](https://docs.portainer.io/faqs/troubleshooting/stacks-deployments-and-updates/how-do-automatic-updates-for-stacks-applications-work)
 - [Docker: Interpolation](https://docs.docker.com/compose/how-tos/environment-variables/variable-interpolation/)
 - [Docker: Set environment variables](https://docs.docker.com/compose/how-tos/environment-variables/set-environment-variables/)

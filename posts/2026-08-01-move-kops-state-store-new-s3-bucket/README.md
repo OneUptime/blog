@@ -200,7 +200,7 @@ For a shared bucket, repeat the documented process for every cluster. Do not dec
 - [kOps: Moving State Between S3 Buckets](https://kops.sigs.k8s.io/state/#moving-state-between-s3-buckets)
 - [kOps CLI: `kops update cluster`](https://kops.sigs.k8s.io/cli/kops_update_cluster/)
 - [kOps: Rolling Updates](https://kops.sigs.k8s.io/operations/rolling-update/)
-- [kOps: Getting Started on AWS—State Store](https://kops.sigs.k8s.io/getting_started/aws/#cluster-state-store)
+- [kOps: Getting Started on AWS-State Store](https://kops.sigs.k8s.io/getting_started/aws/#cluster-state-store)
 - [AWS CLI: `s3 sync`](https://docs.aws.amazon.com/cli/latest/reference/s3/sync.html)
 - [Amazon S3: Retaining Multiple Versions](https://docs.aws.amazon.com/AmazonS3/latest/userguide/Versioning.html)
 - [Amazon S3: Using SSE-KMS](https://docs.aws.amazon.com/AmazonS3/latest/userguide/UsingKMSEncryption.html)

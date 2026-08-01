@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Sidecars, Admission Webhooks, Istio, Labels
+Tags: Kubernetes, Sidecar, Admission Webhook, Istio, Labels
 
 Description: Control automatic sidecar injection safely with namespace selectors, Pod-template labels, explicit exceptions, revision labels, and verification of newly admitted Pods.
 

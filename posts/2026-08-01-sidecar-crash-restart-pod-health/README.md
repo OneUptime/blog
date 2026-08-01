@@ -1,4 +1,4 @@
-# What Happens When a Sidecar Crashes? Independent Restarts and Pod Health Explained
+# When a Sidecar Crashes: Restarts and Pod Health Explained
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

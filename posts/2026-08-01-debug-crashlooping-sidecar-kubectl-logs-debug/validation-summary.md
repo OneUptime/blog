@@ -1,4 +1,4 @@
-# Validation Summary: How to Debug a CrashLooping Sidecar with `kubectl logs`, `--previous`, and `kubectl debug`
+# Validation Summary: Debug a CrashLooping Sidecar with `kubectl logs` and `kubectl debug`
 
 ## Status
 validated

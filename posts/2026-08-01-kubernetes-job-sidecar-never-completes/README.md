@@ -2,13 +2,13 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Jobs, Sidecar Containers, Batch Processing, Pod Lifecycle, Troubleshooting
+Tags: Kubernetes, Job, Sidecar Containers, Batch Processing, Pod Lifecycle, Troubleshooting
 
 Description: Diagnose Jobs that stay active after their worker exits, then fix the lifecycle with a native Kubernetes sidecar or a compatible fallback.
 
 ---
 
-The worker printed “done” and exited with code 0, but the Job still shows `0/1` completions. The usual cause is an always-running helper—such as a proxy, log collector, or credential agent—declared as a second ordinary container.
+The worker printed “done” and exited with code 0, but the Job still shows `0/1` completions. The usual cause is an always-running helper-such as a proxy, log collector, or credential agent-declared as a second ordinary container.
 
 Kubernetes does not know that one ordinary container is “the worker” and another is “only a sidecar.” Both entries in `spec.template.spec.containers` participate in the Pod's lifetime. If one stays running, the Pod is not complete, and the Job cannot count it as a successful completion.
 

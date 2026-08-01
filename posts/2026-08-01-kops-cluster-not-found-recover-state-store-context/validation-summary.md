@@ -1,4 +1,4 @@
-# Validation Summary: kOps “Cluster Not Found”: How to Recover the Correct `KOPS_STATE_STORE` and Context
+# Validation Summary: kOps “Cluster Not Found”: Recover the Correct `KOPS_STATE_STORE` and Context
 
 ## Status
 validated

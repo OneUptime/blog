@@ -1,8 +1,8 @@
-# How Kubernetes Calculates Pod CPU and Memory Requests with Init and Sidecar Containers
+# Kubernetes Pod Resource Requests with Init and Sidecar Containers
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Sidecar Containers, Resource Requests, Init Containers, Scheduling, CPU, Memory
+Tags: Kubernetes, Sidecar Containers, Resource Requests, Init Container, Scheduling, CPU, Memory
 
 Description: Calculate exact per-resource Pod requests across ordered init phases, native sidecars, steady-state app containers, and Pod overhead.
 
@@ -10,7 +10,7 @@ Description: Calculate exact per-resource Pod requests across ordered init phase
 
 A native sidecar runs during part of initialization and throughout the application's steady state. Kubernetes therefore cannot calculate the Pod request by taking only the largest init container or only the sum of `spec.containers`.
 
-The exact calculation is order-aware. For each resource—CPU, memory, ephemeral storage, and so on—Kubernetes compares every possible init phase with the steady-state app-plus-sidecar phase, chooses the largest value for that resource, and then adds Pod overhead.
+The exact calculation is order-aware. For each resource-CPU, memory, ephemeral storage, and so on-Kubernetes compares every possible init phase with the steady-state app-plus-sidecar phase, chooses the largest value for that resource, and then adds Pod overhead.
 
 This article describes the container-level calculation used when the Pod does not set an explicit Pod-level resource budget. Kubernetes' newer `PodLevelResources` feature is covered separately below.
 

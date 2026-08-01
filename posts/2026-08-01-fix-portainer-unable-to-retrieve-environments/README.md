@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Portainer, Docker, Environments, Agent, Troubleshooting
+Tags: Portainer, Docker, Environment, Agent, Troubleshooting
 
 Description: Diagnose Portainer environment retrieval failures by separating UI and Server health from endpoint type, Agent connectivity, Docker socket access, credentials, version alignment, and engine state.
 

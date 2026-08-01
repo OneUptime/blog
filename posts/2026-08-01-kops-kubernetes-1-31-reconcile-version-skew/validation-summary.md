@@ -1,4 +1,4 @@
-# Validation Summary: Upgrading kOps to Kubernetes 1.31+: How `reconcile cluster` Avoids Version-Skew Failures
+# Validation Summary: kOps to Kubernetes 1.31+: Avoid Version Skew with `reconcile cluster`
 
 ## Status
 validated

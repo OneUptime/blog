@@ -1,4 +1,4 @@
-# Building kOps Spot Node Groups with `MixedInstancesPolicy` and On-Demand Fallback
+# kOps Spot Node Groups with `MixedInstancesPolicy` and On-Demand Fallback
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

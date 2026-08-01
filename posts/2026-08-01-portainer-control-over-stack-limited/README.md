@@ -1,10 +1,10 @@
-# Why Portainer Says “Control over This Stack Is Limited”—and How to Regain Full Control
+# Portainer Stack Control Is Limited: How to Regain Full Control
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Portainer, Docker Compose, Stacks, Access Control, Migration
+Tags: Portainer, Docker Compose, Stack, Access Control, Migration
 
-Description: Understand why Compose resources created outside Portainer are marked external, distinguish them from orphaned Portainer stacks, and migrate to a Portainer-managed stack without losing persistent data.
+Description: Understand why Compose resources created outside Portainer are marked external, distinguish them from orphaned stacks, and migrate to Portainer management without losing persistent data.
 
 ---
 

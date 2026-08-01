@@ -1,4 +1,4 @@
-# Validation Summary: Portainer Is Unreachable After an Upgrade: A Container, Port, and Proxy Checklist
+# Validation Summary: Portainer Unreachable After an Upgrade: Port and Proxy Checklist
 
 ## Status
 validated

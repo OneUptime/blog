@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Sidecar Containers, Startup Probes, Readiness Probes, Liveness Probes, Pod Health
+Tags: Kubernetes, Sidecar Containers, Startup Probes, Readiness Probe, Liveness Probe, Pod Health
 
 Description: Choose Kubernetes sidecar probes by consequence: gate startup, control whole-Pod traffic readiness, or restart only a stuck sidecar.
 
@@ -91,7 +91,7 @@ A readiness failure never restarts a container. It is suitable for recoverable o
 
 ## Use a Liveness Probe for a Stuck Process, Not a Remote Outage
 
-Native sidecars already restart after their process exits, including exit code 0. They do not need a liveness probe merely to recover from a normal crash. Add one when the process can remain alive but make no progress—for example, a deadlocked event loop or a queue worker that has irrecoverably stopped consuming.
+Native sidecars already restart after their process exits, including exit code 0. They do not need a liveness probe merely to recover from a normal crash. Add one when the process can remain alive but make no progress-for example, a deadlocked event loop or a queue worker that has irrecoverably stopped consuming.
 
 ```yaml
 livenessProbe:

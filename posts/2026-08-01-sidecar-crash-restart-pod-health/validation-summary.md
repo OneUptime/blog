@@ -1,4 +1,4 @@
-# Validation Summary: What Happens When a Sidecar Crashes? Independent Restarts and Pod Health Explained
+# Validation Summary: When a Sidecar Crashes: Restarts and Pod Health Explained
 
 ## Status
 validated

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Service Mesh, Sidecars, Performance, Capacity Planning, Istio
+Tags: Kubernetes, Service Mesh, Sidecar, Performance, Capacity Planning, Istio
 
 Description: Estimate and measure service-mesh sidecar overhead without relying on a universal number, then translate the result into latency budgets, resource requests, autoscaling, and cluster cost.
 
@@ -138,7 +138,7 @@ Publish results with their scope: “Istio version X, HTTP/2, mTLS, N connection
 - exclude workloads that do not need mesh features after a security review;
 - compare sidecar and non-sidecar data-plane modes supported by your mesh.
 
-Measure reliability benefits alongside cost. Mutual TLS, policy, traffic control, and consistent telemetry may be worth the capacity—but only a workload-specific benchmark tells you the budget.
+Measure reliability benefits alongside cost. Mutual TLS, policy, traffic control, and consistent telemetry may be worth the capacity-but only a workload-specific benchmark tells you the budget.
 
 ## Official Documentation
 

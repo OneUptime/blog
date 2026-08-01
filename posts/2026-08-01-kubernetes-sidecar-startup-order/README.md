@@ -1,8 +1,8 @@
-# How Kubernetes Starts Native Sidecars, Init Containers, and App Containers—in Exact Order
+# Kubernetes Native Sidecar, Init, and App Container Startup Order
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Sidecar Containers, Init Containers, Startup Probes, Pod Lifecycle, Container Ordering
+Tags: Kubernetes, Sidecar Containers, Init Container, Startup Probes, Pod Lifecycle, Container Ordering
 
 Description: Follow the kubelet's exact startup sequence for regular init containers, native sidecars, and application containers, including what probes actually gate.
 
@@ -147,7 +147,7 @@ Use the entrypoint to initialize the process and a startup probe to observe the 
 
 ## App Containers Must Coordinate Their Own Dependencies
 
-Once initialization completes, kubelet can create the containers in `spec.containers`. Their list order is not a dependency graph. If `api` needs `metrics`—or one ordinary application container needs another—use one of these designs:
+Once initialization completes, kubelet can create the containers in `spec.containers`. Their list order is not a dependency graph. If `api` needs `metrics`-or one ordinary application container needs another-use one of these designs:
 
 - make the consumer retry until the dependency is available;
 - move a true helper into native-sidecar form and give it a startup probe;

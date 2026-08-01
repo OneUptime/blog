@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Portainer, GitOps, Docker Compose, Git, Stacks, Continuous Deployment
+Tags: Portainer, GitOps, Docker Compose, Git, Stack, Continuous Deployment
 
 Description: Configure a Portainer Git-backed stack, understand commit-hash update checks, and choose safe polling, webhook, image-pull, and redeployment behavior.
 

@@ -1,4 +1,4 @@
-# Validation Summary: How Kubernetes Calculates Pod CPU and Memory Requests with Init and Sidecar Containers
+# Validation Summary: Kubernetes Pod Resource Requests with Init and Sidecar Containers
 
 ## Status
 validated

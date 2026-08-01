@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Sidecars, Networking, Ports, Services
+Tags: Kubernetes, Sidecar, Networking, Port, Service
 
 Description: Prevent app and sidecar bind failures by treating a Pod as one network host, inventorying real listeners, assigning non-overlapping ports, and aligning probes and Services.
 

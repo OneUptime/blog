@@ -1,8 +1,8 @@
-# Can You Add a Sidecar to a Running Pod? What Is Immutable and What Ephemeral Containers Can Do
+# Adding Sidecars to Running Pods: Immutability and Ephemeral Containers
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Sidecars, Pods, Ephemeral Containers, Deployments
+Tags: Kubernetes, Sidecar, Pod, Ephemeral Container, Deployment
 
 Description: Learn why a regular sidecar cannot be appended to an existing Pod, how controllers roll out a changed Pod template, and why ephemeral containers are for debugging rather than application features.
 
@@ -138,7 +138,7 @@ An ephemeral container is valuable precisely because it is an exception for insp
 
 ## Official Documentation
 
-- [Kubernetes: Pods—Pod Update and Replacement](https://kubernetes.io/docs/concepts/workloads/pods/#pod-update-and-replacement)
+- [Kubernetes: Pods-Pod Update and Replacement](https://kubernetes.io/docs/concepts/workloads/pods/#pod-update-and-replacement)
 - [Kubernetes: Ephemeral Containers](https://kubernetes.io/docs/concepts/workloads/pods/ephemeral-containers/)
 - [Kubernetes: Debug Running Pods](https://kubernetes.io/docs/tasks/debug/debug-application/debug-running-pod/)
 - [Kubernetes: Deployments](https://kubernetes.io/docs/concepts/workloads/controllers/deployment/)

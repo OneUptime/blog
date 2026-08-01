@@ -184,7 +184,7 @@ A secure shared state store is therefore more than one encrypted bucket. It is a
 ## Official Documentation
 
 - [kOps: The State Store](https://kops.sigs.k8s.io/state/)
-- [kOps: Getting Started on AWS—State and OIDC Stores](https://kops.sigs.k8s.io/getting_started/aws/#cluster-state-store)
+- [kOps: Getting Started on AWS-State and OIDC Stores](https://kops.sigs.k8s.io/getting_started/aws/#cluster-state-store)
 - [Amazon S3: Security Best Practices](https://docs.aws.amazon.com/AmazonS3/latest/userguide/security-best-practices.html)
 - [Amazon S3: Blocking Public Access](https://docs.aws.amazon.com/AmazonS3/latest/userguide/access-control-block-public-access.html)
 - [Amazon S3: Bucket Policies](https://docs.aws.amazon.com/AmazonS3/latest/userguide/bucket-policies.html)

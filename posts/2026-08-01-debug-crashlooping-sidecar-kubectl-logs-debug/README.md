@@ -1,8 +1,8 @@
-# How to Debug a CrashLooping Sidecar with `kubectl logs`, `--previous`, and `kubectl debug`
+# Debug a CrashLooping Sidecar with `kubectl logs` and `kubectl debug`
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Sidecars, CrashLoopBackOff, kubectl, Troubleshooting
+Tags: Kubernetes, Sidecar, CrashLoopBackOff, kubectl, Troubleshooting
 
 Description: Diagnose a repeatedly crashing sidecar by identifying its state, reading current and previous logs, inspecting events and configuration, and using an ephemeral or copied debug container safely.
 
@@ -154,7 +154,7 @@ NEW_POD=ledger-6c86bbf5f7-r7x9q
 kubectl logs -n "$NAMESPACE" "$NEW_POD" -c "$SIDECAR" --tail=100
 ```
 
-Verify restart count stability, readiness, resource use, log delivery, and application behavior. The investigation is complete when the cause and the corrected desired state are both understood—not merely when the backoff timer resets.
+Verify restart count stability, readiness, resource use, log delivery, and application behavior. The investigation is complete when the cause and the corrected desired state are both understood-not merely when the backoff timer resets.
 
 ## Official Documentation
 

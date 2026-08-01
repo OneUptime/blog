@@ -1,4 +1,4 @@
-# Validation Summary: How to Resize or Change EC2 Types in a kOps InstanceGroup Without Rebuilding the Cluster
+# Validation Summary: Resize or Change EC2 Types in a kOps InstanceGroup Without Rebuilding
 
 ## Status
 

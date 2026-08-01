@@ -1,4 +1,4 @@
-# Validation Summary: Why a Logging Sidecar Cannot Find the App’s Log File—and How to Fix the Mount Path
+# Validation Summary: Why a Logging Sidecar Cannot Find the App Log File
 
 ## Status
 

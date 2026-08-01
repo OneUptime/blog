@@ -1,4 +1,4 @@
-# Validation Summary: Portainer Agent Connection Timeouts: Debugging Port 9001, TLS, DNS, and Clock Skew
+# Validation Summary: Portainer Agent Timeouts: Debug Port 9001, TLS, DNS, and Clock Skew
 
 ## Status
 validated

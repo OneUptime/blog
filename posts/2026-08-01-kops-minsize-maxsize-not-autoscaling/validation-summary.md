@@ -1,4 +1,4 @@
-# Validation Summary: Why Setting `minSize` and `maxSize` Does Not Automatically Scale a kOps Node Group
+# Validation Summary: Why kOps `minSize` and `maxSize` Do Not Automatically Scale Nodes
 
 ## Status
 validated

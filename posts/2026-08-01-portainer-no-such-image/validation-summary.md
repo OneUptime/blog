@@ -1,4 +1,4 @@
-# Validation Summary: Portainer “No Such Image” During Stack Deployment: Pull Policies, Registries, and Tags
+# Validation Summary: Portainer “No Such Image”: Pull Policies, Registries, and Tags
 
 ## Status
 validated

@@ -1,4 +1,4 @@
-# Validation Summary: Native vs Legacy Kubernetes Sidecars: When to Use `initContainers` with `restartPolicy: Always`
+# Validation Summary: Native vs Legacy Kubernetes Sidecars: When to Use Native Sidecars
 
 ## Status
 validated

@@ -1,8 +1,8 @@
-# `kops update`, `rolling-update`, `upgrade`, or `reconcile`: Which Command Should You Run?
+# `kops update`, `rolling-update`, `upgrade`, or `reconcile`: Which to Run?
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: kOps, Kubernetes, Cluster Operations, Rolling Updates, Upgrades, Reconciliation
+Tags: kOps, Kubernetes, Cluster Operations, Rolling Update, Upgrade, Reconciliation
 
 Description: Choose the correct kOps command by separating desired-version selection, cloud-resource updates, instance replacement, and version-skew-safe reconciliation.
 
