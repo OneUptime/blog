@@ -2,8 +2,7 @@
 
 ## kOps
 
-1. kOps with Terraform: Which State Is the Source of Truth and What Must Never Be Hand-Edited?
-2. How to Back Up and Restore kOps etcd with `etcd-manager-ctl`
+1. How to Back Up and Restore kOps etcd with `etcd-manager-ctl`
 
 ## Sidecars
 
