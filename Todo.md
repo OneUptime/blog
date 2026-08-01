@@ -2,24 +2,23 @@
 
 ## Portainer
 
-1. Fixing “Unable to Retrieve Environments” in Portainer
-2. Portainer Agent Connection Timeouts: Debugging Port 9001, TLS, DNS, and Clock Skew
-3. Why Portainer Says “Control over This Stack Is Limited”—and How to Regain Full Control
-4. How to Bring an Existing Docker Compose Stack Under Portainer Management
-5. How to Deploy and Update Portainer Stacks from a Git Repository
-6. Fixing Portainer stack.env and .env Variable Substitution in Git Stacks
-7. Portainer Cannot Find a Relative Build Context: How Git Stack Paths Really Work
-8. Portainer “No Such Image” During Stack Deployment: Pull Policies, Registries, and Tags
-9. Why “Re-Pull Image and Redeploy” Fails in Portainer—and What to Check
-10. Portainer API Authentication: JWT Tokens vs. API Keys for Scripts and CI
-11. Portainer Stack API Returns 404 After an Upgrade: Migrating to the New Create Endpoints
-12. How to Back Up and Restore Portainer—and What the Backup Does Not Include
-13. How to Migrate Portainer to a New Host Without Losing Stacks or Volumes
-14. Portainer Behind Nginx, Traefik, or Cloudflare: Fixing Login, WebSocket, and HTTPS Problems
-15. How to Connect Portainer to a Private Registry Without 401 or Certificate Errors
-16. How to Secure Portainer in Production: Docker Socket Access, RBAC, TLS, and Network Exposure
-17. How to Reset a Forgotten Portainer Admin Password Without Losing Configuration
-18. Why a Stack Works with docker compose but Fails in Portainer
+1. Portainer Agent Connection Timeouts: Debugging Port 9001, TLS, DNS, and Clock Skew
+2. Why Portainer Says “Control over This Stack Is Limited”—and How to Regain Full Control
+3. How to Bring an Existing Docker Compose Stack Under Portainer Management
+4. How to Deploy and Update Portainer Stacks from a Git Repository
+5. Fixing Portainer stack.env and .env Variable Substitution in Git Stacks
+6. Portainer Cannot Find a Relative Build Context: How Git Stack Paths Really Work
+7. Portainer “No Such Image” During Stack Deployment: Pull Policies, Registries, and Tags
+8. Why “Re-Pull Image and Redeploy” Fails in Portainer—and What to Check
+9. Portainer API Authentication: JWT Tokens vs. API Keys for Scripts and CI
+10. Portainer Stack API Returns 404 After an Upgrade: Migrating to the New Create Endpoints
+11. How to Back Up and Restore Portainer—and What the Backup Does Not Include
+12. How to Migrate Portainer to a New Host Without Losing Stacks or Volumes
+13. Portainer Behind Nginx, Traefik, or Cloudflare: Fixing Login, WebSocket, and HTTPS Problems
+14. How to Connect Portainer to a Private Registry Without 401 or Certificate Errors
+15. How to Secure Portainer in Production: Docker Socket Access, RBAC, TLS, and Network Exposure
+16. How to Reset a Forgotten Portainer Admin Password Without Losing Configuration
+17. Why a Stack Works with docker compose but Fails in Portainer
 
 ## Argo Workflows
 
