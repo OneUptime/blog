@@ -8,7 +8,7 @@ Description: Separate shared-network and per-cluster ownership so deleting one k
 
 ---
 
-The safe multi-cluster pattern is to make shared network resources explicit inputs, not resources inferred and created independently by each kOps cluster. In kOps, an existing resource ID is more important than a naming convention: `networkID`, subnet `id`, and egress IDs tell kOps that those objects already exist and are shared.
+The safe multi-cluster pattern is to make shared network resources explicit inputs, not resources inferred and created independently by each kOps cluster. In kOps, an existing resource ID is more important than a naming convention: `networkID` and subnet `id` tell kOps that the VPC and subnets already exist and are shared. Egress IDs have a narrower role when kOps creates the subnets and route tables but reuses an existing egress resource.
 
 Tags help discovery, but a `shared` tag alone is not a complete ownership contract. Keep the VPC in a separate infrastructure stack, pass immutable IDs into each cluster spec, centralize mutations to shared route and tag state, and preview deletion before approving it.
 
@@ -43,6 +43,7 @@ kind: Cluster
 metadata:
   name: payments.prod.example.com
 spec:
+  cloudProvider: aws
   networkCIDR: 10.20.0.0/16
   networkID: vpc-0123456789abcdef0
 ```
@@ -55,6 +56,7 @@ kind: Cluster
 metadata:
   name: analytics.prod.example.com
 spec:
+  cloudProvider: aws
   networkCIDR: 10.20.0.0/16
   networkID: vpc-0123456789abcdef0
 ```
@@ -73,13 +75,11 @@ spec:
       cidr: 10.20.0.0/20
       type: Private
       zone: eu-west-2a
-      egress: nat-0aaa9999
     - name: private-eu-west-2b
       id: subnet-0bbb2222
       cidr: 10.20.16.0/20
       type: Private
       zone: eu-west-2b
-      egress: nat-0bbb9999
     - name: utility-eu-west-2a
       id: subnet-0ccc3333
       cidr: 10.20.128.0/24
@@ -92,31 +92,33 @@ spec:
       zone: eu-west-2b
 ```
 
-The kOps existing-VPC documentation says that when all subnets are pre-created, kOps does not alter them and does not create their route tables. A subnet entry without `id` is a request for kOps to create and own a subnet.
+The kOps existing-VPC documentation says that when all subnets are pre-created, kOps does not alter their network configuration and does not create their route tables. With the direct target, kOps can still add tags unless subnet tagging is disabled. A subnet entry without `id` is a request for kOps to create and own a subnet.
 
 Do not mix “existing” and “to be created” casually. The documented shared-subnet workflow requires pre-created IDs for all subnets or for none of them.
 
 ## Make Egress Ownership Explicit
 
-An existing NAT gateway is referenced from the private subnet:
+For the fully pre-created subnets shown above, the network stack owns the route tables and default routes. Leaving `egress` unset does not make kOps create a NAT gateway because kOps is not creating those subnets or their route tables.
+
+An existing NAT gateway ID is useful in a different topology: kOps creates and owns the private and utility subnets and their route tables in an existing VPC, but reuses the externally owned NAT gateway. Reference it from the private subnet, which has no `id` in that design:
 
 ```yaml
 egress: nat-0aaa9999
 ```
 
-An externally managed route design is declared as:
+For a route design that kOps must not manage, set this on each affected subnet:
 
 ```yaml
 egress: External
 ```
 
-These values prevent kOps from assuming it should provision a NAT gateway for the cluster. They do not validate that the external route is usable; the network owner must supply working DNS, return routes, inspection rules, endpoints, and internet access where required.
+If the VPC has neither an Internet Gateway nor a NAT gateway, mark every subnet entry whose egress is external, including utility subnets, so kOps does not try to discover an Internet Gateway. Neither form validates that the external route is usable; the network owner must supply working DNS, return routes, inspection rules, endpoints, and internet access where required.
 
-If each cluster leaves egress unspecified in a private topology, each can create its own NAT and related route resources. That increases cost and makes deletion ownership harder to reason about.
+If kOps creates the private subnets and egress is unspecified, each cluster can create its own NAT and related route resources. That increases cost and makes deletion ownership harder to reason about. This does not happen merely because `egress` is omitted from a fully pre-created subnet entry with an `id`.
 
 ## Centralize Shared-Subnet Tags
 
-By default, kOps can add cluster association and load-balancer role tags to shared subnets. With multiple clusters, a subnet can legitimately have a separate association key for each cluster:
+With the direct target, kOps can add cluster association and load-balancer role tags to shared subnets by default. With multiple clusters, a subnet can legitimately have a separate association key for each cluster:
 
 ```text
 kubernetes.io/cluster/payments.prod.example.com = shared
@@ -128,7 +130,7 @@ Use `shared`, not `owned`, for resources that must survive deletion of either cl
 
 The role tags are not cluster-specific, and controllers can use them for subnet discovery. If clusters must provision load balancers into different subnets, separate the subnet sets or configure explicit controller selection instead of relying on overlapping global role tags.
 
-For centrally governed networks, create clusters with `--disable-subnet-tags` and manage the complete required tag set in the network stack. This prevents two cluster workflows from racing to add or remove shared tags. It also transfers responsibility: missing `kubernetes.io/role/elb` or `kubernetes.io/role/internal-elb` tags can stop load balancer provisioning.
+For centrally governed networks that use the direct target, create clusters with `--disable-subnet-tags` and manage the complete required tag set in the network stack. This prevents two cluster workflows from racing to add or remove shared tags. It also transfers responsibility: missing `kubernetes.io/role/elb` or `kubernetes.io/role/internal-elb` tags can stop load balancer provisioning. With the Terraform target, kOps emits shared subnet IDs as values rather than managing those subnet resources, so the network stack must manage their tags regardless.
 
 ## Keep State Stores and Names Unambiguous
 
@@ -207,7 +209,7 @@ Practice the full deletion workflow using disposable clusters in the same shared
 
 - Does each Cluster spec contain the existing `networkID`?
 - Does every shared subnet entry contain its exact `id`?
-- Is existing egress referenced by ID or declared `External`?
+- If subnet IDs are supplied, are the external routes already configured; otherwise, is egress intentionally kOps-created, referenced by ID, or declared `External`?
 - Are shared tags `shared`, never `owned` by one cluster?
 - Is one system responsible for common subnet role tags?
 - Does each cluster have a unique name and explicit state-store argument?
