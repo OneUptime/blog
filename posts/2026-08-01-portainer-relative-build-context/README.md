@@ -66,7 +66,7 @@ This rule makes `docker compose -f deploy/compose.yaml -f deploy/compose.product
 
 ## `COPY` Can See Only the Build Context
 
-Docker sends the selected context to the builder. A Dockerfile cannot use `COPY` to reach a file outside it.
+Docker sends the selected context to the builder. A plain `COPY` source is resolved within the default build context and cannot use parent paths to reach a file outside it.
 
 This fails when the context is `../services/api`:
 
@@ -74,7 +74,7 @@ This fails when the context is `../services/api`:
 COPY ../../shared/package.json ./shared/package.json
 ```
 
-The path escapes the context boundary. If the image truly needs both `services/api` and `shared`, move the context high enough to include both and adjust the Dockerfile path:
+Docker removes the parent-directory navigation from a local `COPY` source, so this looks for `shared/package.json` inside the context rather than reaching the repository's `shared` directory. If the image truly needs both `services/api` and `shared`, move the context high enough to include both and adjust the Dockerfile path:
 
 ```yaml
 services:
@@ -129,7 +129,7 @@ Portainer's official FAQ says building an image while deploying a Git-based stac
 
 Portainer also documents a known issue affecting Compose files with build steps on remote Docker environments in Portainer 2.29.2 and later. Its published workaround is the same durable release pattern: build outside Portainer, push to a registry, and remove the `build` section before stack deployment.
 
-Even where an inline build currently succeeds, production deployments are more repeatable when CI publishes an immutable tag or digest:
+Even where an inline build currently succeeds, production deployments are more repeatable when CI publishes a unique, non-reused tag or the deployment pins a digest:
 
 ```bash
 docker buildx build \
