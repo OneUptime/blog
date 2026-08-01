@@ -137,7 +137,7 @@ The sidecar's `Always` policy causes a restart. Because its started milestone ha
 
 The kubelet restarts that sidecar independently. It does not roll initialization backward, rerun already completed init containers, or restart application containers merely because the sidecar crashed. Applications that require the helper must tolerate a temporary local dependency outage or fail according to their own policy.
 
-Kubernetes 1.36 adds an explicit exception: with the `RestartAllContainersOnContainerExits` feature enabled, a matching `restartPolicyRules` action of `RestartAllContainers` performs a full in-place Pod restart and reruns initialization. Unless that rule is present and matches, the normal independent behavior above applies.
+Kubernetes 1.36 promotes an explicit exception to beta and enables it by default: with the `RestartAllContainersOnContainerExits` feature enabled, a matching `restartPolicyRules` action of `RestartAllContainers` performs a full in-place Pod restart and reruns initialization. Unless that rule is present and matches, the normal independent behavior above applies.
 
 ## Do Not Use `postStart` as a Readiness Shortcut
 
