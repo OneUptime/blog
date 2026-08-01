@@ -27,7 +27,7 @@ The workload controller usually records the useful message in Events:
 
 ```bash
 kubectl describe deployment checkout -n shop
-kubectl get events -n shop --sort-by=.lastTimestamp
+kubectl get events -n shop --sort-by=.metadata.creationTimestamp
 ```
 
 Classify the text before changing anything:
@@ -58,12 +58,12 @@ For the matching webhook entry, verify:
 - `rules`, `namespaceSelector`, `objectSelector`, and `matchConditions` select the intended Pods;
 - `clientConfig.service.name`, `.namespace`, `.port`, and `.path` are correct;
 - or, for an external endpoint, `clientConfig.url` is the intended HTTPS URL;
-- `caBundle` contains the CA that signed the serving certificate;
+- `caBundle` is a PEM-encoded CA bundle that validates the serving certificate, unless an external endpoint's certificate chains to system trust roots available to the API server;
 - `admissionReviewVersions` includes a version the API server supports;
 - `timeoutSeconds` is appropriate;
 - `failurePolicy` reflects the security and availability decision.
 
-Admission webhook timeout values are 1–30 seconds and default to 10 seconds. Increasing the timeout can mask a slow or unreachable injector and lengthen every matching API request. Kubernetes recommends fast webhooks and small timeouts.
+Admission webhook timeout values are 1–30 seconds and default to 10 seconds. Increasing the timeout can mask a slow or unreachable injector and increase how long a stalled matching API request can block. Kubernetes recommends fast webhooks and small timeouts.
 
 ## Verify the Service and Ready Endpoints
 
@@ -72,14 +72,14 @@ For an in-cluster webhook:
 ```bash
 kubectl get service -n mesh-system injector -o yaml
 kubectl get endpointslice -n mesh-system \
-  -l kubernetes.io/service-name=injector -o wide
+  -l kubernetes.io/service-name=injector -o yaml
 kubectl get pods -n mesh-system -l app=injector -o wide
 kubectl logs -n mesh-system -l app=injector --all-containers --tail=200
 ```
 
 Check that:
 
-- the Service selector matches the injector Pods;
+- the Service selector, if present, matches the injector Pods;
 - at least one EndpointSlice endpoint is ready;
 - Service `port` maps to the port on which the injector actually listens;
 - readiness is not failing because certificates or configuration are unavailable;
@@ -91,7 +91,8 @@ A successful request from an ordinary Pod proves only that the Pod network can r
 
 The API server must reach the endpoint selected by `clientConfig`. Depending on the cluster architecture, that path can cross:
 
-- Service routing implemented by kube-proxy or the CNI;
+- Service routing implemented by kube-proxy or a replacement service proxy;
+- Pod routing implemented by the CNI or another network plugin;
 - control-plane and worker security groups;
 - cloud firewall rules;
 - on-premises ACLs;
@@ -111,7 +112,7 @@ Running `nslookup` in an application Pod does not prove that an externally hoste
 
 ## Verify TLS Identity and Trust
 
-The injector needs a serving certificate valid for the hostname the API server uses. For a Service reference, include the appropriate Service DNS names in the certificate SANs. The webhook's `caBundle` must contain the CA certificate that validates that serving certificate.
+The injector needs a serving certificate valid for the hostname the API server uses. For a Service reference, include the appropriate Service DNS names in the certificate SANs. For a privately signed certificate, the webhook's `caBundle` must contain the CA certificate that validates that serving certificate; if `caBundle` is omitted, the API server uses its system trust roots.
 
 Compare certificate sources using your injector's documented procedure. Istio, for example, documents comparing the `caBundle` in its `MutatingWebhookConfiguration` with the root certificate managed for `istiod` when an unknown-authority error appears.
 
