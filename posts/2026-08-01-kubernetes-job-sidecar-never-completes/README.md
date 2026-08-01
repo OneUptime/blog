@@ -38,7 +38,7 @@ After the export finishes, inspect container states rather than only the Job sum
 
 ```bash
 kubectl get job export-report
-kubectl get pods -l job-name=export-report
+kubectl get pods -l batch.kubernetes.io/job-name=export-report
 kubectl get pod <pod-name> \
   -o jsonpath='{range .status.containerStatuses[*]}{.name}{"\t"}{.state}{"\n"}{end}'
 kubectl describe pod <pod-name>
@@ -46,7 +46,7 @@ kubectl describe pod <pod-name>
 
 You will typically see `exporter` terminated with exit code 0 while `log-shipper` remains running. The Pod stays `Running`, so the Job's `.status.succeeded` does not increase.
 
-This is not fixed by either Job retry setting:
+This is not fixed by either of these Job settings:
 
 - `backoffLimit` controls retries after failures; it does not declare one container unimportant to completion.
 - `activeDeadlineSeconds` eventually terminates an overlong Job, but that is a failure deadline, not successful completion.
@@ -97,13 +97,13 @@ The Pod-level `restartPolicy: Never` still applies to the exporter. It does not 
 
 ## Know the Version Boundary
 
-Native sidecars were alpha in Kubernetes 1.28 behind the `SidecarContainers` feature gate, beta and enabled by default in 1.29, and stable in 1.33. Test the manifest against the server:
+Native sidecars were alpha in Kubernetes 1.28 behind the `SidecarContainers` feature gate, beta and enabled by default in 1.29, and stable in 1.33. The 1.28 alpha did not provide the termination ordering described below, so use 1.29 or later when that guarantee matters. Test the manifest against the server and confirm that the response retains the sidecar's `restartPolicy: Always`:
 
 ```bash
-kubectl apply --dry-run=server -f export-report.yaml
+kubectl apply --dry-run=server -f export-report.yaml -o yaml
 ```
 
-During mixed-version upgrades, also confirm that every eligible node has a kubelet that supports the feature. Client-side YAML parsing is not proof that the cluster can run it.
+During mixed-version upgrades, also confirm that the control-plane components and every eligible node's kubelet support the feature and, on Kubernetes 1.28 through 1.32, have the feature gate enabled. Client-side YAML parsing is not proof that the cluster can run it.
 
 ## Startup and Completion Are Separate Guarantees
 
@@ -189,7 +189,7 @@ Create a disposable Job and watch its states:
 ```bash
 kubectl apply -f export-report.yaml
 kubectl get job export-report -w
-kubectl get pods -l job-name=export-report -w
+kubectl get pods -l batch.kubernetes.io/job-name=export-report -w
 kubectl logs job/export-report -c exporter
 kubectl logs job/export-report -c log-shipper
 ```
@@ -200,7 +200,7 @@ Then verify all of the following:
 2. Its startup probe succeeds before the exporter begins.
 3. The exporter exits with code 0.
 4. The Job reaches its requested completion without a manual `kubectl exec` or kill command.
-5. The final records arrive before the Pod disappears.
+5. The final records arrive before the sidecar terminates.
 6. A deliberate shipper crash restarts the shipper without rerunning the exporter.
 
 The durable fix is to express the real lifetime contract. A continuously running ordinary container means “this Pod is still doing application work.” A native sidecar means “keep this helper alive while application work exists, but do not let the helper redefine completion.”
