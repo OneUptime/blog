@@ -2,9 +2,8 @@
 
 ## Sidecars
 
-1. How to Prevent Port Conflicts When App and Sidecar Share a Pod Network
-2. How Much Latency, CPU, and Memory Does a Service-Mesh Sidecar Add?
-3. Sidecar or Separate Service? A Decision Checklist for Failure Isolation and Scaling
+1. How Much Latency, CPU, and Memory Does a Service-Mesh Sidecar Add?
+2. Sidecar or Separate Service? A Decision Checklist for Failure Isolation and Scaling
 
 ## Portainer
 
