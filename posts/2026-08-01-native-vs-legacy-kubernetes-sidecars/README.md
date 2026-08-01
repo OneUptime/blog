@@ -45,7 +45,7 @@ Native sidecars followed this graduation path:
 | 1.29–1.32 | Beta | Enabled |
 | 1.33 and later | Stable | Enabled |
 
-The API field can only use `Always` for this sidecar behavior. Do not infer support only from a client-side `kubectl version` result. Admission, the scheduler, and every kubelet that may run the Pod need compatible feature handling, which matters during a skewed cluster upgrade.
+The API field can only use `Always` for this sidecar behavior. Do not infer support only from a client-side `kubectl version` result. The API server, controller manager, scheduler, every kubelet that may run the Pod, and any admission tooling that rewrites Pods need compatible feature handling, which matters during a skewed cluster upgrade.
 
 Ask the API server to validate the manifest:
 
@@ -54,7 +54,7 @@ kubectl apply --dry-run=server -f pod.yaml
 kubectl explain pod.spec.initContainers.restartPolicy
 ```
 
-For Kubernetes 1.28, the `SidecarContainers` feature gate had to be enabled explicitly. It has been enabled by default since 1.29 and is locked on once the feature is stable. A managed service can also impose its own supported-version policy, so confirm the actual control-plane and node versions before migration.
+For Kubernetes 1.28, the `SidecarContainers` feature gate had to be enabled explicitly, and sidecar termination behavior differed from later releases. Do not rely on the shutdown semantics described below on 1.28. The feature has been enabled by default since 1.29 and is locked on once it is stable. A managed service can also impose its own supported-version policy, so confirm the actual control-plane and node versions before migration.
 
 ## What “Legacy Sidecar” Means
 
@@ -93,7 +93,7 @@ A native sidecar's container-level policy is always `Always`, regardless of the 
 
 By default, a legacy sidecar follows the Pod-level restart policy just like every other application container. Deployments require `Always`, but Jobs allow only `Never` or `OnFailure`, which creates important completion differences. On clusters with the `ContainerRestartRules` feature enabled, an ordinary container can explicitly override parts of that behavior with container-level restart policy and rules; that still does not give it native-sidecar startup, shutdown, or Job-completion semantics.
 
-Kubernetes 1.36 also supports an opt-in `RestartAllContainers` rule when its feature gate is enabled. A matching sidecar exit can then restart every container in the Pod in place. Without that explicit rule, native-sidecar restarts remain independent as described here.
+Kubernetes 1.35 introduced an alpha, disabled-by-default `RestartAllContainers` rule. It is beta and enabled by default in 1.36. When `RestartAllContainersOnContainerExits` and its `ContainerRestartRules` and `NodeDeclaredFeatures` dependencies are enabled, a sidecar exit that matches an explicitly configured rule can restart every container in the Pod in place. Without that explicit rule, native-sidecar restarts remain independent as described here.
 
 ### Job completion
 
@@ -103,7 +103,7 @@ A native sidecar does not control Pod completion. Once the Job's regular applica
 
 ### Shutdown
 
-For a Pod with native sidecars, the kubelet lets all main application containers terminate first. It then terminates native sidecars in reverse order of their declaration. If sidecar B depends on sidecar A, declare A before B: A starts first and stops last.
+During graceful termination of a Pod with native sidecars, the kubelet lets all main application containers terminate first. It then terminates native sidecars in reverse order of their declaration. If sidecar B depends on sidecar A, declare A before B: A starts first and stops last. This ordered shutdown is bounded by the Pod's termination grace period; if the main containers consume that period, the sidecars may not have time to stop gracefully in order.
 
 With only ordinary containers, termination signals are not ordered. If a legacy sidecar must outlive the application, the processes need their own coordination protocol and enough termination grace time.
 
