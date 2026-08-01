@@ -8,9 +8,9 @@ Description: Trace a kOps node that has not joined from cloud instance creation 
 
 ---
 
-“Node has not yet joined cluster” describes a mismatch: kOps expects a cloud instance, but the Kubernetes API does not yet have the corresponding healthy Node.
+The validation error `machine "<instance-id>" has not yet joined cluster` describes a specific mismatch: kOps sees a cloud instance that is expected to join, but cannot associate it with a Kubernetes Node object.
 
-It does not identify the cause. The instance may not have launched, nodeup may not have finished, the kubelet may not reach the API, authentication may fail, or the Node may have registered but remained `NotReady`. Troubleshoot in that dependency order.
+It does not identify why registration has not happened. nodeup may not have finished, the kubelet may not reach the API, or authentication may fail. A missing cloud instance and a registered but `NotReady` Node produce different validation errors, but belong in the same dependency-ordered workflow below.
 
 Restarting services at random destroys useful evidence. First establish the last successful layer.
 
@@ -45,7 +45,7 @@ Kubernetes assumes that a reused Node name represents the same machine. Do not c
 
 ## Layer 1: Did the Cloud Instance Launch Correctly?
 
-On AWS, compare the kOps instance-group desired capacity with the Auto Scaling Group and EC2 state. Check:
+On AWS, compare the kOps instance-group minimum and maximum sizes with the Auto Scaling Group's limits and desired capacity, then inspect EC2 state. Check:
 
 - launch-template version;
 - AMI and CPU architecture;
@@ -113,7 +113,7 @@ sudo journalctl -u containerd --no-pager --since '-30 minutes'
 sudo journalctl -u kubelet --no-pager --since '-30 minutes'
 ```
 
-Use the runtime configured by your cluster image; do not assume every older kOps installation uses containerd. The kOps version, Kubernetes version, and image must be a supported combination.
+Use the runtime configured by your cluster; do not assume every older kOps installation uses containerd. The kOps version, Kubernetes version, and image must be a supported combination.
 
 Classify kubelet log messages:
 
@@ -131,7 +131,7 @@ Preserve the exact status code and certificate error. “Cannot connect” is to
 
 ## Layer 4: Can the Node Reach the Intended API?
 
-kOps nodes normally discover an internal API endpoint. From the affected node, verify resolution and TCP reachability:
+In a DNS-based kOps cluster, nodes normally discover the API through `api.internal.<cluster-name>`. Gossip-based and DNS-none clusters use different discovery paths. From the affected node, verify the endpoint configured for this cluster and its TCP reachability:
 
 ```bash
 getent hosts api.internal.prod.example.com
@@ -140,7 +140,7 @@ nc -vz api.internal.prod.example.com 443
 
 Then compare the result with a healthy node in the same subnet and security groups. Check that:
 
-- the private hosted zone is associated with the VPC;
+- for private DNS, the private hosted zone is associated with the VPC;
 - VPC DNS support and hostnames are configured as required;
 - custom DNS forwarders can resolve the private zone;
 - the node can route to the internal load balancer or control-plane addresses;
@@ -162,9 +162,9 @@ kubectl get events --all-namespaces \
 kubectl get certificatesigningrequests
 ```
 
-Only investigate CertificateSigningRequests if the cluster’s configured bootstrap flow uses them. Never approve an unknown CSR merely because it is pending; verify its signer, requested username, groups, and originating instance.
+Only investigate CertificateSigningRequests if the cluster’s configured bootstrap flow uses them. Never approve an unknown CSR merely because it is pending; verify its signer, requesting username and groups, requested certificate subject and usages, and originating instance.
 
-For `Unauthorized`, compare the node’s client CA and credential-generation path with the cluster’s current CA rotation stage. For `Forbidden`, inspect API audit logs and admission errors. Restricted labels can cause registration rejection under NodeRestriction; fix the kOps configuration that generated them rather than weakening the admission controller.
+For `Unauthorized`, compare the node’s client CA and credential-generation path with the cluster’s current CA rotation stage. For `Forbidden`, inspect API audit logs and admission errors. NodeRestriction rejects restricted labels supplied directly by a kubelet, but current kOps releases apply configured instance-group labels through kops-controller. Identify the caller before changing configuration, and do not weaken the admission controller.
 
 ## Layer 6: Registered Is Not the Same as Ready
 
