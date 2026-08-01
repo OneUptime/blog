@@ -24,6 +24,8 @@ There are several scenarios where targeting localhost makes sense:
 
 The most straightforward approach is to set the connection type to `local` directly in your playbook. This tells Ansible to skip SSH entirely and execute tasks on the local machine.
 
+When `localhost` is not defined in inventory, targeting `hosts: localhost` makes Ansible create an [implicit localhost](https://docs.ansible.com/projects/ansible/latest/inventory/implicit_localhost.html) that already uses the local connection. In that specific case, `connection: local` is optional; the examples below keep it to make the playbook's intent explicit. If you define `localhost` in an inventory file or with `-i "localhost,"`, Ansible treats it as a normal inventory host instead, so you must select the local connection in the playbook, inventory, or command line.
+
 Here is a basic playbook that installs packages on localhost:
 
 ```yaml
@@ -267,8 +269,8 @@ When running on localhost, fact gathering still happens. If you do not need fact
 
 **File paths**: Remember that destination paths in locally connected tasks refer to the local machine. For modules that distinguish between controller and target paths, like `copy` and `template`, localhost means both sides are the same host, but the module's normal path rules still apply.
 
-**Inventory warnings**: If you do not specify an inventory and rely on Ansible's implicit localhost, Ansible may show a warning about no inventory being parsed. This is safe to ignore, but you can avoid it by using `-i "localhost,"` or by adding `localhost` to an inventory file such as `/etc/ansible/hosts`.
+**Inventory warnings**: If you do not specify an inventory and rely on Ansible's implicit localhost, Ansible may show a warning about no inventory being parsed. This is safe to ignore. To avoid the warning while keeping local execution, use `ansible-playbook -i "localhost," --connection=local site.yml` or add `localhost ansible_connection=local` to an inventory file. A bare explicit `localhost` inventory entry does not inherit the implicit host's local connection settings.
 
 ## Summary
 
-Running Ansible on localhost is a simple but powerful pattern. Use `connection: local` in the playbook for dedicated local playbooks, use the inventory for mixed environments, and use `delegate_to: localhost` for individual tasks. Pick the method that fits your workflow, and you will have a clean, repeatable way to manage your local infrastructure.
+Running Ansible on localhost is a simple but powerful pattern. You can rely on Ansible's implicit localhost when `localhost` is absent from inventory, use `connection: local` explicitly for dedicated local playbooks, use an inventory entry with `ansible_connection=local` for mixed environments, and use `delegate_to: localhost` for individual tasks. Pick the method that fits your workflow, and you will have a clean, repeatable way to manage your local infrastructure.
