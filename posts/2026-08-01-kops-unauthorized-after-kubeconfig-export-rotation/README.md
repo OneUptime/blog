@@ -26,9 +26,9 @@ These failures require different fixes:
 | --- | --- |
 | DNS failure, timeout, connection refused | Endpoint or network |
 | `x509: certificate signed by unknown authority` | Client does not trust the API server certificate |
-| TLS hostname mismatch | Kubeconfig server and certificate identity differ |
-| `Unauthorized` / HTTP 401 | API server did not authenticate the presented credential |
-| `Forbidden` / HTTP 403 | Authentication succeeded, but authorization denied the action |
+| TLS hostname mismatch | Effective TLS server name and certificate identity differ |
+| `Unauthorized` / HTTP 401 | API server did not authenticate the request |
+| `Forbidden` / HTTP 403 | Authorization denied the resolved identity, which may be anonymous |
 
 Do not use `insecure-skip-tls-verify` for any of them. It hides server-identity problems and does not make an expired or untrusted client credential valid.
 
@@ -85,7 +85,7 @@ kubectl config view --minify --raw \
 
 If the kubeconfig references `client-certificate` as a file instead, run `openssl x509 -in PATH -noout -subject -issuer -dates` against that certificate file.
 
-Kubernetes requires a client certificate to be within its X.509 `notBefore` and `notAfter` interval, include client-authentication usage, and chain to a CA trusted by the API server. Compare certificate times with a correctly synchronized workstation clock.
+Kubernetes requires a client certificate to be within its X.509 `notBefore` and `notAfter` interval, include client-authentication usage, and chain to a CA trusted by the API server. The API server evaluates the validity interval, so keep control-plane clocks synchronized and compare the displayed dates with the correct current time.
 
 The current kOps export command gives `--admin` a default credential lifetime of 18 hours. An admin kubeconfig that worked yesterday can therefore be expired today by design.
 
@@ -113,7 +113,7 @@ Treat this file as a privileged secret. Do not commit it, attach it to a ticket,
 
 ## Understand What Export Does and Does Not Do
 
-`kops export kubeconfig` reads cluster connection information from the state store and writes kubeconfig entries. Current kOps requires an explicit credential choice when a suitable user entry is not already available:
+`kops export kubeconfig` reads cluster connection information from the state store and writes kubeconfig entries. To export authentication, current kOps requires an explicit credential choice:
 
 - `--admin=DURATION` mints a cluster-admin client credential;
 - `--user NAME` reuses an existing kubeconfig user;
@@ -123,14 +123,14 @@ Running the command without the appropriate credential flag may update cluster a
 
 ## Follow CA Rotation in the Documented Order
 
-kOps rotates CA keypairs gracefully by staging, promoting, and later distrusting keys. Client distribution is part of the procedure, not an afterthought.
+The graceful keypair-rotation procedure, available in kOps 1.22 and later, stages, promotes, and later distrusts CA keys. Client distribution is part of the procedure, not an afterthought.
 
-For a rotation of `kubernetes-ca` or `all`, there are two different client updates:
+For a rotation of `kubernetes-ca` or `all`, there are two different client updates. The kubeconfig CA-data steps apply when clients trust the kOps-managed API server certificate; the kOps procedure excludes an API load balancer with its own separate certificate from those steps.
 
-1. **After staging the new CA:** export and distribute kubeconfig CA data that trusts the new certificate before promoting it.
-2. **After promotion:** export and distribute new administrator client credentials issued by the new primary CA.
-3. **After old clients have moved:** distrust the previous CA and roll the cluster.
-4. **After distrust:** export the final CA bundle without the previous CA.
+1. **After creating and staging the new CA:** update the cluster, complete the rolling update, then export and distribute kubeconfig CA data that trusts the new certificate before promoting it.
+2. **After promotion:** update the cluster, complete the rolling update, then export and distribute new administrator client credentials issued by the new primary CA.
+3. **After old clients have moved:** distrust the previous CA, update the cluster, and complete the rolling update.
+4. **After the distrust rollout:** export the final CA bundle without the previous CA.
 
 The documented administrator export is equivalent to:
 
@@ -141,9 +141,9 @@ kops export kubeconfig "${CLUSTER_NAME}" \
   --kubeconfig ./prod-after-ca-promotion.kubeconfig
 ```
 
-If clients become Unauthorized immediately after the old keypair is distrusted, they are probably still presenting credentials issued by that previous CA. Re-export from the correct, current state and redistribute through the approved secret channel.
+If clients become Unauthorized after the old keypair's distrust rollout, they are probably still presenting credentials issued by that previous CA. Re-export from the correct, current state and redistribute through the approved secret channel.
 
-If clients instead report that the server certificate is signed by an unknown authority, their `certificate-authority-data` is stale. Minting another client certificate alone will not update that server trust bundle.
+If clients that rely on the kOps-managed API server certificate instead report that it is signed by an unknown authority, their `certificate-authority-data` is stale. Minting another client certificate alone will not update that server trust bundle.
 
 ## Avoid Accidental Rollback During Rotation
 
