@@ -37,7 +37,7 @@ Choose one AWS account to own the bucket. Record:
 - retention and recovery responsibility;
 - a break-glass process that is logged and regularly tested.
 
-For a cross-account bucket, prefer S3 Object Ownership with **Bucket owner enforced** and policy-based access. ACLs are disabled in that mode and the bucket owner owns every object. The kOps documentation also describes `KOPS_STATE_S3_ACL=bucket-owner-full-control` for legacy cross-account designs that intentionally keep ACLs enabled. Do not combine that legacy setting blindly with an ACL-disabled bucket.
+For a cross-account bucket, prefer S3 Object Ownership with **Bucket owner enforced** and policy-based access. ACLs are disabled in that mode and the bucket owner owns every object. The kOps documentation also describes `KOPS_STATE_S3_ACL=bucket-owner-full-control` for cross-account designs that keep ACLs enabled. With **Bucket owner enforced**, S3 still accepts uploads that specify this canned ACL, but the ACL has no effect on permissions, so the setting is unnecessary.
 
 ## Create the Bucket with Recovery Controls
 
@@ -73,7 +73,7 @@ aws s3api put-bucket-encryption \
 
 For `us-east-1`, omit `--create-bucket-configuration`. kOps strongly recommends S3 Versioning so previous state can be recovered. S3 also encrypts new uploads with SSE-S3 by default, but declaring default encryption makes the control visible and auditable.
 
-Use SSE-KMS when key-policy control or compliance requires it. Cross-account SSE-KMS needs a customer-managed key and permissions on both the S3 bucket and KMS key. Writers need `kms:GenerateDataKey`; readers need `kms:Decrypt`. Test node bootstrap as well as administrator access before making the KMS policy mandatory.
+Use SSE-KMS when key-policy control or compliance requires it. Cross-account SSE-KMS needs a customer-managed key and permissions on both the S3 bucket and KMS key. Writers need `kms:GenerateDataKey`; multipart uploads also require `kms:Decrypt`, as do readers. Test node bootstrap as well as administrator access before making the KMS policy mandatory.
 
 ## Separate Human, Automation, and Node Access
 
@@ -98,7 +98,8 @@ The following identity-policy skeleton illustrates prefix isolation for one clus
       "Effect": "Allow",
       "Action": [
         "s3:GetBucketLocation",
-        "s3:GetBucketVersioning"
+        "s3:GetBucketVersioning",
+        "s3:GetEncryptionConfiguration"
       ],
       "Resource": "arn:aws:s3:::company-kops-state-eu-west-1"
     },
@@ -129,6 +130,8 @@ The following identity-policy skeleton illustrates prefix isolation for one clus
   ]
 }
 ```
+
+kOps checks the bucket's default encryption configuration before writing state. The `s3:GetEncryptionConfiguration` permission lets it detect and honor that configuration.
 
 With versioning enabled, `DeleteObject` normally adds a delete marker; principals with `s3:DeleteObjectVersion` can permanently remove a specific version. Reserve that latter permission for recovery or retention administrators rather than normal cluster automation.
 
@@ -165,12 +168,11 @@ Remember that S3 lifecycle processing is not blocked by an ordinary bucket-polic
 
 ## Make Cluster Selection Explicit
 
-Operators should set the shared bucket once and always name the target cluster:
+Operators should set the shared bucket once and always name the target cluster. A role with bucket-wide inventory permission can run `kops get clusters`, but that command will not work with the single-prefix listing policy shown above because it lists the state-store root.
 
 ```bash
 export KOPS_STATE_STORE=s3://company-kops-state-eu-west-1
 
-kops get clusters
 kops get cluster prod.eu.example.com -o yaml
 kops update cluster prod.eu.example.com
 ```
