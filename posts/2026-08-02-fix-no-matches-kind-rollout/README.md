@@ -52,8 +52,8 @@ kubectl get customresourcedefinition rollouts.argoproj.io
 The expected resource has:
 
 ```text
-NAME        APIVERSION                 KIND
-rollouts    argoproj.io/v1alpha1       Rollout
+NAME        SHORTNAMES   APIVERSION              NAMESPACED   KIND
+rollouts    ro           argoproj.io/v1alpha1    true         Rollout
 ```
 
 Several Argo projects use the `argoproj.io` API group. Seeing `workflows.argoproj.io` or `applications.argoproj.io` does not prove that `rollouts.argoproj.io` is installed.
@@ -83,7 +83,7 @@ apiVersion: argoproj.io/v1alpha1
 kind: Rollout
 ```
 
-The CRD must list `v1alpha1` with `served: true`, and its `Established` condition should be `True`. `NamesAccepted=False`, a deletion timestamp, or a schema/admission error in cluster events explains why discovery is incomplete.
+The CRD must list `v1alpha1` with `served: true`, and its `Established` condition should be `True`. `NamesAccepted=False` or a deletion timestamp can explain why discovery is incomplete. If applying the CRD failed, inspect the command's validation or admission error.
 
 Wait for establishment after applying CRDs:
 
@@ -264,10 +264,11 @@ Helm also treats files under a chart's `crds/` directory differently from ordina
 
 Kubernetes documents that deleting a CustomResourceDefinition deletes the custom resources stored under it. Recreating the CRD does not safely reconstruct active Rollouts, AnalysisRuns, or Experiments from the controller.
 
-Prefer an in-place `kubectl apply` of the approved CRD version, inspect validation errors, and follow the Argo Rollouts upgrade instructions. Before any CRD migration, inventory and back up the custom resources:
+Prefer an in-place `kubectl apply` of the approved CRD version, inspect validation errors, and follow the Argo Rollouts upgrade instructions. Before any CRD migration, inventory the custom resources and back them up using your platform's supported procedure. List the namespaced and cluster-scoped resources separately:
 
 ```bash
 kubectl get rollouts,analysisruns,analysistemplates,experiments -A
+kubectl get clusteranalysistemplates
 ```
 
 Treat CRD deletion as a destructive cluster-data operation requiring a separate recovery plan—not a discovery-cache repair.
