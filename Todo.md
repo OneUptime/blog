@@ -2,25 +2,24 @@
 
 ## Argo Workflows
 
-1. WorkflowTemplate vs. ClusterWorkflowTemplate: Choosing the Right Reuse Boundary
-2. How to Pass Parameters and Artifacts Between Argo Workflow Tasks
-3. How to Extract a Nested JSON Field from an Argo Workflow Output Parameter
-4. Argo Workflows Artifact Upload Failed: Debugging S3, MinIO, GCS, and Azure Storage
-5. How to Preserve and Retrieve Argo Workflow Logs After Pods Are Deleted
-6. How to Call the Argo Workflows API When SSO Authentication Is Enabled
-7. Least-Privilege RBAC for Argo Workflows: Controllers, Executors, Users, and Retries
-8. How to Retry Argo Workflow Tasks with Exponential Backoff and Rate-Limit Delays
-9. Retry vs. Resubmit in Argo Workflows: How to Rerun Only Failed Nodes
-10. Fixing Argo Workflow `when` Expressions, Quoting Errors, and Unresolved Variables
-11. How to Fan Out Argo Workflow Tasks with withItems, withParam, and Sequences
-12. Controlling Argo Workflows Concurrency with parallelism, Semaphores, and Mutexes
-13. Argo CronWorkflow Missed a Run: Debugging Time Zones, Starting Deadlines, and Concurrency
-14. How to Use Argo Workflow Exit Handlers for Cleanup and Failure Notifications
-15. Argo Workflow Timeouts Explained: Workflow, Template, and Pod Deadlines
-16. PodGC, TTLStrategy, and Workflow Archive: What Gets Deleted—and When?
-17. Argo Workflow Is Stuck in Pending: A Scheduling, Quota, and RBAC Checklist
-18. Fixing “Request Entity Too Large” in Argo Workflows with Node-Status Offloading
-19. Argo Workflow Controller Is Falling Behind: Tuning Workers, QPS, and Pod Creation
+1. How to Pass Parameters and Artifacts Between Argo Workflow Tasks
+2. How to Extract a Nested JSON Field from an Argo Workflow Output Parameter
+3. Argo Workflows Artifact Upload Failed: Debugging S3, MinIO, GCS, and Azure Storage
+4. How to Preserve and Retrieve Argo Workflow Logs After Pods Are Deleted
+5. How to Call the Argo Workflows API When SSO Authentication Is Enabled
+6. Least-Privilege RBAC for Argo Workflows: Controllers, Executors, Users, and Retries
+7. How to Retry Argo Workflow Tasks with Exponential Backoff and Rate-Limit Delays
+8. Retry vs. Resubmit in Argo Workflows: How to Rerun Only Failed Nodes
+9. Fixing Argo Workflow `when` Expressions, Quoting Errors, and Unresolved Variables
+10. How to Fan Out Argo Workflow Tasks with withItems, withParam, and Sequences
+11. Controlling Argo Workflows Concurrency with parallelism, Semaphores, and Mutexes
+12. Argo CronWorkflow Missed a Run: Debugging Time Zones, Starting Deadlines, and Concurrency
+13. How to Use Argo Workflow Exit Handlers for Cleanup and Failure Notifications
+14. Argo Workflow Timeouts Explained: Workflow, Template, and Pod Deadlines
+15. PodGC, TTLStrategy, and Workflow Archive: What Gets Deleted—and When?
+16. Argo Workflow Is Stuck in Pending: A Scheduling, Quota, and RBAC Checklist
+17. Fixing “Request Entity Too Large” in Argo Workflows with Node-Status Offloading
+18. Argo Workflow Controller Is Falling Behind: Tuning Workers, QPS, and Pod Creation
 
 ## Argo Rollouts
 
