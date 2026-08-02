@@ -8,7 +8,7 @@ Description: Gate an Argo Rollout with containerized Job smoke tests and JSON-re
 
 ---
 
-Argo Rollouts can make a deployment decision from more than time-series metrics. A Job metric runs a Kubernetes Job and uses its exit status. A Web metric calls an HTTP endpoint, extracts JSON, and evaluates a condition.
+Argo Rollouts can make a deployment decision from more than time-series metrics. A Job metric runs a Kubernetes Job and uses its terminal condition. A Web metric calls an HTTP endpoint, extracts JSON, and evaluates a condition.
 
 Use a Job when the test needs a container, cluster networking, multiple commands, or specialized tooling. Use Web analysis when a trusted test service already exposes a compact JSON decision. Both become safer release gates when they test the canary explicitly and have bounded execution.
 
@@ -70,11 +70,11 @@ spec:
                       - --expect-ready=true
 ```
 
-The official provider contract is simple: exit code zero succeeds; nonzero fails. Make the test program print useful diagnostics before exiting, and use an immutable image so rerunning an old AnalysisRun definition does not execute different code.
+The official provider contract is simple: a Job with a `Complete` condition succeeds, while a Job with a `Failed` condition fails. For this single-container test, the process exit status normally drives those conditions, subject to the Job's retry policy. Make the test program print useful diagnostics before exiting, and use an immutable image so rerunning an old AnalysisRun definition does not execute different code.
 
 `activeDeadlineSeconds` bounds a hung test, while `backoffLimit` controls Kubernetes Job retries. Give the test ServiceAccount only the permissions it needs; an HTTP-only test commonly needs no Kubernetes API permissions at all. NetworkPolicies must allow DNS and the canary destination.
 
-An image-pull terminal waiting state can make the job metric inconclusive and pause the rollout. Treat test image availability as part of release-system health.
+An image-pull failure can leave the Job metric running until `activeDeadlineSeconds` expires. The Job then becomes failed, so the metric fails and an inline rollout aborts. Treat test image availability as part of release-system health.
 
 ## Call a JSON Test Service with Web Analysis
 
@@ -121,9 +121,11 @@ A matching response is:
 }
 ```
 
+Because the target in this example is cluster-local, the test service must have network connectivity to the cluster. Otherwise, pass a canary endpoint that is reachable from the test service.
+
 The documented Web provider supports `GET`, `POST`, and `PUT`. Use either `body` or `jsonBody`, not both; a body on `GET` is invalid. Keep TLS verification enabled and install private CA trust instead of setting `insecure: true` in production.
 
-Secret arguments resolve in the AnalysisRun's namespace. Confirm the Secret exists there and restrict who can read both it and the resulting resource metadata.
+Secret arguments resolve in the AnalysisRun's namespace. Confirm the Secret exists there and restrict who can read it. The AnalysisRun retains the Secret reference; the controller resolves its value when executing the metric.
 
 ## Run Job and Web Gates in the Intended Order
 
@@ -162,7 +164,7 @@ kubectl logs job/<job-name> -n payments
 kubectl describe pod <job-pod> -n payments
 ```
 
-For Web analysis, inspect the measurement message, test DNS and TLS from the controller's network context, verify the JSON shape after `jsonPath`, and confirm that the result types match the expression.
+For Web analysis, inspect the measurement message and test reachability, DNS, and TLS to the provider URL from the controller's network context. If the test service then calls the target supplied in `jsonBody`, test that connection from the test service's network context. Verify the JSON shape after `jsonPath`, and confirm that the result types match the expression.
 
 Never promote solely because the test infrastructure is broken unless an authorized fallback check proves the release safe. An unavailable safety gate is different from a passing gate.
 
