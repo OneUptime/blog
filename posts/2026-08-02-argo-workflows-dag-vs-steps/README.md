@@ -255,7 +255,7 @@ dag:
 
 `failFast: false` lets independent branches continue after another branch fails. It does not turn a failed dependency into a success: tasks whose `depends` expressions are not satisfied can still be omitted.
 
-Steps make sequential stop points visually obvious, but failure policy still deserves review. Both steps and DAG tasks support control fields such as `when`, retries, hooks, and documented forms of `continueOn`. Do not choose steps solely because “later work should not run on failure”; both structures can express controlled failure, while DAG `depends` is more precise about which outcomes unlock which tasks.
+Steps make sequential stop points visually obvious, but failure policy still deserves review. Both steps and DAG tasks support control fields such as `when`, hooks, and documented forms of `continueOn`; both can also invoke templates configured with retries. Do not choose steps solely because “later work should not run on failure”; both structures can express controlled failure, while DAG `depends` is more precise about which outcomes unlock which tasks.
 
 ## Output References Change Prefix
 
