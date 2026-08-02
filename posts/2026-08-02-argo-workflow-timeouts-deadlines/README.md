@@ -10,27 +10,27 @@ Description: Understand Argo Workflow, template, pending, and Pod active deadlin
 
 Argo Workflows has several fields that sound like “task timeout,” but they guard different intervals. A useful production design normally has three layers:
 
-1. A Workflow deadline limits the wall-clock lifetime of the whole run.
+1. A Workflow deadline limits the wall-clock lifetime of the main run; Workflow exit handlers are exempt.
 2. A template timeout limits one node, including time spent Pending.
 3. A Pod active deadline limits how long a container or script Pod is active on a node.
 
-Current Argo also provides `pendingTimeout` to fail work that cannot leave Pending promptly. The first deadline reached wins, so the values should form an intentional budget rather than a collection of unrelated numbers.
+Argo Workflows 4.1 release candidates also provide `pendingTimeout` to fail work that cannot leave Pending promptly. For work subject to multiple clocks, the first deadline reached wins, so the values should form an intentional budget rather than a collection of unrelated numbers.
 
 ## The Timeout Fields at a Glance
 
 | Field | Location | Clock starts | Includes Pending? | Applies to |
 | --- | --- | --- | --- | --- |
-| `activeDeadlineSeconds` | `Workflow.spec` | Workflow start time | Yes, as part of the Workflow lifetime | Entire Workflow |
-| `timeout` | Template | Argo node start time | Yes | Total node execution; may not apply to Steps or DAG templates |
-| `pendingTimeout` | Template | Argo node start time | Specifically limits Pending | Pod-producing template nodes; may not apply to Steps or DAG templates |
+| `activeDeadlineSeconds` | `Workflow.spec` | Workflow start time | Yes, as part of the Workflow lifetime | Main Workflow execution; exit handlers are exempt |
+| `timeout` | Template | Argo node start time | Yes | Supported leaf templates; not Steps, DAG, or Suspend templates |
+| `pendingTimeout` | Template | Argo node start time | Specifically limits Pending | Supported leaf templates in Argo Workflows 4.1; not Steps, DAG, or Suspend templates |
 | `activeDeadlineSeconds` | Template | Pod `StartTime` | No pre-start scheduling time | Container and script templates |
 | `timeoutSeconds` | `template.http` | HTTP request | Not applicable | One Argo HTTP-template request |
 
 The two `activeDeadlineSeconds` fields use seconds, but their scope is different. Template `timeout` and `pendingTimeout` are duration strings such as `30s`, `5m`, or `1h`.
 
-## Limit the Entire Workflow
+## Limit Main Workflow Execution
 
-Set `spec.activeDeadlineSeconds` when the run must finish within one global service-level objective:
+Set `spec.activeDeadlineSeconds` when the main execution must finish within one global service-level objective:
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -59,11 +59,11 @@ spec:
           - --endpoint=https://service.example.com/run
 ```
 
-The Workflow may run for at most 3,600 seconds from its Workflow start time. That budget includes dependencies, Pod scheduling, synchronization waits, task execution, and retry delays that occur while the Workflow is running. The controller terminates the Workflow when the deadline is reached.
+The main Workflow execution may run for at most 3,600 seconds from its Workflow start time. That budget includes dependencies, Pod scheduling, synchronization waits, task execution, and retry delays that occur while the Workflow is running. The controller terminates non-exit work when the deadline is reached. Workflow-level exit handlers are deliberately exempt, so they can extend the Workflow's final wall-clock lifetime beyond 3,600 seconds.
 
 Current field documentation notes that a Workflow-level value of zero is used to terminate a Running Workflow. Do not use zero to mean “unlimited”; omit the field when no Workflow deadline is intended.
 
-A global deadline is the final guardrail. It should be longer than the normal critical path plus realistic scheduling, retry, and finalization time. If it is tighter than every leaf timeout combined, it can stop an otherwise healthy pipeline partway through its last task.
+A global deadline is the final guardrail for the main execution. It should be longer than the normal critical path plus realistic scheduling, retry, and finalization time. If it is tighter than every leaf timeout combined, it can stop an otherwise healthy pipeline partway through its last task.
 
 ## Limit Total Node Time with `timeout`
 
@@ -79,7 +79,7 @@ The template `timeout` field counts from the Argo node's start time and includes
 
 This protects the caller from a node that spends five minutes waiting to schedule and then runs for another six. It is broader than the Pod active deadline because its clock starts before the Pod necessarily becomes active on a Kubernetes node.
 
-The current field reference warns that `timeout` may not be applied to Steps or DAG templates. Put it on the leaf template referenced by a step or DAG task:
+`timeout` is supported on leaf templates, not Steps, DAG, or Suspend templates. Put it on the leaf template referenced by a step or DAG task:
 
 ```yaml
 - name: pipeline
@@ -98,7 +98,7 @@ Do not put a timeout only on the orchestration template and assume every descend
 
 ## Fail Unschedulable Work with `pendingTimeout`
 
-`pendingTimeout` isolates the queueing and scheduling portion of the budget:
+`pendingTimeout` limits how long a supported leaf node remains in Argo's Pending phase. For Pod-producing leaves, this usually isolates the queueing and scheduling portion of the budget:
 
 ```yaml
 - name: gpu-training
@@ -111,20 +111,20 @@ Do not put a timeout only on the orchestration template and assume every descend
         nvidia.com/gpu: "1"
 ```
 
-If the node remains Pending beyond five minutes, Argo's controller can fail it and delete the pending Pod. This is useful when a result is no longer valuable after a scheduling delay or when a wrong selector would otherwise wait indefinitely.
+If the node remains Pending beyond five minutes, Argo's controller can mark it Failed and delete its pending Pod if one exists. This is useful when a result is no longer valuable after a scheduling delay or when a wrong selector would otherwise wait indefinitely.
 
 Enforcement is approximate because the controller acts on the Pod state it most recently observed. The official field reference warns that a Pod starting just as the deadline expires may still be failed. Do not use this as a sub-second coordination mechanism.
 
-The field may not apply to Steps or DAG templates. Use it on the Pod-producing leaf. When it fires, inspect *why* the Pod was Pending before merely increasing it:
+The field is supported on leaf templates, not Steps, DAG, or Suspend templates. When it fires, inspect *why* the Argo node was Pending before merely increasing it:
 
 - Insufficient CPU, memory, GPU, or ephemeral storage.
-- ResourceQuota or LimitRange rejection.
+- ResourceQuota exhaustion or controller-side Pod creation back-pressure; in this case, no Pod may exist yet.
 - Unsatisfied node selector, affinity, taint, or toleration.
 - An unbound PVC or unavailable topology.
-- Image-pull or admission problems, depending on the observed node state.
-- Argo parallelism or synchronization waits before a Pod is created.
+- Image-pull problems after the Pod is assigned to a node.
+- Template synchronization waits after the leaf node has been created.
 
-The last case matters: a node waiting on an Argo dependency or lock is not always the same as a Kubernetes Pod in Pending. Inspect both the Workflow node and Pod existence/status.
+The last case matters: DAG dependencies and parallelism limits can delay creation of the leaf node itself, so its `timeout` and `pendingTimeout` clocks have not started. The Workflow deadline still includes that wait. A synchronization wait, by contrast, can leave an existing leaf node Pending with no Pod. Inspect both the Workflow node and Pod existence/status.
 
 ## Limit Active Pod Time
 
@@ -162,7 +162,7 @@ The intended budget is:
 - The leaf should leave Pending within 30 seconds.
 - Its complete Argo node lifecycle should not exceed two minutes.
 - Once its Pod starts, that Pod should be active for no more than 90 seconds.
-- The entire Workflow, including every other node and delay, should not exceed one hour.
+- The main Workflow graph, including every other node and delay, should not exceed one hour; an exit handler may continue afterward.
 
 If the Pod waits 25 seconds and runs for 90 seconds, the Pod deadline is the likely first limit. If it waits 40 seconds, `pendingTimeout` can fire first. If the Workflow has already consumed 59 minutes, the global deadline can stop this node before either local budget expires.
 
@@ -185,9 +185,9 @@ spec:
         image: example.com/health-check:1.2.0
 ```
 
-Template fields override the corresponding defaults. Remember that the field reference cautions about Steps and DAG templates; verify the resulting behavior on the leaf template types used by the Workflow.
+Template fields override the corresponding defaults. Because these timeout fields are intended for supported leaf templates, verify the defaults on the template types used by the Workflow rather than assuming they constrain orchestration templates.
 
-Clusters running an older Argo controller or older CRDs may not support the current `timeout` and `pendingTimeout` fields. Check the documentation for the installed release and keep the controller, server, CLI, and CRDs compatible before rolling out these fields.
+`timeout` predates Argo Workflows 4.1, but `pendingTimeout` is new in 4.1. As of August 2, 2026, [v4.1.0-rc2](https://github.com/argoproj/argo-workflows/releases/tag/v4.1.0-rc2) is a pre-release and [v4.0.8](https://github.com/argoproj/argo-workflows/releases/tag/v4.0.8) is the latest stable release; v4.0.8 rejects `pendingTimeout` as an unknown field. Check the documentation for the installed release and keep the controller, server, CLI, and CRDs compatible before rolling it out.
 
 ## Retries Consume Time Too
 
@@ -206,7 +206,7 @@ retryStrategy:
     maxDuration: "10m"
 ```
 
-`cap` limits an individual backoff delay. `maxDuration` bounds the retry backoff strategy. The current Argo field reference also documents an interaction between retry `maxDuration` and a template's `activeDeadlineSeconds`: after a failure, the Pod deadline can be overridden by `maxDuration` so the retried operation does not exceed that retry duration. Configure and test these together rather than assuming the original Pod deadline is the only clock on every attempt.
+`cap` limits an individual backoff delay. `maxDuration` bounds the elapsed retry sequence from the first attempt's start, including attempt execution and backoff delays. Argo passes that absolute deadline to later attempts, so a later attempt can be stopped when the remaining retry budget expires even if its template `activeDeadlineSeconds` would allow it to run longer. A shorter Pod active deadline can still fire first. Configure and test these together rather than assuming the original Pod deadline is the only clock on every attempt.
 
 Use conditional retries so deterministic application failures do not consume the entire deadline. The application should also use shorter connection, request, transaction, and subprocess timeouts. That gives it time to close resources and return a useful error before Argo or Kubernetes forcibly stops it.
 
@@ -259,7 +259,7 @@ Check:
 4. Pod reason and events, including Kubernetes `DeadlineExceeded` and scheduling failures.
 5. Controller logs around the deadline if the status is ambiguous.
 6. Retry attempts and backoff remaining when the timeout occurred.
-7. The stored Workflow spec, because a submitted WorkflowTemplate is materialized and may differ from today's source template.
+7. `.status.storedWorkflowTemplateSpec` for a Workflow submitted with `workflowTemplateRef`, plus `.status.storedTemplates` for other resolved template references. These stored definitions may differ from today's source templates.
 
 Finally, do not confuse execution deadlines with `ttlStrategy`. A TTL deletes a Workflow resource *after* it has finished; it does not stop a running Workflow. Timeouts protect execution, while TTL and garbage-collection settings control retention.
 
