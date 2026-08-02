@@ -8,9 +8,9 @@ Description: Understand how Argo Rollouts rewrites stable, canary, active, and p
 
 ---
 
-Argo Rollouts does not send traffic directly. It creates ReplicaSets and updates Kubernetes Service selectors so each named Service resolves to the correct revision. For the standard strategies:
+Argo Rollouts does not send traffic directly. It creates ReplicaSets and, in Service-based traffic configurations, updates Kubernetes Service selectors so each named Service resolves to the correct revision. For the standard strategies:
 
-- a traffic-routed **canary** uses `stableService` for the promoted revision and `canaryService` for the newest revision under evaluation;
+- a Service-level traffic-routed **canary** normally uses `stableService` for the promoted revision and `canaryService` for the newest revision under evaluation;
 - **blue-green** uses `activeService` for production and an optional `previewService` for the newest revision before promotion.
 
 The names are not magic. A Service becomes “stable” or “preview” because the Rollout references its metadata name. Argo then adds or changes the dynamic `rollouts-pod-template-hash` selector so the Service targets one owned ReplicaSet rather than every Pod with the application's base label.
@@ -29,6 +29,8 @@ metadata:
   namespace: shop
 spec:
   replicas: 6
+  strategy:
+    canary: {}
   selector:
     matchLabels:
       app: checkout
@@ -76,7 +78,7 @@ Do not calculate, copy, or pin this hash yourself. It is generated from the Pod 
 
 ## Canary: Stable Service and Canary Service
 
-Fine-grained canary traffic routing uses two Services:
+Service-level fine-grained canary traffic routing uses two Services:
 
 ```yaml
 apiVersion: v1
@@ -136,11 +138,13 @@ During an update:
 
 Argo's Istio documentation describes the controller continuously updating both selectors with their corresponding hashes. The same stable/canary destination concept underpins NGINX, ALB, and other traffic integrations, though each provider controls weights differently.
 
+Istio also supports subset-level traffic splitting with one Service. In that mode, Argo updates the stable and canary labels on DestinationRule subsets instead of changing Service selectors.
+
 At promotion, the latest ReplicaSet becomes stable and Argo switches the stable Service selector to it. `scaleDownDelaySeconds` gives the router or cluster network time to observe that switch before the old stable ReplicaSet is scaled down.
 
 ### Basic canary is different
 
-When `trafficRouting` is omitted, stable and canary Services are not required. A basic canary normally uses one shared Service whose base selector matches Ready Pods from both old and new ReplicaSets. Argo approximates `setWeight` by replica count.
+When `trafficRouting` is omitted, stable and canary Services are not required. A basic canary normally uses one shared Service whose base selector matches Pods from both old and new ReplicaSets; Kubernetes normally routes Service traffic to ready, non-terminating endpoints. Argo approximates `setWeight` by replica count.
 
 Do not copy a traffic-routed Service design into a basic canary without understanding the result. If the only production Service is narrowed to the stable hash and no router ever sends traffic to a canary Service, changing canary replica counts will not expose the canary at all.
 
@@ -187,7 +191,7 @@ spec:
       scaleDownDelaySeconds: 60
 ```
 
-The documented selector sequence is precise:
+With a preview Service configured, the documented selector sequence is precise:
 
 1. At steady state, active and preview Services both point to the current promoted ReplicaSet.
 2. A Pod-template change creates a new ReplicaSet.
@@ -249,7 +253,7 @@ kubectl get endpointslice -n "$NS" \
   -l kubernetes.io/service-name=checkout-stable -o yaml
 ```
 
-A correct selector with no Ready endpoints indicates a Pod readiness or port problem, not necessarily a Rollouts selector bug.
+A correct selector with no Ready endpoints can indicate zero replicas, a Pod readiness failure, or a port-mapping problem, not necessarily a Rollouts selector bug.
 
 ## Endpoint Readiness and Port Mapping Still Apply
 
@@ -270,7 +274,10 @@ Use:
 kubectl describe service checkout-canary -n "$NS"
 kubectl get endpointslice -n "$NS" \
   -l kubernetes.io/service-name=checkout-canary -o yaml
-kubectl describe pod -n "$NS" <canary-pod>
+CANARY_HASH=$(kubectl get service checkout-canary -n "$NS" -o json \
+  | jq -r '.spec.selector["rollouts-pod-template-hash"]')
+kubectl describe pod -n "$NS" \
+  -l "app=checkout,rollouts-pod-template-hash=$CANARY_HASH"
 ```
 
 ## GitOps Must Not Fight Dynamic Hashes
