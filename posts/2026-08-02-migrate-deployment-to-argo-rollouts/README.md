@@ -46,9 +46,11 @@ Before touching the workload, verify all of the following:
 - the application has a meaningful readiness probe;
 - the production Service selector is understood and has healthy endpoints;
 - the cluster has capacity for old and new Pods simultaneously;
-- PodDisruptionBudgets, quotas, affinity, and topology rules allow the new Pods to schedule;
+- quotas, node resources, affinity, topology rules, and storage constraints allow the new Pods to schedule;
+- PodDisruptionBudgets have been reviewed for eviction behavior, with the understanding that they do not block controller-driven scaling;
 - the Rollout controller can watch the application's namespace;
 - GitOps will not immediately revert manual replica or resource changes;
+- any HPA will be retargeted to the Rollout or otherwise prevented from writing Deployment replicas during cutover;
 - rollback has been rehearsed with the same Service and selector design.
 
 ```bash
@@ -110,7 +112,7 @@ spec:
       targetPort: http
 ```
 
-The Service selector intentionally matches the application identity, not a ReplicaSet hash. During migration it can include Ready Pods from both controllers. Kubernetes Services route to Ready endpoints, so an accurate readiness probe is the main guard against sending requests to a Pod that has started but cannot serve.
+The Service selector intentionally matches the application identity, not a ReplicaSet hash. During migration it can include Ready Pods from both controllers. With the default `publishNotReadyAddresses: false`, Kubernetes marks unready backends as not ready, and Service proxies normally exclude them. An accurate readiness probe is therefore the main guard against sending requests to a Pod that has started but cannot serve.
 
 Before continuing, confirm the endpoint count and run a synthetic request through the same path clients use. Do not infer availability from `Running` Pod phase alone.
 
@@ -175,7 +177,7 @@ Watch controllers, Pods, endpoints, and requests together:
 kubectl get deployment checkout -n shop -w
 kubectl get rollout checkout-rollout -n shop -w
 kubectl get pods -n shop -l app=checkout \
-  -o custom-columns='NAME:.metadata.name,OWNER:.metadata.ownerReferences[0].kind,READY:.status.containerStatuses[0].ready,IP:.status.podIP'
+  -o custom-columns='NAME:.metadata.name,OWNER_RS:.metadata.ownerReferences[0].name,READY:.status.conditions[?(@.type=="Ready")].status,IP:.status.podIP'
 kubectl get endpointslice -n shop \
   -l kubernetes.io/service-name=checkout -o yaml
 ```
@@ -185,15 +187,18 @@ Check Rollout conditions and the workload generation observed from the reference
 ```bash
 kubectl get rollout checkout-rollout -n shop -o json \
   | jq '{
+      rolloutGeneration: (.metadata.generation | tostring),
+      rolloutObservedGeneration: .status.observedGeneration,
       phase: .status.phase,
       message: .status.message,
       readyReplicas: .status.readyReplicas,
       workloadObservedGeneration: .status.workloadObservedGeneration,
-      workloadGeneration: .metadata.annotations["rollout.argoproj.io/workload-generation"]
+      workloadGeneration: .metadata.annotations["rollout.argoproj.io/workload-generation"],
+      conditions: .status.conditions
     }'
 ```
 
-Argo patches the Rollout with `rollout.argoproj.io/workload-generation` corresponding to the referenced Deployment generation. Comparing it with `status.workloadObservedGeneration` helps show whether the Rollout has observed the current Deployment template.
+Treat `status.phase` as current only when `status.observedGeneration` matches `metadata.generation`. Argo patches the Rollout with `rollout.argoproj.io/workload-generation` corresponding to the referenced Deployment generation. Comparing it with `status.workloadObservedGeneration` helps show whether the Rollout has observed the current Deployment template.
 
 During and after the handoff, validate:
 
@@ -222,7 +227,7 @@ Then watch the Rollout:
 
 ```bash
 kubectl argo rollouts get rollout checkout-rollout -n shop --watch
-kubectl argo rollouts status checkout-rollout -n shop --timeout 20m
+kubectl argo rollouts status checkout-rollout -n shop --timeout 30m
 ```
 
 This update creates a new Rollout revision and evaluates the canary steps. Without a configured traffic router, `setWeight` is approximated by the ratio of canary to stable Pods; it is not exact request-level routing. A six-replica application cannot represent every percentage precisely. Use an integrated traffic router when the migration requires fine-grained traffic control independent of replica count.
@@ -241,6 +246,8 @@ Ingress-controller or service-mesh traffic management changes the handoff. A tra
 
 During migration, make sure the production route initially continues to reach the Deployment. Argo's migration guide says the switch to Rollout-managed traffic occurs only once required Rollout Pods are running and healthy, but it also recommends a temporary Service or Ingress for extra validation.
 
+For the manually staged sequence below, set `workloadRef.scaleDown: never` before creating the Rollout. With `onsuccess`, Argo can scale the Deployment to zero as soon as the initial Rollout becomes healthy, before a production route that was deliberately left unchanged has been switched.
+
 A cautious sequence is:
 
 1. deploy the Rollout and its stable/canary Services without changing the production route;
@@ -253,9 +260,11 @@ Exact resources differ for Istio, NGINX, ALB, and Gateway API. Follow the provid
 
 ## Roll Back During the Migration
 
-The safest reversal restores Deployment capacity before removing Rollout capacity:
+The safest reversal first disables automatic Deployment scale-down, then restores Deployment capacity before removing Rollout capacity:
 
 ```bash
+kubectl patch rollout checkout-rollout -n shop --type=merge \
+  -p '{"spec":{"workloadRef":{"scaleDown":"never"}}}'
 kubectl scale deployment checkout -n shop --replicas=6
 kubectl rollout status deployment/checkout -n shop
 
@@ -263,7 +272,7 @@ kubectl rollout status deployment/checkout -n shop
 kubectl scale rollout checkout-rollout -n shop --replicas=0
 ```
 
-If GitOps owns replica counts, make equivalent changes in Git so reconciliation does not undo the recovery. If the Deployment template has already moved to a bad new version, restore the known-good template before scaling it up.
+If GitOps owns `scaleDown` or replica counts, make equivalent changes in Git or pause reconciliation so it does not undo the recovery. If the Deployment template has already moved to a bad new version, restore the known-good template before scaling it up.
 
 For router-based migration, shift production routing back to the Deployment-backed Service only after that Service has sufficient Ready endpoints. Scaling old Pods and switching traffic in the wrong order can recreate the outage the migration was designed to avoid.
 
@@ -275,7 +284,7 @@ Confirm `scaleDown` is `onsuccess`, inspect Rollout conditions, and check whethe
 
 ### The new Pods never schedule
 
-Temporary double capacity was not available. Check ResourceQuota, node allocatable resources, topology/anti-affinity, PVC provisioning, and PodDisruptionBudgets before reducing the old replica count.
+Temporary double capacity was not available. Check ResourceQuota, node allocatable resources, topology/anti-affinity, and PVC provisioning before reducing the old replica count.
 
 ### The Service has no endpoints
 
@@ -290,7 +299,8 @@ That is documented behavior: initial Rollout creation skips update steps. Valida
 A Deployment and Rollout are different API resources even when they have the same name. Applying the Rollout does not delete the Deployment. List both kinds and make ownership/cutover explicit:
 
 ```bash
-kubectl get deployment,rollout,replicaset,pod -n shop -l app=checkout
+kubectl get deployment,rollout -n shop
+kubectl get replicaset,pod -n shop -l app=checkout
 ```
 
 ## Final Cutover Checklist
