@@ -45,7 +45,7 @@ It also cannot capture deployment-time settings that live outside Portainer. For
 
 ### A Concrete Example
 
-Suppose Portainer deployed this stack:
+Suppose Portainer deployed this Docker Swarm stack:
 
 ```yaml
 services:
@@ -139,7 +139,7 @@ Binding the test listener to `127.0.0.1` reduces accidental exposure, but the Do
 
 ## Restore from S3
 
-S3 restore is also performed on a fresh Portainer instance during initial setup and is a Business Edition feature. Choose **Retrieve from S3**, then provide the bucket location, object filename, credentials or supported credential mechanism, S3-compatible host if applicable, and backup password.
+S3 restore is also performed on a fresh Portainer instance during initial setup and is a Business Edition feature. Choose **Retrieve from S3**, then provide the access key ID, secret access key, region, bucket name, object filename, S3-compatible host if applicable, and backup password.
 
 The recovery environment must be able to resolve and reach the object store. Test that network path from the actual runtime environment; success from an administrator's laptop does not prove that the Portainer container or pod has the same DNS, routing, proxy, and CA trust.
 
@@ -162,12 +162,12 @@ Then inspect managed environments independently. Existing workloads may continue
 
 ## Back Up Workload Data Separately
 
-Inventory storage for every stack before choosing a tool:
+As a first pass on each Docker host, list its volumes and inspect mounts for running and stopped containers:
 
 ```bash
 docker volume ls
 
-docker ps --format '{{.Names}}' |
+docker ps --all --format '{{.Names}}' |
 while read -r container; do
   docker inspect "$container" \
     --format '{{range .Mounts}}{{println $.Name .Type .Source "->" .Destination}}{{end}}'
@@ -228,7 +228,7 @@ This makes the limitation of Portainer's archive explicit: it restores Portainer
 
 - [Portainer: General settings, backup, and restore](https://docs.portainer.io/admin/settings/general)
 - [Portainer: What the backup includes](https://docs.portainer.io/faqs/getting-started/what-does-portainers-backup-include)
-- [Portainer: Roll back to a previous version](https://docs.portainer.io/faqs/troubleshooting/how-can-i-roll-back-to-a-previous-version-of-portainer)
+- [Portainer: Roll back to a previous version](https://docs.portainer.io/faqs/upgrading/how-can-i-roll-back-to-a-previous-version-of-portainer)
 - [Portainer: Updating Portainer](https://docs.portainer.io/start/upgrade)
 - [Docker: Back up, restore, or migrate volumes](https://docs.docker.com/engine/storage/volumes/#back-up-restore-or-migrate-data-volumes)
 - [Docker: Bind mount considerations](https://docs.docker.com/engine/storage/bind-mounts/)
