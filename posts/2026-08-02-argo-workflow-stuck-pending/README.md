@@ -23,7 +23,7 @@ Set the namespace and Workflow name explicitly:
 
 ```bash
 NS=workflows
-WF=<workflow-name>
+WF=your-workflow-name
 
 argo get "$WF" -n "$NS"
 kubectl get workflow "$WF" -n "$NS" -o yaml
@@ -93,6 +93,7 @@ Check controller availability and logs:
 ```bash
 kubectl get deployment,pod -n argo -l app=workflow-controller
 kubectl logs deployment/workflow-controller -n argo \
+  --all-pods=true \
   --since=30m \
   | grep -F "$WF"
 ```
@@ -123,6 +124,7 @@ kubectl get events -n "$NS" \
   --sort-by=.lastTimestamp
 
 kubectl logs deployment/workflow-controller -n argo --since=30m \
+  --all-pods=true \
   | grep -E "$WF|forbidden|exceeded quota|admission webhook|denied"
 ```
 
@@ -133,8 +135,10 @@ Typical rejections include:
 - a `LimitRange` rejects values outside its bounds;
 - Pod Security admission rejects the generated Pod;
 - a validating webhook denies or times out;
-- the referenced ServiceAccount, Secret, ConfigMap, or PVC does not exist;
-- the controller lacks permission to create Pods or read a referenced object.
+- the referenced ServiceAccount does not exist;
+- the controller lacks permission to create Pods or read an object that Argo must resolve before creation.
+
+A missing Secret or ConfigMap normally allows the Pod object to be created and then causes a container configuration, image pull, or mount failure. A missing PVC normally leaves an existing Pod unschedulable. Follow the branch that matches the actual Pod state.
 
 Do not expect every rejection to produce a durable Pod event: if the API server rejects creation, the Pod object never exists. The controller log and Workflow node message are authoritative evidence in that case.
 
@@ -155,12 +159,13 @@ Determine the controller's actual ServiceAccount from its Deployment:
 ```bash
 CONTROLLER_SA=$(kubectl get deployment workflow-controller -n argo \
   -o jsonpath='{.spec.template.spec.serviceAccountName}')
+CONTROLLER_SA=${CONTROLLER_SA:-default}
 
 kubectl auth can-i create pods -n "$NS" \
   --as="system:serviceaccount:argo:${CONTROLLER_SA}"
 kubectl auth can-i get workflows.argoproj.io -n "$NS" \
   --as="system:serviceaccount:argo:${CONTROLLER_SA}"
-kubectl auth can-i patch workflows/status.argoproj.io -n "$NS" \
+kubectl auth can-i patch workflows.argoproj.io -n "$NS" \
   --as="system:serviceaccount:argo:${CONTROLLER_SA}"
 ```
 
@@ -197,11 +202,11 @@ Kubernetes schedules against resource **requests** and allocatable capacity. A n
 
 ```bash
 kubectl get pod "$POD" -n "$NS" \
-  -o jsonpath='{range .spec.containers[*]}{.name}{" requests="}{.resources.requests}{" limits="}{.resources.limits}{"\n"}{end}'
+  -o jsonpath='{"pod requests="}{.spec.resources.requests}{" limits="}{.spec.resources.limits}{" overhead="}{.spec.overhead}{"\n"}{range .spec.initContainers[*]}{"init/"}{.name}{" requests="}{.resources.requests}{" limits="}{.resources.limits}{"\n"}{end}{range .spec.containers[*]}{.name}{" requests="}{.resources.requests}{" limits="}{.resources.limits}{"\n"}{end}'
 kubectl describe nodes
 ```
 
-Look for messages such as `Insufficient cpu`, `Insufficient memory`, `Insufficient ephemeral-storage`, or unavailable extended resources such as GPUs. Include init containers and sidecars when reviewing the generated Pod; Workflow Pods contain more than the user's main container.
+Look for messages such as `Insufficient cpu`, `Insufficient memory`, `Insufficient ephemeral-storage`, or unavailable extended resources such as GPUs. Include Pod-level requests and runtime overhead, init containers, and sidecars when reviewing the generated Pod; Workflow Pods contain more than the user's main container.
 
 Fix the actual bottleneck by reducing realistic requests, adding suitable capacity, changing autoscaler constraints, or reducing Workflow parallelism. Do not remove requests merely to make scheduling succeed; that transfers the problem to runtime contention and eviction.
 
@@ -232,7 +237,7 @@ An unbound immediate PVC or storage topology mismatch can keep a Pod pending:
 
 ```bash
 kubectl get pvc -n "$NS"
-kubectl describe pvc -n "$NS" <claim-name>
+kubectl describe pvc -n "$NS" your-claim-name
 kubectl get storageclass
 ```
 
@@ -263,7 +268,7 @@ This is no longer a scheduler-capacity problem because `.spec.nodeName` is alrea
 
 ## Check the Workflow ServiceAccount Without Confusing Identities
 
-The Workflow controller ServiceAccount and the Workflow Pod ServiceAccount are different identities. Workflow Pods use `spec.serviceAccountName`; if omitted, they use the namespace's `default` ServiceAccount, which Argo does not recommend for production.
+The Workflow controller ServiceAccount and the Workflow Pod ServiceAccount are different identities. Workflow Pods use the Workflow's `spec.serviceAccountName` by default, but a template-level `serviceAccountName` can override it. If neither is set, they use the namespace's `default` ServiceAccount, which Argo does not recommend for production. Set `WF_SA` below to the effective value for the pending node when a template override is present.
 
 ```bash
 WF_SA=$(kubectl get workflow "$WF" -n "$NS" \
@@ -279,6 +284,8 @@ kubectl auth can-i patch workflowtaskresults.argoproj.io -n "$NS" \
 
 For Argo Workflows v3.4 and later, the documented minimum executor role includes `create` and `patch` on `workflowtaskresults`. Resource templates need whatever verbs they perform, such as creating Jobs or Deployments.
 
+These checks assume the executor uses the Workflow Pod's credentials. If the Workflow or template sets `executor.serviceAccountName`, test `workflowtaskresults` permissions as that effective executor ServiceAccount instead.
+
 Insufficient Workflow Pod RBAC more commonly fails execution after the Pod starts; it is not a generic explanation for `FailedScheduling`. A nonexistent ServiceAccount or admission policy concerning that identity can prevent Pod creation, so use the exact event or API error to distinguish these cases.
 
 ## A Minimal Evidence Bundle
@@ -292,7 +299,8 @@ kubectl get pods -n "$NS" \
   -o yaml > workflow-pods.yaml
 kubectl get events -n "$NS" --sort-by=.lastTimestamp > namespace-events.txt
 kubectl get resourcequota,limitrange -n "$NS" -o yaml > namespace-policy.yaml
-kubectl logs deployment/workflow-controller -n argo --since=30m > controller.log
+kubectl logs deployment/workflow-controller -n argo \
+  --all-pods=true --since=30m > controller.log
 ```
 
 Review files for Secret data, tokens, internal hostnames, and sensitive parameters before sharing them. The decisive evidence is usually one of: an Argo wait message, an API rejection, a `FailedScheduling` event, or a container waiting reason.
