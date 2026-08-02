@@ -3,7 +3,6 @@
 ## Argo Workflows
 
 1. Argo Workflow Timeouts Explained: Workflow, Template, and Pod Deadlines
-2. Argo Workflow Controller Is Falling Behind: Tuning Workers, QPS, and Pod Creation
 
 ## Argo Rollouts
 
