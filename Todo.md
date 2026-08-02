@@ -1,9 +1,5 @@
 # Blog Post Ideas
 
-## Argo Workflows
-
-1. Argo Workflow Timeouts Explained: Workflow, Template, and Pod Deadlines
-
 ## Argo Rollouts
 
 1. How to Migrate a Kubernetes Deployment to Argo Rollouts Without Downtime
