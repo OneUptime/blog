@@ -265,7 +265,17 @@ The following template parses the document, validates the required type, and wri
       except json.JSONDecodeError as exc:
           raise SystemExit(f"payload is not valid JSON: {exc}")
 
-      customer = document.get("order", {}).get("customer", {})
+      if not isinstance(document, dict):
+          raise SystemExit("payload must be a JSON object")
+
+      order = document.get("order")
+      if not isinstance(order, dict):
+          raise SystemExit("order must be an object")
+
+      customer = order.get("customer")
+      if not isinstance(customer, dict):
+          raise SystemExit("order.customer must be an object")
+
       customer_id = customer.get("id")
       if not isinstance(customer_id, str) or not customer_id:
           raise SystemExit("order.customer.id must be a non-empty string")
@@ -299,7 +309,7 @@ Argo also has a `valueFrom.jsonPath` field for outputs from a **resource templat
 ```yaml
 outputs:
   parameters:
-    - name: service-cluster-ip
+    - name: service-load-balancer-ip
       valueFrom:
         jsonPath: '{.status.loadBalancer.ingress[0].ip}'
 ```
