@@ -2,17 +2,16 @@
 
 ## Argo Workflows
 
-1. Retry vs. Resubmit in Argo Workflows: How to Rerun Only Failed Nodes
-2. Fixing Argo Workflow `when` Expressions, Quoting Errors, and Unresolved Variables
-3. How to Fan Out Argo Workflow Tasks with withItems, withParam, and Sequences
-4. Controlling Argo Workflows Concurrency with parallelism, Semaphores, and Mutexes
-5. Argo CronWorkflow Missed a Run: Debugging Time Zones, Starting Deadlines, and Concurrency
-6. How to Use Argo Workflow Exit Handlers for Cleanup and Failure Notifications
-7. Argo Workflow Timeouts Explained: Workflow, Template, and Pod Deadlines
-8. PodGC, TTLStrategy, and Workflow Archive: What Gets Deleted—and When?
-9. Argo Workflow Is Stuck in Pending: A Scheduling, Quota, and RBAC Checklist
-10. Fixing “Request Entity Too Large” in Argo Workflows with Node-Status Offloading
-11. Argo Workflow Controller Is Falling Behind: Tuning Workers, QPS, and Pod Creation
+1. Fixing Argo Workflow `when` Expressions, Quoting Errors, and Unresolved Variables
+2. How to Fan Out Argo Workflow Tasks with withItems, withParam, and Sequences
+3. Controlling Argo Workflows Concurrency with parallelism, Semaphores, and Mutexes
+4. Argo CronWorkflow Missed a Run: Debugging Time Zones, Starting Deadlines, and Concurrency
+5. How to Use Argo Workflow Exit Handlers for Cleanup and Failure Notifications
+6. Argo Workflow Timeouts Explained: Workflow, Template, and Pod Deadlines
+7. PodGC, TTLStrategy, and Workflow Archive: What Gets Deleted—and When?
+8. Argo Workflow Is Stuck in Pending: A Scheduling, Quota, and RBAC Checklist
+9. Fixing “Request Entity Too Large” in Argo Workflows with Node-Status Offloading
+10. Argo Workflow Controller Is Falling Behind: Tuning Workers, QPS, and Pod Creation
 
 ## Argo Rollouts
 
