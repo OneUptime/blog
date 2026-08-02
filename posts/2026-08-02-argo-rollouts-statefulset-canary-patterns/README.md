@@ -64,7 +64,7 @@ This is ordinal canarying, not percentage-based traffic shifting. Your client, p
 
 ## Respect Stateful Ordering and Readiness
 
-With the default `OrderedReady` pod management policy, StatefulSet rolling updates proceed from the highest ordinal downward and wait for an updated pod to become Running and Ready before continuing. Accurate startup/readiness probes and `minReadySeconds` therefore become release gates.
+With the default `OrderedReady` pod management policy and the default `maxUnavailable: 1`, StatefulSet rolling updates proceed from the highest ordinal downward and wait for an updated pod to become Running and Ready before continuing. Accurate startup/readiness probes and `minReadySeconds` therefore become release gates.
 
 Do not mark a database Ready before it has joined replication, replayed required logs, and is safe for its advertised role. Conversely, a probe that depends on a leader-only endpoint can permanently block a healthy follower.
 
