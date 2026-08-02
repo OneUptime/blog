@@ -2,13 +2,12 @@
 
 ## Argo Rollouts
 
-1. Fixing “No Matches for Kind Rollout” After Installing Argo Rollouts
-2. Can Argo Rollouts Do a Canary Without a Service Mesh? Replica-Based Routing Explained
-3. Why Argo Rollouts `setWeight` Does Not Match Real Traffic—and How to Fix It
-4. Header-Based Canary Routing with Argo Rollouts and Istio for External and Internal Traffic
-5. NGINX, ALB, Istio, or Gateway API: Choosing an Argo Rollouts Traffic Router
-6. Argo Rollouts Service Selectors Explained: Stable, Canary, Active, and Preview Services
-7. Argo Rollouts Blue-Green Deployment: Configuring Active and Preview Services Safely
+1. Can Argo Rollouts Do a Canary Without a Service Mesh? Replica-Based Routing Explained
+2. Why Argo Rollouts `setWeight` Does Not Match Real Traffic—and How to Fix It
+3. Header-Based Canary Routing with Argo Rollouts and Istio for External and Internal Traffic
+4. NGINX, ALB, Istio, or Gateway API: Choosing an Argo Rollouts Traffic Router
+5. Argo Rollouts Service Selectors Explained: Stable, Canary, Active, and Preview Services
+6. Argo Rollouts Blue-Green Deployment: Configuring Active and Preview Services Safely
 
 ## Remote Write
 
