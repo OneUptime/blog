@@ -33,9 +33,8 @@
 6. NGINX, ALB, Istio, or Gateway API: Choosing an Argo Rollouts Traffic Router
 7. Argo Rollouts Service Selectors Explained: Stable, Canary, Active, and Preview Services
 8. Argo Rollouts Blue-Green Deployment: Configuring Active and Preview Services Safely
-9. Scaling Canary Pods Independently from Traffic Weight with `setCanaryScale`
-10. Why an Argo Rollout Is Stuck on “More Replicas Need to Be Updated”
-11. Can Argo Rollouts Manage StatefulSets? Safer Patterns for Stateful Canary Releases
+9. Why an Argo Rollout Is Stuck on “More Replicas Need to Be Updated”
+10. Can Argo Rollouts Manage StatefulSets? Safer Patterns for Stateful Canary Releases
 
 ## Remote Write
 
