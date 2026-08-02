@@ -148,5 +148,5 @@ Argo Rollouts is powerful because it controls fungible ReplicaSets and traffic b
 - [Argo Rollouts: Architecture](https://argo-rollouts.readthedocs.io/en/stable/architecture/)
 - [Argo Rollouts: Analysis and Progressive Delivery](https://argo-rollouts.readthedocs.io/en/stable/features/analysis/)
 - [Kubernetes: StatefulSets](https://kubernetes.io/docs/concepts/workloads/controllers/statefulset/)
-- [Kubernetes: StatefulSet API Reference](https://kubernetes.io/docs/reference/kubernetes-api/workload-resources/stateful-set-v1/)
+- [Kubernetes: StatefulSet API Reference](https://kubernetes.io/docs/reference/kubernetes-api/apps/stateful-set-v1/)
 - [Kubernetes: StatefulSet Basics and Partitioned Updates](https://kubernetes.io/docs/tutorials/stateful-application/basic-stateful-set/)

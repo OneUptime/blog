@@ -23,7 +23,7 @@ It also creates a new failure mode: one pinned canary pod can be told to receive
 
 `setCanaryScale` is supported with `trafficRouting`. Without a traffic manager, Kubernetes Services distribute across ready endpoints and Argo Rollouts approximates weight using the stable/canary pod ratio. Independent pod and traffic control is not available in that model.
 
-A routed canary has distinct Services and a provider:
+A host-level routed canary has distinct stable and canary Services plus a traffic provider:
 
 ```yaml
 strategy:
@@ -34,10 +34,8 @@ strategy:
       istio:
         virtualService:
           name: payments
-        destinationRule:
-          name: payments
-          canarySubsetName: canary
-          stableSubsetName: stable
+          routes:
+            - primary
 ```
 
 Use the provider's official integration manifest; Service and route details vary between Istio, NGINX, ALB, Gateway API plugins, and other routers.
@@ -86,10 +84,8 @@ strategy:
       istio:
         virtualService:
           name: payments
-        destinationRule:
-          name: payments
-          canarySubsetName: canary
-          stableSubsetName: stable
+          routes:
+            - primary
     steps:
       - setCanaryScale:
           replicas: 2
@@ -128,7 +124,7 @@ Choose replica count from expected routed load, per-pod safe capacity, startup l
 
 ## Combine Carefully with HPA
 
-An HPA targets the Rollout and changes its total desired replicas. An absolute `setCanaryScale.replicas` keeps canary fixed while the remaining autoscaled capacity is allocated to stable, as described in the Argo Rollouts HPA guide.
+An HPA targets the Rollout and changes `.spec.replicas`. An absolute `setCanaryScale.replicas` keeps the canary fixed. With the default `dynamicStableScale: false`, stable still follows the full autoscaled `.spec.replicas`, so the transition can run `.spec.replicas + pinned canary replicas` pods; enable and test `dynamicStableScale` if stable should shrink as traffic moves.
 
 That can isolate canary cost, but the HPA may still calculate resource metrics across stable and canary pods. A hot canary can drive total scale-up while staying pinned itself, causing stable capacity to grow. This is expected from one autoscaling target.
 
@@ -170,4 +166,3 @@ End independent scaling with `matchTrafficWeight: true` when that is the intende
 - [Argo Rollouts: Rollout Specification](https://argo-rollouts.readthedocs.io/en/stable/features/specification/)
 - [Argo Rollouts: Traffic Management](https://argo-rollouts.readthedocs.io/en/stable/features/traffic-management/)
 - [Argo Rollouts: Horizontal Pod Autoscaling](https://argo-rollouts.readthedocs.io/en/stable/features/hpa-support/)
-

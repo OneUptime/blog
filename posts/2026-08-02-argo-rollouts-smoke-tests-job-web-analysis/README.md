@@ -56,6 +56,9 @@ spec:
             backoffLimit: 1
             activeDeadlineSeconds: 180
             template:
+              metadata:
+                labels:
+                  test-type: rollout-smoke
               spec:
                 restartPolicy: Never
                 serviceAccountName: rollout-smoke-test

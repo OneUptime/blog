@@ -53,14 +53,16 @@ kubectl describe rs <new-replicaset> -n payments
 kubectl get events -n payments --sort-by=.lastTimestamp | tail -50
 ```
 
-Common creation blockers include:
+Common Pod-creation blockers include:
 
 - namespace `ResourceQuota` or object-count quota;
 - LimitRange or admission-policy rejection;
-- missing ServiceAccount, Secret, ConfigMap, PVC, or image pull secret;
+- a missing ServiceAccount;
 - forbidden pod fields under Pod Security admission;
 - no rollout surge headroom under strict CPU/memory quota;
 - controller RBAC or API update errors.
+
+Missing Secrets, ConfigMaps, PVCs, or image-pull credentials normally do not prevent the Pod object from being created. They can leave it Pending, ContainerCreating, or unable to pull or start its containers, so diagnose those references from Pod events in the following sections.
 
 `maxSurge` allows extra pods during a canary transition, but quota and cluster capacity still have to permit them. `maxUnavailable: 0` protects availability and can also prevent old pods from being removed to make quota room. Fix the capacity or policy conflict rather than weakening availability blindly.
 
@@ -149,4 +151,3 @@ The status clears when the latest ReplicaSet reaches the count and availability 
 - [Kubernetes: Resource Quotas](https://kubernetes.io/docs/concepts/policy/resource-quotas/)
 - [Kubernetes: Pod Lifecycle and Readiness](https://kubernetes.io/docs/concepts/workloads/pods/pod-lifecycle/)
 - [Argo Rollouts issue #3316: ReplicaSet update conflict investigation](https://github.com/argoproj/argo-rollouts/issues/3316)
-

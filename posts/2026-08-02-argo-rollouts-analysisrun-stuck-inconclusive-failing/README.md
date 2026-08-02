@@ -8,7 +8,7 @@ Description: Diagnose AnalysisRun phases by tracing measurement schedules, provi
 
 ---
 
-An `AnalysisRun` is an instantiated `AnalysisTemplate`. Its phase is not a generic health label: `Running`, `Successful`, `Failed`, `Error`, and `Inconclusive` describe specific points in metric execution and evaluation.
+An `AnalysisRun` is an instantiated `AnalysisTemplate`. Its phase is not a generic health label: `Pending`, `Running`, `Successful`, `Failed`, `Error`, and `Inconclusive` describe specific points in metric execution and evaluation.
 
 Start with the AnalysisRun itself rather than the Rollout summary:
 
@@ -41,11 +41,12 @@ This run cannot finish immediately: it delays, then schedules five measurements 
 
 Background analysis can be deliberately open-ended. The analysis documentation allows `count: 0` to run until the Rollout ends for background analysis. In an inline analysis step, however, a zero count means the analysis is not executed. Know whether the template is referenced under `strategy.canary.analysis` or inside a `steps[].analysis` entry.
 
-Job metrics also remain running until the Kubernetes Job completes. Inspect the generated Job and pod:
+Job metrics also remain running until the Kubernetes Job completes. Read `job-name` from `.status.metricResults[].measurements[].metadata`, then inspect the Job and its pods:
 
 ```bash
-kubectl get jobs,pods -n payments -l controller-uid
 kubectl describe job <job-name> -n payments
+kubectl get pods -n payments \
+  -l batch.kubernetes.io/job-name=<job-name>
 kubectl logs job/<job-name> -n payments
 ```
 
@@ -129,4 +130,3 @@ An AnalysisRun becomes understandable when you treat it as a schedule of typed m
 - [Argo Rollouts: Job Metrics](https://argo-rollouts.readthedocs.io/en/stable/analysis/job/)
 - [Argo Rollouts: Prometheus Metrics](https://argo-rollouts.readthedocs.io/en/stable/analysis/prometheus/)
 - [Argo Rollouts: Web Metrics](https://argo-rollouts.readthedocs.io/en/stable/analysis/web/)
-

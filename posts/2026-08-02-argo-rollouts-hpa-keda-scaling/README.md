@@ -10,8 +10,8 @@ Description: Combine Argo Rollouts with HPA or KEDA by scaling the Rollout resou
 
 An autoscaler and Argo Rollouts can cooperate cleanly when they own different decisions:
 
-- HPA or KEDA decides the **total desired replica count** for the application.
-- Argo Rollouts decides how that total is allocated across stable and canary ReplicaSets during an update.
+- HPA or KEDA writes the Rollout's steady-state desired replica count through `.spec.replicas`.
+- Argo Rollouts scales its owned ReplicaSets according to the strategy; actual pods can exceed `.spec.replicas` during traffic-routed, blue-green, or surged transitions.
 
 Problems begin when the autoscaler targets an underlying ReplicaSet, two autoscalers target the same Rollout, Git continuously forces `.spec.replicas`, or canary metrics unexpectedly drive scaling for the whole application.
 
@@ -96,7 +96,7 @@ KEDA scale-to-zero is useful for event workers, but a production HTTP Rollout of
 
 During a canary, stable and canary pods share the Rollout selector. A single HPA using average pod CPU or memory normally observes both ReplicaSets as one population.
 
-That creates an important feedback path: if the canary has a CPU regression, the average can rise and HPA increases the **total** Rollout replica count. Argo Rollouts then allocates that larger total across revisions. The stable version may scale up because the canary is inefficient.
+That creates an important feedback path: if the canary has a CPU regression, the average can rise and HPA increases `.spec.replicas`. Argo Rollouts then recalculates its ReplicaSet targets. With default traffic-routed scaling, the stable ReplicaSet can grow to the new full desired count while canary capacity remains additional, so canary inefficiency can increase stable capacity too.
 
 This is not HPA confusing two Deployments. It is the expected result of autoscaling one application target. Monitor per-revision metrics using the `rollouts-pod-template-hash` label so the canary problem is visible even though the scaling signal is aggregated.
 
@@ -122,7 +122,7 @@ steps:
   - setWeight: 50
 ```
 
-The HPA still changes the Rollout total. Argo Rollouts' HPA documentation explains how pinned canary replicas leave the remaining autoscaled capacity for stable. Load-test the chosen canary pod count against its routed request share.
+The HPA still writes the Rollout's steady-state desired `.spec.replicas`. With the default `dynamicStableScale: false`, a pinned canary is additional to a stable ReplicaSet that follows the full autoscaled `.spec.replicas`, so the transitional pod total can exceed `.spec.replicas`. If `dynamicStableScale` is enabled, stable capacity can shrink as traffic moves. Load-test the chosen canary pod count against its routed request share.
 
 For blue-green, both active and preview ReplicaSets can scale with the Rollout total. `previewReplicaCount` pins preview capacity when a full duplicate is unnecessary, reducing cost while keeping stable capacity responsive to HPA.
 
@@ -167,7 +167,6 @@ A stable design has one autoscaling owner, one Rollout owner for ReplicaSets, an
 - [Argo Rollouts: Canary Strategy](https://argo-rollouts.readthedocs.io/en/stable/features/canary/)
 - [Argo Rollouts: Rollout Specification](https://argo-rollouts.readthedocs.io/en/stable/features/specification/)
 - [Kubernetes: Horizontal Pod Autoscaling](https://kubernetes.io/docs/concepts/workloads/autoscaling/horizontal-pod-autoscale/)
-- [Kubernetes: HPA v2 API](https://kubernetes.io/docs/reference/kubernetes-api/workload-resources/horizontal-pod-autoscaler-v2/)
+- [Kubernetes: HPA v2 API](https://kubernetes.io/docs/reference/kubernetes-api/autoscaling/horizontal-pod-autoscaler-v2/)
 - [KEDA: Scaling Custom Resources](https://keda.sh/docs/latest/concepts/scaling-deployments/)
 - [KEDA: ScaledObject Specification](https://keda.sh/docs/latest/reference/scaledobject-spec/)
-
