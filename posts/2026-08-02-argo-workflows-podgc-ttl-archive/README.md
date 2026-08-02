@@ -79,9 +79,11 @@ For a busy production cluster with external logs, `OnPodCompletion` minimizes co
 
 `ttlStrategy` controls the lifetime of a **completed Workflow CR**. Its fields are durations in seconds:
 
-- `secondsAfterCompletion` applies after any terminal outcome;
-- `secondsAfterSuccess` applies after success;
-- `secondsAfterFailure` applies after failure.
+- `secondsAfterCompletion` applies after any terminal outcome and acts as the fallback;
+- `secondsAfterSuccess` overrides it for a Workflow in the `Succeeded` phase;
+- `secondsAfterFailure` overrides it for a Workflow in the `Failed` phase.
+
+A Workflow in the `Error` phase does not use `secondsAfterFailure`, so set `secondsAfterCompletion` if errored runs must also expire.
 
 The outcome-specific field lets you retain failures longer than successes:
 
@@ -94,6 +96,7 @@ metadata:
 spec:
   entrypoint: main
   ttlStrategy:
+    secondsAfterCompletion: 604800   # 7 days; also covers Error
     secondsAfterSuccess: 86400      # 1 day
     secondsAfterFailure: 604800     # 7 days
   podGC:
@@ -107,7 +110,7 @@ spec:
         args: ['echo "done"']
 ```
 
-Here, Pods become eligible ten minutes after the Workflow completes. The live Workflow object remains for one day after success or seven days after failure. The two timers are independent; `ttlStrategy` does not wait for `podGC` to finish before its own TTL expires.
+Here, Pods become eligible ten minutes after the Workflow completes. The live Workflow object remains for one day after success or seven days after failure or error. The two timers are independent; `ttlStrategy` does not wait for `podGC` to finish before its own TTL expires.
 
 When the Workflow CR is deleted, Kubernetes owner-reference garbage collection normally removes dependent Pods that are still owned by it. That is a consequence of deleting the owner, not the `podGC` strategy. Finalizers and Artifact GC work can affect the deletion sequence, so inspect an object that remains in `Terminating` rather than assuming the TTL controller failed.
 
@@ -179,7 +182,7 @@ A common policy is:
 
 1. Ship Pod logs to a durable, searchable backend.
 2. Keep completed Pods for 5–15 minutes so collectors can drain and operators can inspect immediate failures.
-3. Keep successful live Workflow CRs for a day and failed ones for several days.
+3. Keep successful live Workflow CRs for a day and failed or errored ones for several days.
 4. Keep archive history for the audit or operational period, such as 90 days.
 5. Apply an explicit lifecycle to log storage and artifacts.
 
@@ -198,6 +201,7 @@ data:
         strategy: OnWorkflowCompletion
         deleteDelayDuration: 10m
       ttlStrategy:
+        secondsAfterCompletion: 604800
         secondsAfterSuccess: 86400
         secondsAfterFailure: 604800
 ```
