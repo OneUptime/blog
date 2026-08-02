@@ -3,10 +3,9 @@
 ## Argo Workflows
 
 1. Argo Workflow Timeouts Explained: Workflow, Template, and Pod Deadlines
-2. PodGC, TTLStrategy, and Workflow Archive: What Gets Deleted—and When?
-3. Argo Workflow Is Stuck in Pending: A Scheduling, Quota, and RBAC Checklist
-4. Fixing “Request Entity Too Large” in Argo Workflows with Node-Status Offloading
-5. Argo Workflow Controller Is Falling Behind: Tuning Workers, QPS, and Pod Creation
+2. Argo Workflow Is Stuck in Pending: A Scheduling, Quota, and RBAC Checklist
+3. Fixing “Request Entity Too Large” in Argo Workflows with Node-Status Offloading
+4. Argo Workflow Controller Is Falling Behind: Tuning Workers, QPS, and Pod Creation
 
 ## Argo Rollouts
 
