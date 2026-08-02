@@ -89,16 +89,18 @@ That policy is rarely appropriate for a release safety signal because a broken s
 For example:
 
 ```yaml
+interval: 1m
+count: 5
 successCondition: len(result) == 1 && result[0] >= 0.99
 failureCondition: len(result) > 1
 inconclusiveLimit: 2
 ```
 
-Here an empty result satisfies neither condition and can be handled as inconclusive. Test the exact behavior with your Rollouts release and limits rather than relying on an implicit default.
+Here an empty result satisfies neither condition and counts as an inconclusive measurement. Up to two such measurements are tolerated; the third makes the metric Inconclusive. Test the exact behavior with your Rollouts release and limits rather than relying on an implicit default.
 
 ## Handle NaN and Infinity Intentionally
 
-A division such as successful requests divided by total requests may produce `NaN` when both values are zero. Rates, resets, or arithmetic can also yield infinity.
+A division such as successful requests divided by total requests may produce `NaN` when both values are zero, or infinity when the denominator is zero and the numerator is nonzero. Other floating-point arithmetic can also produce these values.
 
 Argo Rollouts expressions provide `isNaN()` and `isInf()`. A fail-closed condition can be explicit:
 
@@ -156,4 +158,3 @@ Arrays, `NaN`, and empty vectors are not edge cases to ignore. They are possible
 - [Argo Rollouts: Analysis and Progressive Delivery](https://argo-rollouts.readthedocs.io/en/stable/features/analysis/)
 - [Prometheus: Querying Basics and Result Types](https://prometheus.io/docs/prometheus/latest/querying/basics/)
 - [Prometheus: Query Functions](https://prometheus.io/docs/prometheus/latest/querying/functions/)
-
