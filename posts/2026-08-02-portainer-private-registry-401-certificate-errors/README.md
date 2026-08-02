@@ -37,6 +37,13 @@ For a registry that requires authentication, an HTTP `401 Unauthorized` response
 
 If `curl` reports a hostname mismatch, fix the registry certificate or use the DNS name covered by its Subject Alternative Names. If it reports an unknown issuer, obtain the **public CA certificate** that signed the registry certificate. Do not distribute the registry's private key.
 
+After obtaining a private CA certificate that is not already in `curl`'s trust store, confirm the same request validates against that CA:
+
+```bash
+curl --cacert registry-root-ca.crt -v \
+  https://registry.example.com:5000/v2/
+```
+
 Also check the certificate chain and system clocks. An otherwise valid certificate fails when an intermediate is missing, the certificate is expired or not yet valid, or the client clock is wrong.
 
 ## Step 2: Make Every Target Docker Engine Trust a Private CA
@@ -171,8 +178,9 @@ Use this order so each test proves one layer:
 # 1. DNS should resolve to the intended registry.
 getent hosts registry.example.com
 
-# 2. TLS should validate. An authenticated registry may return HTTP 401 here.
-curl -I https://registry.example.com:5000/v2/
+# 2. TLS should validate against the private CA. The GET may return HTTP 401.
+curl --cacert registry-root-ca.crt -sS -o /dev/null -D - \
+  https://registry.example.com:5000/v2/
 
 # 3. Credentials and repository authorization should work on the target engine.
 docker login registry.example.com:5000
@@ -184,12 +192,12 @@ Then add the same authority and least-privilege credential in Portainer, select 
 ## Production Checklist
 
 - The registry certificate covers the exact DNS name used in image references.
-- The full certificate chain is served and all systems have synchronized clocks.
+- The server supplies its leaf certificate and required intermediate chain, and all systems have synchronized clocks.
 - Every Docker node trusts a private registry CA under the matching `/etc/docker/certs.d/<host>:<port>/` directory.
 - Portainer and Agents trust the private CA when they make direct HTTPS requests.
 - Portainer stores a dedicated, least-privilege pull credential.
 - The correct registry is explicitly selected for stack deployment.
-- Compose images use immutable version tags or digests rather than relying on `latest`.
+- Compose images use registry-enforced immutable version tags or digests rather than relying on `latest`.
 - TLS verification remains enabled; private CA trust replaces insecure-registry workarounds.
 
 ## Official Documentation
