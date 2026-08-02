@@ -41,7 +41,7 @@ Therefore, these values are not interchangeable:
 - an Argo SSO session token;
 - a Kubernetes service account token.
 
-Copying an arbitrary OIDC token into an `Authorization` header can produce `401`, `token not valid for running mode`, or an SSO redirect because it did not pass through Argo's SSO exchange.
+Copying an arbitrary OIDC token into an `Authorization` header can produce `401` or `token not valid`; depending on the ingress or authentication proxy, it may also produce an SSO redirect because it did not pass through Argo's SSO exchange.
 
 For non-interactive automation, Argo's REST API documentation points to client auth and an access token. Use that path instead of scripting the browser flow or storing a human session cookie in CI.
 
@@ -68,7 +68,7 @@ spec:
 
 If you install with Helm, express the equivalent values through the chart's server auth-mode configuration rather than manually editing the generated Deployment.
 
-Verify the running Pod, not only the source values:
+Verify the rendered Deployment arguments and startup logs, not only the source values:
 
 ```bash
 kubectl get deployment -n argo argo-server \
@@ -133,13 +133,14 @@ kubectl auth can-i delete workflows.argoproj.io \
 
 The expected answers are `yes` and `no`. Add verbs only for operations the client really performs:
 
-| API operation | Typical Workflow permission |
+| API operation | Typical permission |
 | --- | --- |
 | Submit | `create` on `workflows` |
 | Get/list/watch | matching read verbs on `workflows` |
-| Retry, stop, resume, or update | commonly `update` and/or `patch` on `workflows`; test the exact endpoint |
+| Retry | `get` and `update` on `workflows`, plus `delete` on Pods that the retry removes |
+| Stop, resume, or update | `get` plus `update` and/or `patch` on `workflows`; test the exact endpoint |
 | Delete | `delete` on `workflows` |
-| Read live Pod logs | `get` on `pods` and `pods/log` |
+| Read live Pod logs | `get` on `workflows`, `list` and `watch` on `pods`, and `get` on `pods/log` |
 
 The service account authenticating the API request is not necessarily the service account that Workflow Pods run as. A submitted Workflow selects its runtime identity through `spec.serviceAccountName`. Define and restrict that runtime account separately.
 
@@ -260,7 +261,8 @@ For the Argo CLI, configure the corresponding values:
 ```bash
 export ARGO_SERVER=platform.example.com:443
 export ARGO_SECURE=true
-export ARGO_BASE_HREF=/argo/
+export ARGO_HTTP1=true
+export ARGO_BASE_HREF=/argo
 export ARGO_NAMESPACE=workflows
 export ARGO_TOKEN
 
@@ -277,7 +279,7 @@ If Argo Server runs only with `--auth-mode=sso`, a Kubernetes service account be
 2. Operate a separately exposed Argo Server path for automation with client auth and strict network controls, while keeping the human endpoint SSO-only.
 3. For a genuinely interactive tool, let the browser complete SSO and use the Argo-issued session as a user session.
 
-The third choice is not a good CI credential. Argo's SSO token has a configured session lifetime, is associated with a human login, and can be revoked globally by rotating Argo Server's SSO encryption key. A raw identity-provider token is not a supported substitute for that exchanged Argo session.
+The third choice is not a good CI credential. Argo's SSO token has a configured session lifetime, is associated with a human login, and can be revoked globally by replacing Argo Server's SSO encryption key and restarting every Argo Server Pod. A raw identity-provider token is not a supported substitute for that exchanged Argo session.
 
 Do not solve an SSO-only automation failure by changing the request from an Authorization header to a copied browser cookie and keeping it indefinitely. That turns a personal session into an unmanaged machine secret.
 
@@ -305,8 +307,10 @@ kubectl auth can-i list workflows.argoproj.io \
   -n workflows \
   --as=system:serviceaccount:workflows:report-api-client
 
-# Include response headers and TLS diagnostics without printing the token.
-curl --verbose --output /dev/null \
+# Include response headers and a TLS verification result without printing request headers.
+curl --silent --show-error --output /dev/null \
+  --dump-header - \
+  --write-out '\nHTTP %{response_code}; remote %{remote_ip}; TLS verify %{ssl_verify_result}\n' \
   --header "Authorization: ${ARGO_TOKEN}" \
   https://argo.example.com/api/v1/userinfo
 ```
