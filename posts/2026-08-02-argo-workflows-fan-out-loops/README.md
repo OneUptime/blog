@@ -260,9 +260,8 @@ One failed iteration can cause a looped step or task to fail even though other i
 These practices also make individual nodes easier to find in the UI. A display-name annotation based on an input can replace an opaque generated node label with a useful target name:
 
 ```yaml
-metadata:
-  annotations:
-    workflows.argoproj.io/display-name: "process-{{inputs.parameters.target}}"
+annotations:
+  workflows.argoproj.io/display-name: "process-{{inputs.parameters.target}}"
 ```
 
 ## Debugging Checklist
