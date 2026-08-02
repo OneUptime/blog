@@ -12,7 +12,7 @@ Argo Workflows can create hundreds of runnable nodes in seconds. That is useful 
 
 Argo provides three complementary controls:
 
-- `parallelism` caps concurrent work inside one Workflow or template.
+- `parallelism` caps concurrent Pods across one Workflow, or concurrent children within a Steps or DAG template invocation.
 - A semaphore allows a configured number of Workflows or template invocations to hold a shared lock.
 - A mutex permits exactly one holder of a shared lock.
 
@@ -22,8 +22,8 @@ There is also controller-level parallelism, which limits how many Workflows the 
 
 | Control | Scope | Typical purpose |
 | --- | --- | --- |
-| `spec.parallelism` | Nodes within one Workflow | Bound the total fan-out of one run |
-| Template `parallelism` | Concurrent executions inside a template invocation | Bound a loop or DAG branch locally |
+| `spec.parallelism` | Pods within one Workflow | Bound the total fan-out of one run |
+| Template `parallelism` | Direct child executions inside a template invocation | Bound a loop or DAG branch locally |
 | Workflow-level semaphore | Workflow instances sharing a lock | Limit concurrent batch runs |
 | Template-level semaphore | Calls to a protected template sharing a lock | Protect a pool such as database connections |
 | Mutex | One Workflow or template at a time per lock | Serialize a deployment or migration |
@@ -33,7 +33,7 @@ There is also controller-level parallelism, which limits how many Workflows the 
 
 ## Cap One Workflow with `spec.parallelism`
 
-This Workflow may expand 100 tasks, but Argo restricts concurrent work in the Workflow to 12 executions:
+This Workflow may expand 100 tasks, but Argo restricts the Workflow to 12 concurrently executing Pods:
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -93,7 +93,7 @@ Place `parallelism` on a DAG or steps template when one section needs a tighter 
       - name: accounts
 ```
 
-The limit applies within that template invocation. Nested templates inherit the constraints imposed by their parents, so the effective concurrency is the tightest applicable bound.
+The limit applies to direct child task or step executions within that template invocation. If a child invokes another Steps or DAG template, Pods created inside that nested template are not counted against the parent's template limit; apply a limit to the nested template if it also needs one. A Workflow-level `spec.parallelism` still caps concurrently executing Pods across the Workflow.
 
 Use this for fairness within one run, memory-intensive workers, or a fan-out that should progress in small batches. It still does not coordinate with another Workflow.
 
@@ -138,12 +138,12 @@ spec:
     semaphores:
       - configMapKeyRef:
           name: workflow-concurrency
-          key: batch-runs
+          key: database-writes
 ```
 
 The ConfigMap value is a quoted positive integer. The controller needs permission to read it. Argo watches the ConfigMap and updates the local semaphore size, which makes the limit operationally adjustable without changing every Workflow definition.
 
-Semaphore identity includes a namespace and key. By default, Argo uses the Workflow namespace. A lock reference can specify another namespace to share a ConfigMap-backed limit between namespaces, but the controller must be able to read that ConfigMap there.
+The identity of a ConfigMap semaphore includes the namespace, ConfigMap name, and key. By default, Argo uses the Workflow namespace. A lock reference can specify another namespace to share a ConfigMap-backed limit between namespaces, but the controller must be able to read that ConfigMap there.
 
 ## Serialize a Critical Section with a Mutex
 
@@ -196,7 +196,7 @@ synchronization:
         key: database-writes
 ```
 
-The semaphore limit is stored in Argo's limit table. The official documentation uses `<namespace>/<key>` in that table, while the internal state uses lock-type prefixes. Configure every controller with the same database and keep cluster clocks synchronized; timestamps participate in queue ordering and controller health decisions.
+The semaphore limit is stored in Argo's limit table. The official documentation uses `<namespace>/<key>` in that table, while the internal state uses lock-type prefixes. Configure every controller with the same database, assign each controller a unique `controllerName`, and keep cluster clocks synchronized; timestamps participate in queue ordering and controller health decisions.
 
 Do not select database locks merely because a Workflow uses a database. Select them when multiple Argo controllers must agree on the same lock. A single controller can protect database capacity with a local ConfigMap semaphore.
 
