@@ -63,7 +63,7 @@ If an incident requires temporarily disabling auto-sync, record who owns re-enab
 
 Traffic routing introduces a second reconciliation risk. Argo Rollouts may update an Istio `VirtualService`, NGINX Ingress, ALB action, or another provider-specific resource while Argo CD also tracks that resource from Git.
 
-For Istio, the official Argo Rollouts guide documents ignoring Rollouts-managed route weights in Argo CD. A representative Application configuration is:
+For Istio, the official Argo Rollouts guide documents ignoring Rollouts-managed route weights in Argo CD. A representative excerpt from an existing Application configuration is:
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -106,7 +106,7 @@ Service selector hashes are also managed by Argo Rollouts. Keep stable labels an
 7. Watch the Rollout until healthy and confirm the Argo CD application is synced.
 8. Check for unexpected diffs on provider routing objects.
 
-For mutable chart inputs, record the rendered image digest as well as the Git commit. A chart commit that still resolves to a mutable tag is not a dependable rollback target.
+For mutable chart inputs, record the image digest actually resolved at deployment time as well as the Git commit. A chart commit that still renders a mutable tag is not a dependable rollback target.
 
 ## Diagnose Surprising Reconciliation
 
@@ -133,4 +133,3 @@ Argo CD should own the declared release; Argo Rollouts should own progressive ex
 - [Argo CD: Sync Options and Respect Ignore Differences](https://argo-cd.readthedocs.io/en/stable/user-guide/sync-options/)
 - [Argo Rollouts: Istio Traffic Management with Argo CD](https://argo-rollouts.readthedocs.io/en/stable/features/traffic-management/istio/)
 - [Argo CD: Diff Customization](https://argo-cd.readthedocs.io/en/stable/user-guide/diffing/)
-
