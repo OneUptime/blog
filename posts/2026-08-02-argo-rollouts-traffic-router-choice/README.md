@@ -25,7 +25,7 @@ Start with where the traffic flows, who owns the data plane, and which failure y
 | Argo integration | Built in | Built in | Built in | Plugin |
 | Weight mechanism | Canary Ingress annotations | Weighted ALB target groups via Ingress action | VirtualService destination weights | Route backend weights managed by plugin |
 | Stable/canary Services | Required | Required | Required for host-level splitting; subset mode uses DestinationRule design | Expected by Rollouts traffic management/plugin design |
-| Header/mirror managed steps | Provider annotations can add NGINX header/cookie behavior; not Argo's generic managed-route feature | Not the core managed-route path | Argo `setHeaderRoute` and `setMirrorRoute` support | Core project table currently lists weight only |
+| Header/mirror managed steps | Provider annotations can add NGINX header/cookie behavior; not Argo's generic managed-route feature | Argo `setHeaderRoute` is alpha; no `setMirrorRoute` support | Argo `setHeaderRoute` and `setMirrorRoute` support, both alpha | Plugin docs support opt-in `setHeaderRoute` for `HTTPRoute`; no `setMirrorRoute` support is documented |
 | Provider convergence check | Inspect NGINX controller/config/data plane | Optional AWS target-group IP and weight verification | Inspect Istio config and Envoy proxies | Inspect Route status and implementation data plane |
 | Portability | NGINX annotation semantics | AWS-specific | Istio-specific CRDs/data plane | API portable in principle; implementation capabilities vary |
 | Main operational cost | Ingress controller fleet and annotation behavior | AWS controller, IAM, ALB cost/limits | Istiod, proxies/ambient data plane, mesh policy | Plugin lifecycle plus chosen Gateway controller |
@@ -108,7 +108,9 @@ ALB is a good choice when:
 - AWS target groups, WAF, certificates, logging, and alarms are already operational standards;
 - teams prefer a managed load balancer over a cluster ingress proxy fleet.
 
-Its distinctive safety feature is target-group verification. Argo can optionally query AWS to verify that target IPs and weights in the underlying ALB match the desired Ingress annotation. This catches cases where AWS throttling, controller downtime, or reconciliation delay means Kubernetes desired state has not reached the actual load balancer. It requires the controller flag, AWS region, IAM permission, and network access documented by Argo.
+Its distinctive safety feature is target-group verification. Argo can optionally query AWS to verify target IPs against Kubernetes Service endpoints and listener-rule weights against the desired Ingress action. This catches cases where AWS throttling, controller downtime, or reconciliation delay means Kubernetes desired state has not reached the actual load balancer. It requires the controller flag, AWS region, IAM permission, and network access documented by Argo.
+
+Target-group IP verification applies only when the AWS Load Balancer Controller uses IP target mode; weight verification works with either IP or instance target mode.
 
 Tradeoffs include AWS coupling, ALB provisioning and rule quotas, cost, IAM complexity, controller-to-AWS propagation latency, and target health behavior. Target-group stickiness is supported, but it can make short-window or per-user traffic observations differ from configured weights.
 
@@ -145,7 +147,7 @@ Istio is the strongest choice when:
 - traffic policy, mTLS, authorization, retries, and telemetry are already standardized on Istio;
 - the organization can operate and upgrade the mesh control and data planes.
 
-Argo's generic `managedRoutes`, `setHeaderRoute`, and `setMirrorRoute` documentation currently identifies Istio support. Host-level splitting gives clear stable/canary Service metrics, while subset-level splitting is often cleaner for internal clients using one Service hostname.
+Argo's support matrix lists `setHeaderRoute` and `setMirrorRoute` for Istio at alpha maturity. Host-level splitting gives clear stable/canary Service metrics, while subset-level splitting is often cleaner for internal clients using one Service hostname.
 
 The costs are significant: sidecar or ambient enrollment, Istiod capacity, proxy configuration propagation, mesh upgrades, policy interactions, and a larger debugging surface. Argo warns that Pods excluded from the mesh follow default Kubernetes routing. An Istio canary is incomplete if material traffic paths bypass Envoy.
 
@@ -175,6 +177,8 @@ spec:
           weight: 0
 ```
 
+Because this Route attaches to a Gateway in another namespace, the `public` Gateway listener must allow `HTTPRoute` objects from `shop` through `allowedRoutes`. `ReferenceGrant` is not used for Route-to-Gateway attachment; it authorizes other cross-namespace references, such as Routes referring to backend Services or Gateways referring to TLS Secrets.
+
 Gateway API is appealing when:
 
 - the platform is moving away from annotation-heavy Ingress;
@@ -182,14 +186,14 @@ Gateway API is appealing when:
 - routing ownership needs Kubernetes-native role separation;
 - avoiding a provider-specific application API is a strategic goal.
 
-But distinguish API maturity from integration maturity. Argo's traffic-router plugin system is documented as experimental alpha, and the core Argo Rollouts feature table currently lists Gateway API weight support while not listing managed header, mirror, or Experiment weighting support. The plugin is another executable in the Rollouts controller lifecycle: pin its version and checksum, secure its distribution, verify architecture compatibility, and test controller startup if the artifact source is unavailable.
+But distinguish API maturity from integration maturity. Argo's traffic-router plugin system is documented as experimental alpha. The core Argo Rollouts feature table currently lists Gateway API weight support only, but the current Gateway API plugin documentation also covers opt-in `setHeaderRoute` management for `HTTPRoute`; neither source documents `setMirrorRoute` or Experiment weighting support. The plugin is another executable in the Rollouts controller lifecycle: pin its version and checksum, secure its distribution, verify architecture compatibility, and test controller startup if the artifact source is unavailable.
 
 Gateway API conformance is feature-specific. A Route that is syntactically portable may behave differently or lack filters in a particular implementation. Before selecting it, verify:
 
 - the exact Gateway controller and supported Gateway API version/channel;
 - plugin compatibility with that controller and Route kind;
 - `status.parents[].conditions` acceptance and resolved references;
-- weighted routing, cross-namespace `ReferenceGrant`, TLS, and protocol behavior;
+- weighted routing, cross-namespace Route attachment through listener `allowedRoutes`, cross-namespace backend or Secret references through `ReferenceGrant`, TLS, and protocol behavior;
 - rollout abort, controller restart, and config-propagation behavior.
 
 Gateway API is often the best greenfield direction, especially after Ingress NGINX retirement, but production adoption should follow an implementation-specific conformance and failure test—not an assumption that the standard makes every data plane identical.
@@ -258,8 +262,10 @@ The winning router is the one whose control plane, data plane, and failure modes
 - [Argo Rollouts: AWS ALB traffic routing](https://argo-rollouts.readthedocs.io/en/stable/features/traffic-management/alb/)
 - [Argo Rollouts: Istio traffic routing](https://argo-rollouts.readthedocs.io/en/stable/features/traffic-management/istio/)
 - [Argo Rollouts: Traffic-router plugins](https://argo-rollouts.readthedocs.io/en/stable/features/traffic-management/plugins/)
+- [Argo Rollouts Gateway API plugin: Header-based routing](https://rollouts-plugin-trafficrouter-gatewayapi.readthedocs.io/en/latest/features/header-based-routing/)
 - [Argo Rollouts: Multiple traffic providers](https://argo-rollouts.readthedocs.io/en/stable/getting-started/mixed/)
 - [Argo Rollouts official repository: traffic-shaping support matrix](https://github.com/argoproj/argo-rollouts#supported-traffic-shaping-integrations)
 - [Gateway API: HTTP traffic splitting](https://gateway-api.sigs.k8s.io/guides/traffic-splitting/)
+- [Gateway API: Security and cross-namespace references](https://gateway-api.sigs.k8s.io/concepts/security-model/)
 - [Kubernetes: Ingress NGINX retirement](https://kubernetes.io/blog/2025/11/11/ingress-nginx-retirement/)
 - [Kubernetes: Ingress2Gateway 1.0](https://kubernetes.io/blog/2026/03/20/ingress2gateway-1-0-release/)
