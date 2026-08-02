@@ -251,7 +251,7 @@ spec:
     key: team-a-s3
 ```
 
-The referenced ConfigMap and credential Secrets are namespaced resources. Ensure they exist in the Workflow namespace and that the workflow's execution identity can use the configured mechanism.
+For an explicit `artifactRepositoryRef`, Argo looks for the referenced ConfigMap in the Workflow namespace first and then in the workflow controller namespace. Credential Secrets referenced by the repository are retrieved from the Workflow namespace. Ensure those resources exist in the applicable namespaces and that the workflow's execution identity can use the configured mechanism.
 
 Prefer repository references and key-only artifacts over repeating endpoints and Secret selectors throughout every WorkflowTemplate. This reduces YAML duplication and keeps storage configuration separate from the pipeline contract.
 
