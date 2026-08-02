@@ -14,7 +14,7 @@ Header-based canaries let testers exercise a new revision while ordinary users s
 - unmatched requests continue through the normal weighted stable/canary route;
 - the managed header route is removed when the step removes it, and managed routes are cleaned up when the Rollout completes or aborts.
 
-To cover both north-south and east-west traffic, the referenced Istio `VirtualService` must apply to the ingress gateway **and** the reserved `mesh` gateway. Internal callers must actually be in the mesh; a Pod without Istio traffic interception follows ordinary Kubernetes Service routing and never evaluates the VirtualService header rule.
+To cover both north-south and east-west traffic in the sidecar model used here, the referenced Istio `VirtualService` must apply to the ingress gateway **and** the reserved `mesh` gateway. Internal callers must actually be in the mesh; a Pod without Istio traffic interception follows ordinary Kubernetes Service routing and never evaluates the VirtualService header rule.
 
 ## Architecture
 
@@ -49,7 +49,7 @@ kubectl get deployment -n argo-rollouts
 kubectl get pods -n istio-system
 ```
 
-The Rollouts controller needs permission to get, watch, and update the referenced Istio resources and Services. Application Pods and internal test clients need sidecar injection or the equivalent ambient-mesh enrollment used by your Istio design. Argo's official Istio integration specifically warns that Pods excluded from the mesh use default Kubernetes routing.
+The Rollouts controller needs permission to get, watch, and update the referenced Istio resources and Services. Internal test clients need sidecar interception for this example, and the Rollout template below injects the checkout Pods too. In ambient mode, ztunnel-only enrollment is insufficient for Layer 7 header routing: a waypoint is required, and `VirtualService` support with ambient is currently Alpha, so validate the attachment model for your Istio version before adapting this manifest. Argo's official Istio integration specifically warns that Pods excluded from the mesh use default Kubernetes routing.
 
 ## Create Stable and Canary Services
 
@@ -85,7 +85,7 @@ spec:
 
 Do not put a hard-coded `rollouts-pod-template-hash` in Git. The controller owns that dynamic selector value.
 
-Use named Service and container ports with an HTTP-aware name so Istio can determine the application protocol. The Rollout Pod template below exposes the matching `http` port.
+Use an HTTP-aware name on each Service port so Istio can determine the application protocol. Name the matching container port `http` as well so Kubernetes can resolve `targetPort: http`.
 
 ## Bind One VirtualService to External and Mesh Gateways
 
@@ -267,6 +267,8 @@ kubectl exec -n shop <client-pod> -c <application-container> -- \
   http://checkout-stable.shop.svc.cluster.local/version
 ```
 
+For the sidecar model used in this example, the first command's output should include the `istio-proxy` container.
+
 A non-meshed Pod calling `checkout-stable` goes directly through the Kubernetes Service and should remain on stable. That is expected and is an important negative test. If all internal callers must participate in the canary, enforce mesh enrollment and monitor bypass paths rather than assuming the VirtualService captures every Pod.
 
 ## Verify What Argo Wrote
@@ -302,7 +304,7 @@ After testing, promotion advances to the explicit route-removal step:
 kubectl argo rollouts promote checkout -n shop
 ```
 
-Confirm the `qa-header` managed route disappears before weighted canary exposure increases. On abort, Argo removes managed routes listed in `managedRoutes` and returns traffic toward the stable version according to the strategy.
+The controller executes the `qa-header` removal before the later `setWeight` steps. At the next pause, confirm the managed route is gone and `primary` has the expected 80/20 stable/canary weights. On abort, Argo removes managed routes listed in `managedRoutes` and returns traffic toward the stable version according to the strategy.
 
 ```bash
 kubectl argo rollouts abort checkout -n shop
