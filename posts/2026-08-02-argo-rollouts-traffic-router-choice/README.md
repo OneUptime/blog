@@ -258,7 +258,7 @@ The winning router is the one whose control plane, data plane, and failure modes
 - [Argo Rollouts: AWS ALB traffic routing](https://argo-rollouts.readthedocs.io/en/stable/features/traffic-management/alb/)
 - [Argo Rollouts: Istio traffic routing](https://argo-rollouts.readthedocs.io/en/stable/features/traffic-management/istio/)
 - [Argo Rollouts: Traffic-router plugins](https://argo-rollouts.readthedocs.io/en/stable/features/traffic-management/plugins/)
-- [Argo Rollouts: Multiple traffic providers](https://argo-rollouts.readthedocs.io/en/stable/features/traffic-management/multiple/)
+- [Argo Rollouts: Multiple traffic providers](https://argo-rollouts.readthedocs.io/en/stable/getting-started/mixed/)
 - [Argo Rollouts official repository: traffic-shaping support matrix](https://github.com/argoproj/argo-rollouts#supported-traffic-shaping-integrations)
 - [Gateway API: HTTP traffic splitting](https://gateway-api.sigs.k8s.io/guides/traffic-splitting/)
 - [Kubernetes: Ingress NGINX retirement](https://kubernetes.io/blog/2025/11/11/ingress-nginx-retirement/)

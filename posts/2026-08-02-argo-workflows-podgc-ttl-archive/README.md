@@ -227,7 +227,7 @@ If history disappeared too soon, identify which layer lost it before restoring a
 
 ## Official Documentation
 
-- [Argo Workflows: Pod cleanup](https://argo-workflows.readthedocs.io/en/latest/walk-through/pod-cleanup/)
+- [Argo Workflows example: Pod GC strategies](https://github.com/argoproj/argo-workflows/blob/main/examples/pod-gc-strategy.yaml)
 - [Argo Workflows field reference: PodGC, TTLStrategy, and VolumeClaimGC](https://argo-workflows.readthedocs.io/en/latest/fields/)
 - [Argo Workflows: Workflow Archive](https://argo-workflows.readthedocs.io/en/latest/workflow-archive/)
 - [Argo Workflows: Configuring archive logs](https://argo-workflows.readthedocs.io/en/latest/configure-archive-logs/)

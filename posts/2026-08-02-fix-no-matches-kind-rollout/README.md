@@ -290,7 +290,7 @@ Treat CRD deletion as a destructive cluster-data operation requiring a separate 
 - [Argo Rollouts: Installation](https://argo-rollouts.readthedocs.io/en/stable/installation/)
 - [Argo Rollouts: Getting started](https://argo-rollouts.readthedocs.io/en/stable/getting-started/)
 - [Argo Rollouts: Rollout specification](https://argo-rollouts.readthedocs.io/en/stable/features/specification/)
-- [Argo Rollouts: Security and RBAC](https://argo-rollouts.readthedocs.io/en/stable/security/)
+- [Argo Rollouts: Official installation manifests and RBAC](https://github.com/argoproj/argo-rollouts/tree/master/manifests)
 - [Kubernetes: Extend the Kubernetes API with CustomResourceDefinitions](https://kubernetes.io/docs/tasks/extend-kubernetes/custom-resources/custom-resource-definitions/)
 - [Kubernetes: Custom resources](https://kubernetes.io/docs/concepts/extend-kubernetes/api-extension/custom-resources/)
 - [Kubernetes: `kubectl api-resources`](https://kubernetes.io/docs/reference/kubectl/generated/kubectl_api-resources/)
