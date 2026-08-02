@@ -11,7 +11,7 @@ Description: Diagnose why Portainer keeps running an old image after a pull or r
 The button may say **Pull latest image**, **Re-pull image**, **Recreate**, or **Redeploy**, depending on whether you are working with a container, service, or stack. The important distinction is that three separate things must succeed:
 
 1. Portainer asks the target Docker environment to resolve and pull the configured image reference.
-2. Docker obtains a manifest and layers for a compatible image.
+2. Docker obtains a compatible manifest and any layers that are not already cached.
 3. The container or service is replaced so that it starts from the newly resolved image.
 
 If the application still looks old, determine which of those stages failed. Repeating the same button without making that distinction usually hides the useful evidence.
@@ -47,7 +47,7 @@ If your stack uses an immutable digest, pulling cannot silently move it forward:
 ```yaml
 services:
   api:
-    image: registry.example.com/acme/myapp@sha256:0123456789abcdef...
+    image: registry.example.com/acme/myapp@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
 ```
 
 That is intentional. Digest pinning makes deployments repeatable. Update the digest in the stack definition when you deliberately approve a new image.
@@ -121,7 +121,7 @@ docker ps -a \
   --format 'table {{.Names}}\t{{.Image}}\t{{.ID}}\t{{.Status}}'
 ```
 
-For Swarm, a new task can be scheduled on another node. Inspect the service and its tasks:
+For Swarm, a new task can be scheduled on another node. From a manager node, inspect the service and its tasks:
 
 ```bash
 docker service inspect my-stack_api \
@@ -141,7 +141,7 @@ The editable source of truth depends on how the stack was created:
 - **External stack:** Portainer did not create the stack, so management and update options are deliberately limited.
 - **Container created outside a stack:** recreate that container; updating a similarly named stack will not affect it.
 
-In the stack list, Portainer can show an image-update indicator. A grey indicator means Portainer could not determine whether a newer image is available; it does not prove that the image is current. Reloading the indicator only refreshes that check—it is not itself a deployment.
+In the stack list, Portainer can show an image-update indicator. A grey hyphen means Portainer could not determine whether a newer image is available; it does not prove that the image is current. Reloading the indicator only refreshes that check—it is not itself a deployment.
 
 ## The New Image May Be Running Even If the UI Looks Unchanged
 
