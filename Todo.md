@@ -33,7 +33,6 @@
 6. NGINX, ALB, Istio, or Gateway API: Choosing an Argo Rollouts Traffic Router
 7. Argo Rollouts Service Selectors Explained: Stable, Canary, Active, and Preview Services
 8. Argo Rollouts Blue-Green Deployment: Configuring Active and Preview Services Safely
-9. Can Argo Rollouts Manage StatefulSets? Safer Patterns for Stateful Canary Releases
 
 ## Remote Write
 
