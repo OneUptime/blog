@@ -86,7 +86,7 @@ Use a workflow with observable checkpoints:
 4. Decide whether compatibility permits a revert or requires a roll-forward.
 5. Open the repository change using normal review and signing controls.
 6. Merge and let Argo CD sync it.
-7. Watch both Argo CD sync/health and `kubectl argo rollouts get rollout --watch`.
+7. Watch both Argo CD sync/health and `kubectl argo rollouts get rollout <rollout-name> --watch`.
 8. Close the incident only when live behavior and declared desired state agree.
 
 For automation, a notification can create a revert pull request or issue, but avoid allowing an AnalysisRun failure to push directly to a protected branch without policy. The external automation owns the source edit; Argo Rollouts still does not.
