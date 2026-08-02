@@ -108,7 +108,7 @@ services:
   portainer:
     image: portainer/portainer-ce:lts
     command:
-      - --trusted-origins=https://portainer.example.com/
+      - --trusted-origins=portainer.example.com
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - portainer_data:/data
@@ -126,15 +126,19 @@ Use the current installation recipe and image stream for your edition. The excer
 
 ## Fix “Origin Invalid” and Login Failures
 
-Portainer provides `--trusted-origins` and the `TRUSTED_ORIGINS` environment variable for deployments behind a reverse proxy that receive **Origin invalid** errors. Configure the exact public origin used by the browser. Current Portainer releases require a full URL, including the scheme; follow the syntax documented for the installed release.
-
-For one public hostname:
+Portainer provides `--trusted-origins` and the `TRUSTED_ORIGINS` environment variable for deployments behind a reverse proxy that receive **Origin invalid** errors. The accepted value is release-specific. The `lts` image stream used in this article is Portainer 2.39 LTS at the time of writing; it expects a bare hostname and rejects a value containing a scheme:
 
 ```text
-https://portainer.example.com/
+portainer.example.com
 ```
 
-For multiple intentional entry points, use the comma-separated form supported by Portainer rather than accepting arbitrary origins.
+Portainer 2.41 and later require a full origin, including the scheme and optional port, but no path or trailing slash:
+
+```text
+https://portainer.example.com
+```
+
+Follow the syntax documented for the installed release. For multiple intentional entry points, use Portainer's comma-separated form rather than accepting arbitrary origins.
 
 Also verify:
 
@@ -191,7 +195,7 @@ services:
   portainer:
     image: portainer/portainer-ce:lts
     command:
-      - --trusted-origins=https://portainer.example.com/
+      - --trusted-origins=portainer.example.com
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - portainer_data:/data
@@ -273,7 +277,7 @@ Do not expose `9001` publicly merely to make the UI work. It belongs on the netw
 
 ### UI Loads, but Login Returns 403 or “Origin Invalid”
 
-Check the public URL in `--trusted-origins`, forwarded `Host`, forwarded scheme, and Portainer server logs. Determine whether the 403 body comes from Portainer, Cloudflare Access/WAF, or the origin proxy.
+Check the configured hostname or origin in `--trusted-origins`, forwarded `Host`, forwarded scheme, and Portainer server logs. Determine whether the 403 body comes from Portainer, Cloudflare Access/WAF, or the origin proxy.
 
 ### Browser Redirects Forever
 
@@ -288,7 +292,7 @@ Make one layer responsible for HTTP-to-HTTPS redirection. With Cloudflare, use a
 
 ### Nginx Returns 502 or Traefik Returns Bad Gateway
 
-Test from the proxy's network namespace. The upstream name must resolve, the containers must share a network, and the selected upstream scheme and port must agree:
+Test from a temporary container attached to the proxy's Docker network. The upstream name must resolve, the containers must share a network, and the selected upstream scheme and port must agree. Replace `proxy` with the actual Docker network name when necessary:
 
 ```bash
 docker run --rm \
@@ -338,6 +342,7 @@ Change one layer at a time. This turns “Portainer behind Cloudflare is broken�
 - [Portainer: Deploy behind Nginx](https://docs.portainer.io/advanced/reverse-proxy/nginx)
 - [Portainer: Deploy behind Traefik](https://docs.portainer.io/advanced/reverse-proxy/traefik)
 - [Portainer: CLI options for base URL and trusted origins](https://docs.portainer.io/advanced/cli)
+- [Portainer 2.41 release notes: trusted-origin syntax change](https://github.com/portainer/portainer/releases/tag/2.41.0)
 - [Portainer: Console closes behind a reverse proxy](https://docs.portainer.io/faqs/troubleshooting/logs-errors-and-debugging/why-is-my-console-closing-after-a-certain-time)
 - [Portainer: Requirements and network ports](https://docs.portainer.io/start/requirements-and-prerequisites)
 - [Portainer: Edge Agent architecture](https://docs.portainer.io/advanced/edge-agent)
