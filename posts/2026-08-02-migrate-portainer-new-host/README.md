@@ -174,7 +174,7 @@ Pause writers for the final synchronization. After copying, test the path from t
 Registry-backed images can be pulled again if the destination has network access, credentials, and CA trust:
 
 ```bash
-docker pull registry.example.com/acme/api@sha256:0123456789abcdef...
+docker pull registry.example.com/acme/api@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
 ```
 
 If a stack relies on an image built only in the old host's local image store, publish it to an approved registry or deliberately transfer it with Docker's image save/load workflow. Portainer's backup does not include images.
@@ -221,13 +221,13 @@ This prevents Compose from silently creating an empty project-scoped volume beca
 Verify the transferred archive checksum, then restore into the empty destination volume:
 
 ```bash
-shasum -a 256 -c app_uploads.tar.gz.sha256
+shasum -a 256 -c volume-backups/app_uploads.tar.gz.sha256
 
 docker volume create app_uploads
 
 docker run --rm \
   --volume app_uploads:/target \
-  --volume "$PWD":/backup:ro \
+  --volume "$PWD/volume-backups":/backup:ro \
   alpine \
   tar xzf /backup/app_uploads.tar.gz -C /target
 ```
