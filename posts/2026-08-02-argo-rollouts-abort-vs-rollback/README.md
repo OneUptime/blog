@@ -8,7 +8,7 @@ Description: Separate an Argo Rollouts abort from a declarative rollback and und
 
 ---
 
-An Argo Rollouts **abort** is an immediate live-cluster safety action. A **rollback** changes the desired pod template back to an earlier revision. They are related, but they are not interchangeable.
+An Argo Rollouts **abort** is an immediate live-cluster safety action. A **declarative rollback** changes the desired pod template back to an earlier revision. They are related, but they are not interchangeable.
 
 Confusing the two explains a common incident: users abort a bad canary, see stable pods serving traffic, and assume the rollback is complete. The Rollout remains `Degraded` because its desired template still describes the rejected version, and Git still contains it.
 
@@ -22,13 +22,13 @@ kubectl argo rollouts abort payments
 
 The official command reference says abort stops the current progression, reverts the rollout steps, and makes the previous ReplicaSet active. Operationally, the controller favors the last stable revision:
 
-- canary traffic is returned to stable;
+- managed production traffic is returned to stable;
 - blue-green active traffic stays on or returns to the stable ReplicaSet;
 - stable capacity is restored as required;
 - the new revision is prevented from progressing;
 - the Rollout enters an aborted/degraded state.
 
-Scaling is not always instantaneous. Strategy options can preserve the aborted ReplicaSet temporarily for debugging or drain time. For canaries, `abortScaleDownDelaySeconds` controls delayed scale-down when traffic routing is used. With `dynamicStableScale`, stable and canary capacity change as traffic shifts, including during abort. For blue-green, active/preview Services and scale-down delays govern the transition.
+Scaling is not always instantaneous. Strategy options can preserve the aborted ReplicaSet temporarily or indefinitely. For canaries with traffic routing and for blue-green, `abortScaleDownDelaySeconds` controls delayed scale-down; setting it to `0` disables scale-down. Basic canaries instead roll their replica counts back to stable. With `dynamicStableScale`, stable and canary capacity change as traffic shifts, including during abort. For blue-green, active/preview Services and the abort scale-down delay govern the transition.
 
 Inspect the actual result:
 
@@ -63,7 +63,7 @@ git revert <bad-release-commit>
 git push
 ```
 
-Argo CD then syncs the resulting manifest. Without GitOps, apply the previous Rollout manifest or use the plugin's undo operation with care:
+Argo CD then syncs the resulting manifest automatically if automated sync is enabled; otherwise, trigger a sync. Without GitOps, apply the previous Rollout manifest or use the plugin's undo operation with care:
 
 ```bash
 kubectl argo rollouts undo payments --to-revision 12
@@ -78,12 +78,12 @@ Argo Rollouts can fast-track certain returns to a known ReplicaSet. An incomplet
 | Concern | Abort | Declarative rollback |
 | --- | --- | --- |
 | Immediate objective | Stop exposure to the current update | Make an older template desired again |
-| Traffic | Returned to stable | Follows reconciliation to restored desired revision |
+| Traffic | Managed production traffic returned to stable | Follows reconciliation to restored desired revision |
 | Stable pods | Scaled up or retained | Become the desired revision's pods |
-| Canary/preview pods | Stopped or delayed before scale-down | Reconciled according to rollback path |
+| Canary/preview pods | Scaled down immediately, after a delay, or retained, depending on strategy and settings | Reconciled according to rollback path |
 | `.spec.template` | Still the rejected version | Restored to an earlier version |
 | Rollout health | Commonly `Degraded` | Can return to `Healthy` |
-| Git | Unchanged | Changed by a human or external automation |
+| Git | Unchanged | Changed in a GitOps workflow; otherwise not involved |
 
 ## A Safe Incident Sequence
 
@@ -97,7 +97,7 @@ Example checks:
 ```bash
 kubectl argo rollouts abort payments
 kubectl argo rollouts get rollout payments --watch
-kubectl get analysisrun -l rollouts-pod-template-hash -n payments
+kubectl get analysisrun -l rollouts-pod-template-hash
 ```
 
 After the Git change syncs:
@@ -115,7 +115,7 @@ Restoring the previous template is appropriate when it remains compatible with c
 
 Whichever path you choose, keep image references immutable. Reusing a mutable tag such as `latest` can make an apparent rollback resolve to different content and weakens the audit trail.
 
-Abort buys time by restoring stable service. The Git or manifest change completes the desired-state decision.
+Abort buys time by returning managed production traffic to stable. The Git or manifest change completes the desired-state decision.
 
 ## Official Documentation
 
@@ -125,4 +125,3 @@ Abort buys time by restoring stable service. The Git or manifest change complete
 - [Argo Rollouts: Rollback Windows](https://argo-rollouts.readthedocs.io/en/stable/features/rollback/)
 - [Argo Rollouts: Canary Strategy](https://argo-rollouts.readthedocs.io/en/stable/features/canary/)
 - [Argo Rollouts: Blue-Green Strategy](https://argo-rollouts.readthedocs.io/en/stable/features/bluegreen/)
-
