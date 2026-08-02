@@ -12,7 +12,7 @@ Argo has three operations that sound similar but create different execution hist
 
 - `argo retry` resets failed nodes in the **same Workflow object**;
 - `argo resubmit` creates a **new Workflow** and runs it again;
-- `argo resubmit --memoized` creates a new Workflow while reusing successful nodes and outputs from the failed run.
+- `argo resubmit --memoized` creates a new Workflow while reusing successful Pod nodes and outputs from the failed run.
 
 If the goal is “rerun only what failed,” start with `argo retry`. If you need a distinct run name and UID for audit, retention, or changed inputs, use resubmit. Add `--memoized` only when it is safe for the new run to reuse the previous run's successful results.
 
@@ -21,8 +21,8 @@ If the goal is “rerun only what failed,” start with `argo retry`. If you nee
 | Operation | Workflow object | Successful nodes | Failed nodes | Typical use |
 | --- | --- | --- | --- | --- |
 | `argo retry` | Reuses name and UID | Retained | Reset and rerun | Continue the same failed run |
-| `argo resubmit` | New name and UID | Run again | Run again | Clean, independent rerun |
-| `argo resubmit --memoized` | New name and UID | Reused as memoized/skipped results | Rerun | New run that avoids successful work |
+| `argo resubmit` | New name and UID | Not carried over; graph evaluated again | Not carried over; graph evaluated again | Clean, independent rerun |
+| `argo resubmit --memoized` | New name and UID | Successful Pod nodes are reused/skipped; other node types are reevaluated | Reevaluated; failed or errored Pod nodes rerun | New run that avoids successful Pod work |
 
 The commands are operational retries after a Workflow has run. They are different from a template's `retryStrategy`, which automatically creates another attempt while the original Workflow is still executing.
 
@@ -77,9 +77,10 @@ argo retry -n workflows data-pipeline-7mq2k \
   --restart-successful \
   --node-field-selector id=data-pipeline-7mq2k-2185524251
 
-# Select failed invocations of one template.
+# Restart successful invocations of one template; failed steps still retry.
 argo retry -n workflows data-pipeline-7mq2k \
-  --node-field-selector templateName=transform,phase=Failed
+  --restart-successful \
+  --node-field-selector templateName=transform,phase=Succeeded
 
 # Select a loop item by its input parameter.
 argo retry -n workflows data-pipeline-7mq2k \
@@ -88,6 +89,8 @@ argo retry -n workflows data-pipeline-7mq2k \
 ```
 
 Comma-separated selectors are ANDed. `displayName` is convenient but can match several loop or nested nodes. Prefer `id` or full `name` when only one invocation must restart.
+
+For `argo retry`, `--node-field-selector` must be paired with `--restart-successful`. It adds matching successful nodes to the retry; it does not narrow the default set of failed steps, which are still retried.
 
 `--restart-successful` is intentionally explicit because replaying a successful side effect can be dangerous. Check the node's descendants and external effects before using it.
 
@@ -105,7 +108,7 @@ Use a normal resubmit when:
 
 - audit policy requires each attempt to be a separate run;
 - you want the old failed object to remain immutable;
-- all steps should execute against current external state;
+- you want the graph evaluated again without carrying node status from the source Workflow;
 - cached outputs or remote artifacts may be stale or gone;
 - you need to override parameters;
 - the old Workflow has reached an operational state where in-place mutation is undesirable.
@@ -118,9 +121,9 @@ argo resubmit -n workflows data-pipeline-7mq2k \
   --watch
 ```
 
-Because ordinary resubmit reruns every node, changed inputs naturally flow through the whole graph.
+Because ordinary resubmit does not carry node status from the source, changed inputs flow through the newly evaluated graph. A template's own memoization configuration is independent and can still return cached results.
 
-## Resubmit Only Failed Work with `--memoized`
+## Resubmit While Reusing Successful Pod Work with `--memoized`
 
 For a new Workflow identity that reuses successful results:
 
@@ -130,17 +133,17 @@ argo resubmit -n workflows data-pipeline-7mq2k \
   --watch
 ```
 
-Argo carries successful Pod nodes and their outputs into the new Workflow as reused nodes, then reruns failed or errored Pod work. Memoized mode is accepted for failed or errored source Workflows.
+Argo carries successful Pod nodes and their outputs into the new Workflow as skipped/reused nodes. Failed or errored Pod nodes and non-Pod work are reevaluated. Memoized mode is accepted for failed or errored source Workflows.
 
 This is useful when:
 
 - the source Workflow is complete and failed;
-- successful steps are expensive;
+- successful Pod steps are expensive;
 - their outputs are deterministic for the unchanged inputs;
 - referenced output artifacts still exist;
 - a new Workflow name/UID is required.
 
-Do not treat `--memoized` as a general-purpose incremental build system. It reuses recorded successful node results from one run; it does not prove that databases, object-store keys, container tags, or external dependencies are unchanged.
+Do not treat `--memoized` as a general-purpose incremental build system. It reuses recorded successful Pod-node results from one run; it does not prove that databases, object-store keys, container tags, or external dependencies are unchanged.
 
 ### Do not casually override parameters in memoized mode
 
@@ -152,14 +155,14 @@ argo resubmit -n workflows data-pipeline-7mq2k \
   -p processing-date=2026-08-02
 ```
 
-Argo's implementation warns that overriding parameters on a memoized resubmission may have unexpected results. A successful upstream node can be reused even though its new logical input should produce different output. If inputs change, use a normal resubmit unless you have independently proven that every reused node is unaffected.
+Argo's implementation warns that overriding parameters on a memoized resubmission may have unexpected results. A successful upstream Pod node can be reused even though its new logical input should produce different output. If inputs change, use a normal resubmit unless you have independently proven that every reused node is unaffected.
 
 ## Verify Outputs Before Reusing Them
 
 Successful node status can outlive the data it points to. Before retry or memoized resubmit, inspect outputs:
 
 ```bash
-kubectl get workflow -n workflows data-pipeline-7mq2k -o json \
+argo get -n workflows data-pipeline-7mq2k -o json \
   | jq -r '
       .status.nodes[]
       | select(.phase == "Succeeded")
@@ -170,6 +173,8 @@ kubectl get workflow -n workflows data-pipeline-7mq2k -o json \
         }
     '
 ```
+
+Using `argo get` here also handles compressed node status. When node-status offloading is enabled, configure the CLI to use Argo Server so it can retrieve the offloaded nodes.
 
 Named output parameters are stored in Workflow status. Output artifacts usually point to S3, GCS, Azure, or another repository. A reused artifact is useful only if:
 
@@ -205,7 +210,7 @@ argo get -n workflows data-pipeline-7mq2k -o yaml > workflow-before-retry.yaml
 argo logs -n workflows data-pipeline-7mq2k > logs-before-retry.txt
 ```
 
-Use an external logging backend or Argo archived logs when Pod deletion is aggressive. A retry that fixes the Workflow can otherwise erase the easiest path to the original failure evidence.
+Use an external logging backend or Argo's `archiveLogs` feature when Pod deletion is aggressive. A retry that fixes the Workflow can otherwise erase the easiest path to the original failure evidence.
 
 Do not commit captured Workflow YAML or logs blindly; both can contain parameter values, artifact locations, and sensitive application output.
 
@@ -214,16 +219,16 @@ Do not commit captured Workflow YAML or logs blindly; both can contain parameter
 If TTL or manual cleanup removed the live Workflow but persistence archived it, use the archive-specific commands:
 
 ```bash
-argo archive get -n workflows <workflow-name>
-argo archive retry -n workflows <workflow-name> --watch
+argo archive get -n workflows my-workflow
+argo archive retry -n workflows my-workflow --watch
 ```
 
-The current archive CLI accepts a Workflow name or UID, with `--name` and `--uid` available to disambiguate. Archive retry recreates runnable state from the archive rather than updating a Kubernetes object that no longer exists.
+In Argo Workflows v4.1 and later, the archive CLI accepts a Workflow name or UID. The `--name` and `--uid` flags force how an identifier is interpreted; if several archived Workflows have the same name, select one by UID. Archive retry creates a new live Kubernetes object with the archived name and a new UID rather than updating an object that no longer exists.
 
 For a completely fresh rerun from archived history, use archive resubmit:
 
 ```bash
-argo archive resubmit -n workflows <workflow-name> --watch
+argo archive resubmit -n workflows my-workflow --watch
 ```
 
 The archive stores Workflow status, not Pod logs, and output artifacts may have independent retention. Check those dependencies before expecting an archived retry to behave like an immediate live retry.
@@ -236,7 +241,7 @@ Operationally, the commands perform different Kubernetes actions:
 - resubmit reads the source and creates a new Workflow;
 - read/watch/log flags need their corresponding read permissions.
 
-A retry operator commonly needs `get` and `update` on `workflows` plus `delete` on Pods in the namespace. A resubmit-only service can often use `get` and `create` on Workflows without permission to mutate the source. Test the exact operation under the installed Argo Server auth mode with `kubectl auth can-i`.
+A retry operator commonly needs `get` and `update` on `workflows` plus `delete` on Pods in the namespace. A resubmit-only service can often use `get` and `create` on Workflows without permission to mutate the source. Determine which Kubernetes identity the installed Argo Server auth mode uses, then test that identity with `kubectl auth can-i`, using `--as` where appropriate.
 
 Keeping these roles separate is useful: some teams allow users to create new runs but reserve mutation of an existing audit object for operators.
 
@@ -254,13 +259,13 @@ Choose `argo resubmit --memoized` when:
 - you need a new name and UID;
 - the source is failed or errored;
 - inputs are unchanged;
-- successful results and artifacts are still valid;
-- avoiding successful work matters.
+- successful Pod results and artifacts are still valid;
+- avoiding repeated successful Pod work matters.
 
 Choose ordinary `argo resubmit` when:
 
 - inputs or intended behavior changed;
-- every step should observe current state;
+- the graph should be evaluated again without reusing node status from the source Workflow;
 - reused outputs are uncertain;
 - the prior run should remain immutable and independent.
 
@@ -271,9 +276,11 @@ Use `--restart-successful --node-field-selector` only when a specifically select
 After the operation, inspect identity and nodes:
 
 ```bash
-argo get -n workflows <result-workflow-name>
+RESULT_WORKFLOW_NAME=data-pipeline-new-name
 
-kubectl get workflow -n workflows <result-workflow-name> -o json \
+argo get -n workflows "$RESULT_WORKFLOW_NAME"
+
+argo get -n workflows "$RESULT_WORKFLOW_NAME" -o json \
   | jq -r '
       .metadata as $m
       | "name=\($m.name) uid=\($m.uid)",
@@ -286,7 +293,7 @@ kubectl get workflow -n workflows <result-workflow-name> -o json \
     '
 ```
 
-For retry, confirm failed nodes received new attempts while unrelated successful nodes stayed intact. For memoized resubmit, confirm the new UID and identify reused/skipped nodes whose messages point to original results. Finally, validate the external outcome—not only the final green Workflow phase.
+For retry, confirm failed nodes received new attempts while unrelated successful nodes stayed intact. For memoized resubmit, confirm the new UID and identify reused/skipped nodes whose messages name the original Pod IDs. Finally, validate the external outcome—not only the final green Workflow phase.
 
 ## Official Documentation
 
