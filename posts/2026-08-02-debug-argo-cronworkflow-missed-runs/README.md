@@ -25,7 +25,7 @@ kubectl -n batch get cronworkflow nightly-reports -o yaml
 kubectl -n batch describe cronworkflow nightly-reports
 ```
 
-The CLI reports fields such as schedules, suspension, starting deadline, concurrency policy, last scheduled time, next scheduled time, and active Workflows. The YAML is the authoritative stored object and exposes `.status.lastScheduledTime` and `.status.active` for closer inspection.
+The CLI reports fields such as schedules, suspension, starting deadline, concurrency policy, last scheduled time, next scheduled time, and active Workflows. The CLI currently notes that its `NextScheduledTime` calculation assumes the workflow controller uses UTC, so do not rely on that field alone for a CronWorkflow configured with another time zone. The YAML is the authoritative stored object and exposes `.status.lastScheduledTime` and `.status.active` for closer inspection.
 
 Then list child Workflows created by this CronWorkflow:
 
@@ -72,7 +72,7 @@ spec:
           args: ["date -u; echo generating report"]
 ```
 
-Current Argo documentation defines `schedules` as a required, non-empty list. It allows more than one schedule. Historical manifests may use the older singular `schedule` field; use the schema supported by the installed controller and prefer `schedules` for current releases.
+Current Argo documentation defines `schedules` as a required, non-empty list. It allows more than one schedule. The older singular `schedule` field was deprecated in v3.6 and removed in v4.0; use the schema supported by the installed controller and use `schedules` on v3.6 and later.
 
 The five-field expression above means 02:00 every day in `Europe/London`, not necessarily 02:00 UTC.
 
@@ -146,11 +146,11 @@ The concurrency policy decides what happens when a scheduled time arrives while 
 
 - `Allow` permits overlapping Workflows and is the default.
 - `Forbid` does not create the new Workflow while an older one is active.
-- `Replace` removes old active Workflow runs before scheduling the new one.
+- `Replace` terminates old active Workflows before scheduling the new one.
 
 With `Forbid`, an absent child Workflow can be intentional. Inspect `.status.active`, then inspect the referenced Workflow. It may be legitimately long-running, suspended, waiting for a lock, stuck on an unschedulable Pod, or retrying.
 
-Do not switch blindly to `Allow`. Overlap can cause duplicate writes or overload a dependency. Fix the duration or stuck run, make processing idempotent, or choose a policy that reflects the job's semantics. Use `Replace` only when aborting the previous run is safe; external side effects may already have happened before it is removed.
+Do not switch blindly to `Allow`. Overlap can cause duplicate writes or overload a dependency. Fix the duration or stuck run, make processing idempotent, or choose a policy that reflects the job's semantics. Use `Replace` only when aborting the previous run is safe; external side effects may already have happened before it is terminated.
 
 ## Look for Other Scheduling Gates
 
@@ -195,7 +195,7 @@ The documented `CRON_SYNC_PERIOD` environment variable defaults to 10 seconds an
 Also verify:
 
 - The controller watches the CronWorkflow's namespace.
-- Its service account can get, list, watch, and update CronWorkflows and create Workflows there.
+- Its service account has the verbs required by the installed release. Current v4 manifests include get, list, watch, update, and patch for CronWorkflows, plus create, get, list, watch, update, patch, and delete for Workflows.
 - High-availability controller replicas agree on time and leader election is healthy.
 - Cluster clock synchronization is working.
 
