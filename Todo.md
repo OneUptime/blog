@@ -33,17 +33,16 @@
 6. NGINX, ALB, Istio, or Gateway API: Choosing an Argo Rollouts Traffic Router
 7. Argo Rollouts Service Selectors Explained: Stable, Canary, Active, and Preview Services
 8. Argo Rollouts Blue-Green Deployment: Configuring Active and Preview Services Safely
-9. Promote, Abort, Retry, or Restart? Argo Rollouts Operations Explained
-10. Argo Rollouts Abort vs. Rollback: What Happens to Pods, Traffic, and Git?
-11. Why an Argo Rollouts Rollback Does Not Revert Your Git Commit
-12. Argo CD Auto-Sync and Argo Rollouts Rollbacks: Avoiding Surprising Reconciliation
-13. Prometheus AnalysisTemplates in Argo Rollouts: Handling Arrays, NaN, and Empty Results
-14. Why an Argo Rollouts AnalysisRun Is Stuck, Inconclusive, or Failing
-15. How to Run Smoke Tests with Job and Web Analysis in Argo Rollouts
-16. Argo Rollouts with HPA or KEDA: Preventing Unexpected Replica Scale-Ups and Scale-Downs
-17. Scaling Canary Pods Independently from Traffic Weight with `setCanaryScale`
-18. Why an Argo Rollout Is Stuck on “More Replicas Need to Be Updated”
-19. Can Argo Rollouts Manage StatefulSets? Safer Patterns for Stateful Canary Releases
+9. Argo Rollouts Abort vs. Rollback: What Happens to Pods, Traffic, and Git?
+10. Why an Argo Rollouts Rollback Does Not Revert Your Git Commit
+11. Argo CD Auto-Sync and Argo Rollouts Rollbacks: Avoiding Surprising Reconciliation
+12. Prometheus AnalysisTemplates in Argo Rollouts: Handling Arrays, NaN, and Empty Results
+13. Why an Argo Rollouts AnalysisRun Is Stuck, Inconclusive, or Failing
+14. How to Run Smoke Tests with Job and Web Analysis in Argo Rollouts
+15. Argo Rollouts with HPA or KEDA: Preventing Unexpected Replica Scale-Ups and Scale-Downs
+16. Scaling Canary Pods Independently from Traffic Weight with `setCanaryScale`
+17. Why an Argo Rollout Is Stuck on “More Replicas Need to Be Updated”
+18. Can Argo Rollouts Manage StatefulSets? Safer Patterns for Stateful Canary Releases
 
 ## Remote Write
 
