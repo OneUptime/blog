@@ -51,7 +51,7 @@ Abort stops progression and reverts rollout actions so the previous stable Repli
 kubectl argo rollouts abort payments
 ```
 
-For a canary, this means shifting traffic and replicas away from the new revision and back to stable. For blue-green, it keeps or restores the active Service on stable. Exact scaling timing depends on the strategy and fields such as `abortScaleDownDelaySeconds`, `scaleDownDelaySeconds`, and `dynamicStableScale`.
+For a traffic-routed canary, this means shifting traffic back to stable; a basic canary also rolls replicas back to stable. For blue-green, it keeps or restores the active Service on stable. Exact scaling timing depends on the strategy and fields such as `abortScaleDownDelaySeconds`, `scaleDownDelaySeconds`, and `dynamicStableScale`.
 
 Abort does **not** rewrite `.spec.template`. The desired template still names the rejected version, so the Rollout is normally `Degraded`: stable is serving, but live capacity does not match the desired revision. To finish a rollback declaratively, restore the prior pod template in Git or apply a corrected new revision.
 
@@ -81,7 +81,7 @@ It is useful when pods need to reload an externally changed Secret, renew connec
 kubectl argo rollouts restart payments --in 10m
 ```
 
-Under the hood, Argo Rollouts uses `.spec.restartAt` and replaces pods from the existing ReplicaSets. It does not create a new application revision merely by adding a timestamp to the pod template.
+Under the hood, Argo Rollouts uses `.spec.restartAt` and replaces pods from the existing ReplicaSets. Because `restartAt` is outside `.spec.template`, this does not create a new ReplicaSet or Rollout revision.
 
 This operation has capacity implications. The restart documentation warns that a one-replica Rollout has downtime because the pod must be terminated before replacement. Restarts use `maxUnavailable`; they do not use `maxSurge` to pre-create replacement pods. If `.spec.template` changes during a restart, the restart is canceled and the normal update strategy takes over.
 
