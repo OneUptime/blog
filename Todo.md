@@ -2,11 +2,10 @@
 
 ## Argo Rollouts
 
-1. Why Argo Rollouts `setWeight` Does Not Match Real Traffic—and How to Fix It
-2. Header-Based Canary Routing with Argo Rollouts and Istio for External and Internal Traffic
-3. NGINX, ALB, Istio, or Gateway API: Choosing an Argo Rollouts Traffic Router
-4. Argo Rollouts Service Selectors Explained: Stable, Canary, Active, and Preview Services
-5. Argo Rollouts Blue-Green Deployment: Configuring Active and Preview Services Safely
+1. Header-Based Canary Routing with Argo Rollouts and Istio for External and Internal Traffic
+2. NGINX, ALB, Istio, or Gateway API: Choosing an Argo Rollouts Traffic Router
+3. Argo Rollouts Service Selectors Explained: Stable, Canary, Active, and Preview Services
+4. Argo Rollouts Blue-Green Deployment: Configuring Active and Preview Services Safely
 
 ## Remote Write
 
