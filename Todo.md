@@ -1,9 +1,5 @@
 # Blog Post Ideas
 
-## Portainer
-
-1. Why a Stack Works with docker compose but Fails in Portainer
-
 ## Argo Workflows
 
 1. Argo Workflows DAG vs. Steps Templates: Which Structure Fits Your Pipeline?
