@@ -8,12 +8,12 @@ Description: Diagnose why an Argo Rollouts setWeight step differs from observed 
 
 ---
 
-An Argo Rollouts step such as `setWeight: 10` expresses desired canary exposure. What enforces that intent depends on the Rollout strategy:
+An Argo Rollouts step such as `setWeight: 10` expresses desired canary exposure. With the default `maxTrafficWeight` of 100, that means 10%. What enforces that intent depends on the Rollout strategy:
 
 - without `trafficRouting`, Argo approximates 10% by changing stable and canary **replica counts**;
 - with a router, Argo writes a weight into an Istio, NGINX, ALB, Gateway API, or other supported routing resource.
 
-Neither path guarantees that exactly 10% of the requests in every short measurement window reach canary. Replica granularity, persistent connections, sticky sessions, route mismatches, stale endpoints, controller conflicts, and flawed telemetry can all produce a different observed ratio.
+Neither path guarantees that the configured fraction of requests in every short measurement window reaches canary exactly. Replica granularity, persistent connections, sticky sessions, route mismatches, stale endpoints, controller conflicts, and flawed telemetry can all produce a different observed ratio.
 
 The fastest diagnosis is to trace the desired weight through four layers:
 
@@ -43,6 +43,8 @@ Also confirm the Rollout reached the expected step. A pause, failed AnalysisRun,
 ```bash
 kubectl get rollout "$ROLLOUT" -n "$NS" -o json \
   | jq '{
+      generation: .metadata.generation,
+      observedGeneration: .status.observedGeneration,
       phase: .status.phase,
       message: .status.message,
       currentStepIndex: .status.currentStepIndex,
@@ -50,6 +52,8 @@ kubectl get rollout "$ROLLOUT" -n "$NS" -o json \
       conditions: .status.conditions
     }'
 ```
+
+Only rely on `status.phase` and `status.message` when `observedGeneration` equals `generation`; otherwise, the controller has not reported status for the latest Rollout spec.
 
 The plugin's tree view is usually the clearest human-readable display of stable and canary ReplicaSets, step state, and analyses.
 
@@ -86,7 +90,7 @@ Common fixes are:
 
 - increase `spec.replicas` so the requested percentage is representable;
 - make the Service select both revisions through stable application labels, not a fixed hash;
-- fix readiness so only serving Pods become endpoints;
+- fix readiness so only serving Pods are eligible for normal Service traffic, and check `publishNotReadyAddresses` if unready Pods appear Ready;
 - remove `sessionAffinity: ClientIP` if stickiness is unintended;
 - use an integrated traffic router when precise low percentages matter.
 
@@ -94,12 +98,12 @@ Even a correct 1:9 endpoint ratio can produce a skewed request ratio. kube-proxy
 
 ## Case B: Traffic Routing Is Configured
 
-With traffic management, stable and canary Services normally select their respective ReplicaSets, and a router enforces the requested weight. Validate these as two independent claims:
+With host-level traffic management, stable and canary Services normally select their respective ReplicaSets, and a router enforces the requested weight. Istio subset-level splitting is an exception: one Service selects the Rollout Pods, while DestinationRule subset labels separate stable and canary revisions. Validate these as two independent claims:
 
 1. Did Argo write the expected router configuration?
 2. Did the router's data plane converge and send traffic to the expected endpoints?
 
-Start with the Services:
+For host-level routing, start with the Services:
 
 ```bash
 kubectl get service checkout-stable checkout-canary -n "$NS" -o yaml
@@ -115,7 +119,7 @@ Do not permanently hand-edit those hash selectors. Find why the Rollouts control
 
 ## Istio: Inspect the Exact Managed Route
 
-For host-level splitting, Argo continuously updates the named `VirtualService` route so its stable and canary destination weights reflect the desired step. Istio requires the route weights to total 100.
+For host-level splitting, Argo continuously updates the referenced route in the named `VirtualService` so its stable and canary destination weights reflect the desired step. Istio requires the route weights to total 100.
 
 ```bash
 kubectl get virtualservice checkout -n "$NS" -o yaml
@@ -125,9 +129,9 @@ kubectl get rollout "$ROLLOUT" -n "$NS" -o json \
 
 Check:
 
-- the `virtualService.name` is correct, including `.namespace` when it is cross-namespace;
-- `routes` names the intended HTTP/TLS/TCP route when the VirtualService has multiple routes;
-- destination hosts exactly match `stableService` and `canaryService` for host-level splitting;
+- the `virtualService.name`, or each entry in `virtualServices`, is correct, including `.namespace` when it is cross-namespace;
+- `routes`, `tlsRoutes`, and `tcpRoutes` identify the intended routes: `routes` lists HTTP route names, while TLS and TCP selectors match ports and, for TLS, SNI hosts;
+- for host-level splitting, destination hosts match `stableService` and `canaryService`, adding the Service namespace to the host when required for a cross-namespace VirtualService;
 - for subset-level splitting, DestinationRule subset names and injected hash labels match the Rollout;
 - the external and internal traffic paths actually use this VirtualService and gateway;
 - every additional route, gateway, or VirtualService that serves the same host is intentionally managed.
@@ -162,7 +166,7 @@ Check that:
 - header/cookie canary annotations are not intentionally overriding weight behavior;
 - the NGINX controller accepted and reloaded the generated configuration.
 
-Argo's NGINX integration supports `maxTrafficWeight` when a denominator other than 100 is needed. Make sure dashboard calculations use the same denominator and that additional annotations do not encode a different routing policy.
+Argo's NGINX integration supports `trafficRouting.maxTrafficWeight` when a denominator other than 100 is needed. Rollouts then sets the matching `canary-weight-total` annotation, and the effective fraction is `setWeight / maxTrafficWeight`. Make sure dashboard calculations use the same denominator and that additional annotations do not encode a different routing policy.
 
 ## AWS ALB: An Annotation Is Not the Final Data Plane
 
@@ -177,7 +181,7 @@ kubectl describe ingress checkout -n "$NS"
 
 Then compare the Kubernetes annotation with the actual ALB listener action and target-group health in AWS. Reconciliation can be delayed by AWS API throttling, controller downtime, invalid annotations, unhealthy targets, or missing permissions.
 
-Argo Rollouts provides optional target-group IP and weight verification. With `--aws-verify-target-group` and the required AWS region/permissions, Rollouts queries AWS to verify target membership and weight rather than assuming the Ingress update reached the ALB. Enable and test this feature when stale ALB state would make promotion unsafe.
+Argo Rollouts provides optional target-group IP verification for ALBs using IP target mode and weight verification for both IP and instance modes. With `--aws-verify-target-group` and the required AWS region/permissions, Rollouts queries AWS to verify the applicable Pod-IP membership and configured weight rather than assuming the Ingress update reached the ALB. Enable and test this feature when stale ALB state would make promotion unsafe.
 
 ALB target-group stickiness is also explicit Rollout configuration:
 
@@ -201,7 +205,7 @@ Traffic-router plugins translate Rollout intent into provider-specific resources
 - plugin process/download health and controller logs;
 - supported Gateway API kinds and versions for the installed plugin release;
 - the exact `HTTPRoute` or other resource weights after the step;
-- `status.parents[].conditions` showing that the Gateway accepted the route;
+- `status.parents[].conditions` for the current generation showing `Accepted=True`, `ResolvedRefs=True`, and, when reported, `Programmed=True`;
 - data-plane rollout and endpoint health.
 
 Do not assume that installing Gateway API CRDs installs the Argo traffic-router plugin, or that every Gateway implementation supports the same filters and weight semantics.
@@ -252,7 +256,7 @@ Expose a bounded release label at the application or proxy and cross-check at tw
 1. Confirm the current Rollout step and whether routing is basic or provider-managed.
 2. For basic canary, compare desired weight with achievable Ready-Pod ratios.
 3. For routed canary, inspect the exact live VirtualService, Ingress, ALB action, or Gateway route.
-4. Verify stable and canary Service selectors and EndpointSlices.
+4. Verify stable and canary Service selectors and EndpointSlices, or the shared Service and DestinationRule subsets for Istio subset-level routing.
 5. Check controller logs and RBAC for reconciliation failures.
 6. Remove GitOps ownership conflicts on fields Rollouts must mutate.
 7. Inspect router/controller acceptance and propagation, not only Kubernetes desired state.
