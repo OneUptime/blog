@@ -46,7 +46,7 @@ Also check API server health, admission webhooks, the persistence database, and 
 
 ## Use Argo's Controller Metrics
 
-Argo exposes default controller metrics through the `workflow-controller-metrics` service, normally on port `9090`. Metrics can be collected through Prometheus-compatible scraping or OpenTelemetry according to the telemetry configuration.
+Argo exposes default controller metrics from the controller's metrics endpoint, normally on port `9090`. The conventional Service name is `workflow-controller-metrics`, but the default Argo installation does not create that Service; add one or scrape the controller Pods directly. Metrics can be collected through Prometheus-compatible scraping or OpenTelemetry according to the telemetry configuration.
 
 The most useful signals for this incident are:
 
@@ -62,6 +62,8 @@ The most useful signals for this incident are:
 | `resource_rate_limiter_latency` | Delay imposed by the Pod-creation rate limiter |
 | `k8s_request_duration` | Kubernetes API latency by kind, verb, and status |
 
+The two limiter metrics are available in Argo Workflows v4.1 builds and are absent from v4.0.x. On v4.0.x, use controller throttling logs together with queue, operation, and Kubernetes request metrics.
+
 The documented queue names include `workflow_queue`, `pod_cleanup_queue`, `workflow_ttl_queue`, `workflow_archive_queue`, and `cron_wf_queue`. This makes the response specific:
 
 - a growing `workflow_queue` points to Workflow reconciliation capacity;
@@ -70,9 +72,9 @@ The documented queue names include `workflow_queue`, `pod_cleanup_queue`, `workf
 - CronWorkflow delay with a growing `cron_wf_queue` points to CronWorkflow workers;
 - non-zero resource-rate-limiter latency points to deliberate Pod-creation throttling.
 
-Metric names are emitted with Argo's configured namespace/prefix when exported. Confirm the exact series names and labels at the metrics endpoint for your release rather than copying a version-specific dashboard query blindly.
+Prometheus scraping prefixes these metric names with `argo_workflows_`; OTLP exports use the unprefixed instrument names shown above. Confirm the exact series names and labels for your exporter and release rather than copying a version-specific dashboard query blindly.
 
-For a short diagnostic session, port-forward the controller metrics endpoint according to its TLS configuration:
+For a short diagnostic session with a single controller replica, port-forward the controller metrics endpoint according to its TLS configuration:
 
 ```bash
 kubectl -n argo port-forward deployment/workflow-controller 9090:9090
@@ -80,11 +82,13 @@ curl --insecure https://127.0.0.1:9090/metrics \
   | grep -E 'queue_depth|queue_latency|workers_busy|rate_limiter|operation_duration'
 ```
 
+With multiple controller replicas, port-forward the leader Pod directly. A Deployment port-forward selects one matching Pod automatically, and a standby controller's Prometheus endpoint returns no metrics.
+
 The current telemetry documentation defaults metrics TLS to enabled. If your deployment explicitly uses insecure metrics, use `http://` and omit `--insecure`.
 
 ## Step 1: Give the Controller CPU and Memory Headroom
 
-Argo's official scaling guidance starts with vertical resources. Worker goroutines cannot run concurrently when the container is CPU-throttled, and increasing workers increases memory pressure and in-flight API work.
+Argo's official scaling guidance starts with vertical resources. Adding worker goroutines will not add useful throughput when the container is already CPU-throttled, and increasing workers increases memory pressure and in-flight API work.
 
 ```bash
 kubectl top pod -n argo -l app=workflow-controller
@@ -110,7 +114,8 @@ Argo exposes separate controller arguments for separate queues:
 - `--workflow-workers` processes Workflow reconciliation;
 - `--workflow-ttl-workers` processes TTLStrategy deletion;
 - `--pod-cleanup-workers` processes PodGC cleanup;
-- `--cron-workflow-workers` processes CronWorkflow events in Argo Workflows v3.5 and later.
+- `--cron-workflow-workers` processes CronWorkflow events in Argo Workflows v3.5 and later;
+- `--workflow-archive-workers` processes Workflow archiving when persistence and archiving are enabled.
 
 A Deployment fragment might look like this:
 
@@ -130,6 +135,7 @@ spec:
             - --workflow-ttl-workers=8
             - --pod-cleanup-workers=16
             - --cron-workflow-workers=8
+            - --workflow-archive-workers=8
 ```
 
 This is an illustration, not a universal target. Preserve all existing controller arguments when modifying a rendered Deployment, and set values in the Helm/Kustomize/GitOps source of truth.
@@ -156,7 +162,7 @@ Logs such as the following identify **client-side** throttling:
 Waited for 7.09s due to client-side throttling, not priority and fairness
 ```
 
-Confirm the signal in both logs and `client_rate_limiter_latency`. Then verify the Kubernetes API server can safely accept more traffic. A measured adjustment could be:
+Confirm the signal in logs and, on v4.1 builds, in `client_rate_limiter_latency`. Then verify the Kubernetes API server can safely accept more traffic. A measured adjustment could be:
 
 ```yaml
 containers:
@@ -191,12 +197,12 @@ data:
 
 `limit` is the average Pod-creation rate and `burst` allows a short burst before the average is enforced. Despite the setting's name, Argo documents that it applies only to Pod creation—not to ConfigMap, PVC, or other resource creation.
 
-This limiter is useful when a large fan-out could flood the API server. It can also be the intentional reason nodes wait. If `resource_rate_limiter_latency` is non-zero and the API server plus scheduler have demonstrated headroom, raise `limit` and `burst` gradually. If cluster components are already strained, keep or lower the protection and accept a controlled launch rate.
+This limiter is useful when a large fan-out could flood the API server. It can also be the intentional reason nodes wait. If `resource_rate_limiter_latency` is non-zero on a v4.1 build and the API server plus scheduler have demonstrated headroom, raise `limit` and `burst` gradually. On earlier releases, infer limiter pressure from repeated resource-rate-limit messages and Pod-creation delay. If cluster components are already strained, keep or lower the protection and accept a controlled launch rate.
 
 Do not confuse this with Workflow parallelism:
 
 - `resourceRateLimit` shapes how quickly Pod create requests are issued cluster-wide by that controller;
-- Workflow `spec.parallelism` caps concurrently executing Pods/nodes within one Workflow;
+- Workflow `spec.parallelism` caps concurrently executing Pods within one Workflow;
 - controller `parallelism` caps concurrent Workflows;
 - namespace parallelism caps concurrent Workflows per namespace;
 - synchronization mutexes and semaphores enforce application concurrency contracts.
@@ -229,7 +235,7 @@ Those are example values only. Argo notes that Workflows blocked by other mechan
 
 ## Do Not Scale Active Controllers Like Stateless Web Servers
 
-Argo's scaling documentation is explicit: the Workflow controller cannot be horizontally scaled as several ordinary active replicas. Multiple replicas provide a hot standby through leader election; they do not multiply active reconciliation throughput. The `is_leader` metric identifies the leader, and standby controllers do not run the workload as extra workers.
+Argo's scaling documentation is explicit: the Workflow controller cannot be horizontally scaled as several ordinary active replicas. Multiple replicas provide a hot standby through leader election; they do not multiply active reconciliation throughput. The `is_leader` metric reports `1` on the active leader; a standby's Prometheus endpoint is empty, and standby controllers do not run the workload as extra workers.
 
 For scale beyond one controller's vertical capacity, shard intentionally:
 
