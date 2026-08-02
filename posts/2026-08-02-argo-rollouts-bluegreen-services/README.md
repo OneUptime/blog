@@ -115,7 +115,6 @@ spec:
       previewService: checkout-preview
       autoPromotionEnabled: false
       previewReplicaCount: 2
-      maxUnavailable: 0
       scaleDownDelaySeconds: 60
       antiAffinity:
         preferredDuringSchedulingIgnoredDuringExecution:
@@ -207,7 +206,7 @@ kubectl port-forward -n shop service/checkout-preview 18080:80
 curl --fail --show-error http://127.0.0.1:18080/version
 ```
 
-Port-forwarding traverses the preview Service selector, which is useful for confirming that it points at the candidate. It is not proof that a separate ingress or mesh route works.
+Port-forwarding uses the preview Service selector to choose a backing Pod, then forwards directly to that Pod. This is useful for confirming that the selector resolves to a candidate Pod, but it does not exercise normal Service proxying or prove that a separate ingress or mesh route works.
 
 ## Validate Before Promotion
 
@@ -232,7 +231,7 @@ Before approving, confirm:
 
 - active's hash maps to the previously promoted image;
 - preview's hash maps to the intended candidate image;
-- preview EndpointSlices contain only Ready candidate Pods;
+- every preview EndpointSlice endpoint maps to a candidate Pod, and its `ready` condition is true before it is treated as a normal Service traffic target;
 - active request success, latency, and saturation remain normal;
 - preview smoke and metric analyses passed;
 - six candidate Pods can schedule before the active switch;
@@ -262,7 +261,7 @@ Pod phase `Running` is insufficient. Argo waits for candidate availability, so r
 
 Avoid probes that return success before caches, migrations, listener sockets, or required dependencies are usable. Also avoid coupling readiness to every optional remote dependency in a way that flaps all endpoints during a minor downstream incident.
 
-Keep `maxUnavailable: 0` when production availability cannot drop during the transition, while ensuring the cluster can run the necessary candidate capacity. Argo's specification requires a nonzero unavailable allowance if no surge capacity can exist in relevant update configurations; validate the rendered strategy against your release.
+Do not use blue-green `maxUnavailable` as a cutover capacity control. For a blue-green strategy, that field controls Pod unavailability during restart operations; template updates instead bring the candidate to the target replica count before switching active. The blue-green strategy has no `maxSurge` field, so ensure the cluster can run the required old and candidate capacity directly.
 
 ## Choose a Scale-Down Delay from Real Propagation
 
@@ -282,7 +281,7 @@ scaleDownDelayRevisionLimit: 2
 
 `scaleDownDelayRevisionLimit` bounds how many old ReplicaSets remain scaled while delays overlap. A short delay saves resources but increases stale-target risk; a long delay increases capacity cost. Observe the actual data plane.
 
-Argo's documentation explicitly warns that blue-green with AWS ALB is not supported without a chance of downtime because target-group replacement is not atomic or inherently safe. Review the ALB integration's target-group verification and ping-pong options, and do not assume a Kubernetes Service selector switch alone provides zero downtime through ALB.
+Argo's documentation explicitly warns that blue-green with AWS ALB is not supported without a chance of downtime because target-group replacement is not atomic or inherently safe. Argo's target-group verification and ping-pong options belong to its ALB traffic-routing integration for canary strategies; they do not make this plain blue-green Service-selector pattern atomic. Do not assume a Kubernetes Service selector switch alone provides zero downtime through ALB.
 
 ## Add Post-Promotion Analysis for Automatic Reversal
 
@@ -300,13 +299,13 @@ strategy:
         - templateName: checkout-live-health
 ```
 
-If post-promotion analysis fails or errors, Argo documents that the Rollout aborts and switches traffic back to the previous stable ReplicaSet. Keep the old ReplicaSet alive throughout this decision window and make analysis queries specific, bounded, and tolerant of low-traffic no-data cases.
+If post-promotion analysis fails or errors, Argo documents that the Rollout aborts and switches traffic back to the previous stable ReplicaSet. When `scaleDownDelaySeconds` is set explicitly, keep the analysis duration within that window: when the delay expires, Argo cancels a still-running AnalysisRun and scales down the old ReplicaSet. If the delay is omitted, Argo keeps the old ReplicaSet until post-promotion analysis completes, with a minimum 30-second delay. Make analysis queries specific, bounded, and tolerant of low-traffic no-data cases.
 
 Test the failure path deliberately. An AnalysisTemplate that can never obtain data may block or abort production in surprising ways.
 
 ## Abort and Recover
 
-Before promotion, abort should leave active on the previous stable revision. After an active switch, post-promotion failure or manual abort needs the old ReplicaSet and a functioning selector reversal.
+Before promotion, abort should leave active on the previous stable revision. While a rollout is still progressing after an active switch, post-promotion failure or manual abort needs the old ReplicaSet and a functioning selector reversal. Once the rollout is fully promoted, `abort` is not a rollback mechanism; restore a previous Pod template through Git or use an explicit undo workflow.
 
 ```bash
 kubectl argo rollouts abort checkout -n shop
@@ -318,7 +317,7 @@ kubectl get endpointslice -n shop \
 
 Verify real requests after abort, not only Rollout phase. Persistent connections may remain on a revision until clients reconnect, and external controllers may lag behind Kubernetes state.
 
-An abort changes live routing but does not change the desired image stored in Git. Restore the known-good Pod template through the source of truth so GitOps and Rollouts converge on a healthy state.
+An abort can change live routing but does not change the desired image stored in Git. Restore the known-good Pod template through the source of truth so GitOps and Rollouts converge on a healthy state.
 
 ## Database and Queue Compatibility
 
