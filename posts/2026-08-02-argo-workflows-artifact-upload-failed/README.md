@@ -33,7 +33,7 @@ kubectl get pod -n workflows <pod-name> \
   -o jsonpath='{.spec.initContainers[*].name}{"\n"}{.spec.containers[*].name}{"\n"}'
 ```
 
-In the traditional executor Pod layout, input artifact errors normally appear in the `init` container and output upload errors in the `wait` container. Newer installations may use Argo's init-less layout, where a `supervisor` container performs both pre-main and post-main work. Read whichever infrastructure containers the Pod actually contains:
+In the traditional executor Pod layout, input artifact errors normally appear in the `init` container and output upload errors in the `wait` container. Argo Workflows v4.1 introduces an opt-in beta init-less layout, where a `supervisor` container performs both pre-main and post-main work; the traditional layout remains the default. Read whichever infrastructure containers the Pod actually contains:
 
 ```bash
 kubectl logs -n workflows <pod-name> -c wait
@@ -234,11 +234,11 @@ s3:
 
 `insecure: true` means the endpoint uses plain HTTP. It is not a switch to ignore certificate validation. For TLS-enabled MinIO, use `insecure: false` or omit the insecure setting. If MinIO presents a certificate issued by a private CA, store that CA certificate in a Secret and reference it with the driver's `caSecret` fields as documented by Argo.
 
-From a temporary diagnostic Pod in the same namespace and under the same NetworkPolicy, test DNS and TCP reachability:
+From a temporary diagnostic Pod in the same namespace, test DNS and TCP reachability. If NetworkPolicies select Pods by label, give the diagnostic Pod labels that cause the same egress policies to apply as on the failed Workflow Pod:
 
 ```bash
 kubectl run -n workflows artifact-netcheck --rm -it \
-  --image=curlimages/curl --restart=Never -- \
+  --image=curlimages/curl --restart=Never --command -- \
   curl -v http://minio.storage.svc.cluster.local:9000/minio/health/live
 ```
 
@@ -346,7 +346,7 @@ spec:
               none: {}
 ```
 
-Submit and retain the Pod while diagnosing:
+Submit and watch the smoke Workflow:
 
 ```bash
 argo submit -n workflows artifact-smoke.yaml --watch
