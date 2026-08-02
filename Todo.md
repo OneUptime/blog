@@ -3,8 +3,7 @@
 ## Argo Workflows
 
 1. Argo Workflow Timeouts Explained: Workflow, Template, and Pod Deadlines
-2. Fixing “Request Entity Too Large” in Argo Workflows with Node-Status Offloading
-3. Argo Workflow Controller Is Falling Behind: Tuning Workers, QPS, and Pod Creation
+2. Argo Workflow Controller Is Falling Behind: Tuning Workers, QPS, and Pod Creation
 
 ## Argo Rollouts
 
