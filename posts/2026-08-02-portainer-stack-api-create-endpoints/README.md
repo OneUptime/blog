@@ -8,13 +8,13 @@ Description: Migrate Portainer automation from the removed POST /stacks route to
 
 ---
 
-An automation that used to create a stack with a request like this can begin returning `404 Not Found` after Portainer is upgraded:
+An automation that used to create a stack with a request like this can begin failing after Portainer is upgraded:
 
 ```text
 POST /api/stacks?type=2&method=string&endpointId=3
 ```
 
-The likely cause is not the stack name, authentication token, or Compose YAML. Portainer deprecated the generic `POST /stacks` operation and removed it after introducing explicit creation routes. `GET /api/stacks` still lists stacks, so a successful list request does not prove that the old create operation still exists.
+A proxy or API gateway may expose the removed operation as `404 Not Found`. A request that reaches Portainer 2.27 directly normally receives `405 Method Not Allowed`, because `GET /api/stacks` remains registered for the same path. In either case, if the failure began with that upgrade, the likely cause is not the stack name, authentication token, or Compose YAML. Portainer deprecated the generic `POST /stacks` operation and removed it after introducing explicit creation routes. `GET /api/stacks` still lists stacks, so a successful list request does not prove that the old create operation still exists.
 
 The fix is to choose a route that encodes both the target orchestrator and the source of the definition.
 
@@ -36,7 +36,7 @@ The old create operation selected behavior with query parameters such as `type` 
 
 All of these routes require the destination Portainer environment as the `endpointId` query parameter. In Portainer terminology, older API fields and documentation may call this an endpoint; the UI generally calls it an environment.
 
-Portainer's deprecation table records that `POST /stacks` was deprecated in 2.20 and removed in 2.27. Do not solve the resulting 404 by pinning old server software indefinitely. Change the client to the supported route and the current schema for your installed edition.
+Portainer's deprecation table records that `POST /stacks` was deprecated in 2.20 and removed in 2.27. Do not solve the resulting failure by pinning old server software indefinitely. Change the client to the supported route and the current schema for your installed edition.
 
 ## Before Migrating, Record the Effective Old Request
 
@@ -217,7 +217,7 @@ The namespace must exist and the Portainer user must have access to deploy there
 
 ## Repository Endpoints Need Their Own Current Schema
 
-For Git-backed stacks, select the `repository` route for the target orchestrator. Repository payloads include source location or a reference to stored source credentials, the file path within the repository, its Git reference, deployment environment variables, and optional update settings.
+For Git-backed stacks, select the `repository` route for the target orchestrator. Depending on the orchestrator, repository payloads include the source location or a reference to a stored source, the file path within the repository, its Git reference, deployment environment variables for Docker stacks, and optional update settings.
 
 Those fields have evolved independently from the route migration. In particular, do not copy a password-bearing example from an old blog and assume it matches the current API. Open Portainer's API reference for the exact server edition and release, find the operation for the chosen `.../repository` path, and generate the payload from that schema. Prefer stored Git credentials or source references where the current API provides them.
 
