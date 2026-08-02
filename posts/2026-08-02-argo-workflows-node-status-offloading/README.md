@@ -34,7 +34,7 @@ Check whether the Workflow exists:
 
 ```bash
 NS=workflows
-WF=<workflow-name>
+WF=replace-with-workflow-name
 
 kubectl get workflow "$WF" -n "$NS"
 kubectl get workflow "$WF" -n "$NS" -o json \
@@ -67,7 +67,7 @@ The progression is automatic:
 2. When needed, Argo compresses it into `.status.compressedNodes`.
 3. If compressed status still exceeds the safe resource size, a persistence-enabled controller offloads it to SQL.
 
-An offloaded Workflow has `.status.offloadNodeStatusVersion` populated with a hash identifying the database version. The field reference specifies that `.status.nodes` and `.status.compressedNodes` are empty in this state. Operators should not patch that hash or database row manually; they are coordinated by the controller.
+An offloaded Workflow has `.status.offloadNodeStatusVersion` populated with a hash of the offloaded node data that identifies the stored version. The field reference specifies that `.status.nodes` and `.status.compressedNodes` are empty in this state. Operators should not patch that hash or database row manually; they are coordinated by the controller.
 
 Offloading is demand-driven by default. Enabling it does not mean every small Workflow immediately appears in the offload table. The controller avoids the database write when normal or compressed status fits.
 
@@ -152,7 +152,7 @@ The controller performs database schema migration when persistence starts unless
 
 Do not validate the feature with a tiny hello-world Workflow. Offloading is normally invoked only once status needs it.
 
-Use a non-production test Workflow with enough nodes to cross the compression threshold, or reproduce the known failing Workflow at controlled concurrency. Watch the status fields:
+Use a non-production test Workflow with enough nodes that its status remains over the workflow-size ceiling after compression, or reproduce the known failing Workflow at controlled concurrency. Watch the status fields:
 
 ```bash
 watch -n 5 "kubectl get workflow '$WF' -n '$NS' -o json | \
@@ -166,9 +166,9 @@ Success has three signals:
 
 - the controller log says persistence and node-status offloading are enabled;
 - `.status.offloadNodeStatusVersion` becomes non-empty for a sufficiently large Workflow;
-- `argo get`, the Argo UI, and Workflow progression continue to work after offloading.
+- `argo get` in Argo Server mode, the Argo UI, and Workflow progression continue to work after offloading.
 
-The Kubernetes object alone no longer contains its node map after offloading. Use Argo-aware clients connected to the correctly configured Argo Server/controller environment to retrieve the reconstructed view.
+The Kubernetes object alone no longer contains its node map after offloading. Use the Argo UI or the Argo CLI in Argo Server mode, connected to the correctly configured Argo Server, to retrieve the reconstructed view.
 
 Also verify failure behavior. Temporarily blocked database connectivity in a test environment should produce visible alerts; otherwise a database outage can turn into stalled large Workflows without an operator noticing.
 
@@ -193,7 +193,7 @@ Reduce repeated specification data using Argo's documented composition patterns:
 If the exact submission error is `Failed to submit workflow: etcdserver: request is too large`, the Argo offloading documentation directs clients to submit through Argo Server using the Argo CLI with `ARGO_SERVER` configured:
 
 ```bash
-export ARGO_SERVER=argo.example.com
+export ARGO_SERVER=argo.example.com:443
 export ARGO_SECURE=true
 argo submit workflow.yaml -n "$NS"
 ```
@@ -225,7 +225,7 @@ Argo Workflows v4.1 and later also supports selectable node-status compression a
 
 ### The key is in the wrong ConfigMap shape
 
-The controller supports individual ConfigMap data keys and the alternate consolidated `data.config` form. Do not mix indentation between them. Inspect the live object and the controller's rendered configuration log after rollout.
+The controller supports individual ConfigMap data keys and the alternate consolidated `data.config` form. Do not mix indentation between them. Inspect the live object and the controller's configuration status messages after rollout.
 
 ### Archive was enabled, but offloading was not
 
