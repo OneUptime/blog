@@ -2,16 +2,15 @@
 
 ## Portainer
 
-1. Why “Re-Pull Image and Redeploy” Fails in Portainer—and What to Check
-2. Portainer API Authentication: JWT Tokens vs. API Keys for Scripts and CI
-3. Portainer Stack API Returns 404 After an Upgrade: Migrating to the New Create Endpoints
-4. How to Back Up and Restore Portainer—and What the Backup Does Not Include
-5. How to Migrate Portainer to a New Host Without Losing Stacks or Volumes
-6. Portainer Behind Nginx, Traefik, or Cloudflare: Fixing Login, WebSocket, and HTTPS Problems
-7. How to Connect Portainer to a Private Registry Without 401 or Certificate Errors
-8. How to Secure Portainer in Production: Docker Socket Access, RBAC, TLS, and Network Exposure
-9. How to Reset a Forgotten Portainer Admin Password Without Losing Configuration
-10. Why a Stack Works with docker compose but Fails in Portainer
+1. Portainer API Authentication: JWT Tokens vs. API Keys for Scripts and CI
+2. Portainer Stack API Returns 404 After an Upgrade: Migrating to the New Create Endpoints
+3. How to Back Up and Restore Portainer—and What the Backup Does Not Include
+4. How to Migrate Portainer to a New Host Without Losing Stacks or Volumes
+5. Portainer Behind Nginx, Traefik, or Cloudflare: Fixing Login, WebSocket, and HTTPS Problems
+6. How to Connect Portainer to a Private Registry Without 401 or Certificate Errors
+7. How to Secure Portainer in Production: Docker Socket Access, RBAC, TLS, and Network Exposure
+8. How to Reset a Forgotten Portainer Admin Password Without Losing Configuration
+9. Why a Stack Works with docker compose but Fails in Portainer
 
 ## Argo Workflows
 
