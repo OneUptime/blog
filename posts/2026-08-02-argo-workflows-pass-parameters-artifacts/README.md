@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Argo Workflows, Kubernetes, Parameters, Artifacts, Data Pipelines, S3, Workflow Outputs
+Tags: Argo Workflows, Kubernetes, Parameter, Artifact, Data Pipeline, S3, Workflow Outputs
 
 Description: Pass small values and files between Argo Workflow steps or DAG tasks with correctly declared inputs, outputs, references, artifact repositories, and production-safe data contracts.
 
@@ -362,7 +362,7 @@ The `items` value must be valid JSON, such as:
 ["alpha","beta","gamma"]
 ```
 
-Shell output that merely looks list-like—`alpha beta gamma`, single-quoted Python representation, or newline-separated text—is not a JSON array. Generate it with a JSON library and keep unrelated logs off stdout if `outputs.result` supplies the value.
+Shell output that merely looks list-like-`alpha beta gamma`, single-quoted Python representation, or newline-separated text-is not a JSON array. Generate it with a JSON library and keep unrelated logs off stdout if `outputs.result` supplies the value.
 
 Looped tasks can produce aggregated parameters, but aggregation changes the shape of the output. Inspect the actual Workflow status and parse the documented JSON form rather than assuming a scalar.
 

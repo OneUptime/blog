@@ -1,4 +1,4 @@
-# Header-Based Canary Routing with Argo Rollouts and Istio for External and Internal Traffic
+# Header-Based Canary Routing with Argo Rollouts and Istio
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

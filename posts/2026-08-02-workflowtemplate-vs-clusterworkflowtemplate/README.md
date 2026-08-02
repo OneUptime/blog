@@ -13,7 +13,7 @@ Description: Choose namespaced WorkflowTemplates or cluster-scoped ClusterWorkfl
 - A `WorkflowTemplate` is namespaced and is reused within its namespace.
 - A `ClusterWorkflowTemplate` is cluster-scoped and can be accessed across namespaces in the cluster.
 
-That scope is an ownership and change-management boundary—not just a way to save duplicated YAML. A cluster template can affect many teams at once, while a namespaced template can evolve with one tenant or application.
+That scope is an ownership and change-management boundary-not just a way to save duplicated YAML. A cluster template can affect many teams at once, while a namespaced template can evolve with one tenant or application.
 
 ## First, Separate `template` from `WorkflowTemplate`
 
@@ -214,7 +214,7 @@ A `ClusterWorkflowTemplate` is a good fit when:
 
 Examples include a standardized source checkout, organization-approved vulnerability scan, provenance generation, notification adapter, or a constrained deployment primitive.
 
-The shared template should expose explicit inputs instead of relying on hidden namespace state. If it needs a Secret named `registry-credentials`, document that every consumer namespace must provide a compatible Secret—or accept its name as a parameter where the field supports parameterization.
+The shared template should expose explicit inputs instead of relying on hidden namespace state. If it needs a Secret named `registry-credentials`, document that every consumer namespace must provide a compatible Secret-or accept its name as a parameter where the field supports parameterization.
 
 ## Cluster Scope Does Not Grant Runtime Privilege
 

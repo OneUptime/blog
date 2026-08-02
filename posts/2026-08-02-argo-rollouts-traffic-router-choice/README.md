@@ -8,7 +8,7 @@ Description: Choose an Argo Rollouts traffic router by comparing traffic scope, 
 
 ---
 
-The best Argo Rollouts traffic router is usually the data plane your platform already operates and observes—not the provider with the longest feature list. The four common choices solve different problems:
+The best Argo Rollouts traffic router is usually the data plane your platform already operates and observes-not the provider with the longest feature list. The four common choices solve different problems:
 
 - **NGINX Ingress** is an annotation-driven, ingress-only integration, but the Kubernetes community Ingress NGINX project was retired in March 2026 and should not be a new platform choice.
 - **AWS ALB** is a strong fit for EKS applications whose production traffic already enters through AWS Application Load Balancers.
@@ -80,7 +80,7 @@ Therefore:
 
 - do not choose community Ingress NGINX for a new 2026 platform;
 - if it is already in use, treat the Argo integration as an interim capability while executing a migration;
-- do not assume a commercial or alternative NGINX controller implements identical canary annotations—test its documented Argo compatibility.
+- do not assume a commercial or alternative NGINX controller implements identical canary annotations-test its documented Argo compatibility.
 
 ## AWS ALB: Best When AWS Is Already the Edge
 
@@ -196,7 +196,7 @@ Gateway API conformance is feature-specific. A Route that is syntactically porta
 - weighted routing, cross-namespace Route attachment through listener `allowedRoutes`, cross-namespace backend or Secret references through `ReferenceGrant`, TLS, and protocol behavior;
 - rollout abort, controller restart, and config-propagation behavior.
 
-Gateway API is often the best greenfield direction, especially after Ingress NGINX retirement, but production adoption should follow an implementation-specific conformance and failure test—not an assumption that the standard makes every data plane identical.
+Gateway API is often the best greenfield direction, especially after Ingress NGINX retirement, but production adoption should follow an implementation-specific conformance and failure test-not an assumption that the standard makes every data plane identical.
 
 ## Choose by Traffic Scope
 

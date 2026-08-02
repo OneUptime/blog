@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Argo Rollouts, Kubernetes, Canary Deployment, Blue-Green Deployment, Operations, Troubleshooting
+Tags: Argo Rollouts, Kubernetes, Canary Deployment, Blue-Green Deployment, Operation, Troubleshooting
 
 Description: Choose the correct Argo Rollouts operation by separating step progression, update rejection, aborted-update recovery, and same-revision pod replacement.
 
@@ -63,7 +63,7 @@ Retry is specifically for restarting an aborted Rollout or a failed Experiment:
 kubectl argo rollouts retry rollout payments
 ```
 
-It is appropriate only after the reason for aborting has been removed without changing the pod template—for example, a repaired metrics endpoint, corrected temporary dependency, or resolved cluster-capacity incident.
+It is appropriate only after the reason for aborting has been removed without changing the pod template-for example, a repaired metrics endpoint, corrected temporary dependency, or resolved cluster-capacity incident.
 
 Do not use retry to pretend that a bad image changed. If application code, image content, configuration, or pod-template fields must change, publish a new immutable artifact and update `.spec.template`. That creates an auditable new revision and runs the strategy against the thing you actually intend to ship.
 
@@ -118,4 +118,3 @@ The command name should reflect the intended state transition, not merely the op
 - [Argo Rollouts: Abort](https://argo-rollouts.readthedocs.io/en/stable/generated/kubectl-argo-rollouts/kubectl-argo-rollouts_abort/)
 - [Argo Rollouts: Retry](https://argo-rollouts.readthedocs.io/en/stable/generated/kubectl-argo-rollouts/kubectl-argo-rollouts_retry/)
 - [Argo Rollouts: Restarting Rollout Pods](https://argo-rollouts.readthedocs.io/en/stable/features/restart/)
-

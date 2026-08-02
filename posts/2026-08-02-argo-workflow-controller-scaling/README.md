@@ -1,4 +1,4 @@
-# Argo Workflow Controller Is Falling Behind: Tuning Workers, QPS, and Pod Creation
+# Argo Workflow Controller Scaling: Tuning Workers, QPS, and Pod Creation
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -172,7 +172,7 @@ containers:
       - --burst=75
 ```
 
-Keep burst greater than QPS so short reconciliation bursts can pass without immediately waiting. Raise values gradually while watching API request latency, error status codes, API Priority and Fairness behavior, etcd health, and traffic from every cluster controller—not only Argo.
+Keep burst greater than QPS so short reconciliation bursts can pass without immediately waiting. Raise values gradually while watching API request latency, error status codes, API Priority and Fairness behavior, etcd health, and traffic from every cluster controller-not only Argo.
 
 Do not interpret HTTP `429 Too Many Requests` or high API server latency as permission to keep raising client QPS. A client-side wait with a healthy server can justify a higher client budget. Server-side rejection means the shared control plane is already applying backpressure and needs capacity, workload reduction, or fairer traffic policy.
 
@@ -195,7 +195,7 @@ data:
       burst: 25
 ```
 
-`limit` is the average Pod-creation rate and `burst` allows a short burst before the average is enforced. Despite the setting's name, Argo documents that it applies only to Pod creation—not to ConfigMap, PVC, or other resource creation.
+`limit` is the average Pod-creation rate and `burst` allows a short burst before the average is enforced. Despite the setting's name, Argo documents that it applies only to Pod creation-not to ConfigMap, PVC, or other resource creation.
 
 This limiter is useful when a large fan-out could flood the API server. It can also be the intentional reason nodes wait. If `resource_rate_limiter_latency` is non-zero on a v4.1 build and the API server plus scheduler have demonstrated headroom, raise `limit` and `burst` gradually. On earlier releases, infer limiter pressure from repeated resource-rate-limit messages and Pod-creation delay. If cluster components are already strained, keep or lower the protection and accept a controlled launch rate.
 
@@ -273,7 +273,7 @@ kubectl get events -A --sort-by=.lastTimestamp \
   | tail -n 100
 ```
 
-A successful tuning change drains the affected queue faster without transferring failure to the API server, scheduler, database, or workload nodes. That is the real target—not the largest worker or QPS number the controller accepts.
+A successful tuning change drains the affected queue faster without transferring failure to the API server, scheduler, database, or workload nodes. That is the real target-not the largest worker or QPS number the controller accepts.
 
 ## Official Documentation
 

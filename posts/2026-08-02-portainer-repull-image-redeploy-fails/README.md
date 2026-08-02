@@ -1,8 +1,8 @@
-# Why “Re-Pull Image and Redeploy” Fails in Portainer—and What to Check
+# Why “Re-Pull Image and Redeploy” Fails in Portainer-and What to Check
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Portainer, Docker, Container Images, Deployment, Troubleshooting, Registries
+Tags: Portainer, Docker, Container Image, Deployment, Troubleshooting, Registries
 
 Description: Diagnose why Portainer keeps running an old image after a pull or redeploy, from mutable tags and registry access to stack configuration and platform mismatches.
 
@@ -141,7 +141,7 @@ The editable source of truth depends on how the stack was created:
 - **External stack:** Portainer did not create the stack, so management and update options are deliberately limited.
 - **Container created outside a stack:** recreate that container; updating a similarly named stack will not affect it.
 
-In the stack list, Portainer can show an image-update indicator. A grey hyphen means Portainer could not determine whether a newer image is available; it does not prove that the image is current. Reloading the indicator only refreshes that check—it is not itself a deployment.
+In the stack list, Portainer can show an image-update indicator. A grey hyphen means Portainer could not determine whether a newer image is available; it does not prove that the image is current. Reloading the indicator only refreshes that check-it is not itself a deployment.
 
 ## The New Image May Be Running Even If the UI Looks Unchanged
 

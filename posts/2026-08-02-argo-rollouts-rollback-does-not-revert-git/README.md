@@ -107,7 +107,7 @@ That chain explains both what users ran during the incident and what the reposit
 ## Official Documentation
 
 - [Argo Rollouts FAQ: Rollbacks and Git](https://argo-rollouts.readthedocs.io/en/stable/FAQ/)
-- [Argo Rollouts: Getting Started — Aborting and Reverting](https://argo-rollouts.readthedocs.io/en/stable/getting-started/)
+- [Argo Rollouts: Getting Started - Aborting and Reverting](https://argo-rollouts.readthedocs.io/en/stable/getting-started/)
 - [Argo Rollouts: Rollback Windows](https://argo-rollouts.readthedocs.io/en/stable/features/rollback/)
 - [Argo CD: Automated Sync Policy](https://argo-cd.readthedocs.io/en/stable/user-guide/auto_sync/)
 - [Argo CD: Automation from CI Pipelines](https://argo-cd.readthedocs.io/en/stable/user-guide/ci_automation/)

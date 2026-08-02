@@ -1,8 +1,8 @@
-# Argo Workflows Artifact Upload Failed: Debugging S3, MinIO, GCS, and Azure Storage
+# Argo Workflows Artifact Upload Failures: S3, MinIO, GCS, and Azure
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Argo Workflows, Kubernetes, Artifacts, Amazon S3, MinIO, Google Cloud Storage, Azure Blob Storage
+Tags: Argo Workflows, Kubernetes, Artifact, Amazon S3, MinIO, Google Cloud Storage, Azure Blob Storage
 
 Description: Diagnose Argo Workflows artifact upload failures across S3, MinIO, GCS, and Azure by checking executor logs, repository selection, credentials, paths, and storage permissions.
 

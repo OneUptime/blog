@@ -1,8 +1,8 @@
-# Can Argo Rollouts Manage StatefulSets? Safer Patterns for Stateful Canary Releases
+# Argo Rollouts and StatefulSets: Safer Stateful Canary Patterns
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Argo Rollouts, Kubernetes, StatefulSet, Canary Deployment, Databases, Progressive Delivery, Persistent Volumes
+Tags: Argo Rollouts, Kubernetes, StatefulSet, Canary Deployment, Database, Progressive Delivery, Persistent Volume
 
 Description: Understand why Argo Rollouts does not manage StatefulSets and choose partitioned updates, operators, replication, or stateless boundaries for safer stateful releases.
 
@@ -58,7 +58,7 @@ kubectl get pods -l app=database -L controller-revision-hash
 kubectl logs database-2
 ```
 
-Then reduce the partition deliberately—`1`, then `0`—with an application-specific verification gate between stages.
+Then reduce the partition deliberately-`1`, then `0`-with an application-specific verification gate between stages.
 
 This is ordinal canarying, not percentage-based traffic shifting. Your client, proxy, or database topology decides which requests reach the updated member.
 
@@ -133,7 +133,7 @@ Use it only with a runbook or controller that knows the safe order and validates
 - Confirm version-skew and downgrade compatibility.
 - Preserve pod identity, PVC mapping, and governing Services.
 - Decide how the canary ordinal receives test traffic or workload.
-- Validate replication, quorum, lag, and member role—not only Pod Ready.
+- Validate replication, quorum, lag, and member role-not only Pod Ready.
 - Stage partition changes one ordinal at a time where appropriate.
 - Document the forced-rollback pod deletion path.
 - Fence writers during blue-green or leader transitions.

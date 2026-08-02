@@ -1,4 +1,4 @@
-# Prometheus AnalysisTemplates in Argo Rollouts: Handling Arrays, NaN, and Empty Results
+# Argo Rollouts Prometheus Analysis: Arrays, NaN, and Empty Results
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

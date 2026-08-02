@@ -1,4 +1,4 @@
-# Portainer Stack API Returns 404 After an Upgrade: Migrating to the New Create Endpoints
+# Portainer Stack API 404 After Upgrade: Migrating to New Create Endpoints
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# Argo Rollouts Blue-Green Deployment: Configuring Active and Preview Services Safely
+# Argo Rollouts Blue-Green: Active and Preview Services
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

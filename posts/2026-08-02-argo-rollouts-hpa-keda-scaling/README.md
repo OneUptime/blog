@@ -1,4 +1,4 @@
-# Argo Rollouts with HPA or KEDA: Preventing Unexpected Replica Scale-Ups and Scale-Downs
+# Argo Rollouts with HPA or KEDA: Preventing Unexpected Replica Scaling
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -141,7 +141,7 @@ The Kubernetes HPA supports separate scale-up and scale-down behavior. For produ
 - limit the percentage or number of pods removed per interval;
 - choose a minimum that preserves stable capacity and availability;
 - align PodDisruptionBudgets, resource quotas, and cluster autoscaling;
-- consider temporarily disabling scale-down—not scale-up—during a high-risk migration when policy allows it;
+- consider temporarily disabling scale-down-not scale-up-during a high-risk migration when policy allows it;
 - keep readiness and startup probes accurate so new capacity is not counted too early.
 
 The Rollout's `maxSurge`, `maxUnavailable`, traffic-routing scale behavior, and autoscaler maximum can briefly produce more pods than the steady-state desired count. Size namespace quota and nodes for rollout surge as well as the HPA maximum.

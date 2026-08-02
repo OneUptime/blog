@@ -1,8 +1,8 @@
-# Can Argo Rollouts Do a Canary Without a Service Mesh? Replica-Based Routing Explained
+# Argo Rollouts Canary Without a Service Mesh: Replica-Based Routing
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Argo Rollouts, Kubernetes, Canary Deployment, ReplicaSets, Services, Traffic Routing, Service Mesh, Progressive Delivery
+Tags: Argo Rollouts, Kubernetes, Canary Deployment, ReplicaSet, Service, Traffic Routing, Service Mesh, Progressive Delivery
 
 Description: Run Argo Rollouts canaries without a service mesh by understanding replica-weighted Services, setWeight approximation, operational limits, and when a traffic router is still needed.
 

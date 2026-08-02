@@ -1,8 +1,8 @@
-# PodGC, TTLStrategy, and Workflow Archive: What Gets Deleted—and When?
+# PodGC, TTLStrategy, and Workflow Archive: What Gets Deleted-and When?
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Argo Workflows, Kubernetes, PodGC, TTLStrategy, Workflow Archive, Garbage Collection, Retention, Operations
+Tags: Argo Workflows, Kubernetes, PodGC, TTLStrategy, Workflow Archive, Garbage Collection, Retention, Operation
 
 Description: Understand exactly how Argo Workflows PodGC, TTLStrategy, and the Workflow Archive affect Pods, live Workflow resources, archived records, logs, and artifacts.
 

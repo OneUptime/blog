@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Argo Workflows, REST API, SSO, OIDC, Authentication, Kubernetes RBAC, Service Accounts
+Tags: Argo Workflows, REST API, SSO, OIDC, Authentication, Kubernetes RBAC, Service Account
 
 Description: Call the Argo Workflows REST API safely alongside SSO by enabling client auth for automation, issuing a least-privilege service account token, and using the correct endpoint and Bearer header.
 

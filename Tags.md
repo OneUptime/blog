@@ -369,11 +369,13 @@
 - Active Queries
 - Active Query
 - Active Record
+- Active Service
 - Active State
 - Active Storage
 - Active-Active
 - Active-Backup
 - Active-Passive
+- activeDeadlineSeconds
 - Activedefrag
 - ActiveJob
 - ActiveMQ
@@ -474,6 +476,7 @@
 - Admin Console
 - Admin Dashboard
 - Admin Interface
+- Admin Recovery
 - Admin SDK
 - Admin Setup
 - Admin Socket
@@ -749,6 +752,8 @@
 - AMT
 - Anacron
 - Analysis
+- AnalysisRun
+- AnalysisTemplate
 - Analytical Query
 - Analytics
 - Analytics Database
@@ -1198,6 +1203,7 @@
 - Artifact Management
 - Artifact Optimization
 - Artifact Registry
+- Artifact Repository
 - Artifact Storage
 - Artifact Store
 - Artifactgenerator
@@ -1426,6 +1432,7 @@
 - Auto-Scaling
 - Auto-Shutdown
 - Auto-Stop
+- Auto-Sync
 - Auto-Tiering
 - Auto-Tuning
 - Auto-Unlock
@@ -3359,6 +3366,7 @@
 - ClusterSecretStore
 - ClusterTrustBundle
 - ClusterUpgrade
+- ClusterWorkflowTemplate
 - CLV
 - CMake
 - CMAP
@@ -3638,6 +3646,7 @@
 - Concourse CI
 - Concurrency
 - Concurrency Control
+- Concurrency Policy
 - Concurrent
 - Concurrent Access
 - Concurrent Delete
@@ -4238,6 +4247,7 @@
 - Cron.yaml
 - CronJob
 - Crontab
+- CronWorkflow
 - CROSS JOIN
 - Cross Product
 - Cross-Account
@@ -6570,6 +6580,7 @@
 - Exit code 137
 - Exit code 139
 - Exit code 143
+- Exit Handlers
 - Expansion
 - Expect
 - Expect Module
@@ -6606,6 +6617,7 @@
 - Exporter
 - EXPOSE
 - Exposed
+- Expr
 - Express
 - Express Workflows
 - Express.js
@@ -6718,6 +6730,7 @@
 - Failure Analysis
 - Failure Domain
 - Failure Handling
+- Failure Notifications
 - Failure Prediction
 - Failure Recovery
 - Failure Simulation
@@ -9769,6 +9782,7 @@
 - Kubernetes Operations
 - Kubernetes Operator
 - Kubernetes Provider
+- Kubernetes RBAC
 - Kubernetes Scheduler
 - Kubernetes Scheduling
 - Kubernetes Secrets
@@ -11556,6 +11570,7 @@
 - MutationTesting
 - Mute Rules
 - Mutex
+- Mutexes
 - Muting Rules
 - Mutt
 - Mutual Authentication
@@ -12054,6 +12069,7 @@
 - Node Exporter
 - Node Failure
 - Node Feature Discovery
+- Node Field Selector
 - Node Groups
 - Node Health
 - Node ID
@@ -12092,6 +12108,7 @@
 - Node Services
 - Node Shutdown
 - Node Status
+- Node Status Offloading
 - Node Surge
 - Node Taints
 - Node Templates
@@ -12721,6 +12738,7 @@
 - Output Format
 - Output Formatters
 - Output Formatting
+- Output Parameters
 - Output Redirection
 - output_format_json_quote_64bit_integers
 - OvenMediaEngine
@@ -13057,6 +13075,8 @@
 - PEM
 - Pending
 - Pending Messages
+- Pending Pods
+- pendingTimeout
 - Penetration Testing
 - People Analytics
 - Per-Attempt Metrics
@@ -13406,6 +13426,7 @@
 - Pod Disruption Budget
 - Pod Distribution
 - Pod Eviction
+- Pod Garbage Collection
 - Pod Hardening
 - Pod Health
 - Pod Identity
@@ -13435,6 +13456,7 @@
 - Podcast
 - Podcasting
 - PodDisruptionBudget
+- PodGC
 - Podman
 - Podman Compose
 - Podman Desktop
@@ -13753,6 +13775,7 @@
 - Preview
 - Preview Deployments
 - Preview Environments
+- Preview Service
 - Preview-Environments
 - PREWHERE
 - Price Feed
@@ -14211,6 +14234,7 @@
 - QNAP
 - QoS
 - QoS Classes
+- QPS
 - QRadar
 - qryn
 - Quadlet
@@ -15159,6 +15183,7 @@
 - Restricted Environments
 - Restricted PSS
 - RestTemplate
+- Resubmit
 - Result
 - Result Set
 - Result Set Caching
@@ -15199,6 +15224,7 @@
 - Retry Storm
 - Retry Strategies
 - Retry Strategy
+- Retry-After
 - Retryable Read
 - Retryable Write
 - Return
@@ -16337,6 +16363,7 @@
 - Set_stats
 - Set-DnsClientServerAddress
 - SETBIT
+- setCanaryScale
 - Setfacl
 - Setifnotpresent
 - SETNX
@@ -16348,6 +16375,7 @@
 - Settings Management
 - Settings Profile
 - Setup
+- setWeight
 - SetWindowFields
 - Severity
 - Severity Filtering
@@ -17290,6 +17318,7 @@
 - Step Mode
 - Step Weight
 - Step-Up Authentication
+- Steps
 - Stick Tables
 - Stickiness
 - Sticky Bit
@@ -18705,6 +18734,7 @@
 - TTL
 - TTL Index
 - Ttl Indexes
+- TTLStrategy
 - TUI
 - Tun
 - Tuna
@@ -19773,6 +19803,9 @@
 - WITH ROLLUP
 - With Statement
 - WITH TOTALS
+- withItems
+- withParam
+- withSequence
 - Witness Node
 - Wiz
 - WMS
@@ -19805,17 +19838,24 @@
 - Workers AI
 - Workers KV
 - Workflow
+- Workflow Archive
 - Workflow Automation
 - Workflow Control
+- Workflow Controller
+- Workflow Design
 - Workflow Dispatch
 - Workflow engine
+- Workflow Executor
 - Workflow Management
 - Workflow Monitoring
 - Workflow Optimization
 - Workflow Orchestration
+- Workflow Outputs
 - Workflow Resilience
 - Workflow Studio
 - Workflow Templates
+- Workflow Variables
+- WorkflowTemplate
 - Workforce
 - Workforce Identity
 - Workforce Identity Federation

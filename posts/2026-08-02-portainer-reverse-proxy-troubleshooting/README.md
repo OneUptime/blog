@@ -1,8 +1,8 @@
-# Portainer Behind Nginx, Traefik, or Cloudflare: Fixing Login, WebSocket, and HTTPS Problems
+# Portainer Reverse Proxy: Fixing Login, WebSocket, and HTTPS Problems
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Portainer, Nginx, Traefik, Cloudflare, Reverse Proxy, WebSockets, HTTPS, Troubleshooting
+Tags: Portainer, Nginx, Traefik, Cloudflare, Reverse Proxy, WebSocket, HTTPS, Troubleshooting
 
 Description: Configure and troubleshoot Portainer behind Nginx, Traefik, or Cloudflare by preserving its public origin, WebSocket upgrades, TLS chain, paths, ports, and timeouts.
 

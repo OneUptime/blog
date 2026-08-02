@@ -1,8 +1,8 @@
-# Least-Privilege RBAC for Argo Workflows: Controllers, Executors, Users, and Retries
+# Argo Workflows Least-Privilege RBAC: Controllers, Executors, and Users
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Argo Workflows, Kubernetes, RBAC, Security, Service Accounts, Workflow Executor, Retry
+Tags: Argo Workflows, Kubernetes, RBAC, Security, Service Account, Workflow Executor, Retry
 
 Description: Design least-privilege Argo Workflows RBAC by separating controller, server, submitter, retry operator, and Workflow Pod identities and testing each required permission.
 

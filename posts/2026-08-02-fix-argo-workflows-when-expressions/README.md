@@ -1,8 +1,8 @@
-# Fixing Argo Workflow `when` Expressions, Quoting Errors, and Unresolved Variables
+# Fix Argo Workflow `when` Expressions, Quoting, and Unresolved Variables
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Argo Workflows, Kubernetes, Conditionals, Expressions, YAML, Workflow Variables, Debugging
+Tags: Argo Workflows, Kubernetes, Conditional, Expression, YAML, Workflow Variables, Debugging
 
 Description: Fix Argo Workflow when-condition failures by choosing the right expression form, quoting YAML safely, indexing hyphenated names, ordering outputs, and handling skipped values.
 
@@ -361,7 +361,7 @@ Check:
 - producer ordering/dependency;
 - output parameter declaration;
 - skipped/omitted producer;
-- scope—the referenced value may exist only inside another template.
+- scope-the referenced value may exist only inside another template.
 
 ### `invalid token`, `unexpected token`, or failed condition evaluation
 
@@ -387,7 +387,7 @@ rather than:
 args: ["{{ inputs.parameters.message }}"]
 ```
 
-Also check whether another renderer—Helm, Kustomize plugins, Jinja, or Terraform—consumed or escaped the braces before the Workflow reached Kubernetes.
+Also check whether another renderer-Helm, Kustomize plugins, Jinja, or Terraform-consumed or escaped the braces before the Workflow reached Kubernetes.
 
 ## Debug the Stored Workflow
 

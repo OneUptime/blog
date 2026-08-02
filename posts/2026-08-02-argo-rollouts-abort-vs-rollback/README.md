@@ -120,7 +120,7 @@ Abort buys time by returning managed production traffic to stable. The Git or ma
 ## Official Documentation
 
 - [Argo Rollouts: Abort Command](https://argo-rollouts.readthedocs.io/en/stable/generated/kubectl-argo-rollouts/kubectl-argo-rollouts_abort/)
-- [Argo Rollouts: Getting Started — Aborting a Rollout](https://argo-rollouts.readthedocs.io/en/stable/getting-started/)
+- [Argo Rollouts: Getting Started - Aborting a Rollout](https://argo-rollouts.readthedocs.io/en/stable/getting-started/)
 - [Argo Rollouts FAQ: Rollbacks and Git](https://argo-rollouts.readthedocs.io/en/stable/FAQ/)
 - [Argo Rollouts: Rollback Windows](https://argo-rollouts.readthedocs.io/en/stable/features/rollback/)
 - [Argo Rollouts: Canary Strategy](https://argo-rollouts.readthedocs.io/en/stable/features/canary/)

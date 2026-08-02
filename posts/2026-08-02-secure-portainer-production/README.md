@@ -1,4 +1,4 @@
-# How to Secure Portainer in Production: Docker Socket Access, RBAC, TLS, and Network Exposure
+# Secure Portainer in Production: Docker Socket, RBAC, TLS, and Networks
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

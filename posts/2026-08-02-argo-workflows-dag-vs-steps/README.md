@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Argo Workflows, Kubernetes, DAG, Steps, Workflow Design, CI/CD, Data Pipelines
+Tags: Argo Workflows, Kubernetes, DAG, Steps, Workflow Design, CI/CD, Data Pipeline
 
 Description: Choose between Argo Workflows DAG and steps templates by modeling dependencies, parallel stages, failure behavior, output references, and maintainable pipeline boundaries.
 
@@ -15,7 +15,7 @@ Argo Workflows offers two template types for orchestrating other templates:
 
 Both can call the same container, script, resource, HTTP, suspend, or reusable external templates. The choice is about how to express control flow, not which workloads Argo can execute.
 
-The short rule is: use **steps** when the pipeline is naturally a small number of ordered stages, and use a **DAG** when dependency edges—not stage numbers—are the clearest description of the work.
+The short rule is: use **steps** when the pipeline is naturally a small number of ordered stages, and use a **DAG** when dependency edges-not stage numbers-are the clearest description of the work.
 
 ## How Steps Scheduling Works
 
@@ -329,7 +329,7 @@ When changing a steps template to a DAG:
 3. Change output references from `steps` to `tasks`.
 4. Translate failure behavior, including any `continueOn`, into explicit `depends` results where appropriate.
 5. Decide whether DAG `failFast` should stay at its default or be `false`.
-6. Review concurrency—the new DAG may expose much more parallel work.
+6. Review concurrency-the new DAG may expose much more parallel work.
 7. Run `argo lint` and submit a small test with observable durations and intentional failures.
 
 When changing a DAG to steps, do the reverse analysis. Every outer-list boundary adds a barrier. Confirm that the extra waiting is intentional and that conditional dependency expressions have a safe equivalent.

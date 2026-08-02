@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Argo Rollouts, Smoke Testing, AnalysisTemplate, Kubernetes Jobs, Webhooks, Progressive Delivery
+Tags: Argo Rollouts, Smoke Testing, AnalysisTemplate, Kubernetes jobs, Webhook, Progressive Delivery
 
 Description: Gate an Argo Rollout with containerized Job smoke tests and JSON-returning Web metrics while controlling routing, credentials, timeouts, and failure behavior.
 
@@ -178,7 +178,7 @@ Never promote solely because the test infrastructure is broken unless an authori
 - Separate sequential gates into separate rollout steps.
 - Exercise success, application failure, test-infrastructure failure, and timeout paths before production.
 
-Job and Web analysis turn existing smoke tests into controller-enforced release policy—as long as the target, outcome, and failure mode are all explicit.
+Job and Web analysis turn existing smoke tests into controller-enforced release policy-as long as the target, outcome, and failure mode are all explicit.
 
 ## Official Documentation
 

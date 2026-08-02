@@ -293,7 +293,7 @@ argo get -n workflows "$RESULT_WORKFLOW_NAME" -o json \
     '
 ```
 
-For retry, confirm failed nodes received new attempts while unrelated successful nodes stayed intact. For memoized resubmit, confirm the new UID and identify reused/skipped nodes whose messages name the original Pod IDs. Finally, validate the external outcome—not only the final green Workflow phase.
+For retry, confirm failed nodes received new attempts while unrelated successful nodes stayed intact. For memoized resubmit, confirm the new UID and identify reused/skipped nodes whose messages name the original Pod IDs. Finally, validate the external outcome-not only the final green Workflow phase.
 
 ## Official Documentation
 

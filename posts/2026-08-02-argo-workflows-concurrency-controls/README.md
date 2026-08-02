@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Argo Workflows, Kubernetes, Concurrency, Parallelism, Semaphores, Mutexes, Synchronization
+Tags: Argo Workflows, Kubernetes, Concurrency, Parallelism, Semaphore, Mutexes, Synchronization
 
 Description: Control Argo Workflows concurrency at the Workflow, template, controller, and shared-resource levels with parallelism limits, ConfigMap semaphores, and mutexes.
 
@@ -218,7 +218,7 @@ metadata:
     workflows.argoproj.io/parallelism-limit: "2"
 ```
 
-The controller needs `get`, `list`, and `watch` access to Namespace objects for label-based limits. The official docs note that omission is not fatal—the feature simply does not work—so verify RBAC rather than assuming the label is active.
+The controller needs `get`, `list`, and `watch` access to Namespace objects for label-based limits. The official docs note that omission is not fatal-the feature simply does not work-so verify RBAC rather than assuming the label is active.
 
 These settings limit Workflow executions, not a precise number of Pods. A Workflow that is executing but unable to run more nodes because of another limit still counts toward controller parallelism. Use Kubernetes quotas and Argo's Workflow/template controls for the resource boundary they actually govern.
 

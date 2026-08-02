@@ -1,4 +1,4 @@
-# Argo CD Auto-Sync and Argo Rollouts Rollbacks: Avoiding Surprising Reconciliation
+# Argo CD Auto-Sync and Rollouts: Avoiding Surprising Reconciliation
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

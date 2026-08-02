@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Argo Workflows, Kubernetes, Loops, Fan-Out, withItems, withParam, withSequence
+Tags: Argo Workflows, Kubernetes, Loop, Fan-Out, withItems, withParam, withSequence
 
 Description: Fan out Argo Workflow steps and DAG tasks with static items, runtime JSON arrays, and numeric sequences while keeping inputs, outputs, and concurrency predictable.
 
@@ -114,7 +114,7 @@ Treat the substituted item as a parameter string at the template boundary. If th
 
 ## Fan Out Over Runtime Data with `withParam`
 
-`withParam` is the dynamic option. Its value must be a string containing a JSON array—not a YAML list and not a comma-separated string.
+`withParam` is the dynamic option. Its value must be a string containing a JSON array-not a YAML list and not a comma-separated string.
 
 The array can arrive as a Workflow parameter:
 

@@ -1,8 +1,8 @@
-# How to Back Up and Restore Portainer—and What the Backup Does Not Include
+# How to Back Up and Restore Portainer-and What the Backup Does Not Include
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Portainer, Backup, Restore, Disaster Recovery, Docker, Persistent Volumes, Operations
+Tags: Portainer, Backup, Restore, Disaster Recovery, Docker, Persistent Volume, Operation
 
 Description: Back up and restore Portainer configuration safely, understand exactly what its archive contains, and protect workload data with a separate recovery plan.
 
@@ -24,7 +24,7 @@ Portainer documents the backup as a `tar.gz` archive of the information stored i
 - Edge groups, jobs, configurations, status, and pending commands; and
 - stack definitions and metadata for stacks deployed through Portainer.
 
-Stack files created through Portainer are included. That is valuable, but a stack definition is declarative instructions—not the live resources or their persistent bytes.
+Stack files created through Portainer are included. That is valuable, but a stack definition is declarative instructions-not the live resources or their persistent bytes.
 
 Treat the archive as sensitive. Even when individual stored values are protected internally, it contains security-relevant configuration, identities, credentials, certificates, and topology. Encrypt it, restrict access, and apply the same retention controls used for other privileged system backups.
 
@@ -222,7 +222,7 @@ At a regular interval:
 6. record recovery time, missing dependencies, and manual decisions; and
 7. destroy the isolated test environment securely.
 
-This makes the limitation of Portainer's archive explicit: it restores Portainer very well only when the external pieces—runtime deployment, network, identity provider, agents, registries, secrets, and workload data—are also recoverable.
+This makes the limitation of Portainer's archive explicit: it restores Portainer very well only when the external pieces-runtime deployment, network, identity provider, agents, registries, secrets, and workload data-are also recoverable.
 
 ## Official Documentation
 

@@ -1,4 +1,4 @@
-# Why Argo Rollouts `setWeight` Does Not Match Real Traffic—and How to Fix It
+# Why Argo Rollouts `setWeight` Does Not Match Real Traffic-and How to Fix It
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -57,7 +57,7 @@ Only rely on `status.phase` and `status.message` when `observedGeneration` equal
 
 The plugin's tree view is usually the clearest human-readable display of stable and canary ReplicaSets, step state, and analyses.
 
-## Case A: No Traffic Router—The Weight Is a Pod Ratio
+## Case A: No Traffic Router-The Weight Is a Pod Ratio
 
 Argo's canary documentation calls this a best-effort approximation. With ten replicas, 10% can be one canary Pod and nine stable Pods. With four replicas, the useful whole-Pod increments are roughly 25 percentage points. The controller chooses the closest achievable ratio while considering surge and availability; the documented 10-replica example maps 41% to four canary Pods because 4/10 is closer than 5/10.
 
@@ -94,7 +94,7 @@ Common fixes are:
 - remove `sessionAffinity: ClientIP` if stickiness is unintended;
 - use an integrated traffic router when precise low percentages matter.
 
-Even a correct 1:9 endpoint ratio can produce a skewed request ratio. kube-proxy and upstream proxies distribute connections, while HTTP keep-alive, HTTP/2, and gRPC can carry many requests over one previously selected connection. Measure many independent connections over a representative interval, and measure at the backend revision—not only at the client or edge.
+Even a correct 1:9 endpoint ratio can produce a skewed request ratio. kube-proxy and upstream proxies distribute connections, while HTTP keep-alive, HTTP/2, and gRPC can carry many requests over one previously selected connection. Measure many independent connections over a representative interval, and measure at the backend revision-not only at the client or edge.
 
 ## Case B: Traffic Routing Is Configured
 

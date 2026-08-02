@@ -1,8 +1,8 @@
-# Argo CronWorkflow Missed a Run: Debugging Time Zones, Starting Deadlines, and Concurrency
+# Argo CronWorkflow Missed Runs: Time Zones, Deadlines, and Concurrency
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Argo Workflows, Kubernetes, CronWorkflow, Scheduling, Time Zones, Concurrency Policy, Debugging
+Tags: Argo Workflows, Kubernetes, CronWorkflow, Scheduling, Time Zone, Concurrency Policy, Debugging
 
 Description: Diagnose missing Argo CronWorkflow runs by checking the resolved schedule, IANA time zone, suspension and expressions, recovery deadline, concurrency policy, and controller state.
 

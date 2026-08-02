@@ -121,7 +121,7 @@ Configure `consecutiveErrorLimit` when transient provider errors should be retri
 
 Use `initialDelay` to let canary telemetry arrive, bounded counts and intervals for inline gates, provider timeouts, explicit no-data policy, and immutable test images. Test AnalysisTemplates independently by creating an AnalysisRun before wiring them into production progression. Retain enough measurement history to debug with `measurementRetention`, and use `ttlStrategy` or the Rollout's `successfulRunHistoryLimit` and `unsuccessfulRunHistoryLimit` to balance evidence with object cleanup.
 
-An AnalysisRun becomes understandable when you treat it as a schedule of typed measurements plus explicit policy—not as a single opaque pass/fail check.
+An AnalysisRun becomes understandable when you treat it as a schedule of typed measurements plus explicit policy-not as a single opaque pass/fail check.
 
 ## Official Documentation
 

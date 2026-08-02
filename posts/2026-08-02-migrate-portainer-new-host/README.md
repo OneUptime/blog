@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Portainer, Migration, Docker, Stacks, Volumes, Backup, Disaster Recovery
+Tags: Portainer, Migration, Docker, Stack, Volumes, Backup, Disaster Recovery
 
 Description: Move Portainer and Docker workloads to a new host while preserving management configuration, stack definitions, named volumes, bind mounts, and a tested rollback path.
 
@@ -10,7 +10,7 @@ Description: Move Portainer and Docker workloads to a new host while preserving 
 
 Migrating “Portainer” can mean two very different operations:
 
-1. Move the Portainer Server—the UI, users, environment definitions, and configuration—to a new host while the managed Docker or Kubernetes environments stay where they are.
+1. Move the Portainer Server-the UI, users, environment definitions, and configuration-to a new host while the managed Docker or Kubernetes environments stay where they are.
 2. Move a Docker environment and its workloads to a new host as well.
 
 The first migration uses Portainer's configuration backup and restore. The second also requires an application migration because Portainer does not carry containers or persistent volume contents inside its backup. Treating these as one opaque copy operation is how a stack arrives with an empty database.
@@ -167,7 +167,7 @@ When copying, preserve the metadata the application needs:
 - SELinux labels or other mandatory access-control context; and
 - sparse files and filesystem semantics for applications that rely on them.
 
-Pause writers for the final synchronization. After copying, test the path from the destination Docker daemon's perspective—not from the machine where a remote Docker client happens to run. Docker resolves bind sources on the daemon host.
+Pause writers for the final synchronization. After copying, test the path from the destination Docker daemon's perspective-not from the machine where a remote Docker client happens to run. Docker resolves bind sources on the daemon host.
 
 ## Make Images Available on the Destination
 

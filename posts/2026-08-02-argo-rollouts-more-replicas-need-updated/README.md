@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Argo Rollouts, Kubernetes, ReplicaSet, Pod Scheduling, Readiness Probes, Troubleshooting, Progressive Delivery
+Tags: Argo Rollouts, Kubernetes, ReplicaSet, Pod Scheduling, Readiness Probe, Troubleshooting, Progressive Delivery
 
 Description: Diagnose the Argo Rollouts “more replicas need to be updated” status by tracing the desired revision from ReplicaSet scaling through pod availability and controller reconciliation.
 

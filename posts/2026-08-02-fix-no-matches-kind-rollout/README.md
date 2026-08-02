@@ -124,7 +124,7 @@ kubectl rollout status deployment/argo-rollouts -n argo-rollouts
 
 The official installation page uses the `latest` release URL. For repeatable production and GitOps installations, resolve an approved release and pin that immutable version in the download URL or vendored manifest instead of allowing future runs to change versions implicitly.
 
-Applying a cluster-scoped CRD with `-n argo-rollouts` is harmless—the CRD itself is not namespaced. The namespace flag matters for namespaced resources in the combined installation manifest.
+Applying a cluster-scoped CRD with `-n argo-rollouts` is harmless-the CRD itself is not namespaced. The namespace flag matters for namespaced resources in the combined installation manifest.
 
 ## 5. Namespace-Scoped Installation Requires a Separate CRD Step
 
@@ -271,7 +271,7 @@ kubectl get rollouts,analysisruns,analysistemplates,experiments -A
 kubectl get clusteranalysistemplates
 ```
 
-Treat CRD deletion as a destructive cluster-data operation requiring a separate recovery plan—not a discovery-cache repair.
+Treat CRD deletion as a destructive cluster-data operation requiring a separate recovery plan-not a discovery-cache repair.
 
 ## Quick Resolution Checklist
 

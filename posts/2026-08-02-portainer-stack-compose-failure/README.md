@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Portainer, Docker Compose, Docker Swarm, Stacks, Troubleshooting, Containers, DevOps
+Tags: Portainer, Docker Compose, Docker Swarm, Stack, Troubleshooting, Container, DevOps
 
 Description: Diagnose Portainer stack failures by comparing the target engine, Compose inputs, variables, files, builds, registry credentials, external resources, and Swarm behavior.
 

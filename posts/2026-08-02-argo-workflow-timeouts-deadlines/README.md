@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Argo Workflows, Kubernetes, Timeouts, Deadlines, activeDeadlineSeconds, pendingTimeout, Reliability
+Tags: Argo Workflows, Kubernetes, Timeout, Deadlines, activeDeadlineSeconds, pendingTimeout, Reliability
 
 Description: Understand Argo Workflow, template, pending, and Pod active deadlines, where each clock starts, how retries and Cron scheduling interact, and how to debug timeouts.
 
@@ -166,7 +166,7 @@ The intended budget is:
 
 If the Pod waits 25 seconds and runs for 90 seconds, the Pod deadline is the likely first limit. If it waits 40 seconds, `pendingTimeout` can fire first. If the Workflow has already consumed 59 minutes, the global deadline can stop this node before either local budget expires.
 
-This is why a timeout message should be read together with Workflow timestamps, node timestamps, and Pod status—not inferred from the YAML value alone.
+This is why a timeout message should be read together with Workflow timestamps, node timestamps, and Pod status-not inferred from the YAML value alone.
 
 ## Apply Defaults Without Losing Exceptions
 

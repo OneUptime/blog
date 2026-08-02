@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Portainer, API, Authentication, JWT, API Keys, CI/CD, Security
+Tags: Portainer, API, Authentication, JWT, API Key, CI/CD, Security
 
 Description: Compare Portainer JWT authentication with API access tokens, use the correct headers, and choose a safer credential pattern for scripts and CI pipelines.
 

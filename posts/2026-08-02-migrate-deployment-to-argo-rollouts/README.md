@@ -158,7 +158,7 @@ kubectl apply -f checkout-rollout.yaml
 kubectl argo rollouts get rollout checkout-rollout -n shop --watch
 ```
 
-Argo's getting-started documentation notes that the initial creation of a Rollout scales directly to 100% and skips canary update steps because there is no previous Rollout revision to compare. The migration safety therefore comes from running beside the Deployment and waiting for health—not from expecting the initial Rollout to pause at 10%.
+Argo's getting-started documentation notes that the initial creation of a Rollout scales directly to 100% and skips canary update steps because there is no previous Rollout revision to compare. The migration safety therefore comes from running beside the Deployment and waiting for health-not from expecting the initial Rollout to pause at 10%.
 
 With `onsuccess`, the expected sequence is:
 

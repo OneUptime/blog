@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Argo Workflows, Kubernetes, Pending Pods, Scheduling, ResourceQuota, RBAC, Service Accounts, Troubleshooting
+Tags: Argo Workflows, Kubernetes, Pending Pods, Scheduling, ResourceQuota, RBAC, Service Account, Troubleshooting
 
 Description: Diagnose an Argo Workflow stuck in Pending by separating controller queues from Pod scheduling, then checking capacity, constraints, quotas, admission, and RBAC.
 
@@ -150,7 +150,7 @@ kubectl describe resourcequota -n "$NS"
 kubectl describe limitrange -n "$NS"
 ```
 
-Compare `Used` with `Hard` for Pods, requests, limits, PVCs, and any extended resources. Then inspect the Pod specification Argo is trying to generate from Workflow and template defaults. A quota denial is fixed by releasing or increasing the constrained resource, reducing concurrency, or supplying compliant requests—not by restarting the Workflow controller.
+Compare `Used` with `Hard` for Pods, requests, limits, PVCs, and any extended resources. Then inspect the Pod specification Argo is trying to generate from Workflow and template defaults. A quota denial is fixed by releasing or increasing the constrained resource, reducing concurrency, or supplying compliant requests-not by restarting the Workflow controller.
 
 ### 5. Verify controller RBAC
 

@@ -1,8 +1,8 @@
-# Argo Rollouts Service Selectors Explained: Stable, Canary, Active, and Preview Services
+# Argo Rollouts Service Selectors: Stable, Canary, Active, and Preview
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Argo Rollouts, Kubernetes, Services, Selectors, Canary Deployment, Blue-Green Deployment, ReplicaSets, Traffic Routing
+Tags: Argo Rollouts, Kubernetes, Service, Selector, Canary Deployment, Blue-Green Deployment, ReplicaSet, Traffic Routing
 
 Description: Understand how Argo Rollouts rewrites stable, canary, active, and preview Service selectors with ReplicaSet hashes, and troubleshoot endpoints safely.
 
