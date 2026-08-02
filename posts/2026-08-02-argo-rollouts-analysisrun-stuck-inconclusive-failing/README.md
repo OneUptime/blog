@@ -41,13 +41,13 @@ This run cannot finish immediately: it delays, then schedules five measurements 
 
 Background analysis can be deliberately open-ended. The analysis documentation allows `count: 0` to run until the Rollout ends for background analysis. In an inline analysis step, however, a zero count means the analysis is not executed. Know whether the template is referenced under `strategy.canary.analysis` or inside a `steps[].analysis` entry.
 
-Job metrics also remain running until the Kubernetes Job completes. Read `job-name` from `.status.metricResults[].measurements[].metadata`, then inspect the Job and its pods:
+Job metrics also remain running until the Kubernetes Job completes. Read `job-name` and `job-namespace` from `.status.metricResults[].measurements[].metadata`, then inspect the Job and its pods in that namespace. If the controller is configured to run analysis Jobs in another cluster, use the corresponding `kubectl` context as well:
 
 ```bash
-kubectl describe job <job-name> -n payments
-kubectl get pods -n payments \
+kubectl describe job <job-name> -n <job-namespace>
+kubectl get pods -n <job-namespace> \
   -l batch.kubernetes.io/job-name=<job-name>
-kubectl logs job/<job-name> -n payments
+kubectl logs job/<job-name> -n <job-namespace>
 ```
 
 A hanging test process, missing deadline, unschedulable pod, or dependency timeout can make the AnalysisRun wait.
@@ -68,7 +68,7 @@ failureCondition: result[0] < 0.95
 
 A value of `0.97` is intentionally inconclusive. The Rollout pauses for human action rather than promoting or aborting. That is useful for a review band, but surprising if the author assumed every number had an outcome.
 
-Job metrics can also become inconclusive when a pod is stuck in a terminal waiting state such as `ErrImagePull`, `ImagePullBackOff`, or `InvalidImageName`; the documented provider behavior short-circuits and pauses the Rollout.
+Job-provider handling of terminal waiting states is version-specific. In Argo Rollouts v1.9.1 and earlier, `ErrImagePull`, `ImagePullBackOff`, and `InvalidImageName` do not by themselves make a Job metric inconclusive; the provider waits for the Job to become `Complete` or `Failed`, so the AnalysisRun can remain `Running`. Newer development builds add terminal-wait detection that short-circuits the measurement to `Inconclusive` and pauses the Rollout. Verify the installed controller version before deciding which behavior to expect.
 
 After investigation, either promote/resume the Rollout or abort it. Do not promote merely to clear a dashboard state; record why the result was safe.
 
@@ -79,7 +79,7 @@ A failure is normally a valid provider result that the template classified as ba
 - `failureCondition` evaluated true;
 - a success condition evaluated false when no separate failure condition exists;
 - a Job test exited nonzero;
-- repeated failed measurements reached `failureLimit`.
+- repeated failed measurements exceeded `failureLimit`.
 
 Inspect the raw value and condition together. A query returning an empty array can fail `len(result) > 0 && result[0] >= 0.99` even though the application itself has no recorded errors. That is a telemetry-policy failure, and failing closed may be exactly the intended behavior.
 
@@ -119,7 +119,7 @@ Configure `consecutiveErrorLimit` when transient provider errors should be retri
 
 ## Prevent Recurrence
 
-Use `initialDelay` to let canary telemetry arrive, bounded counts and intervals for inline gates, provider timeouts, explicit no-data policy, and immutable test images. Test AnalysisTemplates independently by creating an AnalysisRun before wiring them into production progression. Retain enough measurement history to debug, or use the documented AnalysisRun TTL and history fields to balance evidence with object cleanup.
+Use `initialDelay` to let canary telemetry arrive, bounded counts and intervals for inline gates, provider timeouts, explicit no-data policy, and immutable test images. Test AnalysisTemplates independently by creating an AnalysisRun before wiring them into production progression. Retain enough measurement history to debug with `measurementRetention`, and use `ttlStrategy` or the Rollout's `successfulRunHistoryLimit` and `unsuccessfulRunHistoryLimit` to balance evidence with object cleanup.
 
 An AnalysisRun becomes understandable when you treat it as a schedule of typed measurements plus explicit policy—not as a single opaque pass/fail check.
 
