@@ -8,13 +8,15 @@ Description: Reset Portainer's initial administrator password with the official 
 
 ---
 
-Portainer keeps its configuration in the persistent storage mounted at `/data`. The official `portainer/helper-reset-password` image updates the initial administrator record in that data store; it does not require a fresh Portainer installation.
+Portainer keeps its configuration in the persistent storage mounted at `/data`. The official `portainer/helper-reset-password` image updates the initial administrator record in an unencrypted `portainer.db` data store; it does not require a fresh Portainer installation.
 
 The safe recovery rule is simple:
 
 > Stop Portainer, mount the **same existing `/data` storage** into the helper, run the reset, and start Portainer again.
 
 Do not delete `portainer_data`, create a replacement volume, or remove a Kubernetes PersistentVolumeClaim (PVC). Those actions, not the password reset, are what make an existing instance appear to have lost its configuration.
+
+The current helper does not support Portainer's encrypted database file, `portainer.edb`. If database encryption is enabled, do not use this procedure; use another signed-in administrator or contact Portainer support for a supported recovery path.
 
 ## Choose the Simplest Available Recovery
 
@@ -254,7 +256,7 @@ Do not try to use Portainer Server's `--admin-password` or `--admin-password-fil
 
 ### `Unable to locate /data/portainer.db on disk`
 
-The helper is looking at the wrong or an empty volume. Re-run `docker inspect`, `docker volume ls`, or `kubectl get pvc`, and confirm that the existing data root is mounted directly at `/data`. Do not continue by setting up a new instance.
+First check whether the data root contains `portainer.edb`. That means Portainer database encryption is enabled, which the current helper does not support; do not rename the encrypted file or try to open it as `portainer.db`. Otherwise, the helper is looking at the wrong or an empty volume. Re-run `docker inspect`, `docker volume ls`, or `kubectl get pvc`, and confirm that the existing data root is mounted directly at `/data`. Do not continue by setting up a new instance.
 
 ### Database Open or Timeout Error
 
