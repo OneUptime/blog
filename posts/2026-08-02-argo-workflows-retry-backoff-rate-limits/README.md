@@ -132,6 +132,7 @@ spec:
         source: |
           import datetime
           import email.utils
+          import math
           import os
           import random
           import sys
@@ -159,7 +160,10 @@ spec:
                           tzinfo=datetime.timezone.utc
                       )
                   now = datetime.datetime.now(datetime.timezone.utc)
-                  return max(0, int((retry_at - now).total_seconds()))
+                  return max(
+                      0,
+                      math.ceil((retry_at - now).total_seconds()),
+                  )
               except (TypeError, ValueError, OverflowError):
                   return None
 
@@ -168,10 +172,17 @@ spec:
               if requested is None:
                   requested = min(2 ** local_attempt, 30)
 
-              delay = min(max(requested, 1), MAX_SERVER_DELAY)
-              # Positive jitter reduces synchronized retries while still waiting
-              # at least as long as the server requested.
-              delay += random.uniform(0, min(1.0, delay * 0.1))
+              bounded_delay = min(max(requested, 1), MAX_SERVER_DELAY)
+              # Positive jitter reduces synchronized retries without shortening
+              # the bounded requested delay or exceeding the application cap.
+              delay = min(
+                  bounded_delay
+                  + random.uniform(
+                      0,
+                      min(1.0, bounded_delay * 0.1),
+                  ),
+                  MAX_SERVER_DELAY,
+              )
               print(
                   f"rate limited; waiting {delay:.2f}s before local retry",
                   file=sys.stderr,
@@ -364,7 +375,7 @@ Check that:
 - a large `Retry-After` follows your explicit application policy;
 - the final Workflow status and error message remain actionable.
 
-Also distinguish application retries from Argo's automatic Pod restart feature for failures before a Pod enters `Running`. They solve different failure phases and can both affect how many Pod executions you observe.
+Also distinguish application retries from Argo's optional automatic Pod restart feature for infrastructure failures before the main container enters `Running`. When enabled in the controller, it solves a different failure phase and can also affect how many Pod executions you observe.
 
 ## Production Checklist
 
