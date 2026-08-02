@@ -10,7 +10,7 @@ Description: Compare Portainer JWT authentication with API access tokens, use th
 
 Portainer supports two authentication patterns that are easy to confuse because both ultimately authorize requests as a Portainer user:
 
-- Authenticate with a username and password at `POST /api/auth`, receive a short-lived JWT, and send it as an HTTP bearer token.
+- Authenticate with an internal or configured LDAP username and password at `POST /api/auth`, receive a short-lived JWT, and send it as an HTTP bearer token. Ordinary OAuth users authenticate through Portainer's OAuth flow instead.
 - Create an API access token for a user and send it directly in the `X-API-Key` header.
 
 The headers are not interchangeable. A valid Portainer API key in `Authorization: Bearer ...` will fail, as will a JWT placed in `X-API-Key`.
@@ -19,9 +19,9 @@ The headers are not interchangeable. A valid Portainer API key in `Authorization
 
 | Question | JWT from `/api/auth` | API access token |
 | --- | --- | --- |
-| Initial secret | Portainer username and password | Token generated for a Portainer user |
+| Initial secret | Internal or configured LDAP username and password | Token generated for a Portainer user |
 | Request header | `Authorization: Bearer <jwt>` | `X-API-Key: <token>` |
-| Lifetime | Portainer documents an eight-hour JWT lifetime | Used directly until it is removed or otherwise invalidated |
+| Lifetime | Eight hours by default; Portainer's user-session timeout is configurable | Used directly until it is removed or otherwise invalidated |
 | Best fit | Interactive tools and short sessions that can authenticate again | Scripts, scheduled jobs, and CI secret stores |
 | Permissions | Permissions of the authenticated user | Permissions of the user that created the token |
 | Revocation approach | Let it expire; changing server-side state can also invalidate sessions | Remove the named token from the user's account |
@@ -62,7 +62,7 @@ curl --fail-with-body --silent --show-error \
   "$PORTAINER_URL/api/endpoints"
 ```
 
-Portainer's API examples document the JWT as valid for eight hours. A process that runs longer must authenticate again after expiry. Do not decode the token's payload and treat that as signature validation; the Portainer server decides whether a presented token is valid.
+Portainer's API examples document the default JWT lifetime as eight hours, although an administrator can change the user-session timeout. A process that runs longer than the configured lifetime must authenticate again after expiry. Do not decode the token's payload and treat that as signature validation; the Portainer server decides whether a presented token is valid.
 
 ### When JWT Authentication Is Useful
 
@@ -160,7 +160,7 @@ Use Portainer's current API documentation for your installed edition and release
 
 ### Sending Both Credential Types
 
-Pick one authentication header per request. Sending a stale bearer JWT and a valid API key together makes troubleshooting ambiguous and can produce proxy-dependent behavior.
+Pick one authentication header per request. Current Portainer releases reject authenticated requests that contain both `Authorization` and `X-API-Key`.
 
 ### Calling `/api/auth` with an API Key
 
@@ -176,7 +176,7 @@ Portainer's API can act as a gateway to an environment's Docker or Kubernetes AP
 
 ## Recommendation
 
-Use a named API access token in `X-API-Key` for most unattended scripts and CI jobs. It avoids storing the user's login password and avoids the eight-hour JWT renewal flow. Use a JWT for short, user-driven sessions where authenticating with a password and receiving an expiring credential is the desired behavior.
+Use a named API access token in `X-API-Key` for most unattended scripts and CI jobs. It avoids storing the user's login password and avoids the configured JWT renewal flow. Use a JWT for short, user-driven sessions where authenticating with a password and receiving an expiring credential is the desired behavior.
 
 Whichever method you choose, permissions come from the Portainer user. Credential selection does not replace account scoping, HTTPS, secure secret storage, rotation, and audit-friendly token naming.
 
