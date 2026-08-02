@@ -2,8 +2,7 @@
 
 ## Portainer
 
-1. How to Reset a Forgotten Portainer Admin Password Without Losing Configuration
-2. Why a Stack Works with docker compose but Fails in Portainer
+1. Why a Stack Works with docker compose but Fails in Portainer
 
 ## Argo Workflows
 
