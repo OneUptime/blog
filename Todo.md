@@ -2296,3 +2296,233 @@
 18. How to Tell What a PodDisruptionBudget Protects During a Deployment Rollout—and What It Does Not
 19. How to Auto-Roll Back a Failed Kubernetes Deployment from CI After a Rollout Timeout
 20. How to Diagnose Overlapping Deployment Updates That Leave Multiple ReplicaSets Active
+
+## Cloudability
+
+1. Cloudability Shows “Invalid Credentials”: How to Diff an AWS Role Against the Latest Permission Template
+2. Why Cloudability Cost Ingestion Stops When You Archive an AWS Payer Account—and How to Recover It
+3. How to Credential an AWS Organization in Cloudability Without Losing Utilization or Commitment Data
+4. Which Cloudability Cost Metric Should You Use? List, Total, Adjusted, Amortized, and Adjusted Amortized Compared
+5. How to Reconcile Cloudability’s Amortized AWS Costs with CUR Line Items, RIs, and Savings Plans
+6. Cloudability API Totals Do Not Match the UI: Debugging Default Views and `view_id=0`
+7. How to Feed Cloudability Data into Power BI or Grafana Without Hitting the V3 API’s 300-Request-per-Minute Limit
+8. Why Cloudability Business Mapping Rules Return the Wrong Owner: First-Match Order, Boolean Logic, and Defaults
+9. How to Apply a Cloudability Business Mapping Change to Prior Months Without Waiting for Normal Ingestion
+10. How to Manage Cloudability Business Mappings as Code with the REST API and Match-Expression DSL
+11. How to Allocate Shared Platform Costs in Cloudability with Even Splits, Fixed Weights, and Telemetry
+12. How to Audit Cloudability Shared-Cost Lineage with `Allocation Source` Without Triggering Multi-Dimension Report Errors
+13. How to Allocate Kubernetes Idle Node Cost in Cloudability by Namespace, Label, and Business Dimension
+14. How to Join Kubernetes Costs with Load Balancers and Databases in One Cloudability Report
+15. Cloudability Has No Container Data: Debugging FinOps Agent RBAC, 30-Second Scrapes, and 10-Minute Exports
+16. How to Find Azure VMs That Are Powered On but Idle Using Cloudability CPU, Memory, and Network Metrics
+17. Why Cloudability Shows No Rightsizing Recommendation: Permissions, Resource Age, and Missing Utilization Data
+18. How to Tune Cloudability Rightsizing Preferences Without Breaking Commitment Coverage or CPU Architecture
+19. How to Reduce Cloudability Anomaly Alert Noise with Thresholds, Business Dimensions, and Ticket Routing
+20. A Cloudability User Sees Blank Dashboards: Fixing View Assignment, Feature Permissions, and Default Views
+
+## EFS
+
+1. Amazon EFS Mount Times Out: Checking Mount Targets, Port 2049, Security Groups, Routes, and NACLs
+2. EFS DNS Name Does Not Resolve: Debugging VPC DNS Attributes, Mount Targets, and Conflicting Hosted Zones
+3. How to Mount EFS Across AWS Accounts or VPCs with Peering, Resolver Rules, and Mount-Target IPs
+4. EFS Says “Access Denied by Server While Mounting 127.0.0.1:/”: A TLS, IAM, and Access-Point Checklist
+5. EFS Is Mounted but Writes Return “Permission Denied”: Separating IAM Authorization from POSIX UID/GID Permissions
+6. How to Require `tls`, `iam`, and a Specific EFS Access Point in a File-System Policy
+7. EFS Mounts Manually but Not at Boot: Fixing `_netdev`, `nofail`, and systemd Ordering
+8. Fixing EFS “nfs: Server Not Responding” After a Network Reconnect with `noresvport`
+9. ECS Fargate Cannot Mount EFS: Debugging `ResourceInitializationError`, DNS, Task Security Groups, and IAM
+10. EKS EFS CSI Mount Fails with Exit Status 32: Debugging the Node Plugin, Mount Watchdog, and `efs-utils`
+11. How to Diagnose EKS EFS Dynamic-Provisioning Failures Across StorageClasses, Access Points, and POSIX IDs
+12. Lambda Cannot Mount EFS During Initialization: Checking VPC Subnets, Mount Targets, and Access-Point Permissions
+13. EFS Access-Point Root vs Lambda Local Mount Path: Why Two Paths Exist and Which One Your Code Uses
+14. Why `rsync` and Millions of Small Files Are Slow on EFS—and How to Reduce Metadata Round Trips
+15. EFS Throughput Suddenly Collapses: Reading `BurstCreditBalance`, `PercentIOLimit`, and `PermittedThroughput` Together
+16. Elastic, Provisioned, or Bursting EFS Throughput? Choose from the Workload’s Average-to-Peak Ratio
+17. Why Max I/O Made Your EFS Workload Slower: Per-Operation Latency vs Parallelism
+18. Why One EFS Client Stops Near 500 MiB/s: Client-Version Limits, NFS Parallelism, and Elastic Throughput
+19. EFS Files Are Slow on First Read: Measuring IA and Archive Latency and Returning Hot Data to Standard
+20. How to Find EFS Clients Before Deleting a Mount Target and Avoid Hung `df` Processes
+
+## Tracing
+
+1. Why Do Child Spans Add Up to Less Than the Root Span? Finding Queue, Lock, and Connection-Pool Waits
+2. How to Instrument Queueing Time Separately from Processing Time in an Asynchronous Trace
+3. How to Trace Fire-and-Forget Work Without Falsely Extending the Original Request
+4. A Child Span Starts After Its Parent Ends: When to Use a New Trace and a Span Link
+5. How to Model Batch Consumption When One Worker Span Has 100 Message Contexts
+6. How to Break a 30,000-Span “Mega Trace” into Linked Traces Your Backend Can Render
+7. Span Links Exist but Your Jaeger or Grafana View Looks Disconnected: How to Preserve the Causal Trail
+8. How to Restore Trace Continuity After a Third-Party Callback That Does Not Return `traceparent`
+9. Should a Multi-Step User Journey Be One Trace? Choosing Trace IDs, Session IDs, and Business Correlation IDs
+10. Why OpenTelemetry Baggage Propagates but Never Appears in Your Spans—and How to Promote It Safely
+11. How to Stop OpenTelemetry Baggage from Leaking Customer IDs to Third-Party APIs
+12. How to Validate Untrusted `traceparent` and Trim `tracestate` at an Internet-Facing Trust Boundary
+13. One Request Produces Two Trace IDs: Debugging W3C, B3, and Legacy Propagator Conflicts
+14. Why a Reconstructed Remote Parent Is `isRecording=false`: Sampling Flags and Parent-Based Samplers
+15. How to Prevent Trace Context from Bleeding Between Concurrent Requests in Thread Pools and Async Runtimes
+16. How to Audit Trace Coverage After an Auto-Instrumentation or Semantic-Conventions Upgrade
+17. Why Client and Server Spans Disagree on Duration: Network Time, Clock Skew, and Response-Body Boundaries
+18. How to Represent HTTP Retries and Redirects Without Hiding Individual Attempts
+19. Why Sampled Traces Make Bad Alert Counters—and How to Pair Tracing with Unsampled RED Metrics
+20. How to Design a Trace-ID Support Workflow When the Trace May Have Been Sampled Out or Expired
+
+## Monitoring
+
+1. How to Prove Your Monitoring Pipeline Can Still Page You: End-to-End Heartbeats from Exporter to Notification
+2. Prometheus Shows Gaps but No Scrape Errors: How to Trace Staleness, Series Churn, and Collector Handoffs
+3. How to Detect a Silent Exporter That Returns HTTP 200 but Serves Frozen Metrics
+4. How to Alert on a Missing Metric Without Paging When a Workload Intentionally Scales to Zero
+5. How to Find Which Labels Caused a Prometheus Cardinality Explosion Before the TSDB Runs Out of Memory
+6. Static Thresholds Fail on Seasonal Traffic: How to Combine Baselines, SLOs, and Minimum-Volume Guards
+7. How to Monitor Authentication Without Confusing Bad Passwords with Identity-Provider Failures
+8. How to Alert on Queue Backlog Without Paging on Expected Batch Spikes or Idle Consumers
+9. How to Monitor Batch Jobs with Deadlines, Last-Success Timestamps, and Heartbeats Instead of `up`
+10. How to Catch Telemetry Loss Across Agent, Collector, Remote Write, and Backend Without Guesswork
+11. Internal and External Monitors Failed Together: How to Remove the Shared Failure Domain
+12. How to Suppress Dependency Noise Without Hiding the Customer Impact of Downstream Services
+13. Why Autoscaling Breaks Fleet-Level CPU Alerts—and How to Normalize by Ready Capacity
+14. How to Handle Counter Resets and Label Churn Without False Rate Spikes or Missing Alerts
+15. How to Validate Monitoring Coverage by Injecting Failures and Following Every Notification Hop
+16. How to Link a Page to the Exact Logs and Trace with OpenTelemetry Resource Attributes and Exemplars
+17. How to Keep Monitoring Costs Predictable with Cardinality Budgets, Drop Rules, and Tiered Retention
+18. Dashboard Looks Healthy but One Region Is Down: How Aggregation Hides Partial Failures
+19. How to Monitor the Monitor: Independent Canaries for Prometheus, Alertmanager, and Your Paging Provider
+20. How to Tell “Healthy Zero” from “No Data” with `absent_over_time`, Scrape Timestamps, and Heartbeats
+
+## Incident Response
+
+1. How to Run Incident Command with a Small Team: Combining IC, Operations, Communications, and Scribe Roles Safely
+2. How to Assign Incident Severity Before the Blast Radius Is Known—and Revise It Without Chaos
+3. How to Preserve Incident Evidence Before Ephemeral Pods, Autoscaled Instances, and Short-Retention Logs Disappear
+4. Clock Skew Corrupted the Incident Timeline: How to Normalize Events Before the Postmortem
+5. How to Hand Off a Long-Running Incident Across Time Zones Without Losing State or Repeating Work
+6. Roll Back, Fail Over, or Fix Forward? A Time-Boxed Decision Framework for Active Incidents
+7. How to Keep an Emergency Mitigation from Worsening the Outage with Guardrails and Abort Criteria
+8. How to Measure Impact During a Partial or Multi-Tenant Outage Using Segmented SLIs
+9. How to Route an Incident When Service Ownership Metadata Is Missing, Stale, or Ambiguous
+10. How to Split or Merge Simultaneous Incidents That Share the Same Upstream Dependency
+11. How to Deduplicate Retried Alert Webhooks Without Merging Separate Incident Occurrences
+12. How to Build a Canonical Incident Channel While Technical Teams Debug in Parallel Workstreams
+13. How to Write Useful Status Updates When There Is No New ETA: Facts, Unknowns, Actions, and Next Checkpoint
+14. How to Coordinate a Third-Party Provider Outage: Vendor Escalation, Customer Updates, and Internal Mitigations
+15. When Is an Incident Really Resolved? Handling Flapping Recovery, Monitoring Windows, and Reopen Rules
+16. How to Capture Commands and Evidence During an Incident Without Leaking Secrets into Chat or Postmortems
+17. How to Turn a Postmortem Action into Verified Risk Reduction Instead of a Forgotten Jira Ticket
+18. How to Exercise an Incident Response Plan and Produce Audit Evidence with Tabletop Tests and Game Days
+19. How to Train a Shadow Incident Commander with Scenario Drills, Handoffs, and Decision Reviews
+20. How to Convert a Customer-Reported Outage into an SLI and Alert That Detects the Next One First
+
+## Iguazio
+
+1. `mlrun` Is Missing in an Iguazio Jupyter Service: How to Align the Notebook Client with the Cluster Version
+2. MLRun Returns 404 for `/api/v1/client-spec`: How to Fix `MLRUN_DB` URL and Environment Configuration
+3. `project.deploy_function()` Cannot Submit a Deployment: How to Trace MLRun-to-Nuclio API Routing
+4. Iguazio Spark Jobs Hit `ImagePullBackOff`: How to Publish MLRun’s Default Spark Images to the Cluster Registry
+5. An MLRun Job Is Stuck in `Pending`: How to Check Kubernetes Events, Quotas, Volumes, and Node Placement
+6. How to Develop MLRun Functions Locally and Run Them Remotely with `HOST_IP`, `SHARED_DIR`, and `local=False`
+7. MLRun Reports `Unauthorized path` on V3IO: How UID Mapping, Ownership, and Security-Admin Roles Interact
+8. MLRun API Returns 412 “Waiting for Migrations”: How to Complete Database Migrations After an Upgrade
+9. `V3IO_ACCESS_KEY` or `V3IO_API` Is Missing: How to Configure Iguazio Credentials Without Hard-Coding Secrets
+10. MLRun Says “No Offline Targets”: How to Configure Parquet and NoSQL Targets for a Feature Set
+11. How to Read a CSV Logged as an MLRun Artifact Using Its Store URI Instead of a Local File Path
+12. Spark Cannot Infer the Schema of MLRun Parquet Output: How to Find Empty Partitions and Inconsistent Types
+13. Iguazio Reports `No space left on device`: How to Find Feature Store, Trace, and Artifact Storage Growth
+14. How to Preserve Nullable Integer Features in MLRun `NoSqlTarget` Without Silent Type Changes
+15. MLRun Feature Ingestion Resets the Connection: How to Tune Batch Size, Retries, and Target Endpoints
+16. MLRun Overrides Feature Types During Ingestion: How to Declare and Validate the Schema Up Front
+17. How to Observe Nuclio Model-Serving Throughput, Latency, Errors, and Worker Saturation in Iguazio
+18. MLRun Real-Time Ingestion Failed but the Notebook Succeeded: How to Inspect Error Streams and Nuclio Logs
+19. How to Test an MLRun Serving Graph Locally Before Deploying It to Nuclio
+20. How to Configure Iguazio User Roles for Read-Only Access Without Accidentally Granting Service Administration
+
+## Deployment Rework
+
+1. How to Calculate DORA Deployment Rework Rate from Deployment, Incident, and Hotfix Events
+2. What Counts as Deployment Rework? Classifying Rollbacks, Fix-Forwards, Hotfixes, Retries, and Failed Pipelines
+3. How to Link an Unplanned Fix Deployment to the Production Incident—and the Original Change
+4. Preventing Pipeline Retries from Double-Counting Deployments in Your DORA Metrics
+5. How to Design a Deployment Event Schema That Makes Rework Measurable
+6. Roll Back or Fix Forward? A Data-Aware Decision Tree for Failed Production Changes
+7. How to Redeploy the Last-Known-Good Artifact Without Rebuilding Old Source
+8. Production Is Rolled Back but `main` Is Still Broken: How to Reconcile Git and the Running Release
+9. How to Make Deployment Steps Idempotent Enough to Retry Safely After Partial Failure
+10. Flaky Pipeline or Deployment Rework? How to Separate Delivery Noise from Production Remediation
+11. How to Set Retry Budgets So Automatic Re-Runs Do Not Hide Chronic Deployment Failures
+12. How to Use Expand-and-Contract Database Migrations Without Losing the Rollback Path
+13. How to Test Rollbacks Against Both the Old and New Database Schema Before Production
+14. How to Trigger Automatic Rollback from SLOs Without Letting One Noisy Metric Revert a Healthy Release
+15. How to Preserve Logs, Traces, and State Before an Automatic Rollback Erases the Evidence
+16. Canary Failed: When to Halt, Roll Back, Disable a Flag, or Continue the Rollout
+17. How Smaller Change Sets Reduce Deployment Rework—and How to Prove It with Your Own Data
+18. How to Turn Deployment-Rework Postmortems into New Pipeline Checks and Release Guardrails
+19. How to Estimate the Real Cost of Deployment Rework Across On-Call Time, Delay, and Customer Impact
+20. How to Dashboard Deployment Rework Rate with Change Failure Rate and Recovery Time Without Gaming the Numbers
+
+## Systems Manager
+
+1. AWS SSM `TargetNotConnected`: A Layer-by-Layer Check of Agent, IAM, Region, DNS, and Egress
+2. Node Appears in Fleet Manager but Session Manager Fails: Check `ssmmessages`, Session Preferences, and Agent Logs
+3. How to Run AWS Systems Manager in a Private Subnet with the Right VPC Endpoints, DNS, and Security Groups
+4. SSM Agent Keeps Going Offline Behind a Proxy: Configure Proxy Variables, `no_proxy`, and TLS Inspection
+5. Fixing “document worker timed out” in SSM: Disk Space, Memory, File Descriptors, and Worker Logs
+6. `DeliveryTimedOut` vs. `ExecutionTimedOut` in SSM Run Command: Find Which Clock Expired
+7. How to Capture Complete SSM Run Command Output When the Console Truncates It
+8. How to Reboot Safely from SSM Run Command with Linux Exit Code 194 and Windows Exit Code 3010
+9. Least-Privilege Session Manager IAM: Restrict Users by Instance Tags, Session Documents, and Actions
+10. Why Session Manager Logs Are Empty: CloudWatch/S3/KMS Setup and the SSH/Port-Forwarding Blind Spot
+11. How to Reach Private RDS Through SSM Remote-Host Port Forwarding—and Why Your Client Must Use `localhost`
+12. RDS IAM Authentication Through an SSM Tunnel: Fix Token Hostnames and TLS Certificate Validation
+13. How to Use OpenSSH `ProxyCommand` over Session Manager Without Opening Port 22
+14. SSM Parameter Store `AccessDeniedException`: Match the API Action, Parameter ARN, Path, and KMS Key
+15. How to Read an Entire Parameter Store Hierarchy Without Missing Paginated or Encrypted Values
+16. How to Rotate a `SecureString` with Parameter Versions and Labels Without Breaking Consumers
+17. Patch Manager Stuck on “In Progress” or “Pending Reboot”: Trace the Agent, OS Updater, and Patch Logs
+18. Patch Manager for Auto Scaling Groups: Drain and Patch Live Instances or Bake a New AMI?
+19. Windows Patch Manager in a Private Subnet: Combine SSM Endpoints with WSUS or Update Egress
+20. On-Premises Node Missing from Systems Manager: Debug Hybrid Activation, Region, IAM Role, and Agent Registration
+
+## SSH
+
+1. “Too Many Authentication Failures” Even with `-i`: Force the Intended Key with `IdentitiesOnly`
+2. OpenSSH Upgrade Broke RSA Login: Fix “sign_and_send_pubkey: no mutual signature supported” Safely
+3. “No Matching Host Key Type,” Cipher, or Key Exchange: Debug SSH Algorithm Negotiation Without Weakening Every Host
+4. “REMOTE HOST IDENTIFICATION HAS CHANGED”: How to Verify the New Fingerprint Before Editing `known_hosts`
+5. SSH Keeps Offering the Wrong Key: Trace Agent Identities and Config Precedence with `ssh -G` and `-vvv`
+6. SSH Agent Forwarding Breaks After `sudo`, `su`, or `tmux`: Follow the `SSH_AUTH_SOCK`
+7. Public Key Is Accepted, Then SSH Immediately Closes: Check the Login Shell, PAM, Home Directory, and `ForceCommand`
+8. SSH Works in Your Terminal but Fails in Cron or CI: Recreate `HOME`, Host Trust, Agent, and TTY State
+9. “Pseudo-terminal Will Not Be Allocated”: When to Use `-T`, `-t`, or `-tt` in SSH Automation
+10. Remote `sudo` Says “a Terminal Is Required”: Allocate a PTY or Change the Command Path?
+11. SSH Pauses Before the Password Prompt: Isolate Reverse DNS, GSSAPI, PAM, and SSSD Delays
+12. `client_loop: send disconnect: Broken pipe`: Separate Idle NAT Timeouts from Server-Side Session Failures
+13. “Remote Port Forwarding Failed for Listen Port”: Check Bind Conflicts, `GatewayPorts`, and Forwarding Policy
+14. SSH Tunnel Opens but the Application Cannot Connect: Debug Bind Addresses, `localhost`, IPv4/IPv6, and the Final Hop
+15. How to Make an SSH Tunnel Fail Fast with `ExitOnForwardFailure` and a Health Check
+16. SFTP “Bad Ownership or Modes for Chroot Directory”: Build a Root-Owned Jail with a Writable Upload Directory
+17. How to Create an SFTP-Only Account with `internal-sftp` and No Shell, Agent, or Port Forwarding
+18. How to Populate `known_hosts` in CI Without Setting `StrictHostKeyChecking=no`
+19. Multiple Git Identities on One SSH Host: Use Host Aliases, `IdentityFile`, and `IdentitiesOnly`
+20. SSH Works by IP but Not by Hostname: Inspect DNS, Host Blocks, Canonicalization, and Host-Key Entries
+
+## Aerospike
+
+1. Aerospike `INVALID_NODE_ERROR` in Docker or Testcontainers: Fix Advertised Addresses and Mapped Ports
+2. Aerospike Nodes Will Not Form a Cluster: Debug Mesh Seeds, Heartbeat Addresses, Cluster Names, and Firewalls
+3. Intermittent Aerospike Timeouts During Node Failure or Migration: Tune `socketTimeout`, `totalTimeout`, Retries, and Backoff
+4. `AEROSPIKE_ERR_TIMEOUT` on Batch or Query Operations: Find the Client, Queue, Storage, or Hot-Key Bottleneck
+5. Aerospike Batch Reads Return `failedNodes`: Retry Only Unresolved Keys Without Duplicating Side Effects
+6. `AEROSPIKE_ERR_INDEX_NOT_READABLE`: Wait for Every Node’s Secondary Index to Reach `RW`
+7. AQL Returns `AEROSPIKE_ERR_INDEX`: Query the Indexed Bin, Not the Index Name
+8. How to Query Multiple Aerospike Fields with One Selective Secondary Index and a Filter Expression
+9. How to Index Aerospike List Values, Map Keys, Map Values, and Nested CDT Paths Correctly
+10. How to Resume a Large Aerospike Query with `PartitionFilter` Without Starting Over After a Failure
+11. Aerospike TTL Values `-2`, `-1`, and `0`: Preserve, Never Expire, or Inherit the Namespace Default?
+12. Expired Aerospike Records Still Appear in Counts: Understand Logical Expiry, NSUP, and Cleanup Lag
+13. Deleted Aerospike Records Reappear After a Cold Start: Use Durable Deletes, Tombstones, or Truncation
+14. Aerospike Tombstones Keep Growing: Check Tomb-Raider Age, Migrations, and Defragmentation Progress
+15. Aerospike Entered Stop-Writes: Identify the Exact Memory, Index, Disk, or Clock-Skew Threshold
+16. Disk Free Space Keeps Falling After Deletes: Tune Aerospike Defragmentation Without Causing Write Amplification
+17. How to Perform an Aerospike Rolling Restart with Quiesce, Roster Handoff, and Partition Checks
+18. Dead Partitions After Replacing a Disk in Strong Consistency Mode: When—and When Not—to `revive`
+19. Aerospike `SESSION` vs. `LINEARIZE` Reads: Choose the Consistency and Availability Trade-Off Deliberately
+20. How to Capacity-Plan an Aerospike Cluster for Index Memory, SSD, Replication, and One-Node Failure
