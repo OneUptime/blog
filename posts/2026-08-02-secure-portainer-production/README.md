@@ -128,7 +128,7 @@ Do not make routine users global administrators. Portainer defines the Administr
 
 Portainer Business Edition provides granular role-based access control (RBAC). Assign a user or team a role on only the environments it needs. Built-in roles include:
 
-- **Environment administrator** for full control inside selected environments without global Portainer administration.
+- **Environment administrator** for broad control over resources inside selected environments without host management, resource-ownership changes, or global Portainer administration.
 - **Operator** for operational actions such as starting, stopping, updating, and inspecting existing resources without general create/delete rights.
 - **Helpdesk** for read access without resource changes or container consoles.
 - **Standard user** for control of resources owned by that user or team.
@@ -199,7 +199,7 @@ docker inspect portainer
 
 # Find running containers with the Docker socket mounted.
 docker ps -q | xargs -r docker inspect \
-  --format '{{.Name}} {{range .Mounts}}{{if eq .Source "/var/run/docker.sock"}}{{.Source}} -> {{.Destination}}{{end}}{{end}}'
+  --format '{{range .Mounts}}{{if eq .Source "/var/run/docker.sock"}}{{$.Name}} {{.Source}} -> {{.Destination}}{{end}}{{end}}'
 ```
 
 Review the output rather than assuming that a Compose file still matches the running container.
