@@ -12,7 +12,7 @@ Yes. Argo Rollouts can perform a canary update without a service mesh or any tra
 
 The key word is **approximates**. A Service does not understand “10% canary.” It has a set of endpoints, and the networking data plane distributes connections or requests among them according to its own behavior. With ten equally capable Pods, one canary and nine stable Pods may produce roughly 10% canary traffic over a sufficiently large sample. With three Pods, 10% cannot be represented by a whole Pod.
 
-You can also get precise traffic routing without a service mesh by integrating Rollouts with an ingress controller such as NGINX or AWS ALB, or with a supported Gateway API traffic-router plugin. “No service mesh” does not have to mean “replica weighting only.”
+You can also configure fine-grained, router-managed traffic weights without a service mesh by integrating Rollouts with the NGINX Ingress Controller, the AWS Load Balancer Controller's ALB integration, or the documented Gateway API traffic-router plugin. The traffic-router plugin framework is an alpha feature. These routers enforce a configured weight independently of Pod count, although finite samples and stickiness can still make observed request proportions differ from that target. “No service mesh” does not have to mean “replica weighting only.”
 
 ## How a Basic Canary Works
 
@@ -42,6 +42,9 @@ spec:
       containers:
         - name: checkout
           image: registry.example.com/shop/checkout:2.5.0
+          resources:
+            requests:
+              cpu: 100m
           ports:
             - name: http
               containerPort: 8080
@@ -118,7 +121,7 @@ Even when the endpoint ratio is exactly 1:9, observed request traffic may not be
 - clients and nodes do not necessarily generate equal request volumes;
 - topology-aware routing can restrict which endpoints a client sees;
 - canary Pods may become Ready at different times;
-- a slower canary can hold more concurrent requests even at the same arrival rate;
+- concurrency-based measurements can overrepresent a slower canary even at the same arrival rate;
 - retries can amplify traffic to one version.
 
 Replica weighting is therefore most convincing for high-volume, short-lived, statistically distributed traffic with equally sized Pods. It is a weak blast-radius control for a small number of long-lived gRPC streams or a few high-value clients.
@@ -181,6 +184,8 @@ An HPA can target a Rollout through its scale subresource. Without a traffic man
 
 This changes the granularity dynamically. A 10% step is easier to approximate at 20 replicas than at 3. It also means a version-specific performance regression can affect the combined average used by the HPA.
 
+The `averageUtilization` CPU target below is calculated relative to CPU requests, so the selected Pods' containers must define `resources.requests.cpu`, as the Rollout example above does.
+
 ```yaml
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
@@ -209,7 +214,7 @@ Do not let GitOps continuously force `spec.replicas` while the HPA also owns it.
 
 A basic canary cannot provide:
 
-- exact fine-grained percentages with a small replica count;
+- fine-grained router-managed percentages independent of replica count;
 - header-, cookie-, or user-cohort routing managed by Rollouts;
 - request mirroring/shadowing;
 - traffic weight independent of canary scale;
@@ -218,13 +223,13 @@ A basic canary cannot provide:
 
 Argo's `setCanaryScale` feature is supported only with traffic routing because a basic canary must control the canary replica count to approximate weight. With a router, you can run several canary Pods at `setWeight: 0` for testing, or send a controlled traffic percentage to a deliberately sized canary pool.
 
-## No Mesh, but Precise Routing
+## No Mesh, but Router-Managed Weights
 
-If a service mesh is too heavy for the requirement, choose a supported edge or Gateway integration already present in the cluster:
+If a service mesh is too heavy for the requirement, choose a supported edge integration already present in the cluster, or evaluate the alpha Gateway API traffic-router plugin:
 
 - NGINX Ingress Controller uses stable and canary Ingress resources and canary annotations;
 - AWS ALB uses ALB weighted target-group actions;
-- Gateway API support is provided through the documented traffic-router plugin;
+- Gateway API support is provided through the documented alpha traffic-router plugin;
 - other supported ingress controllers and traffic providers are listed in Argo's traffic-management overview.
 
 With traffic management, a canary Rollout normally specifies separate Services:
@@ -256,7 +261,7 @@ Basic replica weighting is a good fit when:
 
 Use an integrated traffic router when:
 
-- 1%, 5%, or other precise low exposure matters;
+- configuring 1%, 5%, or another low target independently of replica count matters;
 - the application has only a few replicas;
 - traffic uses long-lived or sticky connections;
 - you need headers, cohorts, or mirroring;
