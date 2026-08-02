@@ -50,7 +50,7 @@ spec:
 
 The HPA reads Rollout scale status and writes the Rollout's desired replica count. Argo Rollouts then scales its owned ReplicaSets according to the current strategy and step. Never target the stable or canary ReplicaSet directly; those resources are transient and fully controller-managed.
 
-For CPU or memory utilization, set realistic container resource requests. HPA cannot calculate utilization reliably for containers lacking the relevant request.
+For CPU or memory utilization, set realistic requests for the relevant resource on every container in each selected Pod. If a container lacks that request, the Pod's utilization is undefined and HPA will not act on that metric.
 
 ## KEDA Uses the Same Boundary
 
@@ -83,7 +83,6 @@ spec:
     - type: prometheus
       metadata:
         serverAddress: http://prometheus.monitoring.svc:9090
-        metricName: payments_queue_depth
         query: sum(payments_queue_depth)
         threshold: "100"
 ```
