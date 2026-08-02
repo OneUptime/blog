@@ -2,13 +2,12 @@
 
 ## Argo Workflows
 
-1. Argo CronWorkflow Missed a Run: Debugging Time Zones, Starting Deadlines, and Concurrency
-2. How to Use Argo Workflow Exit Handlers for Cleanup and Failure Notifications
-3. Argo Workflow Timeouts Explained: Workflow, Template, and Pod Deadlines
-4. PodGC, TTLStrategy, and Workflow Archive: What Gets Deleted—and When?
-5. Argo Workflow Is Stuck in Pending: A Scheduling, Quota, and RBAC Checklist
-6. Fixing “Request Entity Too Large” in Argo Workflows with Node-Status Offloading
-7. Argo Workflow Controller Is Falling Behind: Tuning Workers, QPS, and Pod Creation
+1. How to Use Argo Workflow Exit Handlers for Cleanup and Failure Notifications
+2. Argo Workflow Timeouts Explained: Workflow, Template, and Pod Deadlines
+3. PodGC, TTLStrategy, and Workflow Archive: What Gets Deleted—and When?
+4. Argo Workflow Is Stuck in Pending: A Scheduling, Quota, and RBAC Checklist
+5. Fixing “Request Entity Too Large” in Argo Workflows with Node-Status Offloading
+6. Argo Workflow Controller Is Falling Behind: Tuning Workers, QPS, and Pod Creation
 
 ## Argo Rollouts
 
