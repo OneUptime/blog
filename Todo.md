@@ -2,19 +2,18 @@
 
 ## Argo Workflows
 
-1. Least-Privilege RBAC for Argo Workflows: Controllers, Executors, Users, and Retries
-2. How to Retry Argo Workflow Tasks with Exponential Backoff and Rate-Limit Delays
-3. Retry vs. Resubmit in Argo Workflows: How to Rerun Only Failed Nodes
-4. Fixing Argo Workflow `when` Expressions, Quoting Errors, and Unresolved Variables
-5. How to Fan Out Argo Workflow Tasks with withItems, withParam, and Sequences
-6. Controlling Argo Workflows Concurrency with parallelism, Semaphores, and Mutexes
-7. Argo CronWorkflow Missed a Run: Debugging Time Zones, Starting Deadlines, and Concurrency
-8. How to Use Argo Workflow Exit Handlers for Cleanup and Failure Notifications
-9. Argo Workflow Timeouts Explained: Workflow, Template, and Pod Deadlines
-10. PodGC, TTLStrategy, and Workflow Archive: What Gets Deleted—and When?
-11. Argo Workflow Is Stuck in Pending: A Scheduling, Quota, and RBAC Checklist
-12. Fixing “Request Entity Too Large” in Argo Workflows with Node-Status Offloading
-13. Argo Workflow Controller Is Falling Behind: Tuning Workers, QPS, and Pod Creation
+1. How to Retry Argo Workflow Tasks with Exponential Backoff and Rate-Limit Delays
+2. Retry vs. Resubmit in Argo Workflows: How to Rerun Only Failed Nodes
+3. Fixing Argo Workflow `when` Expressions, Quoting Errors, and Unresolved Variables
+4. How to Fan Out Argo Workflow Tasks with withItems, withParam, and Sequences
+5. Controlling Argo Workflows Concurrency with parallelism, Semaphores, and Mutexes
+6. Argo CronWorkflow Missed a Run: Debugging Time Zones, Starting Deadlines, and Concurrency
+7. How to Use Argo Workflow Exit Handlers for Cleanup and Failure Notifications
+8. Argo Workflow Timeouts Explained: Workflow, Template, and Pod Deadlines
+9. PodGC, TTLStrategy, and Workflow Archive: What Gets Deleted—and When?
+10. Argo Workflow Is Stuck in Pending: A Scheduling, Quota, and RBAC Checklist
+11. Fixing “Request Entity Too Large” in Argo Workflows with Node-Status Offloading
+12. Argo Workflow Controller Is Falling Behind: Tuning Workers, QPS, and Pod Creation
 
 ## Argo Rollouts
 
