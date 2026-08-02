@@ -35,7 +35,7 @@ spec:
     spec:
       containers:
         - name: payments
-          image: registry.example.com/payments:1.0.0
+          image: argoproj/rollouts-demo:blue
   strategy:
     canary:
       steps:
@@ -46,7 +46,7 @@ spec:
             duration: 10m
 ```
 
-Creating it does not mean “roll out `1.0.0` from nothing through 10% and 50%.” There is no stable ReplicaSet to receive the other 90% or 50% of traffic. The controller creates the first ReplicaSet, scales it to 10 replicas, and records it as stable.
+Creating it does not mean “roll out the `blue` image from nothing through 10% and 50%.” There is no stable ReplicaSet to receive the other 90% or 50% of traffic. The controller creates the first ReplicaSet, scales it to 10 replicas, and records it as stable.
 
 The same principle applies to blue-green. With no existing active revision, there is nothing meaningful to keep active while a preview revision is evaluated. The initial template becomes the baseline.
 
@@ -56,7 +56,7 @@ Progressive behavior begins when `.spec.template` changes after the initial Roll
 
 ```bash
 kubectl argo rollouts set image payments \
-  payments=registry.example.com/payments:1.1.0
+  payments=argoproj/rollouts-demo:yellow
 ```
 
 Or update the manifest in Git and let the deployment system apply it. A change outside `.spec.template`, such as editing a pause duration or changing metadata on the Rollout object, does not necessarily create a new ReplicaSet.
@@ -136,4 +136,3 @@ The first deployment establishes the state that later progressive updates need. 
 - [Argo Rollouts FAQ: Initial Deployment Behavior](https://argo-rollouts.readthedocs.io/en/stable/FAQ/)
 - [Argo Rollouts: Canary Strategy](https://argo-rollouts.readthedocs.io/en/stable/features/canary/)
 - [Argo Rollouts: Blue-Green Strategy](https://argo-rollouts.readthedocs.io/en/stable/features/bluegreen/)
-
