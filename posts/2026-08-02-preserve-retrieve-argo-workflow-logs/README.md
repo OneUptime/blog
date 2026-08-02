@@ -15,7 +15,7 @@ The important consequence is simple: **log preservation must be configured befor
 There are two supported operational patterns:
 
 - send Pod logs to a Kubernetes-aware logging system, which Argo's documentation recommends for production;
-- enable Argo's `archiveLogs` convenience feature, which stores container logs in the configured artifact repository and lets the Argo UI display logs for garbage-collected Pods.
+- enable Argo's `archiveLogs` convenience feature, which stores primary workload-container logs in the configured artifact repository and lets the Argo UI display logs for garbage-collected Pods.
 
 You can use both. A dedicated backend provides search, retention, access controls, and aggregation, while Argo log artifacts give operators a convenient workflow-centric fallback.
 
@@ -29,14 +29,14 @@ Several settings sound similar but preserve different objects:
 | `podGC.deleteDelayDuration` | Delays a Pod after it becomes eligible for deletion | No, but gives collectors more time |
 | `ttlStrategy` | Deletes completed Workflow custom resources after a delay | No |
 | Workflow archive | Persists Workflow status and node history in a database | No |
-| `archiveLogs` | Saves container logs as artifacts | Yes |
+| `archiveLogs` | Saves the `main` container log, or ContainerSet member logs, as artifacts | Yes, for those containers |
 | External log backend | Collects and indexes Pod/container logs | Yes |
 
 The official Workflow Archive documentation is explicit that archived Workflow records do not include job logs. Enabling database persistence alone solves audit and history retention, not log retention.
 
 ## Recommended Pattern: Ship Logs Before Pod GC
 
-Run a cluster log collector that watches container log files and attaches Kubernetes metadata before sending records to durable storage. Argo's archive-log documentation suggests facilities such as Fluentd with ELK or Promtail with Loki and Grafana; the same design applies to other Kubernetes-aware collectors and backends.
+Run a cluster log collector that watches container log files and attaches Kubernetes metadata before sending records to durable storage. Argo's archive-log documentation suggests facilities such as Fluentd with ELK. For Loki and Grafana, use a supported collector such as Grafana Alloy; Promtail reached end of life on March 2, 2026. The same design applies to other Kubernetes-aware collectors and backends.
 
 Preserve at least these fields as indexed labels or searchable attributes:
 
@@ -101,28 +101,18 @@ data:
       - name: Workflow Logs
         scope: workflow
         target: _blank
-        url: >-
-          https://logs.example.com/workflow
-          ?namespace=${metadata.namespace}
-          &workflow=${metadata.name}
-          &from=${status.startedAtEpoch}
-          &to=${status.finishedAtEpoch}
+        url: https://logs.example.com/workflow?namespace=${metadata.namespace}&workflow=${metadata.name}&from=${status.startedAtEpoch}&to=${status.finishedAtEpoch}
       - name: Pod Logs
         scope: pod-logs
         target: _blank
-        url: >-
-          https://logs.example.com/pod
-          ?namespace=${metadata.namespace}
-          &pod=${metadata.name}
-          &from=${status.startedAtEpoch}
-          &to=${status.finishedAtEpoch}
+        url: https://logs.example.com/pod?namespace=${metadata.namespace}&pod=${metadata.name}&from=${status.startedAtEpoch}&to=${status.finishedAtEpoch}
 ```
 
 The URL above is illustrative; adapt its query syntax and URL encoding to the logging product. Argo documents the metadata and epoch timestamp placeholders used to build these links.
 
 ## Convenience Pattern: Enable Argo Archive Logs
 
-Argo can ask its executor to save each container's log as an artifact. This requires two things:
+Argo can ask its executor to save the `main` container's log, or each ContainerSet member's log, as an artifact. This requires two things:
 
 1. a working artifact repository;
 2. `archiveLogs` enabled at controller, Workflow, or template level.
@@ -165,7 +155,6 @@ metadata:
   namespace: workflows
 data:
   workflow-logs: |
-    archiveLogs: true
     s3:
       bucket: company-argo-logs
       endpoint: s3.amazonaws.com
@@ -213,7 +202,7 @@ kubectl get workflow -n workflows <workflow-name> -o json \
   | jq -r '.status.nodes[] | [.id, .displayName, .phase, .startedAt, .finishedAt] | @tsv'
 ```
 
-If the Workflow custom resource has also been removed, obtain the same metadata from the Workflow archive:
+If the Workflow custom resource has also been removed, Argo Workflows 4.1 and newer can obtain the same metadata from the Workflow archive by Workflow name (older CLIs require the archived Workflow UID):
 
 ```bash
 argo archive get <workflow-name> -n workflows -o json > archived-workflow.json
@@ -231,10 +220,12 @@ For automation, Argo Server exposes artifact endpoints. Retrieve the Workflow UI
 ```bash
 ARGO_TOKEN="$(argo auth token)"
 WORKFLOW_UID="$(jq -r '.metadata.uid' archived-workflow.json)"
-NODE_ID="$(jq -r '
-  .status.nodes[]
-  | select(.displayName == "main")
-  | .id
+NODE_ID="$(jq -er '
+  first(
+    .status.nodes[]
+    | select(any(.outputs.artifacts[]?; .name == "main-logs"))
+    | .id
+  )
 ' archived-workflow.json)"
 
 curl --fail --show-error --location \
@@ -242,7 +233,7 @@ curl --fail --show-error --location \
   "https://argo.example.com/artifacts-by-uid/${WORKFLOW_UID}/${NODE_ID}/main-logs"
 ```
 
-Use the real node display name and Argo Server base path for your installation. For a sidecar or another container, the artifact name follows the container name, such as `metrics-logs`. The artifact API is preferable to constructing a bucket key yourself because Argo resolves the recorded artifact location and repository driver.
+Use the Argo Server base path for your installation. For a ContainerSet member, the artifact name follows the container name, such as `metrics-logs`. Ordinary `sidecars:` are not included by `archiveLogs`; use the external log backend to retain their logs. The artifact API is preferable to constructing a bucket key yourself because Argo resolves the recorded artifact location and repository driver.
 
 For a live Workflow object, the API also provides a name-based artifact route:
 
@@ -250,33 +241,36 @@ For a live Workflow object, the API also provides a name-based artifact route:
 /artifacts/{namespace}/{workflowName}/{nodeId}/{artifactName}
 ```
 
-Both routes require the caller to pass Argo authentication and to be authorized for the Workflow/artifact. Do not expose the underlying bucket publicly merely to make log download easy.
+Both routes require the caller to pass Argo authentication and to be authorized to get the Workflow; access to the repository and any referenced credentials must also succeed. Do not expose the underlying bucket publicly merely to make log download easy.
 
 ## Verify Archiving Before Enabling Pod Deletion
 
 Run a smoke Workflow and verify the whole lifecycle:
 
 ```bash
-argo submit -n workflows archived-logs.yaml --watch
+WORKFLOW_NAME="$(argo submit -n workflows archived-logs.yaml -o name)"
+argo watch -n workflows "$WORKFLOW_NAME"
 
 # Read logs while the Pod exists.
-argo logs -n workflows @latest
+argo logs -n workflows "$WORKFLOW_NAME"
 ```
 
-`@latest` is an Argo CLI shortcut, not a valid Kubernetes object name. Obtain the actual name before inspecting the artifacts recorded on its nodes with `kubectl`:
+Capturing the name returned by `argo submit` avoids selecting another run in a busy namespace. `@latest` is available as an Argo CLI shortcut, but it is not a valid Kubernetes object name. Inspect the artifacts recorded on the submitted Workflow's nodes with `kubectl`:
 
 ```bash
-WORKFLOW_NAME="$(argo list -n workflows -o name | head -n 1)"
 kubectl get workflow -n workflows "$WORKFLOW_NAME" -o json \
   | jq '.status.nodes[] | {displayName, artifacts: .outputs.artifacts}'
 ```
 
 Then wait for or trigger the configured Pod GC, confirm the Pod no longer exists, and retrieve the log through the Argo UI and the external backend. A setting is not proven until the post-deletion read works.
 
-If archiving failed, inspect the Pod's Argo executor container before it is deleted:
+If archiving failed, inspect the Pod's Argo executor container before it is deleted. The default legacy layout uses `wait`; the Argo Workflows 4.1 init-less layout uses `supervisor` instead:
 
 ```bash
+# Default legacy Pod layout.
 kubectl logs -n workflows <pod-name> -c wait
+
+# Only when the controller has initlessPod enabled.
 kubectl logs -n workflows <pod-name> -c supervisor
 ```
 
