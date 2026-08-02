@@ -8,9 +8,9 @@ Description: Diagnose the Argo Rollouts “more replicas need to be updated” s
 
 ---
 
-“More replicas need to be updated” means Argo Rollouts has not yet reached the updated-replica state required for the current reconciliation point. It is a progress message, not a root cause.
+“More replicas need to be updated” is the plugin's progress message when `.status.updatedReplicas` is lower than the desired replica count in `.spec.replicas`. During an in-progress canary, that can be expected while only part of the new revision is scaled up; it is not a root cause by itself.
 
-The missing replicas may not have been created, may be Pending, may be repeatedly crashing, may be Ready but not yet Available, or may be caught in competing controller updates. Start from the Rollout tree and follow one new-revision pod through scheduling and readiness.
+The shortfall may mean new-revision Pod objects were never created. It can also persist because the controller cannot advance scaling while pods are Pending, repeatedly crashing, not Ready or Available, or while controller updates conflict. Start from the Rollout tree and follow one new-revision pod through scheduling and readiness.
 
 ## Read the Rollout's Replica Accounting
 
@@ -105,7 +105,7 @@ Without traffic routing, canary weight is approximated using integer replica cou
 
 With traffic routing, weight and replicas can differ. Check for an active `setCanaryScale`, `dynamicStableScale`, HPA updates to total replicas, and provider route reconciliation. A fixed canary count may be intentional even when traffic weight is higher.
 
-If an HPA is rapidly changing `.spec.replicas`, stabilize the metric and scale behavior; do not attach an HPA to the underlying ReplicaSets. Check managed fields to find every writer:
+If an HPA is rapidly changing `.spec.replicas`, stabilize the metric and scale behavior; do not attach an HPA to the underlying ReplicaSets. Check managed fields to identify the current field managers; consult the cluster's API audit logs, if enabled, for historical writes:
 
 ```bash
 kubectl get rollout payments -n payments \
@@ -139,7 +139,7 @@ The official project issue tracker records rare historical cases involving repea
 9. Inspect controller and traffic-provider reconciliation errors.
 10. Upgrade only after matching evidence to a fixed issue.
 
-The status clears when the latest ReplicaSet reaches the count and availability the controller requires. Find which transition stopped, and fix that transition rather than manipulating the summary message.
+The exact message clears when `.status.updatedReplicas` reaches `.spec.replicas`. The Rollout can still remain Progressing with a different message until the updated replicas become available and the remaining strategy work completes. Find which transition stopped, and fix that transition rather than manipulating the summary message.
 
 ## Official Documentation
 
