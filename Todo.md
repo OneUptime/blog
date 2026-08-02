@@ -2,13 +2,12 @@
 
 ## Portainer
 
-1. Portainer Stack API Returns 404 After an Upgrade: Migrating to the New Create Endpoints
-2. How to Back Up and Restore Portainer—and What the Backup Does Not Include
-3. How to Migrate Portainer to a New Host Without Losing Stacks or Volumes
-4. Portainer Behind Nginx, Traefik, or Cloudflare: Fixing Login, WebSocket, and HTTPS Problems
-5. How to Secure Portainer in Production: Docker Socket Access, RBAC, TLS, and Network Exposure
-6. How to Reset a Forgotten Portainer Admin Password Without Losing Configuration
-7. Why a Stack Works with docker compose but Fails in Portainer
+1. How to Back Up and Restore Portainer—and What the Backup Does Not Include
+2. How to Migrate Portainer to a New Host Without Losing Stacks or Volumes
+3. Portainer Behind Nginx, Traefik, or Cloudflare: Fixing Login, WebSocket, and HTTPS Problems
+4. How to Secure Portainer in Production: Docker Socket Access, RBAC, TLS, and Network Exposure
+5. How to Reset a Forgotten Portainer Admin Password Without Losing Configuration
+6. Why a Stack Works with docker compose but Fails in Portainer
 
 ## Argo Workflows
 
