@@ -1,9 +1,5 @@
 # Blog Post Ideas
 
-## Argo Rollouts
-
-1. Argo Rollouts Blue-Green Deployment: Configuring Active and Preview Services Safely
-
 ## Remote Write
 
 1. Prometheus Remote Write vs. Federation vs. Remote Read: Which Pattern Should You Use?
