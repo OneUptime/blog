@@ -13,7 +13,7 @@ Argo Workflows does not have one universal service account. A production install
 - the **workflow controller** reconciles Workflow resources and creates Pods;
 - the **Argo Server** serves the UI and API under its configured auth mode;
 - a **human or API client** submits, reads, retries, or deletes Workflows;
-- each **Workflow Pod** runs as `spec.serviceAccountName` and includes the Argo executor;
+- each **Workflow Pod** runs as `spec.serviceAccountName` (or a template-level override) and includes the Argo executor, which can use a separate service account in Argo Workflows 4;
 - artifact and cloud access may use a separate workload identity outside Kubernetes RBAC.
 
 Combining those identities into one `cluster-admin` service account is easy, but it turns a compromised task or token into a cluster-wide incident. Least privilege starts by drawing the boundaries before writing any Role.
@@ -26,7 +26,7 @@ Combining those identities into one `cluster-admin` service account is easy, but
 | Argo Server | Server Deployment service account and/or caller/mapped SSO service account | Installation plus user namespaces | UI/API, archive, artifacts, authentication delegation |
 | Submitter | User, group, or API service account | Team namespace | Create/read approved Workflows |
 | Retry operator | User, group, or API service account | Team namespace | Read/update a failed Workflow and remove reset Pods |
-| Workflow executor | Workflow's `spec.serviceAccountName` | Workflow namespace | Report task results and perform task-specific API calls |
+| Workflow Pod / executor | Workflow or template `serviceAccountName`; optional executor-specific service account in Argo Workflows 4 | Workflow namespace | Report task results and perform task-specific API calls |
 | Artifact client | Workflow Pod or Argo Server cloud identity | Bucket/container prefix | Upload/download artifacts and archived logs |
 
 Kubernetes RBAC grants verbs to identities, not to YAML files. Always ask “which process makes this API call?” before adding a permission.
@@ -70,13 +70,13 @@ Keep these boundaries:
 - restrict controller egress to the Kubernetes API, configured database, artifact store, and required integrations;
 - pin and diff RBAC when upgrading Argo.
 
-Argo explicitly warns that allowing users to create Workflows in the controller namespace can let them affect the controller. In a namespace installation, the managed namespace should therefore be separate from the component namespace.
+Argo explicitly warns that allowing users to create Workflows in the controller namespace can let them affect the controller. A namespace-scoped installation that accepts user submissions should therefore use a managed namespace separate from the component namespace.
 
 ## 2. Give Workflow Pods Only Executor Minimums
 
-Every Workflow Pod uses the service account named by `workflow.spec.serviceAccountName`. If omitted, Kubernetes uses the namespace's `default` service account. Argo's Workflow RBAC guide recommends against the shared default account in production.
+Workflow Pods use the service account named by `workflow.spec.serviceAccountName`, unless a Pod-producing template overrides it with its own `serviceAccountName`. If neither is set, Kubernetes uses the namespace's `default` service account. By default, the executor uses the same credentials; Argo Workflows 4 can instead supply the executor with a separate service-account token through `spec.executor.serviceAccountName` or a template-level `executor.serviceAccountName`. Argo's Workflow RBAC guide recommends against the shared default account in production.
 
-For current emissary-based installations, the documented minimum executor Role is:
+For Argo Workflows 3.4 and later, the documented minimum executor Role is:
 
 ```yaml
 apiVersion: v1
@@ -129,7 +129,7 @@ spec:
         args: ["report"]
 ```
 
-That Role lets Argo's executor report task results. It does not grant the application permission to read Secrets, deploy resources, or list Pods.
+That Role lets Argo's executor report task results. It does not grant the application permission to read Secrets, deploy resources, or list Pods. In the example, the main container and executor share `report-runner`, so both can use its token. With Argo Workflows 4, a stricter split can set `automountServiceAccountToken: false`, assign a dedicated account under `executor.serviceAccountName`, and bind the executor Role to that account; the executor account also needs the discoverable token Secret described by Argo's Service Account Secrets documentation.
 
 Add application permissions separately. For example, a resource template that reads one named ConfigMap can use `resourceNames`:
 
@@ -195,7 +195,7 @@ Read-only UI users usually also need read access to Pods, Pod logs, Events, and 
   verbs: ["get", "list", "watch"]
 ```
 
-Do not grant `secrets` read merely because the UI shows other resources. Secret selectors in Workflow specifications are resolved by the controller or Pod; submitters do not normally need to retrieve the Secret values.
+Do not grant `secrets` read merely because the UI shows other resources. Secret references in Workflow specifications are resolved by the controller, kubelet, or Workflow Pod executor as appropriate; submitters do not normally need to retrieve the Secret values.
 
 ### Workflow creation is powerful
 
@@ -240,9 +240,18 @@ metadata:
   annotations:
     workflows.argoproj.io/rbac-rule: "'team-a' in groups"
     workflows.argoproj.io/rbac-rule-precedence: "10"
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: team-a-operator.service-account-token
+  namespace: argo
+  annotations:
+    kubernetes.io/service-account.name: team-a-operator
+type: kubernetes.io/service-account-token
 ```
 
-Then bind `argo:team-a-operator` to a Role in `team-a-workflows`. A matching SSO rule without a target RoleBinding still results in forbidden operations.
+Kubernetes 1.24 and later no longer creates this long-lived service-account token Secret automatically, but Argo requires a discoverable token Secret for SSO RBAC. Then bind the `team-a-operator` ServiceAccount from namespace `argo` to a Role in `team-a-workflows`. A matching SSO rule without the token Secret or target RoleBinding still results in forbidden operations.
 
 ## 6. Grant `argo retry` Separately from Runtime Retries
 
@@ -254,7 +263,7 @@ A `retryStrategy` is reconciled by the controller. Each new attempt runs with th
 
 ### Operator-driven `argo retry`
 
-`argo retry` modifies an existing failed Workflow and resets failed nodes. The Argo Server implementation reads the Workflow, deletes Pods selected for reset when they still exist, and updates the same Workflow object. A tightly scoped retry operator therefore needs:
+`argo retry` modifies an existing failed Workflow and resets failed nodes. The Argo Server implementation reads the Workflow, deletes Pods selected for reset when they still exist, and updates the same Workflow object. To retry a named Workflow without watching or streaming logs, a tightly scoped retry operator therefore needs:
 
 ```yaml
 apiVersion: rbac.authorization.k8s.io/v1
@@ -271,7 +280,7 @@ rules:
     verbs: ["delete"]
 ```
 
-Add `watch` if the operator uses `argo retry --watch`, and `get` on `pods`/`pods/log` if it reads live logs. Test the exact Argo release and endpoint because auth mode and server deployment determine whose Kubernetes credentials execute the underlying calls.
+Add `list` on Workflows if the operator selects Workflows with `--selector`, `--field-selector`, or `@latest`. Add `watch` on Workflows for `--wait` or `--watch`. The `--log` option needs `watch` on Workflows, `list` and `watch` on Pods, and `get` on `pods/log`. Test the exact Argo release and endpoint because auth mode and server deployment determine whose Kubernetes credentials execute the underlying calls.
 
 Avoid bundling retry with submitter access automatically. Pod deletion is a materially stronger permission than read-only Workflow access.
 
@@ -322,12 +331,12 @@ RBAC audit logs should identify the expected service account for each call. If a
 - Is the controller namespace separate from user Workflow namespaces?
 - Is the controller scoped to only the namespaces it manages?
 - Does every Workflow explicitly select a non-default runtime service account?
-- Does every runtime account have only `workflowtaskresults` create/patch plus documented task permissions?
+- Does every executor identity have only `workflowtaskresults` create/patch, with documented task permissions added only when it shares the runtime account?
 - Are privileged workload classes split into separate accounts?
 - Can submitters create arbitrary Workflow specs, or only approved WorkflowTemplates?
 - Does the Argo Server auth mode match the intended caller identity?
 - Are SSO-mapped accounts bound only in their team namespaces?
-- Is retry permission separate and does it include only required Workflow update and Pod delete access?
+- Is retry permission separate and does it include only required Workflow get/update and Pod delete access, plus the read verbs needed by selected CLI modes?
 - Are artifact-store roles scoped independently from Kubernetes RBAC?
 - Have both allowed and denied paths been tested with `kubectl auth can-i` and real Workflows?
 - Is release RBAC diffed during upgrades?
@@ -337,10 +346,12 @@ Least privilege in Argo is not one small Role. It is a set of deliberately separ
 ## Official Documentation
 
 - [Argo Workflows: Workflow RBAC](https://argo-workflows.readthedocs.io/en/latest/workflow-rbac/)
+- [Argo Workflows: Field Reference](https://argo-workflows.readthedocs.io/en/latest/fields/)
 - [Argo Workflows: Security](https://argo-workflows.readthedocs.io/en/latest/security/)
 - [Argo Workflows: Workflow Restrictions](https://argo-workflows.readthedocs.io/en/latest/workflow-restrictions/)
 - [Argo Workflows: Service Accounts](https://argo-workflows.readthedocs.io/en/latest/service-accounts/)
+- [Argo Workflows: Service Account Secrets](https://argo-workflows.readthedocs.io/en/latest/service-account-secrets/)
 - [Argo Workflows: Argo Server Auth Mode](https://argo-workflows.readthedocs.io/en/latest/argo-server-auth-mode/)
 - [Argo Workflows: Argo Server SSO](https://argo-workflows.readthedocs.io/en/latest/argo-server-sso/)
 - [Argo Workflows: `argo retry`](https://argo-workflows.readthedocs.io/en/latest/cli/argo_retry/)
-- [Argo Workflows: Official Controller RBAC Manifests](https://github.com/argoproj/argo-workflows/tree/main/manifests/cluster-install/workflow-controller-rbac)
+- [Argo Workflows: Official Controller RBAC Manifests](https://github.com/argoproj/argo-workflows/tree/main/manifests/cluster-install-no-crds/workflow-controller-rbac)
