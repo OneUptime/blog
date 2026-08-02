@@ -58,7 +58,7 @@ docker compose \
   config --environment
 ```
 
-Be cautious with full rendered output: interpolation can place sensitive values in the terminal or an artifact. `config --quiet` checks the model without printing it.
+Be cautious with rendered output, especially `config --environment`: interpolation can place sensitive values in the terminal or an artifact. `config --quiet` checks the model without printing it.
 
 In Portainer, select the same main Compose path and add the same extra files in the same order. Portainer's Git stack workflow supports additional paths as the equivalent of multiple `-f` options. Docker's merge rules make order significant, and all relative paths in merged files are resolved from the first, base Compose file.
 
@@ -117,7 +117,7 @@ services:
       - stack.env
 ```
 
-Portainer documents that `env_file` is not supported by `docker stack deploy` on Swarm. Docker also documents that normal `.env` substitution is a Compose CLI feature and is not supported by Swarm itself. For a Portainer Swarm stack, define values through Portainer and express the required service environment explicitly in the stack model.
+Portainer documents its special `stack.env` pattern as unavailable on Swarm, so define each required service variable explicitly there. Docker also documents that normal `.env` substitution is a Compose CLI feature and is not supported by Swarm itself. For a Portainer Swarm stack, define interpolation values through Portainer and express the required service environment explicitly in the stack model.
 
 ## Cause 3: The Compose File References Local Files
 
@@ -199,7 +199,7 @@ Typical evidence of this cause includes:
 
 ## Cause 6: An External Resource Is Missing
 
-Compose does not create resources marked `external`. Docker's documentation states that an external network or volume must already exist on the target platform.
+On Docker Standalone, Compose does not create resources marked `external`. Docker's documentation states that an external network or volume must already exist on the target platform.
 
 ```yaml
 services:
@@ -227,11 +227,11 @@ docker network inspect reverse-proxy
 docker volume inspect platform-shared-data
 ```
 
-The same rule applies to external Swarm secrets and configs. Create them on the target before deploying, or define non-external resources in a supported way.
+In Swarm, external networks, secrets, and configs must already exist as cluster resources. Ordinary named volumes behave differently: if one is missing on a node when a task is scheduled there, Docker can create it on demand according to the service's volume specification. Verify the volume driver and data availability on every eligible node rather than assuming that `docker volume inspect` on a manager represents cluster-wide storage.
 
 Project naming can hide this issue. Local Compose normally derives a project name from its directory or `-p`; Portainer uses the stack name to group resources. Automatically created resources therefore receive different prefixes. Do not hard-code a locally derived network or volume name in another stack unless you deliberately declare a stable external name.
 
-Also look for conflicts caused by fixed `container_name` values and published ports. If the local deployment is still running on the same Engine, Portainer cannot create another container with the same explicit name or bind the same host port.
+On Docker Standalone, also look for conflicts caused by fixed `container_name` values and published ports. If the local deployment is still running on the same Engine, Portainer cannot create another container with the same explicit name or bind the same host port. In Swarm, `container_name` is ignored and a published port can conflict with an existing service.
 
 ## Cause 7: Portainer Is Deploying to Swarm
 
@@ -245,7 +245,7 @@ Common changes required for Swarm include:
 - Replace local `restart` expectations with an appropriate `deploy.restart_policy`.
 - Put replicas, placement, update behavior, and Swarm resource limits under `deploy`.
 - Remove Compose-only features not supported by `docker stack deploy`, such as `extends`.
-- Replace service `env_file` usage with explicit service environment configuration.
+- Replace Portainer's special `stack.env` usage with explicit service environment configuration.
 - Make bind-mounted data available on all eligible nodes or add intentional placement constraints.
 - Use Swarm secrets and configs for cluster-managed sensitive or configuration data.
 
@@ -278,6 +278,8 @@ docker stack ps --no-trunc my-stack
 docker service logs my-stack_api
 ```
 
+`docker service logs` works only for services that use the `json-file` or `journald` logging driver. For other drivers, query the configured logging backend or inspect task containers on their nodes.
+
 The extended task error from `docker stack ps --no-trunc` often reveals a missing mount, rejected image, unsupported platform, or port allocation failure. Portainer Server logs can show errors that occurred before Docker created a resource:
 
 ```bash
@@ -292,7 +294,7 @@ Do not rely on warm local state. A developer volume may already contain a migrat
 |---|---|---|
 | `invalid reference format` | Empty image variable | Portainer stack variables and `${VAR:?message}` checks |
 | `network ... declared as external, but could not be found` | Network exists only on local Engine | `docker network inspect` on the Portainer target |
-| `volume ... declared as external, but could not be found` | Volume name or target differs | `docker volume inspect` on the target |
+| `volume ... declared as external, but could not be found` | Standalone volume name or target differs | `docker volume inspect` on the target |
 | `bind source path does not exist` or empty mounted directory | Local relative/absolute path is unavailable remotely | Stack source method and target-host path |
 | `pull access denied` or `unauthorized` | CLI-only registry login | Portainer registry entry and stack registry selection |
 | `x509: certificate signed by unknown authority` | Target daemon lacks registry CA | CA trust on every node that pulls |
@@ -310,7 +312,7 @@ Do not rely on warm local state. A developer volume may already contain a migrat
 4. Build images externally and push immutable releases to a registry.
 5. Configure that registry and its CA trust in Portainer and on target nodes.
 6. Replace workstation-relative files with Git relative-path support, platform configs, named volumes, or pre-provisioned absolute host paths.
-7. Create intentional external networks, volumes, secrets, and configs on the target.
+7. Provision intentional external networks, volumes, secrets, and configs as required by the target; for Swarm volumes, verify driver and data availability on every eligible node.
 8. Adapt the file to `docker stack deploy` when the Portainer environment is Swarm.
 9. Deploy, then inspect Portainer logs and Docker container or service task errors separately.
 
@@ -328,6 +330,8 @@ This workflow turns “it works on my machine” into a concrete comparison of t
 - [Docker: Merge Compose files](https://docs.docker.com/compose/how-tos/multiple-compose-files/merge/)
 - [Docker: Deploy a stack to Swarm](https://docs.docker.com/engine/swarm/stack-deploy/)
 - [Docker: `docker stack deploy`](https://docs.docker.com/reference/cli/docker/stack/deploy/)
+- [Docker: Swarm services, bind mounts, and volumes](https://docs.docker.com/engine/swarm/services/)
+- [Docker: `docker service logs`](https://docs.docker.com/reference/cli/docker/service/logs/)
 - [Docker: External networks in Compose](https://docs.docker.com/compose/how-tos/networking/#use-an-existing-network)
 - [Docker: External volumes in Compose](https://docs.docker.com/reference/compose-file/volumes/#external)
 
