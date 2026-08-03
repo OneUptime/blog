@@ -2,14 +2,13 @@
 
 ## Multi-Stage Builds
 
-1. Multi-Stage Build or `apt remove`? Why Deleted Toolchains Still Occupy Earlier Layers
-2. Native Cross-Compilation with `FROM --platform=$BUILDPLATFORM` and `$TARGETPLATFORM`
-3. How to Prevent an ARM Builder from Producing the Wrong Binary for an AMD64 Runtime Stage
-4. Python Multi-Stage Builds: Copy Wheels, a Virtualenv, or `site-packages`?
-5. Why a Copied Python Virtualenv Breaks When Builder and Runtime Paths or libc Differ
-6. Node.js Multi-Stage Builds: Prune Dev Dependencies Without Re-running Lifecycle Scripts
-7. Copying Artifacts from External Images with `COPY --from`: Pin Digests, Not Mutable Tags
-8. How to Publish Multiple Images from One Multi-Stage Dockerfile with Named Targets and Buildx Bake
+1. Native Cross-Compilation with `FROM --platform=$BUILDPLATFORM` and `$TARGETPLATFORM`
+2. How to Prevent an ARM Builder from Producing the Wrong Binary for an AMD64 Runtime Stage
+3. Python Multi-Stage Builds: Copy Wheels, a Virtualenv, or `site-packages`?
+4. Why a Copied Python Virtualenv Breaks When Builder and Runtime Paths or libc Differ
+5. Node.js Multi-Stage Builds: Prune Dev Dependencies Without Re-running Lifecycle Scripts
+6. Copying Artifacts from External Images with `COPY --from`: Pin Digests, Not Mutable Tags
+7. How to Publish Multiple Images from One Multi-Stage Dockerfile with Named Targets and Buildx Bake
 
 ## SOC 2
 
