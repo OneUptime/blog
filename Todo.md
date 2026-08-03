@@ -2,26 +2,25 @@
 
 ## SOC 2
 
-1. SOC 2 Type I or Type II for Your First Enterprise Deal? Match the Report to the Buyer’s Actual Requirement
-2. Going Straight to SOC 2 Type II: Five Readiness Gates Before the Observation Window Opens
-3. What Counts as SOC 2 Evidence? Point-in-Time, Periodic, and Transactional Controls Compared
-4. How to Build Complete SOC 2 Populations for Access Changes, Deployments, Incidents, and New Hires
-5. No Terminations or Incidents This Year: How Auditors Test Controls with an Empty Population
-6. SOC 2 Access Reviews for a Five-Person Startup Where Everyone Has Production Access
-7. Scoping a SaaS SOC 2 System: Products, Cloud Accounts, People, Data, and Procedures
-8. Security, Availability, or Confidentiality? Choosing Trust Services Categories Without Overscoping
-9. Is a Penetration Test Actually Required for SOC 2? Trace the Answer to Risks, Controls, and Commitments
-10. AWS Has SOC 2, So What Do You Still Need to Audit? Understanding Shared Responsibility
-11. Carve-Out or Inclusive? How to Treat Cloud Providers and Subservice Organizations in a SOC 2 Report
-12. How Buyers Read a SOC 2 Type II Report: Opinion, Scope, Exceptions, CUECs, and Management Responses
-13. How to Vet a SOC 2 Auditor: CPA Licensure, Peer Review, Sampling Quality, and Independence
-14. SOC 2 Readiness Consultant vs CPA Auditor: Where Advice Ends and Independence Begins
-15. When Is a SOC 2 Report Too Old? Coverage Dates, Bridge Letters, and Renewal Gaps
-16. How to Share a Confidential SOC 2 Report Through an NDA-Gated Trust Center
-17. A Control Failed During Your Type II Period—Will It Qualify the Report?
-18. Can GitHub Pull Requests Prove Change Management? Building the Evidence Auditors Actually Sample
-19. SOC 2 for Contractors, BYOD, and Remote Teams: Background Checks, Device Controls, and Offboarding
-20. The Real Cost of SOC 2: Separate Audit, Readiness, Tooling, Pen Test, and Remediation Quotes
+1. Going Straight to SOC 2 Type II: Five Readiness Gates Before the Observation Window Opens
+2. What Counts as SOC 2 Evidence? Point-in-Time, Periodic, and Transactional Controls Compared
+3. How to Build Complete SOC 2 Populations for Access Changes, Deployments, Incidents, and New Hires
+4. No Terminations or Incidents This Year: How Auditors Test Controls with an Empty Population
+5. SOC 2 Access Reviews for a Five-Person Startup Where Everyone Has Production Access
+6. Scoping a SaaS SOC 2 System: Products, Cloud Accounts, People, Data, and Procedures
+7. Security, Availability, or Confidentiality? Choosing Trust Services Categories Without Overscoping
+8. Is a Penetration Test Actually Required for SOC 2? Trace the Answer to Risks, Controls, and Commitments
+9. AWS Has SOC 2, So What Do You Still Need to Audit? Understanding Shared Responsibility
+10. Carve-Out or Inclusive? How to Treat Cloud Providers and Subservice Organizations in a SOC 2 Report
+11. How Buyers Read a SOC 2 Type II Report: Opinion, Scope, Exceptions, CUECs, and Management Responses
+12. How to Vet a SOC 2 Auditor: CPA Licensure, Peer Review, Sampling Quality, and Independence
+13. SOC 2 Readiness Consultant vs CPA Auditor: Where Advice Ends and Independence Begins
+14. When Is a SOC 2 Report Too Old? Coverage Dates, Bridge Letters, and Renewal Gaps
+15. How to Share a Confidential SOC 2 Report Through an NDA-Gated Trust Center
+16. A Control Failed During Your Type II Period—Will It Qualify the Report?
+17. Can GitHub Pull Requests Prove Change Management? Building the Evidence Auditors Actually Sample
+18. SOC 2 for Contractors, BYOD, and Remote Teams: Background Checks, Device Controls, and Offboarding
+19. The Real Cost of SOC 2: Separate Audit, Readiness, Tooling, Pen Test, and Remediation Quotes
 
 ## Showback
 
