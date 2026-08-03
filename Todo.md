@@ -2,25 +2,24 @@
 
 ## Remote Write
 
-1. How to Send Remote Write Data from One Prometheus Server to Another
-2. Prometheus Remote Write Returns 405 Method Not Allowed: Enabling the Receiver Correctly
-3. Fixing “snappy: Corrupt Input” and Content-Type Errors in Prometheus Remote Write
-4. Prometheus Remote Write 401 Unauthorized: Configuring Basic Auth, Bearer Tokens, and OAuth
-5. Fixing x509 and TLS Handshake Errors in Prometheus Remote Write
-6. How to Send Only Selected Metrics with `write_relabel_configs`
-7. How to Route Different Metrics to Different Remote Write Backends by Label
-8. Multiple Remote Write Destinations: Fan-Out, Failover, and the Cost of Each
-9. How to Use `external_labels` to Identify Clusters Without Creating Series Collisions
-10. Prometheus HA Remote Write: Preventing Duplicate and Out-of-Order Samples
-11. What Happens When the Prometheus Remote Write Queue Is Full?
-12. How to Measure Remote Write Lag, Pending Samples, Retries, and Data Loss
-13. Tuning Remote Write `capacity`, Shards, Batch Size, and Backoff
-14. Prometheus Remote Write Gets HTTP 429: When to Retry and When to Reduce Load
-15. Remote Write “Context Deadline Exceeded”: Diagnosing Sender, Network, and Receiver Bottlenecks
-16. Why Remote Write Increases Prometheus Memory and CPU—and How to Control It
-17. How Long Can Remote Write Survive a Backend Outage Before Losing Samples?
-18. Prometheus Agent Mode vs. Full Prometheus for Remote Write at the Edge
-19. Prometheus Remote Write 1.0 vs. 2.0: Compatibility, Metadata, and Migration
+1. Prometheus Remote Write Returns 405 Method Not Allowed: Enabling the Receiver Correctly
+2. Fixing “snappy: Corrupt Input” and Content-Type Errors in Prometheus Remote Write
+3. Prometheus Remote Write 401 Unauthorized: Configuring Basic Auth, Bearer Tokens, and OAuth
+4. Fixing x509 and TLS Handshake Errors in Prometheus Remote Write
+5. How to Send Only Selected Metrics with `write_relabel_configs`
+6. How to Route Different Metrics to Different Remote Write Backends by Label
+7. Multiple Remote Write Destinations: Fan-Out, Failover, and the Cost of Each
+8. How to Use `external_labels` to Identify Clusters Without Creating Series Collisions
+9. Prometheus HA Remote Write: Preventing Duplicate and Out-of-Order Samples
+10. What Happens When the Prometheus Remote Write Queue Is Full?
+11. How to Measure Remote Write Lag, Pending Samples, Retries, and Data Loss
+12. Tuning Remote Write `capacity`, Shards, Batch Size, and Backoff
+13. Prometheus Remote Write Gets HTTP 429: When to Retry and When to Reduce Load
+14. Remote Write “Context Deadline Exceeded”: Diagnosing Sender, Network, and Receiver Bottlenecks
+15. Why Remote Write Increases Prometheus Memory and CPU—and How to Control It
+16. How Long Can Remote Write Survive a Backend Outage Before Losing Samples?
+17. Prometheus Agent Mode vs. Full Prometheus for Remote Write at the Edge
+18. Prometheus Remote Write 1.0 vs. 2.0: Compatibility, Metadata, and Migration
 
 ## Multi-Stage Builds
 
