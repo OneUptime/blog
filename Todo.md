@@ -1,9 +1,5 @@
 # Blog Post Ideas
 
-## Multi-Stage Builds
-
-1. How to Publish Multiple Images from One Multi-Stage Dockerfile with Named Targets and Buildx Bake
-
 ## SOC 2
 
 1. SOC 2 Type I or Type II for Your First Enterprise Deal? Match the Report to the Buyer’s Actual Requirement
