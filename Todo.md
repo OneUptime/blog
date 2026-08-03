@@ -2,12 +2,11 @@
 
 ## Multi-Stage Builds
 
-1. How to Prevent an ARM Builder from Producing the Wrong Binary for an AMD64 Runtime Stage
-2. Python Multi-Stage Builds: Copy Wheels, a Virtualenv, or `site-packages`?
-3. Why a Copied Python Virtualenv Breaks When Builder and Runtime Paths or libc Differ
-4. Node.js Multi-Stage Builds: Prune Dev Dependencies Without Re-running Lifecycle Scripts
-5. Copying Artifacts from External Images with `COPY --from`: Pin Digests, Not Mutable Tags
-6. How to Publish Multiple Images from One Multi-Stage Dockerfile with Named Targets and Buildx Bake
+1. Python Multi-Stage Builds: Copy Wheels, a Virtualenv, or `site-packages`?
+2. Why a Copied Python Virtualenv Breaks When Builder and Runtime Paths or libc Differ
+3. Node.js Multi-Stage Builds: Prune Dev Dependencies Without Re-running Lifecycle Scripts
+4. Copying Artifacts from External Images with `COPY --from`: Pin Digests, Not Mutable Tags
+5. How to Publish Multiple Images from One Multi-Stage Dockerfile with Named Targets and Buildx Bake
 
 ## SOC 2
 
