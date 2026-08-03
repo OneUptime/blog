@@ -1,9 +1,5 @@
 # Blog Post Ideas
 
-## Remote Write
-
-1. Prometheus Remote Write 1.0 vs. 2.0: Compatibility, Metadata, and Migration
-
 ## Multi-Stage Builds
 
 1. Why Your Multi-Stage Docker Cache Vanishes in CI: Exporting Intermediate Layers with BuildKit `mode=max`
