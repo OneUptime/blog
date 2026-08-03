@@ -88,7 +88,7 @@ COPY --from=build /out/service /service
 ENTRYPOINT ["/service"]
 ```
 
-For this Go-to-`scratch` example, `CGO_ENABLED=0` avoids a dynamically linked libc dependency. A cgo or other dynamically linked build instead needs a final stage containing its compatible loader and runtime libraries.
+For this Go-to-`scratch` example, `CGO_ENABLED=0` avoids a dynamically linked libc dependency. If enabling cgo or another feature produces a dynamically linked binary, the final stage instead needs its compatible loader and runtime libraries.
 
 `FROM` defaults to the requested target platform. For `--platform linux/amd64`, BuildKit therefore needs an AMD64-capable worker or emulation to run the compiler stage. This is slower under QEMU but keeps the compiler's default architecture aligned with the image target.
 
@@ -110,7 +110,7 @@ docker buildx imagetools inspect \
   registry.example.com/acme/service:2026.08
 ```
 
-These commands verify manifest metadata. They do not inspect `/service`. Export the artifact or image filesystem and examine the file as well:
+These commands verify image or manifest platform metadata. They do not inspect `/service`. Export the artifact or image filesystem and examine the file as well:
 
 ```bash
 container_id=$(docker create --platform linux/amd64 service:amd64)
@@ -132,7 +132,7 @@ An ARM workstation with QEMU may successfully emulate an AMD64 image, which is u
 
 The main executable is not the only architecture-sensitive artifact. Node native addons, Python extension modules, JNI libraries, and copied `.so` files must match the target OS, libc, architecture, and ABI. Never copy host `node_modules`, a host virtual environment, or host-built native libraries into a target image.
 
-Build dependencies inside the target-aware graph, inspect representative native files, and publish only after both the manifest and payload agree. The manifest routes the image to a node; it does not transform its contents.
+Build dependencies inside the target-aware graph, inspect representative native files, and publish only after both the platform metadata and payload agree. Platform metadata tells the container runtime which platform an image targets; it does not transform its contents.
 
 ## Official Documentation
 
