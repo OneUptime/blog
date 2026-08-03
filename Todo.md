@@ -2,8 +2,7 @@
 
 ## Remote Write
 
-1. Prometheus Agent Mode vs. Full Prometheus for Remote Write at the Edge
-2. Prometheus Remote Write 1.0 vs. 2.0: Compatibility, Metadata, and Migration
+1. Prometheus Remote Write 1.0 vs. 2.0: Compatibility, Metadata, and Migration
 
 ## Multi-Stage Builds
 
