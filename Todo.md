@@ -2,20 +2,19 @@
 
 ## Remote Write
 
-1. How to Send Only Selected Metrics with `write_relabel_configs`
-2. How to Route Different Metrics to Different Remote Write Backends by Label
-3. Multiple Remote Write Destinations: Fan-Out, Failover, and the Cost of Each
-4. How to Use `external_labels` to Identify Clusters Without Creating Series Collisions
-5. Prometheus HA Remote Write: Preventing Duplicate and Out-of-Order Samples
-6. What Happens When the Prometheus Remote Write Queue Is Full?
-7. How to Measure Remote Write Lag, Pending Samples, Retries, and Data Loss
-8. Tuning Remote Write `capacity`, Shards, Batch Size, and Backoff
-9. Prometheus Remote Write Gets HTTP 429: When to Retry and When to Reduce Load
-10. Remote Write “Context Deadline Exceeded”: Diagnosing Sender, Network, and Receiver Bottlenecks
-11. Why Remote Write Increases Prometheus Memory and CPU—and How to Control It
-12. How Long Can Remote Write Survive a Backend Outage Before Losing Samples?
-13. Prometheus Agent Mode vs. Full Prometheus for Remote Write at the Edge
-14. Prometheus Remote Write 1.0 vs. 2.0: Compatibility, Metadata, and Migration
+1. How to Route Different Metrics to Different Remote Write Backends by Label
+2. Multiple Remote Write Destinations: Fan-Out, Failover, and the Cost of Each
+3. How to Use `external_labels` to Identify Clusters Without Creating Series Collisions
+4. Prometheus HA Remote Write: Preventing Duplicate and Out-of-Order Samples
+5. What Happens When the Prometheus Remote Write Queue Is Full?
+6. How to Measure Remote Write Lag, Pending Samples, Retries, and Data Loss
+7. Tuning Remote Write `capacity`, Shards, Batch Size, and Backoff
+8. Prometheus Remote Write Gets HTTP 429: When to Retry and When to Reduce Load
+9. Remote Write “Context Deadline Exceeded”: Diagnosing Sender, Network, and Receiver Bottlenecks
+10. Why Remote Write Increases Prometheus Memory and CPU—and How to Control It
+11. How Long Can Remote Write Survive a Backend Outage Before Losing Samples?
+12. Prometheus Agent Mode vs. Full Prometheus for Remote Write at the Edge
+13. Prometheus Remote Write 1.0 vs. 2.0: Compatibility, Metadata, and Migration
 
 ## Multi-Stage Builds
 
