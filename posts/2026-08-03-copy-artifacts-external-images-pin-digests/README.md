@@ -48,7 +48,7 @@ Inspect a public tag with Buildx:
 docker buildx imagetools inspect alpine:3.23
 ```
 
-Record the top-level digest for a multi-platform image index when the Dockerfile must support several target platforms. BuildKit can select the matching platform manifest from that pinned index. A platform-specific manifest digest pins one architecture; using it for a different target should fail rather than silently provide another architecture.
+Record the top-level digest for a multi-platform image index when the Dockerfile must support several target platforms. BuildKit can select the matching platform manifest from that pinned index. A platform-specific manifest digest pins one architecture. If it does not match the requested target, current BuildKit can emit an `InvalidBaseImagePlatform` warning and continue, so CI must treat that warning as a failure rather than assuming the build will stop.
 
 After updating the Dockerfile, build every supported platform and review the source image's release notes and contents. Do not obtain a digest from an untrusted mirror and assume it identifies the intended publisher.
 
