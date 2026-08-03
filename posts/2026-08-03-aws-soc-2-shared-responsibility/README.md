@@ -166,7 +166,7 @@ AWS services can help collect customer-side evidence:
 - AWS CloudTrail records supported API activity;
 - AWS Config records supported configuration and change history;
 - IAM and IAM Identity Center APIs expose assignments and policies;
-- Security Hub CSPM aggregates supported security checks;
+- Security Hub CSPM runs supported security checks and aggregates their findings;
 - GuardDuty produces supported threat findings;
 - AWS Organizations exposes account structure and policy data;
 - AWS Backup provides job and recovery-point records;
