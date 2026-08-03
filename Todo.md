@@ -2,17 +2,16 @@
 
 ## SOC 2
 
-1. AWS Has SOC 2, So What Do You Still Need to Audit? Understanding Shared Responsibility
-2. Carve-Out or Inclusive? How to Treat Cloud Providers and Subservice Organizations in a SOC 2 Report
-3. How Buyers Read a SOC 2 Type II Report: Opinion, Scope, Exceptions, CUECs, and Management Responses
-4. How to Vet a SOC 2 Auditor: CPA Licensure, Peer Review, Sampling Quality, and Independence
-5. SOC 2 Readiness Consultant vs CPA Auditor: Where Advice Ends and Independence Begins
-6. When Is a SOC 2 Report Too Old? Coverage Dates, Bridge Letters, and Renewal Gaps
-7. How to Share a Confidential SOC 2 Report Through an NDA-Gated Trust Center
-8. A Control Failed During Your Type II Period—Will It Qualify the Report?
-9. Can GitHub Pull Requests Prove Change Management? Building the Evidence Auditors Actually Sample
-10. SOC 2 for Contractors, BYOD, and Remote Teams: Background Checks, Device Controls, and Offboarding
-11. The Real Cost of SOC 2: Separate Audit, Readiness, Tooling, Pen Test, and Remediation Quotes
+1. Carve-Out or Inclusive? How to Treat Cloud Providers and Subservice Organizations in a SOC 2 Report
+2. How Buyers Read a SOC 2 Type II Report: Opinion, Scope, Exceptions, CUECs, and Management Responses
+3. How to Vet a SOC 2 Auditor: CPA Licensure, Peer Review, Sampling Quality, and Independence
+4. SOC 2 Readiness Consultant vs CPA Auditor: Where Advice Ends and Independence Begins
+5. When Is a SOC 2 Report Too Old? Coverage Dates, Bridge Letters, and Renewal Gaps
+6. How to Share a Confidential SOC 2 Report Through an NDA-Gated Trust Center
+7. A Control Failed During Your Type II Period—Will It Qualify the Report?
+8. Can GitHub Pull Requests Prove Change Management? Building the Evidence Auditors Actually Sample
+9. SOC 2 for Contractors, BYOD, and Remote Teams: Background Checks, Device Controls, and Offboarding
+10. The Real Cost of SOC 2: Separate Audit, Readiness, Tooling, Pen Test, and Remediation Quotes
 
 ## Showback
 
