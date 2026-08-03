@@ -2,9 +2,8 @@
 
 ## Multi-Stage Builds
 
-1. Node.js Multi-Stage Builds: Prune Dev Dependencies Without Re-running Lifecycle Scripts
-2. Copying Artifacts from External Images with `COPY --from`: Pin Digests, Not Mutable Tags
-3. How to Publish Multiple Images from One Multi-Stage Dockerfile with Named Targets and Buildx Bake
+1. Copying Artifacts from External Images with `COPY --from`: Pin Digests, Not Mutable Tags
+2. How to Publish Multiple Images from One Multi-Stage Dockerfile with Named Targets and Buildx Bake
 
 ## SOC 2
 
