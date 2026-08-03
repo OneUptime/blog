@@ -58,13 +58,13 @@ The cache-friendly ordering also assumes the root project's install-time scripts
 
 ## Why Not Install Production Dependencies Again?
 
-This alternative is valid when a clean second install is the desired security boundary:
+This alternative is valid when a clean second install is the desired boundary for `node_modules`:
 
 ```dockerfile
 RUN npm ci --omit=dev --ignore-scripts
 ```
 
-But it does not preserve install artifacts created during the full dependency install, and `--ignore-scripts` means required production install hooks will not run. Omitting `--ignore-scripts` allows those hooks to run again. Choose intentionally:
+But it does not preserve dependency install artifacts inside the full `node_modules` tree, and `--ignore-scripts` means required production install hooks will not run. Omitting `--ignore-scripts` allows those hooks to run again. Choose intentionally:
 
 - prune when the fully installed tree is target-compatible and should be reduced without re-running hooks;
 - use a fresh production install when you want to prove the runtime tree can be constructed independently, and permit or approve the hooks it genuinely requires.
@@ -95,7 +95,7 @@ RUN npm ls --omit=dev \
 
 Only use the `require` smoke test if importing the module does not start a long-running server or require production-only configuration. Otherwise expose a dedicated application self-test.
 
-Compare size and package inventory in the final image, then execute its real startup path as the configured non-root user. For npm workspaces, run install and prune from the workspace root and test every packaged workspace; workspace selection changes which dependency tree npm operates on.
+Compare size and package inventory in the final image, then execute its real startup path as the configured non-root user. For npm workspaces, run install and prune from the workspace root, ensure the final stage also copies the targets of any retained workspace links, and test every packaged workspace; workspace selection changes which dependency tree npm operates on.
 
 The goal is not simply fewer directories. It is a lockfile-derived, target-compatible runtime tree whose necessary lifecycle outputs were created once and whose dev-only tools are absent.
 
