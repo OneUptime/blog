@@ -79,7 +79,7 @@ COPY --from=builder /opt/venv /opt/venv
 
 The slim image is Debian-based and uses glibc. Alpine uses musl. Native extensions or shared libraries built for one are not generally loadable by the other. PyPA defines separate `manylinux` and `musllinux` platform-tag families for exactly this distinction.
 
-Typical symptoms include `ImportError`, a missing `.so`, an undefined symbol, or a misleading missing-file error caused by an absent ELF interpreter. Inspect extensions in the builder with `file`, `readelf --program-headers`, and `readelf --dynamic`.
+Typical symptoms include `ImportError`, a missing `.so`, an undefined symbol, or a misleading missing-file error caused by an absent ELF interpreter. Inspect native extensions and executables in the builder with `file`, `readelf --program-headers`, and `readelf --dynamic`.
 
 ## Failure 4: A Runtime Shared Library Is Absent
 
@@ -88,8 +88,8 @@ The Python package may be present while a system library is not. Packages such a
 For a trusted extension, locate and inspect it:
 
 ```bash
-/opt/venv/bin/python -c 'import example_native; print(example_native.__file__)'
-ldd /opt/venv/lib/python3.14/site-packages/example_native*.so
+extension=$(/opt/venv/bin/python -c 'import importlib.util; print(importlib.util.find_spec("example_native").origin)')
+ldd "$extension"
 ```
 
 The Linux `ldd` manual warns against using it on untrusted executables. Use `objdump -p file.so | grep NEEDED` for non-executing direct-dependency inspection. Install required runtime libraries through the final image's package manager rather than copying random `.so` files.
