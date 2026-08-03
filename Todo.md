@@ -2,12 +2,11 @@
 
 ## Remote Write
 
-1. Prometheus Remote Write Gets HTTP 429: When to Retry and When to Reduce Load
-2. Remote Write “Context Deadline Exceeded”: Diagnosing Sender, Network, and Receiver Bottlenecks
-3. Why Remote Write Increases Prometheus Memory and CPU—and How to Control It
-4. How Long Can Remote Write Survive a Backend Outage Before Losing Samples?
-5. Prometheus Agent Mode vs. Full Prometheus for Remote Write at the Edge
-6. Prometheus Remote Write 1.0 vs. 2.0: Compatibility, Metadata, and Migration
+1. Remote Write “Context Deadline Exceeded”: Diagnosing Sender, Network, and Receiver Bottlenecks
+2. Why Remote Write Increases Prometheus Memory and CPU—and How to Control It
+3. How Long Can Remote Write Survive a Backend Outage Before Losing Samples?
+4. Prometheus Agent Mode vs. Full Prometheus for Remote Write at the Edge
+5. Prometheus Remote Write 1.0 vs. 2.0: Compatibility, Metadata, and Migration
 
 ## Multi-Stage Builds
 
