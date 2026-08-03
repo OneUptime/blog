@@ -2470,3 +2470,233 @@
 18. Dead Partitions After Replacing a Disk in Strong Consistency Mode: When—and When Not—to `revive`
 19. Aerospike `SESSION` vs. `LINEARIZE` Reads: Choose the Consistency and Availability Trade-Off Deliberately
 20. How to Capacity-Plan an Aerospike Cluster for Index Memory, SSD, Replication, and One-Node Failure
+
+## nslookup
+
+1. nslookup Times Out Twice and Then Succeeds: Identify the Dead Resolver in a Multi-Server DNS List
+2. nslookup Works but Browsers and ping Fail: Trace the Windows Resolver, DNS Cache, DoH, and NRPT
+3. Fixing “Default Server: Unknown” in nslookup Without Mistaking It for a Query Failure
+4. A New DNS Record Still Returns NXDOMAIN: Use nslookup to Track Negative Caching and SOA TTL
+5. Which DNS View Answered? Compare nslookup Results from a VPN Adapter, Domain Controller, and Public Resolver
+6. Stop DNS Suffixes from Corrupting nslookup Tests: Short Names, FQDNs, and the Trailing Dot
+7. How to Query Every Authoritative Name Server with nslookup and Find Zone Replication Drift
+8. Non-Authoritative Answer in nslookup: When It Is Normal and When Stale Cache Is the Real Problem
+9. How to Validate Forward-Confirmed Reverse DNS with nslookup Before Sending Mail
+10. How to Query MX, TXT, SRV, CAA, and SOA Records with nslookup on Windows and Linux
+11. NXDOMAIN, SERVFAIL, REFUSED, or Timeout? Decode nslookup Failures Before Changing DNS
+12. Why nslookup Can Query a DNS Server by IP but Not by Name: Bootstrap Resolution and Glue Records
+13. One Hostname, Different IPs: Use nslookup Debug Output to Separate Round-Robin DNS from Stale Cache
+14. How to Test Active Directory SRV Records with nslookup and Find Broken Domain Controller Registration
+15. Why nslookup Uses the Wrong DNS Server: Interface Metrics, VPN Adapters, and Per-Link Resolver Rules
+16. How to Trace a CNAME Chain with nslookup Without Confusing Aliases, Canonical Names, and Final A Records
+17. How to Spot Broken DNS Delegation with nslookup by Comparing Parent NS, Child NS, and Glue Records
+18. Bulk nslookup Without Fragile Text Parsing: Reliable DNS Checks in PowerShell and Shell Pipelines
+19. Why nslookup Resolves an IP but Reverse Lookup Fails: PTR Ownership, Delegation, and Missing Records
+20. How to Use nslookup Interactive Debug Mode to Inspect TTLs, Authority, and Additional Records
+
+## CDKTF
+
+1. CDKTF Init Says “Unable to Request Pre-Built Provider Information”: Recover with Local Provider Bindings
+2. CDKTF Version Skew: Align the CLI, Core Library, Constructs, jsii, Terraform, and Provider Packages
+3. Why `TF_VAR_*` Is Still a Token During `cdktf synth`—and Where Runtime Variables Actually Resolve
+4. Multiple AWS Accounts or Regions in One CDKTF Stack: Alias Providers Without Configuration Collisions
+5. CDKTF Cross-Stack Reference Says “Unable to Find Remote State”: Check Apply Order, Workspaces, and Backend Access
+6. Recovering a CDKTF State Lock After a Canceled Deploy with `terraform force-unlock`
+7. CDKTF Import Without Address Drift: Match Generated Logical IDs Before Touching Existing Resources
+8. Refactoring CDKTF Construct IDs Without Recreating Infrastructure: Moved Blocks and Stable Logical IDs
+9. Treat `cdktf.out` as a Build Artifact: Reuse Reviewed Synth Output Safely in CI
+10. How to Diff Every CDKTF Stack and Produce One CI Summary
+11. Why a CDKTF “Module” Deploys No Resources: Constructs vs Generated Terraform Module Bindings
+12. Loading Helm Values from Local YAML in CDKTF Without Breaking Multiline Strings or Leaking Secrets
+13. CDKTF Provider Bindings Are Missing a Resource: Regenerate Locally and Pin the Schema Version
+14. CDKTF Destroy Says “Nothing to Destroy”: Find the Wrong Stack ID, State Key, or Backend
+15. Why a CDKTF Stack Cannot Create Its Own Remote-State Bucket—and How to Bootstrap It Safely
+16. Runtime Conditionals in CDKTF: Generate `count` or `for_each` Instead of Branching on Tokens
+17. Migrating CDKTF S3 State Locking from DynamoDB to `use_lockfile` Without Backend Errors
+18. CDKTF Python Synth Cannot Import Installed Packages: Fix the Pipenv App Command and Runtime
+19. Passing Aliased Assume-Role Providers into External Terraform Modules from CDKTF
+20. CDKTF CLI Installs but Will Not Run on Windows: Align Node.js, npm, PATH, and Execution Policy
+
+## RethinkDB
+
+1. RethinkDB Changefeed Aborted as Unavailable: Reconnect with Backoff and Reconcile Missed Updates
+2. Race-Free RethinkDB Subscriptions: Use `include_initial` to Bridge the Snapshot-to-Changefeed Gap
+3. How to Stop a RethinkDB Changefeed Cleanly and Prevent Cursor and Connection Leaks
+4. RethinkDB Connection Pools in Production: Isolate Changefeeds, Rotate Failed Nodes, and Close Idle Connections
+5. Filter, Sort, and Page Millions of RethinkDB Documents with One Compound Index
+6. How to Build a Multi-Value Compound Index for Tag-and-Time Queries in RethinkDB
+7. Keyset Pagination in RethinkDB: Replace Slow `skip` with Indexed `between` Boundaries
+8. Primary Replica Not Available After Table Creation: Wait for RethinkDB Readiness Before Writing
+9. Why a Two-Node RethinkDB Cluster Cannot Fail Over Writes—and the Three-Replica Fix
+10. Multi-Datacenter RethinkDB Without Split Brain: Place Primaries with Server Tags and Preserve a Majority
+11. RethinkDB `write_acks` Explained Through Failure: When `single` Can Lose an Acknowledged Write
+12. How to Fail Over RethinkDB Client Connections When the Seed Node Dies
+13. Diagnosing Unavailable RethinkDB Shards with `table_status`, `table_config`, `jobs`, and `stats`
+14. How to Measure RethinkDB Table Disk Usage Across Every Shard and Replica
+15. RethinkDB Restore Says the Python Driver Is Missing: Repair PATH, Package, and Version Mismatches
+16. How to Rebuild RethinkDB Secondary Indexes After an Upgrade and Wait Until They Are Ready
+17. Running RethinkDB on Kubernetes: Give Every Pod a Stable Identity and Its Own Persistent Volume
+18. Atomic Counter Upserts in RethinkDB with `replace`, `branch`, and Conflict Functions
+19. Updating Nested Arrays in RethinkDB Without Rewriting Your Data Model into a Performance Trap
+20. Zero-Downtime Migration from RethinkDB: Snapshot, Changefeed Catch-Up, Dual Reads, and Cutover Checks
+
+## OTLP
+
+1. OTLP/HTTP Returns 401: Adding Authorization with Static Headers or the `basicauth` Extension
+2. Browser OTLP/HTTP Exports Fail Preflight: Configure Collector CORS Without Allowing Every Origin
+3. OTLP/HTTP Hits 413 “Payload Too Large”: Align SDK Batches, Reverse Proxies, and Backend Limits
+4. OTLP/gRPC Shows `bogus greeting` Behind an Ingress: Preserve HTTP/2 or Terminate It Correctly
+5. Debugging OTLP/gRPC `GOAWAY` and `FRAME_SIZE_ERROR` Through Proxies and Load Balancers
+6. OTLP Collector-to-Collector Headers Disappear: When `include_metadata` Is Required
+7. Multi-Tenant OTLP Routing: Preserve Trusted Tenant Headers Without Accepting Spoofed Identity
+8. OTLP Partial-Success Responses: Surface Rejected Spans, Metrics, and Logs Before They Vanish
+9. Which OTLP Failures Should Retry? Classifying gRPC Codes and HTTP Statuses Without Retry Storms
+10. Recovering an OTLP Persistent Queue That Blocks Collector Startup After a Backend Outage
+11. Why Short-Lived Jobs Lose OTLP Data: Call `ForceFlush` and `Shutdown` Before Exit
+12. How to Test an OTLP Pipeline Without a Backend: Synthetic Telemetry, Debug Export, and File Capture
+13. Duplicate Kubernetes Logs from stdout and OTLP: Choose One Ingestion Path per Pod
+14. How to Route OTLP Traces, Metrics, and Logs to Different Backends from One Collector
+15. OTLP/HTTP Protobuf vs JSON: Set the Correct `Content-Type`, Encoding, and Signal Path
+16. Gzip-Compressed OTLP Requests Fail to Decode: Trace `Content-Encoding` Across Every Hop
+17. Why OTLP/gRPC Traffic Sticks to One Collector Replica: Long-Lived Channels and Trace-Aware Load Balancing
+18. OTLP Receiver Is Published but Unreachable in Docker: Bind to `0.0.0.0`, Not `localhost`
+19. Why `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` Overrides the Base Endpoint—and Breaks Only One Signal
+20. Keeping OTLP API Keys Out of Collector ConfigMaps: Environment Expansion, Secret Mounts, and Header Rotation
+
+## Cloud Automation
+
+1. Untagged Cloud Resources: Automate Owner Notification, Quarantine, and Grace-Period Deletion
+2. How to Shut Down Idle Dev Environments Safely with Opt-Out Tags, Dependency Checks, and Startup Verification
+3. Cross-Account AWS Automation with STS: Trust Policies, Role Chains, Session Names, and CloudTrail Attribution
+4. Migrating Azure Automation Runbooks from Run As Accounts to Managed Identities Without Overgranting RBAC
+5. Azure Runbook Works in the Test Pane but Fails on Schedule: Context, Identity, and Module-Version Checks
+6. Event-Driven Cloud Remediation Without Loops: Idempotency Keys, Dedupe Stores, and Suppression Windows
+7. Cloud API Eventual Consistency: Use Waiters and Read-After-Write Verification Instead of Fixed Sleeps
+8. How to Delete Cloud Environments in Dependency Order Without Leaving Disks, IPs, or Snapshots Behind
+9. Cleaning Up Abandoned Preview Environments with TTL Labels, Owner Extensions, and Orphan Sweeps
+10. Automating AWS Account Vending: Control Tower, Identity Center Assignments, Budgets, and Baseline Guardrails
+11. How to Separate Foundational and Disposable Cloud Resources into Independent Automation Lifecycles
+12. Durable Cloud Automation for Long-Running APIs: Polling, Callbacks, Checkpoints, and Resume Tokens
+13. Rolling Back Partial Cloud Workflows with Compensating Actions When No Transaction Exists
+14. How to Trace One Automation Run Across Queues, Functions, and Cloud APIs with Correlation IDs
+15. Testing Cloud Automation Safely: Contract Mocks, Sandbox Accounts, and Canary-Scoped Production Runs
+16. How to Stop Overlapping Scheduled Cloud Jobs with Per-Resource Leases and Fencing Tokens
+17. Adopting Existing Cloud Resources into Automation Without Recreating or Renaming Them
+18. Cloud Quota Preflight Checks: Fail Before Provisioning Leaves a Half-Built Environment
+19. The Cloud Control Plane Says “Succeeded” but the Resource Is Not Ready: Verify Data-Plane Health Before Continuing
+20. Building a Kill Switch for Runaway Cloud Automation Without Losing the Audit Trail
+
+## File Storage
+
+1. Zero-Downtime SMB File-Share Migration: Pre-Seed, Delta Sync, Freeze Writes, and Cut Over DNS
+2. Preserving NTFS ACLs, Owners, Audit Rules, and Timestamps During a File-Share Migration
+3. Moving File Shares Between Active Directory Domains: SIDHistory, ACL Translation, and Share Permissions
+4. How to Back Up Millions of Small Files Without Letting Per-File API Calls Dominate the Run
+5. NFS Clients Read Stale Data After Another Writer Updates a File: Attribute Caches, `fsync`, and Reopen Semantics
+6. Can Multiple Hosts Safely Write the Same Shared File? Advisory Locks, Atomic Rename, and Application Coordination
+7. Kubernetes NFS Volume Says “Permission Denied”: Align UID/GID, `fsGroup`, `root_squash`, and Export Rules
+8. SMB or NFS for a Mixed Windows and Linux Fleet? Compare Identity, Locking, Case, and Failover Semantics
+9. Why `df`, `ls`, and Application Threads Hang When NFS Fails: Choosing `hard`, `soft`, `timeo`, and `retrans`
+10. Large Sequential I/O Is Fast but Directory Listings Crawl: Benchmark File-Storage Metadata Separately
+11. Deleted Files but Capacity Did Not Return: Find Open Handles, Snapshots, and Metadata Reservations
+12. Why a File-Storage Snapshot Is Not a Ransomware-Safe Backup: Isolation, Immutability, and Restore Drills
+13. How to Measure File-Share Restore Time When Metadata, Not Terabytes, Controls the RTO
+14. How to Stop Sync Software from Propagating Accidental Deletions or Ransomware into Every File Copy
+15. Preserving Sparse Files, Hard Links, Symlinks, and Extended Attributes Across Storage Migrations
+16. Audit Long Paths, Illegal Characters, Reserved Names, and Case Collisions Before a Cloud File Migration
+17. How to Validate a Multi-Terabyte File-Share Migration with Manifests, Checksums, and Exception Reconciliation
+18. Resumable Cloud File Transfers: Replace Browser Uploads with Chunking, Retries, and End-to-End Checksums
+19. Active-Active File Storage Across Regions: Why Locks and Cache Coherence Complicate Failover
+20. SMB Authentication Works by IP but Fails by Hostname: Debug DNS, SPNs, Kerberos, and NTLM Fallback
+
+## Open Source
+
+1. Before Making a Private Repository Public: Purge Secrets, Rotate Credentials, and Verify Git History
+2. MIT, Apache-2.0, GPL, or AGPL? Choose an Open Source License Based on Linking, SaaS, and Patent Goals
+3. Third-Party Notices in an Open Source Release: Preserve Copyrights and Dependency Licenses
+4. Open-Sourcing One Component of a Proprietary Monorepo: Split History Without Leaking Internal Code
+5. A Contributor’s First Hour in a Large Open Source Codebase: Trace Entry Points, Build Locally, and Reproduce One Issue
+6. Turn “Good First Issue” Labels into Reproducible, Well-Scoped Contributor Tasks
+7. Before Writing the Patch: Validate Maintainer Direction Without Wasting a Week
+8. Build a `CONTRIBUTING.md` That Gets Local Setup, Tests, and Commit Rules Right
+9. Why First-Time Open Source Pull Requests Stall: A Maintainer Workflow for Fast, Actionable Reviews
+10. What to Do with Abandoned Pull Requests: Deadlines, Takeovers, and Credit Without Queue Clutter
+11. From Drive-By Contributor to Repeat Maintainer: Design a Contributor Onboarding Ladder
+12. Triage Open Source Issues When One Maintainer Becomes the Bottleneck
+13. When and How to Grant Commit Access: A Least-Privilege Path for New Open Source Maintainers
+14. Retire Inactive Open Source Maintainers Without Leaving Stale Repository Permissions
+15. `SECURITY.md` in Practice: Private Vulnerability Intake, Embargoes, CVEs, and Coordinated Disclosure
+16. Sign and Reproduce Open Source Releases So Users Can Verify What They Download
+17. Git Tags, GitHub Releases, and Package Registries: Establish One Source of Truth for Open Source Versions
+18. Keep an Open Source Changelog Useful When Contributions Arrive Through Many Pull Requests
+19. Decide Whether an Open Source Project Needs a CLA, DCO, or Neither
+20. Sunset an Open Source Project: Deprecation Notices, Final Releases, Fork Handoffs, and Archive Mode
+
+## VXLAN
+
+1. VXLAN Tunnel Is Up but Bridged Workloads Cannot Reach Each Other: Check Bridge Addressing and Flood Entries
+2. ARP Requests Enter the VXLAN but Never Reach the VM: Trace the Linux Bridge, FDB, and Neighbor State
+3. Why One Remote VTEP Works but the Third Does Not: Repair an Incomplete Head-End Replication List
+4. Small Pings Work but Large Packets Disappear over VXLAN: Prove the Path MTU with Don’t-Fragment Tests
+5. Preserve a 1500-Byte Tenant MTU over VXLAN: Provision the Extra 50 Bytes Across the Underlay
+6. Capture and Decode a VXLAN Packet: Correlate Inner MACs, Outer VTEPs, VNI, and UDP Port
+7. No NVE Peers Even Though VTEP Loopbacks Ping: Check the EVPN Address Family, Update Source, and Route Targets
+8. An EVPN Type 2 Route Exists but the Host Is Unreachable: Follow MAC/IP State from BGP to the FDB
+9. An EVPN Type 5 Route Is Advertised but Not Installed: Debug Route-Target Import and VRF-to-L3VNI Mapping
+10. Diagnose a VLAN-to-VNI Mismatch Without Chasing the VXLAN Underlay
+11. Anycast Gateway Works on One Leaf Only: Verify the Shared MAC, SVI State, and Symmetric IRB
+12. ARP Suppression Silences Reachable Hosts: Validate EVPN MAC/IP Bindings Before Enabling It
+13. DHCP and PXE Break After ARP Suppression: Trace BUM Traffic Across a Pure L2VNI
+14. Duplicate MAC Moves in EVPN VXLAN: Distinguish Host Mobility from Loops and Miswired Multihoming
+15. EVPN Multihoming Drops BUM Traffic: Check the ESI, Designated Forwarder Election, and Split Horizon
+16. Choose Multicast Flooding, Ingress Replication, or EVPN for VXLAN BUM Traffic at Your Scale
+17. Route Through a Central Firewall in EVPN VXLAN Without Fighting the Distributed Anycast Gateway
+18. Stretch VXLAN Between Data Centers Without Stretching the Failure Domain: Bound BUM, MTU, and Convergence Risk
+19. Should You Run VXLAN Across the Public Internet? Account for Encryption, Fragmentation, and Carrier MTU
+20. VXLAN Packets Reach UDP 4789 but Are Dropped: Check VNI Membership, Local VTEP IP, and Firewall State
+
+## Compliance Automation
+
+1. Which Compliance Evidence Should You Automate? Separate Technical State, Process Proof, and Human Judgment
+2. From Control Statement to Executable Check: Define Scope, Query, Expected State, and Evidence Output
+3. Build a Compliance Evidence Collector That Records Source, Scope, Timestamp, Query, and Result
+4. Prove Evidence Freshness with Expiry Rules, Collection Cadence, and Pre-Audit Rechecks
+5. Reuse One Evidence Artifact Across SOC 2, ISO 27001, PCI DSS, and NIS2 Without Losing Context
+6. Detect Broken Compliance Connectors Before They Create an Audit-Period Evidence Gap
+7. Run Compliance Connectors with Least Privilege: Read-Only Scopes, Credential Rotation, and Collection Logs
+8. When an Automated Control Fails: Route Exceptions to Owners Without Creating Alert Fatigue
+9. Make Continuous Compliance Real by Matching Automated Checks and Human Reviews to Control Cadence
+10. Version Control-to-Evidence Mappings So Framework Updates Do Not Rewrite Audit History
+11. Prove Automated Evidence Is Complete with Population Reconciliation, Sampling Windows, and Coverage Tests
+12. Make Audit Evidence Tamper-Evident with Hashes, Immutable Storage, Trusted Time, and Chain of Custody
+13. Reconcile Deployment Logs with Approved Changes and Flag Orphaned Production Releases
+14. Automate User Access Reviews Without Treating Group Membership as Approval Evidence
+15. Reconcile Joiner-Mover-Leaver Evidence Across HRIS, IAM, SaaS, and Cloud Accounts
+16. Translate “Log Everything” into a Risk-Based Evidence Plan: Events, Retention, Cost, and Sensitive Data
+17. Quarantine Noncompliant Resources Without Letting Automated Remediation Cause an Outage
+18. Build or Buy Compliance Automation? Price Integration, Mapping, Review, and Audit-Support Work
+19. Keep AI-Assisted Control Testing Reviewable with Source Lineage, Deterministic Checks, and Human Sign-Off
+20. Automated Check Passed, Control Still Failed: Separate Control Design from Operating Evidence
+
+## Cloud Databases
+
+1. Managed Database Failover Finished but Applications Still Fail: Fix DNS TTLs, Stale Pools, and Retry Storms
+2. Run a Cloud Database Failover Drill That Tests Application Recovery, Not Just Endpoint Switchover
+3. Drain and Rebuild Database Connection Pools Cleanly After a Managed Failover
+4. A Read Replica Is Healthy but Queries Are Stale: Gate Read-After-Write Traffic on Replay Position
+5. Why the Cloud Read Replica Is Slower Than the Primary: Compare Cache Warmth, Instance Class, and Recovery Work
+6. Managed Backups Passed but Cross-Account Restore Failed: Design IAM, KMS, Network, and DNS for Real DR
+7. Keep Cloud Database Backups from Saturating Production I/O: Choose Windows, Export Methods, and Replica Offload
+8. Why Cloud Database Backup Charges Grow After You Shrink the Live Database: Changed Blocks and Retention
+9. Find Orphaned Manual Snapshots After Cloud Database Blue/Green Deployments and Restores
+10. Managed Database Maintenance Restarted Your Primary: Keep Connection Storms from Extending the Outage
+11. CDC Says “Caught Up” but Rows Are Missing: Validate Counts, Checksums, Large Objects, and Schema Changes
+12. Move a Managed PostgreSQL Database When Neither Provider Grants Superuser or Filesystem Access
+13. Upgrade Cloud PostgreSQL Extensions Safely: Inventory Compatibility Before `ALTER EXTENSION UPDATE`
+14. Managed PostgreSQL Rejects the Extension You Need: Choose SQL-Only Alternatives, Sidecars, or Self-Hosting
+15. Private IP, Auth Proxy, or Public TLS? Choose the Right Cloud Database Connection Path
+16. Cloud Database IAM Authentication Works but SQL Authorization Fails: Map Identities to Roles
+17. Replace Shared Cloud Database Passwords with One-Hour, Identity-Bound Sessions
+18. Rotate Cloud Database Credentials Without Breaking Long-Lived Connection Pools
+19. Rotate RDS and Cloud SQL CA Certificates Without a Connection Outage
+20. Keep Terraform from Deleting a Production Cloud Database: Provider Protection, `prevent_destroy`, and Final Snapshots
