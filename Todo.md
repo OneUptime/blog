@@ -2,8 +2,7 @@
 
 ## Multi-Stage Builds
 
-1. Copying Artifacts from External Images with `COPY --from`: Pin Digests, Not Mutable Tags
-2. How to Publish Multiple Images from One Multi-Stage Dockerfile with Named Targets and Buildx Bake
+1. How to Publish Multiple Images from One Multi-Stage Dockerfile with Named Targets and Buildx Bake
 
 ## SOC 2
 
