@@ -10,7 +10,7 @@ Description: Define a defensible SaaS SOC 2 boundary by tracing customer commitm
 
 The SOC 2 boundary is not the list of resources that a scanner happens to discover. It is the service organization's system used to provide the in-scope services, described for report users and evaluated against the applicable Trust Services Criteria.
 
-The AICPA's description criteria require management to prepare a description of the service organization's system. That description addresses the nature of the services and relevant components such as infrastructure, software, people, procedures, and data. It also addresses boundaries, principal service commitments and system requirements, identified system incidents that significantly impaired achievement of those commitments and requirements, and relevant subservice organizations as applicable. For a Type II description, it also addresses significant changes to the system during the period.
+The AICPA's description criteria require management to prepare a description of the service organization's system. That description addresses the nature of the services and relevant components such as infrastructure, software, people, procedures, and data. It also addresses boundaries, principal service commitments and system requirements, identified system incidents that resulted from controls that were not suitably designed or operating effectively or otherwise caused a significant failure to achieve those commitments and requirements, and relevant subservice organizations as applicable. For a Type II description, it also addresses significant changes to the system and controls during the period.
 
 For a SaaS provider, scope should follow the customer service and its risks. Begin with commitments, trace the delivery chain, and document every inclusion and exclusion.
 
@@ -37,7 +37,7 @@ Do not call the scope `the SaaS platform` without naming what that means. Report
 
 ## Anchor Scope in Commitments and Requirements
 
-Principal service commitments are promises management makes to user entities, while system requirements are specifications for how the system should function to meet those commitments, applicable laws and regulations, and other objectives. Sources can include:
+Principal service commitments are promises management makes to user entities and others, while system requirements are specifications for how the system should function to meet those commitments, comply with relevant laws, regulations, and industry guidelines, and achieve other relevant objectives. Sources can include:
 
 - customer contracts and data-processing terms;
 - security and privacy statements;
