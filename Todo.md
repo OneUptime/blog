@@ -2,20 +2,19 @@
 
 ## Multi-Stage Builds
 
-1. How to Inventory and Copy Shared Libraries from a Builder into a Minimal Runtime Image
-2. What a Scratch Runtime Still Needs: CA Certificates, Time Zones, Users, and Writable Directories
-3. One Dockerfile for Development, Testing, and Production: Selecting Named Targets in Compose
-4. Why `docker build --target` Still Executes Other Stages: BuildKit’s Dependency Graph Explained
-5. How to Inspect and Run an Intermediate Docker Build Stage Without Changing the Final Image
-6. Clone Private Repositories in Builder Stages Without Leaking SSH Keys into Image History
-7. Multi-Stage Build or `apt remove`? Why Deleted Toolchains Still Occupy Earlier Layers
-8. Native Cross-Compilation with `FROM --platform=$BUILDPLATFORM` and `$TARGETPLATFORM`
-9. How to Prevent an ARM Builder from Producing the Wrong Binary for an AMD64 Runtime Stage
-10. Python Multi-Stage Builds: Copy Wheels, a Virtualenv, or `site-packages`?
-11. Why a Copied Python Virtualenv Breaks When Builder and Runtime Paths or libc Differ
-12. Node.js Multi-Stage Builds: Prune Dev Dependencies Without Re-running Lifecycle Scripts
-13. Copying Artifacts from External Images with `COPY --from`: Pin Digests, Not Mutable Tags
-14. How to Publish Multiple Images from One Multi-Stage Dockerfile with Named Targets and Buildx Bake
+1. What a Scratch Runtime Still Needs: CA Certificates, Time Zones, Users, and Writable Directories
+2. One Dockerfile for Development, Testing, and Production: Selecting Named Targets in Compose
+3. Why `docker build --target` Still Executes Other Stages: BuildKit’s Dependency Graph Explained
+4. How to Inspect and Run an Intermediate Docker Build Stage Without Changing the Final Image
+5. Clone Private Repositories in Builder Stages Without Leaking SSH Keys into Image History
+6. Multi-Stage Build or `apt remove`? Why Deleted Toolchains Still Occupy Earlier Layers
+7. Native Cross-Compilation with `FROM --platform=$BUILDPLATFORM` and `$TARGETPLATFORM`
+8. How to Prevent an ARM Builder from Producing the Wrong Binary for an AMD64 Runtime Stage
+9. Python Multi-Stage Builds: Copy Wheels, a Virtualenv, or `site-packages`?
+10. Why a Copied Python Virtualenv Breaks When Builder and Runtime Paths or libc Differ
+11. Node.js Multi-Stage Builds: Prune Dev Dependencies Without Re-running Lifecycle Scripts
+12. Copying Artifacts from External Images with `COPY --from`: Pin Digests, Not Mutable Tags
+13. How to Publish Multiple Images from One Multi-Stage Dockerfile with Named Targets and Buildx Bake
 
 ## SOC 2
 
