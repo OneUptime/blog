@@ -8,7 +8,7 @@ Description: Explain why removing compilers in a later layer does not erase thei
 
 ---
 
-Container image layers are immutable filesystem changes. Installing a compiler adds its files to one layer. Removing the compiler in a later `RUN` adds deletion markers to a newer layer, so the merged container view no longer shows the files, but registries and hosts still store and transfer the earlier bytes.
+Container image layers are immutable filesystem changes. Installing a compiler adds its files to one layer. Removing the compiler in a later `RUN` adds deletion markers to a newer layer, so the merged container view no longer shows the files, but registries still store the earlier layer bytes and pulls to hosts that do not already have that layer still transfer them.
 
 `apt remove` changes what the final filesystem exposes. It does not rewrite a previously created image layer.
 
@@ -45,7 +45,7 @@ The toolchain installation layer remains. A later layer records removals and may
 
 ## Why One `RUN` Can Be Smaller but Is Not the Best Boundary
 
-Because one `RUN` produces one committed filesystem diff, installing, compiling, and deleting in the same instruction can keep temporary files out of that layer's final diff:
+Because one `RUN` produces one committed filesystem diff, files installed or generated and then deleted in the same instruction can be kept out of that layer's final diff:
 
 ```dockerfile
 FROM debian:bookworm-slim
@@ -58,7 +58,11 @@ RUN set -eux; \
     install -D -m 0555 ./build/service /usr/local/bin/service; \
     apt-get purge -y --auto-remove build-essential; \
     rm -rf /var/lib/apt/lists/* /src
+
+ENTRYPOINT ["/usr/local/bin/service"]
 ```
+
+The toolchain and build outputs created and deleted within this `RUN` are absent from its final diff. However, `COPY . .` is a separate earlier layer, so deleting `/src` only hides the copied source from the merged filesystem; the source bytes remain in the image.
 
 This can reduce final image size, but it couples package installation, compilation, cleanup, and failure handling into one large instruction. It also begins from a runtime filesystem and relies on cleanup to identify every unwanted file. Generated caches, source, headers, and accidentally retained tools are easy to miss.
 
