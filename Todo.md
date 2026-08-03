@@ -2,20 +2,19 @@
 
 ## SOC 2
 
-1. Scoping a SaaS SOC 2 System: Products, Cloud Accounts, People, Data, and Procedures
-2. Security, Availability, or Confidentiality? Choosing Trust Services Categories Without Overscoping
-3. Is a Penetration Test Actually Required for SOC 2? Trace the Answer to Risks, Controls, and Commitments
-4. AWS Has SOC 2, So What Do You Still Need to Audit? Understanding Shared Responsibility
-5. Carve-Out or Inclusive? How to Treat Cloud Providers and Subservice Organizations in a SOC 2 Report
-6. How Buyers Read a SOC 2 Type II Report: Opinion, Scope, Exceptions, CUECs, and Management Responses
-7. How to Vet a SOC 2 Auditor: CPA Licensure, Peer Review, Sampling Quality, and Independence
-8. SOC 2 Readiness Consultant vs CPA Auditor: Where Advice Ends and Independence Begins
-9. When Is a SOC 2 Report Too Old? Coverage Dates, Bridge Letters, and Renewal Gaps
-10. How to Share a Confidential SOC 2 Report Through an NDA-Gated Trust Center
-11. A Control Failed During Your Type II Period—Will It Qualify the Report?
-12. Can GitHub Pull Requests Prove Change Management? Building the Evidence Auditors Actually Sample
-13. SOC 2 for Contractors, BYOD, and Remote Teams: Background Checks, Device Controls, and Offboarding
-14. The Real Cost of SOC 2: Separate Audit, Readiness, Tooling, Pen Test, and Remediation Quotes
+1. Security, Availability, or Confidentiality? Choosing Trust Services Categories Without Overscoping
+2. Is a Penetration Test Actually Required for SOC 2? Trace the Answer to Risks, Controls, and Commitments
+3. AWS Has SOC 2, So What Do You Still Need to Audit? Understanding Shared Responsibility
+4. Carve-Out or Inclusive? How to Treat Cloud Providers and Subservice Organizations in a SOC 2 Report
+5. How Buyers Read a SOC 2 Type II Report: Opinion, Scope, Exceptions, CUECs, and Management Responses
+6. How to Vet a SOC 2 Auditor: CPA Licensure, Peer Review, Sampling Quality, and Independence
+7. SOC 2 Readiness Consultant vs CPA Auditor: Where Advice Ends and Independence Begins
+8. When Is a SOC 2 Report Too Old? Coverage Dates, Bridge Letters, and Renewal Gaps
+9. How to Share a Confidential SOC 2 Report Through an NDA-Gated Trust Center
+10. A Control Failed During Your Type II Period—Will It Qualify the Report?
+11. Can GitHub Pull Requests Prove Change Management? Building the Evidence Auditors Actually Sample
+12. SOC 2 for Contractors, BYOD, and Remote Teams: Background Checks, Device Controls, and Offboarding
+13. The Real Cost of SOC 2: Separate Audit, Readiness, Tooling, Pen Test, and Remediation Quotes
 
 ## Showback
 
