@@ -43,7 +43,7 @@ COPY --from=build /out/ /usr/local/
 ENTRYPOINT ["/usr/local/bin/service"]
 ```
 
-`required=true` makes the build fail immediately if the SSH capability was not provided. The agent socket is available only during that `RUN`; it is not present in the next instruction or copied into `runtime`.
+`required=true` makes the instruction fail if it has to run without the SSH capability. A cache hit can reuse the previously produced layer without executing the instruction or needing the mount. The agent socket is available only during that `RUN`; it is not present in the next instruction or copied into `runtime`.
 
 The commit is a normal non-secret build argument. Pinning a full commit makes the fetched input reviewable and makes a changed commit alter the cache key. Branch names are mutable and a cached clone command may otherwise continue returning an old snapshot.
 
