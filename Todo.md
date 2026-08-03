@@ -2,18 +2,17 @@
 
 ## Remote Write
 
-1. Multiple Remote Write Destinations: Fan-Out, Failover, and the Cost of Each
-2. How to Use `external_labels` to Identify Clusters Without Creating Series Collisions
-3. Prometheus HA Remote Write: Preventing Duplicate and Out-of-Order Samples
-4. What Happens When the Prometheus Remote Write Queue Is Full?
-5. How to Measure Remote Write Lag, Pending Samples, Retries, and Data Loss
-6. Tuning Remote Write `capacity`, Shards, Batch Size, and Backoff
-7. Prometheus Remote Write Gets HTTP 429: When to Retry and When to Reduce Load
-8. Remote Write “Context Deadline Exceeded”: Diagnosing Sender, Network, and Receiver Bottlenecks
-9. Why Remote Write Increases Prometheus Memory and CPU—and How to Control It
-10. How Long Can Remote Write Survive a Backend Outage Before Losing Samples?
-11. Prometheus Agent Mode vs. Full Prometheus for Remote Write at the Edge
-12. Prometheus Remote Write 1.0 vs. 2.0: Compatibility, Metadata, and Migration
+1. How to Use `external_labels` to Identify Clusters Without Creating Series Collisions
+2. Prometheus HA Remote Write: Preventing Duplicate and Out-of-Order Samples
+3. What Happens When the Prometheus Remote Write Queue Is Full?
+4. How to Measure Remote Write Lag, Pending Samples, Retries, and Data Loss
+5. Tuning Remote Write `capacity`, Shards, Batch Size, and Backoff
+6. Prometheus Remote Write Gets HTTP 429: When to Retry and When to Reduce Load
+7. Remote Write “Context Deadline Exceeded”: Diagnosing Sender, Network, and Receiver Bottlenecks
+8. Why Remote Write Increases Prometheus Memory and CPU—and How to Control It
+9. How Long Can Remote Write Survive a Backend Outage Before Losing Samples?
+10. Prometheus Agent Mode vs. Full Prometheus for Remote Write at the Edge
+11. Prometheus Remote Write 1.0 vs. 2.0: Compatibility, Metadata, and Migration
 
 ## Multi-Stage Builds
 
