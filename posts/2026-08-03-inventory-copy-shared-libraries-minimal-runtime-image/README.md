@@ -94,8 +94,12 @@ RUN set -eu; \
       | sed -n 's@.*Requesting program interpreter: \(.*\)]@\1@p')"; \
     test -n "$interpreter"; \
     printf '%s\n' "$interpreter" > /tmp/runtime-files; \
-    ldd /out/service \
-      | awk '/=> \// { print $3 } /^\// { print $1 }' \
+    ldd /out/service > /tmp/ldd-output; \
+    if grep -q '=> not found' /tmp/ldd-output; then \
+      cat /tmp/ldd-output >&2; \
+      exit 1; \
+    fi; \
+    awk '/=> \// { print $3 } /^\// { print $1 }' /tmp/ldd-output \
       >> /tmp/runtime-files; \
     sort -u /tmp/runtime-files -o /tmp/runtime-files; \
     while IFS= read -r path; do \
@@ -111,7 +115,7 @@ ENTRYPOINT ["/out/service"]
 
 `cp --parents` preserves paths such as `/lib/x86_64-linux-gnu/libc.so.6`; `--dereference` places the referenced file contents at the soname path. The loader must exist at the exact `PT_INTERP` path because the kernel does not search for it.
 
-This recipe deliberately fails when the interpreter is absent or a resolved path does not exist. Silent partial copies create images that build successfully and fail only at startup.
+This recipe deliberately fails when the interpreter is absent, a library remains unresolved, or a resolved path does not exist. Silent partial copies create images that build successfully and fail only at startup.
 
 ## Account for Dependencies `ldd` Cannot Predict
 
