@@ -45,7 +45,7 @@ team_compute_weight =
 
 This is still a proxy. Elapsed execution time can include waits, and parallel execution complicates the relationship with CPU. If the database platform exposes reliable per-workload CPU or average-active-session data, use the signal closest to the constrained resource.
 
-Amazon RDS Database Insights and Performance Insights describe database load as average active sessions and let users analyze load by dimensions such as SQL, waits, hosts, and users. That makes DB load a useful shared-compute driver when tenant or service identity is represented by a safe dimension.
+CloudWatch Database Insights and the continuing Performance Insights API describe database load as average active sessions and let users analyze load by dimensions such as SQL, waits, hosts, and users. That makes DB load a useful shared-compute driver when tenant or service identity is represented by a safe dimension.
 
 ## Measure Deltas and Coverage
 
@@ -56,11 +56,11 @@ For every scrape, retain:
 - database identifier and server identity;
 - sample start and end timestamps;
 - statistics reset marker;
-- query identifier and owning application dimension;
+- user identifier, query identifier, top-level flag, and owning application dimension;
 - calls, execution time, rows, and block counters;
 - collection health and coverage.
 
-Calculate a delta only when two samples belong to the same reset epoch. Put gaps, negative deltas, unknown application identities, and evicted work into a `MISSING_OR_UNKNOWN_TELEMETRY` pool. Never renormalize known teams to 100 percent while silently dropping unknown workload.
+Calculate a delta only when two samples belong to the same reset epoch. Put observed deltas with unknown application identities into a `MISSING_OR_UNKNOWN_TELEMETRY` pool. Treat gaps, negative deltas, and intervals in which `pg_stat_statements_info.dealloc` increases as missing coverage unless an independent total can quantify the residual; the deallocation counter reports events, not the work discarded. Never renormalize known teams to 100 percent while silently dropping unknown workload.
 
 Avoid exposing raw SQL in showback datasets. Query text can contain identifiers or sensitive literals despite normalization. A controlled statement fingerprint and owner mapping are usually sufficient.
 
