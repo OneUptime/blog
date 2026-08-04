@@ -1,9 +1,5 @@
 # Blog Post Ideas
 
-## Cloud Portability
-
-1. The Quarterly Cloud-Evacuation Drill: Proving Backups, Images, IaC, and Runbooks Actually Work
-
 ## Infrastructure Automation
 
 1. Concurrency Control for Infrastructure Automation: Per-Environment Locks, Queues, and Idempotency Keys
