@@ -2,8 +2,7 @@
 
 ## SOC 2
 
-1. SOC 2 for Contractors, BYOD, and Remote Teams: Background Checks, Device Controls, and Offboarding
-2. The Real Cost of SOC 2: Separate Audit, Readiness, Tooling, Pen Test, and Remediation Quotes
+1. The Real Cost of SOC 2: Separate Audit, Readiness, Tooling, Pen Test, and Remediation Quotes
 
 ## Showback
 
