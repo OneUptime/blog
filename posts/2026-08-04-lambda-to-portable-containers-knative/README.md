@@ -66,11 +66,11 @@ A portable HTTP service should:
 - write logs to standard output or standard error;
 - handle `SIGTERM` and stop accepting new work;
 - keep durable state in external services;
-- use a read-only image and bounded temporary storage;
+- be able to run with a read-only root filesystem and bounded temporary storage;
 - support multiple concurrent requests only when its dependencies are safe;
 - avoid assuming a cloud metadata endpoint exists.
 
-An ordinary image can use a small Dockerfile:
+A statically linked server binary can use a small Dockerfile:
 
 ```dockerfile
 FROM gcr.io/distroless/static-debian12:nonroot
@@ -122,10 +122,11 @@ spec:
       serviceAccountName: invoice-api
       containers:
         - image: registry.example.com/billing/invoice-api@sha256:REPLACE_ME
-          env:
-            - name: PORT
-              value: "8080"
+          ports:
+            - containerPort: 8080
 ```
+
+Knative injects the serving `containerPort` as the reserved `PORT` environment variable; do not declare `PORT` under `env`.
 
 Set concurrency and timeouts from load tests. `containerConcurrency: 20` is a limit for this example, not a universal recommendation.
 
@@ -148,11 +149,11 @@ Do not acknowledge the source message before durable processing completes. When 
 
 ## Compare Operational Cost and Behavior
 
-Lambda includes a managed control plane, event integrations, per-invocation scaling, and provider observability. Knative requires a Kubernetes cluster and operators for its serving stack, networking, upgrades, security, and capacity.
+Lambda's default compute type includes a managed control plane, event integrations, managed concurrency scaling, and provider observability. Knative requires a Kubernetes cluster and operators for its serving stack, networking, upgrades, security, and capacity.
 
 Compare measured dimensions:
 
-| Dimension | Lambda | Knative or generic containers |
+| Dimension | Lambda (default compute type) | Knative or generic containers |
 | --- | --- | --- |
 | Unit of deployment | function package/image | OCI image and service resources |
 | Trigger integration | deep AWS integrations | adapters, Eventing, or HTTP |
