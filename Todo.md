@@ -2,13 +2,12 @@
 
 ## Cloud Portability
 
-1. Building a Cloud Exit Runbook: Inventory, Dependency Graph, Data Transfer, and DNS Cutover
-2. Zero-Downtime Database Migration Between Cloud Providers: CDC, Dual Writes, and Cutover Trade-Offs
-3. What Egress Fees Do to a Multi-Cloud Architecture—and How to Model Them Before Deployment
-4. Cloud Portability vs. Multi-Cloud Resilience: Two Different Goals, Two Different Architectures
-5. Provider-Neutral IaC Without Lowest-Common-Denominator Infrastructure: A Layered Module Pattern
-6. Measuring Vendor Lock-In: A Practical Portability Scorecard for Managed Services
-7. The Quarterly Cloud-Evacuation Drill: Proving Backups, Images, IaC, and Runbooks Actually Work
+1. Zero-Downtime Database Migration Between Cloud Providers: CDC, Dual Writes, and Cutover Trade-Offs
+2. What Egress Fees Do to a Multi-Cloud Architecture—and How to Model Them Before Deployment
+3. Cloud Portability vs. Multi-Cloud Resilience: Two Different Goals, Two Different Architectures
+4. Provider-Neutral IaC Without Lowest-Common-Denominator Infrastructure: A Layered Module Pattern
+5. Measuring Vendor Lock-In: A Practical Portability Scorecard for Managed Services
+6. The Quarterly Cloud-Evacuation Drill: Proving Backups, Images, IaC, and Runbooks Actually Work
 
 ## Infrastructure Automation
 
