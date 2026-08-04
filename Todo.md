@@ -2,20 +2,19 @@
 
 ## Showback
 
-1. Who Pays for NAT Gateway and Cross-AZ Transfer? Attribute Network Cost to the Traffic Generator
-2. Kubernetes Showback by Requests or Actual Usage? Choosing a CPU and Memory Cost Driver
-3. How to Split Idle Kubernetes Node Cost Between Headroom, Platform Overhead, and Waste
-4. EKS Split Cost Allocation Data: Joining Pod Costs to Load Balancers, EBS, and Control-Plane Charges
-5. Showback for Short-Lived Kubernetes Jobs After Pods and Metrics Have Disappeared
-6. OpenCost Across Multiple Clusters: Solving Retention, Label Consistency, and Duplicate Workload Names
-7. Untaggable Cloud Services: Build a Controlled Association Table Instead of Inventing Tags
-8. Service Catalog Says One Owner, Cloud Tags Say Another: Detecting Showback Attribution Drift
-9. Version Your Allocation Rules So Re-running Last Month Produces the Same Showback
-10. Daily Estimated Cost vs Finalized Monthly Cost: Handling Late Billing Adjustments Without Surprises
-11. How to Prove Your Showback Is Complete: Control Totals, Residual Buckets, and Double-Allocation Tests
-12. Allocating Shared Database Cost by Queries, Storage, or Connections—Not Revenue Share
-13. Hybrid HPC Showback for GPUs: Requested Hours, Wall Time, Utilization, and Energy Cost
-14. Showback for Deleted and Ephemeral Resources When the Billing Line Outlives the Asset
+1. Kubernetes Showback by Requests or Actual Usage? Choosing a CPU and Memory Cost Driver
+2. How to Split Idle Kubernetes Node Cost Between Headroom, Platform Overhead, and Waste
+3. EKS Split Cost Allocation Data: Joining Pod Costs to Load Balancers, EBS, and Control-Plane Charges
+4. Showback for Short-Lived Kubernetes Jobs After Pods and Metrics Have Disappeared
+5. OpenCost Across Multiple Clusters: Solving Retention, Label Consistency, and Duplicate Workload Names
+6. Untaggable Cloud Services: Build a Controlled Association Table Instead of Inventing Tags
+7. Service Catalog Says One Owner, Cloud Tags Say Another: Detecting Showback Attribution Drift
+8. Version Your Allocation Rules So Re-running Last Month Produces the Same Showback
+9. Daily Estimated Cost vs Finalized Monthly Cost: Handling Late Billing Adjustments Without Surprises
+10. How to Prove Your Showback Is Complete: Control Totals, Residual Buckets, and Double-Allocation Tests
+11. Allocating Shared Database Cost by Queries, Storage, or Connections—Not Revenue Share
+12. Hybrid HPC Showback for GPUs: Requested Hours, Wall Time, Utilization, and Energy Cost
+13. Showback for Deleted and Ephemeral Resources When the Billing Line Outlives the Asset
 
 ## Cloud Portability
 
