@@ -25,15 +25,15 @@ remote_write:
       password_file: /etc/prometheus/secrets/remote-write-password
 ```
 
-The password file should contain only the password. Mount it read-only and restrict access to the Prometheus process:
+The password file should contain only the password. Mount it read-only, ensure it is owned by the account that runs Prometheus, and restrict its mode:
 
 ```bash
 chmod 0400 /etc/prometheus/secrets/remote-write-password
 ```
 
-Current Prometheus also supports `username_file`; each username field is mutually exclusive with its file form, as is each password field. File-backed secrets avoid placing the password directly in `prometheus.yml`, rendered Helm values, or the configuration status page.
+Current Prometheus also supports `username_file`; each username field is mutually exclusive with its file form, as is each password field. File-backed secrets avoid placing the password directly in `prometheus.yml` or rendered Helm values. Prometheus redacts fields marked as secrets from its HTTP API, but the configuration file on disk still needs protection.
 
-If you operate the receiving Prometheus, its official web configuration can enable Basic authentication and TLS:
+If you operate the receiving Prometheus, its official web configuration can enable Basic authentication:
 
 ```yaml
 # web-config.yml on the destination
@@ -167,7 +167,7 @@ curl --silent --show-error \
   https://metrics.example.net/api/v1/write
 ```
 
-The empty request is intentionally not valid Remote Write. A 401 proves the authentication layer rejected it before decoding. After valid credentials, a 400 decode error is a useful sign that authentication passed, but only the actual Prometheus sender can prove successful ingestion.
+The empty request is intentionally not valid Remote Write. A 401 shows that the responder rejected it for lack of acceptable credentials; it does not by itself identify which component did so. After valid credentials, a 400 decode error is a useful sign that authentication passed, but only the actual Prometheus sender can prove successful ingestion.
 
 Inspect `WWW-Authenticate`, proxy headers, and whether the body came from Prometheus, an ingress, or an identity provider.
 
@@ -199,7 +199,7 @@ These commands can expose secrets through process inspection on some systems. Ru
 
 ### 3. Check the Final URL
 
-Use the final Remote Write URL directly. Prometheus follows redirects by default, but current Prometheus does not forward credentials when a redirect changes the host. This protects secrets from cross-host leakage and means a redirect from `metrics.example.net` to `ingest.vendor.example` can turn a configured credential into a 401 at the second host.
+Use the final Remote Write URL directly. Prometheus follows redirects by default, but starting with Prometheus 3.13 it does not forward credentials after a redirect leaves the original host's domain. This protects secrets from cross-host leakage and means a redirect from `metrics.example.net` to `ingest.vendor.example` can turn a configured credential into a 401 at the second host.
 
 Also watch for HTTP-to-HTTPS redirects, missing path prefixes, and login redirects that return HTML.
 
