@@ -61,7 +61,7 @@ A cache mount is temporary build infrastructure. Its contents are not committed 
 
 ## Why Runtime Mounts Can Still Hide the Files
 
-Even if BuildKit retained `/data/after.txt`, an explicit non-empty bind mount or volume mounted at `/data` covers the image's directory while the mount is attached:
+Even if BuildKit retained `/data/after.txt`, an explicit bind mount or a non-empty volume mounted at `/data` covers the image's directory while the mount is attached:
 
 ```bash
 mkdir -p ./empty-data
@@ -70,7 +70,7 @@ docker run --rm \
   volume-buildkit
 ```
 
-The container now sees the host directory at `/data`, not the underlying image directory. Removing the mount reveals the image files again; they were obscured, not deleted.
+The container now sees the host directory at `/data`, not the underlying image directory. Recreating the container without the mount reveals the image files again; they were obscured, not deleted.
 
 Docker-managed empty volumes have initialization behavior: when a new empty volume is mounted over a container directory that already has files, Docker copies those existing files into the volume by default. The `volume-nocopy` option disables that copy. Bind mounts do not perform the same initialization.
 
@@ -101,7 +101,7 @@ In a multi-stage build, copy seed data before `VOLUME` as well:
 
 ```dockerfile
 FROM alpine:3.23 AS seed
-RUN mkdir /seed && ./generate-defaults > /seed/config.json
+RUN mkdir /seed && printf '%s\n' '{"enabled":true}' > /seed/config.json
 
 FROM alpine:3.23 AS runtime
 COPY --from=seed /seed/ /var/lib/example/
@@ -114,7 +114,7 @@ Another reasonable choice is to omit `VOLUME` from the Dockerfile and declare pe
 
 Use this order:
 
-1. Check which builder produced the image with `docker buildx ls` and the CI configuration.
+1. Check the currently selected BuildKit builder with `docker buildx ls`, then use the CI configuration and build logs to determine which backend produced the image.
 2. Find whether any write or `COPY` occurs after the Dockerfile `VOLUME` instruction.
 3. Inspect `.Config.Volumes` on the image.
 4. Inspect `.Mounts` on the affected container.
