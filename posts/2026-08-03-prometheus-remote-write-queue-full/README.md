@@ -99,7 +99,7 @@ rate(
 )
 ```
 
-The source code defines this counter as enqueue failures caused by a full shard queue. A rate above zero is direct evidence of in-memory backpressure.
+The metric help text describes this counter as enqueue failures caused by a full shard queue. A sustained rate above zero, together with rising pending samples and lag, is strong evidence of in-memory backpressure. Brief retries can also occur while shards are being resharded, so a single increment is not conclusive.
 
 ### Queue Occupancy Context
 
