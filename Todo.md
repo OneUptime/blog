@@ -2,9 +2,8 @@
 
 ## Showback
 
-1. Allocating Shared Database Cost by Queries, Storage, or Connections—Not Revenue Share
-2. Hybrid HPC Showback for GPUs: Requested Hours, Wall Time, Utilization, and Energy Cost
-3. Showback for Deleted and Ephemeral Resources When the Billing Line Outlives the Asset
+1. Hybrid HPC Showback for GPUs: Requested Hours, Wall Time, Utilization, and Energy Cost
+2. Showback for Deleted and Ephemeral Resources When the Billing Line Outlives the Asset
 
 ## Cloud Portability
 
