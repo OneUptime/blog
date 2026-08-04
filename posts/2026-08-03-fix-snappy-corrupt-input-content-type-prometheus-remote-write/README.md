@@ -183,7 +183,7 @@ Do not infer the protocol from examples of hand-built `curl` requests. Implement
 3. Marshal with protobuf binary encoding.
 4. Compress once with raw Snappy block encoding.
 5. send an HTTP POST with the reserved headers matching the selected message.
-6. Treat unsupported content and invalid-sample responses as non-retriable, with the 2.0 rules for 429 and 5xx.
+6. Treat invalid-sample responses as non-retriable. Do not resend unsupported content unchanged; a 2.0 sender may retry HTTP 415 with a different supported content type or encoding. Follow the protocol's rules for 429 and 5xx.
 7. For 2.0, validate the receiver's written-count response headers.
 
 Once each boundary agrees on body bytes, Snappy format, protobuf schema, and content negotiation, corrupt-input and content-type errors become deterministic rather than mysterious.
