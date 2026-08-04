@@ -39,7 +39,7 @@ monthly_gib: 22000
 peak_gib_per_hour: 120
 response_ratio: 3.4
 retry_multiplier: 1.03
-compression_ratio: 0.62
+compression_factor: 0.62
 ```
 
 The response is a separate edge. A small database request can return a large result, so counting only request payloads can reverse the estimate.
@@ -157,7 +157,7 @@ Create low, expected, and high cases:
 | Response ratio | 1.5 | 3.0 | 5.0 |
 | Retry/replay | 1% | 4% | 12% |
 | Replication destinations | 1 | 1 | 2 |
-| Compression | 50% | 70% | 90% |
+| Post-compression size | 50% | 70% | 90% |
 
 Find the break-even point where moving compute next to the data, using a CDN, batching calls, changing retention, or buying a private connection costs less.
 
