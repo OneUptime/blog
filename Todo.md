@@ -2,20 +2,19 @@
 
 ## Cloud Portability
 
-1. Designing a Cloud-Neutral Identity Layer Across AWS IAM, Microsoft Entra ID, and Google Cloud IAM
-2. Escaping Managed Database Lock-In: Schema, Extension, Backup, and Replication Checks Before You Commit
-3. From Lambda to Portable Compute: When Containers or Knative Actually Make Migration Easier
-4. A Portable Object-Storage Abstraction: What S3 Compatibility Does—and Does Not—Guarantee
-5. Cross-Cloud Messaging Without Rewriting Business Logic: Adapter Boundaries for SQS, Pub/Sub, and Service Bus
-6. The Hidden Portability Tax: DNS, Certificates, Secrets, and Observability During a Cloud Move
-7. How to Test Cloud Portability Continuously Instead of Discovering It During Migration
-8. Building a Cloud Exit Runbook: Inventory, Dependency Graph, Data Transfer, and DNS Cutover
-9. Zero-Downtime Database Migration Between Cloud Providers: CDC, Dual Writes, and Cutover Trade-Offs
-10. What Egress Fees Do to a Multi-Cloud Architecture—and How to Model Them Before Deployment
-11. Cloud Portability vs. Multi-Cloud Resilience: Two Different Goals, Two Different Architectures
-12. Provider-Neutral IaC Without Lowest-Common-Denominator Infrastructure: A Layered Module Pattern
-13. Measuring Vendor Lock-In: A Practical Portability Scorecard for Managed Services
-14. The Quarterly Cloud-Evacuation Drill: Proving Backups, Images, IaC, and Runbooks Actually Work
+1. Escaping Managed Database Lock-In: Schema, Extension, Backup, and Replication Checks Before You Commit
+2. From Lambda to Portable Compute: When Containers or Knative Actually Make Migration Easier
+3. A Portable Object-Storage Abstraction: What S3 Compatibility Does—and Does Not—Guarantee
+4. Cross-Cloud Messaging Without Rewriting Business Logic: Adapter Boundaries for SQS, Pub/Sub, and Service Bus
+5. The Hidden Portability Tax: DNS, Certificates, Secrets, and Observability During a Cloud Move
+6. How to Test Cloud Portability Continuously Instead of Discovering It During Migration
+7. Building a Cloud Exit Runbook: Inventory, Dependency Graph, Data Transfer, and DNS Cutover
+8. Zero-Downtime Database Migration Between Cloud Providers: CDC, Dual Writes, and Cutover Trade-Offs
+9. What Egress Fees Do to a Multi-Cloud Architecture—and How to Model Them Before Deployment
+10. Cloud Portability vs. Multi-Cloud Resilience: Two Different Goals, Two Different Architectures
+11. Provider-Neutral IaC Without Lowest-Common-Denominator Infrastructure: A Layered Module Pattern
+12. Measuring Vendor Lock-In: A Practical Portability Scorecard for Managed Services
+13. The Quarterly Cloud-Evacuation Drill: Proving Backups, Images, IaC, and Runbooks Actually Work
 
 ## Infrastructure Automation
 
