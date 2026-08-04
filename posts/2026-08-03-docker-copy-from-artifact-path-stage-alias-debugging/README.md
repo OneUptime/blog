@@ -10,7 +10,7 @@ Description: Diagnose missing multi-stage artifacts by checking source-root path
 
 A failing `COPY --from` is usually a namespace problem rather than a Docker cache problem. The source is read from a different filesystem, its path is resolved from that filesystem's root, and the value after `--from=` can refer to a stage, named context, or external image.
 
-Start from the exact failing instruction and prove three things: BuildKit selected the intended source, the artifact exists in that source's committed filesystem, and the path is absolute and spelled exactly as produced.
+Start from the exact failing instruction and prove three things: BuildKit selected the intended source, the artifact exists in that source's committed filesystem, and the source path resolves from `/` and is spelled exactly as produced.
 
 ## Use a Minimal Known-Good Shape
 
@@ -72,7 +72,7 @@ Do not infer the output path from the repository layout. Check the compiler or b
 Build and tag the stage that should contain the artifact:
 
 ```bash
-docker build --target build --tag service:build-debug .
+docker build --target build --tag service:build-debug --load .
 docker run --rm --entrypoint=/bin/sh service:build-debug -c \
   'pwd; find /out /workspace -maxdepth 3 -type f -print 2>/dev/null'
 ```
@@ -103,7 +103,7 @@ The compiler wrote into the mounted context at `/src`. Docker's cache optimizati
 
 ```dockerfile
 RUN --mount=type=bind,source=.,target=/src \
-    make -C /src output=/out/service
+    mkdir -p /out && make -C /src output=/out/service
 ```
 
 The same design rule applies to cache and secret mounts: treat mounted locations as temporary inputs or caches, not as the final destination for an artifact you plan to copy.
@@ -132,7 +132,7 @@ COPY --from=build /out/service ./bin/service
 
 Here `/out/service` is absolute in `build`; `./bin/service` is relative to `/app` in `runtime`. For clarity in production images, absolute destination paths usually make reviews easier.
 
-Trailing slashes also change intent. To copy the contents of a directory into an existing destination directory, make that explicit:
+Docker disregards a trailing slash on a source path, but a trailing slash on the destination is significant. To copy the contents of a directory into a destination directory, make the destination intent explicit:
 
 ```dockerfile
 COPY --from=build /workspace/dist/ /usr/share/nginx/html/
