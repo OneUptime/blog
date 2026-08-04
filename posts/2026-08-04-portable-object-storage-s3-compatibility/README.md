@@ -52,7 +52,7 @@ Create a capability matrix for exact operations:
 | --- | --- | --- |
 | Conditional create | Yes | simultaneous writers; only one succeeds |
 | Byte-range read | Yes | first, middle, and final ranges |
-| Multipart upload | Yes | abort, resume policy, final checksum |
+| Multipart upload | Yes | cancellation or cleanup, resume policy, final checksum |
 | Version retrieval | Yes | overwrite, list, read old version |
 | Server-side copy | No | feature flag or streamed fallback |
 | Object lock | No | immutable-retention test when enabled |
@@ -87,7 +87,7 @@ Provider vocabulary differs:
 | Container of objects | bucket | bucket | container inside a storage account |
 | Object revision | version ID | generation | version ID when versioning is enabled |
 | User metadata | `x-amz-meta-*` | `x-goog-meta-*` or API fields | `x-ms-meta-*` |
-| Conditional revision | version/ETag conditions | generation/metageneration conditions | ETag/version conditions |
+| Conditional revision | ETag preconditions; version ID selects a revision | generation/metageneration preconditions | ETag preconditions; version ID selects a revision |
 
 Keep provider revision values opaque. Do not parse them or assume they sort chronologically. If the application needs its own immutable version, write an application ID in metadata or the database.
 
@@ -113,7 +113,7 @@ Define list pagination behavior in your abstraction. Continuation tokens are opa
 
 Multipart and resumable uploads vary in minimum part size, maximum part count, checksum calculation, session lifetime, and completion rules. Google documents several XML API differences from S3, including cases involving V4 signatures, chunked transfer encoding, encryption keys, and lifecycle request syntax.
 
-Put multipart logic inside the adapter. Persist enough application state to restart safely, but treat upload IDs as provider-local. On cancellation or failure, explicitly abort sessions and monitor incomplete-upload storage.
+Put multipart logic inside the adapter. Persist enough application state to restart safely, but treat upload IDs, session URIs, and block IDs as provider-local. On cancellation or failure, explicitly abort sessions where supported, define cleanup behavior where they are not, and monitor incomplete-upload storage.
 
 After completion, verify a content checksum selected before the upload. Do not compare multipart ETags across providers as proof that bytes match.
 
@@ -143,7 +143,7 @@ Create a neutral envelope at the adapter boundary:
 
 ```json
 {
-  "eventId": "provider-event-id",
+  "eventId": "adapter-deduplication-key",
   "eventType": "object.created",
   "container": "documents",
   "key": "tenant-42/invoice-7.pdf",
@@ -158,7 +158,7 @@ Deduplicate by a durable event or operation key, tolerate redelivery, and fetch 
 
 Inventory objects with key, size, application checksum, version policy, retention state, and encryption requirements. Copy into a new namespace, verify checksums, compare counts and total bytes, then run application reads from the destination.
 
-Account for old versions, delete markers, incomplete multipart uploads, metadata, tags, legal holds, and lifecycle rules. A tool that copies only current object bytes may be correct for one migration and unacceptable for another.
+Account for old versions, delete markers, incomplete uploads and uncommitted blocks, metadata, tags, legal holds, and lifecycle rules. A tool that copies only current object bytes may be correct for one migration and unacceptable for another.
 
 Measure source request charges, destination writes, transfer tooling, and egress. Keep the source read-only during the final delta or use a clear authoritative-writer strategy.
 
