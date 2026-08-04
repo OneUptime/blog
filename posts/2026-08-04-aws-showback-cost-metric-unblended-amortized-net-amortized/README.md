@@ -31,7 +31,7 @@ In AWS Cost and Usage Reports, `lineItem/UnblendedCost` is `UnblendedRate` multi
 That sounds like an obvious team cost until commitments enter the picture:
 
 - On-Demand consumption appears as `Usage` and normally carries its billed unblended cost.
-- RI-covered consumption appears as `DiscountedUsage`. AWS documents the unblended rate and cost on those usage rows as zero because the RI charges are represented elsewhere.
+- For Amazon EC2 and Amazon RDS, RI-covered consumption appears as `DiscountedUsage`. AWS documents the unblended rate on those usage rows as zero, which also makes the unblended cost zero because the RI charges are represented elsewhere.
 - Savings Plan-covered consumption appears as `SavingsPlanCoveredUsage` at its On-Demand-equivalent unblended cost, together with a `SavingsPlanNegation` row that offsets it. The effective Savings Plan amount is in `savingsPlan/SavingsPlanEffectiveCost`.
 - Upfront and recurring commitment charges are separate line-item types.
 
@@ -61,10 +61,10 @@ Net amortized cost applies the amortization logic after applicable discounts. In
 
 Net amortized cost is usually the strongest economic basis when the goal is to show teams the organization's actual post-discount cost of their consumed services. It is not automatically the correct internal price. An enterprise may deliberately centralize a negotiated discount, pass it through, or publish a stable rate card. AWS reports the financial outcome; it does not define that governance choice.
 
-Do not silently mix net and non-net values by service. Establish a documented fallback:
+Do not silently mix net and non-net values by service. Net amortized calculations also need the applicable net fields for ordinary usage and unused commitments, not only the net effective fields for covered usage. Establish a documented fallback:
 
-1. use the relevant net effective field when it is populated;
-2. use the corresponding non-net effective field when the net field is unavailable;
+1. use the relevant net cost field when it is populated, such as `lineItem/NetUnblendedCost` for ordinary usage, the net effective fields for covered usage, the net unused fields for RIs, and the net commitment components when deriving unused Savings Plans cost;
+2. use the corresponding non-net field when the net field is unavailable;
 3. record which basis was selected on every output row;
 4. reconcile the resulting total to a separately calculated monthly control.
 
@@ -94,8 +94,8 @@ Do not bury these decisions inside a SQL `CASE` expression called `amortized_cos
 
 For a consumption-oriented AWS showback, a defensible default is:
 
-1. calculate net effective cost for covered usage where net fields exist;
-2. otherwise calculate non-net effective cost;
+1. calculate the relevant net cost for each cost class where corresponding net fields exist;
+2. otherwise calculate the corresponding non-net cost;
 3. preserve unused commitment as its own pool;
 4. keep credits, refunds, support, Marketplace, and tax as explicit adjustment classes;
 5. apply approved ownership and distribution rules only after those classes are visible;
@@ -124,7 +124,7 @@ Finally, keep invoice reconciliation distinct from amortized showback reconcilia
 - [AWS Data Exports: Understanding amortized reservation data](https://docs.aws.amazon.com/cur/latest/userguide/amortized-reservation.html)
 - [AWS Data Exports: Reservation details](https://docs.aws.amazon.com/cur/latest/userguide/reservation-columns.html)
 - [AWS Data Exports: Understanding Savings Plans](https://docs.aws.amazon.com/cur/latest/userguide/cur-sp.html)
-- [AWS Data Exports: Savings Plan columns](https://docs.aws.amazon.com/cur/latest/userguide/table-dictionary-cur2-savings-plan.html)
+- [AWS Data Exports: Savings Plans details](https://docs.aws.amazon.com/cur/latest/userguide/savingsplans-columns.html)
 
 ## Conclusion
 
