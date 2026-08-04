@@ -8,7 +8,7 @@ Description: Design stable external labels that preserve cluster and replica ide
 
 ---
 
-A Prometheus time series is identified by its metric name and complete label set. If two Prometheus servers Remote Write samples with exactly the same labels, the receiver sees one logical series, not two sources. Independent scrape timestamps or values can then produce duplicates, out-of-order errors, or ambiguous data.
+A Prometheus time series is identified by its metric name and complete label set. If two Prometheus servers Remote Write samples with exactly the same labels into the same receiver tenant, the receiver sees one logical series, not two sources. Independent scrape timestamps or values can then produce duplicates, out-of-order errors, or ambiguous data.
 
 `external_labels` adds source identity when Prometheus communicates with external systems. A small, stable label scheme prevents cross-cluster collisions and makes central queries predictable.
 
@@ -55,7 +55,7 @@ The official configuration reference defines external labels as labels added whe
 Consequences include:
 
 - a local PromQL query may not show `cluster` on scraped series;
-- the Remote Write receiver does see the label;
+- the Remote Write receiver sees the label unless write relabeling removes it;
 - alert notifications can carry it;
 - federation uses it when exposing series externally;
 - a receiving Prometheus's own external labels do not automatically rewrite the inbound series it stores.
@@ -73,8 +73,9 @@ requests_total{cluster="application-shard-7"}
 then this global configuration does not replace that value:
 
 ```yaml
-external_labels:
-  cluster: london-production
+global:
+  external_labels:
+    cluster: london-production
 ```
 
 The series retains `cluster="application-shard-7"` when sent externally. This can silently defeat a topology label design.
@@ -82,8 +83,9 @@ The series retains `cluster="application-shard-7"` when sent externally. This ca
 Audit label names before standardizing them. When `cluster` already has application meaning, choose a less ambiguous name such as:
 
 ```yaml
-external_labels:
-  prometheus_cluster: london-production
+global:
+  external_labels:
+    prometheus_cluster: london-production
 ```
 
 Avoid `job` and `instance` for source identity because nearly every scraped series already has them.
@@ -143,7 +145,7 @@ Do not give both replicas the same `prometheus_replica` value. Conversely, do no
 
 ## Expand Environment Variables Safely
 
-Current Prometheus expands environment-variable references in external-label values:
+Prometheus 3.0 and later expands environment-variable references in external-label values:
 
 ```yaml
 global:
