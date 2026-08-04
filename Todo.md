@@ -2641,3 +2641,233 @@
 18. Rotate Cloud Database Credentials Without Breaking Long-Lived Connection Pools
 19. Rotate RDS and Cloud SQL CA Certificates Without a Connection Outage
 20. Keep Terraform from Deleting a Production Cloud Database: Provider Protection, `prevent_destroy`, and Final Snapshots
+
+## Azure MySQL
+
+1. Troubleshooting Azure MySQL Flexible Server Error 10060: Firewall Rules, DNS, and Outbound Port 3306
+2. Why Azure App Service Cannot Reach a Private Azure MySQL Endpoint: VNet Integration, DNS Linking, and Routing
+3. Connecting an On-Premises MySQL Client to a VNet-Integrated Azure MySQL Server Through VPN or ExpressRoute
+4. Passwordless Azure MySQL Connections: Managed Identity, Microsoft Entra Tokens, and Database User Mapping
+5. Fixing Azure MySQL `CERTIFICATE_VERIFY_FAILED` Without Disabling TLS: CA Chains, Hostnames, and Client Modes
+6. Diagnosing Unexplained CPU Spikes in Azure MySQL with Query Performance Insight and Slow Logs
+7. Fixing Intermittent Azure MySQL Timeouts: Connection Limits, Idle Sessions, and Pool Sizing
+8. Point-in-Time Restoring Azure MySQL to a New Server and Cutting Over Without Overwriting the Source
+9. Recovering a Deleted Azure MySQL Flexible Server Within the Five-Day Backup Window
+10. Testing Azure MySQL Disaster Recovery with Geo-Restore, DNS Cutover, and RTO Evidence
+11. Migrating Amazon RDS for MySQL to Azure with MyDumper, MyLoader, and Data-In Replication
+12. Speeding Up Large Azure MySQL Imports: Parallel Loaders, Temporary Compute, and IOPS Tuning
+13. Consolidating Multiple MySQL Sources into One Azure Flexible Server: Data-In Replication Limits and Staging Patterns
+14. Scheduling Azure MySQL Maintenance and Alerting on Planned Maintenance Events
+15. Troubleshooting Azure MySQL Read-Replica Lag: Binlogs, Long Transactions, and Replica Sizing
+16. Preventing Azure MySQL from Going Read-Only: Storage Autogrow, Capacity Alerts, and IOPS Headroom
+17. Sending Azure MySQL Audit Logs to Log Analytics Without Drowning in Events
+18. Building an Azure Monitor Alert Pack for MySQL CPU, Connections, Storage, and Replication Lag
+19. Debugging Azure MySQL Bicep Deployments That Fail with SKU, Zone, or Regional Capacity Errors
+20. Moving Azure MySQL from VNet Integration to Private Link or Public Access: Downtime and DNS Checklist
+
+## Mutating Webhooks
+
+1. Returning a Valid Kubernetes AdmissionReview v1 Response: UID, Base64 JSON Patch, and PatchType
+2. Writing JSON Patch That Survives Missing Labels and Empty Pod Arrays in a Mutating Webhook
+3. Fixing Mutating Webhook TLS Errors: Service DNS SANs, `caBundle`, and Certificate Rotation
+4. Why cert-manager `caBundle` Injection Stalls for a Mutating Webhook: Annotations, RBAC, and Rotation Checks
+5. Why Your Mutating Webhook Is Never Called: Checking Rules, Operations, API Versions, Subresources, and Selectors
+6. Debugging `failed calling webhook`: Service Endpoints, NetworkPolicy, Control-Plane Routing, and Timeouts
+7. Scoping Mutating Webhooks with `namespaceSelector` and `objectSelector` Without Breaking System Namespaces
+8. Using CEL `matchConditions` to Skip Irrelevant Mutating Webhook Calls Before They Hit Your Service
+9. Making Mutating Webhooks Idempotent Under `reinvocationPolicy: IfNeeded`
+10. Designing Multiple Mutating Webhooks When Invocation Order and Reinvocation Can Change
+11. Handling UPDATE and DELETE Admission Requests Correctly with `oldObject` and `object`
+12. Supporting `kubectl --dry-run=server` with Accurate Mutating Webhook `sideEffects`
+13. Using `matchPolicy: Equivalent` Without Mutating the Wrong API Version
+14. Safely Switching a Mutating Webhook from `failurePolicy: Ignore` to `Fail`: Canary Scope, Readiness Checks, and Rollback
+15. Keeping Mutating Webhooks Fast and Available: Replicas, PodDisruptionBudgets, and `timeoutSeconds`
+16. Observing Mutating Webhooks with API Server Metrics, Audit Annotations, and Patch Logs
+17. Canarying a Mutating Webhook with Opt-In Namespaces Before Cluster-Wide Enforcement
+18. Applying Mutations to Existing Kubernetes Resources with a Reconciliation Job Instead of a Webhook
+19. Injecting an Init Container, Volume, and Volume Mount Atomically with JSON Patch
+20. Replacing Simple Mutating Webhooks with Kubernetes 1.36 MutatingAdmissionPolicy: ApplyConfiguration vs. JSONPatch
+
+## TeamCity
+
+1. Fixing TeamCity “No Compatible Agents”: Authorization, Agent Pools, Implicit Requirements, and Missing Tools
+2. Running Docker Builds on TeamCity Agents: Host Socket vs. Docker-in-Docker
+3. Building a Custom TeamCity Agent Image with Pinned JDK, Node.js, Docker, and CLI Toolchains
+4. Validating TeamCity Kotlin DSL Locally Before a Broken Commit Reconfigures CI
+5. Testing Branch-Specific TeamCity Versioned Settings Without Applying Them to the Default Branch
+6. Reusing TeamCity Kotlin DSL Templates Across Projects Without Copy-and-Paste Build Configurations
+7. TeamCity Snapshot vs. Artifact Dependencies: Keeping Source Revisions and Build Outputs Aligned
+8. Passing Values Through a TeamCity Build Chain with Output Parameters, `dep.`, and `override.dep.`
+9. Publishing TeamCity Artifacts Before a Build Finishes with the `publish-artifacts` Recipe
+10. Skipping Optional TeamCity Build-Chain Stages with `skipTags` and `onlyTags` Without Breaking Artifacts
+11. Building Only the Right Pull Requests in TeamCity: VCS Branch Specs, PR Filters, Triggers, and Commit Statuses
+12. Preventing Duplicate TeamCity Builds by Reusing Suitable Snapshot Dependencies
+13. Keeping Secrets Out of TeamCity Kotlin DSL and Logs with Password Parameters and HashiCorp Vault
+14. Importing Custom Test Results into TeamCity with Service Messages and XML Report Processing
+15. Designing TeamCity Clean-Up Rules That Preserve Artifacts Still Needed by Build Chains
+16. Backing Up and Restoring TeamCity with an External Database, Data Directory, and Artifact Store
+17. Upgrading TeamCity Server and Agents with a Tested Backup and Rollback Plan
+18. Running TeamCity Behind NGINX with HTTPS, Correct Forwarded Headers, and Working Agent Connections
+19. Autoscaling Ephemeral TeamCity Agents on Kubernetes Without Losing Build Caches
+20. Running TeamCity Build Steps Conditionally by Branch, Agent OS, and Parameter Value
+
+## cAdvisor
+
+1. Running cAdvisor Safely with Docker Compose: Required Host Mounts, Devices, and Read-Only Access
+2. Fixing Prometheus-to-cAdvisor “Connection Refused” in Docker Compose: Service DNS vs. `localhost`
+3. Monitoring Multiple Docker Hosts with cAdvisor: Per-Host Scrapes and Stable Prometheus Labels
+4. Deploying cAdvisor as a Docker Swarm Global Service Without Scraping the Same Node Twice
+5. Scraping Kubernetes cAdvisor Metrics Through the Kubelet: `/metrics/cadvisor`, TLS, and RBAC
+6. Kubelet-Embedded vs. Standalone cAdvisor: Avoiding Duplicate Container Metrics in Kubernetes
+7. Troubleshooting Missing cAdvisor Metrics on cgroup v2 and Rootless Docker
+8. Why cAdvisor Disk I/O Metrics Disappear: Device Mounts, cgroup Controllers, and Rootless Limits
+9. Selecting cAdvisor Metric Groups Correctly with `enable_metrics` and `disable_metrics`
+10. Reducing cAdvisor Cardinality with Container Label Whitelists and Prometheus Relabeling
+11. Calculating Container CPU Cores, Percent, and Throttling from cAdvisor Metrics
+12. cAdvisor Memory Metrics Explained: Usage, Working Set, RSS, Cache, and Container Limits
+13. Why `container_fs_usage_bytes` Does Not Match a Container’s Writable Layer—and What to Monitor Instead
+14. Alerting on Container OOM Kills with cAdvisor Without Losing Events Across Restarts
+15. Troubleshooting Missing Per-Container Network Metrics in Host-Networked Containers
+16. Tuning cAdvisor Housekeeping and Prometheus Scrape Intervals Without Stale Data or High Overhead
+17. Securing the cAdvisor Metrics Endpoint with a Reverse Proxy, TLS, and Authentication
+18. Building Grafana Dashboards That Filter cAdvisor Pseudo-Containers and Survive Label Changes
+19. Keeping Metrics for Stopped Containers After cAdvisor Forgets Them
+20. Migrating cAdvisor Images from `gcr.io` to `ghcr.io` for v0.53 and Later
+
+## NATS
+
+1. Core NATS or JetStream? How to Choose the Right Delivery Guarantee for Each Message Flow
+2. Why a NATS JetStream Consumer Resumes After Restart—and How to Reset Its Durable Cursor Safely
+3. How to Scale NATS JetStream Workers Horizontally with One Shared Pull Consumer
+4. Why JetStream Redelivers Messages Your Worker Already Processed: AckSync, AckWait, BackOff, and Idempotency
+5. How to Replay NATS JetStream Messages from a Sequence or Timestamp Without Moving a Production Consumer
+6. How to Handle Poison Messages in JetStream with MaxDeliver Advisories and a Dead-Letter Workflow
+7. How to Achieve Effectively-Once Processing in NATS JetStream with Message Deduplication, Double Acks, and Idempotency
+8. Limits, Interest, or Work Queue? How to Choose a NATS JetStream Retention Policy
+9. How to Diagnose NATS Slow Consumers and Add Backpressure Before the Server Disconnects Them
+10. How to Stop Async JetStream Publishers from Overrunning Storage: Pending Limits, Publish Acks, and Client-Side Backpressure
+11. How to Configure NATS Mutual TLS in Docker Without Certificate SAN or Hostname Errors
+12. How to Isolate NATS Tenants with Accounts, JWT Credentials, Subject Permissions, and Imports/Exports
+13. How to Run a Three-Replica JetStream Cluster on Kubernetes: PVCs, Zone Spread, PDBs, and Rolling Upgrades
+14. How to Back Up and Recover NATS JetStream: Stream Snapshots, RAFT Quorum, and Peer Removal
+15. How to Replicate JetStream Across Regions: Mirrors vs. Sources, Gateways, and Leaf Nodes
+16. NATS Reconnect Buffers Explained: How to Bound Offline Publishes, Flush State, and Drain on Shutdown
+17. How to Route JetStream Events with Multi-Subject Filters and Subject Transforms Without Breaking Permissions
+18. How to Debug NATS Request-Reply Timeouts, No-Responders Errors, and Orphaned Replies
+19. How to Connect Browser Clients to NATS over WebSockets with TLS and Origin Controls
+20. How to Diagnose NATS Cluster and JetStream Health with `/varz`, `/connz`, `/routez`, and `/jsz`
+
+## Artifact Management
+
+1. How to Organize Hosted, Proxy, and Virtual Artifact Repositories by Format, Team, and Trust Boundary
+2. How to Publish Generic Build Artifacts with Immutable Versions, Checksums, and Searchable Metadata
+3. How to Version CI Artifacts with SemVer, Pre-Release Labels, and Commit Digests Without Overwriting Builds
+4. How to Enforce Artifact Immutability for Maven Coordinates, Package Versions, and Container Tags
+5. How to Detect an Accidental Artifact Rebuild Between Test and Production Using Digests and Provenance
+6. How to Promote Container Images Safely: Retag by Digest, Copy Between Repositories, or Change Release Metadata?
+7. How to Design Artifact Retention Rules That Preserve Deployed Releases, Rollback Targets, and Audit Evidence
+8. How to Reclaim Nexus or Artifactory Disk Space Safely with Product-Specific Cleanup and Compaction
+9. How to Find Artifacts Still Used in Production Before a Cleanup Job Deletes Them
+10. How to Proxy Maven Central, npm, PyPI, and Docker Hub Without Letting Cache Expiry Break Reproducible Builds
+11. How to Prevent Dependency Confusion with Private Namespace Routing, Upstream Allow-Lists, and Repository Order
+12. How to Debug 401 and 403 Errors When Maven, npm, pip, or Docker Publishes to an Artifact Repository
+13. How to Give CI Pipelines Short-Lived Artifact Repository Access with OIDC Instead of Static Tokens
+14. How to Attach SBOMs, SLSA Provenance, and Cosign Signatures to OCI Artifacts—and Verify Them at Deploy Time
+15. How to Re-Scan Stored Artifacts for New CVEs and Quarantine Vulnerable Versions Without Mutating Them
+16. How to Migrate from Nexus to Artifactory Without Changing Package Coordinates or Losing Checksums
+17. How to Back Up an Artifact Repository Consistently: Database, Blob Store, Encryption Keys, and Restore Drills
+18. How to Design Artifact Repository Replication and Failover Around Explicit RPO and RTO Targets
+19. How to Trace an Artifact from Source Commit to Build Run, Signature, Promotion, and Production Deployment
+20. How to Build an Air-Gapped Artifact Mirror with a Complete Dependency Closure and Controlled Updates
+
+## Clusterpedia
+
+1. How to Install Clusterpedia with Helm Using an External PostgreSQL or MySQL Database
+2. How to Configure kubectl for Clusterpedia Multi-Cluster Search Through the Kubernetes Aggregation API
+3. How to Import a Kubernetes Cluster into Clusterpedia with a Least-Privilege ServiceAccount
+4. Why a PediaCluster Is Unhealthy: Debugging API Reachability, CA Data, Tokens, RBAC, and Discovery
+5. How to Reuse Clusterpedia Sync Policies Across Clusters with ClusterSyncResources and Per-Cluster Overrides
+6. How to Synchronize Custom Resources Across Kubernetes Versions Without Silent Clusterpedia Query Gaps
+7. How to Use Clusterpedia Sync Wildcards Without Creating an Informer and Storage Explosion
+8. How to Search Pods Across Selected Clusters, Namespaces, and Names with Clusterpedia
+9. How to Query Nested Kubernetes Status and Annotation Fields with Clusterpedia Field Selectors
+10. How to Find Every Pod Owned by a Deployment with Clusterpedia Owner Seniority
+11. How to Paginate Large Clusterpedia Queries Without kubectl Fetching Every Remaining Page
+12. How to Build Stable Multi-Field Sorts for Clusterpedia Pagination
+13. How to Query Deployments, DaemonSets, and StatefulSets Together with Clusterpedia Collection Resources
+14. How to Search Clusterpedia by Creation-Time Window and Fuzzy Resource Name
+15. How to Auto-Import Cluster API, Karmada, or vCluster Clusters with a ClusterImportPolicy
+16. How to Tune Clusterpedia Database Connection Pools and Slow-Query Logging for Many Clusters
+17. How to Reduce Clusterpedia Storage by Pruning managedFields and Last-Applied Annotations
+18. How to Fix Slow PediaCluster Health Checks with Clusterpedia’s Standalone TCP Feature Gate
+19. How to Use Clusterpedia Raw SQL Queries Without Exposing an Injection Endpoint
+20. How to Recover Clusterpedia After Storage Loss: Restore the Database or Re-Synchronize Member Clusters?
+
+## Container Registries
+
+1. Self-Hosting CNCF Distribution Registry 3: TLS, Basic Auth, and S3-Compatible Storage
+2. Fixing Private Registry `x509: certificate signed by unknown authority` Without Using `--insecure-registry`
+3. `unauthorized` vs. `insufficient_scope`: Debugging the OCI Registry Bearer-Token Flow
+4. Why a Valid `imagePullSecret` Still Produces `ImagePullBackOff`: Registry Host Matching and Secret Scope
+5. Replacing Long-Lived `imagePullSecrets` with Kubelet Image Credential Provider Plugins
+6. Stopping Docker Hub 429s During Kubernetes Node Rotations with an Authenticated Pull-Through Cache
+7. Making a Self-Hosted Container Registry Highly Available: Shared Storage, Load Balancing, and Safe Caches
+8. Reclaiming Registry Disk Space Safely: Delete Manifests, Put the Registry in Read-Only Mode, Then Run Garbage Collection
+9. Writing Retention Rules That Preserve Multi-Platform Images, Signatures, and SBOM Referrers
+10. Copying a Multi-Platform Image Between Registries Without Collapsing It to One Architecture
+11. Mirroring an Entire Container Release into an Air-Gapped Registry with Digest Verification
+12. Promoting the Exact Same Image Digest from Staging to Production Without Rebuilding
+13. Why Registry UIs Show `unknown/unknown`: Distinguishing Attestations from Broken Platform Manifests
+14. Querying the OCI Distribution API: Bearer Tokens, Media-Type `Accept` Headers, and Pagination
+15. Why a Registry Push Completes but Pull Fails with `blob unknown`: Upload State, Cross-Repository Mounts, and Garbage Collection
+16. Backing Up and Restoring a Self-Hosted Registry Without Changing Image Digests
+17. Reliable Registry Webhook Consumers: Deduplication, Retries, and Event Ordering
+18. Registry SLOs That Catch Real Pull Failures: 5xx Rate, Manifest Latency, Blob Throughput, and Storage Errors
+19. Rotating Container Registry Storage Credentials Without Interrupting Pulls, Pushes, or Garbage Collection
+20. Failing Over Between Container Registries Without Serving Stale Tags or Missing Digests
+
+## JuiceFS
+
+1. Choosing a JuiceFS Metadata Engine: Redis, MySQL, PostgreSQL, TiKV, or etcd
+2. Formatting JuiceFS for S3-Compatible Storage: Bucket Endpoint, TLS, and Credential Checks
+3. Mounting JuiceFS at Boot with systemd: Network Readiness, FUSE, and Stale Daemon Cleanup
+4. JuiceFS Mount Hangs or Disappears: Debugging with `--foreground`, `--verbose`, and Client Logs
+5. Recovering JuiceFS After Redis Loss: Restoring Automatic Metadata Backups Without Orphaning Data
+6. Creating an Application-Consistent JuiceFS Backup: Quiescing Writes, Dumping Metadata, and Protecting Objects
+7. Migrating JuiceFS Metadata from Redis to MySQL with `dump` and `load`
+8. Sizing and Placing JuiceFS Local Cache: `cache-dir`, `cache-size`, and `free-space-ratio`
+9. JuiceFS `--writeback` for Small Files: When It Helps and How Staging Data Gets Lost
+10. Warming JuiceFS Cache Before a Job Without Causing Prefetch Read Amplification
+11. When JuiceFS Cache Slows Sequential Reads: Using `--cache-partial-only` Correctly
+12. Fixing JuiceFS `flush timeout` and Slow Uploads to Object Storage
+13. Providing ReadWriteMany Volumes with the JuiceFS CSI Driver and Dynamic Provisioning
+14. JuiceFS CSI Pod Stuck in `ContainerCreating`: Tracing the Mount Pod, CSIDriver, and Kubelet Root
+15. Reducing JuiceFS CSI Mount-Pod Overhead with Shared Mounts and Right-Sized Resources
+16. Fixing JuiceFS Permission Mismatches Across Hosts by Synchronizing UID and GID Values
+17. Encrypting JuiceFS Data at Rest Without Leaving Plaintext in the Client Cache
+18. Why Deleting JuiceFS Files Does Not Immediately Shrink Object Storage Usage: Trash, Open Handles, and Garbage Collection
+19. Bringing Existing S3 Data into JuiceFS: Why Raw Bucket Objects Are Invisible and When to Use `sync`
+20. Exposing a JuiceFS Volume Through the S3 Gateway: Credentials, TLS, and Multi-User Limitations
+
+## Preemption
+
+1. Why a PodDisruptionBudget Did Not Protect a Pod from Scheduler Preemption—and What Protection Actually Works
+2. Why a `Guaranteed` QoS Pod Can Still Be Preempted by a Higher-Priority Pod
+3. Scheduler Preemption vs. Node-Pressure Eviction: Which Policy Chose the Victim?
+4. Why a Preemptor Stays Pending After Its Victims Terminate: Grace Periods and `nominatedNodeName`
+5. How Inter-Pod Affinity Can Make Kubernetes Preemption Impossible
+6. Why Zone-Wide Anti-Affinity Needs Cross-Node Preemption—and Why the Default Scheduler Cannot Do It
+7. Why Preemption Cannot Fix Untolerated Taints, Unavailable Storage, or Impossible Node Affinity
+8. Auditing Which Pod Preempted Which Victims with Events and the `DisruptionTarget` Condition
+9. Making Kubernetes Jobs Preemption-Safe with Checkpoints, Idempotent Retries, and Pod Failure Policies
+10. Protecting Stateful Quorums from Preemption When PDB Enforcement Is Only Best Effort
+11. Preventing Tenants from Claiming Cluster-Critical Priority with Admission Policy and PriorityClass-Scoped Quotas
+12. Rolling Out a New `globalDefault` PriorityClass Without Surprising Existing Pods
+13. Changing a Deployment’s Priority Safely When Pod Priority Is Immutable
+14. Should Cluster Autoscaler Add a Node Before Kubernetes Preempts Pods? Controlling the Race
+15. Why a Non-Preempting High-Priority Pod Can Still Lose Its Place During Scheduler Backoff
+16. Disabling `DefaultPreemption` in a Custom Scheduler Profile Without Changing the Default Scheduler
+17. Reserving Burst Capacity with Low-Priority Pause Pods That Yield to Production Workloads
+18. How Kubernetes Selects Preemption Victims When Several Nodes Could Fit the Preemptor
+19. Why Kubernetes Sometimes Preempts Higher-Priority Victims While Lower-Priority Pods Keep Running
+20. Testing Kubernetes 1.36 Workload-Aware Preemption for Gang-Scheduled PodGroups
