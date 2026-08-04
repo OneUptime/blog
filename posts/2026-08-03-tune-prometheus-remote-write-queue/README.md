@@ -156,7 +156,7 @@ Increasing the timeout helps only if slow requests eventually succeed and retain
 
 ## `min_backoff` and `max_backoff`: Recovery Pressure
 
-For recoverable failures, Prometheus begins at `min_backoff`, doubles the delay after each failure, and caps it at `max_backoff`.
+For recoverable failures without a positive `Retry-After` response delay, Prometheus begins at `min_backoff`, doubles the delay after each failure, and caps it at `max_backoff`. For a retried 429 or 5xx response with a positive `Retry-After` delay, Prometheus uses the header's value for the next delay.
 
 ```yaml
 queue_config:
@@ -200,7 +200,7 @@ Record at least:
 - Remote Write pending samples and enqueue retries;
 - current, desired, and maximum shards;
 - p50, p95, and p99 send-batch duration;
-- retried, failed, and dropped samples by reason;
+- retried and failed sample counts, and dropped samples by reason;
 - compressed bytes per second;
 - sender CPU, memory, network, and WAL disk use;
 - receiver request latency, accepted rate, 429/5xx rate, and limits.
@@ -220,7 +220,7 @@ queue_config:
 
 Capacity remains five batches per shard. The lower-than-default shard cap controls worst-case concurrency, but whether 30 is safe depends entirely on the endpoint.
 
-For a low-volume route where five-second delivery matters more than request efficiency, leave the defaults. For an archival route where ten-second delay is acceptable, test:
+For a low-volume route where a five-second batch-send deadline matters more than request efficiency, leave the defaults. For an archival route where a ten-second batch-send deadline is acceptable, test:
 
 ```yaml
 queue_config:
