@@ -27,6 +27,8 @@ CUR 2.0 split fields include:
 
 AWS also adds EKS attributes such as cluster, namespace, node, workload name, and workload type to split records under documented conditions. For example, workload identity is populated only when AWS can identify exactly one supported managing workload.
 
+AWS represents unused capacity in two related ways: an explicit `Unused` split record carries unallocated capacity in `split_cost`, while each Pod's `unused_cost` redistributes that unused amount to Pods. For a capacity view, sum `split_cost` across Pod and `Unused` records. For a Pod-attribution view, sum each Pod's `split_cost + unused_cost` and exclude the `Unused` record. Use the net pair consistently when available; never add both representations.
+
 These rows are the compute allocation source. Do not derive EC2 node cost again from ordinary parent rows and add both totals.
 
 ## Build a Canonical Asset Table
@@ -37,12 +39,16 @@ Normalize all billed assets before assigning owners:
 asset_line_id
 billing_interval_start
 billing_interval_end
+provider
 account_id
 region
 service
 asset_type
+billed_component
 resource_id
 selected_cost
+source_delivery_id
+source_partition_id
 source_line_item_id
 ```
 
@@ -57,7 +63,7 @@ Suggested `asset_type` values include:
 - `data_transfer`;
 - `unresolved_eks_ancillary`.
 
-Keep the original CUR identity line-item ID. Resource IDs are not globally unique across services and can be blank, so the asset key must include provider, account, Region, service, and interval as appropriate.
+Keep the original CUR identity line-item ID, but do not use it alone as `asset_line_id`. In CUR 2.0 it is unique only within one partition and is not stable across separate reports. Scope source rows by delivery and partition, select the current refresh before allocation, and then mint a stable asset key or validated fingerprint. Resource IDs are not globally unique across services and can be blank, so never use them alone. Scope populated IDs by provider, account, Region, and service; distinguish row-grain assets by interval and billed component or scoped source-row identity, and keep resource-less charges in controlled aggregate keys.
 
 ## Preserve a Kubernetes Identity Ledger
 
@@ -91,7 +97,7 @@ The AWS Load Balancer Controller creates AWS load balancers from Kubernetes Ingr
 
 EKS resource tags do not automatically propagate to associated resources. Tag the created load balancer intentionally and activate the relevant cost allocation tags where appropriate.
 
-For a load balancer serving one product, bind all hourly and usage components directly. For a shared ingress, choose a measured driver such as processed bytes, requests, rule evaluations, or target traffic. The driver must match the billed component; equal split may be acceptable for the fixed hourly component while bytes drive variable processing.
+For a load balancer serving one product, bind all hourly and usage components directly. For a shared ingress, separate fixed load-balancer hours from LCU or NLCU usage. AWS bills ALB and NLB capacity units from the highest usage dimension in each metering interval, not as separate byte, request, and rule-evaluation charges. Allocate variable cost with the dominant capacity-unit dimension and per-recipient telemetry when it can be reconstructed; otherwise use a documented policy proxy. Equal split may be acceptable for the fixed hourly component.
 
 Do not join one load balancer CUR row directly to every backend and charge its full cost to each.
 
@@ -109,15 +115,15 @@ Retain:
 - consuming workload owner intervals;
 - snapshots and unattached periods as separate states.
 
-Allocate provisioned volume capacity and baseline charges to the PVC owner during the binding interval. Allocate provisioned IOPS, throughput, snapshots, and data transfer by their own billed component and approved driver. A volume that remains after its PVC or workload is deleted belongs in an orphaned-storage pool until a historical association or owner policy resolves it.
+Allocate provisioned volume-capacity charges to the PVC owner during the binding interval. Allocate separately billed provisioned IOPS, additional throughput, snapshots, and data transfer by their own billed component and approved driver. A volume that remains after its PVC or workload is deleted belongs in an orphaned-storage pool until a historical association or owner policy resolves it.
 
 Do not use the current PVC list to allocate the whole month. EBS outlives Pods routinely, and a retained PV can change lifecycle state without changing its volume ID.
 
 ## Allocate the EKS Control Plane Explicitly
 
-Amazon EKS has per-cluster hourly pricing based on Kubernetes version support, with additional separately priced control-plane options and capabilities where used. Worker nodes, EBS, addresses, and transfer are billed separately.
+Amazon EKS has per-cluster hourly pricing based on Kubernetes version support, with separately priced Provisioned Control Plane capacity and EKS Capabilities where used. Worker nodes, EBS, addresses, and transfer are billed separately.
 
-Bind control-plane rows to the cluster using CUR resource identity where available, or a controlled account/Region/product association. Then choose a policy:
+Bind control-plane rows to the cluster using activated user-defined cluster cost allocation tags or CUR resource identity where present. The AWS-generated `aws:eks:cluster-name` tag does not capture control-plane expenses. An account/Region/product association identifies one cluster only when exactly one eligible cluster exists; otherwise keep the aggregate in a shared or unresolved pool until policy allocates it. Then choose a policy:
 
 - central platform cost;
 - equal share among active tenant namespaces;
@@ -151,20 +157,65 @@ WITH weighted AS (
         b.weight_numerator,
         SUM(b.weight_numerator) OVER (
             PARTITION BY a.asset_line_id
-        ) AS total_weight
+        ) AS total_weight,
+        MIN(b.weight_numerator) OVER (
+            PARTITION BY a.asset_line_id
+        ) AS min_weight,
+        COUNT(*) OVER (
+            PARTITION BY a.asset_line_id
+        ) AS binding_count,
+        COUNT(b.weight_numerator) OVER (
+            PARTITION BY a.asset_line_id
+        ) AS weight_count,
+        COUNT(b.recipient_key) OVER (
+            PARTITION BY a.asset_line_id
+        ) AS recipient_count
     FROM eks_asset_cost a
     JOIN eks_asset_binding b
       ON a.asset_line_id = b.asset_line_id
+),
+allocated AS (
+    SELECT
+        asset_line_id,
+        recipient_key,
+        selected_cost * weight_numerator / NULLIF(total_weight, 0)
+            AS allocated_cost
+    FROM weighted
+    WHERE total_weight > 0
+      AND min_weight >= 0
+      AND weight_count = binding_count
+      AND recipient_count = binding_count
+),
+exceptions AS (
+    SELECT
+        a.asset_line_id,
+        'unresolved_eks_ancillary' AS recipient_key,
+        a.selected_cost AS allocated_cost
+    FROM eks_asset_cost a
+    WHERE NOT EXISTS (
+        SELECT 1
+        FROM weighted w
+        WHERE w.asset_line_id = a.asset_line_id
+          AND w.total_weight > 0
+          AND w.min_weight >= 0
+          AND w.weight_count = w.binding_count
+          AND w.recipient_count = w.binding_count
+    )
 )
 SELECT
     asset_line_id,
     recipient_key,
-    selected_cost * weight_numerator / NULLIF(total_weight, 0)
-        AS allocated_cost
-FROM weighted;
+    allocated_cost
+FROM allocated
+UNION ALL
+SELECT
+    asset_line_id,
+    recipient_key,
+    allocated_cost
+FROM exceptions;
 ```
 
-Send a zero or missing denominator to an exception bucket. Never coalesce it to one recipient or divide the full asset cost across duplicated raw join rows.
+The exception branch preserves assets with missing, zero, negative, or null weights instead of dropping them. Never coalesce an invalid denominator to one recipient or divide the full asset cost across duplicated raw join rows.
 
 ## Keep Cost Categories Visible
 
@@ -183,10 +234,10 @@ This distinction tells a team whether to rightsize requests, remove an idle load
 
 ## Validate the Join
 
-- Split Pod compute plus split unused compute reconciles to the parent compute scope.
+- The chosen split-cost view reconciles to the parent compute scope without adding both explicit `Unused` records and Pod `unused_cost` values.
 - Each ancillary CUR line appears in exactly one asset pool.
 - Direct bindings have one active recipient per interval.
-- Shared weights are nonnegative and sum to one.
+- Shared numerators are nonnegative, each denominator is positive, and the resulting normalized weights sum to one.
 - Kubernetes UIDs and effective intervals prevent name reuse.
 - EKS tags are not assumed to propagate to load balancers or volumes.
 - Deleted-object cost enters an orphaned or historical-association state.
@@ -196,13 +247,18 @@ This distinction tells a team whether to rightsize requests, remove an idle load
 ## Official Documentation
 
 - [AWS Data Exports: Understanding split cost allocation data](https://docs.aws.amazon.com/cur/latest/userguide/split-cost-allocation-data.html)
+- [AWS Data Exports: Example of split cost allocation data](https://docs.aws.amazon.com/cur/latest/userguide/example-split-cost-allocation-data.html)
 - [AWS Data Exports: Split line item columns](https://docs.aws.amazon.com/cur/latest/userguide/table-dictionary-cur2-split-line-item.html)
+- [AWS Data Exports: CUR 2.0 identity columns](https://docs.aws.amazon.com/cur/latest/userguide/table-dictionary-cur2-identity.html)
 - [Amazon EKS: View costs by Pod with split cost allocation](https://docs.aws.amazon.com/eks/latest/userguide/cost-monitoring-aws.html)
 - [Amazon EKS: Pricing for control plane and other AWS resources](https://aws.amazon.com/eks/pricing/)
 - [Amazon EKS: Route HTTP traffic with Application Load Balancers](https://docs.aws.amazon.com/eks/latest/userguide/alb-ingress.html)
 - [Amazon EKS: Route TCP and UDP traffic with Network Load Balancers](https://docs.aws.amazon.com/eks/latest/userguide/network-load-balancing.html)
+- [Elastic Load Balancing: Pricing](https://aws.amazon.com/elasticloadbalancing/pricing/)
+- [Elastic Load Balancing: Billing and usage report codes](https://docs.aws.amazon.com/elasticloadbalancing/latest/userguide/load-balancer-billing-usage-reports.html)
 - [Amazon EKS: Use Kubernetes volume storage with Amazon EBS](https://docs.aws.amazon.com/eks/latest/userguide/ebs-csi.html)
-- [Kubernetes: CSI PersistentVolume source and volumeHandle](https://kubernetes.io/docs/reference/kubernetes-api/config-and-storage-resources/persistent-volume-v1/#CSIPersistentVolumeSource)
+- [Amazon EBS: Pricing](https://aws.amazon.com/ebs/pricing/)
+- [Kubernetes: CSI PersistentVolume source and volumeHandle](https://kubernetes.io/docs/reference/kubernetes-api/core/persistent-volume-v1/#CSIPersistentVolumeSource)
 - [Amazon EKS: EKS tags do not propagate to associated resources](https://docs.aws.amazon.com/eks/latest/userguide/eks-using-tags.html)
 
 ## Conclusion
