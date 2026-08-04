@@ -2,24 +2,23 @@
 
 ## Cloud Portability
 
-1. Terraform Is Multi-Provider, Not Cloud-Agnostic: Designing Provider-Specific Modules Behind a Stable Interface
-2. Portable Kubernetes Storage: Mapping StorageClasses Without Baking Cloud Disks into Manifests
-3. Moving Stateful Kubernetes Workloads Between Clouds Without Losing Persistent Volume Data
-4. Ingress Without Lock-In: Replacing Cloud Load-Balancer Annotations with the Kubernetes Gateway API
-5. Designing a Cloud-Neutral Identity Layer Across AWS IAM, Microsoft Entra ID, and Google Cloud IAM
-6. Escaping Managed Database Lock-In: Schema, Extension, Backup, and Replication Checks Before You Commit
-7. From Lambda to Portable Compute: When Containers or Knative Actually Make Migration Easier
-8. A Portable Object-Storage Abstraction: What S3 Compatibility Does—and Does Not—Guarantee
-9. Cross-Cloud Messaging Without Rewriting Business Logic: Adapter Boundaries for SQS, Pub/Sub, and Service Bus
-10. The Hidden Portability Tax: DNS, Certificates, Secrets, and Observability During a Cloud Move
-11. How to Test Cloud Portability Continuously Instead of Discovering It During Migration
-12. Building a Cloud Exit Runbook: Inventory, Dependency Graph, Data Transfer, and DNS Cutover
-13. Zero-Downtime Database Migration Between Cloud Providers: CDC, Dual Writes, and Cutover Trade-Offs
-14. What Egress Fees Do to a Multi-Cloud Architecture—and How to Model Them Before Deployment
-15. Cloud Portability vs. Multi-Cloud Resilience: Two Different Goals, Two Different Architectures
-16. Provider-Neutral IaC Without Lowest-Common-Denominator Infrastructure: A Layered Module Pattern
-17. Measuring Vendor Lock-In: A Practical Portability Scorecard for Managed Services
-18. The Quarterly Cloud-Evacuation Drill: Proving Backups, Images, IaC, and Runbooks Actually Work
+1. Portable Kubernetes Storage: Mapping StorageClasses Without Baking Cloud Disks into Manifests
+2. Moving Stateful Kubernetes Workloads Between Clouds Without Losing Persistent Volume Data
+3. Ingress Without Lock-In: Replacing Cloud Load-Balancer Annotations with the Kubernetes Gateway API
+4. Designing a Cloud-Neutral Identity Layer Across AWS IAM, Microsoft Entra ID, and Google Cloud IAM
+5. Escaping Managed Database Lock-In: Schema, Extension, Backup, and Replication Checks Before You Commit
+6. From Lambda to Portable Compute: When Containers or Knative Actually Make Migration Easier
+7. A Portable Object-Storage Abstraction: What S3 Compatibility Does—and Does Not—Guarantee
+8. Cross-Cloud Messaging Without Rewriting Business Logic: Adapter Boundaries for SQS, Pub/Sub, and Service Bus
+9. The Hidden Portability Tax: DNS, Certificates, Secrets, and Observability During a Cloud Move
+10. How to Test Cloud Portability Continuously Instead of Discovering It During Migration
+11. Building a Cloud Exit Runbook: Inventory, Dependency Graph, Data Transfer, and DNS Cutover
+12. Zero-Downtime Database Migration Between Cloud Providers: CDC, Dual Writes, and Cutover Trade-Offs
+13. What Egress Fees Do to a Multi-Cloud Architecture—and How to Model Them Before Deployment
+14. Cloud Portability vs. Multi-Cloud Resilience: Two Different Goals, Two Different Architectures
+15. Provider-Neutral IaC Without Lowest-Common-Denominator Infrastructure: A Layered Module Pattern
+16. Measuring Vendor Lock-In: A Practical Portability Scorecard for Managed Services
+17. The Quarterly Cloud-Evacuation Drill: Proving Backups, Images, IaC, and Runbooks Actually Work
 
 ## Infrastructure Automation
 
