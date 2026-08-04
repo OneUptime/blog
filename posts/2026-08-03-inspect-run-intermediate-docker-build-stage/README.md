@@ -84,7 +84,7 @@ stat /src/dist/server.js
 
 Pass only the runtime inputs needed to reproduce the issue. A build-stage image does not retain BuildKit secret or SSH mounts; those mounts exist only for the relevant `RUN` instruction.
 
-If the target defines an entrypoint that gets in the way, `--entrypoint` replaces it for this container. Container writes go into the disposable container layer and disappear with `--rm`; they do not alter the tagged image or Dockerfile.
+If the target defines an entrypoint that gets in the way, `--entrypoint` replaces it for this container. Writes to the container's writable layer disappear with `--rm`; they do not alter the tagged image or Dockerfile.
 
 ## Inspect a Stage That Has No Shell
 
@@ -103,7 +103,7 @@ docker cp "$container_id":/src/dist/server.js ./server.js
 docker rm "$container_id"
 ```
 
-To inspect the complete root filesystem:
+To inspect the merged container filesystem, excluding volume contents:
 
 ```bash
 container_id=$(docker create example-api:build-debug)
@@ -112,7 +112,7 @@ docker rm "$container_id"
 tar -tf build-debug-rootfs.tar | less
 ```
 
-`docker image history` shows layer commands and sizes, not a reliable per-file inventory. Container export gives the merged filesystem view and omits image configuration and layer history.
+`docker image history` shows layer commands and sizes, not a reliable per-file inventory. Container export gives the merged filesystem view and omits image configuration, layer history, and the contents of mounted volumes.
 
 ## Export Only Build Artifacts
 
