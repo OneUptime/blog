@@ -73,7 +73,7 @@ A common precedence is:
 5. controlled broader association;
 6. central or unresolved residual.
 
-Do not let a broad `account_id = A` rule override a specific, valid resource tag. Encode precedence as data, test it, and show the winning `rule_id` on every allocated row.
+Do not let a broad `account_id = A` rule override a specific, valid resource tag. Encode precedence as data, test it, and show the winning `rule_id` and `rule_version` on every allocated row.
 
 AWS Cost Categories also evaluate grouping rules in order and use the first matching rule. If Cost Categories are part of the source, preserve their values and effective behavior rather than reproducing them approximately in an undocumented SQL branch.
 
@@ -101,7 +101,7 @@ That bitemporal distinction supports corrections without hiding late changes.
 
 ## Match Without Creating Fan-Out
 
-First create a globally unique source-row key. In CUR 2.0, `identity_line_item_id` is unique only within a partition and is not guaranteed unique across an entire delivery or stable across reports. Combine it with the immutable export snapshot and partition identity.
+First create a globally unique source-row key. In CUR 2.0, `identity_line_item_id` is unique only within a partition and is not guaranteed unique across an entire delivery or stable across reports. Combine it with the export identity, partition identity, and an immutable ingestion snapshot of the delivery.
 
 Then rank candidate association rules:
 
@@ -110,6 +110,7 @@ WITH candidates AS (
     SELECT
         c.source_row_key,
         a.rule_id,
+        a.rule_version,
         a.owner_key,
         a.priority,
         a.specificity,
@@ -136,12 +137,15 @@ WITH candidates AS (
     WHERE precedence_rank = 1
 )
 SELECT
-    source_row_key,
-    COUNT(*) AS winning_rule_count,
-    MIN(rule_id) AS candidate_rule_id,
-    MIN(owner_key) AS candidate_owner
-FROM top_candidates
-GROUP BY source_row_key;
+    c.source_row_key,
+    COUNT(t.rule_id) AS winning_rule_count,
+    MIN(t.rule_id) AS candidate_rule_id,
+    MIN(t.rule_version) AS candidate_rule_version,
+    MIN(t.owner_key) AS candidate_owner
+FROM canonical_cost c
+LEFT JOIN top_candidates t
+  ON c.source_row_key = t.source_row_key
+GROUP BY c.source_row_key;
 ```
 
 Only `winning_rule_count = 1` is safe to apply. More than one top-precedence rule is ambiguous even if both happen to name the same owner. Zero candidates is unmatched. Route both states to controls rather than using `MIN` as an allocation decision.
@@ -189,10 +193,11 @@ Expose allocation results as fields such as:
 allocated_owner
 allocation_source = association_table
 allocation_rule_id
+allocation_rule_version
 allocation_confidence
 ```
 
-Do not write them into a field named `resourceTags/user:Owner`. In CUR 2.0, tag prefixes distinguish resource, account, user-attribute, IAM-principal, and cost-category sources. Preserve that distinction so auditors and engineers know what came from AWS and what came from company policy.
+Do not write them into the CUR 2.0 `tags` map under a key such as `resourceTags/Owner`. In CUR 2.0, tag prefixes distinguish resource, account, user-attribute, IAM-principal, and cost-category sources. Preserve that distinction so auditors and engineers know what came from AWS and what came from company policy.
 
 ## Validate Coverage
 
