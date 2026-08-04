@@ -52,7 +52,8 @@ This table is only orientation. For example, Pub/Sub exactly-once delivery is li
 Keep provider clients behind operations tied to the processing lifecycle:
 
 ```text
-Publisher.publish(message) -> provider_message_id
+Publisher.publish(message) -> PublishReceipt
+PublishReceipt.provider_message_id?  # optional
 
 Receiver.receive(max_messages, wait) -> Delivery[]
 Delivery.message
@@ -62,7 +63,9 @@ Delivery.dead_letter(reason)
 Delivery.extend(lease)
 ```
 
-Do not promise an operation that cannot be implemented honestly. An arbitrary per-message retry delay, atomic publish across several destinations, or transaction spanning the broker and a database may not exist on every target.
+Complete `publish()` only after the broker confirms the send. A provider-assigned message ID is optional metadata: SQS and Pub/Sub return one, while Service Bus uses an application-defined `MessageId` and its send completion does not return a broker-generated message ID.
+
+Do not promise an operation that cannot be implemented honestly. Treat `dead_letter(reason)` as an optional capability: Service Bus can explicitly settle a locked message to its dead-letter queue with a reason, while SQS and Pub/Sub normally move messages through configured redrive or dead-letter policies after failed deliveries. Emulating that operation by publishing a copy and then acknowledging the original is not atomic. An arbitrary per-message retry delay, atomic publish across several destinations, or transaction spanning the broker and a database may not exist on every target.
 
 Expose capabilities during adapter initialization:
 
@@ -70,6 +73,7 @@ Expose capabilities during adapter initialization:
 {
   "orderedGroups": true,
   "explicitLeaseRenewal": true,
+  "explicitDeadLetter": false,
   "nativeSendDeduplication": false,
   "deadLetterPolicy": true,
   "maxPayloadBytes": 262144
@@ -98,7 +102,7 @@ CloudEvents can standardize common event metadata, but it does not define queue 
 }
 ```
 
-Keep the application event ID stable across publish retries. Map it to SQS message attributes, Pub/Sub attributes, or Service Bus application properties, and use the grouping key only where ordered processing is required.
+Keep the application event ID stable across publish retries. Carry it in SQS message attributes, Pub/Sub attributes, or Service Bus application properties. When native send deduplication is enabled, also use the stable ID as the SQS FIFO `MessageDeduplicationId` or Service Bus `MessageId`; Pub/Sub's provider message ID is assigned by the service and is separate from the application event ID. Use the grouping key only where ordered processing is required.
 
 Version schemas independently from the broker. Consumers should tolerate additive fields and route unsupported major versions to a visible failure path.
 
@@ -111,18 +115,22 @@ Use an atomic inbox pattern where the business database supports it:
 ```sql
 BEGIN;
 
-INSERT INTO consumed_message (consumer, message_id, consumed_at)
-VALUES ('capture-worker', :message_id, CURRENT_TIMESTAMP)
-ON CONFLICT DO NOTHING;
-
--- Continue only when the insert affected one row.
+WITH claimed AS (
+  INSERT INTO consumed_message (consumer, message_id, consumed_at)
+  VALUES ('capture-worker', :message_id, CURRENT_TIMESTAMP)
+  ON CONFLICT (consumer, message_id) DO NOTHING
+  RETURNING 1
+)
 UPDATE payment
 SET status = 'captured'
 WHERE payment_id = :payment_id
-  AND status = 'authorized';
+  AND status = 'authorized'
+  AND EXISTS (SELECT 1 FROM claimed);
 
 COMMIT;
 ```
+
+This assumes a unique constraint on `consumed_message (consumer, message_id)`. The business update runs only when this transaction inserts the inbox row.
 
 Only acknowledge after the durable transaction commits. If acknowledgment then fails, redelivery finds the inbox row and safely acknowledges without repeating the effect.
 
@@ -146,7 +154,7 @@ SQS hides a received message for its visibility timeout. Pub/Sub keeps a message
 
 The adapter should:
 
-- start renewal only after handing a message to a worker;
+- start lease tracking as soon as the client receives or locks a message, and renew while the adapter still intends to process it;
 - cap total renewal time so poisoned work eventually fails;
 - stop renewal when the process loses ownership;
 - surface renewal errors to processing code;
@@ -162,7 +170,7 @@ Global ordering constrains throughput and is not the common model. Partition by 
 Map the key to:
 
 - SQS FIFO `MessageGroupId`;
-- Pub/Sub ordering key, with ordering enabled;
+- Pub/Sub ordering key, with ordering enabled and all messages for a key published in the same region;
 - Service Bus `SessionId`, with a session-aware receiver.
 
 Test failure behavior. Pub/Sub documents that redelivery of an ordered message can cause subsequent messages for that key to be redelivered. Service Bus sessions require session lock management. A hot SQS message group is processed serially. The adapter cannot erase these throughput consequences.
@@ -172,14 +180,14 @@ Test failure behavior. Pub/Sub documents that redelivery of an ordered message c
 Native dead-letter policies differ. Define operational outcomes:
 
 ```text
-message exceeded attempts -> quarantined with original envelope
+message exhausted retry policy -> quarantined with original envelope
 reason and last error retained
 operator can inspect without production credentials
 replay preserves event ID
 replay is rate limited and audited
 ```
 
-Provision provider dead-letter queues or topics explicitly and monitor them. Do not assume setting a policy creates every target resource or grants all forwarding permissions.
+Configure dead-letter handling explicitly and monitor it. SQS requires a separately created queue, Pub/Sub requires a dead-letter topic and subscription plus service-agent permissions, and Service Bus provides a dead-letter subqueue with each queue or topic subscription. Do not assume setting a policy creates every separate target resource or grants all forwarding permissions. Pub/Sub's maximum delivery-attempt setting is approximate, and policy-driven SQS and Pub/Sub dead-lettering cannot attach a consumer-supplied last error to the original message; retain that diagnostic context in durable application telemetry keyed by the stable event ID or in a separately published quarantine record.
 
 ## Run the Same Contract Suite
 
