@@ -18,9 +18,9 @@ In consolidated billing, eligible Reserved Instance and Savings Plans benefits c
 
 The result depends on the whole eligible demand set in an hour. For example:
 
-1. production and development both run eligible compute;
+1. after the Savings Plan is applied to eligible usage in its owner account, production and development both run eligible compute at the same configured sharing priority;
 2. production normally receives most of a shared commitment;
-3. development launches a large eligible test fleet;
+3. development launches a large eligible test fleet that ranks ahead of some production usage under AWS's savings-percentage ordering;
 4. the billing engine applies benefit across the new set according to AWS rules;
 5. some production usage is now On-Demand while development receives covered usage.
 
