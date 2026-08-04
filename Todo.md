@@ -2,16 +2,15 @@
 
 ## Cloud Portability
 
-1. Cross-Cloud Messaging Without Rewriting Business Logic: Adapter Boundaries for SQS, Pub/Sub, and Service Bus
-2. The Hidden Portability Tax: DNS, Certificates, Secrets, and Observability During a Cloud Move
-3. How to Test Cloud Portability Continuously Instead of Discovering It During Migration
-4. Building a Cloud Exit Runbook: Inventory, Dependency Graph, Data Transfer, and DNS Cutover
-5. Zero-Downtime Database Migration Between Cloud Providers: CDC, Dual Writes, and Cutover Trade-Offs
-6. What Egress Fees Do to a Multi-Cloud Architecture—and How to Model Them Before Deployment
-7. Cloud Portability vs. Multi-Cloud Resilience: Two Different Goals, Two Different Architectures
-8. Provider-Neutral IaC Without Lowest-Common-Denominator Infrastructure: A Layered Module Pattern
-9. Measuring Vendor Lock-In: A Practical Portability Scorecard for Managed Services
-10. The Quarterly Cloud-Evacuation Drill: Proving Backups, Images, IaC, and Runbooks Actually Work
+1. The Hidden Portability Tax: DNS, Certificates, Secrets, and Observability During a Cloud Move
+2. How to Test Cloud Portability Continuously Instead of Discovering It During Migration
+3. Building a Cloud Exit Runbook: Inventory, Dependency Graph, Data Transfer, and DNS Cutover
+4. Zero-Downtime Database Migration Between Cloud Providers: CDC, Dual Writes, and Cutover Trade-Offs
+5. What Egress Fees Do to a Multi-Cloud Architecture—and How to Model Them Before Deployment
+6. Cloud Portability vs. Multi-Cloud Resilience: Two Different Goals, Two Different Architectures
+7. Provider-Neutral IaC Without Lowest-Common-Denominator Infrastructure: A Layered Module Pattern
+8. Measuring Vendor Lock-In: A Practical Portability Scorecard for Managed Services
+9. The Quarterly Cloud-Evacuation Drill: Proving Backups, Images, IaC, and Runbooks Actually Work
 
 ## Infrastructure Automation
 
