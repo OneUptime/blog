@@ -1,9 +1,5 @@
 # Blog Post Ideas
 
-## SOC 2
-
-1. The Real Cost of SOC 2: Separate Audit, Readiness, Tooling, Pen Test, and Remediation Quotes
-
 ## Showback
 
 1. Unblended, Amortized, or Net Amortized Cost: Which Number Belongs in an AWS Showback?
