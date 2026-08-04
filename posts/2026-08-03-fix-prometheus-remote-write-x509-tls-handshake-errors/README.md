@@ -36,12 +36,13 @@ Run tests inside the Prometheus container, Pod, or an equivalent debug workload.
 openssl s_client \
   -connect metrics.example.net:443 \
   -servername metrics.example.net \
+  -verify_hostname metrics.example.net \
   -showcerts \
   -verify_return_error \
   </dev/null
 ```
 
-The `-servername` value sends SNI. Without it, a multi-host ingress may present its default certificate and create a misleading name or authority error.
+The explicit `-servername` value sends SNI, while `-verify_hostname` performs the separate hostname check. OpenSSL 1.1.1 and newer also derive SNI from a DNS-form `-connect` host by default, but keeping it explicit makes the intended route clear and is necessary when connecting to an IP address or a different DNS name.
 
 Also test with the exact private CA that Prometheus will use:
 
@@ -78,7 +79,7 @@ If a public CA certificate still reports an unknown authority, inspect what the 
 
 ## Fix Hostname and SNI Mismatches
 
-Certificate identity is checked against DNS Subject Alternative Names, not against an arbitrary service identity. Prefer a URL whose hostname appears in the certificate:
+Certificate identity is checked against Subject Alternative Names: DNS names for hostname URLs and IP Address SANs for IP URLs. The legacy Common Name is ignored. Prefer a URL whose hostname appears in a DNS SAN:
 
 ```yaml
 remote_write:
@@ -92,7 +93,7 @@ remote_write:
   - url: https://10.20.30.40/api/v1/write
 ```
 
-When network routing genuinely requires a different address, `server_name` controls certificate verification and TLS SNI:
+When network routing genuinely requires a different address, `server_name` controls certificate verification and, when it is a DNS name, TLS SNI:
 
 ```yaml
 remote_write:
@@ -216,7 +217,7 @@ This disables server-certificate validation and makes the connection vulnerable 
 
 ## Verify Recovery
 
-Validate the configuration and reload it:
+Validate the configuration before reloading it:
 
 ```bash
 promtool check config /etc/prometheus/prometheus.yml
@@ -244,7 +245,7 @@ TLS failures are retriable transport errors, so the queue may drain after trust 
 
 - [Prometheus TLS client configuration](https://prometheus.io/docs/prometheus/latest/configuration/configuration/#tls_config)
 - [Prometheus Remote Write configuration](https://prometheus.io/docs/prometheus/latest/configuration/configuration/#remote_write)
-- [Prometheus HTTPS and authentication guide](https://prometheus.io/docs/guides/basic-auth/)
+- [Prometheus HTTPS and authentication guide](https://prometheus.io/docs/prometheus/latest/configuration/https/)
 - [Prometheus exporter-toolkit web TLS configuration](https://github.com/prometheus/exporter-toolkit/blob/master/docs/web-configuration.md)
 - [Prometheus Remote Write tuning and WAL behavior](https://prometheus.io/docs/practices/remote_write/)
 - [Go certificate verification API](https://pkg.go.dev/crypto/x509#Certificate.VerifyHostname)
