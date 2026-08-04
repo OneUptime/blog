@@ -32,7 +32,7 @@ resource "azurerm_storage_account" "data" {
 }
 ```
 
-As providers accumulate, every variable becomes optional, outputs need `try` expressions, validation becomes difficult, and plans contain branches irrelevant to the selected cloud. More importantly, the module suggests false equivalence: an S3 bucket and a storage account have different containment, authorization, endpoint, versioning, and lifecycle concepts.
+As providers accumulate, many provider-specific variables become optional, outputs need conditional or `try` expressions, validation becomes difficult, and Terraform must still install the providers and validate configuration for branches irrelevant to the selected cloud. More importantly, the module suggests false equivalence: an S3 bucket and a storage account have different containment, authorization, endpoint, versioning, and lifecycle concepts.
 
 Use separate implementations instead:
 
@@ -72,7 +72,7 @@ variable "retention_days" {
 
 output "application_endpoint" {
   value = {
-    uri             = aws_s3_bucket.data.bucket_regional_domain_name
+    uri             = "https://${aws_s3_bucket.data.bucket_regional_domain_name}"
     credential_mode = "workload_identity"
   }
 }
@@ -131,7 +131,7 @@ Each child module declares the minimum provider version containing features it u
 
 There are two sound ways to choose an implementation.
 
-The clearest is separate root configurations. Each environment has an ordinary, unconditional module call and an independent state file. This also prevents an accidental `cloud = "azure"` edit from proposing the destruction of AWS infrastructure.
+The clearest is separate root configurations. Each environment has an ordinary, unconditional module call and is configured with independent state. This also prevents an accidental `cloud = "azure"` edit from proposing the destruction of AWS infrastructure.
 
 If one root must select a module, keep the conditional at the module boundary:
 
@@ -150,7 +150,7 @@ module "store_aws" {
   source              = "../../modules/object-store-aws"
   name                = var.name
   data_classification = var.data_classification
-  retention_days       = var.retention_days
+  retention_days      = var.retention_days
 }
 
 module "store_gcp" {
@@ -158,7 +158,7 @@ module "store_gcp" {
   source              = "../../modules/object-store-gcp"
   name                = var.name
   data_classification = var.data_classification
-  retention_days       = var.retention_days
+  retention_days      = var.retention_days
 }
 
 locals {
@@ -209,18 +209,19 @@ variable "provider_options" {
 }
 ```
 
-Avoid `map(any)` for the primary interface. It moves schema errors from module validation to provider apply time.
+Avoid `map(any)` for the primary interface. It weakens schema validation at the module boundary and defers errors until Terraform consumes the values.
 
 ## Test Every Implementation Against the Same Cases
 
 Static matching of variable names is not enough. Run a small contract suite for each implementation:
 
-1. format and validate the configuration;
+1. format the configuration;
 2. initialize with a committed lock file;
-3. plan representative inputs;
-4. apply in an isolated test account or project;
-5. test access, encryption, retention, and deletion behavior;
-6. destroy and check for retained resources that need explicit cleanup.
+3. validate the initialized configuration;
+4. plan representative inputs;
+5. apply in an isolated test account or project;
+6. test access, encryption, retention, and deletion behavior;
+7. destroy and check for retained resources that need explicit cleanup.
 
 Capture normalized evidence such as:
 
