@@ -97,7 +97,7 @@ A successful check named `test` is not self-explanatory. Maintain an inventory t
 
 Preserve the check run ID, conclusion, timestamps, workflow revision, and the exact commit SHA evaluated for selected changes. A check that ran against an earlier commit or skipped relevant paths may not support the stated control attribute. With a merge queue, GitHub validates a temporary merge-group branch whose SHA differs from the pull-request head, so preserve the merge-group event and connect that temporary SHA to the pull request and resulting merge.
 
-GitHub's merge semantics also need to match the control language. Required status checks may be satisfied by `successful`, `skipped`, or `neutral` results, and a skipped GitHub Actions job reports `Success`. A mergeable pull request therefore does not, by itself, prove that every named test executed and passed. Define which conclusions are acceptable, configure workflows so required validation cannot be bypassed through an unintended skip, and inspect the actual check conclusions for sampled changes.
+GitHub's merge semantics also need to match the control language. Required status checks may be satisfied by `success`, `skipped`, or `neutral` conclusions, and a skipped GitHub Actions job reports `Success`. A mergeable pull request therefore does not, by itself, prove that every named test executed and passed. Define which conclusions are acceptable, configure workflows so required validation cannot be bypassed through an unintended skip, and inspect the actual check conclusions for sampled changes.
 
 If the control only requires designated checks, name or govern that set. Do not imply that every optional CI job must pass unless that is truly the design.
 
