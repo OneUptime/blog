@@ -20,7 +20,7 @@ AWS Cost and Usage Reports are cumulative for the current billing period. AWS up
 
 Do not add successive current-month snapshots together. Replace the prior snapshot for that billing period, or compare two complete snapshots to calculate a change.
 
-When AWS finalizes a report, `bill/InvoiceId` is populated for line items associated with an invoice. That is a valuable close signal, but it does not mean the dataset can never change again. AWS documents that refunds, credits, and support fees can be applied after the bill is finalized. If the report's data-refresh option is enabled, those changes can update a closed billing period.
+When AWS finalizes a report, the invoice ID field—`bill/InvoiceId` in legacy CUR or `bill_invoice_id` in CUR 2.0—is populated for line items associated with an invoice. That is a valuable close signal, but it does not mean the dataset can never change again. AWS documents that refunds, credits, and support fees can be applied after the bill is finalized. If the report's data-refresh option is enabled, those changes can update a closed billing period.
 
 This leads to four useful report states:
 
@@ -95,7 +95,7 @@ When a credit, refund, support fee, or corrected usage line appears after close,
 - **Policy correction:** a rate or allocation rule was approved incorrectly.
 - **Presentation correction:** only labels or formatting changed.
 
-For a provider adjustment, calculate the delta between the frozen final source snapshot and the refreshed snapshot using a stable composite source key. AWS states that `identity/LineItemId` is unique only within a CUR partition and is not guaranteed to remain consistent across different reports. Include delivery identity, billing period, account, service, usage interval, line-item type, resource identifier when present, and other distinguishing source fields in the reconciliation design.
+For a provider adjustment, calculate the delta between the frozen final source snapshot and the refreshed snapshot by aggregating both at a deliberately chosen reconciliation grain. AWS states that `identity/LineItemId` in legacy CUR (`identity_line_item_id` in CUR 2.0) is unique only within a CUR partition and is not guaranteed to remain consistent across different reports. AWS does not document a stable identifier for matching the same line item across report versions. Retain delivery identity as snapshot provenance, but do not use it as a cross-version key because each update has a different assembly ID. Reconcile using stable business dimensions such as billing period, account, service or product code, usage interval, line-item type, operation, usage type, and resource identifier when present, plus other dimensions needed to distinguish the costs being compared.
 
 Publish late changes through one of two explicit policies:
 
