@@ -34,11 +34,14 @@ Available versions and upgrade policies change independently. EKS distinguishes 
 
 ## 1. Inventory the API Surface
 
-Export every first-party and custom resource used by the workload:
+Inventory every namespaced and cluster-scoped object visible to the audit identity, then determine which ones the workload depends on:
 
 ```bash
 kubectl api-resources --verbs=list --namespaced -o name \
   | xargs -n 1 kubectl get --ignore-not-found -A -o name
+
+kubectl api-resources --verbs=list --namespaced=false -o name \
+  | xargs -n 1 kubectl get --ignore-not-found -o name
 
 kubectl get crd -o custom-columns=NAME:.metadata.name,STORED:.status.storedVersions
 kubectl get apiservice
@@ -85,7 +88,7 @@ Run tests against controller outcomes. A successful `kubectl apply` followed by 
 Search rendered configuration for provider identifiers:
 
 ```bash
-rg -n 'amazonaws\.com|aws-load-balancer|azure\.com|microsoft\.com|cloud\.google\.com|gke\.io|storageclass|topology\.kubernetes\.io' rendered.yaml
+rg -ni 'amazonaws\.com|aws-load-balancer|azure[.-]|microsoft\.com|cloud\.google\.com|gke\.io|storageclass|volumesnapshotclass|topology\.kubernetes\.io' rendered.yaml
 ```
 
 Review at least:
