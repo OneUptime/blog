@@ -51,7 +51,7 @@ The `name` values must be unique. Prometheus uses them as the `remote_name` labe
 
 ## Add an Explicit Default Route
 
-Silent loss of unlabeled data is often undesirable. Add a catch-all destination that excludes values already routed elsewhere:
+Silently omitting unlabeled data from every remote destination is often undesirable. Add a catch-all destination that excludes values already routed elsewhere:
 
 ```yaml
 remote_write:
@@ -94,7 +94,7 @@ remote_write:
         regex: production
         action: keep
       - source_labels: [__name__]
-        regex: 'http_request_duration_seconds_.*|rpc_client_duration_seconds_.*'
+        regex: '(http_request_duration_seconds|rpc_client_duration_seconds)(_.*)?'
         action: keep
 ```
 
@@ -108,7 +108,7 @@ Send everything except those families to a lower-cost backend:
     write_relabel_configs:
       - source_labels: [environment, __name__]
         separator: ';'
-        regex: 'production;(http_request_duration_seconds_.*|rpc_client_duration_seconds_.*)'
+        regex: 'production;(http_request_duration_seconds|rpc_client_duration_seconds)(_.*)?'
         action: drop
 ```
 
@@ -152,7 +152,7 @@ remote_write:
         action: keep
 ```
 
-Keep routing values bounded. Putting customer IDs or unbounded paths into a routing label increases series cardinality even if the label is later removed from one outbound path, because it already differentiated locally ingested series.
+Keep routing values bounded. Putting customer IDs or unbounded paths into a routing label can increase series cardinality. Removing the label later from one outbound path does not undo cardinality already created during local ingestion.
 
 If the backend should not store the routing label, remove it only after the `keep` rule:
 
