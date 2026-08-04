@@ -31,7 +31,7 @@ Prometheus adds `remote_name` and `url` labels to queue metrics. Without a name,
 
 ## Measure Lag with Timestamps
 
-### Time Since the Newest Successful Send
+### Time Since the Highest Sent Timestamp
 
 For a continuously active source:
 
@@ -43,9 +43,9 @@ prometheus_remote_storage_queue_highest_sent_timestamp_seconds{
 }
 ```
 
-This measures the age of the newest sample timestamp successfully sent by the queue. If scrapes occur every 15 seconds and batches wait up to 5 seconds, a small nonzero value is normal.
+Prometheus describes this gauge as the highest sample timestamp successfully sent by the queue. In the current queue manager, however, it also advances after a terminal non-recoverable send error. Treat the expression as a lag signal during normal successful operation, not as proof of delivery, and always pair it with the failure counters. If scrapes occur every 15 seconds and batches wait up to 5 seconds, a small nonzero value is normal.
 
-It produces false alarms for an idle or very low-volume source because no newer sample exists to advance the timestamp. Gate it on active local ingestion or use a route-specific heartbeat metric:
+It produces false alarms for an idle or very low-volume source because no newer sample exists to advance the timestamp. Gate it on ingestion known to survive this queue's write relabeling. The global head-ingestion metric below is only a coarse gate; a route-specific heartbeat is more precise:
 
 ```promql
 (
@@ -70,7 +70,7 @@ prometheus_remote_storage_queue_highest_sent_timestamp_seconds{
 }
 ```
 
-The first gauge is the highest timestamp enqueued and the second is the highest successfully sent. Their difference measures the timestamp span currently visible to that queue.
+The first gauge is the highest timestamp enqueued and the second is the highest timestamp sent, subject to the terminal-failure caveat above. During successful operation, their difference measures the timestamp span currently visible to that queue.
 
 When a shard is full, the WAL watcher can stop before reading newer records. The enqueued timestamp then does not represent the WAL tail, so this gap can understate total end-to-end lag. Combine it with `time() - highest sent`, queue-full evidence, and WAL watcher position.
 
@@ -82,7 +82,7 @@ The older `prometheus_remote_storage_highest_timestamp_in_seconds` metric repres
 prometheus_remote_storage_samples_pending{remote_name="central"}
 ```
 
-Pending samples are in shard queues waiting to be sent. Trend the gauge rather than alerting on any nonzero value; ordinary batching creates a small queue.
+Pending samples are queued or in an in-flight or retrying batch. The gauge is decremented when the batch reaches a terminal outcome. Trend it rather than alerting on any nonzero value; ordinary batching creates a small queue.
 
 Direct queue-full evidence is:
 
@@ -159,7 +159,7 @@ This histogram records send-call duration. Rising latency can precede pending sa
 rate(prometheus_remote_storage_bytes_total{remote_name="central"}[5m])
 ```
 
-Use bytes alongside samples to detect changed payload efficiency, metadata/exemplar behavior, or network saturation. It is not receiver storage size.
+This counter records the compressed data-request size once when a batch finishes send processing; it does not count every retry attempt. Separately sent Remote Write 1.0 metadata uses `prometheus_remote_storage_metadata_bytes_total`. Use these counters alongside samples to detect changed payload efficiency or exemplar and metadata behavior, and use network-level counters to confirm saturation. They do not represent receiver storage size.
 
 ## Measure Permanent Failures and Drops
 
@@ -173,9 +173,9 @@ increase(
 )
 ```
 
-This counter tracks samples that were not written after a non-recoverable outcome, including known partial writes. HTTP 400, 401, 403, and unsupported-content errors normally belong here. Any increase deserves investigation because retrying the unchanged request is not expected to succeed.
+This counter tracks samples that were not written after a terminal non-recoverable outcome, including known partial writes. It also includes samples still pending when a hard shutdown drops the shard queues. HTTP 400, 401, 403, and unsupported-content errors normally belong here. Any increase deserves investigation because retrying the unchanged request is not expected to succeed.
 
-Remote Write 1.0 receivers generally communicate success through a 2xx status, so the sender assumes the batch succeeded. Remote Write 2.0 adds written-count response headers for samples, histograms, and exemplars, allowing a compatible sender to identify partial or empty writes more accurately.
+When using a Remote Write 1.0 message, Prometheus treats a 2xx response without written-count headers as full-batch success. Remote Write 2.0 adds written-count response headers for samples, histograms, and exemplars, allowing a compatible sender to identify partial or empty writes more accurately.
 
 ### Samples Dropped Before Send
 
@@ -225,7 +225,7 @@ The watcher source warns that read/decode problems may drop data. Preserve relev
 
 No single sender metric proves complete end-to-end durability. Reasons include:
 
-- a 1.0 receiver can acknowledge HTTP success before a later storage failure outside the protocol response;
+- a receiver can acknowledge data it accepted and still fail before durable storage; even the 2.0 written-count headers confirm acceptance as defined by the receiver, not persistence;
 - samples can age out when the WAL is compacted after a long endpoint outage;
 - a receiver can enforce retention or reject data under its own limits;
 - write relabeling may intentionally remove data;
