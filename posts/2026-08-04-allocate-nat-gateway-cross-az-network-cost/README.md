@@ -16,7 +16,7 @@ Split the bill into fixed and variable pools, measure traffic at one controlled 
 
 AWS charges a NAT gateway for:
 
-- each hour the gateway is available;
+- each hour a zonal gateway is available, or each hour a regional gateway is configured in each Availability Zone;
 - each gigabyte the gateway processes.
 
 Traffic can incur additional data-transfer charges. AWS documents same-Region, cross-Availability-Zone usage with a usage type ending in `DataTransfer-Regional-Bytes`; for a metered resource, both inbound and outbound sides can produce line items. Service-specific exceptions exist, so the product's pricing rules remain authoritative.
@@ -48,25 +48,32 @@ This allows different drivers and prevents a team with one short burst from abso
 For NAT data processing, the best driver is the bytes from each source workload that traversed the gateway. VPC Flow Logs provide flow records with byte counts. Custom formats can include:
 
 - `interface-id`;
+- `resource-id`, which identifies a regional NAT gateway when interface-level fields do not apply;
 - `srcaddr` and `dstaddr`;
 - `pkt-srcaddr` and `pkt-dstaddr`, which preserve packet-level original addresses through an intermediate layer;
 - `flow-direction`;
-- `account-id`, VPC, subnet, Region, and Availability Zone;
+- `account-id`, `vpc-id`, `subnet-id`, `region`, and `az-id`;
 - `start`, `end`, `bytes`, `action`, and `log-status`.
 
-Map the original private source address and source network interface to a resource and owner using a time-bounded network inventory. Current-state lookup is insufficient because addresses and interfaces can be reused after deletion.
+Map the original private source address and source network interface to a resource and owner using a time-bounded network inventory. Current-state lookup is insufficient because addresses can be reassigned and interfaces can be deleted.
 
 For each NAT gateway and interval:
 
 ```text
 source_weight
-  = accepted_source_bytes / accepted_bytes_for_gateway
+  = accepted_source_bytes / accepted_observed_bytes_for_gateway
+
+allocatable_nat_processing_cost
+  = CUR_nat_processing_cost * measured_coverage_ratio
 
 source_nat_processing_cost
-  = CUR_nat_processing_cost * source_weight
+  = allocatable_nat_processing_cost * source_weight
+
+residual_nat_processing_cost
+  = CUR_nat_processing_cost - sum(source_nat_processing_cost)
 ```
 
-Using CUR dollars as the pool and flow bytes as weights is safer than treating Flow Logs as an invoice meter. Flow Logs can be skipped, delayed, or differ from billing data. The allocation should reconcile to CUR even when telemetry coverage is imperfect.
+Using CUR dollars as the pool and flow bytes as weights is safer than treating Flow Logs as an invoice meter. Flow Logs can be skipped, delayed, or differ from billing data. Measure the coverage ratio against an independent, comparably scoped gateway byte control; otherwise normalizing only the observed bytes hides telemetry gaps. Source allocations plus the named residual should reconcile to CUR.
 
 ## Choose One Observation Point
 
@@ -79,15 +86,15 @@ Document one canonical approach, for example:
 3. use both request and response bytes under one documented direction rule;
 4. aggregate by source resource and gateway;
 5. discard duplicate observation points;
-6. scale the resulting weights to the CUR processing-cost pool.
+6. apply the resulting weights and measured coverage ratio to the CUR processing-cost pool, leaving unsupported cost in a named residual.
 
 Alternatively, use NAT-gateway flow records with packet-level original addresses if that deployment and log format provide the required identity. Test the method with a controlled workload before using it for showback.
 
-CloudWatch NAT metrics such as `BytesInFromSource`, `BytesOutToDestination`, `BytesInFromDestination`, and `BytesOutToSource` are valuable control totals at gateway grain. They do not identify the application source by themselves.
+CloudWatch NAT metrics such as `BytesInFromSource`, `BytesOutToDestination`, `BytesInFromDestination`, and `BytesOutToSource` are valuable control totals at gateway grain, or gateway-and-Availability-Zone grain for regional gateways. They do not identify the application source by themselves.
 
 ## Attribute Cross-AZ Transfer to the Causing Path
 
-If a workload in Availability Zone A uses a zonal NAT gateway in Availability Zone B, traffic crosses an AZ boundary before reaching the gateway. AWS recommends keeping resources and their NAT gateway in the same AZ, or deploying a gateway per AZ, to reduce transfer charges and improve resilience.
+If a workload in Availability Zone A uses a zonal NAT gateway in Availability Zone B, traffic crosses an AZ boundary before reaching the gateway. For zonal gateways, AWS recommends keeping resources and their NAT gateway in the same AZ, or deploying a gateway per AZ, to reduce transfer charges and improve resilience.
 
 Allocate the complete cross-AZ pool for that path to the traffic generator when all of these are known:
 
@@ -97,13 +104,15 @@ Allocate the complete cross-AZ pool for that path to the traffic generator when 
 - flow bytes;
 - corresponding CUR transfer rows.
 
+For cross-account comparisons, normalize Availability Zone names to AZ IDs. An AZ ID identifies the same physical zone across accounts, while an AZ name can map differently in some accounts.
+
 Do not assume every `DataTransfer-Regional-Bytes` row is caused by NAT. The same usage-type family can represent other same-Region cross-AZ paths. First classify the topology: NAT, load balancer, peering, database, replication, or another service.
 
-Also avoid allocating only one visible side of a two-sided metered transfer. Build the billing pool from all in-scope CUR rows and then assign that pool once to the generator using normalized weights.
+Also avoid allocating only one visible side of a two-sided metered transfer. Build the billing pool from all in-scope CUR rows and then assign that pool once to the generator using coverage-aware weights, leaving any unsupported amount in a named residual.
 
 ## Treat Gateway Hours as Shared Capacity
 
-NAT gateway hourly cost exists even with no traffic. Reasonable policies include:
+Gateway-hour cost does not depend on flow bytes. A zonal gateway incurs it while provisioned and available. Regional gateway hours are billed for every Availability Zone in which the gateway is configured, so preserve that AZ grain when building the fixed-cost pool. Reasonable policies include:
 
 - central network platform cost;
 - equal split across subnets configured to use the gateway;
@@ -139,12 +148,12 @@ If telemetry covers 92 percent of gateway bytes, allocate the supported 92 perce
 
 ## Validate the Result
 
-- NAT processing allocations sum to the CUR NAT processing pool.
+- NAT processing allocations, including the named residual, sum to the CUR NAT processing pool.
 - Gateway-hour allocations sum to the CUR gateway-hour pool.
-- Cross-AZ allocations sum to the specifically classified transfer rows.
-- No flow is present at multiple observation points.
+- Cross-AZ allocations, including any named residual, sum to the specifically classified transfer rows.
+- No flow is counted from multiple observation points.
 - Source ownership is resolved as of the flow time, not query time.
-- Flow-log coverage and skipped-record counts are reported.
+- Flow-log coverage and `SKIPDATA` indicators or affected intervals are reported.
 - NAT CloudWatch byte metrics are directionally consistent with allocated flow bytes.
 - Unallocated and central amounts remain visible.
 
@@ -154,6 +163,9 @@ The output should let a team reduce its cost by reducing egress, using an approp
 
 - [Amazon VPC: Pricing for NAT gateways](https://docs.aws.amazon.com/vpc/latest/userguide/nat-gateway-pricing.html)
 - [Amazon VPC: NAT gateway basics and zonal resiliency](https://docs.aws.amazon.com/vpc/latest/userguide/nat-gateway-basics.html)
+- [Amazon VPC: Regional NAT gateways](https://docs.aws.amazon.com/vpc/latest/userguide/nat-gateways-regional.html)
+- [Amazon VPC pricing](https://aws.amazon.com/vpc/pricing/)
+- [Amazon VPC: Map shared subnets across Availability Zones](https://docs.aws.amazon.com/vpc/latest/userguide/vpc-sharing-share-subnet-working-with.html#vpc-sharing-map-availability-zones)
 - [AWS Data Exports: Understanding data transfer charges](https://docs.aws.amazon.com/cur/latest/userguide/cur-data-transfers-charges.html)
 - [Amazon VPC: VPC Flow Log record fields](https://docs.aws.amazon.com/vpc/latest/userguide/flow-log-records.html)
 - [Amazon VPC: Flow Log limitations](https://docs.aws.amazon.com/vpc/latest/userguide/flow-logs-limitations.html)
