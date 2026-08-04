@@ -10,7 +10,7 @@ Description: Preserve expensive intermediate-stage cache across ephemeral CI run
 
 A multi-stage image can build quickly on a developer laptop and still rebuild every compiler and dependency step in CI. The Dockerfile is often fine. The missing piece is that BuildKit's normal cache belongs to one builder, while many CI jobs start with a fresh machine and a fresh builder.
 
-Pushing the final image is not the same as exporting every cache record. By default, the external cache uses `mode=min`, which keeps only cache needed for layers in the exported result. Build-only stages are exactly the layers most likely to be absent. `mode=max` exports cache for all build steps, including intermediate stages.
+Pushing the final image is not the same as exporting every cache record. By default, the external cache uses `mode=min`, which keeps only cache needed for layers in the exported result. Build-only stages are exactly the layers most likely to be absent. `mode=max` exports cache for all build steps that BuildKit executes for the selected target, including intermediate stages.
 
 ## Recognize the Failure Mode
 
@@ -35,7 +35,7 @@ RUN --mount=type=cache,target=/root/.npm npm ci --omit=dev
 CMD ["node", "dist/server.js"]
 ```
 
-On a persistent builder, the second build can reuse the `npm ci` and compile results. On an ephemeral runner, there is no local BuildKit state to reuse. Pulling `example.com/team/api:latest` may help with cache associated with the final image, but it is not a complete export of intermediate-stage records.
+On a persistent builder, the second build can reuse the `npm ci` and compile results. On an ephemeral runner, there is no local BuildKit state to reuse. Explicitly importing an inline cache embedded in `example.com/team/api:latest` may help with records associated with the final image, but merely pushing or pulling the image does not export or import a complete set of intermediate-stage records.
 
 Confirm this by making build output explicit:
 
@@ -59,6 +59,8 @@ docker buildx build \
   --push \
   .
 ```
+
+These commands require a builder that supports the registry cache backend. The default `docker` driver supports it only when the containerd image store is enabled; otherwise, use the `docker-container` driver or another supported driver.
 
 The two cache flags have different jobs:
 
@@ -92,13 +94,13 @@ Sanitize a branch name before using it as an image tag. Do not let two parallel 
 3. every branch exports only to its own cache reference;
 4. retention rules remove old branch cache references.
 
-`mode=max` trades registry storage and transfer time for more cache hits. Measure both. A large monorepo with many unused stages may need per-service cache scopes rather than one enormous cache.
+`mode=max` trades registry storage and transfer time for more cache hits. Measure both. A large monorepo with many large stages in a target's dependency graph may need per-service cache scopes rather than one enormous cache.
 
 ## Keep the Dockerfile Cache-Friendly
 
 An external cache cannot rescue a step whose inputs change every run. Preserve stable dependency layers by copying lock files before source code. Avoid dynamic timestamps in build arguments. BuildKit's cache key for a `RUN` instruction also does not automatically refresh merely because a remote package repository changed.
 
-Cache mounts and exported layer cache solve different problems. A cache mount such as `/root/.npm` gives the package manager a cumulative download cache. The layer cache can skip the entire `npm ci` instruction. Both can be useful, but a cache mount's contents are not copied into the image.
+Cache mounts and exported layer cache solve different problems. A cache mount such as `/root/.npm` gives the package manager a cumulative download cache within the builder that owns it. The registry layer cache can let a fresh builder skip the entire `npm ci` instruction, but it does not transfer the cache mount's contents if that instruction must run again. Both can be useful, but a cache mount's contents are not copied into the image.
 
 Never put credentials in `ARG`, `ENV`, or copied files to make cache access work. Docker notes that build arguments can appear in image history or provenance. Use BuildKit secret or SSH mounts for credentials, and authenticate the CI job to the registry before importing or exporting cache.
 
