@@ -92,7 +92,7 @@ curl --silent --show-error \
 
 Run this inside the Prometheus Pod or an equivalent debug container. The health endpoint tests routing and handshake latency, not the full ingest path, but it quickly isolates DNS, connection, and TLS setup.
 
-Large or variable `time_namelookup` points to resolver behavior. Large `time_connect` points to network or connection establishment. Large `time_appconnect - time_connect` points to TLS negotiation. A fast health endpoint with slow Remote Write usually shifts attention toward body transfer, receiver ingest, and storage.
+Large or variable `time_namelookup` points to resolver behavior. Large `time_connect - time_namelookup` points to TCP or proxy connection establishment. Large `time_appconnect - time_connect` points to TLS negotiation. A fast health endpoint with slow Remote Write usually shifts attention toward body transfer, receiver ingest, and storage.
 
 ### TLS and SNI
 
@@ -103,7 +103,7 @@ openssl s_client \
   </dev/null
 ```
 
-Certificate-validation failures normally report x509 errors rather than a pure deadline, but a dropped TLS handshake, inaccessible revocation dependency, or broken middlebox may simply wait.
+Certificate-validation failures normally report x509 errors rather than a pure deadline, but a dropped TLS handshake or broken middlebox may simply wait.
 
 ### Packet Loss and Path MTU
 
@@ -111,7 +111,7 @@ Small health requests can work while larger Remote Write bodies stall because of
 
 ## Measure Sender-Side Pressure
 
-Remote Write performs WAL reading, label processing, protobuf marshaling, Snappy compression, and HTTP sending. A CPU-starved or memory-thrashing Prometheus can spend much of the deadline before the receiver completes.
+Remote Write performs WAL reading, label processing, protobuf marshaling, Snappy compression, and HTTP sending. A CPU-starved or memory-thrashing Prometheus can delay batch preparation and queue progress. The `remote_timeout` context starts after Prometheus marshals and compresses the body, but CPU starvation can still consume wall-clock time while the HTTP operation is in flight.
 
 Check:
 
@@ -166,7 +166,7 @@ Prometheus remote_timeout
 
 Make the values intentional. A reverse proxy that closes at 29 seconds while Prometheus waits 30 creates guaranteed edge failures around the same latency. A 10-minute proxy timeout does not help if Prometheus cancels at 30 seconds.
 
-Use a direct-to-receiver test from a trusted network when possible. If direct Remote Write succeeds and the proxied path times out, the intermediary is the fault domain. An empty manual POST can test routing but is not a valid performance test because the receiver rejects it before normal ingestion work.
+Use a direct-to-receiver test from a trusted network when possible. If direct Remote Write succeeds and the proxied path times out, the intermediary is the fault domain. An empty manual POST can test routing but is not a valid performance test because it may be rejected before normal ingestion work.
 
 ## Tune the Correct Dimension
 
@@ -183,7 +183,7 @@ This can reduce per-request processing and tail latency but increases request co
 
 ### Receiver Has Headroom but Too Little Concurrency
 
-Prometheus automatically adjusts shards up to `max_shards`. Compare desired and maximum shards. Raise the maximum only after receiver load testing. More concurrency against an overloaded receiver increases timeouts.
+Prometheus normally adjusts shards up to `max_shards`, but pauses resharding after recoverable send errors. Compare actual, desired, and maximum shards. Raise the maximum only when the desired count is constrained by it and after receiver load testing. More concurrency against an overloaded receiver increases timeouts.
 
 ### Too Many Requests
 
@@ -200,7 +200,7 @@ remote_write:
     remote_timeout: 45s
 ```
 
-Ensure every proxy permits at least that end-to-end duration. Then watch shard throughput and catch-up time. A longer timeout consumes a shard slot for longer, so it may require lower batch latency or safe additional concurrency.
+Ensure every proxy permits more than that end-to-end duration. Then watch shard throughput and catch-up time. A longer timeout consumes a shard slot for longer, so it may require lower batch latency or safe additional concurrency.
 
 ### Receiver Is Fundamentally Undersized
 
@@ -212,7 +212,7 @@ After a fix:
 
 1. timeout and retry logs stop or return to a defined baseline;
 2. p95 and p99 batch duration stay well below `remote_timeout`;
-3. pending samples and enqueue retries decline;
+3. pending samples decline and the rate of enqueue retries returns to baseline;
 4. highest-sent timestamp catches up while live ingestion continues;
 5. receiver accepted rate matches the planned sample rate;
 6. failed and age-dropped sample counters do not increase.
