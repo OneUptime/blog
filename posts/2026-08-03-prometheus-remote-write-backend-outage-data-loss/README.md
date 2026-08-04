@@ -10,7 +10,7 @@ Description: Calculate the practical Remote Write recovery window from Prometheu
 
 Prometheus does not keep an unlimited Remote Write backlog. It reads samples from a write-ahead log, retries recoverable failures, and catches up if the receiver returns before the required WAL records are removed.
 
-For a normal full Prometheus server, the official Remote Write tuning guide gives the critical rule: failures are retried without loss unless the remote endpoint stays down for more than two hours; after two hours, WAL compaction can remove unsent data. Treat that as the documented approximate boundary, not a guaranteed two-hour service-level objective.
+For a normal full Prometheus server, the official Remote Write tuning guide gives the critical rule: retriable failures are retried without loss unless the remote endpoint stays down for more than two hours; after two hours, WAL compaction can remove unsent data. Treat that as the documented approximate boundary, not a guaranteed two-hour service-level objective.
 
 Agent mode has separately configurable retention flags in current releases, so its practical window must be read from the running binary rather than assumed from older two-hour guidance.
 
@@ -122,9 +122,9 @@ increase(
 
 ## Persistent Disk Is Part of the Guarantee
 
-The WAL survives a process restart only when its storage survives. A Kubernetes `emptyDir`, ephemeral container filesystem, failed node disk, or manually deleted data directory removes the backlog regardless of retention flags.
+The WAL survives a process restart only when its storage survives. An ephemeral container filesystem loses the backlog when the container is replaced. A Kubernetes `emptyDir` survives container restarts but is deleted with the Pod, so Pod replacement, a failed node disk, or a manually deleted data directory can remove the backlog regardless of retention flags.
 
-For a recoverable restart or reschedule, mount a suitable persistent volume at:
+For recovery across Pod replacement or movement to another node, mount a suitable persistent volume at:
 
 ```text
 --storage.tsdb.path       for full server mode
@@ -177,7 +177,7 @@ At 90,000 samples per second of receiver capacity:
 
 This is a throughput planning approximation. Prometheus sends different series through independent shards, WAL reading and queues add constraints, and receivers enforce request and tenant limits. Monitor the actual highest-sent timestamp until it returns to normal.
 
-If `C <= R`, the queue cannot catch up while live traffic continues. A recoverable WAL window only postpones the gap.
+If `C < R`, lag keeps growing and eventually exceeds a finite WAL window. If `C = R`, the backlog does not drain but can remain at a constant lag without inevitably creating a gap. Catch-up while live traffic continues requires `C > R`.
 
 ## Alert Before the Boundary
 
