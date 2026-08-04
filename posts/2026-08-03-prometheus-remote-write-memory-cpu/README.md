@@ -45,7 +45,7 @@ The official guide says the default capacity and batch values constrain shard qu
 
 ### Retry and Outage Backlog
 
-When the receiver slows, shard queues fill with pending samples and retain batches across retries. The durable remainder stays in the WAL, but the in-memory queues still reach their configured bound. Memory planning must include a receiver outage, not only a healthy steady state.
+When the receiver slows, shard queues fill with pending samples and retain batches across retries. The disk-backed remainder stays in the WAL only until WAL truncation; the official guide warns that data not sent during an outage longer than two hours can be lost. The in-memory queues still reach their configured bound. Memory planning must include a receiver outage, not only a healthy steady state.
 
 ### Extra Data Types
 
@@ -62,7 +62,7 @@ For each destination, Prometheus performs:
 5. HTTP and TLS processing;
 6. retry and dynamic-shard bookkeeping.
 
-More samples increase repeated encoding work. More series and longer labels increase label processing and payload size. More destinations repeat most of the outbound pipeline. Retries encode or send batches again and can increase CPU exactly when the receiver is unhealthy.
+More samples increase repeated encoding work. More series and longer labels increase label processing and payload size. More destinations repeat most of the outbound pipeline. Retries resend batches and can increase CPU exactly when the receiver is unhealthy.
 
 CPU limits can create a feedback loop:
 
@@ -210,7 +210,7 @@ Do not solve OOMs by setting a tiny capacity without checking backpressure. A fu
 
 ## Improve Batch Efficiency
 
-Larger supported batches can reduce per-request CPU and TLS overhead:
+Larger supported batches can reduce per-request CPU and HTTP overhead:
 
 ```yaml
 queue_config:
