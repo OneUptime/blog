@@ -33,10 +33,10 @@ valid_from
 valid_to
 ```
 
-Every cost and metric row must carry `cluster_id` before it reaches a global aggregation. A workload key then becomes:
+Every cost and metric row must carry `cluster_id` before it reaches a global aggregation. A workload grouping key then becomes the structured tuple:
 
 ```text
-cluster_id + namespace + controller_kind + controller_name
+(cluster_id, namespace, controller_kind, controller_name)
 ```
 
 Pod-level keys also include Pod UID. Names are useful labels; they are not sufficient identities.
@@ -136,9 +136,9 @@ Use admission controls for prospective quality and a daily drift report for exis
 
 ## Handle High Availability and Duplicate Series
 
-Two Prometheus replicas can remote-write the same logical Kubernetes series. Preserve labels required by the shared backend's deduplication, often including a replica label, while retaining the cluster label. Configure the global query layer's documented deduplication behavior.
+Two Prometheus replicas can remote-write the same logical Kubernetes series. Preserve labels required by the shared backend's deduplication, often including a replica label, while retaining the cluster label. Configure deduplication at the layer documented by that backend: Thanos performs HA deduplication in the query layer, while Mimir can deduplicate Prometheus HA samples during ingestion.
 
-Test that a known Pod has one logical CPU and memory series after query-layer deduplication. A doubled series can double usage and eliminate idle. Dropping the cluster label to make replicas deduplicate can instead merge two clusters.
+Test that each expected CPU and memory label set for a known Pod resolves to one logical series after deduplication. Undeduplicated replicas can overcount sum-based metrics and distort cost results. Dropping the cluster label to make replicas deduplicate can instead merge two clusters.
 
 Do not solve this in the cost layer with `sum / 2`. Replica counts and failures change.
 
@@ -178,9 +178,11 @@ If one cluster is unavailable, publish the report as incomplete or carry a clear
 - [OpenCost: Cost allocation specification](https://opencost.io/docs/specification/)
 - [Prometheus: Configuration and external labels](https://prometheus.io/docs/prometheus/latest/configuration/configuration/)
 - [Prometheus: Storage and retention](https://prometheus.io/docs/prometheus/latest/storage/)
+- [Thanos: Query-layer HA deduplication](https://thanos.io/tip/components/query.md/#deduplication)
+- [Grafana Mimir: HA sample deduplication](https://grafana.com/docs/mimir/latest/configure/configure-high-availability-deduplication/)
 - [Kubernetes: Labels and selectors](https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/)
 - [Kubernetes: Pod lifecycle and UID identity](https://kubernetes.io/docs/concepts/workloads/pods/pod-lifecycle/)
 
 ## Conclusion
 
-Multi-cluster OpenCost showback depends on globally unique cluster identity, cluster-scoped queries, governed labels, and retention that matches the correction window. Aggregate with cluster-qualified workload keys, deduplicate telemetry in the query layer, and persist calculation inputs. Duplicate names are harmless when identity is designed; missing cluster labels are not.
+Multi-cluster OpenCost showback depends on globally unique cluster identity, cluster-scoped queries, governed labels, and retention that matches the correction window. Aggregate with cluster-qualified workload keys, deduplicate telemetry in the backend's documented layer, and persist calculation inputs. Duplicate names are harmless when identity is designed; missing cluster labels are not.
