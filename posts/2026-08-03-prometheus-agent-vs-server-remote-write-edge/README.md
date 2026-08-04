@@ -147,7 +147,7 @@ Agent mode is usually the clearer choice when all of these are true:
 - lowering the edge storage and compute footprint is valuable;
 - a receiver-supported plan exists for gaps that exceed the replay window.
 
-It also works well as a shared collection layer, but one process is not automatic high availability. If two Agents scrape the same targets and send the same label sets, the receiver gets duplicate series or duplicate samples. Give replicas explicit labels and use the destination's supported HA deduplication mechanism, or partition scrape ownership so each target has one active collector.
+It also works well as a shared collection layer, but one process is not automatic high availability. If two Agents scrape the same targets and send the same label sets, the receiver sees both sample streams as one time series; depending on timing and receiver behavior, this can mix the streams or cause duplicate-timestamp or out-of-order samples. Give replicas explicit labels and use the destination's supported HA deduplication mechanism, or partition scrape ownership so each target has one active collector.
 
 Do not use `external_labels` as accidental uniqueness. Stable labels such as `cluster` and `region` should identify the source consistently. A replica label should identify only the redundant sender and must match the receiver's deduplication convention.
 
@@ -197,7 +197,7 @@ increase(
 )
 ```
 
-The highest-sent timestamp shows forwarding freshness for an active source. Pending samples show backlog. Failed and dropped counters identify permanent loss rather than a retrying delay. Gate timestamp-age alerts with a known heartbeat because an intentionally idle sender has no new timestamp to send.
+The highest-sent timestamp shows queue progress for an active source; check it alongside failure counters because the queue can also advance past an irrecoverable failure. Pending samples show backlog. Failed samples are non-recoverable send failures. Dropped samples were not sent after being read from the WAL; inspect the `reason` label because `dropped_series` can be an intentional write-relabeling result, while `too_old` and `unintentionally_dropped_series` indicate unplanned loss. Gate timestamp-age alerts with a known heartbeat because an intentionally idle sender has no new timestamp to send.
 
 Also alert on WAL disk usage, filesystem errors, scrape failures, target count, sample ingestion rate, memory, restarts, and receiver throttling. Agent mode removes features; it does not remove the need to monitor the collector.
 
