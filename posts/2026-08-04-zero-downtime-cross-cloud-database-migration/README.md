@@ -139,24 +139,24 @@ A PostgreSQL-oriented sequence is:
 
 1. stop schema changes and background writers;
 2. enter application read-only mode;
-3. drain transactions and connection pools;
-4. record the final source WAL/CDC position;
-5. wait until the target confirms that position is applied;
-6. run final critical-table validation;
-7. synchronize sequence values and nonreplicated state;
-8. disable or fence the source writer;
+3. disable or fence any remaining source write paths;
+4. drain in-flight write transactions and writer connection pools;
+5. record the final source WAL/CDC position;
+6. wait until the target confirms that position is applied;
+7. run final critical-table validation;
+8. synchronize sequence values and nonreplicated state;
 9. promote or enable writes on the target;
 10. switch connection configuration and restart or recycle pools;
 11. perform a canary write and read it through normal application paths;
 12. open traffic and watch business plus database metrics.
 
-Use provider-supported methods to inspect and advance sequences. Set values above all existing keys and account for application-side ID allocation.
+Use provider-supported methods to inspect and advance sequences. Set each sequence so its next value is safely beyond all values already used, accounting for its increment direction, cache, and application-side ID allocation.
 
 DNS alone may not switch database clients promptly because connection pools and resolvers cache addresses. Prefer a configuration-controlled endpoint and deliberately recycle clients after draining them.
 
 ## Define Rollback Before Promotion
 
-Before the target accepts writes, rollback can usually resume the source after removing read-only mode. After the first target-only write, the source is stale.
+Before the target accepts writes, rollback can usually resume the source after removing the write fence and read-only mode. After the first target-only write, the source is stale.
 
 Choose one post-promotion strategy in advance:
 
@@ -191,7 +191,7 @@ Run at least one production-shaped rehearsal and one aborted cutover. An abort b
 - [PostgreSQL logical replication restrictions](https://www.postgresql.org/docs/current/logical-replication-restrictions.html)
 - [AWS DMS change data capture](https://docs.aws.amazon.com/dms/latest/userguide/CHAP_Task.CDC.html)
 - [AWS DMS data validation](https://docs.aws.amazon.com/dms/latest/userguide/CHAP_Validating.html)
-- [Azure Database for PostgreSQL online migration](https://learn.microsoft.com/en-us/azure/postgresql/migrate/migration-service/tutorial-migration-service-iaas-online)
+- [Azure Database for PostgreSQL online migration](https://learn.microsoft.com/en-us/azure/postgresql/migrate/migration-service/tutorial-migration-service-rds-online)
 - [Google Database Migration Service for PostgreSQL](https://cloud.google.com/database-migration/docs/postgres/quickstart)
 - [Debezium PostgreSQL connector](https://debezium.io/documentation/reference/stable/connectors/postgresql.html)
 

@@ -220,7 +220,7 @@ The drill is valuable when it changes the system. Repeating a scripted happy pat
 
 ## Official Documentation
 
-- [AWS Well-Architected guidance to test disaster recovery](https://docs.aws.amazon.com/wellarchitected/latest/reliability-pillar/rel_planning_for_disaster_recovery_tested.html)
+- [AWS Well-Architected guidance to test disaster recovery](https://docs.aws.amazon.com/wellarchitected/latest/reliability-pillar/rel_planning_for_recovery_dr_tested.html)
 - [AWS disaster recovery options](https://docs.aws.amazon.com/whitepapers/latest/disaster-recovery-workloads-on-aws/disaster-recovery-options-in-the-cloud.html)
 - [Azure reliability documentation](https://learn.microsoft.com/en-us/azure/reliability/)
 - [Google Cloud disaster recovery planning guide](https://cloud.google.com/architecture/dr-scenarios-planning-guide)
