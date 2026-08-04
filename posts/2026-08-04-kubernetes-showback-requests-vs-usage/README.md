@@ -22,7 +22,7 @@ That yields three distinct quantities:
 - **actual usage:** resources observed as consumed over time;
 - **limit:** a ceiling or enforcement configuration, not generally a cost driver.
 
-Do not use limits as a substitute for requests. A very high limit does not reserve that amount in scheduler placement, and a missing limit does not mean infinite billed consumption.
+Do not use limits as a substitute for requests. When a lower explicit request exists, a very high limit does not reserve the limit amount in scheduler placement. If a limit is set but its request is omitted, however, Kubernetes copies that limit into the request unless an admission-time mechanism already supplied a default request. A missing limit does not mean infinite billed consumption.
 
 ## Model 1: Allocate by Requests
 
@@ -44,7 +44,7 @@ Request-based showback is appropriate when:
 - actual utilization telemetry is incomplete or too short-lived;
 - scarce accelerators are allocated as indivisible requested resources.
 
-It makes an idle but oversized reservation visible to the owner. However, a workload with no requests may receive zero cost even while consuming resources. That is a governance gap, not free compute. Enforce request policies or define a documented fallback.
+It makes an idle but oversized reservation visible to the owner. However, a workload with no effective requests may receive zero cost even while consuming resources. That is a governance gap, not free compute. Enforce request policies or define a documented fallback.
 
 AWS EKS split cost allocation explicitly offers a Resource requests mode. AWS notes that only Pods configured with CPU and memory requests participate; Pods with no requests do not receive split cost data in that mode.
 
@@ -82,7 +82,7 @@ allocated_resource_t
 
 Then integrate those interval values. Do not compare one monthly request average with one monthly usage average; bursts and scaling events can occur at different times.
 
-This model captures both capacity reservation and consumption above the request. It is often the most balanced default for shared node economics. It can allocate more resource units than a node physically contains when telemetry, interval alignment, or metric definitions are inconsistent, so cap and reconcile only through a documented cost model rather than silently clipping raw data.
+This model captures both capacity reservation and consumption above the request. It is often the most balanced default for shared node economics. Because the maximum is calculated per workload, the summed allocated units can exceed node capacity even with consistent telemetry—for example, when one workload underuses a large request while another uses above its request. Normalize cost shares or otherwise reconcile through a documented cost model rather than silently clipping raw data.
 
 ## Know the AWS EKS Choices
 
@@ -152,7 +152,7 @@ Version the choice by cluster and effective date. Changing from requests to actu
 - CPU and memory units are not mixed.
 - Pod identity includes cluster, namespace, and UID.
 - Missing requests and missing metrics have distinct exception codes.
-- Direct workload cost plus idle and platform pools equals asset cost.
+- Direct workload cost plus idle equals asset cost; adding platform overhead equals total cluster cost.
 - The report identifies whether AWS split data, OpenCost, or a custom model supplied each amount.
 
 ## Official Documentation
