@@ -32,7 +32,7 @@ remote_write:
       retry_on_http_429: false
 ```
 
-With the default, Prometheus treats 429 as non-recoverable. The affected batch is removed from the pending queue and counted as failed. Watch:
+With the default, Prometheus treats 429 as non-recoverable. The affected batch is removed from the pending queue, and any samples the receiver did not report as written are counted as failed. Watch:
 
 ```promql
 increase(
@@ -92,7 +92,7 @@ Suppose a source produces 120,000 samples per second and the tenant is limited t
 120,000 - 80,000 = 40,000 samples/s
 ```
 
-No backoff value can make this converge. The sender eventually reaches a full queue, falls behind its WAL, and loses samples when they become unrecoverable or exceed `sample_age_limit`.
+No backoff value can make this converge. With 429 retries enabled, the sender eventually reaches a full queue, falls behind its WAL, and loses samples when they become unrecoverable or exceed `sample_age_limit`.
 
 Choose one or more structural fixes:
 
