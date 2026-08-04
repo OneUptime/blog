@@ -37,7 +37,7 @@ http://destination-prometheus:9090/api/v1/write
 
 No `remote_write` block is needed on the destination merely to receive data. `remote_write` configures an outbound sender; `--web.enable-remote-write-receiver` enables inbound writes.
 
-Prometheus v3.13.1 source configures the built-in receiver's default accepted list with both `prometheus.WriteRequest` and `io.prometheus.write.v2.Request`. The generated command reference still displays only `prometheus.WriteRequest` as the default, so do not infer the running policy from an unversioned page. Check the exact binary with `prometheus --help`, and make a dual-protocol policy explicit by repeating the list-valued flag:
+Prometheus v3.13.1 source configures the built-in receiver's default accepted list with both `prometheus.WriteRequest` and `io.prometheus.write.v2.Request`. The generated command reference and `prometheus --help` still display only `prometheus.WriteRequest` as the default, so neither shows the complete default for this list-valued flag. Check a running server's effective value through `/api/v1/status/flags`, and make a dual-protocol policy explicit by repeating the flag:
 
 ```bash
 prometheus \
@@ -85,7 +85,7 @@ The reload endpoint requires `--web.enable-lifecycle`. Without it, send `SIGHUP`
 
 ## A Docker Compose Example
 
-The following excerpt keeps the receiver on an internal network and gives both servers persistent storage:
+The following excerpt connects both servers over a dedicated Compose network, publishes the destination only on the host's loopback interface, and gives both servers persistent storage:
 
 ```yaml
 services:
@@ -110,7 +110,7 @@ services:
       - ./destination.yml:/etc/prometheus/prometheus.yml:ro
       - destination-data:/prometheus
     ports:
-      - 9091:9090
+      - "127.0.0.1:9091:9090"
     networks:
       - metrics
 
