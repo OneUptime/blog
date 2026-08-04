@@ -2,8 +2,7 @@
 
 ## Cloud Portability
 
-1. Measuring Vendor Lock-In: A Practical Portability Scorecard for Managed Services
-2. The Quarterly Cloud-Evacuation Drill: Proving Backups, Images, IaC, and Runbooks Actually Work
+1. The Quarterly Cloud-Evacuation Drill: Proving Backups, Images, IaC, and Runbooks Actually Work
 
 ## Infrastructure Automation
 
