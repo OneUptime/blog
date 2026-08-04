@@ -2,14 +2,13 @@
 
 ## Showback
 
-1. Untaggable Cloud Services: Build a Controlled Association Table Instead of Inventing Tags
-2. Service Catalog Says One Owner, Cloud Tags Say Another: Detecting Showback Attribution Drift
-3. Version Your Allocation Rules So Re-running Last Month Produces the Same Showback
-4. Daily Estimated Cost vs Finalized Monthly Cost: Handling Late Billing Adjustments Without Surprises
-5. How to Prove Your Showback Is Complete: Control Totals, Residual Buckets, and Double-Allocation Tests
-6. Allocating Shared Database Cost by Queries, Storage, or Connections—Not Revenue Share
-7. Hybrid HPC Showback for GPUs: Requested Hours, Wall Time, Utilization, and Energy Cost
-8. Showback for Deleted and Ephemeral Resources When the Billing Line Outlives the Asset
+1. Service Catalog Says One Owner, Cloud Tags Say Another: Detecting Showback Attribution Drift
+2. Version Your Allocation Rules So Re-running Last Month Produces the Same Showback
+3. Daily Estimated Cost vs Finalized Monthly Cost: Handling Late Billing Adjustments Without Surprises
+4. How to Prove Your Showback Is Complete: Control Totals, Residual Buckets, and Double-Allocation Tests
+5. Allocating Shared Database Cost by Queries, Storage, or Connections—Not Revenue Share
+6. Hybrid HPC Showback for GPUs: Requested Hours, Wall Time, Utilization, and Energy Cost
+7. Showback for Deleted and Ephemeral Resources When the Billing Line Outlives the Asset
 
 ## Cloud Portability
 
