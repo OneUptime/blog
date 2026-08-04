@@ -119,7 +119,7 @@ Estimate the optimistic wire time:
 seconds = bytes * 8 / effective_bits_per_second
 ```
 
-Use measured effective throughput after protocol, encryption, throttling, small-object overhead, and shared-link contention. A 40 TB dataset over a sustained 2 Gbit/s path takes about 44 hours before overhead. If the dataset changes faster than the incremental path catches up, cutover will never converge.
+Use measured effective throughput after protocol, encryption, throttling, small-object overhead, and shared-link contention. A 40 TB dataset at a sustained effective payload throughput of 2 Gbit/s takes about 44 hours; a nominal 2 Gbit/s link will take longer. If the sustained source change rate exceeds the incremental path's apply capacity, replication lag grows and cannot converge until write volume drops or writes are paused.
 
 Include:
 
@@ -205,8 +205,8 @@ After the observation period:
 3. preserve required logs, backups, and legal evidence;
 4. verify target backups and an independent restore;
 5. obtain data-retention and deletion approval;
-6. delete resources in dependency order;
-7. verify bills, DNS, certificates, and inventories no longer reference them;
+6. delete resources in reverse dependency order, removing dependents before their dependencies;
+7. reconcile residual charges after billing data refreshes, and verify DNS, certificates, and inventories no longer reference the source resources;
 8. retain a signed completion record.
 
 Source deletion is a separate approved change, not an automatic consequence of successful DNS cutover.
@@ -214,7 +214,7 @@ Source deletion is a separate approved change, not an automatic consequence of s
 ## Official Documentation
 
 - [AWS Transform discovery tool](https://docs.aws.amazon.com/transform/latest/userguide/discovery-tool.html)
-- [AWS Application Discovery Service](https://docs.aws.amazon.com/application-discovery/latest/userguide/what-is-appdiscovery.html)
+- [AWS Application Discovery Service (existing customers only)](https://docs.aws.amazon.com/application-discovery/latest/userguide/what-is-appdiscovery.html)
 - [Azure Migrate discovery methods](https://learn.microsoft.com/en-us/azure/migrate/discovery-methods-modes)
 - [Azure Migrate dependency analysis](https://learn.microsoft.com/en-us/azure/migrate/concepts-dependency-visualization)
 - [Google Migration Center discovery client](https://cloud.google.com/migration-center/docs/discovery-client-cli-overview)
