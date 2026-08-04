@@ -135,7 +135,7 @@ The CPA firm applies professional judgment to the engagement. Management should 
 ## Official Documentation
 
 - [AICPA and CIMA: SOC for Service Organizations Engagements Overview](https://www.aicpa-cima.com/resources/download/soc-for-service-organizations-engagements-overview)
-- [AICPA and CIMA: Illustrative SOC 2 Report with CSOC and CUEC examples](https://www.aicpa-cima.com/resources/download/illustrative-soc-2-r-report-with-illustrative-system-description)
+- [AICPA and CIMA: Illustrative SOC 2 Report with CSOC and CUEC examples](https://www.aicpa-cima.com/resources/download/illustrative-soc-2-r-report-with-description-and-assertion)
 - [AICPA and CIMA: 2017 Trust Services Criteria with Revised Points of Focus 2022](https://www.aicpa-cima.com/resources/download/2017-trust-services-criteria-with-revised-points-of-focus-2022)
 - [AICPA and CIMA: SOC 2 Reporting authoritative guide](https://www.aicpa-cima.com/cpe-learning/publication/soc-2-reporting-on-an-examination-of-controls-at-a-service-organization-relevant-to-security-availability-processing-integrity-confidentiality-or-privacy)
 - [AWS: Compliance reports and continued-operations letters](https://aws.amazon.com/compliance/faq/)
