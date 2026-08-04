@@ -59,7 +59,7 @@ Use it when you need:
 - a global query layer supplied by many collectors;
 - a managed metrics service that exposes a Remote Write endpoint.
 
-Remember that every matching sample is sent unless `write_relabel_configs` filters it. Network traffic and receiver ingestion cost therefore scale with the post-relabel sample rate.
+Remember that every matching float sample is sent unless `write_relabel_configs` filters it. Exemplars and native histograms have separate send settings; native histograms are always enabled when using the Remote Write 2.0 message. Network traffic and receiver ingestion cost therefore scale with the post-relabel sample rate and any additional data types you enable.
 
 ## Use Federation for Selected Prometheus-to-Prometheus Views
 
