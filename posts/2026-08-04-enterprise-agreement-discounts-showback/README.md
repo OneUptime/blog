@@ -26,21 +26,21 @@ Store three separate amounts for every attributable billing row:
 
 For ordinary usage, gross and net may come from `line_item_unblended_cost` and `line_item_net_unblended_cost`. For RI-covered usage, use `reservation_effective_cost` and `reservation_net_effective_cost`. For Savings Plan-covered usage, use `savings_plan_savings_plan_effective_cost` and `savings_plan_net_savings_plan_effective_cost`.
 
-The negotiated benefit for a like-for-like scope is:
+The negotiated benefit for a like-for-like scope, after verifying that other discount effects are excluded, is:
 
 ```text
 enterprise_benefit = gross_economic_cost - net_economic_cost
 ```
 
-Do not calculate this as public On-Demand cost minus net cost. That larger difference can include RI or Savings Plan benefit, tiering, Spot pricing, or other effects that are not the enterprise discount.
+Net fields represent cost after applicable discounts, so do not label the gross-to-net difference as enterprise benefit until other discount effects have been separated. Do not calculate this as public On-Demand cost minus net cost. That larger difference can include RI or Savings Plan benefit, tiering, Spot pricing, or other effects that are not the enterprise discount.
 
 ## Understand How Discounts Appear in CUR 2.0
 
-CUR 2.0 has a `discount` map and `discount_total_discount`. AWS documents that these fields are used for specific discounts when the Discount Automation program applies. With `INCLUDE_MANUAL_DISCOUNT_COMPATIBILITY`, those fields are removed and discounts are presented in the older, usually separate-line style.
+CUR 2.0 has a `discount` map for specific discounts and `discount_total_discount`, which is the sum of the discount columns for a line item. For customers onboarded to the Discount Automation program, enabling `INCLUDE_MANUAL_DISCOUNT_COMPATIBILITY` removes those fields and presents discounts in the older, usually separate-line style.
 
-Net cost columns are also conditional: AWS includes them when an account has an applicable discount in the billing period. A missing net field does not prove a zero discount, and a present discount map does not mean every service or charge is eligible under the same terms.
+Net cost columns are also conditional: AWS includes them when an account has an applicable discount in the billing period. Do not assume that the columns are always available or that every row is discounted merely because they are present. A present discount map also does not mean every service or charge is eligible under the same terms.
 
-Record the export configuration with each run. A query written for discount columns can silently omit separate discount lines if the configuration changes, and the reverse is also true.
+Record the export configuration with each run. Downstream logic written for one discount representation can fail when expected columns disappear or omit discounts when separate discount lines are excluded.
 
 ## Policy 1: Pass the Discount Through
 
@@ -50,7 +50,7 @@ Under pass-through, each team receives its attributable net economic cost:
 team_showback = sum(team_net_economic_cost)
 ```
 
-This works well when showback is intended to represent the organization's actual marginal economic cost and teams control the consumption. It also makes product unit economics reflect negotiated pricing.
+This works well when showback is intended to represent the organization's attributed net economic cost and teams control the consumption. It also makes product unit economics reflect negotiated pricing.
 
 Advantages include:
 
@@ -70,13 +70,13 @@ Under centralization, teams receive gross economic cost and a central bucket rec
 team_showback = sum(team_gross_economic_cost)
 
 central_discount_pool
-  = -(gross_economic_cost - net_economic_cost)
+  = -sum(gross_economic_cost - net_economic_cost)
 ```
 
 The company total remains net economic cost:
 
 ```text
-sum(team_showback) + central_discount_pool = net_economic_cost
+sum(team_showback) + central_discount_pool = sum(net_economic_cost)
 ```
 
 This can fund a central commitment portfolio, cloud support, enablement, or contractual risk. It also publishes a stable pre-enterprise-discount signal to teams.
@@ -149,7 +149,7 @@ The policy should survive an agreement renewal. A rate change may alter amounts,
 - [AWS Data Exports: CUR 2.0 discount columns](https://docs.aws.amazon.com/cur/latest/userguide/table-dictionary-cur2-discount.html)
 - [AWS Data Exports: CUR 2.0 table configurations](https://docs.aws.amazon.com/cur/latest/userguide/table-dictionary-cur2.html)
 - [AWS Data Exports: Line item and net unblended cost columns](https://docs.aws.amazon.com/cur/latest/userguide/table-dictionary-cur2-line-item.html)
-- [AWS Data Exports: Reservation net effective-cost fields](https://docs.aws.amazon.com/cur/latest/userguide/reservation-columns.html)
+- [AWS Data Exports: CUR 2.0 reservation net effective-cost fields](https://docs.aws.amazon.com/cur/latest/userguide/table-dictionary-cur2-reservation.html)
 - [AWS Data Exports: Savings Plan net effective-cost fields](https://docs.aws.amazon.com/cur/latest/userguide/table-dictionary-cur2-savings-plan.html)
 - [AWS Cost Explorer: Net amortized cost](https://docs.aws.amazon.com/cost-management/latest/userguide/ce-exploring-data.html)
 - [AWS Billing Conductor: What is AWS Billing Conductor](https://docs.aws.amazon.com/billingconductor/latest/userguide/what-is-billingconductor.html)
