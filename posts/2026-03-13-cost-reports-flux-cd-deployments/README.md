@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux-cd, Cost-Management, Kubernetes, FinOps, GitOps, Opencost
+Tags: Flux-cd, Cost-Management, Kubernetes, FinOps, GitOps, OpenCost
 
 Description: Learn how to generate cost reports for Flux CD-managed deployments using OpenCost and Prometheus, enabling FinOps visibility into GitOps-driven infrastructure.
 

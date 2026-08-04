@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Docker, BuildKit, Multi-Stage Builds, Debugging, Build Target, Dockerfile, Build Artifacts
+Tags: Docker, BuildKit, Multi-Stage Build, Debugging, Build Target, Dockerfile, Build Artifacts
 
 Description: Export, run, or examine a named intermediate target under a separate local tag while leaving the production stage and default build result unchanged.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: SolarWinds, IPv6, Network Monitoring, Npm, SNMP, Enterprise
+Tags: SolarWinds, IPv6, Network Monitoring, npm, SNMP, Enterprise
 
 Description: Configure SolarWinds Network Performance Monitor (NPM) to discover, monitor, and alert on IPv6-addressed network devices and interfaces.
 

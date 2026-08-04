@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Docker, Multi-Stage Builds, Image Layers, APT, Image Size, Dockerfile, Container Security
+Tags: Docker, Multi-Stage Build, Image Layers, APT, Image Size, Dockerfile, Container Security
 
 Description: Explain why removing compilers in a later layer does not erase their bytes, when one combined instruction helps, and why a clean runtime stage is the stronger boundary.
 

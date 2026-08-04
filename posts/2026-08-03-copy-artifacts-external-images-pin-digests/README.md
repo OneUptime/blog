@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Docker, Dockerfile, COPY, Image Digests, Multi-Stage Builds, Supply Chain Security, Reproducible Builds
+Tags: Docker, Dockerfile, COPY, Image Digests, Multi-Stage Build, Supply Chain Security, Reproducible Builds
 
 Description: Treat external copy sources as supply-chain inputs by pinning a reviewed digest, choosing the correct platform scope, recording provenance, and updating deliberately.
 

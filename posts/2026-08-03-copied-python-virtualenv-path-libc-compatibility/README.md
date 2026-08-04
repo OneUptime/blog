@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Python, Docker, Virtual Environments, Multi-Stage Builds, glibc, musl, Wheels, Troubleshooting
+Tags: Python, Docker, Virtual Environments, Multi-Stage Build, glibc, musl, Wheels, Troubleshooting
 
 Description: Diagnose copied virtual-environment failures by checking absolute shebangs, interpreter and ABI identity, native-extension tags, libc family, architecture, and runtime libraries.
 

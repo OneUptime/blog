@@ -20,7 +20,7 @@ AWS Cost and Usage Reports are cumulative for the current billing period. AWS up
 
 Do not add successive current-month snapshots together. Replace the prior snapshot for that billing period, or compare two complete snapshots to calculate a change.
 
-When AWS finalizes a report, the invoice ID field—`bill/InvoiceId` in legacy CUR or `bill_invoice_id` in CUR 2.0—is populated for line items associated with an invoice. That is a valuable close signal, but it does not mean the dataset can never change again. AWS documents that refunds, credits, and support fees can be applied after the bill is finalized. If the report's data-refresh option is enabled, those changes can update a closed billing period.
+When AWS finalizes a report, the invoice ID field-`bill/InvoiceId` in legacy CUR or `bill_invoice_id` in CUR 2.0-is populated for line items associated with an invoice. That is a valuable close signal, but it does not mean the dataset can never change again. AWS documents that refunds, credits, and support fees can be applied after the bill is finalized. If the report's data-refresh option is enabled, those changes can update a closed billing period.
 
 This leads to four useful report states:
 

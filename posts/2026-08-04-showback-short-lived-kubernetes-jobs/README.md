@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Showback, Batch Jobs, Prometheus, OpenCost, FinOps, Observability
+Tags: Kubernetes, Showback, Batch Job, Prometheus, OpenCost, FinOps, Observability
 
 Description: Preserve identity, runtime, requests, usage, and cost for short-lived Kubernetes Jobs before TTL cleanup removes their Pods and live metrics.
 

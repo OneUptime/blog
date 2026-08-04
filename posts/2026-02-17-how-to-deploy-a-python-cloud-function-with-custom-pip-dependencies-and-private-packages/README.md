@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Cloud Function, Python, Dependencies, Pip
+Tags: GCP, Cloud Function, Python, Dependencies, pip
 
 Description: Learn how to deploy Python Cloud Functions with custom pip dependencies, private package repositories, and compiled native extensions on Google Cloud.
 

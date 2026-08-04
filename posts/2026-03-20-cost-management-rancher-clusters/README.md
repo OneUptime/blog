@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Rancher, Cost Management, FinOps, Kubernetes, Resource Optimization, Opencost
+Tags: Rancher, Cost Management, FinOps, Kubernetes, Resource Optimization, OpenCost
 
 Description: Set up cost management for Rancher clusters using OpenCost, Kubecost, and resource right-sizing to track spending per team and namespace, identify waste, and reduce cloud infrastructure costs.
 

@@ -96,7 +96,7 @@ Policy checks organizational requirements; tests prove the module contract; moni
 
 ## Make the Interface Comparable, Not Identical
 
-Terraform has no formal module interface declaration. Establish a repository convention and verify it.
+Terraform has no separate named module-interface declaration that multiple implementations can claim to implement. Establish a repository convention and verify it.
 
 A shared contract can specify:
 
@@ -140,14 +140,14 @@ An implementation should fail when a required intent cannot be met and report op
 ```hcl
 output "capabilities" {
   value = {
-    zone_redundant      = local.zone_count >= 3
-    managed_waf         = var.aws_features.waf_enabled
+    zone_redundant      = local.meets_zone_redundancy
+    managed_waf         = length(var.aws_features.waf_managed_rule_groups) > 0
     deletion_protection = var.aws_features.deletion_protection
     ipv6_ingress        = local.ipv6_enabled
   }
 
   precondition {
-    condition     = var.service.availability != "zone-redundant" || local.zone_count >= 2
+    condition     = var.service.availability != "zone-redundant" || local.meets_zone_redundancy
     error_message = "Selected region and design do not meet zone-redundant intent."
   }
 }
@@ -228,7 +228,7 @@ Promote a provider implementation only after the same consumer fixture can plan 
 
 ## Handle Refactoring and Migration Separately
 
-Terraform `moved` blocks preserve resource addresses during configuration refactoring when the underlying move is supported. Import blocks can bring existing resources under management. Neither converts an AWS resource into its Azure or Google equivalent or moves application data.
+Terraform `moved` blocks preserve existing objects when resource addresses change during configuration refactoring and the underlying move is supported. Import blocks can bring existing resources under management. Neither converts an AWS resource into its Azure or Google equivalent or moves application data.
 
 A provider migration is a parallel deployment workflow:
 
@@ -256,4 +256,4 @@ Do not use a cross-cloud state move to create the appearance that different remo
 
 ## Conclusion
 
-Provider-neutral IaC works when intent, implementation, composition, and evidence are separate layers. Let each cloud use its strengths, expose optional native features clearly, and require every implementation to satisfy a small workload contract. Portability comes from replaceable, tested modules and isolated state—not from a fictional generic cloud resource.
+Provider-neutral IaC works when intent, implementation, composition, and evidence are separate layers. Let each cloud use its strengths, expose optional native features clearly, and require every implementation to satisfy a small workload contract. Portability comes from replaceable, tested modules and isolated state-not from a fictional generic cloud resource.

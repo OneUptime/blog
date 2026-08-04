@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Docker, Dockerfile, Multi-Stage Builds, COPY, BuildKit, Troubleshooting, Build Artifacts
+Tags: Docker, Dockerfile, Multi-Stage Build, COPY, BuildKit, Troubleshooting, Build Artifacts
 
 Description: Diagnose missing multi-stage artifacts by checking source-root paths, stage aliases, build outputs, temporary mounts, ignore rules, and target dependencies in a repeatable order.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Docker, Multi-Stage Builds, Shared Libraries, ELF, Dynamic Linker, Minimal Images, Linux
+Tags: Docker, Multi-Stage Build, Shared Libraries, ELF, Dynamic Linker, Minimal Images, Linux
 
 Description: Build a defensible ELF runtime inventory, preserve loader and library paths, account for late-loaded dependencies, and test the result before choosing scratch.
 

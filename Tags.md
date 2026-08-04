@@ -702,10 +702,11 @@
 - Amazon Connect
 - Amazon Detective
 - Amazon DocumentDB
+- Amazon EBS
 - Amazon EC2
 - Amazon ECR
 - Amazon ECS
-- Amazon eks
+- Amazon EKS
 - Amazon EKS Anywhere
 - Amazon Forecast
 - Amazon Kendra
@@ -733,6 +734,7 @@
 - Amazon Textract
 - Amazon Transcribe
 - Amazon Translate
+- Amazon VPC
 - Amazon Web Services
 - Amazon-linux
 - Ambassador
@@ -1348,20 +1350,29 @@
 - Audisp
 - Audit
 - Audit Controls
+- Audit Cost
+- Audit Coverage
 - Audit Evidence
 - Audit Log
 - Audit Log Filter
 - Audit Logging
 - Audit Manager
 - Audit Monitoring
+- Audit Opinion
 - Audit Plugin
 - Audit Policies
+- Audit Populations
+- Audit Quality
+- Audit Readiness
 - Audit Rules
+- Audit Scope
 - Audit Trail
 - Audit2allow
+- Auditability
 - Auditbeat
 - Auditd
 - Auditing
+- Auditor Independence
 - AUR
 - Aureport
 - Aurora
@@ -1521,6 +1532,7 @@
 - AWS App Mesh
 - AWS AppConfig
 - AWS AppSync
+- AWS Artifact
 - AWS Auth
 - AWS Auto Scaling
 - AWS Backup
@@ -1539,6 +1551,7 @@
 - AWS Console
 - Aws controllers for kubernetes
 - AWS Cost Explorer
+- AWS CUR
 - AWS DMS
 - AWS EBS
 - AWS EC2
@@ -1581,6 +1594,7 @@
 - AWS SQS
 - Aws sso
 - AWS Step Function
+- AWS Support
 - AWS VPC
 - AWS WAF
 - AWS WAFv2
@@ -1797,6 +1811,7 @@
 - Backend Integration
 - Backend Migration
 - Backend Monitoring
+- Backend Outage
 - Backend Performance
 - Backend Plugins
 - Backend Pool
@@ -1808,6 +1823,7 @@
 - BackendTLSPolicy
 - Backfill
 - Background
+- Background Checks
 - Background Execution
 - Background Fetch
 - Background Index
@@ -2033,6 +2049,8 @@
 - Billing
 - Billing Analysis
 - Billing Automation
+- Billing Conductor
+- Billing Data
 - Billing Export
 - bin
 - BIN Function
@@ -2300,6 +2318,7 @@
 - Brick Replacement
 - Bridge
 - Bridge fdb
+- Bridge Letter
 - Bridge Management
 - Bridge Network
 - Bridge Networking
@@ -2416,10 +2435,12 @@
 - Build Pipeline
 - Build Process
 - Build Provenance
+- Build Secrets
 - Build Security
 - Build Server
 - Build System
 - Build Tags
+- Build Target
 - Build Time
 - Build Tool
 - Build Tracing
@@ -2438,8 +2459,10 @@
 - BuildKit
 - Buildkite
 - Buildpacks
+- BUILDPLATFORM
 - Buildroot
 - Buildx
+- Buildx Bake
 - Built-In
 - Built-In Endpoints
 - Built-in Functions
@@ -2493,6 +2516,7 @@
 - Business-edition
 - BUSY Errors
 - BYOC
+- BYOD
 - BYOL
 - Bypass
 - Bytecode Instrumentation
@@ -2919,7 +2943,7 @@
 - Churn Prediction
 - Churn Rate
 - CI
-- Ci cd
+- CI CD
 - Ci-cd
 - CI/CD
 - CIAM
@@ -3128,10 +3152,13 @@
 - Cloud DLP
 - Cloud DNS
 - Cloud Economics
+- Cloud Egress
 - Cloud EKM
 - Cloud Emulation
 - Cloud Endpoints
 - Cloud Error Reporting
+- Cloud Evacuation
+- Cloud Exit
 - Cloud Expansion
 - Cloud Files
 - Cloud Finance
@@ -3156,6 +3183,7 @@
 - Cloud Init
 - Cloud Integration
 - Cloud Interconnect
+- Cloud Inventory
 - Cloud KMS
 - Cloud Load Balancer
 - Cloud Load Balancing
@@ -3183,6 +3211,7 @@
 - Cloud Patterns
 - Cloud Planning
 - Cloud Platform
+- Cloud Portability
 - Cloud Pricing
 - Cloud Profiler
 - Cloud Provider
@@ -3582,10 +3611,12 @@
 - Compliance
 - Compliance Auditing
 - Compliance Automation
+- Compliance Consulting
 - Compliance Monitoring
 - Compliance Reports
 - Compliance Scanning
 - Compliance Testing
+- Compliance Tooling
 - Compliance Tracking
 - ComplianceAsCode
 - Component
@@ -3969,6 +4000,7 @@
 - Context Caching
 - Context Cancellation
 - Context Compression
+- Context Deadline Exceeded
 - Context Leak
 - Context Learning
 - Context Management
@@ -3998,6 +4030,7 @@
 - Contour
 - Contract Testing
 - Contract Tests
+- Contractors
 - Contracts
 - ContractTesting
 - Contrib
@@ -4006,6 +4039,7 @@
 - Contributing Factors
 - Contribution
 - Contributor Insights
+- Control Exception
 - Control Flow
 - Control Flow Analysis
 - Control Groups
@@ -4031,6 +4065,7 @@
 - ControlMonkey
 - ControlPersist
 - Controlplane
+- Controls
 - ControlZ
 - Conv
 - Convention
@@ -4128,6 +4163,7 @@
 - Cost Governance
 - Cost Management
 - Cost Model
+- Cost Modeling
 - Cost Monitoring
 - Cost optimisation
 - Cost Optimization
@@ -4168,6 +4204,8 @@
 - Covert Channels
 - Cow
 - Cowrie
+- CPA Auditor
+- CPA Licensure
 - CPE
 - CPE Router
 - CPM
@@ -4362,6 +4400,7 @@
 - CUDA
 - cuDF
 - Cue
+- CUECs
 - Culture
 - CUME_DIST
 - cuML
@@ -4373,6 +4412,7 @@
 - Cumulus Linux
 - CUPS
 - CUR
+- CUR 2.0
 - curl
 - Currency
 - Current Values
@@ -5209,6 +5249,7 @@
 - Descending Index
 - Descheduler
 - DESCRIBE
+- Description Criteria
 - Descriptors
 - Deserialization
 - Design
@@ -5247,6 +5288,7 @@
 - Deterministic UUID
 - Detox
 - Dev Container
+- Dev Dependencies
 - Dev Environment
 - Dev Staging Production
 - Dev/Test
@@ -5601,6 +5643,7 @@
 - DNS Automation
 - DNS Best Practices
 - DNS Configuration
+- DNS Cutover
 - DNS Delegation
 - DNS Failover
 - DNS Firewall
@@ -5958,6 +6001,7 @@
 - Dynamic Infrastructure
 - Dynamic Inventory
 - Dynamic JSON
+- Dynamic Linker
 - Dynamic Loading
 - Dynamic Mapping
 - Dynamic Metadata
@@ -6057,6 +6101,7 @@
 - Edge Middleware
 - Edge ML
 - Edge Modules
+- Edge Monitoring
 - Edge N-grams
 - Edge Network
 - Edge NGram
@@ -6121,6 +6166,7 @@
 - Elastic Beanstalk
 - Elastic Cloud
 - Elastic IP
+- Elastic Load Balancing
 - Elastic Pools
 - Elastic SIEM
 - Elastic Stack
@@ -6138,6 +6184,7 @@
 - Elemental
 - ElementTree
 - Eleventy
+- ELF
 - Elixir
 - ELK
 - ELK Alternative
@@ -6191,6 +6238,7 @@
 - Emperor
 - empty
 - Empty Blocks
+- Empty Population
 - Empty Values
 - EMQX
 - EMR
@@ -6255,6 +6303,7 @@
 - Enterprise Automation
 - Enterprise Backup
 - Enterprise Data
+- Enterprise Discounts
 - Enterprise Governance
 - Enterprise Integration
 - Enterprise Kubernetes
@@ -6264,6 +6313,7 @@
 - Enterprise Networking
 - Enterprise Observability
 - Enterprise Reporting
+- Enterprise Sales
 - Enterprise Scale
 - Enterprise Search
 - Enterprise Security
@@ -6659,6 +6709,7 @@
 - External IP
 - External IPv6
 - External Key Manager
+- External Labels
 - External Metrics
 - External Provider
 - External Routes
@@ -6966,6 +7017,7 @@
 - Financial Calculation
 - Financial Data
 - Financial Modeling
+- Financial Operations
 - Financial Regulations
 - Financial Reporting
 - Financial Services
@@ -7579,7 +7631,7 @@
 - GlassFlow
 - GLBP
 - Gleam
-- Glibc
+- glibc
 - Glob Patterns
 - Global
 - Global Accelerator
@@ -8334,6 +8386,9 @@
 - Htpasswd
 - HTTL
 - HTTP
+- HTTP 401
+- HTTP 405
+- HTTP 415
 - HTTP 429
 - HTTP 502
 - HTTP 503
@@ -8545,6 +8600,7 @@
 - Identity-Based Access
 - IDisposable
 - IDistributedCache
+- Idle Cost
 - Idle Resources
 - Idle Timeout
 - IdM
@@ -8600,6 +8656,7 @@
 - Image Cleaner
 - Image Cleanup
 - Image Commit
+- Image Digests
 - Image Distribution
 - Image Export
 - Image Factory
@@ -8613,6 +8670,7 @@
 - Image Immutability
 - Image Import
 - Image Inspection
+- Image Layers
 - Image Management
 - Image manifest
 - Image Metadata
@@ -10014,6 +10072,7 @@
 - Legacy Authentication
 - Legacy BIOS
 - Legacy Boot
+- Legacy Builder
 - Legacy Code
 - Legacy Integration
 - Legacy Migration
@@ -10073,6 +10132,7 @@
 - Lifecycle Policies
 - Lifecycle Policy
 - Lifecycle Rules
+- Lifecycle Scripts
 - Lifetime
 - Lift and Shift
 - Lightdash
@@ -10396,6 +10456,7 @@
 - Logging Query Language
 - Logic
 - Logic Apps
+- Logical Access
 - Logical Backup
 - Logical Decoding
 - Logical DNS
@@ -10965,6 +11026,7 @@
 - Metric Views
 - Metricbeat
 - Metrics Aggregation
+- Metrics Architecture
 - Metrics Baseline
 - Metrics Classification
 - Metrics Comparison
@@ -10973,9 +11035,11 @@
 - Metrics Derivation
 - Metrics Design
 - Metrics Extraction
+- Metrics Filtering
 - Metrics Generation
 - Metrics Ingestion
 - Metrics Retention
+- Metrics Routing
 - Metrics Scopes
 - Metrics Scraping
 - Metrics Server
@@ -11442,6 +11506,7 @@
 - Multi-Path
 - Multi-Platform
 - Multi-Platform Builds
+- Multi-Platform Images
 - Multi-Platform Testing
 - Multi-Port
 - Multi-Prefix
@@ -11560,7 +11625,7 @@
 - Murmur
 - MurmurHash
 - Music Streaming
-- Musl
+- musl
 - MUST
 - Mustache
 - Mutability
@@ -11703,6 +11768,7 @@
 - NCPA
 - NCPDP SCRIPT
 - ND Inspection
+- NDA
 - NDB Cluster
 - ndb_mgm
 - ndb_restore
@@ -11895,6 +11961,7 @@
 - Network Policies
 - Network Policy
 - Network Precision
+- Network Pricing
 - Network Printer
 - Network Programming
 - Network Protocols
@@ -12144,6 +12211,7 @@
 - Non-Native
 - Non-Production
 - Non-Root
+- Non-Root Containers
 - Non-Stop Forwarding
 - Non-Voting Member
 - Non-zero exit code
@@ -12188,7 +12256,7 @@
 - Nova
 - Now Function
 - Npgsql
-- Npm
+- npm
 - NPS
 - NPTv6
 - Npy
@@ -12271,6 +12339,7 @@
 - NVD
 - NVENC
 - NVIDIA
+- NVIDIA DCGM
 - NVIDIA H100
 - NVIDIA Jetson
 - NVIDIA Jetson Nano
@@ -12499,7 +12568,7 @@
 - OpenBSD
 - OpenCensus
 - OpenConfig
-- Opencost
+- OpenCost
 - OpenCypher
 - OpenDKIM
 - OpenDNSSEC
@@ -12557,6 +12626,7 @@
 - Operational
 - Operational Backup
 - Operational Excellence
+- Operational Readiness
 - OperationNotAllowed
 - Operator
 - Operator Lifecycle Manager
@@ -12712,6 +12782,7 @@
 - Out-of-Band Changes
 - Out-of-Band Management
 - Out-of-Order
+- Out-of-Order Samples
 - Outage
 - Outbound
 - Outbound Access
@@ -13069,6 +13140,7 @@
 - Peer
 - Peer Configuration
 - Peer Groups
+- Peer Review
 - Peer-to-peer
 - PeerAuthentication
 - Peering
@@ -13276,7 +13348,7 @@
 - Pino
 - Pinot
 - Pinpoint
-- Pip
+- pip
 - Pipe
 - PIPE Mode
 - PipeCD
@@ -13894,6 +13966,7 @@
 - Process Tracing
 - ProcessFunction
 - Processing
+- Processing Integrity
 - PROCESSLIST
 - Processor
 - Processor Pinning
@@ -13919,6 +13992,7 @@
 - Product Search
 - Product-Led Growth
 - Production
+- Production Access
 - Production Clusters
 - Production Debugging
 - Production Hardening
@@ -13967,6 +14041,7 @@
 - Prometheus Adapter
 - Prometheus Federation
 - Prometheus Operator
+- Prometheus Receiver
 - PrometheusRule
 - Promise
 - Promotion
@@ -14209,6 +14284,7 @@
 - Python
 - Python 3
 - Python Connector
+- Python Packaging
 - Python Requests
 - Python REST API
 - Python Templates
@@ -14353,6 +14429,7 @@
 - Queue Time
 - Queue Tree
 - Queue Trigger
+- Queue Tuning
 - Queue Visualization
 - Queue-Proxy
 - QUIC
@@ -14469,6 +14546,7 @@
 - Raspberry-pi
 - Raspberry-pi-5
 - Rate
+- Rate Cards
 - Rate Limit
 - Rate Limiter
 - Rate Limiting
@@ -14655,6 +14733,7 @@
 - Recovery
 - Recovery Model
 - Recovery Plan
+- Recovery Planning
 - Recovery Points
 - Recovery Services Vault
 - Recreate
@@ -14887,6 +14966,7 @@
 - Remote Operations
 - Remote Patient Monitoring
 - Remote Port Forwarding
+- Remote Read
 - Remote Repository
 - Remote Sampling
 - Remote Scanning
@@ -14914,6 +14994,7 @@
 - Rendering
 - Rendezvous Point
 - Renewable Energy
+- Renewal
 - Renice
 - Renovate
 - Renumbering
@@ -16163,6 +16244,7 @@
 - SERIALIZABLE
 - Serialization
 - Serializer
+- Series Identity
 - Serilog
 - Server
 - Server Actions
@@ -17253,6 +17335,7 @@
 - Stateful Inspection
 - Stateful Processing
 - Stateful Service
+- Stateful Workloads
 - StatefulSet
 - Stateless
 - Stateless Architecture
@@ -17551,6 +17634,7 @@
 - Subscription Transfer
 - Subscription-manager
 - Subsequence
+- Subservice Organizations
 - Subset
 - Subset Pattern
 - Subshells
@@ -17736,6 +17820,7 @@
 - System Resources
 - System Restore
 - System Roles
+- System Scope
 - System Service
 - System Settings
 - SYSTEM START
@@ -17897,6 +17982,7 @@
 - Targetcli
 - Targeted Operations
 - Targeting
+- TARGETPLATFORM
 - Tariff
 - Task
 - Task Automation
@@ -17925,6 +18011,7 @@
 - TaskAssignmentException
 - Taskfile
 - Tautulli
+- Tax
 - Tax Calculation
 - TAXII
 - Tayga
@@ -18231,6 +18318,7 @@
 - Third-Party APIs
 - Third-Party Backup
 - Third-Party Repositories
+- Third-Party Risk
 - Third-Party Services
 - Thiserror
 - Thread
@@ -18704,6 +18792,7 @@
 - Trunking
 - Trust
 - Trust and Safety
+- Trust Center
 - Trust Command
 - Trust Domain
 - Trust Policies
@@ -18711,6 +18800,7 @@
 - Trust Proxy
 - Trust Rules
 - Trust Services
+- Trust Services Categories
 - Trust Services Criteria
 - Trust Store
 - Trustd
@@ -18787,6 +18877,8 @@
 - Type Errors
 - Type Guards
 - Type Hint
+- Type I
+- Type II
 - Type Inference
 - Type Inspection
 - Type Manipulation
@@ -19219,6 +19311,8 @@
 - Vendor Lock-in
 - Vendor Management
 - Vendor Neutral
+- Vendor Risk
+- Vendor Selection
 - Vendor Transition
 - Vendoring
 - Venv
@@ -19711,6 +19805,7 @@
 - What If
 - What-If
 - Wheel Group
+- Wheels
 - When Clause
 - WHERE
 - WHERE Clause
@@ -19915,6 +20010,7 @@
 - Write Sharding
 - Write Through
 - Write Throughput
+- write_relabel_configs
 - Write-Ahead Log
 - Write-Back
 - Write-Behind

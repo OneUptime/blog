@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Docker, BuildKit, Multi-Stage Builds, Build Target, Dependency Graph, Dockerfile, Troubleshooting
+Tags: Docker, BuildKit, Multi-Stage Build, Build Target, Dependency Graph, Dockerfile, Troubleshooting
 
 Description: Predict which Dockerfile stages BuildKit executes by tracing inheritance, cross-stage copies, and mounts instead of assuming a target runs in isolation.
 

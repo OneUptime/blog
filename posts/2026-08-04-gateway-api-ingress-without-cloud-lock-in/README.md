@@ -25,7 +25,7 @@ Classify each annotation:
 
 | Concern | Likely Gateway API home | Portability |
 | --- | --- | --- |
-| Host, path, redirect, header match | `HTTPRoute` filters and rules | Often portable when supported |
+| Host, path, redirect, header match | `HTTPRoute` hostnames, filters, and rules | Often portable when supported |
 | Listener port, protocol, TLS Secret | `Gateway` listener | Core shape is portable |
 | Which controller implements it | `GatewayClass` | Implementation-specific name |
 | Cloud load-balancer tier or scheme | implementation policy/parameters | Provider-specific |
@@ -98,7 +98,7 @@ spec:
           port: 8080
 ```
 
-The `GatewayClass` named `platform-public` is an example, not a portable constant. A cluster administrator can create an organizationally named class only when the installed controller accepts a `GatewayClass` with its `controllerName`. Some managed implementations expose predefined class names—for example, GKE documents names such as `gke-l7-rilb`. In those environments, keep the `Gateway` platform-owned and overlay `spec.gatewayClassName`; the application `HTTPRoute` can still remain stable.
+The `GatewayClass` named `platform-public` is an example, not a portable constant. A cluster administrator can create an organizationally named class only when the installed controller accepts a `GatewayClass` with its `controllerName`. Some managed implementations expose predefined class names-for example, GKE documents names such as `gke-l7-rilb`. In those environments, keep the `Gateway` platform-owned and overlay `spec.gatewayClassName`; the application `HTTPRoute` can still remain stable.
 
 ## Use Core Features as the Baseline
 
@@ -133,7 +133,7 @@ The presence of a provider-specific policy is not a failure. It is a visible ada
 
 ## Plan Cross-Namespace References Deliberately
 
-Gateway API does not permit arbitrary cross-namespace references. `ReferenceGrant` lets the owner of a target namespace authorize selected references from another namespace. This avoids an application attaching to or consuming resources it does not own.
+Gateway API does not permit arbitrary cross-namespace references. `ReferenceGrant` lets the owner of a target namespace authorize selected references from another namespace. This avoids an application referencing or consuming resources it does not own.
 
 For example, the `edge` namespace controls which route namespaces can attach through `allowedRoutes`. If a route refers to a backend in another namespace, the backend namespace must grant that reference where the API requires it.
 

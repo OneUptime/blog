@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Vendor Lock-In, Cloud Portability, Architecture Review, Managed Services, Risk Management, FinOps, Platform Engineering
+Tags: Vendor Lock-in, Cloud Portability, Architecture Review, Managed Service, Risk Management, FinOps, Platform Engineering
 
 Description: Score managed-service portability with evidence across interfaces, data, identity, operations, economics, and tested migration instead of debating lock-in as a binary label.
 

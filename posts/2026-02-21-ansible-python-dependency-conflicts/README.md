@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Python, Dependencies, Troubleshooting, Pip
+Tags: Ansible, Python, Dependencies, Troubleshooting, pip
 
 Description: Diagnose and resolve Python dependency conflicts between Ansible, its modules, and application packages on control and remote nodes.
 

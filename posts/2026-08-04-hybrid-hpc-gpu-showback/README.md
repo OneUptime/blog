@@ -16,7 +16,7 @@ For a hybrid environment, normalize cloud and on-premises money into cost pools,
 
 The terms are related but not interchangeable:
 
-- **Requested or allocated GPU-hours:** allocated GPU count multiplied by elapsed wall-clock hours.
+- **Requested or allocated GPU-hours:** the respective requested or allocated GPU count multiplied by elapsed wall-clock hours.
 - **Wall time:** elapsed time between the job's start and end, without multiplying by GPU count.
 - **Utilization:** sampled GPU activity over time, reported separately for efficiency or used within a specifically defined variable-cost pool.
 - **Energy:** power integrated over time, expressed in kilowatt-hours and multiplied by an approved electricity rate.
@@ -37,21 +37,24 @@ Slurm accounting supplies job identity, account, allocation, and elapsed time. I
 - `Account` is the account associated with the job;
 - `ReqTRES` contains requested trackable resources;
 - `AllocTRES` contains resources allocated after the job starts;
-- `ElapsedRaw` is elapsed time in seconds;
+- `ElapsedRaw` is Slurm's elapsed time in seconds and excludes recorded suspension time;
+- `Suspended` is the amount of time the job or step was suspended;
 - `ConsumedEnergyRaw` is total energy in joules when energy accounting is available.
 
 Use `AllocTRES` for actual reserved capacity after start. Use requested resources separately to diagnose scheduling behavior, pending demand, or differences between requests and allocations.
+
+For capacity time, use the `Start` and `End` interval rather than `ElapsedRaw` alone. Slurm excludes recorded suspension from elapsed time, while GPU GRES remain allocated and unavailable to other jobs during suspension.
 
 A simplified extraction is:
 
 ```bash
 sacct -S 2026-07-01 -E 2026-08-01 \
-  --format=JobIDRaw,Account,State,Start,End,ElapsedRaw,ReqTRES,AllocTRES,ConsumedEnergyRaw
+  --format=JobIDRaw,Account,State,Start,End,ElapsedRaw,Suspended,ReqTRES,AllocTRES,ConsumedEnergyRaw
 ```
 
 Do not limit the accounting extract to a short hand-written state list: states such as `OUT_OF_MEMORY`, `NODE_FAIL`, and `PREEMPTED` can also consume allocated capacity. Production extraction should query Slurm's accounting database with a stable cutoff, classify every returned state deliberately, and retain revisions for jobs that cross the period boundary.
 
-Slurm can return a job record and records for its job steps. Do not sum the parent allocation and every step as independent capacity. Define one grain, usually the job allocation for chargeback, while step data supports utilization analysis. Handle job arrays and requeues with stable job and attempt identifiers.
+Slurm can return a job record and records for its job steps. Do not sum the parent allocation and every step as independent capacity. Define one grain, usually the job allocation for chargeback, while step data supports utilization analysis. Handle job arrays, requeues, and resizes with stable job and run identifiers; current Slurm exposes `OriginalSLUID` to correlate resize records and `SLUID` to distinguish each run, with earlier records available through `--duplicates`.
 
 ## Allocate Time Across Billing Periods
 
@@ -65,6 +68,8 @@ period_seconds = max(
 
 period_gpu_hours = allocated_gpu_count * period_seconds / 3600
 ```
+
+This formula assumes that the allocated GPU count is constant over the interval. If a job is resized, split it at each allocation change and use the GPU count for each segment instead of multiplying the final `AllocTRES` count by the job's full lifetime.
 
 Do not assign the entire job to its submission month or completion month. For running jobs, use an explicit snapshot cutoff and mark the current result provisional.
 
@@ -96,11 +101,11 @@ Define `available_gpu_hours` carefully: fleet GPU count multiplied by serviceabl
 
 ## Use DCGM Telemetry for Efficiency
 
-NVIDIA DCGM exposes device telemetry that can be exported to a monitoring system. Documented fields include:
+NVIDIA DCGM exposes device telemetry that can be exported to a monitoring system. The shipped DCGM Exporter configuration retains some legacy metric names while mapping them to current canonical DCGM fields:
 
-- `DCGM_FI_DEV_GPU_UTIL` for GPU utilization;
-- `DCGM_FI_DEV_POWER_USAGE` as a gauge for board power in watts;
-- `DCGM_FI_DEV_TOTAL_ENERGY_CONSUMPTION` as a total-energy counter in millijoules where supported;
+- `DCGM_FI_DEV_GPU_UTIL` (canonical field `DCGM_FI_DEV_GPU_UTIL_RATIO`) for GPU utilization;
+- `DCGM_FI_DEV_POWER_USAGE` (canonical field `DCGM_FI_DEV_BOARD_POWER_WATTS`) as a gauge for board power in watts;
+- `DCGM_FI_DEV_TOTAL_ENERGY_CONSUMPTION` as a total-energy counter in millijoules since the driver was last reloaded, where supported;
 - profiling fields for GPU activity and memory behavior.
 
 Join samples to jobs through GPU identity, node, and scheduler allocation intervals. DCGM does not replace the scheduler's authoritative job ledger. Its profiling metrics are interval observations, not a trace of every kernel.
@@ -109,15 +114,15 @@ Telemetry gaps must stay visible. Report sample coverage per job and do not trea
 
 ## Convert Energy Without Mixing Boundaries
 
-When a reliable cumulative energy counter is available, preserve its source unit. Slurm reports `ConsumedEnergyRaw` in joules, while DCGM documents `DCGM_FI_DEV_TOTAL_ENERGY_CONSUMPTION` in millijoules:
+Preserve each source unit. Slurm reports the job total in `ConsumedEnergyRaw` in joules, while DCGM documents `DCGM_FI_DEV_TOTAL_ENERGY_CONSUMPTION` as a cumulative counter in millijoules:
 
 ```text
-slurm_job_kwh = delta_joules / 3,600,000
-dcgm_job_kwh = delta_millijoules / 3,600,000,000
-job_gpu_energy_cost = job_gpu_kwh * electricity_rate_per_kwh
+slurm_job_kwh = consumed_energy_raw_joules / 3,600,000
+dcgm_interval_kwh = counter_delta_millijoules / 3,600,000,000
+attributable_energy_cost = attributable_job_kwh * electricity_rate_per_kwh
 ```
 
-For power samples, integrate watts over time rather than averaging values from unequal intervals. Reset and wrap handling are required for cumulative counters.
+For power samples, integrate watts over time rather than averaging values from unequal intervals. Reset and wrap handling are required when differencing the DCGM cumulative counter.
 
 Keep measurement boundaries explicit:
 

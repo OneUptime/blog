@@ -39,12 +39,13 @@ Version numbers here are examples; the pipeline should select versions currently
 
 ### Every change: static and schema checks
 
-Render the exact deployment artifacts and inspect them:
+Render the workload manifests for the target and inspect them:
 
 ```bash
-helm template checkout ./chart -f targets/aks.yaml > rendered.yaml
+helm template checkout ./chart -f targets/aks.yaml --kube-version 1.35.0 > rendered.yaml
 kubectl --context schema-cluster apply --dry-run=server -f rendered.yaml
 terraform fmt -check -recursive
+terraform init -backend=false -input=false
 terraform validate
 ```
 
@@ -61,7 +62,7 @@ Server-side dry run proves API and admission acceptance on that cluster. It does
 
 ### Every module change: interface tests
 
-Use Terraform test files to assert provider-specific modules return the stable contract. Mock providers are useful for logic and validation, but HashiCorp notes that mocks generate synthetic computed values; they cannot prove a real provider API behaves as required.
+Use Terraform test files to assert provider-specific modules return the stable contract. In Terraform 1.7 or later, mock providers are useful for logic and validation, but HashiCorp notes that mocks generate synthetic computed values; they cannot prove a real provider API behaves as required.
 
 Run real plan/apply tests in dedicated, restricted test accounts for high-value modules. Tag resources with run ID and expiry, cap quotas, alert on cleanup failure, and avoid tests that can reach production networks or data.
 
@@ -103,7 +104,7 @@ Provider-specific tests remain necessary for adapters such as storage lifecycle,
 
 ## Test Kubernetes Beyond Manifest Acceptance
 
-Managed Kubernetes conformance covers the Kubernetes API surface in its defined scope. Your stack adds CSI, CNI, Gateway or Ingress controllers, DNS, secrets, policy, and telemetry.
+Managed Kubernetes conformance covers the required Kubernetes APIs in its defined scope. Your stack adds CSI, CNI, Gateway or Ingress controllers, DNS, secrets, policy, and telemetry.
 
 In every target, test:
 
@@ -111,7 +112,7 @@ In every target, test:
 - controller version compatibility;
 - Gateway API claimed Core and Extended features;
 - NetworkPolicy enforcement;
-- StorageClass provision, expand, snapshot, restore, and reclaim lifecycle;
+- persistent-volume provision, expand, restore, and reclaim lifecycle through StorageClass, plus snapshot lifecycle through VolumeSnapshotClass;
 - workload identity allowed and denied calls;
 - node architecture, topology, disruption, and autoscaling;
 - cluster and node-pool upgrade through a supported path.
@@ -205,4 +206,4 @@ Trigger an extra run after major Kubernetes, provider, database, identity, or co
 
 ## Conclusion
 
-Continuous portability testing converts an architectural option into dated evidence. Layer static checks, real target provisioning, workload contracts, restores, and evacuation rehearsals; expire claims when evidence grows stale. The target does not need to be identical to the source—it must satisfy the declared service contract within measured time and risk limits.
+Continuous portability testing converts an architectural option into dated evidence. Layer static checks, real target provisioning, workload contracts, restores, and evacuation rehearsals; expire claims when evidence grows stale. The target does not need to be identical to the source-it must satisfy the declared service contract within measured time and risk limits.

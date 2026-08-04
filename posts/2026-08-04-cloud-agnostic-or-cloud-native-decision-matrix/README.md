@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Cloud Portability, Cloud Native, Architecture, Vendor Lock-In, FinOps, Platform Engineering, Multi-Cloud
+Tags: Cloud Portability, Cloud Native, Architecture, Vendor Lock-in, FinOps, Platform Engineering, Multi-Cloud
 
 Description: Decide where portability is worth its engineering cost by scoring switching probability, migration impact, service advantage, and the cost of maintaining an alternative.
 

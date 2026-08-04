@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: AWS, Showback, FinOps, Credits, AWS Marketplace, AWS Support, Tax
+Tags: AWS, Showback, FinOps, Credit, AWS Marketplace, AWS Support, Tax
 
 Description: Classify AWS billing adjustments and indirect charges before assigning them with explicit, auditable showback policies.
 

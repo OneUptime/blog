@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Python, Pip, Requirements
+Tags: Ansible, Python, pip, Requirements
 
 Description: How to manage Python application dependencies using the Ansible pip module with requirements.txt files for reproducible deployments.
 

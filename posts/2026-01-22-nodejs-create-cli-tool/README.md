@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: NodeJS, CLI, CommandLine, Development, Npm
+Tags: NodeJS, CLI, CommandLine, Development, npm
 
 Description: Learn how to build command-line tools with Node.js using commander, yargs, or inquirer for interactive prompts, argument parsing, and publishing to npm.
 

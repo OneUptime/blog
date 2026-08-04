@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Docker, BuildKit, Multi-Stage Builds, Build Cache, CI/CD, Buildx, Container Registry
+Tags: Docker, BuildKit, Multi-Stage Build, Build Cache, CI/CD, Buildx, Container Registry
 
 Description: Preserve expensive intermediate-stage cache across ephemeral CI runners by importing and exporting a dedicated BuildKit registry cache in max mode.
 

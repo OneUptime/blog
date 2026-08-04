@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Docker, Scratch Image, ELF, Dynamic Linker, Multi-Stage Builds, Linux, Troubleshooting
+Tags: Docker, Scratch Image, ELF, Dynamic Linker, Multi-Stage Build, Linux, Troubleshooting
 
 Description: Diagnose the misleading missing-file error in scratch images by inspecting the ELF interpreter, shared-library dependencies, architecture, permissions, and script shebangs.
 

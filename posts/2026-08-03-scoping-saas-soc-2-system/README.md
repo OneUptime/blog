@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: SOC 2, SaaS, System Scope, Description Criteria, Cloud Security, Data Flows, Subservice Organizations
+Tags: SOC 2, SaaS, System Scope, Description Criteria, Cloud Security, Data Flow, Subservice Organizations
 
 Description: Define a defensible SaaS SOC 2 boundary by tracing customer commitments through products, dependencies, cloud environments, people, procedures, data, and vendors.
 

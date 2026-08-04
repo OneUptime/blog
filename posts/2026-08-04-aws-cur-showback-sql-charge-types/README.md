@@ -30,6 +30,8 @@ Use these non-net amortized branches:
 
 Credits, refunds, and tax are adjustments rather than consumed resource cost. Keep them in separate columns so policy can include, centralize, or allocate them without changing the core calculation.
 
+The RI branches assume standard RI amortization data. AWS currently does not provide the amortized-upfront reservation fields for Dedicated Host reservations, so isolate those rows as unsupported and do not consider the query reconciled if they are present.
+
 ## Use a Component Query
 
 Replace `cur_database.cur_table` and the billing-period dates. This is Athena SQL over a Parquet CUR table:
@@ -41,7 +43,6 @@ WITH classified AS (
         bill_billing_period_start_date,
         line_item_usage_account_id,
         line_item_product_code,
-        line_item_resource_id,
         line_item_line_item_type,
 
         CASE

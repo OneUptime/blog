@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Rancher, Cost-Management, Kubecost, Opencost, Kubernetes, FinOps
+Tags: Rancher, Cost-Management, Kubecost, OpenCost, Kubernetes, FinOps
 
 Description: A guide to implementing cost management for Rancher-managed Kubernetes clusters using OpenCost and Kubecost, including cost allocation, budgets, and optimization.
 

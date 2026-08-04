@@ -54,12 +54,13 @@ Copying a TLS certificate and private key can bridge a migration, but it is not 
 
 Let's Encrypt requires DNS-01 for wildcard certificates. DNS-01 automation needs scoped write access to the validation zone; avoid distributing broad production DNS credentials to every cluster. Delegate a validation subdomain where the DNS design and ACME client support it.
 
-Issue a new target certificate before routing production traffic. Test SNI and the complete chain from outside the target cloud:
+Issue a new target certificate before routing production traffic. Test SNI, hostname validation, and the complete chain from outside the target cloud:
 
 ```bash
 openssl s_client \
   -connect 203.0.113.20:443 \
   -servername api.example.com \
+  -verify_hostname api.example.com \
   -verify_return_error </dev/null
 ```
 
@@ -67,7 +68,7 @@ Test renewal in staging or against the CA's staging endpoint. A certificate that
 
 ## Distinguish Secret Values from Secret Access
 
-A Kubernetes Secret is an API object; base64 encoding in its manifest is not encryption. Encryption at rest depends on API-server configuration, and any authorized reader can retrieve the clear value.
+A Kubernetes Secret is an API object; base64 encoding in its manifest is not encryption. Kubernetes API-level encryption at rest depends on API-server configuration, and any authorized reader can retrieve the clear value.
 
 Cloud secret managers add provider-specific identities, versions, key management, replication, and audit logs. During migration, classify each secret:
 
@@ -105,24 +106,26 @@ Use an intermediate Collector endpoint or gateway that the application can reach
 receivers:
   otlp:
     protocols:
-      grpc: {}
-      http: {}
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
 processors:
   batch: {}
 exporters:
-  otlp/primary:
+  otlp_grpc/primary:
     endpoint: telemetry-primary.example.net:4317
-  otlp/transition:
+  otlp_grpc/transition:
     endpoint: telemetry-target.example.net:4317
 service:
   pipelines:
     traces:
       receivers: [otlp]
       processors: [batch]
-      exporters: [otlp/primary, otlp/transition]
+      exporters: [otlp_grpc/primary, otlp_grpc/transition]
 ```
 
-Treat this as illustrative: configure TLS, authentication, memory limits, queues, retries, and sensitive-data filtering according to the deployment. Check the stability of every selected Collector component.
+Treat this as illustrative: choose receiver bind addresses and network exposure deliberately, and configure TLS, authentication, memory limits, queues, retries, and sensitive-data filtering according to the deployment. Check the stability of every selected Collector component.
 
 Inventory the rest of observability:
 

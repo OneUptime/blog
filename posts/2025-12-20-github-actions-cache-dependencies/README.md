@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GitHub Action, CI/CD, Caching, Performance, Npm, Pip, DevOps
+Tags: GitHub Action, CI/CD, Caching, Performance, npm, pip, DevOps
 
 Description: Learn how to implement effective dependency caching in GitHub Actions to dramatically reduce build times, lower costs, and improve developer productivity with practical examples for npm, pip, Maven.
 

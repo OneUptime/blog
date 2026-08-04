@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GitHub Action, Node.js, CI/CD, Testing, Npm, JavaScript, TypeScript
+Tags: GitHub Action, Node.js, CI/CD, Testing, npm, JavaScript, TypeScript
 
 Description: Learn how to build a complete Node.js CI pipeline with GitHub Actions, including testing, linting, type checking, security audits, coverage reporting, and caching for fast, reliable builds.
 

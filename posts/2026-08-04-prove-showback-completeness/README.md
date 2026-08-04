@@ -35,11 +35,11 @@ Useful ingestion controls include:
 
 1. expected manifest files equal successfully loaded files;
 2. no file identifier is loaded twice into the same source snapshot;
-3. parsed row count equals staged row count plus explicitly rejected rows;
-4. every rejection has a reason and monetary total;
+3. input data row count equals staged row count plus explicitly rejected rows;
+4. every rejection has a reason and, when its amount is parseable, a monetary total; an unparseable monetary field fails the run;
 5. the schema version and selected columns are recorded with the run.
 
-AWS can add columns to CUR reports. CUR 2.0 offers a fixed schema configuration, but the pipeline should still fail visibly when required fields disappear or change type.
+Legacy CUR columns can vary monthly with usage. CUR 2.0 provides a more consistent schema, but table configurations can still add or remove columns. The pipeline should fail visibly when required fields disappear or change type.
 
 ## Give Every Source Row a Durable Run-Scoped Key
 
@@ -51,12 +51,11 @@ Create a key scoped to the frozen source delivery. One practical pattern is:
 source_row_key = hash(
   source_delivery_id,
   source_partition,
-  identity_line_item_id,
-  original_row_ordinal
+  identity_line_item_id
 )
 ```
 
-The row ordinal handles the unlikely but testable case of duplicate identity values in a loaded partition. Preserve relevant native identity, bill, account, product, usage-interval, line-item-type, and resource fields for drill-through.
+Treat a repeated `(source_partition, identity_line_item_id)` within the frozen delivery as a failed uniqueness control rather than making the duplicate unique with a row ordinal. Preserve relevant native identity, bill, account, product, usage-interval, line-item-type, and resource fields for drill-through.
 
 ## Make Residuals Part of the Model
 
@@ -93,12 +92,13 @@ SELECT
   SUM(allocation_weight) AS weight_sum,
   SUM(allocated_cost) AS allocated_cost
 FROM allocation_fact
+WHERE is_final_stage = TRUE
 GROUP BY source_row_key
 HAVING ABS(SUM(allocation_weight) - 1.0) > 0.0000001
     OR ABS(SUM(allocated_cost) - MAX(source_cost)) > 0.01;
 ```
 
-This assumes each allocation output repeats the same source amount and that the allocation fact contains one final-stage row per recipient share. If your schema stores intermediate stages, test each stage separately or flag the final stage explicitly.
+This assumes each allocation output repeats the same source amount and that the allocation fact contains one final-stage row per recipient share. If your schema stores intermediate stages, run the same conservation test separately for each stage.
 
 Run the test before display rounding. Allocate in high precision, then use a deterministic remainder policy so rounded recipient amounts still equal the rounded source total.
 
@@ -124,7 +124,7 @@ Also compare the distinct source-row population before and after every ownership
 Commitment and container data need special controls:
 
 - reserved-instance and Savings Plans benefits must include both used and unused commitment treatment without counting the same fee twice;
-- an EKS container allocation built from split cost and unused cost fields must reconcile to its parent EC2 cost and must not be added on top of that same parent cost;
+- an EC2-backed EKS container allocation built from split cost and unused cost fields must reconcile to its parent EC2 cost and must not be added on top of that same parent cost;
 - negation and covered-usage relationships must follow the selected AWS cost formula rather than treating every line as an independent positive charge.
 
 ## Reconcile Through Layered Control Totals
@@ -159,10 +159,10 @@ Expose residuals to service owners instead of hiding them from the dashboard. An
 ## Official Documentation
 
 - [AWS Data Exports: Understanding CUR report versions and manifests](https://docs.aws.amazon.com/cur/latest/userguide/understanding-report-versions.html)
-- [AWS Data Exports: CUR 2.0 identity columns](https://docs.aws.amazon.com/cur/latest/userguide/table-dictionary-cur2-identity.html)
+- [AWS Data Exports: CUR identity columns](https://docs.aws.amazon.com/cur/latest/userguide/identity-columns.html)
 - [AWS Data Exports: CUR 2.0 line item dictionary](https://docs.aws.amazon.com/cur/latest/userguide/table-dictionary-cur2-line-item.html)
 - [AWS Data Exports: CUR line-item type definitions](https://docs.aws.amazon.com/cur/latest/userguide/Lineitem-columns.html)
-- [AWS Data Exports: CUR 2.0 fixed schema configuration](https://docs.aws.amazon.com/cur/latest/userguide/table-dictionary-cur2.html)
+- [AWS Data Exports: CUR 2.0 schema and table configurations](https://docs.aws.amazon.com/cur/latest/userguide/table-dictionary-cur2.html)
 - [AWS Data Exports: Reserved Instance columns](https://docs.aws.amazon.com/cur/latest/userguide/reservation-columns.html)
 - [AWS Data Exports: Savings Plans columns](https://docs.aws.amazon.com/cur/latest/userguide/table-dictionary-cur2-savings-plan.html)
 - [AWS Data Exports: Understanding split cost allocation data](https://docs.aws.amazon.com/cur/latest/userguide/split-cost-allocation-data.html)

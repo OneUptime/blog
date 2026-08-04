@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Docker, Dockerfile, VOLUME, BuildKit, Legacy Builder, Multi-Stage Builds, Container Storage
+Tags: Docker, Dockerfile, Volume, BuildKit, Legacy Builder, Multi-Stage Build, Container Storage
 
 Description: Explain builder-specific changes after a Dockerfile volume declaration and separate build-time image contents from the mounts that can obscure them at container runtime.
 

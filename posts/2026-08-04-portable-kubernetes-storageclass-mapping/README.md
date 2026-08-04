@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, StorageClass, CSI, Persistent Volumes, Cloud Portability, Stateful Workloads, Platform Engineering
+Tags: Kubernetes, StorageClass, CSI, Persistent Volume, Cloud Portability, Stateful Workloads, Platform Engineering
 
 Description: Keep application PVCs stable while cluster operators map storage intent to AWS EBS, Azure Disk, or Google Persistent Disk through provider-specific StorageClasses.
 
@@ -183,7 +183,7 @@ Snapshot CRDs, the snapshot controller, and a capable CSI driver must all be ava
 
 ## Protect the Naming Contract
 
-Manage StorageClasses in the platform repository, not application charts. Admission policy can restrict production PVCs to approved intent names. Version a materially changed promise instead of silently replacing it—for example, introduce `block-general-v2`, migrate claims, and then retire the old class.
+Manage StorageClasses in the platform repository, not application charts. Admission policy can restrict production PVCs to approved intent names. Version a materially changed promise instead of silently replacing it-for example, introduce `block-general-v2`, migrate claims, and then retire the old class.
 
 Keep a machine-readable catalog with owner, supported clusters, driver, performance target, backup method, and last contract-test result. The shared name becomes useful only when its meaning is governed.
 

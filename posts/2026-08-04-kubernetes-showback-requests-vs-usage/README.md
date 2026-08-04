@@ -82,7 +82,7 @@ allocated_resource_t
 
 Then integrate those interval values. Do not compare one monthly request average with one monthly usage average; bursts and scaling events can occur at different times.
 
-This model captures both capacity reservation and consumption above the request. It is often the most balanced default for shared node economics. Because the maximum is calculated per workload, the summed allocated units can exceed node capacity even with consistent telemetry—for example, when one workload underuses a large request while another uses above its request. Normalize cost shares or otherwise reconcile through a documented cost model rather than silently clipping raw data.
+This model captures both capacity reservation and consumption above the request. It is often the most balanced default for shared node economics. Because the maximum is calculated per workload, the summed allocated units can exceed node capacity even with consistent telemetry-for example, when one workload underuses a large request while another uses above its request. Normalize cost shares or otherwise reconcile through a documented cost model rather than silently clipping raw data.
 
 ## Know the AWS EKS Choices
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: NodeJS, Npm, Cache, Debugging, PackageManager
+Tags: NodeJS, npm, Cache, Debugging, PackageManager
 
 Description: Learn how to clear npm cache, understand when and why to clear it, troubleshoot cache-related issues, and manage npm cache effectively.
 

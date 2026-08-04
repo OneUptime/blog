@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: SOC 2, Empty Population, Audit Evidence, Terminations, Incident Response, Type II, Controls
+Tags: SOC 2, Empty Population, Audit Evidence, Termination, Incident Response, Type II, Controls
 
 Description: Handle an empty SOC 2 population by proving it is truly empty, separating event controls from readiness controls, and avoiding invented or backfilled evidence.
 

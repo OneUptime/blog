@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Kubernetes, GitOps, Opencost, Cost Management, FinOps, HelmRelease, Prometheus
+Tags: Flux CD, Kubernetes, GitOps, OpenCost, Cost Management, FinOps, HelmRelease, Prometheus
 
 Description: Deploy OpenCost open-source Kubernetes cost monitoring using Flux CD to track and allocate cluster spending across namespaces, teams, and workloads.
 

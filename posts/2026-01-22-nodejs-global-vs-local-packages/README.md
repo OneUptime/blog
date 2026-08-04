@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: NodeJS, Npm, PackageManager, Installation, BestPractice
+Tags: NodeJS, npm, PackageManager, Installation, BestPractice
 
 Description: Learn the difference between global and local npm packages, when to use each, how to manage them, and best practices for package installation.
 

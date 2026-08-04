@@ -95,7 +95,7 @@ Sensitive processing remains in a managed environment and the personal device ac
 
 High-privilege or regulated workflows may require a company-managed device. Document who is covered and enforce the rule technically where possible.
 
-Whichever model is selected, explain privacy boundaries to workers and obtain appropriate consent. Do not claim full device management when the organization can control only a work profile.
+Whichever model is selected, explain privacy boundaries to workers, establish an appropriate legal basis for device management and monitoring, and obtain consent where required and valid. Do not claim full device management when the organization can control only a work profile.
 
 ## Secure Remote Access and the Work Environment
 

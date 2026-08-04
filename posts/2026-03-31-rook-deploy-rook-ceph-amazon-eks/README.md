@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Rook, Ceph, Amazon eks, Kubernetes, Storage, AWS, Block Storage
+Tags: Rook, Ceph, Amazon EKS, Kubernetes, Storage, AWS, Block Storage
 
 Description: Step-by-step guide to deploying Rook-Ceph on Amazon EKS with EBS volumes as OSDs for persistent distributed storage.
 

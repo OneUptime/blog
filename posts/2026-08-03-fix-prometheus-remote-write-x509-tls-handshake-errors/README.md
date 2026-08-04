@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Prometheus, Remote Write, TLS, x509, Certificates, mTLS, Troubleshooting
+Tags: Prometheus, Remote Write, TLS, x509, Certificate, mTLS, Troubleshooting
 
 Description: Diagnose Remote Write TLS failures by validating names, chains, trust roots, SNI, client certificates, protocol versions, and every termination hop.
 

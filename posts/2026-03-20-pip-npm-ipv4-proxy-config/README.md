@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Pip, Npm, Proxy, IPv4, Developer Tool, Package Management
+Tags: pip, npm, Proxy, IPv4, Developer Tool, Package Management
 
 Description: Configure Python pip and Node.js npm package managers to route download traffic through an IPv4 HTTP or HTTPS proxy server.
 

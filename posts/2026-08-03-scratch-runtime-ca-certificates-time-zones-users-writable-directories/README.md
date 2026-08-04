@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Docker, Scratch Image, Multi-Stage Builds, CA Certificates, Time Zones, Non-Root Containers, Container Security
+Tags: Docker, Scratch Image, Multi-Stage Build, CA Certificates, Time Zone, Non-Root Containers, Container Security
 
 Description: Turn an empty scratch filesystem into an application-specific runtime by adding only the trust roots, zone data, identities, and writable paths the process actually uses.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: AWS Lambda, Knative, Containers, Serverless, Kubernetes, Cloud Portability, Event-Driven Architecture
+Tags: AWS Lambda, Knative, Container, Serverless, Kubernetes, Cloud Portability, Event-Driven Architecture
 
 Description: Decide when a generic container or Knative service reduces Lambda migration work, and separate portable business logic from event, identity, scaling, and operations adapters.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Managed Databases, PostgreSQL, Database Migration, Cloud Portability, Replication, Backup and Restore, Vendor Lock-In
+Tags: Managed Database, PostgreSQL, Database Migration, Cloud Portability, Replication, Backup and Restore, Vendor Lock-in
 
 Description: Evaluate schemas, extensions, privileges, backups, replication, integrations, and performance before adopting a managed database or calling an engine compatible.
 
@@ -42,17 +42,26 @@ SELECT n.nspname AS schema_name,
        count(*) AS objects
 FROM pg_class c
 JOIN pg_namespace n ON n.oid = c.relnamespace
-WHERE n.nspname NOT IN ('pg_catalog', 'information_schema')
+WHERE n.nspname <> 'information_schema'
+  AND n.nspname !~ '^pg_'
 GROUP BY n.nspname, c.relkind
 ORDER BY n.nspname, c.relkind;
 
-SELECT collname, collprovider, collversion
-FROM pg_collation
-WHERE collname IN (
-  SELECT DISTINCT collation_name
-  FROM information_schema.columns
-  WHERE collation_name IS NOT NULL
-);
+SELECT n.nspname AS collation_schema,
+       c.collname,
+       c.collprovider,
+       c.collversion
+FROM pg_collation c
+JOIN pg_namespace n ON n.oid = c.collnamespace
+WHERE EXISTS (
+  SELECT 1
+  FROM information_schema.columns col
+  WHERE col.collation_schema = n.nspname
+    AND col.collation_name = c.collname
+    AND col.table_schema <> 'information_schema'
+    AND col.table_schema !~ '^pg_'
+)
+ORDER BY n.nspname, c.collname;
 ```
 
 Also inspect:
@@ -85,7 +94,7 @@ Extension configuration tables deserve special attention. A logical export may i
 
 Managed databases commonly withhold true operating-system access and PostgreSQL superuser. Provider administrative roles have special restrictions.
 
-Replay administrative tasks using the target role:
+Replay administrative tasks using the target database role or provider control plane, as appropriate:
 
 - create databases, schemas, roles, and grants;
 - install and upgrade required extensions;
@@ -104,13 +113,13 @@ A provider snapshot is excellent for recovery inside that provider. It is usuall
 
 Maintain at least one exit-capable path:
 
-- logical export such as `pg_dump`/`pg_restore` for selected databases;
+- logical export and restore using `pg_dump` plus `pg_restore` for archive formats or `psql` for plain-text dumps, run for each selected database;
 - engine-native physical backup when the target explicitly supports its format and version;
 - table or object exports for services without portable physical backups;
 - schema and role exports stored separately;
 - encryption keys and restore credentials controlled outside the source failure domain.
 
-Test at production-like scale. Logical restore can be CPU, WAL, index-build, or network bound. Measure restore duration, temporary storage, connection limits, and post-restore analysis.
+Test at production-like scale. Logical restore can be CPU, WAL, index-build, or network bound. Measure restore duration, temporary storage, connection limits, and the time required for post-restore `ANALYZE`.
 
 A successful backup job is not evidence of portability. A clean target restore with application verification is.
 
@@ -132,7 +141,8 @@ SELECT n.nspname, c.relname, c.relreplident
 FROM pg_class c
 JOIN pg_namespace n ON n.oid = c.relnamespace
 WHERE c.relkind IN ('r', 'p')
-  AND n.nspname NOT IN ('pg_catalog', 'information_schema')
+  AND n.nspname <> 'information_schema'
+  AND n.nspname !~ '^pg_'
   AND NOT EXISTS (
     SELECT 1
     FROM pg_index i

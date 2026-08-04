@@ -158,7 +158,7 @@ Evidence can include access exports, rule configurations, review decisions, exce
 ## Official Documentation
 
 - [AICPA and CIMA: SOC for Service Organizations Engagements Overview](https://www.aicpa-cima.com/resources/download/soc-for-service-organizations-engagements-overview)
-- [AICPA and CIMA: Illustrative SOC 2 Report with restricted-use language](https://www.aicpa-cima.com/resources/download/illustrative-soc-2-r-report-with-illustrative-system-description)
+- [AICPA and CIMA: Illustrative SOC 2 Report with restricted-use language](https://www.aicpa-cima.com/resources/download/illustrative-soc-2-r-report-with-description-and-assertion)
 - [Microsoft: Service Trust Portal access and NDA acceptance](https://learn.microsoft.com/en-us/compliance/assurance/stp-get-started)
 - [Google Cloud: Compliance Reports Manager confidentiality terms](https://cloud.google.com/security/compliance/compliance-reports-manager)
 - [AWS: Report-specific distribution terms in AWS Artifact](https://aws.amazon.com/compliance/faq/)

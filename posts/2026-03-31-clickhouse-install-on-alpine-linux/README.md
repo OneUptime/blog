@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: ClickHouse, Alpine Linux, Container, Installation, Musl
+Tags: ClickHouse, Alpine Linux, Container, Installation, musl
 
 Description: Install ClickHouse on Alpine Linux for container and edge deployments, using the official binary or custom Docker images based on Alpine.
 

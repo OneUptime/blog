@@ -1248,6 +1248,7 @@
   "wget",
   "when Clause",
   "windowFunnel",
+  "write_relabel_configs",
   "with Statement",
   "withItems",
   "withParam",

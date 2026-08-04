@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Stateful Workloads, Data Migration, Persistent Volumes, CSI, Disaster Recovery, Cloud Portability
+Tags: Kubernetes, Stateful Workloads, Data Migration, Persistent Volume, CSI, Disaster Recovery, Cloud Portability
 
 Description: Move stateful Kubernetes workloads across providers with application-consistent backups, target-side restores, verified cutover, and an explicit rollback boundary.
 
@@ -62,7 +62,7 @@ Create the destination cluster and validate its foundations:
 
 Render workloads with replicas or writers disabled. A database operator or application must not initialize an empty target and accept production traffic before restore completes.
 
-Use a restore-specific overlay rather than editing production manifests by hand:
+Use a restore-specific overlay rather than editing production manifests by hand. The exact values are chart-specific, so verify that the chart templates or operator configuration enforce each setting:
 
 ```yaml
 # restore-values.yaml
@@ -155,11 +155,11 @@ Keep the source read-only for the approved safety period, subject to privacy and
 
 ## Rehearse with Production-Shaped Data
 
-Run the process on representative size and write rate. Measure:
+Run the process on representative size and write rate. Compare the observed recovery-point age and service interruption with the organization-defined RPO and RTO:
 
 ```text
-RPO = cutover time - latest source change present on target
-RTO = target service accepted - source service stopped
+achieved recovery-point age = source write cutoff time - latest confirmed recovery-point time present on target
+observed service interruption = target accepts production traffic - service interruption begins
 ```
 
 Include transfer throttling, source-log growth, restore parallelism, DNS behavior, and post-restore maintenance such as index statistics. A backup created successfully is only half of the test; a timed, verified restore is the evidence that matters.

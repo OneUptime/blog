@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Node.js, npm, Docker, Multi-Stage Builds, Dev Dependencies, Lifecycle Scripts, BuildKit
+Tags: Node.js, npm, Docker, Multi-Stage Build, Dev Dependencies, Lifecycle Scripts, BuildKit
 
 Description: Install once for the build, run the application build explicitly, prune development packages without lifecycle hooks, and copy a target-compatible production tree.
 

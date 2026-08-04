@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Showback, FinOps, Databases, PostgreSQL, Amazon RDS, Cost Allocation, Observability
+Tags: Showback, FinOps, Database, PostgreSQL, Amazon RDS, Cost Allocation, Observability
 
 Description: Split shared database cost with query, storage, and capacity evidence instead of using revenue as a convenient but weak proxy.
 

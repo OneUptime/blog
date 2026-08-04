@@ -134,7 +134,7 @@ This assumes a unique constraint on `consumed_message (consumer, message_id)`. T
 
 Only acknowledge after the durable transaction commits. If acknowledgment then fails, redelivery finds the inbox row and safely acknowledges without repeating the effect.
 
-Choose retention for deduplication records from maximum broker retention, dead-letter replay policy, and business replay horizon—not from a short native send-deduplication window.
+Choose retention for deduplication records from maximum broker retention, dead-letter replay policy, and business replay horizon-not from a short native send-deduplication window.
 
 ## Publish Reliably with an Outbox
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Docker, Buildx Bake, Multi-Stage Builds, Multi-Platform Images, Container Registry, CI/CD, Dockerfile
+Tags: Docker, Buildx Bake, Multi-Stage Build, Multi-Platform Images, Container Registry, CI/CD, Dockerfile
 
 Description: Map multiple named runtime stages to distinct Bake targets, share build work, preview the resolved plan, and push separate multi-platform image indexes in one invocation.
 

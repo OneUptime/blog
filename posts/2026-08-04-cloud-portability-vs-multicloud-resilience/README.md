@@ -79,7 +79,7 @@ Suppose a service has:
 - target identity and DNS runbooks;
 - quarterly target restore tests.
 
-It is credibly portable. If no target infrastructure or continuously replicated data exists, a sudden provider loss may still produce a 24-hour RPO and multi-day RTO. Portability helps strategic exit and long-horizon recovery, not seamless continuity.
+It is credibly portable. If no target infrastructure or continuously replicated data exists, a sudden provider loss may still leave up to 24 hours of data at risk and require multiple days to recover. Portability helps strategic exit and long-horizon recovery, not seamless continuity.
 
 Label it accurately: `portable to Azure, quarterly proven, backup-and-restore recovery`.
 
@@ -125,7 +125,7 @@ Independence is not binary. Document shared dependencies and decide which must b
 
 Data is the decisive difference between migration and failover.
 
-Active/passive designs should have one named writer, a measured replication position, a fencing method, and a promotion procedure. After target writes begin, failback requires reverse synchronization.
+Active/passive designs should have one authorized writer at a time, a measured replication position, a fencing method, and a promotion procedure. After target writes begin, failback requires reverse synchronization or another method of reconciling those writes.
 
 Active/active writes require an application data model that can resolve concurrency: partitioned ownership, commutative operations, conflict-free structures, or explicit conflict rules. A generic relational database copied asynchronously in both directions does not become safely active/active by configuration alone.
 
@@ -158,7 +158,7 @@ Resilience evidence:
 
 - failure detection time;
 - traffic shift and capacity behavior;
-- RPO and RTO during a fault;
+- achieved recovery point and recovery time against the RPO and RTO;
 - fencing and split-brain prevention;
 - target autonomy during source loss;
 - failback and data reconciliation;

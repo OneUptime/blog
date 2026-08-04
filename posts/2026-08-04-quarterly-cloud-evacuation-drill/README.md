@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Cloud Evacuation, Disaster Recovery, Backup and Restore, Kubernetes, Infrastructure as Code, Container Images, Operational Readiness
+Tags: Cloud Evacuation, Disaster Recovery, Backup and Restore, Kubernetes, Infrastructure as Code, Container Image, Operational Readiness
 
 Description: Prove every quarter that backups restore, images pull, IaC rebuilds, identities work, and operators can execute the cloud exit runbook within measured objectives.
 

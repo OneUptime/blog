@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: SOC 2, Type II, Vendor Risk, Audit Opinion, Control Exceptions, CUECs, Procurement
+Tags: SOC 2, Type II, Vendor Risk, Audit Opinion, Control Exception, CUECs, Procurement
 
 Description: Read a SOC 2 Type II report in the right order by checking the opinion, scope, exceptions, complementary controls, and management responses.
 

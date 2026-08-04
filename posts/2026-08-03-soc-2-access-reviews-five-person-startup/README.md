@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: SOC 2, Access Reviews, Least Privilege, Production Access, Startups, Logical Access, Trust Services Criteria
+Tags: SOC 2, Access Reviews, Least Privilege, Production Access, Startup, Logical Access, Trust Services Criteria
 
 Description: Design a credible access review for a tiny team by proving business need, effective privileges, reviewer accountability, follow-up, and compensating safeguards.
 

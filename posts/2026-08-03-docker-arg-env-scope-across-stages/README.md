@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Docker, Dockerfile, Multi-Stage Builds, ARG, ENV, BuildKit, Configuration
+Tags: Docker, Dockerfile, Multi-Stage Build, ARG, ENV, BuildKit, Configuration
 
 Description: Understand Dockerfile variable scope across unrelated and inherited stages, then choose a deliberate method for build inputs, metadata, runtime configuration, and secrets.
 

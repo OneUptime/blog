@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Python, Virtual Environments, Venv, Pip, Dependency Management
+Tags: Python, Virtual Environments, Venv, pip, Dependency Management
 
 Description: Learn how to create and manage Python virtual environments using venv, virtualenv, and conda. Isolate project dependencies and avoid version conflicts.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Docker, BuildKit, SSH, Git, Multi-Stage Builds, Build Secrets, Supply Chain Security
+Tags: Docker, BuildKit, SSH, Git, Multi-Stage Build, Build Secrets, Supply Chain Security
 
 Description: Forward an SSH agent into one BuildKit instruction, verify the Git host, pin fetched source, and keep private keys out of layers, arguments, logs, and final images.
 

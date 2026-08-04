@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Docker, Docker Compose, Multi-Stage Builds, Dockerfile, Development, Testing, Production
+Tags: Docker, Docker Compose, Multi-Stage Build, Dockerfile, Development, Testing, Production
 
 Description: Model development, test, build, and production images as named Dockerfile stages, then select the intended stage explicitly from Compose configurations.
 

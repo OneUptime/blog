@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Prometheus, Remote Write, Prometheus Receiver, Metrics, Configuration, Troubleshooting
+Tags: Prometheus, Remote Write, Prometheus Receiver, Metric, Configuration, Troubleshooting
 
 Description: Configure a Prometheus sender and receiver safely, verify the write path, preserve source identity, and avoid loops and protocol mismatches.
 

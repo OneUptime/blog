@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Docker, Dockerfile, Multi-Stage Builds, COPY, File Permissions, Container Security, BuildKit
+Tags: Docker, Dockerfile, Multi-Stage Build, COPY, File Permissions, Container Security, BuildKit
 
 Description: Apply deterministic Linux ownership and permissions while copying artifacts into a runtime stage, including numeric-user, syntax-version, and scratch-image considerations.
 
