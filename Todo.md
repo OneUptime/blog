@@ -2,26 +2,25 @@
 
 ## Showback
 
-1. Unblended, Amortized, or Net Amortized Cost: Which Number Belongs in an AWS Showback?
-2. Where Should Unused Savings Plan and Reserved Instance Commitments Land in Showback?
-3. Stop Dev Spikes from Changing Production’s Effective Rate: Stabilizing Shared-Discount Showback
-4. AWS CUR Showback SQL: Combining `Usage`, `DiscountedUsage`, `SavingsPlanCoveredUsage`, `RIFee`, and `Fee`
-5. Should Enterprise Agreement Discounts Be Centralized or Passed Through to Consuming Teams?
-6. How to Allocate Cloud Credits, Refunds, Support Plans, Marketplace Charges, and Tax in Showback
-7. Who Pays for NAT Gateway and Cross-AZ Transfer? Attribute Network Cost to the Traffic Generator
-8. Kubernetes Showback by Requests or Actual Usage? Choosing a CPU and Memory Cost Driver
-9. How to Split Idle Kubernetes Node Cost Between Headroom, Platform Overhead, and Waste
-10. EKS Split Cost Allocation Data: Joining Pod Costs to Load Balancers, EBS, and Control-Plane Charges
-11. Showback for Short-Lived Kubernetes Jobs After Pods and Metrics Have Disappeared
-12. OpenCost Across Multiple Clusters: Solving Retention, Label Consistency, and Duplicate Workload Names
-13. Untaggable Cloud Services: Build a Controlled Association Table Instead of Inventing Tags
-14. Service Catalog Says One Owner, Cloud Tags Say Another: Detecting Showback Attribution Drift
-15. Version Your Allocation Rules So Re-running Last Month Produces the Same Showback
-16. Daily Estimated Cost vs Finalized Monthly Cost: Handling Late Billing Adjustments Without Surprises
-17. How to Prove Your Showback Is Complete: Control Totals, Residual Buckets, and Double-Allocation Tests
-18. Allocating Shared Database Cost by Queries, Storage, or Connections—Not Revenue Share
-19. Hybrid HPC Showback for GPUs: Requested Hours, Wall Time, Utilization, and Energy Cost
-20. Showback for Deleted and Ephemeral Resources When the Billing Line Outlives the Asset
+1. Where Should Unused Savings Plan and Reserved Instance Commitments Land in Showback?
+2. Stop Dev Spikes from Changing Production’s Effective Rate: Stabilizing Shared-Discount Showback
+3. AWS CUR Showback SQL: Combining `Usage`, `DiscountedUsage`, `SavingsPlanCoveredUsage`, `RIFee`, and `Fee`
+4. Should Enterprise Agreement Discounts Be Centralized or Passed Through to Consuming Teams?
+5. How to Allocate Cloud Credits, Refunds, Support Plans, Marketplace Charges, and Tax in Showback
+6. Who Pays for NAT Gateway and Cross-AZ Transfer? Attribute Network Cost to the Traffic Generator
+7. Kubernetes Showback by Requests or Actual Usage? Choosing a CPU and Memory Cost Driver
+8. How to Split Idle Kubernetes Node Cost Between Headroom, Platform Overhead, and Waste
+9. EKS Split Cost Allocation Data: Joining Pod Costs to Load Balancers, EBS, and Control-Plane Charges
+10. Showback for Short-Lived Kubernetes Jobs After Pods and Metrics Have Disappeared
+11. OpenCost Across Multiple Clusters: Solving Retention, Label Consistency, and Duplicate Workload Names
+12. Untaggable Cloud Services: Build a Controlled Association Table Instead of Inventing Tags
+13. Service Catalog Says One Owner, Cloud Tags Say Another: Detecting Showback Attribution Drift
+14. Version Your Allocation Rules So Re-running Last Month Produces the Same Showback
+15. Daily Estimated Cost vs Finalized Monthly Cost: Handling Late Billing Adjustments Without Surprises
+16. How to Prove Your Showback Is Complete: Control Totals, Residual Buckets, and Double-Allocation Tests
+17. Allocating Shared Database Cost by Queries, Storage, or Connections—Not Revenue Share
+18. Hybrid HPC Showback for GPUs: Requested Hours, Wall Time, Utilization, and Energy Cost
+19. Showback for Deleted and Ephemeral Resources When the Billing Line Outlives the Asset
 
 ## Cloud Portability
 
