@@ -60,7 +60,7 @@ kubectl -n monitoring get pod prometheus-0 \
   -o jsonpath='{.spec.containers[?(@.name=="prometheus")].args}'
 ```
 
-If an operator or Helm chart owns the workload, add the argument through that controller's supported field. Editing the generated Pod will be temporary because the controller replaces it.
+If an operator or Helm chart manages the workload, add the argument through the operator's supported field or the chart's values. Container arguments cannot be changed on an existing Pod, and force-replacing only a generated Pod would not update the operator or chart's source of truth.
 
 After changing arguments, restart or roll out the destination. A Prometheus configuration reload cannot change command-line flags.
 
