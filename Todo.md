@@ -2,8 +2,7 @@
 
 ## Showback
 
-1. Hybrid HPC Showback for GPUs: Requested Hours, Wall Time, Utilization, and Energy Cost
-2. Showback for Deleted and Ephemeral Resources When the Billing Line Outlives the Asset
+1. Showback for Deleted and Ephemeral Resources When the Billing Line Outlives the Asset
 
 ## Cloud Portability
 
