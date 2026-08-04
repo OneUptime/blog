@@ -2,10 +2,9 @@
 
 ## Showback
 
-1. How to Prove Your Showback Is Complete: Control Totals, Residual Buckets, and Double-Allocation Tests
-2. Allocating Shared Database Cost by Queries, Storage, or Connections—Not Revenue Share
-3. Hybrid HPC Showback for GPUs: Requested Hours, Wall Time, Utilization, and Energy Cost
-4. Showback for Deleted and Ephemeral Resources When the Billing Line Outlives the Asset
+1. Allocating Shared Database Cost by Queries, Storage, or Connections—Not Revenue Share
+2. Hybrid HPC Showback for GPUs: Requested Hours, Wall Time, Utilization, and Energy Cost
+3. Showback for Deleted and Ephemeral Resources When the Billing Line Outlives the Asset
 
 ## Cloud Portability
 
