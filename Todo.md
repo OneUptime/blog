@@ -1,9 +1,5 @@
 # Blog Post Ideas
 
-## Showback
-
-1. Showback for Deleted and Ephemeral Resources When the Billing Line Outlives the Asset
-
 ## Cloud Portability
 
 1. Cloud-Agnostic or Cloud-Native? A Decision Matrix Based on Switching Probability and Engineering Cost
