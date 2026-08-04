@@ -12,7 +12,7 @@ Prometheus Remote Write 2.0 is not merely a faster encoding switch. It uses a di
 
 That means compatibility must be verified at both ends. A sender cannot infer that a receiver supports 2.0 from the `/api/v1/write` path, and a successful TCP or TLS connection says nothing about protobuf compatibility.
 
-As of the current Prometheus documentation, the Remote Write 1.0 specification is stable and the 2.0 specification is published as experimental release candidate `2.0-rc.4`. Adopt 2.0 only after checking the exact sender and receiver versions in use.
+As of the current Prometheus documentation, the Remote Write 1.0 specification has status `Published`, while the 2.0 specification is experimental release candidate `2.0-rc.4`. Adopt 2.0 only after checking the exact sender and receiver versions in use.
 
 ## The Short Comparison
 
@@ -22,12 +22,12 @@ As of the current Prometheus documentation, the Remote Write 1.0 specification i
 | Version header | `0.1.0` | `2.0.0` |
 | Schema declared in `Content-Type` | Usually implicit | Required `proto` parameter |
 | Label and string encoding | Repeated strings in protobuf objects | Request-wide symbol table with references |
-| Metric metadata | Separate, limited association | Metadata attached to each time series |
+| Metric metadata | Separate Prometheus extension with limited association | Metadata attached to each time series |
 | Start timestamp | Not represented by the 1.0 request | Supported per sample and histogram |
 | Native histograms | Requires the sender option | Supported by the schema; enable explicitly in Prometheus v3.13.1 |
 | Exemplars | Supported when sender enables them | Supported when sender enables them |
 | Written-object response counts | Not defined | Mandatory response headers |
-| Specification status | Stable | Experimental release candidate |
+| Specification status | Published | Experimental release candidate |
 
 The name Remote Write 1.0 can be confusing because its required HTTP version header is `0.1.0`. That is expected and should not be changed to `1.0.0`.
 
@@ -41,6 +41,7 @@ A typical 1.0 request uses:
 POST /api/v1/write HTTP/1.1
 Content-Encoding: snappy
 Content-Type: application/x-protobuf
+User-Agent: Prometheus/3.13.1
 X-Prometheus-Remote-Write-Version: 0.1.0
 ```
 
@@ -56,6 +57,7 @@ A 2.0 request identifies its schema explicitly:
 POST /api/v1/write HTTP/1.1
 Content-Encoding: snappy
 Content-Type: application/x-protobuf;proto=io.prometheus.write.v2.Request
+User-Agent: Prometheus/3.13.1
 X-Prometheus-Remote-Write-Version: 2.0.0
 ```
 
@@ -79,7 +81,7 @@ The symbol table also makes strict validation important. A reference outside the
 
 ## Metadata Is Associated with Its Series
 
-Remote Write 1.0 can carry metric metadata, but it is represented separately from the time-series samples. Association and delivery behavior have varied between implementations.
+Prometheus's `prometheus.WriteRequest` can carry metric metadata as an extension to the Remote Write 1.0 specification, but it is represented separately from the time-series samples. Association and delivery behavior have varied between implementations.
 
 Remote Write 2.0 places metadata on each time series. It can carry the metric type, help text, and unit in direct association with the label set. Samples and histograms can also carry a start timestamp, which helps systems that understand counter and histogram start semantics.
 
@@ -130,6 +132,7 @@ remote_write:
     url: https://metrics.example.net/api/v1/write
     protobuf_message: io.prometheus.write.v2.Request
     send_exemplars: true
+    send_native_histograms: true
 ```
 
 Leaving the 1.0 value explicit during a staged rollout can make intent easier to audit. The current documented allowed values are exactly:
