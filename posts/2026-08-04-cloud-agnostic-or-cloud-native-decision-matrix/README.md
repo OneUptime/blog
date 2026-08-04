@@ -8,7 +8,7 @@ Description: Decide where portability is worth its engineering cost by scoring s
 
 ---
 
-Cloud-agnostic and cloud-native are not opposite maturity levels. They are different investments. A cloud-native design deliberately uses a provider's managed capabilities; a cloud-agnostic design preserves a tested route to another environment. Either can be rational, and either can be expensive when applied indiscriminately.
+Cloud-agnostic and cloud-native are not opposite maturity levels. Cloud-native practices can be vendor-neutral and do not inherently require proprietary managed services. The investment choice addressed here is cloud-agnostic versus cloud-provider-native: a cloud-provider-native design deliberately uses a provider's managed capabilities; a cloud-agnostic design preserves a tested route to another environment. Either can be rational, and either can be expensive when applied indiscriminately.
 
 The useful question is not whether the whole company should avoid proprietary services. It is:
 
@@ -95,7 +95,7 @@ Likewise, a Kubernetes manifest using only stable APIs can still depend on:
 - node labels, instance families, or availability-zone topology;
 - an external database with provider-specific behavior.
 
-The CNCF Kubernetes conformance program improves consistency for core Kubernetes APIs. It does not certify that every add-on, cloud integration, managed service, or performance characteristic is interchangeable.
+The CNCF Kubernetes conformance program improves consistency for required Kubernetes APIs. It does not certify that every add-on, cloud integration, managed service, or performance characteristic is interchangeable.
 
 Define portability evidence in layers:
 
@@ -157,4 +157,4 @@ Review the record when traffic, regulation, contract terms, or service dependenc
 
 ## Conclusion
 
-Use cloud-native services where their measurable value exceeds the expected exit risk. Invest in cloud-agnostic paths where a switch is credible, blocking impact is high, and the path can be tested. The goal is not zero lock-in; it is deliberate, priced, observable lock-in with an exit proportional to business risk.
+Use cloud-provider-native services where their measurable value exceeds the expected exit risk. Invest in cloud-agnostic paths where a switch is credible, blocking impact is high, and the path can be tested. The goal is not zero lock-in; it is deliberate, priced, observable lock-in with an exit proportional to business risk.
