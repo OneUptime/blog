@@ -110,7 +110,7 @@ The EKS example uses the standard Amazon EBS CSI driver. EKS Auto Mode uses the 
 
 With `Immediate` binding, a volume can be provisioned before Kubernetes knows where its consuming Pod can run. For topology-constrained storage, that may create an unschedulable combination.
 
-`WaitForFirstConsumer` delays provisioning and binding until scheduling considers the Pod's node selector, affinity, taints, resource needs, and topology. Kubernetes recommends this approach for topology-aware provisioning.
+`WaitForFirstConsumer` delays provisioning and binding until scheduling considers the Pod's node selector, affinity, tolerations, resource needs, and topology, together with node taints. Kubernetes recommends this approach for topology-aware provisioning.
 
 Do not set `spec.nodeName` directly on a Pod that relies on `WaitForFirstConsumer`; doing so bypasses scheduler selection and can leave the claim pending. Use node affinity when placement is required.
 
