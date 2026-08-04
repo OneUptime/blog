@@ -2,10 +2,9 @@
 
 ## Cloud Portability
 
-1. Cloud Portability vs. Multi-Cloud Resilience: Two Different Goals, Two Different Architectures
-2. Provider-Neutral IaC Without Lowest-Common-Denominator Infrastructure: A Layered Module Pattern
-3. Measuring Vendor Lock-In: A Practical Portability Scorecard for Managed Services
-4. The Quarterly Cloud-Evacuation Drill: Proving Backups, Images, IaC, and Runbooks Actually Work
+1. Provider-Neutral IaC Without Lowest-Common-Denominator Infrastructure: A Layered Module Pattern
+2. Measuring Vendor Lock-In: A Practical Portability Scorecard for Managed Services
+3. The Quarterly Cloud-Evacuation Drill: Proving Backups, Images, IaC, and Runbooks Actually Work
 
 ## Infrastructure Automation
 
