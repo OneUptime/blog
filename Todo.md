@@ -2,12 +2,11 @@
 
 ## SOC 2
 
-1. When Is a SOC 2 Report Too Old? Coverage Dates, Bridge Letters, and Renewal Gaps
-2. How to Share a Confidential SOC 2 Report Through an NDA-Gated Trust Center
-3. A Control Failed During Your Type II Period—Will It Qualify the Report?
-4. Can GitHub Pull Requests Prove Change Management? Building the Evidence Auditors Actually Sample
-5. SOC 2 for Contractors, BYOD, and Remote Teams: Background Checks, Device Controls, and Offboarding
-6. The Real Cost of SOC 2: Separate Audit, Readiness, Tooling, Pen Test, and Remediation Quotes
+1. How to Share a Confidential SOC 2 Report Through an NDA-Gated Trust Center
+2. A Control Failed During Your Type II Period—Will It Qualify the Report?
+3. Can GitHub Pull Requests Prove Change Management? Building the Evidence Auditors Actually Sample
+4. SOC 2 for Contractors, BYOD, and Remote Teams: Background Checks, Device Controls, and Offboarding
+5. The Real Cost of SOC 2: Separate Audit, Readiness, Tooling, Pen Test, and Remediation Quotes
 
 ## Showback
 
