@@ -56,7 +56,7 @@ Platform capacity includes observable workloads such as:
 
 Kubernetes Node Allocatable represents resources available to Pods after configured reservations. Those reservations can consume paid node capacity even though no tenant Pod receives it.
 
-Classify platform Pods with the same CPU and memory method as tenant Pods. Model non-Pod reserved capacity from node capacity and allocatable inventory only if the selected source has not already placed it in unused cost. Record the method because cloud billing does not label a portion of an EC2 instance as `kube-reserved`.
+Classify platform Pods with the same CPU and memory method as tenant Pods. Model non-Pod reserved capacity from node capacity and allocatable inventory. If the selected source has already placed that capacity in unused cost, reclassify the matching amount out of unused rather than adding it as another cost. Record the method because cloud billing does not label a portion of an EC2 instance as `kube-reserved`.
 
 Avoid rules such as `namespace starts with kube = free`. Platform cost is still part of total cluster economics even if it is centralized.
 
@@ -105,14 +105,16 @@ approver
 policy_version
 ```
 
-Convert approved buffer units to cost with the same CPU, memory, and accelerator rates used for the asset. Then cap intentional headroom at the actual residual:
+Convert approved buffer units to cost with the same CPU, memory, and accelerator rates used for the asset. After setting aside any unresolved amount, cap intentional headroom at the classifiable residual:
 
 ```text
-intentional_headroom_cost
-  = min(raw_unallocated_cost, approved_buffer_cost)
+classifiable_residual_cost
+  = raw_unallocated_cost - unresolved_cost
 
-waste_cost
-  = raw_unallocated_cost - intentional_headroom_cost
+intentional_headroom_cost
+  = min(classifiable_residual_cost, approved_buffer_cost)
+
+waste_cost = classifiable_residual_cost - intentional_headroom_cost
 ```
 
 Apply the minimum per resource component and interval, not just at a monthly dollar total. Otherwise excess memory could incorrectly satisfy a CPU failover requirement.
@@ -148,7 +150,7 @@ Reasonable defaults are:
 | Intentional headroom | Platform or resilience budget | requested baseline, failure-domain footprint, or equal pool share |
 | Waste | Capacity owner | causation analysis before distribution |
 
-The platform may choose to show all shared categories centrally. If it distributes them, OpenCost supports proportional shared and idle allocation, but that behavior is a choice. OpenCost's Allocation API leaves idle separate by default and can distribute it with `shareIdle=true`.
+The platform may choose to show all shared categories centrally. If it distributes them, OpenCost supports proportional shared and idle allocation, but that behavior is a choice. OpenCost's Allocation API omits idle by default (`includeIdle=false`). When idle is included, it remains a separate `__idle__` allocation unless it is distributed with `shareIdle=true`.
 
 Do not automatically distribute waste in proportion to direct cost and then tell the largest tenant it caused the waste. The cause may be node-pool fragmentation, topology constraints, DaemonSet footprint, autoscaler settings, or an approved minimum node count.
 
@@ -172,7 +174,7 @@ Tie actions to categories: rightsize tenant requests, reduce DaemonSet footprint
 - Platform Pods are not also included in tenant cost.
 - Node reservations are not added when the source already treats them as unused.
 - Headroom never exceeds the actual resource-specific residual.
-- CPU headroom cannot offset memory waste or vice versa without an explicit cost conversion.
+- CPU headroom cannot offset memory waste or vice versa.
 - Negative residuals fail the run or enter an exception queue.
 - Distribution weights sum to one and retain the original category.
 - AWS split cost and OpenCost idle are not added together as independent charges.
