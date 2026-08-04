@@ -2,15 +2,14 @@
 
 ## SOC 2
 
-1. How Buyers Read a SOC 2 Type II Report: Opinion, Scope, Exceptions, CUECs, and Management Responses
-2. How to Vet a SOC 2 Auditor: CPA Licensure, Peer Review, Sampling Quality, and Independence
-3. SOC 2 Readiness Consultant vs CPA Auditor: Where Advice Ends and Independence Begins
-4. When Is a SOC 2 Report Too Old? Coverage Dates, Bridge Letters, and Renewal Gaps
-5. How to Share a Confidential SOC 2 Report Through an NDA-Gated Trust Center
-6. A Control Failed During Your Type II Period—Will It Qualify the Report?
-7. Can GitHub Pull Requests Prove Change Management? Building the Evidence Auditors Actually Sample
-8. SOC 2 for Contractors, BYOD, and Remote Teams: Background Checks, Device Controls, and Offboarding
-9. The Real Cost of SOC 2: Separate Audit, Readiness, Tooling, Pen Test, and Remediation Quotes
+1. How to Vet a SOC 2 Auditor: CPA Licensure, Peer Review, Sampling Quality, and Independence
+2. SOC 2 Readiness Consultant vs CPA Auditor: Where Advice Ends and Independence Begins
+3. When Is a SOC 2 Report Too Old? Coverage Dates, Bridge Letters, and Renewal Gaps
+4. How to Share a Confidential SOC 2 Report Through an NDA-Gated Trust Center
+5. A Control Failed During Your Type II Period—Will It Qualify the Report?
+6. Can GitHub Pull Requests Prove Change Management? Building the Evidence Auditors Actually Sample
+7. SOC 2 for Contractors, BYOD, and Remote Teams: Background Checks, Device Controls, and Offboarding
+8. The Real Cost of SOC 2: Separate Audit, Readiness, Tooling, Pen Test, and Remediation Quotes
 
 ## Showback
 
