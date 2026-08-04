@@ -186,7 +186,7 @@ Prometheus has several similarly named stages:
 | `metric_relabel_configs` | Samples from one scrape job before ingestion | No |
 | `write_relabel_configs` | One Remote Write destination after ingestion and external labels | Yes |
 
-Use `metric_relabel_configs` when the metric should never consume local storage. Use `write_relabel_configs` when local retention is wanted but outbound transfer is not. Use target relabeling to select or transform scrape targets, not metric families.
+Use `metric_relabel_configs` when a scraped metric should never consume local storage. Metric relabeling does not apply to automatically generated series such as `up`. Use `write_relabel_configs` when local retention is wanted but outbound transfer is not. Use target relabeling to select or transform scrape targets, not metric families.
 
 ## Validate the Filter
 
