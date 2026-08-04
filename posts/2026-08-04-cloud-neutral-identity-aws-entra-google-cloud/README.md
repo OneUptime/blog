@@ -139,14 +139,14 @@ This keeps differences visible. For example, a built-in role may be too broad in
 
 ## Stabilize the Application Credential Boundary
 
-Applications should rely on each provider SDK's default credential chain or on a narrow internal client abstraction. Do not read static keys from custom environment variables.
+Applications should rely on each provider SDK's supported workload credential mechanism or on a narrow internal client abstraction. Do not read static keys from custom environment variables. In Azure production deployments, prefer the specific `WorkloadIdentityCredential` or `ManagedIdentityCredential` that matches the hosting model instead of an unconstrained `DefaultAzureCredential` chain.
 
 For provider-specific resource calls, an adapter can encapsulate the SDK:
 
 ```text
 ObjectReader.read(object_key)
   AWS adapter    -> default AWS credential chain -> S3
-  Azure adapter  -> DefaultAzureCredential       -> Blob Storage
+  Azure adapter  -> selected Azure credential    -> Blob Storage
   Google adapter -> application default creds    -> Cloud Storage
 ```
 
@@ -178,9 +178,9 @@ For each workload and target, verify:
 5. a neighboring tenant or resource is denied;
 6. node or instance credentials are inaccessible where isolation is required;
 7. audit logs identify the workload with useful context;
-8. removing the trust or role promptly removes access.
+8. removing provider permissions stops authorized calls after propagation, and removing federation trust prevents fresh credential issuance.
 
-Record provider propagation delays and token caching. A revocation test can appear to fail until an already issued token expires; design emergency containment with that reality in mind.
+Record provider propagation delays and token caching. Removing federation trust does not necessarily revoke cloud credentials that were already issued, while permission-policy changes can affect existing credentials after propagation. Test credential issuance and resource access separately, and design emergency containment for each provider's actual revocation behavior.
 
 ## Official Documentation
 
