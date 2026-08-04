@@ -26,6 +26,7 @@ This Dockerfile demonstrates all four:
 ```dockerfile
 # syntax=docker/dockerfile:1
 ARG NODE_VERSION=24
+ARG BUILD_REVISION
 
 FROM node:${NODE_VERSION}-bookworm-slim AS base
 ARG BUILD_REVISION
