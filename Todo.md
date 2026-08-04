@@ -2,12 +2,11 @@
 
 ## Showback
 
-1. Version Your Allocation Rules So Re-running Last Month Produces the Same Showback
-2. Daily Estimated Cost vs Finalized Monthly Cost: Handling Late Billing Adjustments Without Surprises
-3. How to Prove Your Showback Is Complete: Control Totals, Residual Buckets, and Double-Allocation Tests
-4. Allocating Shared Database Cost by Queries, Storage, or Connections—Not Revenue Share
-5. Hybrid HPC Showback for GPUs: Requested Hours, Wall Time, Utilization, and Energy Cost
-6. Showback for Deleted and Ephemeral Resources When the Billing Line Outlives the Asset
+1. Daily Estimated Cost vs Finalized Monthly Cost: Handling Late Billing Adjustments Without Surprises
+2. How to Prove Your Showback Is Complete: Control Totals, Residual Buckets, and Double-Allocation Tests
+3. Allocating Shared Database Cost by Queries, Storage, or Connections—Not Revenue Share
+4. Hybrid HPC Showback for GPUs: Requested Hours, Wall Time, Utilization, and Energy Cost
+5. Showback for Deleted and Ephemeral Resources When the Billing Line Outlives the Asset
 
 ## Cloud Portability
 
