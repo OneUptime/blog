@@ -2821,3 +2821,233 @@
 18. How Kubernetes Selects Preemption Victims When Several Nodes Could Fit the Preemptor
 19. Why Kubernetes Sometimes Preempts Higher-Priority Victims While Lower-Priority Pods Keep Running
 20. Testing Kubernetes 1.36 Workload-Aware Preemption for Gang-Scheduled PodGroups
+
+## Kubebuilder
+
+1. How to Watch a Referenced Resource You Do Not Own in Kubebuilder with `EnqueueRequestsFromMapFunc`
+2. How to Watch an External CRD in Kubebuilder Without Importing Its Go Types
+3. Why Kubebuilder Cannot Tell You Which Event Triggered Reconcile—and How to Model State Transitions Instead
+4. How to Stop Status Updates from Retriggering an Endless Kubebuilder Reconcile Loop
+5. How to Filter Noisy Updates and Excluded Namespaces with Kubebuilder Predicates
+6. Debugging Kubebuilder `Forbidden` Watch Errors: From RBAC Markers to the Deployed ClusterRole
+7. How to Fix `kubebuilder create webhook requires a previously created API` by Repairing the PROJECT File
+8. How to Configure a Kubebuilder Webhook for the `/status` Subresource Without Double-Handling Admission Requests
+9. Why a Redeployed Kubebuilder Webhook Still Uses Old Validation Code: Image, Service, and Webhook Checks
+10. How to Enforce Immutable CRD Fields in Kubebuilder with `ValidateUpdate`
+11. How to Test Kubebuilder Validation Markers When the Fake Client Does Not Run API-Server Validation
+12. Fixing `multiple hubs defined for group-kind` in Kubebuilder Conversion Webhooks
+13. How to Handle Non-Reversible Field Changes in Kubebuilder Conversion Webhooks Without Breaking Reads
+14. How to Clear CRD `status.storedVersions` Before Removing an API Version from a Kubebuilder Operator
+15. Why Kubebuilder envtest Never Schedules Pods or Garbage-Collects Children—and What to Assert Instead
+16. How to Make Kubebuilder envtest Work in CI and Air-Gapped Builds with `setup-envtest` and `KUBEBUILDER_ASSETS`
+17. How to Index Referenced Object Names in Kubebuilder for Fast Reverse Lookups
+18. How to Scope a Kubebuilder Manager Cache to Selected Namespaces Without Missing Watched Objects
+19. How to Record Kubernetes Events from Kubebuilder Without Emitting Duplicates on Every Reconcile
+20. How to Upgrade a Kubebuilder go/v3 Project to go/v4 While Preserving Controllers, Webhooks, and Kustomize Overlays
+
+## HugePages
+
+1. Explicit HugeTLB vs Transparent Huge Pages: How to Choose for Latency, Capacity Guarantees, and Operational Control
+2. How to Diagnose `mmap(MAP_HUGETLB)` ENOMEM When Linux Still Has Free RAM
+3. How to Reserve 1 GiB HugeTLB Pages at Boot When Runtime Allocation Fails from Fragmentation
+4. How to Run 2 MiB and 1 GiB Huge Page Pools Side by Side with Separate hugetlbfs Mounts
+5. How to Reserve Huge Pages on Specific NUMA Nodes and Verify the Application Uses the Right Socket
+6. Where Did My Huge Pages Go? Finding the Processes and Mappings Consuming the HugeTLB Pool
+7. How to Interpret `HugePages_Free`, `HugePages_Rsvd`, `HugePages_Surp`, and `Hugetlb` Without Double-Counting Memory
+8. How to Verify Whether a Linux Allocation Actually Uses THP with `smaps`, `numa_maps`, and `vmstat`
+9. How to Fix `mmap` SIGBUS After a HugeTLB Mapping Succeeds but the Page Fault Cannot Be Backed
+10. How to Request Non-Default Huge Page Sizes with `MAP_HUGE_*` for `mmap` and `SHM_HUGE_*` for `shmget`
+11. How to Explain THP Allocation Stalls with `compact_stall`, `thp_fault_alloc`, and the Defrag Policy
+12. Why `MADV_HUGEPAGE` Does Not Collapse Your Mapping: Alignment, Fragmentation, and `khugepaged` Diagnostics
+13. How to Use `MADV_COLLAPSE` and Multi-Size THP Without Assuming `never` Disables Every Collapse
+14. How to Fix a Kubernetes Pod Stuck Pending After Huge Pages Were Added to the Node
+15. How to Debug Huge Page ENOMEM or SIGBUS Inside a Kubernetes Pod When the Host Pool Is Free
+16. How to Use Kubernetes Huge Pages with hugetlbfs `mmap`, `SHM_HUGETLB` `shmget`, and Multiple Page Sizes
+17. How to Enforce Huge Page Capacity with Kubernetes ResourceQuota and Per-Container cgroup Limits
+18. How to Fix DPDK `No Free Hugepages Reported` by Checking Page Size, NUMA, Mounts, and Permissions
+19. How to Size DPDK Huge Pages Per NUMA Socket Without Reserving Unusable Memory
+20. Why a Huge-Page-Backed KVM Guest Will Not Start: NUMA Cell Capacity, Memlock, and Libvirt XML Checks
+
+## DB2
+
+1. How to Diagnose Db2 `SQL0964C` by Finding the Transaction Holding the Active Log
+2. How to Distinguish Db2 Deadlocks from Lock Timeouts with `SQL0911N` Reason Codes and Event Monitors
+3. How to Find the Db2 Session and SQL Statement Blocking a Table with `MON_GET_APPL_LOCKWAIT`
+4. How to Take a Recoverable Online Db2 Backup with `INCLUDE LOGS` and Validate It with `db2ckbkp`
+5. How to Restore a Db2 Online Backup with `LOGTARGET` and Roll Forward Through an `OVERFLOW LOG PATH`
+6. How to Identify Exactly Which Db2 Archive Logs a Backup Needs Before Moving It Off-Host
+7. How to Perform a Db2 Redirected Restore to New Storage Paths with a Generated CLP Script
+8. How to Clone a Db2 LUW Database Under a New Name Without Overwriting the Source
+9. How to Restore Db2 to a Point in Time—and Know When You Must Start Over from the Backup
+10. How to Build a Db2 HADR Pair from Backup to `PEER` State
+11. How to Diagnose Db2 HADR Stuck in `REMOTE_CATCHUP` or `DISCONNECTED` with `MON_GET_HADR`
+12. Planned Db2 HADR Takeover vs `BY FORCE`: How to Switch Roles Without Split-Brain
+13. How to Apply Db2 Fix Packs with an HADR Rolling Update and Controlled Role Switch
+14. How to Find and Explain Long-Running Db2 SQL with Monitor Functions, `db2expln`, and `db2exfmt`
+15. How to Collect Db2 RUNSTATS for Skewed Columns and Refresh Cached Access Plans Safely
+16. When to Run Db2 REORG, RUNSTATS, REBIND, and Package-Cache Flushes—and in What Order
+17. Why Db2 Disk Space Does Not Shrink After DELETE and REORG—and How to Reclaim the Tablespace
+18. How to Recover a Db2 Table from REORG-Pending or LOAD-Pending State Without Guesswork
+19. How to Monitor Db2 BACKUP, RESTORE, REORG, and RUNSTATS Progress with `MON_GET_UTILITY`
+20. How to Configure Db2 JDBC TLS and Diagnose Truststore, Hostname, and Protocol Failures
+
+## Kube-bench
+
+1. How to Run kube-bench Once per Kubernetes Node and Preserve Node-Attributed Results
+2. How to Fix kube-bench Jobs Stuck in Pending by Correcting Control-Plane Selectors and Tolerations
+3. How to Fix kube-bench HostPath Mount Failures on Read-Only or Managed Nodes
+4. How to Fix kube-bench “Missing version_mapping” and Config-Directory Errors After Binary Installation
+5. How to Select the Correct kube-bench CIS Profile for EKS, AKS, GKE, K3s, RKE2, and MicroK8s
+6. How to Override kube-bench Kubernetes Version Detection Without Running the Wrong Benchmark
+7. How to Customize kube-bench Component Paths for Nonstandard Kubernetes Distributions
+8. How to Interpret kube-bench PASS, FAIL, WARN, and INFO Results—and Identify Manual Checks
+9. How to Re-run Only Failed kube-bench Checks and Groups During Remediation
+10. How to Record Approved kube-bench Exceptions with `--skip` Without Hiding New Drift
+11. How to Gate CI on kube-bench Failures with JUnit Output and Deterministic Exit Codes
+12. How to Parse kube-bench JSON and Track CIS Compliance Drift Between Cluster Releases
+13. How to Schedule kube-bench as a CronJob Without Leaving Privileged Scanner Pods Running
+14. How to Send kube-bench Findings to AWS Security Hub with IRSA and Least-Privilege IAM
+15. How to Run kube-bench in an Air-Gapped Cluster with Pinned Images and Versioned CIS Configs
+16. How to Debug kube-bench Checks with `--include-test-output` and Verbose Logs
+17. How to Audit Managed Kubernetes When kube-bench Cannot Access the Control Plane
+18. How to Roll Out kube-bench Kubelet Remediations Without Draining an Entire Production Node Pool
+19. How to Validate a Custom kube-bench Control YAML Before Rolling It Out Cluster-Wide
+20. How to Fix kube-bench `exec format error` by Matching the Image Architecture to the Node
+
+## CyberArk
+
+1. How to Diagnose CyberArk CPM When Verify Succeeds but Password Change Fails
+2. How to Configure a CyberArk Reconcile Account Without Giving It Excessive Privileges
+3. How to Rotate Windows Service, Scheduled Task, and IIS App Pool Credentials with CyberArk Dependencies
+4. How to Troubleshoot CyberArk CPM Rotations That Are Skipped Without an Error
+5. How to Rotate Cross-Domain Windows Accounts with CyberArk CPM: DNS, Ports, and Reconcile Accounts
+6. How to Build and Debug a Custom CyberArk CPM Plug-In for an Unsupported Target
+7. How to Troubleshoot CyberArk PSM RDP Failures Caused by NLA, Connection Components, or Load Balancers
+8. How to Diagnose CyberArk PSM for SSH (PSMP) Authentication Failures One Hop at a Time
+9. How to Repair CyberArk PVWA or CPM Connectivity After a Component Credential File Breaks
+10. How to Fix CyberArk PVWA “Failed to Contact Domain” Errors During LDAPS Integration
+11. How to Upgrade CyberArk PAM Self-Hosted in the Correct Component Order with a Tested Rollback
+12. How to Test CyberArk DR Vault Failover Without Losing Password Operations or PSM Recordings
+13. How to Bulk-Onboard CyberArk Accounts Idempotently with the PVWA REST API
+14. How to Manage CyberArk Safes and Membership Permissions as Code with the REST API
+15. How to Handle CyberArk REST API Tokens, Pagination, and 401/403/409/429 Errors Safely
+16. How to Fix CyberArk Account PATCH Requests That Return 200 but Do Not Update `secretManagement`
+17. How to Retrieve Application Secrets from CyberArk Without Creating a Secret Zero
+18. How to Rotate CyberArk Dual Accounts Without Downtime During Application Cutover
+19. How to Deploy CyberArk Secrets Provider for Kubernetes with Least-Privilege Conjur Policy and RBAC
+20. How to Troubleshoot CyberArk Conjur Kubernetes Authentication: TLS, CSR, ServiceAccount, and Token Volume Failures
+
+## Horizontal Autoscaling
+
+1. How to Read HPA AbleToScale, ScalingActive, and ScalingLimited Conditions During an Incident
+2. How to Recalculate an HPA Replica Decision by Hand from Current Metrics and Resource Requests
+3. How to Choose Between Utilization, AverageValue, and Value Targets in an HPA
+4. How to Prevent HPA Startup CPU Spikes from Triggering Premature Scale-Out
+5. How to Tune HPA for Slow-Starting Pods Before Traffic Overruns Existing Replicas
+6. How to Configure Per-Direction HPA Tolerance in Kubernetes 1.35 to Filter Metric Noise
+7. How to Debug HPA Scale-Down When One of Several Metrics Is Missing or Still Above Target
+8. How to Detect Stale External Metrics That Pin an HPA at `maxReplicas`
+9. How to Avoid HPA Feedback Loops When Scaling on Per-Pod Request Concurrency
+10. How to Prevent Two HPAs from Fighting Over the Same Workload
+11. How to Migrate HPA Manifests from `autoscaling/v2beta2` to `autoscaling/v2` Without Behavior Drift
+12. How to Keep HPA Replica Calculations Stable During a Deployment Rolling Update
+13. How to Tune the HPA Controller Sync Period Without Overloading the Metrics Pipeline
+14. How to Alert When an HPA Is Saturated at `maxReplicas` Before Latency Breaches Its SLO
+15. How to Stop CPU Limits and Throttling from Distorting HPA Scaling Signals
+16. How to Prevent Per-Pod Metric Averages from Hiding a Hot Shard
+17. How to Handle Missing Metrics from New, Unready, and Terminating Pods in HPA Decisions
+18. How to Drain Long-Lived Connections Safely When HPA Scales Down
+19. How to Make HPA Decisions Observable with Controller Metrics, Events, and Recommendation Dashboards
+20. How to Detect and Prevent Manual Replica Overrides on HPA-Controlled Workloads
+
+## Multus
+
+1. How to Debug a Pod Stuck in ContainerCreating After Multus Fails to Add a Secondary Network
+2. How to Set a Multus Secondary Interface as the Pod’s Default Route Without Breaking Cluster DNS
+3. How to Allocate Cluster-Wide Multus IPs with Whereabouts and Reconcile Stale or Duplicate Leases
+4. How to Attach NetworkAttachmentDefinitions Across Namespaces Safely in Multus
+5. How to Choose Macvlan vs IPvlan for Multus on Clouds That Reject Multiple MAC Addresses
+6. How to Restore Multus Networking After a Node Reboot When multus-shim Cannot Find the Pod
+7. How to Diagnose Multus Macvlan Pods That Communicate on One Node but Not Across Nodes
+8. How to Configure Delegated CNIs for Multus Nodes with Different Host Interface Names
+9. How to Request Custom Interface Names, MAC Addresses, and IPs in Multus—and Verify Delegated CNI Support
+10. How to Read and Validate the Multus network-status Annotation for Multi-Network Pods
+11. How to Run the Multus DHCP Daemon and Troubleshoot Pods That Never Receive a Lease
+12. How to Combine Cilium as the Primary CNI with Multus Without Losing Secondary Interfaces
+13. How to Enforce NetworkPolicy on Multus Secondary Interfaces: Capabilities and Gaps
+14. How to Configure Source-Based Routing for Multus Pods with Two Default Gateways
+15. How to Diagnose MTU Mismatches Across Multus, VLAN, and Overlay Interfaces Before They Cause Silent Packet Loss
+16. How to Migrate Multus from the Thin Plugin to the Thick Plugin and Verify the Daemon Socket
+17. How to Scrape Multus Thick-Plugin Metrics and Alert on CNI ADD and DEL Failures
+18. How to Clean Up Orphaned Multus Interfaces and CNI Cache After Failed Pod Deletion
+19. How to Chain SR-IOV with Multus and Match Device-Plugin Resources to NetworkAttachmentDefinitions
+20. How to Roll Out Multus Upgrades Without Breaking Existing Pods or the Primary CNI
+
+## NGINX
+
+1. How to Fix NGINX Upstream TLS Name Mismatches with proxy_ssl_name and SNI
+2. How to Configure NGINX as an mTLS Client to an HTTPS Upstream with the Correct Certificate Chain
+3. How to Re-Resolve DNS for NGINX Upstream Servers Without Reloading Workers
+4. How to Prevent Cache Stampedes in NGINX with proxy_cache_lock and Stale-While-Revalidate
+5. How to Revalidate Expired NGINX Cache Entries with ETag and Last-Modified Instead of Refetching Bodies
+6. How to Cache Large Range-Requested Files with the NGINX Slice Module Without Breaking Cache Keys
+7. How to Bound NGINX Graceful Reloads When Old Workers Hold WebSocket and SSE Connections
+8. How to Test NGINX for HTTP Request Smuggling When Frontend and Upstream Parsers Disagree
+9. How to Pass OAuth Identity Headers from auth_request Subrequests to NGINX Upstreams
+10. How to Cache NGINX auth_request Results Without Reusing One User’s Authorization for Another
+11. How to Authenticate POST Requests with NGINX auth_request Without Losing or Duplicating the Request Body
+12. How to Route NGINX Stream Traffic by ALPN Without Terminating TLS
+13. How to Debug Empty ssl_preread_server_name Values in NGINX Stream Routing
+14. How to Proxy Bidirectional gRPC Streams Through NGINX Without Premature Half-Closes
+15. How to Set Safe NGINX Retry Rules for gRPC Without Replaying Non-Idempotent Calls
+16. How to Stop NGINX from Timing Out Idle gRPC Streams Without Masking Dead Backends
+17. How to Keep NGINX Upstream Connections Reusable When Backends Are Discovered Through DNS
+18. How to Prevent NGINX njs Fetch Handlers from Failing on DNS, TLS, or Subrequest Errors
+19. How to Validate JWTs Against Rotating JWKS in NGINX njs Without Fetching Keys per Request
+20. How to Debug NGINX Cache Bypass and No-Cache Decisions with $upstream_cache_status
+
+## Renovate
+
+1. How to Debug a Renovate Dependency That Is Detected but Never Gets a Pull Request
+2. How to Trace How Renovate Merges Matching packageRules from Presets and Repository Config
+3. How to Group Renovate Updates by Package Manager Without Collapsing Every Dependency into One PR
+4. How to Disable All Renovate Updates Except an Allowlist Without Matching updateType Too Early
+5. How to Build a Renovate Regex Custom Manager for Versions Embedded in YAML and Shell Scripts
+6. How to Debug a Renovate Custom Manager That Matches Files but Extracts Zero Dependencies
+7. How to Handle Date-Based and Vendor-Suffixed Docker Tags with Renovate Regex Versioning
+8. How to Pin Docker Images by Tag and Digest with Renovate Without Switching Image Variants
+9. How to Authenticate Self-Hosted Renovate to Azure Artifacts npm Registries with hostRules
+10. How to Configure Renovate for Private Go Modules on GitHub or GitLab Without Leaking Tokens
+11. How to Make Renovate Lockfile Updates Use the Same npm, Python, or Poetry Version as CI
+12. How to Choose Between Renovate lockFileMaintenance and rangeStrategy=update-lockfile
+13. How to Gate Major Renovate Updates Through the Dependency Dashboard While Shipping Security Fixes Immediately
+14. How to Delay Renovate PRs Until a Release Has Aged Without Blocking Vulnerability Remediation
+15. How to Fix Renovate Automerge When Required Checks Never Run on renovate/* Branches
+16. How Renovate Branch Automerge Handles Failing CI—and When Protected Branches Require PR Automerge
+17. How to Run postUpgradeTasks in Self-Hosted Renovate and Commit Generated Files Safely
+18. How to Migrate Deprecated Renovate Configuration with Automated Config-Migration PRs
+19. How to Persist Renovate Repository and Package-Manager Caches Across Ephemeral CI Runs
+20. How to Scale Self-Hosted Renovate Across Thousands of Repositories Without Hitting API or PR Rate Limits
+
+## Garbage Collection
+
+1. How to Read Unified JVM GC Logs and Correlate Stop-the-World Pauses with p99 Latency
+2. How to Diagnose G1 “to-space exhausted” Events Before They Become Full GCs
+3. How to Find and Reduce G1 Humongous Allocations That Fragment the Old Generation
+4. How to Tune G1 IHOP and G1ReservePercent When Concurrent Marking Finishes Too Late
+5. How to Distinguish a JVM GC Pause from a Safepoint, CPU Starvation, or Host Swapping
+6. How to Migrate a Latency-Sensitive JVM Service from G1 to Generational ZGC and Benchmark the Tradeoff
+7. How to Stop System.gc() from Triggering Full JVM Collections Without Breaking Direct-Buffer Cleanup
+8. How to Investigate Long G1 Reference-Processing Pauses Caused by Weak, Soft, and Phantom References
+9. How to Set GOGC and GOMEMLIMIT Together for a Go Service Running Under a Kubernetes Memory Limit
+10. How to Diagnose Go GC Thrashing When GOMEMLIMIT Is Below the Live Heap
+11. How to Explain High Go RSS When pprof Shows a Small Heap: Scavenging, Stacks, and cgo
+12. How to Diagnose Go GC Assist Latency with Runtime Traces and GC Limiter Metrics
+13. How to Capture a .NET GC Dump in Production While Minimizing OOM and Long Gen 2 Pause Risk
+14. How to Diagnose .NET Large Object Heap Fragmentation with dotnet-counters, dotnet-trace, and gcdump
+15. How to Reduce .NET Pinned Object Heap Pressure in High-Throughput Socket Services
+16. How to Choose Server GC vs Workstation GC for .NET Services in CPU-Limited Containers
+17. How to Tune .NET High-Memory Thresholds and Heap Hard Limits Inside Containers
+18. How to Debug Python Reference Cycles with gc.DEBUG_SAVEALL Without Mistaking Collectable Objects for Leaks
+19. How to Tune CPython’s Cyclic GC Thresholds After Python 3.14.5 Restored Generation 1
+20. How to Capture Near-Heap-Limit V8 Snapshots Before Node.js Crashes from OOM
