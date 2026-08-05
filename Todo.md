@@ -31,23 +31,22 @@
 
 1. Resetting a Databricks Structured Streaming Checkpoint: Source, Sink, and Offset Checks to Avoid Data Loss
 2. Do Delta OPTIMIZE and VACUUM Invalidate Streaming Checkpoints? A Transaction-Log Walkthrough
-3. Migrating `hive_metastore` Tables to Unity Catalog: Finding Hard-Coded Names, DBFS Mounts, and Cross-Metastore Views
-4. Unity Catalog Compute Access Modes Explained Through the Errors They Cause: RDDs, SparkContext, UDFs, and Libraries
-5. Volumes, External Locations, or Managed Tables? Choosing the Right Unity Catalog Storage Abstraction
-6. How to Preserve dbt Models and Grants When Moving to Unity Catalog’s Three-Level Namespace
-7. Why Schema Migrations Should Not Run on Every Databricks Bundle Deploy
-8. One Databricks Bundle per Service or One Monorepo? Scaling Deployments and Shared Libraries
-9. Making Databricks CI Fail on `SUCCESS_WITH_FAILURES` Instead of Shipping a Broken Workflow
-10. Databricks Job Parameters vs Task Parameters vs Widgets: Precedence, Defaults, and Debugging
-11. How to Capture Databricks Job Run IDs and Parameters Without Fragile Notebook Context APIs
-12. Databricks Cost per Run: Combining DBUs, Cloud VM Charges, Startup Time, and Runtime
-13. Why the Cheapest Databricks Instance per Hour Can Cost More per Job
-14. When Databricks Instance Pools Reduce Cold Starts—and When Idle Capacity Costs More Than It Saves
-15. Using Spot Workers Safely in Databricks Jobs: Fallback, Retry, and Driver Placement Patterns
-16. Serverless SQL Warehouse, Pro Warehouse, or Job Compute? A Cost-and-Concurrency Decision Guide
-17. Diagnosing High ODBC Latency in Databricks SQL: Startup, Queueing, Fetch Size, and Result Caching
-18. Azure Key Vault Secret Scopes and Unity Catalog Service Credentials: Use Cases, Governance, and Private Endpoint Trade-Offs
-19. Upgrading Databricks Runtime 10.x to 15.4 LTS: A Compatibility Test Matrix for Python, Scala, Libraries, and Unity Catalog
+3. Unity Catalog Compute Access Modes Explained Through the Errors They Cause: RDDs, SparkContext, UDFs, and Libraries
+4. Volumes, External Locations, or Managed Tables? Choosing the Right Unity Catalog Storage Abstraction
+5. How to Preserve dbt Models and Grants When Moving to Unity Catalog’s Three-Level Namespace
+6. Why Schema Migrations Should Not Run on Every Databricks Bundle Deploy
+7. One Databricks Bundle per Service or One Monorepo? Scaling Deployments and Shared Libraries
+8. Making Databricks CI Fail on `SUCCESS_WITH_FAILURES` Instead of Shipping a Broken Workflow
+9. Databricks Job Parameters vs Task Parameters vs Widgets: Precedence, Defaults, and Debugging
+10. How to Capture Databricks Job Run IDs and Parameters Without Fragile Notebook Context APIs
+11. Databricks Cost per Run: Combining DBUs, Cloud VM Charges, Startup Time, and Runtime
+12. Why the Cheapest Databricks Instance per Hour Can Cost More per Job
+13. When Databricks Instance Pools Reduce Cold Starts—and When Idle Capacity Costs More Than It Saves
+14. Using Spot Workers Safely in Databricks Jobs: Fallback, Retry, and Driver Placement Patterns
+15. Serverless SQL Warehouse, Pro Warehouse, or Job Compute? A Cost-and-Concurrency Decision Guide
+16. Diagnosing High ODBC Latency in Databricks SQL: Startup, Queueing, Fetch Size, and Result Caching
+17. Azure Key Vault Secret Scopes and Unity Catalog Service Credentials: Use Cases, Governance, and Private Endpoint Trade-Offs
+18. Upgrading Databricks Runtime 10.x to 15.4 LTS: A Compatibility Test Matrix for Python, Scala, Libraries, and Unity Catalog
 
 ## Operational Readiness
 
