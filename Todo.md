@@ -2,13 +2,12 @@
 
 ## Infrastructure Automation
 
-1. Who Should Approve Terraform Apply? Designing Gates That Add Context, Not Ceremony
-2. Break-Glass Infrastructure Changes: Recording, Expiring, and Reconciling Emergency Exceptions
-3. Designing a Safe Dry-Run Mode for Destructive Infrastructure Automation
-4. Decommission Automation: Proving Backups, Dependency Removal, and Cost Cleanup Before Destroy
-5. Designing Idempotent Infrastructure Automation That Survives Partial Failure
-6. Event-Driven Remediation or Scheduled Reconciliation? Choosing an Automation Trigger Model
-7. Recovery After a Partial Terraform Apply: Reconciling State Before Rolling Forward
+1. Break-Glass Infrastructure Changes: Recording, Expiring, and Reconciling Emergency Exceptions
+2. Designing a Safe Dry-Run Mode for Destructive Infrastructure Automation
+3. Decommission Automation: Proving Backups, Dependency Removal, and Cost Cleanup Before Destroy
+4. Designing Idempotent Infrastructure Automation That Survives Partial Failure
+5. Event-Driven Remediation or Scheduled Reconciliation? Choosing an Automation Trigger Model
+6. Recovery After a Partial Terraform Apply: Reconciling State Before Rolling Forward
 
 ## Argo Events
 
