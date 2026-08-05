@@ -5,15 +5,14 @@
 
 ## Argo Events
 
-1. Making Argo Event Handlers Idempotent When Sensors Redeliver After a Crash
-2. Trigger Retries and Dead-Letter Triggers in Argo Events: A Failure-Handling Playbook
-3. EventBus Choices for Argo Events: JetStream vs. Kafka for Persistence, Scale, and Operations
-4. Running a JetStream EventBus in Production: Replicas, Volumes, TLS, and Disaster Recovery
-5. Scaling Kafka EventSources and Sensors Without Duplicate Consumption or Runaway Workflow Fan-Out
-6. Controlling Event Storms with Filters, Trigger Rate Limits, and Backpressure-Aware Design
-7. High-Availability EventSources and Sensors: Leader Election, Replicas, and Failover Testing
-8. Debugging “Trigger Conditions Not Met” with Dependency State and Sensor Logs
-9. Observability for Argo Events: Tracing an Event from Source to Bus to Sensor to Workflow
+1. Trigger Retries and Dead-Letter Triggers in Argo Events: A Failure-Handling Playbook
+2. EventBus Choices for Argo Events: JetStream vs. Kafka for Persistence, Scale, and Operations
+3. Running a JetStream EventBus in Production: Replicas, Volumes, TLS, and Disaster Recovery
+4. Scaling Kafka EventSources and Sensors Without Duplicate Consumption or Runaway Workflow Fan-Out
+5. Controlling Event Storms with Filters, Trigger Rate Limits, and Backpressure-Aware Design
+6. High-Availability EventSources and Sensors: Leader Election, Replicas, and Failover Testing
+7. Debugging “Trigger Conditions Not Met” with Dependency State and Sensor Logs
+8. Observability for Argo Events: Tracing an Event from Source to Bus to Sensor to Workflow
 
 ## Databricks
 
