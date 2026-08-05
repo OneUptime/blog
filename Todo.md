@@ -2,11 +2,10 @@
 
 ## Infrastructure Automation
 
-1. Designing a Safe Dry-Run Mode for Destructive Infrastructure Automation
-2. Decommission Automation: Proving Backups, Dependency Removal, and Cost Cleanup Before Destroy
-3. Designing Idempotent Infrastructure Automation That Survives Partial Failure
-4. Event-Driven Remediation or Scheduled Reconciliation? Choosing an Automation Trigger Model
-5. Recovery After a Partial Terraform Apply: Reconciling State Before Rolling Forward
+1. Decommission Automation: Proving Backups, Dependency Removal, and Cost Cleanup Before Destroy
+2. Designing Idempotent Infrastructure Automation That Survives Partial Failure
+3. Event-Driven Remediation or Scheduled Reconciliation? Choosing an Automation Trigger Model
+4. Recovery After a Partial Terraform Apply: Reconciling State Before Rolling Forward
 
 ## Argo Events
 
