@@ -2,8 +2,7 @@
 
 ## Infrastructure Automation
 
-1. Event-Driven Remediation or Scheduled Reconciliation? Choosing an Automation Trigger Model
-2. Recovery After a Partial Terraform Apply: Reconciling State Before Rolling Forward
+1. Recovery After a Partial Terraform Apply: Reconciling State Before Rolling Forward
 
 ## Argo Events
 
