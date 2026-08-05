@@ -61,7 +61,7 @@ Current documentation lists AMQP, Azure Event Hubs, Calendar, Emitter, GCP Pub/S
 
 For these types, replica count improves recovery time and failure tolerance, not steady-state throughput. A three-replica Kafka EventSource still has one active EventSource pod. Scale its topic partitions, listener configuration, or explicit sharding architecture separately rather than assuming standby pods consume.
 
-Some EventSource types in an installed release may differ from the current list. Treat the documentation shipped for that release as authoritative, especially when a newer source type is involved.
+Some EventSource types supported by an installed release are absent from the current HA tables. For a type that is not listed, verify the classification in the implementation for your exact release rather than inferring its behavior from the transport or from a newer documentation site.
 
 ## Match Sensor HA to the EventBus
 
@@ -121,7 +121,7 @@ Replicas on the same node are not meaningful node HA. EventSources and Sensors a
 spec:
   replicas: 3
   template:
-    priorityClassName: platform-critical
+    priorityClassName: platform-critical # Must refer to an existing PriorityClass.
     affinity:
       podAntiAffinity:
         preferredDuringSchedulingIgnoredDuringExecution:
@@ -136,7 +136,7 @@ spec:
 
 For a Sensor, use `controller: sensor-controller` and `sensor-name: workflow-router`. Verify generated labels in the installed version before turning preferred placement into a hard requirement.
 
-`spec.template.nodeSelector`, tolerations, affinity, and priority fields are documented HA controls. Required zone anti-affinity can make every pod Pending when the cluster has too few eligible zones. Prefer a topology rule that matches the actual failure model and maintain spare schedulable capacity.
+`spec.template.nodeSelector`, tolerations, affinity, and priority fields are documented HA controls. A cluster with the `LimitPodHardAntiAffinityTopology` admission controller enabled rejects required pod anti-affinity with a zone topology key; where that rule is allowed, it can leave excess replicas Pending when the cluster has too few eligible zones. Prefer a topology rule that matches the actual failure model and maintain spare schedulable capacity.
 
 A PodDisruptionBudget can protect multiple replicas from simultaneous voluntary eviction. It cannot prevent machine failure, force deletion, OOM kill, or a broken application. Match its selector against generated pod labels, and test that it does not deadlock node maintenance.
 
@@ -144,13 +144,13 @@ A PodDisruptionBudget can protect multiple replicas from simultaneous voluntary 
 
 EventSources publish to the EventBus and Sensors consume from it. Making both Deployments highly available while running an ephemeral, single-failure-domain bus leaves the middle of the path fragile.
 
-For managed JetStream, use persistent volumes, multiple replicas, anti-affinity, capacity limits, and a tested stream backup and restore. For Kafka, own broker replication, in-sync replica policy, topic retention, ACLs, and cross-failure-domain recovery. Retention must exceed the longest EventSource or Sensor outage plus drain time.
+For managed JetStream, use persistent volumes, multiple replicas, anti-affinity, capacity limits, and a tested stream backup and restore. For Kafka, own broker replication, in-sync replica policy, topic retention, ACLs, and cross-failure-domain recovery. EventBus retention must exceed the longest Sensor outage plus drain time. For an EventSource that reads from a durable upstream, that upstream's retention must exceed the EventSource outage plus catch-up time.
 
 Leader election protects process ownership. It does not preserve events that expired while no Sensor could process them.
 
 ## Define Observable Readiness
 
-Deployment readiness proves containers passed their probes. It does not prove the complete event path. An HA service-level check should demonstrate:
+Deployment readiness only proves that Kubernetes considers the pods ready. A container without a readiness probe is ready by default, and even a configured probe does not prove the complete event path. An HA service-level check should demonstrate:
 
 1. the EventSource can receive or consume a uniquely identified test event;
 2. it can publish that event to the intended EventBus;
