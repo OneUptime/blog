@@ -88,7 +88,7 @@ while true; do
     <<<"${run_json}")"
 
   case "${lifecycle}" in
-    TERMINATED|SKIPPED)
+    TERMINATED|SKIPPED|INTERNAL_ERROR)
       break
       ;;
   esac
@@ -308,7 +308,7 @@ Before shipping from a Databricks workflow:
 - [Monitor Lakeflow Jobs](https://docs.databricks.com/aws/en/jobs/monitor)
 - [Add notifications on a job](https://docs.databricks.com/aws/en/jobs/notifications)
 - [Databricks CLI `jobs` commands](https://docs.databricks.com/aws/en/dev-tools/cli/reference/jobs-commands)
-- [Jobs API: get a run](https://docs.databricks.com/api/workspace/jobs_21/getrun)
+- [Jobs API: get a run](https://docs.databricks.com/api/workspace/jobs/getrun)
 - [Databricks SDK Jobs result and termination models](https://databricks-sdk-py.readthedocs.io/en/latest/dbdataclasses/jobs.html)
 - [Configure task run conditions](https://docs.databricks.com/aws/en/jobs/run-if)
 - [Use dynamic value references](https://docs.databricks.com/aws/en/jobs/dynamic-value-references)
