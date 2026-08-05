@@ -5,10 +5,9 @@
 
 ## Argo Events
 
-1. Controlling Event Storms with Filters, Trigger Rate Limits, and Backpressure-Aware Design
-2. High-Availability EventSources and Sensors: Leader Election, Replicas, and Failover Testing
-3. Debugging “Trigger Conditions Not Met” with Dependency State and Sensor Logs
-4. Observability for Argo Events: Tracing an Event from Source to Bus to Sensor to Workflow
+1. High-Availability EventSources and Sensors: Leader Election, Replicas, and Failover Testing
+2. Debugging “Trigger Conditions Not Met” with Dependency State and Sensor Logs
+3. Observability for Argo Events: Tracing an Event from Source to Bus to Sensor to Workflow
 
 ## Databricks
 
