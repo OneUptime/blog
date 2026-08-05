@@ -12,25 +12,24 @@
 
 ## Argo Events
 
-1. From GitHub Push to Argo Workflow: Wiring EventSource, EventBus, Sensor, Service, and Ingress
-2. Securing Argo Events Webhooks: GitHub Signatures, Bearer Tokens, TLS, and Secret Rotation
-3. Routing One Webhook to Different Workflows with Sensor Data Filters and Trigger Conditions
-4. Passing Nested Event Payload Fields into WorkflowTemplate Parameters Without Brittle `dataKey` Paths
-5. Transforming Argo Events Payloads with Lua or JQ Before Filters Run
-6. Combining Multiple Event Dependencies in Argo Sensors: AND, OR, Reset, and Latest-Event Semantics
-7. Why Argo Sensor Triggers Don’t Wait for Each Other—and How to Move Sequencing into a Workflow
-8. Triggering WorkflowTemplates Across Namespaces: The RBAC and ServiceAccount Checklist
-9. Triggering a ClusterWorkflowTemplate from Argo Events Without Duplicating the Workflow Spec
-10. At-Most-Once or At-Least-Once? Choosing Argo Events Trigger Delivery Semantics
-11. Making Argo Event Handlers Idempotent When Sensors Redeliver After a Crash
-12. Trigger Retries and Dead-Letter Triggers in Argo Events: A Failure-Handling Playbook
-13. EventBus Choices for Argo Events: JetStream vs. Kafka for Persistence, Scale, and Operations
-14. Running a JetStream EventBus in Production: Replicas, Volumes, TLS, and Disaster Recovery
-15. Scaling Kafka EventSources and Sensors Without Duplicate Consumption or Runaway Workflow Fan-Out
-16. Controlling Event Storms with Filters, Trigger Rate Limits, and Backpressure-Aware Design
-17. High-Availability EventSources and Sensors: Leader Election, Replicas, and Failover Testing
-18. Debugging “Trigger Conditions Not Met” with Dependency State and Sensor Logs
-19. Observability for Argo Events: Tracing an Event from Source to Bus to Sensor to Workflow
+1. Securing Argo Events Webhooks: GitHub Signatures, Bearer Tokens, TLS, and Secret Rotation
+2. Routing One Webhook to Different Workflows with Sensor Data Filters and Trigger Conditions
+3. Passing Nested Event Payload Fields into WorkflowTemplate Parameters Without Brittle `dataKey` Paths
+4. Transforming Argo Events Payloads with Lua or JQ Before Filters Run
+5. Combining Multiple Event Dependencies in Argo Sensors: AND, OR, Reset, and Latest-Event Semantics
+6. Why Argo Sensor Triggers Don’t Wait for Each Other—and How to Move Sequencing into a Workflow
+7. Triggering WorkflowTemplates Across Namespaces: The RBAC and ServiceAccount Checklist
+8. Triggering a ClusterWorkflowTemplate from Argo Events Without Duplicating the Workflow Spec
+9. At-Most-Once or At-Least-Once? Choosing Argo Events Trigger Delivery Semantics
+10. Making Argo Event Handlers Idempotent When Sensors Redeliver After a Crash
+11. Trigger Retries and Dead-Letter Triggers in Argo Events: A Failure-Handling Playbook
+12. EventBus Choices for Argo Events: JetStream vs. Kafka for Persistence, Scale, and Operations
+13. Running a JetStream EventBus in Production: Replicas, Volumes, TLS, and Disaster Recovery
+14. Scaling Kafka EventSources and Sensors Without Duplicate Consumption or Runaway Workflow Fan-Out
+15. Controlling Event Storms with Filters, Trigger Rate Limits, and Backpressure-Aware Design
+16. High-Availability EventSources and Sensors: Leader Election, Replicas, and Failover Testing
+17. Debugging “Trigger Conditions Not Met” with Dependency State and Sensor Logs
+18. Observability for Argo Events: Tracing an Event from Source to Bus to Sensor to Workflow
 
 ## Databricks
 
