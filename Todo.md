@@ -2,9 +2,8 @@
 
 ## Infrastructure Automation
 
-1. Designing Idempotent Infrastructure Automation That Survives Partial Failure
-2. Event-Driven Remediation or Scheduled Reconciliation? Choosing an Automation Trigger Model
-3. Recovery After a Partial Terraform Apply: Reconciling State Before Rolling Forward
+1. Event-Driven Remediation or Scheduled Reconciliation? Choosing an Automation Trigger Model
+2. Recovery After a Partial Terraform Apply: Reconciling State Before Rolling Forward
 
 ## Argo Events
 
