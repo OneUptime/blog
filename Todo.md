@@ -8,20 +8,13 @@
 4. Safe Terraform CI: Preserving the Reviewed Plan from Pull Request to Apply
 5. Preventing Stale Terraform Plans When Multiple Pull Requests Merge
 6. Who Should Approve Terraform Apply? Designing Gates That Add Context, Not Ceremony
-7. Terraform Drift Detection in CI: Alert, Import, Revert, or Auto-Remediate?
-8. Break-Glass Infrastructure Changes: Recording, Expiring, and Reconciling Emergency Exceptions
-9. Designing a Safe Dry-Run Mode for Destructive Infrastructure Automation
-10. Testing Terraform Modules: `terraform test` vs. Terratest vs. Provider Sandboxes
-11. Policy as Code for Terraform: Blocking Public Storage, Weak Encryption, and Overbroad IAM
-12. Passwordless Terraform Pipelines with OIDC and Short-Lived Cloud Credentials
-13. Keeping Secrets Out of Terraform State, Plan Files, and CI Logs
-14. Infrastructure Automation Under Cloud API Rate Limits: Adaptive Backoff, Jitter, and Safe Resumption
-15. Decommission Automation: Proving Backups, Dependency Removal, and Cost Cleanup Before Destroy
-16. Why Terraform Provisioners Fail on Retries—and When to Build Immutable Images Instead
-17. Designing Idempotent Infrastructure Automation That Survives Partial Failure
-18. Event-Driven Remediation or Scheduled Reconciliation? Choosing an Automation Trigger Model
-19. Self-Service Infrastructure Without Unbounded Access: Catalogs, Guardrails, and Approval Boundaries
-20. Recovery After a Partial Terraform Apply: Reconciling State Before Rolling Forward
+7. Break-Glass Infrastructure Changes: Recording, Expiring, and Reconciling Emergency Exceptions
+8. Designing a Safe Dry-Run Mode for Destructive Infrastructure Automation
+9. Infrastructure Automation Under Cloud API Rate Limits: Adaptive Backoff, Jitter, and Safe Resumption
+10. Decommission Automation: Proving Backups, Dependency Removal, and Cost Cleanup Before Destroy
+11. Designing Idempotent Infrastructure Automation That Survives Partial Failure
+12. Event-Driven Remediation or Scheduled Reconciliation? Choosing an Automation Trigger Model
+13. Recovery After a Partial Terraform Apply: Reconciling State Before Rolling Forward
 
 ## Argo Events
 
