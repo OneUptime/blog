@@ -2,19 +2,13 @@
 
 ## Infrastructure Automation
 
-1. Concurrency Control for Infrastructure Automation: Per-Environment Locks, Queues, and Idempotency Keys
-2. How Small Should a Terraform State Be? Splitting State to Reduce Lock Contention and Blast Radius
-3. When Two Automation Controllers Own the Same Resource: Detecting and Eliminating Reconciliation Loops
-4. Safe Terraform CI: Preserving the Reviewed Plan from Pull Request to Apply
-5. Preventing Stale Terraform Plans When Multiple Pull Requests Merge
-6. Who Should Approve Terraform Apply? Designing Gates That Add Context, Not Ceremony
-7. Break-Glass Infrastructure Changes: Recording, Expiring, and Reconciling Emergency Exceptions
-8. Designing a Safe Dry-Run Mode for Destructive Infrastructure Automation
-9. Infrastructure Automation Under Cloud API Rate Limits: Adaptive Backoff, Jitter, and Safe Resumption
-10. Decommission Automation: Proving Backups, Dependency Removal, and Cost Cleanup Before Destroy
-11. Designing Idempotent Infrastructure Automation That Survives Partial Failure
-12. Event-Driven Remediation or Scheduled Reconciliation? Choosing an Automation Trigger Model
-13. Recovery After a Partial Terraform Apply: Reconciling State Before Rolling Forward
+1. Who Should Approve Terraform Apply? Designing Gates That Add Context, Not Ceremony
+2. Break-Glass Infrastructure Changes: Recording, Expiring, and Reconciling Emergency Exceptions
+3. Designing a Safe Dry-Run Mode for Destructive Infrastructure Automation
+4. Decommission Automation: Proving Backups, Dependency Removal, and Cost Cleanup Before Destroy
+5. Designing Idempotent Infrastructure Automation That Survives Partial Failure
+6. Event-Driven Remediation or Scheduled Reconciliation? Choosing an Automation Trigger Model
+7. Recovery After a Partial Terraform Apply: Reconciling State Before Rolling Forward
 
 ## Argo Events
 
