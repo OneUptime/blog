@@ -8,7 +8,7 @@ Description: Scale Kafka ingestion and Kafka-backed Sensors while preserving off
 
 ---
 
-"Kafka" appears in two independent places in Argo Events: a Kafka EventSource consumes an application topic, while a Kafka EventBus transports CloudEvents between EventSources and Sensors. Scaling one does not automatically scale the other.
+In this Kafka-to-Workflow path, "Kafka" appears in two independent places: a Kafka EventSource consumes an application topic, while a Kafka EventBus transports CloudEvents between EventSources and Sensors. Scaling one does not automatically scale the other.
 
 That distinction prevents two common mistakes. Increasing replicas on a Kafka EventSource does not increase active consumers, because that EventSource type is active-passive. Increasing replicas on a Sensor backed by a Kafka EventBus does create active-active consumers, but it can also multiply pressure on the Kubernetes API and Workflow controller.
 
@@ -54,11 +54,11 @@ spec:
 
 Only the elected EventSource pod consumes. The other two are failover capacity, not throughput capacity. With a Kafka EventBus, EventSource leader election uses Kubernetes Leases. Ensure the EventSource service account has the documented `get`, `create`, and `update` verbs on `coordination.k8s.io` Lease resources.
 
-`consumerGroup` gives Kafka durable group offsets and lets the active process receive claims for the topic's partitions. Current Argo Events accepts `sticky`, `roundrobin`, and `range` rebalance strategies; `range` is the fallback. `oldest: true` affects the initial position only when the group has no committed offset. It does not rewind an existing group.
+`consumerGroup` gives Kafka durable group offsets and lets the active process receive claims for the topic's partitions. Current Argo Events accepts `sticky`, `roundrobin`, and `range` rebalance strategies; `range` is the fallback. `oldest: true` selects the reset position when the group has no committed offset or its committed offset is no longer available, such as after retention removes it. It does not rewind a valid existing offset.
 
 The alternative fixed `partition` mode consumes one named partition. In the current implementation it starts from the newest offset and does not use a consumer group, which makes it a poor default for durable production ingestion. Prefer a consumer group unless fixed-partition, new-events-only behavior is deliberate and tested against your installed release.
 
-`limitEventsPerSecond` limits reads for that configured Kafka EventSource listener. It is useful for protecting Argo, but it is not a distributed business quota and does not replace broker lag alerts.
+In the current implementation, `limitEventsPerSecond` applies only in consumer-group mode and paces each assigned partition claim after a message is processed. Aggregate throughput can exceed the configured value when the active pod owns multiple partitions, and fixed `partition` mode does not apply the limit. It is useful for protecting Argo, but it is not a listener-wide or distributed business quota and does not replace broker lag alerts.
 
 ## Scale Sensors with Kafka EventBus Partitions
 
@@ -127,9 +127,9 @@ input events/second
   * Workflows created per trigger
 ```
 
-Sensor replicas are not an additional multiplier when the Kafka EventBus coordinates them correctly. Duplicate Sensor resources, separate consumer groups, broad `||` conditions, and multiple matching triggers are multipliers.
+Sensor replicas are not an additional multiplier when the Kafka EventBus coordinates them correctly. Duplicate Sensor resources, separate consumer groups, and multiple matching triggers are multipliers. Broad `||` conditions expand the set of events that can fire a trigger.
 
-Each Sensor defaults to its own Kafka consumer-group name. Two Sensors that depend on the same EventSource are independent subscribers, so both can legitimately react to the same CloudEvent. That is fan-out, not a Kafka duplicate. Inventory every Sensor subscription before calling an action unexpected.
+Each Sensor defaults to its own Kafka consumer-group name. With those default group names, two Sensors that depend on the same EventSource are independent subscribers, so both can legitimately react to the same CloudEvent. That is fan-out, not a Kafka duplicate. Inventory every Sensor subscription before calling an action unexpected.
 
 ## Put Limits at Several Boundaries
 
@@ -137,7 +137,7 @@ A robust design contains overload at more than one point:
 
 - filter irrelevant messages in the Kafka EventSource when a simple source expression is sufficient;
 - use Sensor dependency filters before trigger conditions;
-- apply `limitEventsPerSecond` to Kafka input when the EventSource must pace publication;
+- apply `limitEventsPerSecond` to Kafka consumer-group input when the EventSource must pace each partition claim;
 - apply a trigger `rateLimit` for local action pacing;
 - use Workflow controller parallelism and synchronization limits for execution concurrency;
 - enforce namespace `ResourceQuota` and `LimitRange` policies;
