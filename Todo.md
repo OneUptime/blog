@@ -5,7 +5,6 @@
 
 ## Argo Events
 
-1. Debugging “Trigger Conditions Not Met” with Dependency State and Sensor Logs
 
 ## Databricks
 
