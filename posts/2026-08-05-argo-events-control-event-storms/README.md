@@ -71,14 +71,14 @@ spec:
           - path: body.severity
             type: string
             value:
-              - critical
+              - "^critical$"
           - path: body.environment
             type: string
             value:
-              - production
+              - "^production$"
 ```
 
-The documented category evaluation order starts with expression and data filters, then context and time filters. Avoid depending on short-circuit side effects; filters should be pure predicates. If transformation is configured, Argo transforms event data before applying Sensor filters. Expensive Lua or JQ transformations therefore run even for events the later filters reject. Put cheap, high-selectivity rules at the source or in simple Sensor filters whenever possible.
+String data-filter values are evaluated as regular expressions, so the anchors above make these exact matches. The current implementation evaluates filter categories in the order expression, data, context, time, then script. Avoid depending on short-circuit side effects; filters should be pure predicates. If transformation is configured, Argo transforms event data before applying Sensor filters. Expensive Lua or JQ transformations therefore run even for events the later filters reject. Put cheap, high-selectivity rules at the source or in simple Sensor filters whenever possible.
 
 Measure each predicate against real payloads. A path typo does not merely reduce efficiency; because errors count as false, it can quietly suppress every action. During rollout, compare ingress counts, filter-pass counts inferred from controlled tests, and action counts.
 
@@ -119,13 +119,13 @@ Do not describe this field as a global quota. When a hard fleet-wide rate is req
 
 ## Choose Acknowledgment Behavior Deliberately
 
-`atLeastOnce` changes whether the Sensor waits for the trigger action before acknowledging the event path. With `atLeastOnce: true`, action execution is blocking and failure can prevent acknowledgment, enabling retry or redelivery behavior. This creates useful pressure toward the durable EventBus but requires an idempotent target because an ambiguous action may repeat.
+For JetStream and Kafka EventBus drivers, `atLeastOnce` changes whether the Sensor waits for the trigger action before acknowledging or committing the event path. With `atLeastOnce: true`, action execution is blocking, so `retryStrategy` can observe failures. If the Sensor exits before the action path and broker acknowledgment or transaction commit complete, the event can be redelivered. This creates useful pressure toward the durable EventBus but requires an idempotent target because an ambiguous action may repeat.
 
-With the default `atLeastOnce: false`, the current Sensor launches the action asynchronously. A trigger rate limiter can then make action goroutines wait locally while the EventBus path continues. During a large storm, that local waiting is not a durable queue and can consume pod memory.
+After bounded retries are exhausted, the Sensor records the failure, optionally invokes a configured dead-letter trigger, and then lets broker processing advance. A target error by itself does not leave the event indefinitely unacknowledged. With the default `atLeastOnce: false`, the current Sensor launches the action asynchronously, so the outer retry loop cannot observe an asynchronous failure. A trigger rate limiter can then make action goroutines wait locally while the EventBus path continues. During a large storm, that local waiting is not a durable queue and can consume pod memory.
 
 Use the following decision rule:
 
-- choose blocking, at-least-once behavior when loss is unacceptable, the EventBus retention can hold the backlog, and the target is idempotent;
+- choose blocking, at-least-once behavior when you need observable retries or a dead-letter trigger, the EventBus retention can hold the backlog, and the target is idempotent; alert on exhausted retries because this mode does not guarantee eventual action success;
 - choose fire-and-forget only when its failure and local buffering semantics match the business policy;
 - put a durable admission queue between Sensor and target when neither mode gives the required global capacity control.
 
@@ -141,7 +141,7 @@ producer -> ingress -> EventSource -> EventBus -> Sensor -> admission -> Workflo
 
 At ingress, authenticate before expensive parsing and enforce body-size and request-rate limits. If a webhook sender supports retry, return an intentional retryable status only when the event was not accepted. If the sender does not support reliable retry, acknowledge only after placing the event in a durable queue you operate.
 
-At the EventBus, size retention for expected outage plus drain time. Alert well before JetStream `maxBytes`, `maxMsgs`, or `maxAge`, or Kafka topic retention, discards the oldest unprocessed data. Broker capacity is finite buffering, not infinite backpressure.
+At the EventBus, size retention for expected outage plus drain time. Alert well before JetStream `maxBytes`, `maxMsgs`, or `maxAge` applies its configured retention and discard behavior, or Kafka topic retention deletes data that consumers have not processed. With JetStream's default `DiscardOld` policy, limits evict old messages; `DiscardNew` instead rejects new publishes that would exceed a limit. Broker capacity is finite buffering, not infinite backpressure.
 
 At the Sensor, use filters, bounded transformations, local rate limits, and idempotent at-least-once actions. Keep CPU and memory requests realistic so Kubernetes scheduling does not turn a traffic spike into eviction churn.
 
@@ -175,7 +175,7 @@ A useful storm dashboard presents rates at adjacent stages:
 accepted -> published -> dependency matched -> action succeeded -> Workflow running
 ```
 
-When the difference between two cumulative stages grows, that boundary is accumulating or losing work. Correlate with broker offsets or stream sequences before deciding to scale.
+After accounting for intentional filtering, sampling, and counter resets, a growing unexplained difference between two cumulative stages means that boundary is accumulating or losing work. Correlate with broker offsets or stream sequences before deciding to scale.
 
 ## Run Controlled Storm Tests
 
