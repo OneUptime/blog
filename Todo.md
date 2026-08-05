@@ -2,7 +2,6 @@
 
 ## Infrastructure Automation
 
-1. Recovery After a Partial Terraform Apply: Reconciling State Before Rolling Forward
 
 ## Argo Events
 
