@@ -10,18 +10,17 @@
 
 ## Argo Events
 
-1. Passing Nested Event Payload Fields into WorkflowTemplate Parameters Without Brittle `dataKey` Paths
-2. Why Argo Sensor Triggers Don’t Wait for Each Other—and How to Move Sequencing into a Workflow
-3. At-Most-Once or At-Least-Once? Choosing Argo Events Trigger Delivery Semantics
-4. Making Argo Event Handlers Idempotent When Sensors Redeliver After a Crash
-5. Trigger Retries and Dead-Letter Triggers in Argo Events: A Failure-Handling Playbook
-6. EventBus Choices for Argo Events: JetStream vs. Kafka for Persistence, Scale, and Operations
-7. Running a JetStream EventBus in Production: Replicas, Volumes, TLS, and Disaster Recovery
-8. Scaling Kafka EventSources and Sensors Without Duplicate Consumption or Runaway Workflow Fan-Out
-9. Controlling Event Storms with Filters, Trigger Rate Limits, and Backpressure-Aware Design
-10. High-Availability EventSources and Sensors: Leader Election, Replicas, and Failover Testing
-11. Debugging “Trigger Conditions Not Met” with Dependency State and Sensor Logs
-12. Observability for Argo Events: Tracing an Event from Source to Bus to Sensor to Workflow
+1. Why Argo Sensor Triggers Don’t Wait for Each Other—and How to Move Sequencing into a Workflow
+2. At-Most-Once or At-Least-Once? Choosing Argo Events Trigger Delivery Semantics
+3. Making Argo Event Handlers Idempotent When Sensors Redeliver After a Crash
+4. Trigger Retries and Dead-Letter Triggers in Argo Events: A Failure-Handling Playbook
+5. EventBus Choices for Argo Events: JetStream vs. Kafka for Persistence, Scale, and Operations
+6. Running a JetStream EventBus in Production: Replicas, Volumes, TLS, and Disaster Recovery
+7. Scaling Kafka EventSources and Sensors Without Duplicate Consumption or Runaway Workflow Fan-Out
+8. Controlling Event Storms with Filters, Trigger Rate Limits, and Backpressure-Aware Design
+9. High-Availability EventSources and Sensors: Leader Election, Replicas, and Failover Testing
+10. Debugging “Trigger Conditions Not Met” with Dependency State and Sensor Logs
+11. Observability for Argo Events: Tracing an Event from Source to Bus to Sensor to Workflow
 
 ## Databricks
 
