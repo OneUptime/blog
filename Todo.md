@@ -6,7 +6,6 @@
 ## Argo Events
 
 1. Debugging “Trigger Conditions Not Met” with Dependency State and Sensor Logs
-2. Observability for Argo Events: Tracing an Event from Source to Bus to Sensor to Workflow
 
 ## Databricks
 
