@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Argo Events, Observability, Prometheus, CloudEvents, Argo Workflows, Logging, OpenTelemetry
+Tags: Argo Events, Observability, Prometheus, CloudEvent, Argo Workflows, Logging, OpenTelemetry
 
 Description: Correlate CloudEvent IDs, Argo Events logs and metrics, EventBus backlog, and Workflow metadata across the complete event path.
 
@@ -16,7 +16,7 @@ The missing piece is usually deliberate propagation: a CloudEvent ID is not auto
 
 Use at least two identifiers:
 
-- **source event ID**: the CloudEvent context `id`, useful for following one Argo delivery;
+- **source event ID**: the CloudEvent context `id`, interpreted together with `source`, useful for following one Argo delivery;
 - **operation ID**: a producer-owned stable key for the logical business action, useful across provider retries and manual replay.
 
 They solve different problems. A replay may create a new CloudEvent ID but should normally retain the same operation ID. Conversely, one CloudEvent can cause multiple triggers and Workflows.
@@ -77,7 +77,7 @@ spec:
                 templates:
                   - name: main
                     container:
-                      image: alpine:3.20
+                      image: alpine:3.24
                       command:
                         - sh
                         - -c
@@ -111,7 +111,7 @@ spec:
 
 Bind `operate-workflow-sa` to the minimum Workflow permissions required in the target namespace. The example omits that environment-specific Role and RoleBinding, but the Sensor pod must be authorized to submit the Workflow.
 
-If a trigger condition combines multiple dependencies, one successful round has multiple source event IDs. The Sensor success log records all of them in `triggeredByEvents`. Carry a separate argument for each required dependency, or create a controlled correlation envelope before invoking the Workflow. Do not collapse several IDs into one without retaining the mapping.
+If a trigger condition requires multiple dependencies, one successful round has multiple source event IDs. The Sensor success log records all of them in `triggeredByEvents`. Carry a separate argument for each required dependency, or create a controlled correlation envelope before invoking the Workflow. Do not collapse several IDs into one without retaining the mapping.
 
 ## Use the Labels Argo Adds Automatically
 
@@ -144,7 +144,7 @@ Keep Sensor and trigger names stable enough for dashboards. If they must change,
 
 ## Follow One Event Through Structured Logs
 
-At the EventSource stage, current success logs include `eventSourceName`, `eventName`, `eventSourceType`, and `eventID`. A representative message is "succeeded to publish an event." That line establishes the source-to-EventBus boundary.
+At the EventSource stage, current success logs include `eventSourceName`, `eventName`, `eventSourceType`, and `eventID`. The message is "Succeeded to publish an event" in the current implementation. That line establishes the source-to-EventBus boundary.
 
 At the Sensor stage, successful action logs include `triggeredBy` dependency names and `triggeredByEvents` IDs. Failed actions log the trigger name and error. Filter errors are warnings; ordinary filter rejection is visible at debug level in current implementations.
 
@@ -174,7 +174,7 @@ Generated EventSource and Sensor pods expose Prometheus metrics. The current off
 | EventSource | `argo_events_event_processing_duration_milliseconds` | Receive-to-EventBus-publish duration |
 | Sensor | `argo_events_action_triggered_total` | Actions completed successfully |
 | Sensor | `argo_events_action_failed_total` | Failed action attempts |
-| Sensor | `argo_events_action_retries_failed_total` | Actions still failed after configured attempts |
+| Sensor | `argo_events_action_retries_failed_total` | Actions failed after retries were exhausted; also increments when no retry strategy is configured |
 | Sensor | `argo_events_action_duration_milliseconds` | Trigger action duration |
 
 The counters carry stable labels such as namespace, EventSource and event name, or Sensor and trigger. Build recording rules around expected route cardinality. A difference between source sends and actions is meaningful only after accounting for filters, multi-dependency conditions, multiple triggers, and intentional fan-out.
@@ -226,7 +226,7 @@ For each important EventSource-to-trigger route, show:
 - external ingress or source-consumer rate;
 - EventSource successful and failed publication rate;
 - EventBus backlog count and oldest age;
-- Sensor successful, failed, and retry-exhausted action rate;
+- Sensor successful, failed-attempt, and final-failure action rates;
 - source and action duration;
 - Workflow creation, pending, running, succeeded, failed, and error rates;
 - duplicate operation rejections;
@@ -240,10 +240,10 @@ Avoid dashboarding only pod readiness. A ready EventSource may have invalid brok
 
 Useful alerts include:
 
-- EventSource send failures greater than zero for a sustained interval;
+- A nonzero EventSource send-failure increase or rate over a sustained interval;
 - running event services below the configured expectation;
 - EventBus oldest-message age approaching the route SLO;
-- Sensor retry exhaustion on any production trigger;
+- Sensor final action failures on any production trigger;
 - action success rate unexpectedly below the route's accepted-event model;
 - Workflow pending age or failure ratio above its budget;
 - no successful synthetic event within its schedule.
@@ -277,7 +277,7 @@ Hash or tokenize sensitive operation IDs if operators only need equality. Define
 - [Argo Events Prometheus metrics](https://argoproj.github.io/argo-events/metrics/)
 - [Argo Events parameterization](https://argoproj.github.io/argo-events/tutorials/02-parameterization/)
 - [Argo Events Argo Workflow trigger](https://argoproj.github.io/argo-events/sensors/triggers/argo-workflow/)
-- [Argo Events EventSource event structures](https://argoproj.github.io/argo-events/eventsources/setup/webhook/)
+- [Argo Events webhook event structure](https://argoproj.github.io/argo-events/eventsources/setup/webhook/)
 - [Argo Events Kafka EventBus](https://argoproj.github.io/argo-events/eventbus/kafka/)
 - [Argo Events Log trigger](https://argoproj.github.io/argo-events/sensors/triggers/log/)
 - [Argo Workflows metrics](https://argo-workflows.readthedocs.io/en/latest/metrics/)

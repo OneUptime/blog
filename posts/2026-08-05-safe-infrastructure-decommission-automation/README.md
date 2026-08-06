@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Infrastructure Automation, Terraform, Decommissioning, Backups, Cost Optimization, Reliability
+Tags: Infrastructure Automation, Terraform, Decommissioning, Backup, Cost Optimization, Reliability
 
 Description: Automate decommissioning only after proving recoverability, removing live dependencies, reviewing exact destroy actions, and verifying residual cost and access.
 

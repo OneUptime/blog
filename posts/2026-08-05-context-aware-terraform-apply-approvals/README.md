@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Terraform, CI/CD, Change Management, Approvals, Infrastructure as Code, Governance
+Tags: Terraform, CI/CD, Change Management, Approval, Infrastructure as Code, Governance
 
 Description: Assign Terraform apply approvals by risk and operational context, present the exact evidence reviewers need, and automate gates that humans should not decide.
 

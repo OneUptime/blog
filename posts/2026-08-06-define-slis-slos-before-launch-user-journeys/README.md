@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Service Level Objectives, Service Level Indicators, Site Reliability Engineering, Error Budgets, Observability, Operational Readiness
+Tags: Service Level Objectives, Service Level Indicators, Site Reliability Engineering, Error Budget, Observability, Operational Readiness
 
 Description: Derive launch-ready SLIs and SLOs from critical user journeys, with precise event definitions, targets, budgets, and ownership.
 

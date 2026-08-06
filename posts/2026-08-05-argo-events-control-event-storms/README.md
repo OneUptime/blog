@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Argo Events, Event Storm, Backpressure, Sensor, Filters, Rate Limiting, Argo Workflows
+Tags: Argo Events, Event Storm, Backpressure, Sensor, Filter, Rate Limiting, Argo Workflows
 
 Description: Contain Argo Events bursts with early filters, correctly scoped trigger limits, durable buffering, and downstream Workflow admission controls.
 

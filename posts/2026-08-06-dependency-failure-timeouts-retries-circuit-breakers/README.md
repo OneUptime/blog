@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Resilience, Distributed Systems, Timeout, Retry, Circuit Breaker, Graceful Degradation
+Tags: Resilience, Distributed System, Timeout, Retry, Circuit Breaker, Graceful Degradation
 
 Description: Allocate end-to-end deadlines, bound retries, apply backpressure, and define useful degraded behavior when a dependency fails.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Databricks, dbt, Unity Catalog, Data Migration, Grants, Analytics Engineering, Data Governance
+Tags: Databricks, Dbt, Unity Catalog, Data Migration, GRANT, Analytics Engineering, Data Governance
 
 Description: Migrate dbt relations to Unity Catalog while preserving names, incremental state, snapshots, and intended access.
 

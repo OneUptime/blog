@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Databricks, Unity Catalog, Compute, Access Modes, Spark, UDFs, Libraries, Troubleshooting
+Tags: Databricks, Unity Catalog, Compute, Access Mode, Spark, UDF, Libraries, Troubleshooting
 
 Description: Diagnose RDD, SparkContext, UDF, library, and storage errors by matching workloads to Databricks compute access modes.
 

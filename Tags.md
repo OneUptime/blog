@@ -980,6 +980,7 @@
 - Apple Development
 - Apple Silicon
 - Apple-silicon
+- Appliance Mode
 - Application
 - Application Architecture
 - Application Composer
@@ -1299,6 +1300,7 @@
 - At Scale
 - At-Least-Once
 - At-Least-Once Delivery
+- At-Most-Once
 - At-Most-Once Delivery
 - At-Rest Encryption
 - Athena
@@ -1405,6 +1407,7 @@
 - Auto
 - Auto DevOps
 - Auto Increment
+- Auto Loader
 - Auto Mapping
 - Auto mTLS
 - Auto Recovery
@@ -1552,6 +1555,7 @@
 - Aws controllers for kubernetes
 - AWS Cost Explorer
 - AWS CUR
+- AWS Direct Connect
 - AWS DMS
 - AWS EBS
 - AWS EC2
@@ -1581,6 +1585,7 @@
 - AWS PrivateLink
 - AWS RAM
 - AWS RDS
+- AWS Resource Access Manager
 - AWS Route 53
 - AWS Route53
 - AWS S3
@@ -1595,6 +1600,7 @@
 - Aws sso
 - AWS Step Function
 - AWS Support
+- AWS Transit Gateway
 - AWS VPC
 - AWS WAF
 - AWS WAFv2
@@ -4289,6 +4295,7 @@
 - CROSS JOIN
 - Cross Product
 - Cross-Account
+- Cross-Account Networking
 - Cross-Application
 - Cross-Border Data Transfer
 - Cross-Border Payments
@@ -4323,6 +4330,7 @@
 - Cross-Realm Trust
 - Cross-Region
 - Cross-Region Backup
+- Cross-Region Networking
 - Cross-Region Replication
 - Cross-Repository
 - Cross-Run Variables
@@ -4707,6 +4715,7 @@
 - Data Fetching
 - Data Files
 - Data Filtering
+- Data Filters
 - Data Flow
 - Data Format
 - Data Formatting
@@ -4995,6 +5004,7 @@
 - DBA Tools
 - DBCC CHECKDB
 - DbContext
+- DBFS
 - DBI
 - Dbsize
 - DbStats
@@ -5065,6 +5075,7 @@
 - Decision Making
 - Declaration Files
 - Declarative
+- Declarative Automation Bundles
 - Declarative Configuration
 - Declarative Management
 - Decoding
@@ -6048,6 +6059,7 @@
 - Early Evaluation
 - Earthly
 - East-West Gateway
+- East-West Traffic
 - Easy-RSA
 - EAV
 - EBGP
@@ -6495,6 +6507,7 @@
 - Event Bus
 - Event Capture
 - Event Collection
+- Event Contracts
 - Event Correlation
 - Event Deduplication
 - Event Delivery
@@ -6531,6 +6544,7 @@
 - Event Sourcing
 - Event State Transitions
 - Event Store
+- Event Storm
 - Event Storming
 - Event Stream
 - Event Streaming
@@ -6551,6 +6565,7 @@
 - Eventarc
 - EventBridge
 - EventBridge Pipes
+- EventBus
 - EventDriven
 - EventEmitter
 - Eventing
@@ -6710,6 +6725,7 @@
 - External IPv6
 - External Key Manager
 - External Labels
+- External Locations
 - External Metrics
 - External Provider
 - External Routes
@@ -6781,6 +6797,7 @@
 - Failure Analysis
 - Failure Domain
 - Failure Handling
+- Failure Mode Analysis
 - Failure Notifications
 - Failure Prediction
 - Failure Recovery
@@ -7609,6 +7626,7 @@
 - GitHub Environments
 - GitHub Provider
 - GitHub Security Advisories
+- GitHub Webhooks
 - Github-app
 - Gitignore
 - GitLab
@@ -8229,6 +8247,7 @@
 - Hit Rate
 - HITRUST
 - Hive
+- Hive Metastore
 - HKEYS
 - HL7
 - HL7 FHIR
@@ -9136,6 +9155,7 @@
 - Internationalization
 - Internet Access
 - Internet Cache
+- Internet Egress
 - Internet Exchange
 - Internet Gateway
 - Internet Monitor
@@ -9918,6 +9938,7 @@
 - Lag
 - Lag Metrics
 - Lake Formation
+- Lakeflow Jobs
 - Lakehouse
 - LAM
 - Lambda
@@ -10001,8 +10022,10 @@
 - Latest Value
 - LaTeX
 - Latin America
+- Launch
 - Launch Configurations
 - Launch Failures
+- Launch Management
 - Launch Templates
 - Launch Wizard
 - LaunchDarkly
@@ -10673,6 +10696,7 @@
 - Managed Prometheus
 - Managed Rules
 - Managed Service
+- Managed Tables
 - Managed-identity
 - Management
 - Management API
@@ -11754,6 +11778,7 @@
 - Native UI
 - NativeProtocol
 - NATS
+- NATS JetStream
 - NATS Streaming
 - Natural Language
 - Natural Language API
@@ -12575,6 +12600,7 @@
 - OpenEBS
 - OpenELB
 - OpenFaaS
+- OpenFeature
 - OpenFlow
 - OpenFunction
 - OpenID Connect
@@ -13697,6 +13723,7 @@
 - Post-Image
 - Post-Install
 - Post-Installation
+- Post-Launch Review
 - Post-Migration
 - Post-Mortem
 - Post-Processing
@@ -14001,8 +14028,10 @@
 - Production Monitoring
 - Production Parity
 - Production Readiness
+- Production Readiness Review
 - Production Release
 - Production Safety
+- Production Security
 - Production Systems
 - Production Tuning
 - Production-readiness
@@ -14734,8 +14763,10 @@
 - Recovery Model
 - Recovery Plan
 - Recovery Planning
+- Recovery Point Objective
 - Recovery Points
 - Recovery Services Vault
+- Recovery Time Objective
 - Recreate
 - Recurrence
 - Recurring
@@ -15120,6 +15151,7 @@
 - Resharding
 - RESIGNAL
 - Resilience
+- Resilience Engineering
 - Resilience Hub
 - Resilience Patterns
 - Resilience Testing
@@ -15559,9 +15591,11 @@
 - Rounding
 - Route
 - Route 53
+- Route 53 Resolver
 - Route add
 - Route Advertisements
 - Route Aggregation
+- Route Analyzer
 - Route API
 - Route Dampening
 - Route Exchange
@@ -16340,6 +16374,7 @@
 - Service Identity
 - Service Invocation
 - Service IPs
+- Service Level Indicators
 - Service Level Objectives
 - Service Levels
 - Service Logs
@@ -18724,6 +18759,7 @@
 - Transit Engine
 - Transit Functions
 - Transit Gateway
+- Transit Gateway Peering
 - Transit Secrets Engine
 - Transition
 - Transition Mechanisms
@@ -18767,6 +18803,7 @@
 - Trial Conversion
 - Trie
 - Trigger
+- Trigger Conditions
 - Trigger Filters
 - Trigger Jobs
 - Trigonometry
@@ -19937,6 +19974,7 @@
 - Workflow Automation
 - Workflow Control
 - Workflow Controller
+- Workflow DAG
 - Workflow Design
 - Workflow Dispatch
 - Workflow engine
@@ -19950,6 +19988,7 @@
 - Workflow Studio
 - Workflow Templates
 - Workflow Variables
+- WorkflowEventBinding
 - WorkflowTemplate
 - Workforce
 - Workforce Identity

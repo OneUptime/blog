@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Failure Mode Analysis, Resilience Engineering, Timeouts, Queue Backlog, Distributed Systems, Operational Readiness, Site Reliability Engineering
+Tags: Failure Mode Analysis, Resilience Engineering, Timeout, Queue Backlog, Distributed System, Operational Readiness, Site Reliability Engineering
 
 Description: Inventory credible failures at every system boundary, then define detection, containment, recovery, ownership, and test evidence.
 

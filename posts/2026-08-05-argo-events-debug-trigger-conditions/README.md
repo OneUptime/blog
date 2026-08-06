@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Argo Events, Sensor, Trigger Conditions, Debugging, EventBus, Filters, Kubernetes
+Tags: Argo Events, Sensor, Trigger Conditions, Debugging, EventBus, Filter, Kubernetes
 
 Description: Diagnose Argo Sensor conditions systematically by tracing dependency identity, filters, cached state, resets, and EventBus delivery.
 

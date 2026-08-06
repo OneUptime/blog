@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: AWS, Transit Gateway, Security Groups, VPC, Network Security, Terraform
+Tags: AWS, Transit Gateway, Security Group, VPC, Network Security, Terraform
 
 Description: Use security group references across Transit Gateway with the supported topology, required settings, and current inspection and endpoint limitations.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Operational Readiness, Service Dependencies, Site Reliability Engineering, Health Checks, Failure Handling, Incident Response
+Tags: Operational Readiness, Service Dependencies, Site Reliability Engineering, Health Check, Failure Handling, Incident Response
 
 Description: Map runtime and control-plane dependencies with owners, health evidence, failure contracts, capacity limits, and escalation paths.
 

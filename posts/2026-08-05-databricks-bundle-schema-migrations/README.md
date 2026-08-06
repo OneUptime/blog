@@ -52,9 +52,13 @@ Never use `--force-lock` as a routine CI flag. It weakens the only deployment co
 
 ## Deploy a Migration Job, Not an Automatic Side Effect
 
-Define a dedicated job in the bundle. Its single purpose is to apply an explicitly selected migration set under a stable run identity. A SQL-file task can use an existing SQL warehouse:
+Define a dedicated job in the bundle. Its single purpose is to apply an explicitly selected migration set under a stable run identity. A SQL-file task can use an existing serverless or pro SQL warehouse:
 
 ```yaml
+variables:
+  migration_warehouse_id:
+    description: ID of the existing SQL warehouse used for migrations
+
 resources:
   jobs:
     schema_migrations:
@@ -80,7 +84,7 @@ databricks bundle deploy -t prod --fail-on-active-runs
 databricks bundle run -t prod schema_migrations
 ```
 
-Use a required CI environment, change ticket, signed release manifest, or equivalent control around the second command. A migration-free release can skip the migration stage entirely.
+Use a required CI environment, change ticket, signed release manifest, or equivalent control around the migration run command. A migration-free release can skip the migration stage entirely.
 
 ## Give Every Migration an Immutable Identity
 
@@ -110,7 +114,9 @@ CREATE TABLE IF NOT EXISTS platform_ops.release.schema_migrations (
   checksum STRING NOT NULL,
   applied_at TIMESTAMP NOT NULL,
   applied_by STRING NOT NULL,
-  release_sha STRING NOT NULL
+  release_sha STRING NOT NULL,
+  status STRING NOT NULL,
+  verification_evidence STRING NOT NULL
 ) USING DELTA;
 ```
 
@@ -139,14 +145,14 @@ shared contract tables -> cross-service migration authority
 
 Also stop or drain jobs that write the affected tables. Databricks documents that schema updates conflict with concurrent Delta writes, and metadata changes cause streams reading the table to terminate. A successful DDL statement followed by a wave of failed writers is not a successful release.
 
-Record the table versions and active workloads before execution:
+Record the table history and current metadata before execution:
 
 ```sql
 DESCRIBE HISTORY prod.sales.orders;
 DESCRIBE DETAIL prod.sales.orders;
 ```
 
-Use supported job and streaming monitoring to prove writers are quiescent. Resume and verify them after the migration.
+Separately, use supported job and streaming monitoring to prove writers are quiescent. Resume and verify them after the migration.
 
 ## Use Expand and Contract for Compatible Releases
 
@@ -186,6 +192,10 @@ Use that separation deliberately:
 A target-level pattern is:
 
 ```yaml
+variables:
+  migration_service_principal:
+    description: Application ID of the service principal used to run migrations
+
 targets:
   prod:
     mode: production
@@ -195,7 +205,7 @@ targets:
 
 If the same bundle contains ordinary jobs, a bundle-wide `run_as` might grant the migration principal to more workflows than intended. Consider a separate migration bundle or resource ownership pattern when least privilege requires a distinct identity.
 
-The migration ledger should record `current_user()` or the equivalent authenticated principal, not the human who clicked approve.
+The migration ledger should record `session_user()` or the equivalent authenticated principal, not the human who clicked approve.
 
 ## Make the Release Stage Fail Closed
 

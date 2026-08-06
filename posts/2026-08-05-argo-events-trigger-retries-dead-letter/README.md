@@ -32,12 +32,19 @@ spec:
         http:
           url: https://fulfilment.example.internal/events
           method: POST
+          headers:
+            Content-Type: application/json
           payload:
             - src:
                 dependencyName: order
                 dataKey: body
                 useRawData: true
               dest: event
+      policy:
+        status:
+          allow:
+            - 200
+            - 202
       atLeastOnce: true
       retryStrategy:
         steps: 4
@@ -47,15 +54,25 @@ spec:
       dlqTrigger:
         template:
           name: store-failed-order
-          conditions: order
-          kafka:
-            url: kafka-0.kafka:9092,kafka-1.kafka:9092
-            topic: failed-order-events
+          http:
+            url: https://failure-ingest.example.internal/argo-events
+            method: POST
+            headers:
+              Content-Type: application/json
             payload:
               - src:
                   dependencyName: order
                   dataKey: body
+                  useRawData: true
                 dest: event
+              - src:
+                  dependencyName: order
+                  contextKey: id
+                dest: sourceEventId
+        policy:
+          status:
+            allow:
+              - 202
         atLeastOnce: true
         retryStrategy:
           steps: 6
@@ -63,28 +80,28 @@ spec:
           factor: 2
 ```
 
-The current Kafka trigger API marks its fixed `partition` field as deprecated, so this example leaves partition selection to the producer. Validate the Kafka trigger against the installed API reference before use. An HTTP DLQ endpoint is often easier to make a durable ingestion contract.
+Both HTTP triggers define a status policy. Without `policy.status.allow`, Argo Events treats any HTTP response as a successful execution, including `429` and `5xx`. The DLQ service in this example must return `202` only after it has durably accepted the record.
 
 The critical documented constraints are:
 
-- top-level trigger and `dlqTrigger` both need `atLeastOnce: true` for DLQ handling;
+- top-level trigger and `dlqTrigger` both need `atLeastOnce: true` for DLQ handling; in the current runtime, this makes execution blocking so errors are visible to the retry loop;
 - `retryStrategy` defaults to no retry;
 - a DLQ trigger can have its own retry strategy;
 - a `dlqTrigger` cannot recursively contain another DLQ trigger.
 
 ## Understand `steps`
 
-Argo Events uses its `Backoff` type with `duration`, `factor`, `jitter`, and `steps`. The official documentation describes `steps` as the number after which it gives up and shows duration strings such as `2s` or `1m`.
+Argo Events uses its `Backoff` type with `duration`, `factor`, `jitter`, and `steps`. In Argo Events v1.9.11, `steps` is the maximum total number of trigger executions, including the initial execution. Thus `steps: 4` permits at most four attempts and three sleeps. Duration strings such as `2s` or `1m` are valid.
 
-Do not calculate an outage budget from field names alone. Verify attempt count and timing for your release with a target that deterministically fails, because library interpretation and zero/default values matter. Keep an upper bound that is shorter than the source's acceptable processing delay.
+Verify attempt count and timing when upgrading with a target that deterministically fails, because implementation and zero/default behavior can change between releases. Keep an upper bound that is shorter than the source's acceptable processing delay.
 
 Jitter adds a random amount based on the current duration. It reduces synchronized retries when many Sensors fail against the same dependency.
 
 ## Retry Only Ambiguous or Transient Failures
 
-Good retry candidates include connection resets, temporary DNS failure, `429`, and many `5xx` responses. Bad retry candidates include invalid payload, failed authorization, forbidden Kubernetes action, unsupported resource schema, and a business rejection.
+Good retry candidates include connection resets, temporary DNS failure, `429`, and many `5xx` responses. Bad retry candidates include invalid payload, failed authorization, forbidden Kubernetes action, unsupported resource schema, and a business rejection. However, `retryStrategy` has no per-error retry predicate: it retries every failure that the trigger implementation returns.
 
-Argo Events trigger implementations have different policies for deciding success. An HTTP trigger can use response status policy fields; Kubernetes and Workflow triggers can apply resource policies. Design the target to return errors consistently, and test which errors the installed trigger classifies as failure.
+Argo Events trigger implementations have different policies for deciding success. For HTTP triggers, transport errors fail execution, while response codes fail only when a trigger-level `policy.status.allow` list exists and the returned code is absent from it. That policy defines success; it cannot express a separate list of retryable status codes. Kubernetes and Workflow triggers can apply resource policies. Design the target to return errors consistently, and test which errors the installed trigger classifies as failure.
 
 If the implementation cannot distinguish permanent errors, keep retries small and let the DLQ consumer classify them with richer context.
 
@@ -145,7 +162,7 @@ Replay the same logical operation with the same idempotency key. Record a replay
 
 The DLQ trigger can fail too. It has bounded retries and no recursive DLQ. Alert on `argo_events_action_retries_failed_total` for both the primary and DLQ trigger, inspect Sensor logs, and monitor the durable target's ingestion metrics.
 
-Set `spec.errorOnFailedRound: true` only after understanding the consequence: the Sensor enters error after a failed trigger round and processes no further triggers. This can stop silent loss but also turns one poison event into a halted stream requiring intervention. It does not undo successful triggers in the same round.
+Do not rely on `spec.errorOnFailedRound` as a circuit breaker in Argo Events v1.9.11. Although the field remains in the CRD and its API description says that a failed round should put the Sensor into an error state, the current Sensor runtime does not read the field. Use alerts and an explicit operational stop mechanism, and recheck the implementation in your installed release before depending on this field.
 
 ## Test the Whole Failure Path
 
@@ -157,7 +174,7 @@ Exercise:
 4. DLQ target outage through all DLQ attempts;
 5. target commit followed by timeout, proving idempotency;
 6. replay of a corrected event;
-7. malformed event that should not be retried at all.
+7. malformed event, confirming that the configured retries are consumed before DLQ classification.
 
 Measure primary attempts, DLQ attempts, durable records, replay attempts, and final business outcomes separately.
 
@@ -166,8 +183,7 @@ Measure primary attempts, DLQ attempts, durable records, replay attempts, and fi
 - [Argo Events trigger retries, rate limits, and DLQ](https://argoproj.github.io/argo-events/sensors/more-about-sensors-and-triggers/)
 - [Argo Events trigger API](https://argoproj.github.io/argo-events/APIs/#argoproj.io/v1alpha1.Trigger)
 - [Argo Events HTTP trigger](https://argoproj.github.io/argo-events/sensors/triggers/http-trigger/)
-- [Argo Events Kafka trigger](https://argoproj.github.io/argo-events/sensors/triggers/kafka-trigger/)
-- [Apache Kafka design](https://kafka.apache.org/documentation/#design)
+- [Argo Events metrics](https://argoproj.github.io/argo-events/metrics/)
 
 ## Conclusion
 

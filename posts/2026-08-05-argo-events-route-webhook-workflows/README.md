@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Argo Events, Sensor, Data Filters, Trigger Conditions, Argo Workflows, Webhooks, Event Routing
+Tags: Argo Events, Sensor, Data Filters, Trigger Conditions, Argo Workflows, Webhook, Event Routing
 
 Description: Route one webhook stream to different Argo workflows with dependency filters and trigger conditions while keeping matching rules explicit and testable.
 

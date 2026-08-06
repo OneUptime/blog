@@ -97,7 +97,7 @@ For Argo-managed JetStream, Argo Events enables TLS for client-server and inter-
 
 Kafka EventBus exposes `tls` and `sasl` configuration in the CRD. Kafka security is external: broker listeners, certificate authorities, SASL mechanism, ACLs, principal lifecycle, and topic permissions must align with the Argo Events client configuration.
 
-Use separate principals or credentials per environment and EventBus. Grant producers access to the event topic and Sensors only the topics and groups their implementation requires. Validate actual broker authorization logs rather than granting broad cluster ACLs.
+Use a separate principal or credential per environment and EventBus. The EventBus's TLS/SASL configuration is shared by its EventSources and Sensors, so its Kafka principal needs the combined topic, consumer-group, and transactional-ID permissions used by both paths; Argo does not expose separate producer and Sensor credentials within one EventBus. Validate actual broker authorization logs rather than granting broad cluster ACLs.
 
 ## Compare Operational Surface
 
@@ -124,7 +124,7 @@ Kafka advantages:
 
 Kafka costs:
 
-- an external cluster and three-topic-per-Sensor coordination model;
+- an external cluster, one shared event topic, and two Sensor-specific coordination topics per Sensor;
 - partition, group, retention, ACL, TLS, and SASL administration;
 - more complex failure and rebalance behavior;
 - network dependency between Kubernetes and brokers.

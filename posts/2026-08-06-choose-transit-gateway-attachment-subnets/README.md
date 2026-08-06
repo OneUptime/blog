@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: AWS, Transit Gateway, VPC, Subnets, Availability Zones, Routing
+Tags: AWS, Transit Gateway, VPC, Subnets, Availability Zone, Routing
 
 Description: Select dedicated Transit Gateway attachment subnets in every required Availability Zone and configure their route tables as real data-path components.
 

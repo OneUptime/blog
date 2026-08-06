@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Infrastructure Automation, Idempotency, Terraform, Reliability, Cloud API, Distributed Systems
+Tags: Infrastructure Automation, Idempotency, Terraform, Reliability, Cloud API, Distributed System
 
 Description: Build infrastructure automation that converges after crashes and ambiguous API outcomes without duplicating resources, replaying unsafe actions, or assuming rollback.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Argo Events, Sensor, Lua, JQ, Event Transformation, Filters, Kubernetes
+Tags: Argo Events, Sensor, Lua, Jq, Event Transformation, Filter, Kubernetes
 
 Description: Normalize Argo Events dependency data with Lua or JQ before filters run, while handling failures, types, context limits, and testable contracts.
 

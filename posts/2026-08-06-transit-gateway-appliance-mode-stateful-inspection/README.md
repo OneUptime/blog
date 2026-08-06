@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: AWS, Transit Gateway, Appliance Mode, Network Firewall, Availability Zones, Routing
+Tags: AWS, Transit Gateway, Appliance Mode, Network Firewall, Availability Zone, Routing
 
 Description: Use Transit Gateway appliance mode to preserve an inspection flow's Availability Zone, while avoiding missing propagation and cross-zone path surprises.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Argo Events, Argo Workflows, WorkflowTemplate, Kubernetes RBAC, ServiceAccount, Namespaces
+Tags: Argo Events, Argo Workflows, WorkflowTemplate, Kubernetes RBAC, ServiceAccount, Namespace
 
 Description: Trigger a namespaced WorkflowTemplate from an Argo Events Sensor in another namespace with explicit target metadata and least-privilege RBAC.
 

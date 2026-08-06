@@ -104,7 +104,7 @@ sync:
     - ../../shared/python
 ```
 
-Relative paths are resolved as part of the bundle's sync root. Validate the actual deployed paths rather than assuming the current working directory at runtime.
+When a `sync.paths` entry traverses above the bundle root, the CLI dynamically moves the sync root to a common ancestor so that the directory structure remains intact. Validate the actual deployed paths rather than assuming the current working directory at runtime.
 
 Run validation from every affected bundle:
 
@@ -131,14 +131,20 @@ Make the dependency explicit in CI and in service ownership metadata.
 
 ### Versioned Packages for Independent Adoption
 
-Build the shared library as a wheel, publish it to an approved package repository or Unity Catalog volume, and pin a version in each bundle:
+Build the shared library as a wheel, publish it to an approved package repository or Unity Catalog volume, and pin a version where each consuming resource declares its libraries, such as a job task:
 
 ```yaml
-libraries:
-  - whl: /Volumes/platform/artifacts/python/company_databricks-2.4.1-py3-none-any.whl
+resources:
+  jobs:
+    daily_orders:
+      tasks:
+        - task_key: transform
+          # Other task settings go here.
+          libraries:
+            - whl: /Volumes/platform/artifacts/python/company_databricks-2.4.1-py3-none-any.whl
 ```
 
-Versioned packages let each service adopt and roll back independently. They add release management, compatibility testing, artifact permissions, and library allowlisting where standard compute requires it.
+Versioned packages let each service adopt and roll back independently. They add release management, compatibility testing, artifact permissions, and appropriate `USE CATALOG`, `USE SCHEMA`, and `READ VOLUME` privileges for volume-hosted wheels.
 
 Avoid mutable names such as `company_databricks-latest.whl`. A bundle configuration should identify an immutable artifact so the same Git revision deploys the same code later.
 

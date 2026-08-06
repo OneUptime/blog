@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Argo Events, Argo Workflows, WorkflowEventBinding, Kubernetes, Webhooks, Event-Driven Automation
+Tags: Argo Events, Argo Workflows, WorkflowEventBinding, Kubernetes, Webhook, Event-Driven Automation
 
 Description: Choose between Argo Events and WorkflowEventBinding by comparing ingestion, buffering, filtering, trigger scope, security, and operational cost.
 

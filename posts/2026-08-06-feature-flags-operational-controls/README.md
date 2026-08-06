@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Feature Flags, AWS AppConfig, OpenFeature, Kill Switch, Production Readiness
+Tags: Feature Flag, AWS AppConfig, OpenFeature, Kill Switch, Production Readiness
 
 Description: Design feature flags with safe defaults, narrow access, gradual rollout, health alarms, ownership, drills, and enforced cleanup.
 
