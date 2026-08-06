@@ -125,7 +125,7 @@ SELECT
 FROM prod_raw.events.bronze_events;
 ```
 
-For an Auto Loader stream on a supported runtime, inspect discovered files without editing checkpoint internals:
+For an Auto Loader stream on Databricks Runtime 16.4 or later, inspect discovered files without editing checkpoint internals:
 
 ```sql
 SELECT path, size, discovery_time, commit_time, ingestion_state
@@ -134,6 +134,7 @@ ORDER BY discovery_time DESC;
 ```
 
 `cloud_files_state` is the supported interface for file-level state. Do not hand-edit RocksDB files or offset logs.
+The `discovery_time`, `commit_time`, and `ingestion_state` columns require Databricks Runtime 16.4 or later. Whether `commit_time` and `ingestion_state` are populated also depends on the runtime that processed the files and whether `cloudFiles.cleanSource` was enabled.
 
 Also check `_rescued_data`. A rename may have been rescued for some interval before the explicit or inferred schema was updated:
 
@@ -152,14 +153,20 @@ The exact semi-structured extraction function available depends on the runtime a
 
 Do not rename the Bronze column in place. That loses provenance and does not teach Auto Loader how to interpret future source records. Produce a canonical field in Silver instead.
 
-When a trustworthy schema version exists, use it explicitly:
+When a trustworthy schema version exists, use it explicitly. If inspection found `account_id` or `source_schema_version` in rescued data, use those values as fallbacks for the same source fields:
 
 ```sql
 CREATE OR REPLACE TABLE prod_curated.events.silver_events AS
 SELECT
   * EXCEPT (customer_id, account_id),
   CASE
-    WHEN source_schema_version >= 2 THEN account_id
+    WHEN coalesce(
+      try_cast(source_schema_version AS INT),
+      try_cast(get_json_object(_rescued_data, '$.source_schema_version') AS INT)
+    ) >= 2 THEN coalesce(
+      account_id,
+      from_json(_rescued_data, 'account_id STRING').account_id
+    )
     ELSE customer_id
   END AS customer_id
 FROM prod_raw.events.bronze_events;
@@ -168,16 +175,29 @@ FROM prod_raw.events.bronze_events;
 If the producer dual-wrote fields, fail validation when both are present but disagree:
 
 ```sql
-SELECT event_id, customer_id, account_id, source_file
+SELECT
+  event_id,
+  customer_id,
+  coalesce(
+    account_id,
+    from_json(_rescued_data, 'account_id STRING').account_id
+  ) AS account_id,
+  source_file
 FROM prod_raw.events.bronze_events
 WHERE customer_id IS NOT NULL
-  AND account_id IS NOT NULL
-  AND customer_id <> account_id;
+  AND coalesce(
+    account_id,
+    from_json(_rescued_data, 'account_id STRING').account_id
+  ) IS NOT NULL
+  AND customer_id <> coalesce(
+    account_id,
+    from_json(_rescued_data, 'account_id STRING').account_id
+  );
 ```
 
 Only use `coalesce(account_id, customer_id)` when the contract guarantees that a legitimate record cannot populate both fields with different meanings. `coalesce` is a convenient compatibility expression, not evidence that the rename was correct.
 
-For a large Silver table, use an idempotent `MERGE` instead of replacing it. Merge on a stable event key, not ingestion time:
+For a large Silver table, use an idempotent `MERGE` instead of replacing it. Merge on a stable, unique event key, not ingestion time; multiple source rows that match the same target row can make the merge fail:
 
 ```sql
 MERGE INTO prod_curated.events.silver_events AS target
@@ -185,7 +205,13 @@ USING (
   SELECT
     * EXCEPT (customer_id, account_id),
     CASE
-      WHEN source_schema_version >= 2 THEN account_id
+      WHEN coalesce(
+        try_cast(source_schema_version AS INT),
+        try_cast(get_json_object(_rescued_data, '$.source_schema_version') AS INT)
+      ) >= 2 THEN coalesce(
+        account_id,
+        from_json(_rescued_data, 'account_id STRING').account_id
+      )
       ELSE customer_id
     END AS customer_id
   FROM prod_raw.events.bronze_events
