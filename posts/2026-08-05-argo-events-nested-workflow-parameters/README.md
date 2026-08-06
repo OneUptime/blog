@@ -75,14 +75,23 @@ spec:
     - name: verify
       container:
         image: alpine:3.20
+        env:
+          - name: REPOSITORY
+            value: '{{workflow.parameters.repository}}'
+          - name: REVISION
+            value: '{{workflow.parameters.revision}}'
+          - name: EVENT_ID
+            value: '{{workflow.parameters.event-id}}'
+          - name: EVENT_JSON
+            value: '{{workflow.parameters.event-json}}'
         command: [sh, -c]
         args:
           - >-
             printf 'repository=%s revision=%s event=%s event_json=%s\n'
-            '{{workflow.parameters.repository}}'
-            '{{workflow.parameters.revision}}'
-            '{{workflow.parameters.event-id}}'
-            '{{workflow.parameters.event-json}}'
+            "$REPOSITORY"
+            "$REVISION"
+            "$EVENT_ID"
+            "$EVENT_JSON"
 ```
 
 Argo Workflow parameters are string values. Serialize structured input intentionally, for example as JSON text, and parse it inside a script or container. Do not expect a Workflow parameter to preserve an arbitrary object type.
@@ -201,7 +210,7 @@ The parameter source supports a literal `value` default. A missing path without 
 
 Do not default security-relevant inputs such as repository, target environment, tenant, or approval status. Filter out the event and alert on the contract violation.
 
-JQ's `//` operator also supplies defaults, but remember that it treats `false` and `null` as alternative values. For booleans where `false` is meaningful, use an explicit type or presence check rather than `// true`.
+JQ's `//` operator also supplies defaults, but remember that it treats `false` and `null` as absent and selects its right-hand alternative. For booleans where `false` is meaningful, use an explicit type or presence check rather than `// true`.
 
 ## Treat Arrays and Objects as JSON Text
 
