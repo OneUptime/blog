@@ -8,7 +8,7 @@ Description: Choose Argo Events Sensor at-most-once or at-least-once trigger exe
 
 ---
 
-Argo Events exposes `atLeastOnce` on each Sensor trigger. The default is `false`, which gives trigger execution at-most-once behavior. Setting it to `true` makes the Sensor wait for trigger execution before acknowledging the consumed event and enables broker redelivery after failures.
+Argo Events exposes `atLeastOnce` on each Sensor trigger. The default is `false`, which gives trigger execution at-most-once behavior. Setting it to `true` makes the Sensor wait for trigger execution before its message handler acknowledges the consumed event. This preserves the broker's ability to redeliver if the Sensor dies or its acknowledgment is lost during that window; an exhausted trigger error by itself is logged and then acknowledged rather than deliberately redelivered. The deprecated NATS EventBus ignores `atLeastOnce`; use JetStream or Kafka when this setting matters.
 
 This is trigger execution semantics, not a promise of exactly-once business processing. The EventSource, EventBus, Sensor, Kubernetes API, Workflow controller, and workload each have their own failure boundary.
 
@@ -27,7 +27,7 @@ spec:
       atLeastOnce: false
 ```
 
-Current Sensor code launches this trigger asynchronously and lets event processing continue without waiting for the action result. A crash or action failure can therefore lose the effect. This is appropriate only when loss is acceptable or another system repairs it.
+Current Sensor code launches this trigger asynchronously and lets event processing continue without waiting for the action result. A crash or action failure can therefore lose the effect. This mode also cannot transactionally guarantee that an external effect never repeats. It is appropriate only when loss is acceptable or another system repairs it.
 
 At-least-once favors eventual attempt over avoiding duplicates:
 
@@ -55,7 +55,7 @@ spec:
         jitter: 0.5
 ```
 
-With `atLeastOnce: true`, the Sensor blocks acknowledgment until the trigger returns success. If it cannot prove success, the EventBus can deliver the event again. A retry may happen after the first call actually succeeded but its response was lost.
+With `atLeastOnce: true`, the Sensor keeps the broker message unacknowledged until the blocking trigger attempt, configured retries, and any DLQ processing finish. The message handler then acknowledges the event even if all trigger retries failed; a trigger error does not itself request broker redelivery. Duplicate attempts can still come from `retryStrategy`, or from broker redelivery if the Sensor dies or the acknowledgment is lost before completion. A retry may happen after the first call actually succeeded but its response was lost.
 
 The rule is simple:
 
@@ -83,9 +83,9 @@ Consider a Sensor creating a Workflow:
 
 1. the Sensor sends a create request;
 2. the Kubernetes API commits the Workflow;
-3. the response is lost or the Sensor pod dies;
-4. the Sensor cannot acknowledge success;
-5. the event is redelivered and the trigger runs again.
+3. the response is lost, so a configured trigger retry can issue another create request; or the Sensor pod dies before acknowledging the broker message;
+4. in the crash case, the broker can redeliver the event;
+5. either the trigger retry or the redelivery can run the create again.
 
 With `generateName`, the second create can produce a second Workflow. The EventBus and Sensor cannot atomically commit a Kubernetes object and acknowledge a broker message in one transaction.
 
@@ -115,7 +115,7 @@ spec:
 
 At the first irreversible workflow step, atomically insert or claim that key in a database, durable key-value store, or target API supporting idempotency keys. A read-then-write check is racy; use a unique constraint or compare-and-set operation.
 
-For Kubernetes resources, a deterministic valid name can turn duplicate create requests into `AlreadyExists`, but the trigger must distinguish "the same desired object already exists" from a conflicting unrelated object. Inspect labels, owner, parameters, and status before treating the conflict as success.
+For Kubernetes resources, a deterministic valid name can turn duplicate create requests into `AlreadyExists`. The built-in `k8s` create trigger returns that response as an error; it does not inspect the existing object or convert the conflict to success. Any custom trigger or recovery logic that does treat the conflict as an idempotent success must distinguish "the same desired object already exists" from a conflicting unrelated object by inspecting labels, owner, parameters, and status.
 
 ## Place `atLeastOnce` Correctly
 
@@ -139,6 +139,8 @@ The default is no trigger retry. This is intentional: the Sensor does not know w
 
 Current Sensor implementation can observe trigger errors and perform the configured retry loop on the blocking at-least-once path. With the default fire-and-forget path, the action is asynchronous and the caller cannot use that result to drive the same retry loop. If retry behavior matters, use `atLeastOnce: true`, test the installed version, and make the target idempotent.
 
+For an HTTP trigger, a received response is treated as successful unless `policy.status.allow` is configured and rejects its status code. Once an operation returns an error, the generic Sensor retry loop does not classify `403`, `429`, and `500` differently; it retries each returned error until `steps` is exhausted.
+
 Bound retries. A permanent authorization error should move to an operational failure path, not retry forever. Use factor and jitter to avoid synchronized retry bursts.
 
 ## Choose Semantics Per Trigger
@@ -157,7 +159,7 @@ triggers:
     atLeastOnce: false
 ```
 
-This creates partial-success states. The durable work can succeed while telemetry is lost, or vice versa. If two effects must commit together, they are not independent Sensor triggers. Submit one Workflow or use a transactional outbox pattern.
+This creates partial-success states. The durable work can succeed while telemetry is lost, or vice versa. If two effects must be coordinated, they are not independent Sensor triggers. Submit one Workflow to coordinate them, or use a transactional outbox pattern when an effect must be committed atomically with a database change.
 
 ## Test the Ambiguous Window
 
@@ -167,7 +169,7 @@ Do not stop at a normal event. Inject failures:
 2. make the target return a timeout after committing;
 3. restart JetStream or the active Sensor during execution;
 4. send the same event ID twice;
-5. fail with `403`, `429`, and `500` and verify retry classification;
+5. for HTTP triggers, configure a status policy, return `403`, `429`, and `500`, and verify that each rejected response follows the bounded retry path and the DLQ path when configured;
 6. fill the target quota and verify bounded failure handling.
 
 Count received events, trigger attempts, created Workflows, idempotency claims, and completed business operations separately. Those numbers reveal where duplicates or loss occur.
