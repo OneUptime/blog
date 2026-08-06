@@ -44,7 +44,6 @@
 
 ## Transit Gateway
 
-4. Why VPC Route Tables Do Not Learn Transit Gateway Routes—and How to Automate the Missing Entries
 5. Traffic Reaches the Transit Gateway but Never Returns: A Four-Table Return-Path Checklist
 6. Finding Transit Gateway Blackholes with Route Analyzer, Transit Gateway Flow Logs, and `PacketDropCountBlackhole`
 7. Which Subnets Should a VPC Transit Gateway Attachment Use? Availability-Zone and Routing Consequences
