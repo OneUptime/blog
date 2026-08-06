@@ -21,7 +21,6 @@
 
 ## Operational Readiness
 
-14. Is the Team Ready for On-Call? Coverage, Escalation, Access, and Handoff Requirements
 15. Designing a First-15-Minutes Incident Dashboard: Impact, Recent Changes, Dependencies, Logs, and Traces
 16. How Should a Service Degrade When a Dependency Fails? Budgets for Timeouts, Retries, and Circuit Breakers
 17. Production Security Readiness: Least Privilege, Secret Rotation, Audit Logs, and Break-Glass Access
