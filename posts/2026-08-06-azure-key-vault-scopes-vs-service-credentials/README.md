@@ -10,7 +10,7 @@ Description: Compare Key Vault-backed secret scopes with Unity Catalog service c
 
 An Azure Key Vault-backed Databricks secret scope and a Unity Catalog service credential can both participate in access to Azure services, but they expose different security models.
 
-A secret scope returns a secret value to code. A service credential gives supported code an Azure credential provider backed by a managed identity, so the Azure SDK obtains tokens without exposing a stored client secret. Identity and network connectivity are separate in both designs.
+A secret scope returns a secret value to code. A service credential gives supported code an Azure credential provider. In the recommended Azure configuration, it references an access connector backed by a managed identity, so the Azure SDK obtains tokens without exposing a stored client secret. Identity and network connectivity are separate in both designs.
 
 ## The core difference
 
@@ -18,11 +18,11 @@ A secret scope returns a secret value to code. A service credential gives suppor
 | --- | --- | --- |
 | Primary purpose | Read secret values stored in one Key Vault | Authenticate code to an external Azure service |
 | Scope | One Databricks workspace | Unity Catalog metastore securable |
-| Azure identity | Azure Databricks service application reads the vault | Azure Databricks access connector uses a managed identity |
+| Azure identity | Azure Databricks service application reads the vault | Recommended: Azure Databricks access connector uses a managed identity |
 | Code receives | Secret string through `dbutils.secrets` | Azure SDK credential provider through `dbutils.credentials` |
 | Databricks governance | Secret scope ACLs | Unity Catalog ownership and `ACCESS` privilege |
-| Azure authorization | Key Vault access policy for the Databricks service | Azure RBAC assigned to the managed identity |
-| Network path | Documented integration requires public Key Vault access with trusted-service bypass | The calling compute must reach the service, publicly or privately |
+| Azure authorization | Key Vault access policy for the Databricks service | Target-service permissions assigned to the managed identity, typically with Azure RBAC |
+| Network path | Restricted vaults rely on the Azure Databricks trusted-service bypass, not a workspace private endpoint | The calling compute must reach the service, publicly or privately |
 | Cloud storage in Unity Catalog | Not recommended | Use a storage credential instead |
 
 Use the secret scope when the application genuinely needs a static secret, such as a legacy password or third-party API key. Use a service credential when an Azure SDK can authenticate with Microsoft Entra tokens and the workload should not handle a long-lived secret.
@@ -52,16 +52,16 @@ Align a vault and scope with one trust boundary. Do not put unrelated teams' sec
 
 ## Key Vault firewall and private endpoint limits
 
-The documented setup for a Key Vault-backed scope requires Key Vault networking to allow public access from specific networks and to enable the trusted Microsoft services firewall exception, or to allow public access from all networks.
+The Azure Databricks setup page instructs you to allow public access from specific networks and enable the trusted Microsoft services firewall exception, or to allow public access from all networks. Current Key Vault networking documentation also states that the trusted-services bypass continues to apply when public network access is disabled.
 
-That means a vault configured as private-endpoint-only with public network access disabled does not match the documented Key Vault-backed scope path. Adding a private endpoint to the workspace VNet does not redirect the Databricks service application's scope integration through that endpoint.
+Disabling public network access therefore does not, by itself, block the scope integration if the trusted-services bypass remains enabled. However, the scope request still uses the Azure Databricks trusted-service path, not your private endpoint. A vault policy that permits only private-endpoint traffic and does not permit the trusted-service bypass does not support this path. Adding a private endpoint to the workspace VNet does not redirect the Databricks service application's scope integration through that endpoint.
 
 This is often the deciding tradeoff:
 
 ```text
 Key Vault-backed scope
   -> convenient workspace secret interface
-  -> requires the documented public trusted-service path
+  -> restricted vaults require the Azure Databricks trusted-service bypass
 
 Direct Azure SDK access from compute
   -> can use a service credential and a private compute-to-vault path
@@ -72,7 +72,7 @@ Do not weaken a private-only Key Vault firewall only to preserve a legacy scope 
 
 ## How a Unity Catalog service credential works
 
-On Azure, a service credential references an Azure Databricks access connector backed by an Azure managed identity. Assign the managed identity least-privilege Azure RBAC roles on the external service, create the service credential in Unity Catalog, and grant users or groups `ACCESS` on that securable.
+On Azure, the recommended service credential configuration references an Azure Databricks access connector backed by an Azure managed identity. Assign the managed identity least-privilege permissions on the external service, create the service credential in Unity Catalog, and grant users or groups `ACCESS` on that securable. Databricks also supports a Microsoft Entra service principal, but strongly recommends managed identities because they avoid client-secret rotation and support services protected by network rules.
 
 Supported notebook code requests the credential provider by name and passes it to an Azure SDK client:
 
@@ -99,7 +99,7 @@ Current requirements matter:
 - The caller needs `ACCESS` or ownership of the service credential.
 - The current generally available code interface requires Databricks Runtime 16.2 or above.
 - The Public Preview interface is available on 15.4 LTS and above with Python but without Scala.
-- SQL warehouses do not support this code interface.
+- SQL warehouses do not support the shown notebook interface. Batch Unity Catalog Python UDFs on SQL warehouses use a separate UDF-specific API.
 - SQL commands for managing service credentials require 15.4 LTS or above, while Catalog Explorer and REST management do not have that runtime requirement.
 
 Check the current support status before standardizing on a runtime. Preview behavior and language support can change.
@@ -116,7 +116,7 @@ ON SERVICE CREDENTIAL `payments-key-vault-reader`
 TO `payments-production`;
 ```
 
-The managed identity's Azure RBAC permissions define what the credential can do in Azure. The Unity Catalog grant defines who can exercise those permissions from Databricks. Both layers must be least privilege.
+The managed identity's permissions on the target service define what the credential can do in Azure. The Unity Catalog grant defines who can exercise those permissions from Databricks. Both layers must be least privilege.
 
 ## Service credentials are not storage credentials
 
@@ -165,7 +165,7 @@ Private endpoints improve network isolation but add endpoint cost, DNS dependenc
 - Grant `CREATE SERVICE CREDENTIAL` only to a small platform group.
 - Create separate access connectors and managed identities for distinct privilege sets.
 - Grant `ACCESS` to account-level groups, not broad workspace populations.
-- Scope Azure RBAC to the narrowest service resource and actions.
+- Scope target-service permissions, typically Azure RBAC, to the narrowest resource and actions.
 - Audit Unity Catalog grants and Azure managed-identity activity.
 - Prefer naming the service credential explicitly in code.
 
@@ -177,7 +177,7 @@ A safe migration from a secret scope to a service credential is:
 
 1. Confirm that the target Azure SDK accepts a `TokenCredential` and that the service supports managed identity.
 2. Create a dedicated access connector and managed identity.
-3. Grant minimum Azure RBAC permissions on a non-production resource.
+3. Grant minimum target-service permissions, preferably with Azure RBAC where supported, on a non-production resource.
 4. Create the Unity Catalog service credential and grant a test group `ACCESS`.
 5. Configure public or private network reachability independently.
 6. Run the old secret-based and new identity-based clients against equivalent test operations.
@@ -216,4 +216,4 @@ Choose neither for Unity Catalog data storage. Use a storage credential and exte
 
 ## Conclusion
 
-Key Vault-backed scopes and Unity Catalog service credentials are not interchangeable. A scope exposes secret values through a workspace ACL and requires the documented Key Vault public trusted-service path. A service credential exposes a managed identity through Unity Catalog and lets supported compute call Azure services directly, including over a separately configured private path. Prefer identity over secrets when the service and runtime support it, and treat network reachability as an independent control.
+Key Vault-backed scopes and Unity Catalog service credentials are not interchangeable. A scope exposes secret values through a workspace ACL and, for a restricted vault, relies on the Azure Databricks trusted-service bypass rather than a workspace private endpoint. A managed-identity-backed service credential exposes that identity through Unity Catalog and lets supported compute call Azure services directly, including over a separately configured private path. Prefer identity over secrets when the service and runtime support it, and treat network reachability as an independent control.
