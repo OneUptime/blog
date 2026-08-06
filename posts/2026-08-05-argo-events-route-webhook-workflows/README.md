@@ -73,7 +73,7 @@ Validate that contract at the producer boundary. Argo Events filters are routing
 
 ## Model Each Route as a Filtered Dependency
 
-The same EventSource event can appear in multiple Sensor dependencies. Each dependency applies its own filters:
+With a JetStream EventBus, the same EventSource event can appear in multiple Sensor dependencies. Each dependency applies its own filters. The legacy NATS Streaming EventBus rejects duplicate `eventSourceName` and `eventName` combinations in one Sensor, so use one Sensor per route if you still run that bus:
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -120,6 +120,11 @@ spec:
             type: string
             value:
               - '^rollback$'
+          - path: body.environment
+            type: string
+            value:
+              - '^staging$'
+              - '^production$'
   triggers:
     - template:
         name: deploy-staging
@@ -252,7 +257,7 @@ Create a routing table before YAML:
 | deploy | staging | `staging-deploy` | staging workflow |
 | deploy | production | `production-deploy` | production workflow |
 | rollback | allowed set | `rollback` | rollback workflow |
-| unknown | any | none | reject and alert |
+| unknown | any | none | no workflow; alert separately |
 
 Test boundary values, missing fields, unexpected case, arrays instead of strings, and new action values. Argo Events does not provide a native exclusive `else` branch in trigger conditions. If exactly one route must always win, normalize a `route` field with JQ or Lua, filter on that field, and test it as a total function. Alternatively, submit one router Workflow and implement branching with Workflow expressions.
 
@@ -307,6 +312,7 @@ Pass `eventId` into each Workflow and enforce idempotency downstream. A routing 
 - [Argo Events data filters](https://argoproj.github.io/argo-events/sensors/filters/data/)
 - [Argo Events filter introduction](https://argoproj.github.io/argo-events/sensors/filters/intro/)
 - [Argo Events trigger conditions](https://argoproj.github.io/argo-events/sensors/trigger-conditions/)
+- [Argo Events Sensor duplicate dependency limitations](https://argoproj.github.io/argo-events/sensors/more-about-sensors-and-triggers/#duplicate-dependencies)
 - [Argo Events trigger parameterization](https://argoproj.github.io/argo-events/tutorials/02-parameterization/)
 - [Argo Events webhook EventSource](https://argoproj.github.io/argo-events/eventsources/setup/webhook/)
 - [Argo Workflows conditional execution](https://argo-workflows.readthedocs.io/en/latest/walk-through/conditionals/)
