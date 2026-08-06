@@ -20,7 +20,7 @@ Creating a Workflow from a `ClusterWorkflowTemplate` with `workflowTemplateRef.c
 
 ## Define a Submittable ClusterWorkflowTemplate
 
-A cluster template used as an entire Workflow needs an `entrypoint` and any argument declarations that callers override:
+When the thin Workflow does not set an `entrypoint`, the cluster template needs one, along with any argument declarations that callers override:
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -138,7 +138,7 @@ For a Sensor that submits the whole reusable pipeline, use `workflowTemplateRef`
 
 ## Grant Submission and Template Read Access
 
-The Sensor service account needs namespaced Workflow submission rights in `builds` and read access to the cluster-scoped template. Keep those rules separate:
+The Sensor service account needs `create` and `list` access to Workflows in `builds`. In the Kubernetes-client mode shown here, the `argoWorkflow` trigger runs the Argo CLI, which validates `workflowTemplateRef` before creation and checks for `get`, `list`, and `watch` access to `ClusterWorkflowTemplate` resources. Keep the namespaced and cluster-scoped rules separate:
 
 ```yaml
 apiVersion: rbac.authorization.k8s.io/v1
@@ -149,7 +149,7 @@ metadata:
 rules:
   - apiGroups: ["argoproj.io"]
     resources: ["workflows"]
-    verbs: ["create", "get", "list"]
+    verbs: ["create", "list"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
@@ -168,42 +168,43 @@ subjects:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: read-build-cluster-template
+  name: read-cluster-workflow-templates
 rules:
   - apiGroups: ["argoproj.io"]
     resources: ["clusterworkflowtemplates"]
-    resourceNames: ["build-and-publish"]
-    verbs: ["get"]
+    verbs: ["get", "list", "watch"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: read-build-cluster-template
+  name: read-cluster-workflow-templates
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
-  name: read-build-cluster-template
+  name: read-cluster-workflow-templates
 subjects:
   - kind: ServiceAccount
     name: build-workflow-trigger
     namespace: argo-events
 ```
 
-`ClusterWorkflowTemplate` is cluster-scoped, so a namespaced Role cannot grant access to it. Depending on client and controller behavior in the installed release, the Sensor submission client and the Workflow controller may each need read access. Verify both identities through audit logs and `kubectl auth can-i`.
+`ClusterWorkflowTemplate` is cluster-scoped, so a namespaced Role cannot grant access to it. The Workflow controller independently needs `get`, `list`, and `watch`; a standard cluster-scoped Argo Workflows installation normally grants those permissions to its controller service account. Verify both identities through audit logs and `kubectl auth can-i`.
 
-Avoid a ClusterRole that permits reading or modifying every cluster template unless that is an intentional platform trust boundary. `resourceNames` narrows `get`, though it does not constrain `list`; this example grants only `get`.
+The ClusterRole above permits reading every cluster template. Kubernetes can restrict `list` and `watch` with `resourceNames` only when the client includes a matching `metadata.name` field selector, which the Argo CLI access check does not do. Treat cluster-wide template visibility as an intentional platform trust boundary. If that is too broad, use a Kubernetes resource trigger with `operation: create` so the Sensor only creates the thin Workflow and the Workflow controller resolves the reference.
 
 ## Keep Namespace Policy in the Thin Workflow
 
 Cluster scope makes logic reusable, not universally safe. The namespaced Workflow remains the place to apply:
 
-- workflow pod service account;
+- workflow pod service account, when the controller's template-reference policy permits that override;
 - target namespace;
 - labels and annotations for ownership and cost;
 - event id and business inputs;
 - namespace-specific defaults allowed by policy.
 
 Use admission policy to prevent a Sensor from selecting an unapproved `serviceAccountName`, host namespace, privileged pod setting, or arbitrary cluster template. The ability to submit a shared template should not become the ability to inject arbitrary pod specs.
+
+On current Argo Workflows v4 releases, `workflowRestrictions.templateReferencing: Strict` or `Secure` rejects `serviceAccountName` and other security-sensitive fields in the thin Workflow by default. In that mode, define the pod service account in the `ClusterWorkflowTemplate` or explicitly allow the override in the controller configuration. The example above assumes the default restriction mode or an approved override policy.
 
 ## Decide How Template Updates Affect Runs
 
@@ -239,6 +240,12 @@ kubectl auth can-i create workflows.argoproj.io \
 
 kubectl auth can-i get clusterworkflowtemplates.argoproj.io/build-and-publish \
   --as=system:serviceaccount:argo-events:build-workflow-trigger
+
+kubectl auth can-i list clusterworkflowtemplates.argoproj.io \
+  --as=system:serviceaccount:argo-events:build-workflow-trigger
+
+kubectl auth can-i watch clusterworkflowtemplates.argoproj.io \
+  --as=system:serviceaccount:argo-events:build-workflow-trigger
 ```
 
 Finally send a nonproduction event and inspect the thin Workflow:
@@ -254,10 +261,11 @@ Confirm `spec.workflowTemplateRef.clusterScope`, arguments, service account, lab
 
 - [Argo Workflows ClusterWorkflowTemplates](https://argo-workflows.readthedocs.io/en/latest/cluster-workflow-templates/)
 - [Argo Workflows WorkflowTemplates](https://argo-workflows.readthedocs.io/en/latest/workflow-templates/)
+- [Argo Workflows workflow restrictions](https://argo-workflows.readthedocs.io/en/latest/workflow-restrictions/)
 - [Argo Events Argo Workflow trigger](https://argoproj.github.io/argo-events/sensors/triggers/argo-workflow/)
 - [Argo Events trigger parameterization](https://argoproj.github.io/argo-events/tutorials/02-parameterization/)
 - [Kubernetes RBAC](https://kubernetes.io/docs/reference/access-authn-authz/rbac/)
 
 ## Conclusion
 
-Reference a `ClusterWorkflowTemplate` from a thin namespaced Workflow and set `clusterScope: true`. Keep task logic in the shared template, event mapping in the Sensor, and namespace security on the execution. Grant cluster-template read access narrowly, version breaking template changes, and test the reference directly before adding the event path.
+Reference a `ClusterWorkflowTemplate` from a thin namespaced Workflow and set `clusterScope: true`. Keep task logic in the shared template, event mapping in the Sensor, and namespace security on the execution. Grant only the required verbs, treat cluster-template visibility as a platform trust boundary, version breaking template changes, and test the reference directly before adding the event path.
