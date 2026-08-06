@@ -21,7 +21,6 @@
 
 ## Operational Readiness
 
-8. From Load Test to Capacity Plan: Calculating Headroom, Saturation Signals, and Scaling Limits
 9. Building a Failure-Mode Inventory: Timeouts, Partial Outages, Queue Backlogs, and Dependency Loss
 10. A Backup Is Not a Recovery Plan: Proving RPO and RTO with Restore Drills
 11. Can You Actually Roll Back? Testing Database-Compatible Reverts and Forward Fixes Before Launch
