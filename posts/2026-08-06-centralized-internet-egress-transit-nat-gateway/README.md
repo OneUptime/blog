@@ -71,6 +71,8 @@ Associate spoke attachments with a spoke-ingress table:
 
 | Destination | Target | Type |
 | --- | --- | --- |
+| `10.10.0.0/16` | Blackhole | Static |
+| `10.20.0.0/16` | Blackhole | Static |
 | `0.0.0.0/0` | Egress VPC attachment | Static |
 
 Associate the egress VPC attachment with a separate return table:
@@ -80,9 +82,9 @@ Associate the egress VPC attachment with a separate return table:
 | `10.10.0.0/16` | Spoke A attachment | Propagated |
 | `10.20.0.0/16` | Spoke B attachment | Propagated |
 
-The separate tables prevent the packet returning from the egress VPC from matching the default route back to the egress VPC. They also let spoke domains share egress without automatically gaining routes to one another.
+The separate tables prevent the packet returning from the egress VPC from matching the default route back to the egress VPC. The more-specific blackhole routes prevent spoke-to-spoke traffic from falling through the default route into the egress VPC.
 
-Do not propagate spoke routes into the spoke-ingress table when spokes should remain isolated. Propagate them into the egress return table so NAT-translated replies can reach the correct spoke.
+Do not propagate spoke routes into the spoke-ingress table when spokes should remain isolated. Add blackhole routes for the spoke CIDRs there, and propagate the spoke routes into the egress return table so NAT-translated replies can reach the correct spoke.
 
 ## Put the Egress Attachment in Private Subnets
 
