@@ -54,7 +54,7 @@ AWS recommends a separate subnet for each Transit Gateway VPC attachment. Dedica
 - middlebox and centralized egress patterns are easier to express;
 - IP consumption and ownership are clear.
 
-Size the subnets according to your address plan and operational headroom. Transit Gateway uses one IP address from each selected subnet, but AWS reserves addresses in every VPC subnet and future network designs may require additional infrastructure. Do not rely on a subnet with no spare usable address.
+Size the subnets according to your address plan and operational headroom. Transit Gateway uses one IP address from each selected subnet, but AWS normally reserves the first four and last IPv4 addresses in a VPC subnet; subnets that use BYOIP address space are an exception. Future network designs may also require additional infrastructure. Do not rely on a subnet with no spare usable address.
 
 The subnet must support IPv4. AWS does not allow an IPv6-only subnet as a Transit Gateway attachment subnet. A dual-stack subnet can be selected, and IPv6 support can be enabled on the attachment when the topology is dual stack.
 
@@ -147,7 +147,7 @@ Create an attachment with an explicit subnet list:
 aws ec2 create-transit-gateway-vpc-attachment \
   --transit-gateway-id tgw-0123456789abcdef0 \
   --vpc-id vpc-0123456789abcdef0 \
-  --subnet-ids subnet-attach-a subnet-attach-b
+  --subnet-ids subnet-0123456789abcdef0 subnet-0123456789abcdef1
 ```
 
 Then inspect the accepted state:
@@ -157,7 +157,15 @@ aws ec2 describe-transit-gateway-vpc-attachments \
   --transit-gateway-attachment-ids tgw-attach-0123456789abcdef0
 
 aws ec2 describe-route-tables \
-  --filters Name=association.subnet-id,Values=subnet-attach-a,subnet-attach-b
+  --filters Name=association.subnet-id,Values=subnet-0123456789abcdef0,subnet-0123456789abcdef1
+```
+
+The route-table filter returns explicit subnet associations only. If an attachment subnet is implicitly associated with the VPC's main route table, inspect that table as well:
+
+```bash
+aws ec2 describe-route-tables \
+  --filters Name=vpc-id,Values=vpc-0123456789abcdef0 \
+            Name=association.main,Values=true
 ```
 
 Wait until the attachment is available before depending on its data path. Verify the options for DNS, IPv6, security-group referencing, and appliance mode against the intended topology instead of copying defaults from another VPC.
