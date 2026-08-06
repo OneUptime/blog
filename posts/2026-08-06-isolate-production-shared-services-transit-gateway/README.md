@@ -180,7 +180,7 @@ Then test the isolation boundary:
 - IPv6 paths if dual stack is enabled;
 - alternate paths such as peering, VPN, public endpoints, or proxy services.
 
-Use VPC Reachability Analyzer for supported VPC path analysis and AWS Network Manager Route Analyzer for transit gateway route-table analysis. Route Analyzer does not inspect VPC route tables, security groups, network ACLs, or customer-gateway routes, so combine tooling with packet tests and flow logs.
+Use VPC Reachability Analyzer for supported IPv4 VPC path analysis and AWS Network Manager Route Analyzer for transit gateway route-table analysis. Route Analyzer does not inspect VPC route tables, security groups, network ACLs, or customer-gateway routes, so combine tooling with packet tests and flow logs.
 
 ## Detect Drift Continuously
 
@@ -195,10 +195,13 @@ aws ec2 get-transit-gateway-route-table-propagations \
 
 aws ec2 search-transit-gateway-routes \
   --transit-gateway-route-table-id tgw-rtb-0123456789abcdef0 \
-  --filters Name=route-search.subnet-of-match,Values=0.0.0.0/0
+  --filters Name=route-search.subnet-of-match,Values=0.0.0.0/0,::/0
+
+aws ec2 describe-transit-gateway-vpc-attachments \
+  --filters Name=transit-gateway-id,Values=tgw-0123456789abcdef0
 ```
 
-Run the checks for all three tables. Alert when:
+Run the first three checks for all three tables. Run the attachment check once for the transit gateway. Alert when:
 
 - an attachment uses the wrong associated table;
 - production propagates into nonproduction or the reverse;
