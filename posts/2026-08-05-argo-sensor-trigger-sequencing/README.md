@@ -55,7 +55,7 @@ spec:
 
 Both triggers depend on the same incoming event. Nothing says `deploy-application` depends on completion of `migrate-database`. The second Workflow can be submitted while the first is still pending, running, or failing.
 
-Trigger retry settings do not change this. `retryStrategy` retries execution of a trigger, such as an unsuccessful submission or HTTP call. It does not wait for a separate trigger to finish before starting the next list item.
+Trigger retry settings do not change this. With `atLeastOnce: true`, `retryStrategy` can retry execution of a trigger, such as an unsuccessful submission or HTTP call. Without `atLeastOnce`, Argo Events 1.9.11 executes the trigger asynchronously, so execution failures do not reach the retry loop. Neither setting waits for a separate trigger to finish.
 
 ## Submit One Orchestrating Workflow
 
@@ -81,7 +81,7 @@ spec:
           - name: validate
             template: validate
           - name: migrate
-            dependencies: [validate]
+            depends: validate.Succeeded
             templateRef:
               name: database-operations
               template: migrate
@@ -90,7 +90,7 @@ spec:
                 - name: service
                   value: '{{workflow.parameters.service}}'
           - name: deploy
-            dependencies: [migrate]
+            depends: migrate.Succeeded
             templateRef:
               name: application-deployment
               template: deploy
@@ -101,21 +101,21 @@ spec:
                 - name: revision
                   value: '{{workflow.parameters.revision}}'
           - name: verify
-            dependencies: [deploy]
+            depends: deploy.Succeeded
             template: verify
     - name: validate
       container:
-        image: alpine:3.20
+        image: alpine:3.23
         command: [sh, -c]
         args: ['test -n "{{workflow.parameters.event-id}}"']
     - name: verify
       container:
-        image: alpine:3.20
+        image: alpine:3.23
         command: [sh, -c]
         args: ['printf "verify %s\n" "{{workflow.parameters.service}}"']
 ```
 
-`dependencies` is valid DAG syntax, though the enhanced `depends` expression is preferred when success, failure, skipped, or daemon outcomes need explicit logic. A task listed in `dependencies` must complete successfully for the dependent task to run under the normal DAG behavior.
+`dependencies` is valid DAG syntax, but its compatibility behavior treats `Succeeded`, `Skipped`, and `Daemoned` as satisfied outcomes. When only success should advance the sequence, use an explicit enhanced `depends` expression such as `migrate.Succeeded`, as shown above.
 
 The Sensor submits only this orchestrator:
 
@@ -164,7 +164,7 @@ Now one Workflow status answers whether the release is pending, running, failed,
 
 There are three different retry questions:
 
-1. **Could the Sensor submit the Workflow?** Configure Sensor trigger `retryStrategy` only if duplicate submission is safe, or use `atLeastOnce` with an idempotent design.
+1. **Could the Sensor submit the Workflow?** Set `atLeastOnce: true` with Sensor trigger `retryStrategy` only if duplicate submission is safe. `atLeastOnce` delays event acknowledgment until trigger execution finishes; it does not provide exactly-once execution, so the design must be idempotent.
 2. **Did a workflow task fail transiently?** Configure Argo Workflow `retryStrategy` on that template.
 3. **Should the entire business operation be attempted again?** Define a deliberate resubmit or new-operation policy with the same idempotency key.
 
@@ -178,7 +178,7 @@ Sensor triggers do not naturally pass output from trigger A to trigger B. A Work
 - name: discover-version
   template: discover
 - name: deploy
-  dependencies: [discover-version]
+  depends: discover-version.Succeeded
   template: deploy
   arguments:
     parameters:
@@ -212,7 +212,7 @@ Multiple Sensor triggers are appropriate when effects truly do not depend on eac
 - route one source event to separate teams with isolated ownership;
 - send best-effort observability data while starting the primary workload.
 
-Even then, understand partial success. One trigger can succeed while another fails. `errorOnFailedRound` can mark the Sensor error after a failed trigger round and stop further processing, but it does not roll back successful side effects. Use it only with an operational recovery plan.
+Even then, understand partial success. One trigger can succeed while another fails, and no Sensor setting rolls back successful side effects. Although `errorOnFailedRound` remains in the Argo Events API, the 1.9.11 Sensor runtime does not act on it, so do not rely on that field to stop processing. Build an operational recovery plan around idempotency, retries, and a dead-letter trigger where appropriate.
 
 If an audit record is legally required before execution, it is not independent. Make the durable audit write a first workflow task or use a transactional system boundary.
 
