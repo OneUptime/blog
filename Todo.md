@@ -8,7 +8,6 @@
 
 ## Databricks
 
-1. Databricks Job Parameters vs Task Parameters vs Widgets: Precedence, Defaults, and Debugging
 2. How to Capture Databricks Job Run IDs and Parameters Without Fragile Notebook Context APIs
 3. Databricks Cost per Run: Combining DBUs, Cloud VM Charges, Startup Time, and Runtime
 4. Why the Cheapest Databricks Instance per Hour Can Cost More per Job
