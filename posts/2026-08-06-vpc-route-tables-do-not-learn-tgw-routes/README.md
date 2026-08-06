@@ -21,7 +21,7 @@ Consider an application VPC at `10.10.0.0/16` and a services VPC at `10.20.0.0/1
 A packet from `10.10.4.10` to `10.20.8.20` needs all of these decisions:
 
 1. The application subnet's VPC route table needs `10.20.0.0/16 -> tgw-id`.
-2. The application's Transit Gateway attachment must exist in the source Availability Zone.
+2. The application's Transit Gateway attachment must include an attachment subnet in the source Availability Zone.
 3. The transit gateway route table associated with the application attachment needs `10.20.0.0/16 -> services attachment`.
 4. The services attachment subnet route table must route within its VPC to the destination subnet.
 5. The services subnet's VPC route table needs `10.10.0.0/16 -> tgw-id` for replies.
@@ -80,7 +80,7 @@ A summary reduces configuration count but sends every unmatched address inside t
 
 Prefer specific routes when domains have different trust or ownership. Use summaries when an IP address management policy reserves the entire aggregate for the same routing and security behavior. Review IPv4 and IPv6 independently; an IPv4 route does nothing for an IPv6 destination.
 
-VPC routing uses the most specific matching route. The immutable local route for the VPC CIDR normally keeps intra-VPC traffic local, although AWS supports specific middlebox-routing patterns that can override portions of local routing. Do not assume a broad Transit Gateway route intercepts ordinary local traffic.
+VPC routing uses the most specific matching route. The default local route for the VPC CIDR normally keeps intra-VPC traffic local, although AWS supports specific middlebox-routing patterns that can add more-specific routes or replace the local route's target. Do not assume a broad Transit Gateway route intercepts ordinary local traffic.
 
 ## Create the Route with the AWS CLI
 
@@ -93,7 +93,7 @@ aws ec2 create-route \
   --transit-gateway-id tgw-0123456789abcdef0
 ```
 
-For IPv6, use `--destination-ipv6-cidr-block`:
+For IPv6, first enable IPv6 support on the VPC attachment, which is disabled by default, then use `--destination-ipv6-cidr-block`:
 
 ```bash
 aws ec2 create-route \
@@ -193,7 +193,7 @@ After deployment, verify:
 
 - the source subnet is associated with the intended VPC route table;
 - that table has an active route to the Transit Gateway ID;
-- the VPC attachment includes the source Availability Zone;
+- the VPC attachment includes an attachment subnet in the source Availability Zone;
 - the source attachment is associated with the intended Transit Gateway table;
 - the Transit Gateway table has an active route to the destination attachment;
 - the destination and attachment-subnet route tables can deliver the packet;
