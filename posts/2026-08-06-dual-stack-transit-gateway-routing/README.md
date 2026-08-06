@@ -37,7 +37,7 @@ When IPv6 support is enabled on a Transit Gateway VPC attachment, AWS does two r
 - Assigns an IPv6 address to the Transit Gateway network interface in each selected attachment subnet.
 - Allows IPv6 VPC CIDRs to propagate into Transit Gateway route tables where route propagation is configured.
 
-An attachment created before the VPC gained IPv6 is not automatically retrofitted. Modify the attachment and explicitly enable IPv6 support. The selected attachment subnets need IPv6 CIDRs, and AWS does not allow creation of a Transit Gateway attachment using IPv6-only subnets. Use IPv4-capable or dual-stack attachment subnets.
+An attachment created before the VPC gained IPv6 is not automatically retrofitted. Modify the attachment and explicitly enable IPv6 support. The selected attachment subnets need IPv6 CIDRs, and AWS does not allow creation of a Transit Gateway attachment using IPv6-only subnets. Use dual-stack attachment subnets.
 
 In Terraform, make the option explicit:
 
@@ -127,9 +127,9 @@ Direct Connect CloudWatch BGP metrics include an `IpAddressFamily` dimension. Al
 
 ## IPv6 Egress Is Not IPv4 NAT with a New Default Route
 
-IPv4 private subnets often send `0.0.0.0/0` through a centralized NAT gateway. Native IPv6 addresses are globally unique, and a NAT gateway does not provide general NAT66 egress for them.
+IPv4 private subnets often send `0.0.0.0/0` through a centralized NAT gateway. Public IPv6 addresses are internet-routable when VPC routing and security controls permit it, and a NAT gateway does not provide general NAT66 egress for them. Private IPv6 addresses provisioned through IPAM cannot egress directly through an internet gateway or egress-only internet gateway.
 
-The simplest outbound-only IPv6 pattern is decentralized:
+The simplest outbound-only IPv6 pattern for workloads with public IPv6 addresses is decentralized:
 
 - Deploy an egress-only internet gateway in each spoke VPC.
 - Add `::/0` from the private subnet to that VPC's egress-only internet gateway.
@@ -194,7 +194,7 @@ Capture the selected Transit Gateway route, BGP best path, firewall decision, an
 
 - [Amazon VPC attachments in AWS Transit Gateway](https://docs.aws.amazon.com/vpc/latest/tgw/tgw-vpc-attachments.html)
 - [How AWS Transit Gateway works](https://docs.aws.amazon.com/vpc/latest/tgw/how-transit-gateways-work.html)
-- [IPv6 connectivity with Transit Gateway](https://docs.aws.amazon.com/whitepapers/latest/ipv6-on-aws/amazon-vpc-connectivity-options-for-ipv6.html)
+- [IP addressing for your VPCs and subnets](https://docs.aws.amazon.com/vpc/latest/userguide/vpc-ip-addressing.html)
 - [IPv4 and IPv6 traffic in Site-to-Site VPN](https://docs.aws.amazon.com/vpn/latest/s2svpn/ipv4-ipv6.html)
 - [Create a Direct Connect transit virtual interface](https://docs.aws.amazon.com/directconnect/latest/UserGuide/create-transit-vif-for-gateway.html)
 - [Allowed prefixes interactions for Direct Connect gateways](https://docs.aws.amazon.com/directconnect/latest/UserGuide/allowed-to-prefixes.html)
