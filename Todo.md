@@ -44,7 +44,6 @@
 
 ## Transit Gateway
 
-3. Isolating Production, Nonproduction, and Shared Services with Transit Gateway Route Tables
 4. Why VPC Route Tables Do Not Learn Transit Gateway Routes—and How to Automate the Missing Entries
 5. Traffic Reaches the Transit Gateway but Never Returns: A Four-Table Return-Path Checklist
 6. Finding Transit Gateway Blackholes with Route Analyzer, Transit Gateway Flow Logs, and `PacketDropCountBlackhole`
