@@ -22,7 +22,7 @@ The rules also change with the task type. A notebook task receives key-value par
 
 Job parameter defaults are resolved when a run starts and can be overridden for that run. Task parameters are part of a task definition and can contain static text, job parameter references, task value references, or other supported dynamic value references. Widgets do not introduce another job-level value. They expose the value delivered to a notebook task.
 
-Dynamic value references, such as `{{job.run_id}}`, are configuration-time string substitutions. They are not expressions, and they cannot be placed directly in notebook source and expected to evaluate. Put them in a task parameter or another job field that supports dynamic values, then read the resolved value in the task.
+Dynamic value references, such as `{{job.run_id}}`, are run-time string substitutions used in supported job and task configuration fields. They are not expressions, and they cannot be placed directly in notebook source and expected to evaluate. Put them in a task parameter or another job field that supports dynamic values, then read the resolved value in the task.
 
 ## Precedence for key-value tasks
 
@@ -73,7 +73,7 @@ Avoid duplicate names when the values have different meanings. A job-level `envi
 
 ## JSON-array tasks do not get automatic pushdown
 
-Python script, positional Python wheel, JAR, Spark Submit, and For each tasks use JSON-formatted arrays. Job parameters are not inserted into those arrays automatically. Reference each value explicitly and preserve the order expected by the program.
+Python script, positional Python wheel, JAR, Spark Submit, and For each tasks use JSON-formatted arrays. Job parameters are not inserted into those arrays automatically. For code tasks, reference each value explicitly and preserve the order expected by the program. A For each task instead iterates over its input array, which can explicitly reference a job parameter.
 
 ```json
 [
@@ -134,7 +134,7 @@ catalog = required_widget("catalog")
 run_date = required_widget("run_date")
 ```
 
-Use SQL named parameter markers when a SQL notebook or SQL task consumes a parameter. Do not concatenate untrusted values into SQL text.
+Use SQL named parameter markers when a SQL notebook or SQL task consumes a parameter. Accessing notebook widget values with parameter markers requires Databricks Runtime 15.2 or above. Do not concatenate untrusted values into SQL text.
 
 ```sql
 SELECT *
@@ -142,7 +142,7 @@ FROM main.sales.orders
 WHERE order_date = CAST(:run_date AS DATE);
 ```
 
-Values used as catalog, schema, or table identifiers need a deliberate allowlist or the supported `IDENTIFIER` clause. A value parameter marker is not an identifier substitution mechanism.
+Values used as catalog, schema, or table identifiers need a deliberate allowlist or the supported `IDENTIFIER` clause, which is available in Databricks SQL and Databricks Runtime 13.3 LTS or above. A value parameter marker is not an identifier substitution mechanism.
 
 ## Defaults should have an owner
 
@@ -154,6 +154,8 @@ A value with defaults in several layers is difficult to debug. Pick one owner fo
 - Use a deployment variable for environment-specific infrastructure that should resolve when a bundle is deployed, not when a job runs.
 
 Bundle variables and job parameters resolve at different times. A bundle variable is resolved at deployment. A job parameter is resolved at run time. If operators need to change a date or mode without redeploying, it belongs in a job parameter.
+
+Bundle validation currently does not allow job-level `parameters` and notebook task `base_parameters` in the same job. If a bundle job defines job parameters, move its notebook task parameters to the job level.
 
 ## A reliable debugging sequence
 
