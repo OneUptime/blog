@@ -46,7 +46,7 @@ If the latest recoverable committed order is timestamped 10:42 and interruption 
 
 Do not start RTO when an operator clicks Restore if the stated objective starts at interruption. Detection, declaration, access, provisioning, restore, replay, validation, and traffic switching all consume the recovery window.
 
-Do not stop RTO when the storage service reports completion. Stop when the defined application journeys are validated and available to their intended users.
+Do not stop RTO when the storage service reports completion. In an actual recovery, stop when the defined application journeys are validated and available to their intended users. In an isolated drill, exercise the equivalent traffic-switching path against test endpoints before stopping the drill clock. Record any production-only cutover step that was not exercised as an unmeasured assumption rather than including it in the demonstrated time.
 
 Record clock source and skew. Prefer durable application sequence numbers or transaction markers alongside timestamps when ordering matters.
 
@@ -82,7 +82,7 @@ The drill should use the real recovery path:
 7. Replay logs, queues, or change streams where required.
 8. Reconcile cross-system state.
 9. Run integrity and user-journey tests.
-10. Record readiness without routing real users.
+10. Exercise traffic switching against isolated test endpoints and record readiness without routing real users.
 11. Destroy or retain the drill environment according to data policy.
 
 Use masked or production backup data only under the same security, privacy, and retention controls as the source. Isolation is not an exemption from data protection.
@@ -176,7 +176,7 @@ objectives:
 timestamps:
   interruption: 2026-07-18T09:00:00Z
   recovery_point: 2026-07-18T08:56:40Z
-  service_validated: 2026-07-18T09:37:12Z
+  service_ready: 2026-07-18T09:37:12Z
 observed:
   data_loss_interval: 3m20s
   recovery_time: 37m12s
