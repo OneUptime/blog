@@ -14,7 +14,6 @@
 
 ## Transit Gateway
 
-14. Why a Cross-Account Transit Gateway Attachment Stays Pending—and Who Owns Each Side of the Route
 15. Direct Connect Gateway to Transit Gateway: Allowed Prefixes, BGP Advertisements, and Route Precedence
 16. Direct Connect with VPN Backup Through Transit Gateway: Preventing Asymmetric Failover
 17. Private DNS Across Transit Gateway: Building a Route 53 Resolver Hub for VPCs and On-Premises Networks
