@@ -39,7 +39,7 @@ A hybrid flow crosses more than one routing domain. Document each one explicitly
 3. The on-premises router selects Direct Connect or VPN for AWS prefixes.
 4. The route table associated with the attachment on which return traffic enters Transit Gateway selects the destination VPC attachment, or an inspection attachment if one is required.
 
-Transit Gateway association and propagation have different jobs. An attachment is associated with exactly one Transit Gateway route table, which is used for packets arriving from that attachment. An attachment can propagate routes into multiple route tables. Therefore, a typical design does the following:
+Transit Gateway association and propagation have different jobs. An attachment can be associated with only one Transit Gateway route table, which is used for packets arriving from that attachment. An attachment can propagate routes into multiple route tables. Therefore, a typical design does the following:
 
 - Propagates on-premises BGP routes from both the Direct Connect gateway and VPN attachments into the route tables used by spoke VPC attachments.
 - Propagates VPC routes, or installs deliberate summaries, into the route tables associated with the Direct Connect gateway and VPN attachments.
@@ -110,12 +110,12 @@ A useful failover exercise changes one condition at a time and observes both dir
 
 1. Establish continuous TCP probes and representative application requests in both directions.
 2. Capture the selected BGP path on the customer router and the selected Transit Gateway route.
-3. Withdraw only the Direct Connect BGP advertisement while leaving the physical circuit up.
+3. Shut down the relevant Direct Connect BGP peering while leaving the physical circuit up, so routes learned through that peering are withdrawn on both sides.
 4. Verify that the VPN route becomes selected and that new bidirectional sessions succeed.
 5. Restore BGP, wait for the route to stabilize, and verify controlled failback.
 6. Repeat for a virtual-interface failure, complete Direct Connect path failure, each VPN tunnel, and the customer-edge device.
 
-Testing only by disabling a physical interface can hide policy errors. Test a BGP withdrawal because that is the signal Transit Gateway uses to expose a propagated backup. Separately test loss of the physical path because it exercises carrier and edge dependencies.
+Testing only by disabling a physical interface can hide policy errors. Test loss of the BGP peering because withdrawal of the propagated Direct Connect route is the signal Transit Gateway uses to expose the backup, and withdrawal of AWS routes from the customer router makes the reverse direction fail over too. Separately test loss of the physical path because it exercises carrier and edge dependencies.
 
 Do not publish a universal convergence target. BGP timers, tunnel detection, customer equipment, route scale, and application retry behavior all contribute. Measure the end-to-end interruption and set the recovery objective from evidence.
 
@@ -128,7 +128,7 @@ Alarm on signals that explain why a route should change:
 - VPN tunnel logs for IKE, IPsec, dead-peer-detection, and BGP events.
 - Customer-router BGP state, accepted-prefix counts, and best-path changes.
 
-Then add end-to-end probes. A BGP session can be established while an application prefix is filtered, a return route is absent, or a firewall drops the flow. Transit Gateway Flow Logs and VPC Flow Logs help correlate the attachment path and accept or reject behavior, but Transit Gateway Flow Logs are not a real-time stream.
+Then add end-to-end probes. A BGP session can be established while an application prefix is filtered, a return route is absent, or a firewall drops the flow. Transit Gateway Flow Logs help correlate the attachment path and Transit Gateway packet-loss reasons, while VPC Flow Logs show network-interface-level accept or reject behavior. Transit Gateway Flow Logs are not a real-time stream.
 
 ## Deployment Checklist
 
