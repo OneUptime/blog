@@ -168,7 +168,7 @@ Terraform state is one view. Query the AWS control plane directly as a deploymen
 ```bash
 aws ec2 search-transit-gateway-routes \
   --transit-gateway-route-table-id "$NEXT_TGW_ROUTE_TABLE_ID" \
-  --filters Name=state,Values=active
+  --filters Name=state,Values=active,blackhole
 
 aws ec2 get-transit-gateway-route-table-propagations \
   --transit-gateway-route-table-id "$NEXT_TGW_ROUTE_TABLE_ID"
@@ -219,7 +219,7 @@ Move one low-risk attachment first. During and immediately after the apply:
 1. Poll the association until AWS reports the expected table and associated state.
 2. Search the active table for representative routes.
 3. Run new TCP and application-level probes in both directions.
-4. Check Transit Gateway and VPC Flow Logs for the selected attachments and rejects.
+4. Check Transit Gateway Flow Logs for no-route and blackhole losses, and VPC Flow Logs for rejects on the selected path.
 5. Verify stateful inspection symmetry.
 6. Observe for an agreed period before moving the next attachment.
 
