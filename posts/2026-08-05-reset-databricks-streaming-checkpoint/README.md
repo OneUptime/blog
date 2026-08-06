@@ -57,7 +57,7 @@ FROM cloud_files_state('/Volumes/ops/checkpoints/events')
 ORDER BY discovery_time DESC;
 ```
 
-`source_id` is part of the documented result schema and is `0` for a query with one cloud-storage source. The discovery, commit, and ingestion-state fields require a sufficiently recent runtime, and some are populated only for streams processed on Databricks Runtime 18.2 and above or on 16.4 and above with `cloudFiles.cleanSource` enabled. Treat a null state according to the function's version-specific rules.
+`source_id` is part of the documented result schema and is the string `'0'` for a query with one cloud-storage source. The discovery, commit, and ingestion-state fields require a sufficiently recent runtime, and some are populated only for streams processed on Databricks Runtime 18.2 and above or on 16.4 and above with `cloudFiles.cleanSource` enabled. Treat a null state according to the function's version-specific rules.
 
 For Delta sources, record source table versions and retention settings:
 
@@ -200,7 +200,7 @@ Choose one of the following:
 - rebuild the complete result in batch and start the stream from the corresponding source fence;
 - accept and document a new semantic epoch if historical continuity is not required.
 
-Changing grouping keys, aggregate types, join keys, state schema, or timeout type is not compatible with an existing checkpoint. A new checkpoint is technically necessary, but it does not make the new semantics historically correct by itself.
+Changing grouping keys, aggregate types, join keys, or timeout type is not compatible with an existing checkpoint. Most state-schema changes are also incompatible. The documented exception is supported state-store schema evolution for `transformWithState` and `transformWithStateInPandas`; follow its pattern-specific requirements, including Avro encoding for field-level changes. For incompatible changes, a new checkpoint is technically necessary, but it does not make the new semantics historically correct by itself.
 
 ## Execute the Reset as a Controlled Cutover
 
