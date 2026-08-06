@@ -152,7 +152,7 @@ Centralization also concentrates mistakes. A propagated route or broad static ro
 
 These are design characteristics, not a verdict. For example, a central inspection requirement can make Transit Gateway the viable choice even if peering transport is cheaper. A two-VPC latency-sensitive data plane may favor peering even if the company uses Transit Gateway elsewhere.
 
-Measure performance before migration. AWS describes VPC peering as having no separate gateway, single point of failure, or bandwidth bottleneck. Transit Gateway adds a routing hop and enforces different MTU behavior. AWS's migration guidance warns that moving from peering's 9001-byte path to Transit Gateway's 8500-byte MTU can disrupt traffic and that Transit Gateway does not support Path MTU Discovery. Test application payloads, throughput, connection behavior, and failure recovery rather than comparing only nominal service scale.
+Measure performance before migration. AWS describes VPC peering as having no separate gateway, single point of failure, or bandwidth bottleneck. Transit Gateway adds a routing hop and enforces different MTU behavior. AWS's migration guidance warns that moving from a same-Region peering path's 9001-byte MTU to Transit Gateway's 8500-byte MTU can disrupt traffic. Current Transit Gateway documentation says Path MTU Discovery is supported for traffic entering on VPC and Connect attachments, but not on Site-to-Site VPN, Direct Connect, or peering attachments. Test application payloads, throughput, connection behavior, and failure recovery rather than comparing only nominal service scale.
 
 ## Use a Decision Record, Not a Slogan
 
