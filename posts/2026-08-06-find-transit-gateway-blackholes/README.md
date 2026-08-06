@@ -198,7 +198,7 @@ An isolation design may intentionally send denied CIDRs to blackhole routes. Sep
 
 - Transit Gateway and attachment dimensions;
 - traffic domain and owner;
-- destination prefixes recovered from Flow Logs;
+- destination IP addresses from Flow Logs, mapped to expected prefixes;
 - change windows and synthetic negative tests;
 - historical baselines for internet-bound no-route noise.
 
