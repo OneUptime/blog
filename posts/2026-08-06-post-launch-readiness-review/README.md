@@ -100,13 +100,13 @@ Compare every input to measured production behavior:
 - dependency fanout and retry amplification;
 - redundancy margin after a zone, node pool, or dependency failure.
 
-Calculate forecast error:
+For a nonzero prediction, calculate signed relative forecast error:
 
 ```text
 forecast error = (observed - predicted) / predicted
 ```
 
-Use the formula consistently, but do not hide important dimensional errors in one aggregate. Total traffic may match while one expensive endpoint is several times larger than expected.
+When the prediction is zero, report the absolute difference instead because relative error is undefined. Use the formula consistently, but do not hide important dimensional errors in one aggregate. Total traffic may match while one expensive endpoint is several times larger than expected.
 
 Re-run the model with observed values and the required failure scenario. If current load needs six replicas but loss of one zone leaves only four ready, a green steady-state CPU graph does not prove readiness.
 
