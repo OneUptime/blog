@@ -8,7 +8,6 @@
 
 ## Databricks
 
-4. Why the Cheapest Databricks Instance per Hour Can Cost More per Job
 5. When Databricks Instance Pools Reduce Cold Starts—and When Idle Capacity Costs More Than It Saves
 6. Using Spot Workers Safely in Databricks Jobs: Fallback, Retry, and Driver Placement Patterns
 7. Serverless SQL Warehouse, Pro Warehouse, or Job Compute? A Cost-and-Concurrency Decision Guide
