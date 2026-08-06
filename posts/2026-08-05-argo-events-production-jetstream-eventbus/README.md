@@ -10,7 +10,7 @@ Description: Configure an Argo-managed JetStream EventBus with supported version
 
 The smallest JetStream EventBus manifest creates a useful development broker, but production reliability needs an explicit storage, placement, capacity, disruption, upgrade, and restore contract.
 
-Argo Events can manage the NATS JetStream StatefulSet. Current official documentation says the default is three replicas, TLS is enabled for client-server and inter-node traffic, and client password authentication is enabled. Those defaults do not choose your storage class, failure domains, retention, backup destination, or recovery procedure.
+Argo Events can manage the NATS JetStream StatefulSet. Current official documentation says the default is three replicas, TLS is enabled for client-server and inter-node traffic, and client password authentication is enabled. Those defaults do not choose your storage class, failure domains, backup destination, or recovery procedure, and the default retention limits may not match your requirements.
 
 ## Pin a Controller-Supported NATS Version
 
@@ -57,7 +57,7 @@ spec:
           memory: 2Gi
 ```
 
-Verify generated pod labels against your installed release before enforcing required anti-affinity. Required zone spreading needs at least three schedulable zones; otherwise the EventBus may remain Pending. If the cluster has fewer zones, use hostname spreading or a preferred rule and document the reduced failure tolerance.
+Verify generated pod labels against your installed release before enforcing required anti-affinity. Required zone spreading needs at least three schedulable zones; otherwise the EventBus may remain Pending. If the cluster has fewer zones, use hostname spreading or a preferred rule and document the reduced failure tolerance. The `fast-retained` StorageClass and `platform-critical` PriorityClass are environment-specific placeholders; create them first or substitute names that exist in the cluster.
 
 `ReadWriteOnce` is appropriate for one PVC per StatefulSet replica on common block storage. Choose a StorageClass whose reclaim policy, volume binding mode, zone behavior, expansion, snapshots, encryption, and restore are understood. A retained volume can aid recovery but also retains sensitive event payloads after resource deletion.
 
@@ -86,7 +86,7 @@ spec:
 
 These fields and numeric enum values come from the current Argo Events JetStream API: retention `0` is Limits and discard `0` is DiscardOld. Argo reads `maxBytes` as an integer, so `85899345920` means 80 GiB; a value such as `80GB` would be read as zero rather than a byte limit. Confirm all fields in the installed CRD/API. The limit must fit real storage with headroom for filesystem overhead, replicas, consumer state, and operational recovery. NATS stream limits apply to the stream, while disk capacity applies per server and replica placement.
 
-Set retention longer than the maximum planned Sensor outage plus detection and repair time. Know whether DiscardOld under pressure satisfies the business loss policy. If it does not, alert well before the limit and control producers upstream.
+Set `maxAge` longer than the maximum planned Sensor outage plus detection and repair time, and size `maxMsgs` and `maxBytes` so they do not evict that backlog sooner at expected traffic rates. Know whether DiscardOld under pressure satisfies the business loss policy. If it does not, alert well before the limit and control producers upstream.
 
 ## Add a PodDisruptionBudget
 
@@ -106,7 +106,7 @@ spec:
       eventbus-name: default
 ```
 
-A PDB protects only against voluntary disruptions such as drains. It does not prevent node failure, OOM kill, or force deletion. It can also block maintenance when the cluster lacks capacity. Test drain behavior and keep enough schedulable capacity across failure domains.
+A PDB limits voluntary evictions performed through the Kubernetes Eviction API, such as a normal drain. It does not prevent node failure, OOM kill, force deletion, direct pod deletion, or StatefulSet-controlled rolling updates. It can also block maintenance when the cluster lacks capacity. Test drain behavior and keep enough schedulable capacity across failure domains.
 
 ## Understand TLS and Credentials
 
@@ -154,7 +154,7 @@ The Argo Events `Deployed` condition means the controller created resources; it 
 
 ## Back Up the Stream, Not Just the PVC
 
-Replicas are not backups. A bad configuration, accidental deletion, credential error, or namespace disaster can affect every replica. NATS documents `nats stream backup` and `nats stream restore`, and stream snapshots include configuration, message data, and consumer state for supported storage.
+Replicas are not backups. A bad configuration, accidental deletion, credential error, or namespace disaster can affect every replica. NATS documents `nats stream backup` and `nats stream restore`, and snapshots of file-backed streams include configuration, message data, and durable consumer state.
 
 Build a runbook that:
 
@@ -175,11 +175,11 @@ Before changing Argo Events or NATS versions:
 - verify the target NATS key exists in controller config;
 - back up the stream;
 - test in a representative environment;
-- confirm PDB and capacity allow a rolling update;
+- confirm the StatefulSet rollout behavior and available capacity preserve quorum;
 - observe quorum, stream replicas, redelivery, and Sensor actions;
 - define rollback limits, especially after storage-format changes.
 
-Test loss of one pod, one node, and one zone. NATS automatic recovery requires surviving quorum and available placement for replacement replicas. Test total-cluster restore separately; quorum cannot recover a destroyed failure domain without backup.
+Test loss of one pod, one node, and one zone. A temporarily unavailable replica can catch up when it returns. Automatic replacement of a permanently lost replica requires surviving quorum, an available JetStream server for placement, and removal of the lost server from the JetStream meta group. Test total-cluster restore separately; quorum cannot recover a totally destroyed cluster without an external recovery copy.
 
 Record RPO and RTO based on measured drills, not on the words "three replicas."
 
@@ -194,4 +194,4 @@ Record RPO and RTO based on measured drills, not on the words "three replicas."
 
 ## Conclusion
 
-Run managed JetStream as a real stateful system: pin a supported version, use three failure-separated replicas and durable volumes, bound retention and payloads, protect TLS credentials, and monitor NATS plus Argo metrics. Replication handles some failures; only an off-cluster stream backup and tested restore provide disaster recovery.
+Run managed JetStream as a real stateful system: pin a supported version, use three failure-separated replicas and durable volumes, bound retention and payloads, protect TLS credentials, and monitor NATS plus Argo metrics. Replication handles some failures; for this managed-bus design, an off-cluster stream backup and tested restore provide recovery from complete cluster loss.
