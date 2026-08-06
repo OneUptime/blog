@@ -21,7 +21,6 @@
 
 ## Operational Readiness
 
-11. Can You Actually Roll Back? Testing Database-Compatible Reverts and Forward Fixes Before Launch
 12. Feature Flags as Operational Controls: Kill Switches, Safe Defaults, Ownership, and Cleanup
 13. Reducing Deployment Blast Radius with Canaries, Progressive Delivery, and Automated Abort Criteria
 14. Is the Team Ready for On-Call? Coverage, Escalation, Access, and Handoff Requirements
