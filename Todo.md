@@ -44,7 +44,6 @@
 
 ## Transit Gateway
 
-10. AWS Network Firewall Behind Transit Gateway: Designing Symmetric East-West Inspection Paths
 11. Overlapping VPC CIDRs: What Transit Gateway Cannot Route and When PrivateLink or Private NAT Helps
 12. Cross-Region Transit Gateway Peering: Static Routes, Non-Transitive Paths, and the Real Cost Model
 13. Transit Gateway or VPC Peering? Finding the Break-Even Point for VPC Count and Traffic Volume
