@@ -195,7 +195,7 @@ Re-test after meaningful code, runtime, instance, data distribution, dependency,
 
 ## Official Documentation
 
-- [AWS Well-Architected: Load Test Your Workload](https://docs.aws.amazon.com/wellarchitected/latest/framework/perf_performing_architecture_load_test.html)
+- [AWS Well-Architected: Load Test Your Workload](https://docs.aws.amazon.com/wellarchitected/latest/framework/perf_process_culture_load_test.html)
 - [Google SRE Workbook: Managing Load](https://sre.google/workbook/managing-load/)
 - [Google SRE Book: Addressing Cascading Failures](https://sre.google/sre-book/addressing-cascading-failures/)
 - [Kubernetes: Horizontal Pod Autoscaling](https://kubernetes.io/docs/concepts/workloads/autoscaling/horizontal-pod-autoscale/)
