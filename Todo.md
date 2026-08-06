@@ -8,7 +8,6 @@
 
 ## Databricks
 
-6. Using Spot Workers Safely in Databricks Jobs: Fallback, Retry, and Driver Placement Patterns
 7. Serverless SQL Warehouse, Pro Warehouse, or Job Compute? A Cost-and-Concurrency Decision Guide
 8. Diagnosing High ODBC Latency in Databricks SQL: Startup, Queueing, Fetch Size, and Result Caching
 9. Azure Key Vault Secret Scopes and Unity Catalog Service Credentials: Use Cases, Governance, and Private Endpoint Trade-Offs
