@@ -10,7 +10,7 @@ Description: Learn how Transit Gateway associations select an ingress route tabl
 
 Association and propagation solve different halves of AWS Transit Gateway routing. An association tells Transit Gateway which route table to consult when a packet arrives from an attachment. A propagation tells Transit Gateway which attachment prefixes to install in a route table.
 
-Confusing the two creates a common failure mode: the console shows a VPC CIDR in a transit gateway route table, but packets from that VPC use a different table and never select the route. The reverse is also possible: an attachment is associated with the correct table, but the destinations it needs were never propagated or added statically.
+Confusing the two creates a common failure mode: the console shows a destination VPC CIDR in a transit gateway route table, but packets from the source VPC use a different table and never select that route. The reverse is also possible: an attachment is associated with the correct table, but the destinations it needs were never propagated or added statically.
 
 This guide builds a precise mental model, then turns it into a repeatable configuration and troubleshooting process.
 
@@ -37,7 +37,7 @@ The source attachment chooses the lookup table. The destination route chooses th
 
 ## Association Controls the Ingress Lookup
 
-Every transit gateway attachment is associated with exactly one transit gateway route table. Multiple attachments can share a table, but one attachment cannot select two associated tables for different packets.
+A transit gateway attachment can be associated with no more than one transit gateway route table at a time. Multiple attachments can share a table, but one attachment cannot select two associated tables for different packets. An attachment can temporarily have no active association, such as while it is being moved between tables, and therefore has no table to use for ingress lookup during that interval.
 
 Think of association as this mapping:
 
@@ -107,7 +107,7 @@ Write the intended communication policy before creating routes:
 | Shared services | Application | Yes | `rtb-shared` | Application propagation |
 | Shared services | Production | Yes | `rtb-shared` | Production propagation |
 
-Then implement each allowed row in both directions. A stateful connection still needs a return route. Security groups can allow a session, but they cannot create the missing network path.
+Then implement the forward and return paths for each allowed request/reply flow. A stateful connection still needs a return route. Security groups can allow a session, but they cannot create the missing network path.
 
 For broad groups of non-overlapping spoke CIDRs, a summarized static route can reduce table size. It also expands the destinations sent to an attachment, so use it only when the next hop can route every address in the summary and the wider reachability is intended. Propagated specific routes are usually easier to audit.
 
@@ -167,7 +167,7 @@ Repeat the analysis with source and destination reversed. The destination attach
 
 ### A propagated route never appears
 
-Confirm that propagation is enabled into the intended table, the attachment is available, and the prefix is eligible. Identical or overlapping prefixes require special care. AWS notes that a newly attached VPC's identical CIDR is not propagated when an identical route already exists.
+Confirm that propagation is enabled into the intended table, the attachment is available, and the prefix is eligible. Identical or overlapping prefixes require special care. AWS notes that if a newly attached VPC's CIDR is identical to or overlaps the CIDR of another VPC already attached to the transit gateway, routes for the newly attached VPC are not propagated.
 
 ### A route is present but blackholed
 
@@ -175,7 +175,7 @@ An explicit blackhole route drops matching traffic. A static route can also beco
 
 ### Segmentation works in one direction only
 
-That can be intentional. Association and propagation can implement asymmetric reachability, such as spokes initiating to shared services while spokes remain isolated. If bidirectional initiation is required, both associated tables need the corresponding destination routes.
+That can be intentional for one-way, stateless traffic. For request/reply traffic, both associated tables need the corresponding destination routes. Once those routes exist, Transit Gateway routing does not distinguish a reply from a new connection, so use security groups or a stateful firewall if only spokes should initiate connections to shared services. Separate route tables can still keep the spokes isolated from one another.
 
 ## Treat the Route Table as Policy
 
@@ -189,7 +189,7 @@ propagates_to:
   - rtb-shared
 allowed_destinations:
   - 10.20.0.0/16
-expected_blackholes:
+expected_no_routes:
   - 10.30.0.0/16
 owner: application-platform
 ```
