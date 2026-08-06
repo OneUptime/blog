@@ -14,7 +14,6 @@
 
 ## Transit Gateway
 
-19. Dual-Stack Transit Gateway Routing: Where IPv6 Propagation, Egress, and Inspection Differ from IPv4
 20. Updating Transit Gateway Route Tables with Terraform Without Creating a Connectivity Gap
 
 ## Apache Hadoop
