@@ -8,9 +8,9 @@ Description: Prevent duplicate business effects when Argo Events retries or rede
 
 ---
 
-An Argo Sensor can redeliver or retry after a crash precisely because it cannot always know whether the previous attempt completed. The safe response is not to hope duplicates are rare. Make the handler produce the same business result when the same logical request is processed more than once.
+With `atLeastOnce: true` and, for explicit trigger retries, a `retryStrategy`, an Argo Sensor can repeat trigger execution after a crash or failure because it cannot always know whether the previous attempt completed. Trigger execution is at-most-once by default, and trigger retries are disabled by default. The safe response is not to hope duplicates are rare. Make the handler produce the same business result when the same logical request is processed more than once.
 
-Idempotency belongs at the effect boundary. A Sensor-side five-minute duplicate cache or a unique CloudEvent ID can reduce some duplicates, but it cannot cover every crash window, producer replay, retention interval, or manually resubmitted event.
+Idempotency belongs at the effect boundary. A short-lived Sensor-side recent-event cache or a unique CloudEvent ID can reduce some duplicates, but it cannot cover every crash window, producer replay, retention interval, or manually resubmitted event.
 
 ## Define the Logical Operation
 
@@ -93,7 +93,7 @@ On retry, inspect authoritative state:
 - if the image digest already exists and matches, reuse it;
 - if the Deployment already references the desired digest, do not patch again;
 - if a migration version is recorded, do not rerun a non-repeatable migration;
-- if an external API accepted an idempotency key, retrieve its original result.
+- if an external API supports idempotency keys, retry with the same key or retrieve its original result according to the API's contract.
 
 Prefer declarative upsert or desired-state reconciliation over imperative "create another" actions.
 
@@ -114,7 +114,7 @@ Kubernetes then returns `AlreadyExists` for a repeated create. This helps only i
 - the trigger treats an identical existing resource as success;
 - the original Workflow status is acceptable for the duplicate request.
 
-Argo Events' create trigger does not automatically turn every `AlreadyExists` response into semantic success. A small idempotency gateway or claim-first Workflow can provide clearer behavior. `generateName` always permits another object and therefore does not deduplicate.
+Neither Argo Events' `argoWorkflow` `submit` operation nor its Kubernetes `create` operation automatically turns an `AlreadyExists` response into semantic success. A small idempotency gateway or claim-first Workflow can provide clearer behavior. Using `generateName` normally creates another object and therefore does not deduplicate by logical operation.
 
 ## Separate Execution Retry from New Intent
 
