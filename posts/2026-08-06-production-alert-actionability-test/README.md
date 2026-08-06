@@ -67,7 +67,7 @@ Do not page a downstream team only because its metric appears abnormal. Page the
 
 Define the resolved condition and any minimum recovery period. A page that flaps between firing and resolved creates repeated interruptions and obscures whether mitigation worked.
 
-Use hysteresis, a hold duration, multiwindow evaluation, or stateful suppression when appropriate. These mechanisms should filter noise without hiding sustained harm.
+Use hysteresis, appropriate `for` and `keep_firing_for` durations, multiwindow evaluation, or stateful suppression when appropriate. These mechanisms should filter noise without hiding sustained harm.
 
 ## Page on Symptoms and Diagnose with Causes
 
