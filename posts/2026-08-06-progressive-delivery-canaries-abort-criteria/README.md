@@ -80,7 +80,7 @@ Missing telemetry is not evidence of health.
 
 ## Encode Steps and Analysis
 
-Argo Rollouts can set canary weights, pause, and run an `AnalysisTemplate`. This shortened example assumes a configured traffic-routing integration and Prometheus:
+Argo Rollouts can set canary weights, pause, and run an `AnalysisTemplate`. This shortened example shows the step and analysis structure but omits the Service resources. Because it also omits a router-specific `trafficRouting` block, `setWeight` uses Argo Rollouts' replica-weighted approximation rather than an exact traffic percentage:
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -134,7 +134,7 @@ spec:
     - name: canary-success-ratio
       interval: 1m
       count: 10
-      successCondition: result[0] >= 0.995
+      successCondition: len(result) > 0 && result[0] >= 0.995
       failureLimit: 1
       provider:
         prometheus:
