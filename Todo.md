@@ -21,7 +21,6 @@
 
 ## Operational Readiness
 
-19. The Post-Launch Readiness Review: Catching Alert Noise, Capacity Misses, and Runbook Gaps
 20. Continuous Operational Readiness: Turning Review Questions into Tested Policy and Service Metadata
 
 ## Transit Gateway
