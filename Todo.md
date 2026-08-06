@@ -14,7 +14,6 @@
 
 ## Transit Gateway
 
-16. Direct Connect with VPN Backup Through Transit Gateway: Preventing Asymmetric Failover
 17. Private DNS Across Transit Gateway: Building a Route 53 Resolver Hub for VPCs and On-Premises Networks
 18. Referencing Security Groups Across Transit Gateway: Supported Topologies, Prerequisites, and Gotchas
 19. Dual-Stack Transit Gateway Routing: Where IPv6 Propagation, Egress, and Inspection Differ from IPv4
