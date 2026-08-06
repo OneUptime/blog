@@ -43,12 +43,12 @@ Databricks explicitly documents that running `OPTIMIZE` on a table used as a str
 
 The stream can observe the transaction-log commit without emitting all compacted rows as new business records. This is distinct from upstream operations such as `UPDATE`, `DELETE`, `MERGE`, or `OVERWRITE`, which modify existing data and require an explicit downstream strategy such as change data feed, `skipChangeCommits`, or a full refresh.
 
-For a native Delta streaming sink, concurrent `OPTIMIZE` is also safe under Delta concurrency and snapshot-isolation rules. The streaming writer continues committing new versions. An optimization may retry when it encounters a conflicting write, but it does not invalidate the writer's checkpoint.
+For a native Delta streaming sink performing append-only writes to a table that supports concurrent transactions, concurrent `OPTIMIZE` is also safe under Delta concurrency rules. Databricks documents that append operations that do not read the target table cannot conflict with `OPTIMIZE`. Other write patterns can have different conflict behavior and might fail with a concurrency exception, but that does not by itself invalidate the writer's checkpoint.
 
 There are two operational details worth recognizing:
 
 - A streaming commit with `epochId = -1` can be an expected empty Delta commit, including on the first batch after a restart or after a schema change.
-- A `foreachBatch` callback can receive an empty DataFrame for maintenance commits such as `OPTIMIZE`. Callback code should tolerate empty batches instead of interpreting them as corruption.
+- A `foreachBatch` callback can receive an empty DataFrame when an `OPTIMIZE` operation has no files to process. File pruning can also produce an empty batch. Callback code should tolerate empty batches instead of interpreting them as corruption.
 
 An explicit guard is cheap:
 
@@ -155,7 +155,7 @@ Use the evidence, not the maintenance command name:
 | Observation | Likely meaning | Correct response |
 | --- | --- | --- |
 | `OPTIMIZE` appears in history and the stream continues | Expected layout rewrite | Keep the checkpoint |
-| Empty `foreachBatch` input after a maintenance commit | Valid no-data batch | Make callback tolerate empty input |
+| Empty `foreachBatch` input after a no-work `OPTIMIZE` or file pruning | Valid no-data batch | Make callback tolerate empty input |
 | Schema change terminates the stream | Metadata incompatibility | Restart or migrate per schema-change guidance |
 | `DELTA_FILE_NOT_FOUND_DETAILED` after long downtime | Source history expired | Full refresh from available truth |
 | Checkpoint directory vanished after `VACUUM` | It was stored in an unprotected unmanaged directory | Restore if possible, then perform a controlled reset |
