@@ -14,7 +14,6 @@
 
 ## Transit Gateway
 
-15. Direct Connect Gateway to Transit Gateway: Allowed Prefixes, BGP Advertisements, and Route Precedence
 16. Direct Connect with VPN Backup Through Transit Gateway: Preventing Asymmetric Failover
 17. Private DNS Across Transit Gateway: Building a Route 53 Resolver Hub for VPCs and On-Premises Networks
 18. Referencing Security Groups Across Transit Gateway: Supported Topologies, Prerequisites, and Gotchas
