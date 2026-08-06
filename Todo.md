@@ -8,7 +8,6 @@
 
 ## Databricks
 
-2. How to Capture Databricks Job Run IDs and Parameters Without Fragile Notebook Context APIs
 3. Databricks Cost per Run: Combining DBUs, Cloud VM Charges, Startup Time, and Runtime
 4. Why the Cheapest Databricks Instance per Hour Can Cost More per Job
 5. When Databricks Instance Pools Reduce Cold Starts—and When Idle Capacity Costs More Than It Saves
