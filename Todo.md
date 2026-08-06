@@ -14,7 +14,6 @@
 
 ## Transit Gateway
 
-20. Updating Transit Gateway Route Tables with Terraform Without Creating a Connectivity Gap
 
 ## Apache Hadoop
 
