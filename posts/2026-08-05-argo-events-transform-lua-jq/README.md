@@ -37,7 +37,7 @@ Assume incoming webhook data:
 }
 ```
 
-Normalize it in the dependency:
+Normalize it in the dependency (the required trigger is omitted here):
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -66,6 +66,9 @@ spec:
           - path: contract.environment
             type: string
             value: ['^(staging|production)$']
+          - path: contract.revision
+            type: string
+            value: ['^.*$']
           - path: contract.eventId
             type: string
             value: ['^.+$']
@@ -88,7 +91,7 @@ That change is intentional and breaking: later filters and parameter sources can
 
 ## Use Lua for Procedural Logic
 
-Lua is useful when normalization needs readable branching or loops that would make JQ hard to review. The event data is available as global table `event`, and the script must return a table representing a JSON object.
+Lua is useful when normalization needs readable branching or loops that would make JQ hard to review. Argo Events executes these scripts with GopherLua, a Lua 5.1 VM with its documented extensions. The event data is available as global table `event`, and the script must return a table representing a JSON object.
 
 ```yaml
 dependencies:
@@ -115,9 +118,15 @@ dependencies:
         return event
     filters:
       data:
+        - path: contract.service
+          type: string
+          value: ['^[a-z][a-z0-9-]*$']
         - path: contract.environment
           type: string
           value: ['^(staging|production)$']
+        - path: contract.revision
+          type: string
+          value: ['^.*$']
 ```
 
 Lua tables have an important JSON edge case. By default, an empty table serializes as `{}`, not `[]`. The official Argo Events documentation shows using a metatable flag for an empty array:
@@ -144,19 +153,19 @@ All dependency filter types run after a successful transform. This enables a cle
 - use trigger conditions only after the dependency is valid;
 - parameterize the trigger from the same stable fields.
 
-Argo Events evaluates filter types in the documented order: expression, data, context, then time. A filter error is false. Transformation failure is more severe: the event is discarded before any filter can accept it.
+Argo Events evaluates expression, data, context, and time filters in the documented order. The current Sensor implementation evaluates a configured script filter after those. A filter error is false. Transformation failure is more severe: the event is discarded before any filter can accept it.
 
 If a transformation supplies an empty string for a missing required field, add a filter such as `^.+$`. Otherwise the transform may technically succeed and allow an incomplete contract to reach parameterization.
 
 ## Do Not Put Side Effects in a Transform
 
-Lua and JQ transforms are pure event reshaping. They are not places to call an API, fetch a Secret, consult a database, or make an approval decision. They run inside the Sensor process on incoming events. Keep execution bounded and deterministic.
+Treat Lua and JQ transforms as event reshaping, not as integration hooks. They are not places to call an API, fetch a Secret, consult a database, or make an approval decision. They run inside the Sensor process on incoming events. Keep execution bounded and deterministic.
 
 If normalization requires external authoritative data, trigger a Workflow that performs that lookup with normal timeouts, retries, credentials, and audit logs. The Sensor can do coarse routing; the workflow performs the business decision.
 
 ## Control Payload and Cardinality Growth
 
-A transform can accidentally multiply data by copying a large original payload into several derived arrays. This increases EventBus-to-Sensor processing, Sensor memory, logs, and the size of generated resources.
+A transform can accidentally multiply data by copying a large original payload into several derived arrays. This increases Sensor processing and memory, logs, and the size of generated resources.
 
 Prefer a small contract with:
 
@@ -217,7 +226,7 @@ Whichever you choose:
 - [Argo Events data filters](https://argoproj.github.io/argo-events/sensors/filters/data/)
 - [Argo Events script filters](https://argoproj.github.io/argo-events/sensors/filters/script/)
 - [gojq project used by Argo Events](https://github.com/itchyny/gojq)
-- [Lua reference manual](https://www.lua.org/manual/5.4/)
+- [GopherLua project used by Argo Events](https://github.com/yuin/gopher-lua)
 
 ## Conclusion
 
