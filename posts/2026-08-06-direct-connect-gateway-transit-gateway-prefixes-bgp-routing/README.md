@@ -53,6 +53,8 @@ Accounts can differ. For a cross-account association, AWS requires the Transit G
 
 The Transit Gateway Amazon-side ASN and Direct Connect gateway ASN must be different. AWS gives the example that using default ASN `64512` for both causes the association request to fail.
 
+The customer router peer ASN on the transit VIF must also be different from the Direct Connect gateway ASN.
+
 The Transit Gateway ASN is not visible in the AS path advertised to the on-premises router. The Direct Connect gateway replaces that path with its own ASN. This surprises teams that expect to identify a Regional Transit Gateway by AS path on the customer router.
 
 Record at least three identities:
@@ -116,7 +118,7 @@ Transit Gateway first chooses the most specific destination prefix. Only when ro
 3. VPC-propagated routes;
 4. Direct Connect gateway-propagated routes;
 5. Transit Gateway Connect-propagated routes;
-6. private Direct Connect VPN-propagated routes;
+6. Site-to-Site VPN over private Direct Connect-propagated routes;
 7. Site-to-Site VPN-propagated routes.
 
 This produces several practical rules:
@@ -151,7 +153,7 @@ Use the same community and equal BGP attributes on redundant paths intended for 
 
 These communities influence AWS's choice of return path toward on-premises. They do not change which AWS prefixes the Direct Connect gateway advertises; that is the allowed-prefix list. They also do not override Transit Gateway's same-CIDR attachment-type order.
 
-AWS can use ECMP across multiple transit VIFs when prefix length, AS path length, and BGP attributes are equal. Transit Gateway documentation recommends using a single Direct Connect gateway with multiple transit VIFs for this redundancy model rather than creating multiple gateways merely for ECMP. Design connections at separate Direct Connect locations according to the required resiliency model and ensure each surviving path has enough capacity.
+AWS can use ECMP across multiple transit VIFs when the destination prefix, AS path length, and BGP attributes are equal. Transit Gateway documentation recommends using a single Direct Connect gateway with multiple transit VIFs for this redundancy model rather than creating multiple gateways merely for ECMP. Design connections at separate Direct Connect locations according to the required resiliency model and ensure each surviving path has enough capacity.
 
 ## Validate the Route Contract
 
