@@ -21,7 +21,6 @@
 
 ## Operational Readiness
 
-7. What Makes an On-Call Runbook Usable at 3 A.M.? A Game-Day Validation Checklist
 8. From Load Test to Capacity Plan: Calculating Headroom, Saturation Signals, and Scaling Limits
 9. Building a Failure-Mode Inventory: Timeouts, Partial Outages, Queue Backlogs, and Dependency Loss
 10. A Backup Is Not a Recovery Plan: Proving RPO and RTO with Restore Drills
