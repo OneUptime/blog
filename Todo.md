@@ -8,7 +8,6 @@
 
 ## Databricks
 
-10. Upgrading Databricks Runtime 10.x to 15.4 LTS: A Compatibility Test Matrix for Python, Scala, Libraries, and Unity Catalog
 
 ## Operational Readiness
 
