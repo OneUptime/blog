@@ -16,7 +16,7 @@ This guide develops a route-leak-resistant design for production, nonproduction,
 
 ## A Routing Domain Is an Ingress Policy
 
-Transit Gateway selects a route table from the attachment on which a packet arrives. Each attachment has one association, and that associated table performs the destination lookup.
+Transit Gateway uses the route table associated with the attachment on which a packet arrives. An attachment can be associated with only one route table, and that associated table performs the destination lookup.
 
 That leads to an important design rule:
 
@@ -38,7 +38,7 @@ A packet from `10.50.0.0/16` always uses `tgw-rtb-nonproduction` when it enters 
 
 ## Disable Accidental Full Mesh
 
-A transit gateway can have a default association route table and a default propagation route table. With both defaults enabled, a new attachment can join and advertise into the common table automatically. That behavior is useful for a full mesh, but it creates an unsafe onboarding path for segmented networks.
+A transit gateway can have a default association route table and a default propagation route table. With both defaults enabled, a new attachment can join the default association table and advertise into the default propagation table automatically. When both defaults point to the same table, that behavior is useful for a full mesh, but it creates an unsafe onboarding path for segmented networks.
 
 For a new segmented transit gateway, decide whether to disable default association and default propagation at creation. For an existing gateway, changing defaults does not substitute for auditing every current relationship. Inventory all attachments before modifying production behavior.
 
@@ -175,8 +175,8 @@ Useful invariants include:
 - no nonproduction attachment propagates into a production table;
 - shared-services propagations are limited to approved tables;
 - no unapproved `0.0.0.0/0`, `::/0`, or broad summary exists;
-- expected blackholes are active;
-- attachment and route states are not blackhole or deleting.
+- expected blackhole routes are present with state `blackhole`;
+- all permitted routes are `active`, all intended propagations are `enabled`, and attachments are `available` rather than in transitional or deleting states.
 
 Alert on changes to route-table associations, propagations, static routes, and transit gateway options. Tag-based intent is useful, but evaluate the actual relationships.
 
@@ -187,11 +187,12 @@ Changing an attachment's domain alters every flow entering through it. Use a con
 1. record the current association, propagations, and routes;
 2. prepare the destination table and all return-path propagations;
 3. validate an equivalent test attachment if possible;
-4. move the association in a maintenance window;
-5. run positive tests for allowed flows and negative tests for forbidden flows;
-6. observe VPC Flow Logs, Transit Gateway Flow Logs, application metrics, and route state;
-7. remove old propagations only after the intended state is proven;
-8. retain a reviewed rollback sequence.
+4. in a maintenance window, remove any old propagation that would violate the new boundary and confirm that the forbidden route is withdrawn;
+5. move the association;
+6. run positive tests for allowed flows and negative tests for forbidden flows;
+7. observe VPC Flow Logs, Transit Gateway Flow Logs, application metrics, and route state;
+8. remove any remaining obsolete propagations only after the intended state is proven;
+9. retain a reviewed rollback sequence.
 
 Negative tests are essential. A successful connection to shared services does not prove that production and nonproduction remain isolated.
 
