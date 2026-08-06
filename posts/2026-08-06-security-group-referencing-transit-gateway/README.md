@@ -39,7 +39,7 @@ AWS documents additional limitations for Transit Gateway VPC attachments:
 - PrivateLink endpoints are not supported; use CIDR-based rules for those endpoint paths.
 - Referencing through an inspection VPC does not work across Gateway Load Balancer or AWS Network Firewall.
 - VPC attachments in Availability Zone ID `use1-az3` are not supported.
-- Only the Local Zones listed in the current Transit Gateway documentation are supported.
+- The Local Zones listed in the current Transit Gateway documentation are unsupported.
 - AWS recommends disabling the feature on attachments with subnets in unsupported Local Zones, AWS Outposts, or AWS Wavelength Zones because leaving it enabled can cause service disruption.
 - Amazon EFS can use the feature only with the documented allow-all egress rule on the EFS interface security group.
 
