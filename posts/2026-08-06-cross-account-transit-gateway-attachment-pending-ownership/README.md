@@ -105,7 +105,7 @@ Cross-account incidents linger when each team assumes the other owns both halves
 | Security groups and network ACLs | Defines central requirements | Responsible for workload and subnet controls |
 | Application listener and host firewall | Informed | Responsible |
 | End-to-end test and return path | Joint | Joint |
-| VPC attachment hourly and source data processing bill | Informed | VPC owner is billed under current TGW pricing |
+| VPC attachment hourly and default source data processing bill | Controls any TGW metering policy | VPC owner is billed hourly and, by default, for data sent from its attachment |
 
 AWS states that a participant in a shared Transit Gateway can create and describe VPC attachments for its VPC but cannot create, modify, or delete Transit Gateway route tables, associations, or propagations. AWS also states that a user from either account can delete the attachment. Restrict deletion with IAM and change controls even though the service workflow permits it.
 
@@ -183,7 +183,7 @@ After acceptance, both teams should sign off on evidence:
 
 ## Account for Billing at Acceptance
 
-The current AWS Transit Gateway pricing page says the VPC account owner is billed hourly while its VPC is attached. Hourly billing begins when the Transit Gateway owner accepts the VPC attachment and stops when the attachment is deleted; partial hours are billed as full hours. Data processing is charged to the VPC owner for each GB the VPC sends into Transit Gateway.
+The current AWS Transit Gateway pricing page says the VPC account owner is billed hourly while its VPC is attached. Hourly billing begins when the Transit Gateway owner accepts the VPC attachment and stops when the attachment is deleted; partial hours are billed as full hours. By default, data processing is charged to the owner of the source attachment for each GB sent into Transit Gateway. The Transit Gateway owner can use a metering policy for flexible cost allocation to assign supported data processing and transfer usage to the source attachment owner, destination attachment owner, or Transit Gateway owner. Flexible cost allocation does not change attachment hourly charges.
 
 This means a network team can trigger workload-account spend by accepting an attachment, while the workload team can continue incurring charges even before routes carry useful traffic. Add acceptance, validation, and cleanup to one coordinated change. An unused `available` attachment is not free.
 
@@ -196,6 +196,7 @@ This means a network team can trigger workload-account spend by accepting an att
 - [AWS RAM: Sharing Your AWS Resources](https://docs.aws.amazon.com/ram/latest/userguide/getting-started-sharing.html)
 - [AWS CLI: Accept Transit Gateway VPC Attachment](https://docs.aws.amazon.com/cli/latest/reference/ec2/accept-transit-gateway-vpc-attachment.html)
 - [AWS Transit Gateway Pricing](https://aws.amazon.com/transit-gateway/pricing/)
+- [Flexible Cost Allocation](https://docs.aws.amazon.com/vpc/latest/tgw/metering-policy.html)
 
 ## Conclusion
 
