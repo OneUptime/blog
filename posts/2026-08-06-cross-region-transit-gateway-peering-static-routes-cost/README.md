@@ -136,6 +136,8 @@ monthly cost =
 
 AWS bills each Transit Gateway owner for its side of a peering attachment. VPC attachment-hours are billed to the VPC account owner. Transit Gateway data processing is charged for each GB sent from a VPC, Direct Connect, VPN, or Network Firewall attachment into the Transit Gateway. AWS does not charge Transit Gateway data processing for bytes sent from a peering attachment into the destination Transit Gateway.
 
+By default, AWS allocates Transit Gateway data processing and data transfer charges to the account that owns the source attachment. A Transit Gateway owner can instead use a Flexible Cost Allocation metering policy to allocate supported data processing and transfer usage to the source attachment owner, destination attachment owner, or Transit Gateway owner. Hourly attachment usage is not eligible for flexible allocation. For peering traffic, each Transit Gateway applies its own metering policy independently. This changes which account receives a charge, not the direction in which the usage is generated or the rate used to calculate it.
+
 The AWS pricing example for 1 GB sent from US East (N. Virginia) to US West (Oregon) shows `$0.02` of source-side Transit Gateway data processing and `$0.02` of inter-Region data transfer out, for `$0.04` total variable cost. It shows no data-processing charge on the destination Transit Gateway and no charge for inbound inter-Region transfer. These are the example's Regions and rates, not global constants.
 
 Model return traffic as a new direction. If the Oregon workload sends 1 GB back, Oregon becomes the source for Transit Gateway processing and inter-Region data transfer out. A request of 10 MB that produces a 2 GB response is not a 10 MB cost flow.
@@ -148,7 +150,7 @@ Use a directional worksheet:
 | B response to A | 4,000 | Region B | current Region B rate | B to A rate | calculate |
 | Replication A to B | 12,000 | Region A | current Region A rate | A to B rate | calculate |
 
-Retrieve current rates from the pricing pages at estimation and review time. Add taxes, monitoring, traffic mirroring, firewall inspection, NAT, load balancing, or Direct Connect where those services are actually on the path.
+Retrieve current rates from the pricing pages and inspect each Transit Gateway's cost allocation configuration at estimation and review time. Add taxes, monitoring, traffic mirroring, firewall inspection, NAT, load balancing, or Direct Connect where those services are actually on the path.
 
 ## Operate Static Routes as Production State
 
@@ -182,9 +184,10 @@ Before launch, verify:
 - [Create a Transit Gateway Peering Attachment](https://docs.aws.amazon.com/vpc/latest/tgw/tgw-peering-create.html)
 - [Accept a Transit Gateway Peering Attachment](https://docs.aws.amazon.com/vpc/latest/tgw/tgw-peering-accept-reject.html)
 - [Transit Gateway Quotas](https://docs.aws.amazon.com/vpc/latest/tgw/transit-gateway-quotas.html)
+- [Flexible Cost Allocation](https://docs.aws.amazon.com/vpc/latest/tgw/metering-policy.html)
 - [AWS Transit Gateway Pricing](https://aws.amazon.com/transit-gateway/pricing/)
 - [Amazon EC2 On-Demand Data Transfer Pricing](https://aws.amazon.com/ec2/pricing/on-demand/#Data_Transfer)
 
 ## Conclusion
 
-Cross-Region Transit Gateway peering provides a scalable transit data path, but it does not exchange attachment routes dynamically. Build a two-sided static routing contract, associate the right ingress tables, govern aggregates, and test DNS and return paths independently. Calculate every flow by source direction: the source side incurs Transit Gateway processing and outbound inter-Region transfer, while traffic entering from the peer is not processed again by the destination Transit Gateway.
+Cross-Region Transit Gateway peering provides a scalable transit data path, but it does not exchange attachment routes dynamically. Build a two-sided static routing contract, associate the right ingress tables, govern aggregates, and test DNS and return paths independently. Calculate every flow by source direction: the source side generates Transit Gateway processing and outbound inter-Region transfer usage, while traffic entering from the peer is not processed again by the destination Transit Gateway. Apply the default sender-based allocation or each gateway's custom metering policy to determine which account is billed for that usage.
