@@ -79,7 +79,7 @@ ACCEPTED -> OBSERVING -> APPLYING -> VERIFYING -> SUCCEEDED
                          +-> FAILED_TERMINAL
 ```
 
-Do not let a runner write arbitrary status transitions. Update only from the expected current state, for example `APPLYING` to `VERIFYING`. Conditional transitions prevent two workers from both declaring ownership after a timeout.
+Do not let a runner write arbitrary status transitions. Update only from the expected current state, for example `APPLYING` to `VERIFYING`. Conditional transitions prevent two workers from both committing the same transition, but they do not fence a worker that already held ownership and later resumes.
 
 ## Give Every Resource a Stable Identity
 
@@ -166,7 +166,7 @@ COMMIT CHECKPOINT
   persist remote ID, version, and verified result
 ```
 
-If the worker stops between execute and checkpoint, the next worker starts at observation using the persisted token. It does not generate a new create request.
+If the worker stops between execute and checkpoint, the next worker first tries to observe using the persisted token or stable resource identity. If the API offers no lookup path, it may resend the same create request with the same token when the API documents that retry as safe. It does not generate a new token or change the request parameters.
 
 Keep checkpoints semantic:
 
@@ -185,7 +185,7 @@ Do not store only a step number. Workflow code changes can give step 4 a differe
 
 ## Bound Parallelism and Serialize Conflicts
 
-Two idempotent operations can still conflict if they express different desired states. Serialize mutations per environment or other shared boundary. Use fencing tokens with leased locks so an old worker cannot resume after a new worker takes ownership.
+Two idempotent operations can still conflict if they express different desired states. Serialize mutations per environment or other shared boundary. Use monotonically increasing fencing tokens with leased locks, and require every protected write and checkpoint update to reject stale tokens, so an old worker cannot resume after a new worker takes ownership.
 
 Within one operation, parallelize only independent nodes of the dependency graph. Persist each result independently. When one branch fails, allow safe branches to finish only if that does not increase impact or prevent recovery.
 
