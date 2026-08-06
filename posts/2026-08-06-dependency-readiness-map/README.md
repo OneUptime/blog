@@ -96,7 +96,7 @@ Can this process make progress, or is it irrecoverably stuck? In Kubernetes, a f
 
 ### Traffic readiness
 
-Can this instance serve its assigned traffic correctly now? Kubernetes readiness failures cause matching Service EndpointSlices to mark the Pod endpoint not ready. A strict required backend may be included in readiness, but consider the fleet-wide effect: if the backend fails globally, removing every frontend endpoint can replace a degraded response with total unavailability.
+Can this instance serve its assigned traffic correctly now? After a readiness probe reaches its configured failure threshold, the kubelet marks the container and Pod not ready, and matching Services normally stop directing traffic to it (`publishNotReadyAddresses: true` is an exception). A strict required backend may be included in readiness, but consider the fleet-wide effect: if the backend fails globally, removing every frontend endpoint can replace a degraded response with total unavailability.
 
 ### User-journey health
 
