@@ -21,7 +21,6 @@
 
 ## Operational Readiness
 
-12. Feature Flags as Operational Controls: Kill Switches, Safe Defaults, Ownership, and Cleanup
 13. Reducing Deployment Blast Radius with Canaries, Progressive Delivery, and Automated Abort Criteria
 14. Is the Team Ready for On-Call? Coverage, Escalation, Access, and Handoff Requirements
 15. Designing a First-15-Minutes Incident Dashboard: Impact, Recent Changes, Dependencies, Logs, and Traces
