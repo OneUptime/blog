@@ -21,14 +21,15 @@ The attachment can therefore exist while the expected routes do not. The durable
 
 Start with the actual prefixes, not a connectivity symptom. Build an inventory containing every primary and secondary IPv4 CIDR, IPv6 CIDR, on-premises prefix, and translated range. Check for containment as well as equality: `10.20.0.0/16` overlaps `10.20.64.0/18` even though the strings differ.
 
-Then inspect all four route planes involved in a VPC-to-VPC flow:
+Then inspect the routing conditions involved in a VPC-to-VPC flow:
 
 1. The source subnet route table must send the destination toward the Transit Gateway.
 2. The source attachment must be associated with the Transit Gateway route table that performs the lookup.
 3. That table must contain an unambiguous route to the destination attachment.
-4. The destination subnet route table must contain a return route through the Transit Gateway.
+4. The attachment-subnet route tables must allow traffic arriving from the Transit Gateway to reach workloads in the VPC; the automatically added local routes normally provide this for VPC CIDRs.
+5. The destination subnet route table must contain a return route through the Transit Gateway.
 
-If the CIDRs overlap, step 3 cannot describe both VPCs with the same destination prefix. Creating separate Transit Gateway route tables can isolate who is allowed to reach whom, but it does not give the same address a different meaning inside one packet. A static route can select one attachment for that prefix; it cannot select both based on the source VPC.
+If the CIDRs overlap, step 3 cannot describe both VPCs with the same destination prefix. Creating separate Transit Gateway route tables can isolate who is allowed to reach whom, but it does not give the same address a different meaning inside one packet. A static route can select one attachment for a prefix within a given Transit Gateway route table; it cannot make both overlapping VPCs directly reachable at the same destination address.
 
 Do not confuse this limitation with the attachment-subnet rule. A VPC attachment still needs one selected subnet for each enabled Availability Zone, and workloads can reach the Transit Gateway only from enabled zones. Fixing the selected subnets helps an AZ reach the gateway, but it does not fix overlapping address space.
 
@@ -56,7 +57,7 @@ Design the boundary deliberately:
 - expose only required listeners and target groups;
 - grant endpoint-service permissions to named AWS principals;
 - decide whether connection requests require manual acceptance;
-- use endpoint policies where the target service supports meaningful policy controls;
+- do not treat endpoint policies as an authorization layer for a customer-owned endpoint service; for services other than AWS services, AWS applies full-access endpoint policy behavior;
 - create endpoints in enough Availability Zones for the required availability;
 - configure private DNS only after proving domain ownership and resolution behavior;
 - account for the source-address behavior at the Network Load Balancer.
@@ -74,7 +75,7 @@ A representative design looks like this:
 ```text
 VPC A original range:    10.0.0.0/16
 VPC A transit range:     100.64.1.0/24
-VPC A private NAT:       source translation into 100.64.1.0/24
+VPC A private NAT:       source translation to its private IP in 100.64.1.0/24
 
 VPC B original range:    10.0.0.0/16
 VPC B transit range:     100.64.2.0/24
