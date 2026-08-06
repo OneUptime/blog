@@ -14,7 +14,6 @@
 
 ## Transit Gateway
 
-11. Overlapping VPC CIDRs: What Transit Gateway Cannot Route and When PrivateLink or Private NAT Helps
 12. Cross-Region Transit Gateway Peering: Static Routes, Non-Transitive Paths, and the Real Cost Model
 13. Transit Gateway or VPC Peering? Finding the Break-Even Point for VPC Count and Traffic Volume
 14. Why a Cross-Account Transit Gateway Attachment Stays Pending—and Who Owns Each Side of the Route
