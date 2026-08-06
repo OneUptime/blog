@@ -62,7 +62,7 @@ detection:
   - checkout outcomes by region and operation
   - inventory reservations without order correlation
 containment:
-  - idempotency key per order attempt
+  - one idempotency key reused across retries for the logical order attempt
   - bounded attempts within the journey deadline
 mitigation: stop checkout expansion and disable affected route
 recovery: reconcile reservation and order ledgers before retrying failures
@@ -91,7 +91,7 @@ For every remote call, inventory:
 Start with the user-journey deadline and allocate a budget across work, attempts, backoff, and response overhead:
 
 ```text
-sum(attempt_timeouts) + sum(backoff_delays) + local_work + safety_margin
+sum(attempt_timeouts) + sum(backoff_delays) + local_work + response_overhead + safety_margin
   <= remaining_journey_deadline
 ```
 
