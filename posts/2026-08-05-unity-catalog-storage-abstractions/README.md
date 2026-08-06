@@ -25,7 +25,7 @@ Use this decision order:
 1. Does the data have rows and columns that consumers query? Create a Unity Catalog managed table by default.
 2. Does the workload need files by name or POSIX-like path, such as documents, images, wheels, checkpoints, or landing files? Create a managed volume by default.
 3. Must the files remain at a customer-controlled cloud path or share a lifecycle with a non-Databricks system? Create an external table or external volume under an external location.
-4. Does a principal truly need direct cloud-URI access instead of a table or volume interface? Grant narrowly scoped file privileges at the external-location layer only after confirming the requirement.
+4. Does a principal truly need direct cloud-URI access to files that are not registered as a table or volume? Grant narrowly scoped file privileges at the external-location layer only after confirming the requirement.
 
 The word "managed" answers who owns location and lifecycle. The word "table" or "volume" answers whether the governed resource is tabular or file-oriented.
 
@@ -158,7 +158,7 @@ external volume:    governed file object within that prefix
 
 Platform teams normally create storage credentials and external locations. Data-product teams receive `CREATE EXTERNAL TABLE` or `CREATE EXTERNAL VOLUME` on an approved location, then grant consumers privileges on the narrower table or volume.
 
-Avoid granting `READ FILES` or `WRITE FILES` on a broad external location to ordinary consumers when a table or volume can express the need. Direct path privileges can expose all eligible files under the location and bypass object-level schemas and table contracts.
+Avoid granting `READ FILES` or `WRITE FILES` on a broad external location to ordinary consumers when a table or volume can express the need. Direct path privileges can expose all eligible unregistered files under the location without an object-level schema or table contract. Cloud-URI access beneath a registered external table or external volume is governed by privileges on that object instead.
 
 An external location is accessed by cloud URI, not by `/Volumes` and not by a table identifier. It is not a substitute for creating an actual table or volume.
 
@@ -212,7 +212,7 @@ GRANT USE SCHEMA ON SCHEMA prod.features TO `ml-engineers`;
 GRANT READ VOLUME ON VOLUME prod.features.models TO `ml-engineers`;
 ```
 
-Use `WRITE VOLUME` only for principals that create or modify files. Use `MODIFY` for table writers. Keep credential administration and external-location creation separate from everyday data access.
+Grant `WRITE VOLUME` together with `READ VOLUME` only to principals that create or modify files. Similarly, `WRITE FILES` requires `READ FILES` on the same external location. Use `MODIFY` for table writers. Keep credential administration and external-location creation separate from everyday data access.
 
 Remember that the execution identity must have the grants. A notebook author's access does not prove a production job's service principal can read the same table or volume.
 

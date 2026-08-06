@@ -15,7 +15,7 @@ The core mapping is simple:
 ```text
 dbt database  -> Databricks Unity Catalog catalog
 dbt schema    -> Databricks Unity Catalog schema
-dbt identifier -> table or view name
+dbt identifier -> relation name, such as a table or view
 ```
 
 Preserving the logical dbt DAG is not the same as preserving its physical relations. Treat code, stored data, and permissions as three related migration tracks with a single cutover fence.
@@ -35,11 +35,12 @@ The manifest records each node's database, schema, alias, dependencies, resource
 Inventory every dbt resource that can create or reference a database object:
 
 - models, including ephemeral and incremental materializations;
+- user-defined functions;
 - sources and source freshness queries;
 - seeds and snapshots;
 - tests with hard-coded relation names;
 - macros, pre-hooks, post-hooks, and `run-operation` macros;
-- exposures, semantic models, and saved documentation;
+- analyses, exposures, semantic models, saved queries, and documentation;
 - package overrides and dispatch macros;
 - variables that contain catalog, schema, or path names.
 
@@ -131,7 +132,7 @@ Compile before executing:
 
 ```bash
 dbt compile --target prod_uc
-rg -n 'hive_metastore|/mnt/|dbfs:/' target/compiled target/run target/manifest.json
+rg -n 'hive_metastore|/mnt/|dbfs:/' target/compiled target/manifest.json
 ```
 
 The absence of `hive_metastore` is necessary but not sufficient. Compare the compiled relation set with the approved mapping and fail CI when a node targets an unexpected catalog or schema.
@@ -173,8 +174,8 @@ Unity Catalog access is hierarchical. Selecting a table generally requires the o
 Manage parent objects and ownership in infrastructure or a dedicated bootstrap step:
 
 ```sql
-GRANT USE CATALOG ON CATALOG prod TO `analytics-readers`;
-GRANT USE SCHEMA ON SCHEMA prod.analytics TO `analytics-readers`;
+GRANT USE CATALOG ON CATALOG prod TO `analytics_readers`;
+GRANT USE SCHEMA ON SCHEMA prod.analytics TO `analytics_readers`;
 
 GRANT USE CATALOG ON CATALOG prod TO `dbt-prod`;
 GRANT USE SCHEMA ON SCHEMA prod.analytics TO `dbt-prod`;
@@ -188,10 +189,10 @@ models:
   analytics:
     +grants:
       select:
-        - analytics-readers
+        - analytics_readers
 ```
 
-dbt runs grant and revoke operations so the built relation's configured grants match exactly. This has three important consequences:
+dbt runs grant and revoke operations so the built relation's directly configured object grants match exactly. Inherited catalog and schema privileges remain outside the model config. This has three important consequences:
 
 1. A more-specific `select` list replaces the less-specific list by default.
 2. Prefixing a privilege as `+select` adds grantees to the inherited list instead of replacing it.
@@ -203,10 +204,10 @@ For example:
 models:
   analytics:
     +grants:
-      select: [analytics-readers]
+      select: [analytics_readers]
     finance:
       +grants:
-        +select: [finance-readers]
+        +select: [finance_readers]
 ```
 
 The inner `+select` retains the project reader and adds the finance reader. Without that prefix on the privilege, the finance-specific list would clobber the broader list.
