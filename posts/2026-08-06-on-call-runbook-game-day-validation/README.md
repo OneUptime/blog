@@ -41,9 +41,12 @@ The first screen should prevent the responder from making the incident worse. In
 - links that do not expose credentials in URLs;
 - warnings about destructive, irreversible, or data-changing actions.
 
-Use placeholders that force confirmation:
+Use parameter checks that require the scope to be set explicitly:
 
 ```bash
+: "${TARGET_CONTEXT:?Set TARGET_CONTEXT to a verified kubeconfig context}"
+: "${TARGET_NAMESPACE:?Set TARGET_NAMESPACE to a verified namespace}"
+
 kubectl --context "${TARGET_CONTEXT}" --namespace "${TARGET_NAMESPACE}" get deployment
 kubectl --context "${TARGET_CONTEXT}" --namespace "${TARGET_NAMESPACE}" get events \
   --sort-by=.metadata.creationTimestamp
@@ -208,7 +211,7 @@ Expire validation when the service architecture, permissions, deployment system,
 - [Google SRE Workbook: Incident Response](https://sre.google/workbook/incident-response/)
 - [Google SRE Book: Testing for Reliability](https://sre.google/sre-book/testing-reliability/)
 - [AWS Well-Architected: Conduct Game Days Regularly](https://docs.aws.amazon.com/wellarchitected/latest/framework/rel_testing_resiliency_game_days_resiliency.html)
-- [AWS Well-Architected: Run Security Game Days](https://docs.aws.amazon.com/wellarchitected/latest/framework/sec_incident_response_run_game_days.html)
+- [AWS Well-Architected: Run Simulations](https://docs.aws.amazon.com/wellarchitected/latest/framework/sec_incident_response_run_game_days.html)
 - [Google Cloud Well-Architected: Test Recovery from Failures](https://docs.cloud.google.com/architecture/framework/reliability/perform-testing-for-recovery-from-failures)
 
 ## Conclusion
