@@ -95,6 +95,8 @@ terraform graph -type=plan > dependency-plan.dot
 terraform output -json > outputs.json
 ```
 
+Because `terraform output -json` reveals sensitive output values in plain text, protect or sanitize `outputs.json`.
+
 Then add:
 
 - cloud flow and control-plane audit logs;
@@ -151,14 +153,14 @@ resource "aws_db_instance" "orders" {
 }
 ```
 
-HashiCorp documents an important limitation: removing the resource configuration also removes the `prevent_destroy` rule, so Terraform can then plan destruction. Use a reviewed, explicit change to remove protection only after backup, dependency, and authorization gates pass.
+HashiCorp documents an important limitation: removing the resource configuration also removes the `prevent_destroy` rule, so Terraform can then plan destruction. Use a reviewed, explicit change to remove `prevent_destroy` and set the provider's `deletion_protection` to `false` only after backup, dependency, and authorization gates pass.
 
 Do not make the automation edit protection and destroy in one opaque step. Use two auditable phases:
 
-1. a readiness change that records evidence and deliberately removes deletion protection;
+1. a readiness change that records evidence and deliberately removes both protections;
 2. a destroy change that produces an exact plan for approval.
 
-If ownership is being handed to another tool or team rather than the object being destroyed, use a `removed` block with `destroy = false` instead of a delete:
+With Terraform v1.7 or later, if ownership is being handed to another tool or team rather than the object being destroyed, use a `removed` block with `destroy = false` instead of a delete:
 
 ```hcl
 removed {
@@ -182,7 +184,7 @@ terraform show -no-color destroy.tfplan > destroy.txt
 terraform show -json destroy.tfplan > destroy.json
 ```
 
-Inspect every address, replacement, read, and unknown value. Plan files may contain sensitive data, so restrict and expire them.
+Inspect every address, replacement, read, and unknown value. Saved plan files can contain sensitive data in cleartext, and `terraform show -json` can expose sensitive values in plain text, so restrict and expire the plan and rendered artifacts.
 
 Apply the reviewed plan with:
 
@@ -209,9 +211,9 @@ Cloud deletion is asynchronous and can fail after some resources disappear. Pers
 
 1. stop newer mutations to the state;
 2. retain complete logs and the saved plan securely;
-3. inspect Terraform state and the real control plane;
-4. run a fresh normal plan to reconcile what remains;
-5. fix the cause, such as a live dependency or retention lock;
+3. inspect Terraform state and the real control plane, and resolve ambiguous operations;
+4. fix the cause, such as a live dependency or retention lock;
+5. create a fresh saved destroy plan, not a normal plan that can propose recreating deleted objects, to reconcile what remains;
 6. review and apply the new plan.
 
 Do not rerun ad hoc delete commands until an ambiguous timeout is resolved. A delete may have succeeded even when its response was lost.
