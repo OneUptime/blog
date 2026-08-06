@@ -172,7 +172,7 @@ When a referenced flow times out, check in this order:
 10. The selected path does not cross Gateway Load Balancer, Network Firewall, PrivateLink, or another middlebox.
 11. The attachments do not use an unsupported Availability Zone, Local Zone, Outposts, or Wavelength topology.
 
-Use the EC2 `describe-security-group-references` operation to identify groups that reference a security group across connected VPCs. Pair it with VPC Flow Logs on the source and destination ENIs; a Transit Gateway route can be correct while the destination security group still rejects the packet.
+Use the EC2 `describe-security-group-references` operation to identify VPCs that contain rules referencing a specified security group across the Transit Gateway. Pair it with VPC Flow Logs on the source and destination ENIs; a Transit Gateway route can be correct while the destination security group still rejects the packet.
 
 ## Official Documentation
 
