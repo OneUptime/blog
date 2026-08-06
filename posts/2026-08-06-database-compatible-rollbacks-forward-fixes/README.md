@@ -69,11 +69,11 @@ WHERE customer_id = $2;
 
 Dual writes create their own consistency risks. Prefer one transaction when both fields are in the same transactional database, monitor mismatches, and make retry behavior idempotent. If dual writes cross systems, document the consistency model and repair process instead of implying atomicity.
 
-For reads, define precedence explicitly:
+For reads, define precedence explicitly. While old writers may still update only the legacy column, keep that representation authoritative:
 
 ```sql
 SELECT customer_id,
-       COALESCE(display_name_v2, display_name) AS display_name
+       COALESCE(display_name, display_name_v2) AS display_name
 FROM customer
 WHERE customer_id = $1;
 ```
@@ -94,7 +94,7 @@ Do not infer completeness from job exit status. Query for missing or divergent v
 
 ### 4. Switch reads, then stop legacy writes
 
-Use a controlled application release or feature flag to switch the preferred read path. Observe it before stopping writes to the legacy representation. This ordering preserves the option to return traffic to old code.
+After old-only writers have drained, query for and reconcile divergent values again. Then use a controlled application release or feature flag to switch the preferred read path to the new representation. Observe it before stopping writes to the legacy representation. This ordering preserves the option to return traffic to old code.
 
 ### 5. Contract later
 
@@ -183,7 +183,7 @@ The values and the 24-hour window above are example policy, not requirements fro
 ## Official Documentation
 
 - [AWS DevOps Guidance: Ensure backwards compatibility for data store and schema changes](https://docs.aws.amazon.com/wellarchitected/latest/devops-guidance/dl.ads.5-ensure-backwards-compatibility-for-data-store-and-schema-changes.html) documents coexistence testing across old and new software and a rollback deployment.
-- [AWS Blue/Green Deployments: Managing data synchronization and schema changes](https://docs.aws.amazon.com/whitepapers/latest/blue-green-deployments/best-practices-for-managing-data-synchronization-and-schema-changes.html) describes decoupling schema and code changes, additive changes before code, and deletive changes after compatibility is no longer needed.
+- [AWS Blue/Green Deployments: Managing data synchronization and schema changes](https://docs.aws.amazon.com/whitepapers/latest/blue-green-deployments/best-practices-for-managing-data-synchronization-and-schema-changes.html) is a historical AWS whitepaper that describes decoupling schema and code changes, additive changes before code, and deletive changes after compatibility is no longer needed.
 - [AWS Well-Architected: Plan for unsuccessful changes](https://docs.aws.amazon.com/wellarchitected/latest/framework/ops_mit_deploy_risks_plan_for_unsucessful_changes.html) calls for documented rollback criteria, known-good code, visible change data, and monitoring to decide whether a deployment failed.
 - [Google Cloud: Database migration concepts and principles](https://docs.cloud.google.com/architecture/database-migration-concepts-principles-part-1) explains migration consistency, fallback architecture, and completeness and consistency verification.
 
