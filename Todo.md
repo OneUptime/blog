@@ -21,7 +21,6 @@
 
 ## Operational Readiness
 
-17. Production Security Readiness: Least Privilege, Secret Rotation, Audit Logs, and Break-Glass Access
 18. Launch-Day Go/No-Go: Which Metrics Must Be Green, Who Must Be Present, and What Triggers Rollback?
 19. The Post-Launch Readiness Review: Catching Alert Noise, Capacity Misses, and Runbook Gaps
 20. Continuous Operational Readiness: Turning Review Questions into Tested Policy and Service Metadata
