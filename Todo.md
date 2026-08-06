@@ -21,7 +21,6 @@
 
 ## Operational Readiness
 
-3. Who Can Approve a Launch Exception? Defining PRR Roles, Waivers, Expiry Dates, and Escalation
 4. The Dependency Readiness Map: Owners, Health Checks, Failure Contracts, and Escalation Paths
 5. Defining SLIs and SLOs Before Launch: Start with User Journeys, Not Available Metrics
 6. Is This Alert Worth Paging? The Actionability Test Every Production Alert Should Pass
