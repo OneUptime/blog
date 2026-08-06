@@ -8,7 +8,7 @@ Description: Reduce Databricks job cost with interruptible workers while protect
 
 ---
 
-Spot and preemptible virtual machines can reduce the cloud infrastructure cost of Databricks workers, but the provider can reclaim them. Spark can recover many lost executor tasks, yet repeated worker loss increases runtime and can still fail a task. Losing the Spark driver is much more disruptive because the driver owns the application state and coordinates executors.
+For Databricks jobs that use classic compute, Spot and preemptible virtual machines can reduce the cloud infrastructure cost of workers, but the provider can reclaim them. Spark can recover many lost executor tasks, yet repeated worker loss increases runtime and can still fail a task. Losing the Spark driver is much more disruptive because the driver owns the application state and coordinates executors.
 
 A safe pattern uses an on-demand driver, interruptible workers with fallback where supported, bounded job retries, and idempotent data writes. Savings should be evaluated per successful outcome after interruptions, not from the Spot discount alone.
 
@@ -16,7 +16,7 @@ A safe pattern uses an on-demand driver, interruptible workers with fallback whe
 
 Databricks recommends that the driver use an on-demand instance. The driver maintains the Spark context, task scheduling state, and notebook or application state. Worker loss normally causes Spark to recompute lost tasks or shuffle data. Driver loss usually ends the Spark application and requires a task retry.
 
-On AWS and Azure, `first_on_demand` counts nodes starting with the driver:
+On AWS, Azure, and Google Cloud, `first_on_demand` in the provider-specific compute attributes counts nodes starting with the driver:
 
 ```text
 first_on_demand = 1
@@ -43,7 +43,7 @@ For an AWS compute policy, a baseline guardrail is:
 }
 ```
 
-Azure uses the analogous `SPOT_WITH_FALLBACK_AZURE` availability value. Google Cloud pool configuration supports `PREEMPTIBLE_WITH_FALLBACK_GCP`. Names and supported controls differ by cloud, so use the configuration reference for the workspace's provider rather than copying a cross-cloud cluster specification.
+Azure uses the analogous `SPOT_WITH_FALLBACK_AZURE` availability value. Google Cloud compute and pool configurations use `PREEMPTIBLE_WITH_FALLBACK_GCP`. Names and supported controls differ by cloud, so use the configuration reference for the workspace's provider rather than copying a cross-cloud cluster specification.
 
 When pools are involved, use a separate on-demand driver pool and interruptible worker pool. Databricks specifically warns against a Spot or preemptible driver pool.
 
@@ -59,7 +59,7 @@ Cloud behavior also differs:
 | --- | --- | --- |
 | AWS | EC2 Spot Instance | `SPOT_WITH_FALLBACK` |
 | Azure | Azure Spot Virtual Machine | `SPOT_WITH_FALLBACK_AZURE` |
-| Google Cloud | Spot or preemptible VM | `PREEMPTIBLE_WITH_FALLBACK_GCP` for pools |
+| Google Cloud | Spot or preemptible VM | `PREEMPTIBLE_WITH_FALLBACK_GCP` |
 
 Providers can reclaim capacity with little notice. AWS documents a two-minute Spot interruption notice, while Azure documents best-effort notice up to 30 seconds. Treat notices as operational signals, not enough time to complete an arbitrary Spark stage.
 
@@ -93,7 +93,7 @@ Lakeflow Jobs tasks support `max_retries` and `min_retry_interval_millis`. A ret
 }
 ```
 
-This is an example policy, not a universal retry count. Set the interval long enough to avoid immediately retrying into the same capacity shortage, but short enough to meet the completion objective. Account for the maximum retry window in the task timeout and upstream scheduler.
+This is an example policy, not a universal retry count. Databricks measures the retry interval from the start of the failed attempt to the start of the retry, so choose it with the failed attempt's runtime in mind; if an attempt already ran longer than the interval, the retry can begin immediately. The task timeout applies separately to each retry, so account for the total worst-case runtime across all attempts and intervals in the completion objective and upstream scheduler.
 
 Do not use infinite retries for a production batch task without an external deadline and alert. A deterministic code or data error will consume capacity indefinitely.
 
@@ -120,7 +120,7 @@ WHEN MATCHED THEN UPDATE SET *
 WHEN NOT MATCHED THEN INSERT *;
 ```
 
-The source must itself contain one deterministic row per target key. Multiple ambiguous source matches or non-deterministic transformations can still make a retry fail or produce a different result.
+Because this example uses `UPDATE SET *` and `INSERT *`, the source must provide corresponding columns for every target column. It must also contain one deterministic row per target key. Multiple ambiguous source matches or non-deterministic transformations can still make a retry fail or produce a different result.
 
 For streaming or incremental jobs, keep checkpoints in durable supported storage, not executor-local disk. Test whether the exact trigger and compute product support the workload. Continuous stateful workloads with strict availability are usually poor candidates for an interruptible fleet.
 
