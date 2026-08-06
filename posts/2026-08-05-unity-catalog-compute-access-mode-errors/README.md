@@ -20,7 +20,7 @@ Standard compute is Databricks' recommendation for most workloads. It supports m
 
 Dedicated compute is assigned to one user or, in public preview, one group. Use it for specialized workloads requiring RDD APIs, GPUs, R, privileged access, or capabilities still missing from standard mode. Dedicated does not mean "supports everything": Unity Catalog Python UDFs, for example, are not supported there.
 
-Serverless notebooks and jobs use Spark Connect APIs and Unity Catalog for data access. They remove cluster management but also omit RDD APIs, Scala and R notebooks, some library sources, continuous processing-time streaming triggers, and lower-level diagnostics.
+Serverless notebooks and jobs use Spark Connect APIs and Unity Catalog for data access. They remove cluster management but also omit RDD APIs, Scala and R notebooks, some library sources, continuous and processing-time streaming triggers, and lower-level diagnostics.
 
 The UI's Auto selection normally chooses standard compute. It chooses dedicated when the selected runtime is below 14.3, is a machine learning runtime, or uses a GPU instance. Do not treat Auto as a stable contract for a production job. Declare and test the intended mode in infrastructure configuration.
 
@@ -84,7 +84,7 @@ On standard compute, current support includes:
 
 - Python scalar and Pandas UDFs on 13.3 LTS and above;
 - non-scalar Python and Pandas UDFs, UDAFs, UDTFs, `applyInPandas`, and `mapInPandas` on 14.3 LTS and above;
-- Scala scalar UDFs and UDAFs on 14.3 LTS and above;
+- Scala scalar UDFs on 14.2 and above;
 - importing modules from Git folders, workspace files, or volumes in PySpark UDFs on 14.3 LTS and above.
 
 Hive UDFs are not supported on standard compute. Migrate reusable governed logic to a Unity Catalog SQL or Python UDF, or package supported task code appropriately.
@@ -103,7 +103,7 @@ When a UDF import fails, separately test:
 4. whether imported files are serializable and available to the UDF environment;
 5. whether network access is allowed from that execution environment.
 
-Serverless UDFs cannot access the internet. A function that imports correctly can still fail when it tries to download a model or call an external API.
+UDFs in serverless notebooks and jobs cannot access the internet. A function that imports correctly can still fail when it tries to download a model or call an external API.
 
 ## Error Class 4: A Library Is Installed but Cannot Be Used
 
@@ -114,7 +114,7 @@ For Databricks Runtime 13.3 LTS and above with Unity Catalog, Databricks recomme
 Allowlisting is not a data permission. For a JAR in a volume, both conditions must hold:
 
 - the path is approved for the artifact type in the allowlist;
-- the relevant principal has `READ VOLUME` on the volume.
+- the relevant principal has `USE CATALOG` and `USE SCHEMA` on the parent objects and `READ VOLUME` on the volume.
 
 Identity depends on the mode. Standard compute checks a library path as the user who installs the library. Dedicated compute uses its assigned principal. An admin's successful interactive install does not prove that a production job's service principal can install or read the same artifact.
 
@@ -124,9 +124,9 @@ Current library-source differences include:
 | --- | --- | --- | --- |
 | PyPI | Supported on 13.3 LTS+ | Supported | Supported through environment mechanisms |
 | Python wheel in a volume | Supported on 13.3 LTS+ | Supported on 13.3 LTS+ | Product-specific environment support |
-| JAR in a volume | Supported on 13.3 LTS+, allowlist required | Supported on 13.3 LTS+ | Notebook JAR support is limited |
+| JAR in a volume | Supported on 13.3 LTS+, allowlist required | Supported on 13.3 LTS+ | Not supported in notebooks; JAR job tasks are supported |
 | JAR in workspace files | Not supported | Not supported | Not a portable choice |
-| DBFS root | Not supported on standard | Only older runtimes, not recommended | Limited or unsupported |
+| DBFS root | Not supported on standard | Supported only on 14.3 LTS and below, not recommended | Limited; not a supported library source |
 | Maven coordinate | Supported on 13.3 LTS+, allowlist required | Supported | Not supported on serverless notebooks/jobs |
 
 Check the current official library matrix before codifying a source. Databricks has disabled DBFS-root library storage by default in newer runtimes because any workspace user could modify those artifacts.
