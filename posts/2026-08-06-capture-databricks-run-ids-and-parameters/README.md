@@ -78,7 +78,7 @@ job_run_id = require_numeric(context["job_run_id"], "job_run_id")
 task_run_id = require_numeric(context["task_run_id"], "task_run_id")
 ```
 
-For Python script, JAR, Spark Submit, and positional Python wheel tasks, insert the references into the task's JSON argument array and parse them as command-line arguments. These task types do not receive job parameters automatically.
+For Python script, JAR, and positional Python wheel tasks, insert the references into the task's JSON argument array and parse them as command-line arguments. These task types do not receive job parameters automatically. Existing Spark Submit tasks use the same JSON-array pattern, but that task type is deprecated and pending removal; migrate JVM workloads to JAR tasks.
 
 ## Persist an application audit record
 
@@ -144,7 +144,7 @@ For large multi-task runs, honor pagination fields in the API response rather th
 
 ## Use system tables for durable history
 
-The Jobs UI keeps run history for a limited period. Unity Catalog system tables provide account-level operational history with a documented retention period and are better for reporting. They are not a synchronous callback mechanism, so allow for ingestion lag.
+The Jobs UI keeps run history for a limited period. Unity Catalog system tables provide region-scoped, account-level operational history with a documented retention period and are better for reporting. They are not a synchronous callback mechanism, so allow for ingestion lag.
 
 `system.lakeflow.job_run_timeline` contains the parent job run ID and the `job_parameters` map. Long runs are sliced into multiple rows, so aggregate the timeline rather than counting rows as runs.
 
@@ -163,7 +163,7 @@ WHERE workspace_id = :workspace_id
 GROUP BY workspace_id, job_id, run_id;
 ```
 
-`system.lakeflow.job_task_run_timeline` separates the task run ID from its parent job run ID and includes task parameters:
+`system.lakeflow.job_task_run_timeline` separates the task run ID from its parent job run ID and includes task parameters for rows emitted since early December 2025:
 
 ```sql
 SELECT
@@ -216,4 +216,4 @@ This separation removes the temptation to scrape a workspace URL, parse a notebo
 
 ## Conclusion
 
-The stable way to capture Databricks run context is to pass supported dynamic values into each task, retain the Jobs API response at the calling boundary, and use system tables for historical reporting. This approach works across task types and avoids private notebook context APIs that can change independently of your application.
+The stable way to capture Databricks run context is to pass supported dynamic values into each task, retain the Jobs API response at the calling boundary, and use system tables for historical reporting. This approach works across task types that support parameter passing and avoids private notebook context APIs that can change independently of your application.
