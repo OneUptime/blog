@@ -10,14 +10,14 @@ Description: Trace a Transit Gateway connection through the source VPC, forward 
 
 When traffic reaches AWS Transit Gateway but the connection still times out, the missing route is often on the return path. A successful forward lookup proves only half of a bidirectional session.
 
-For a direct VPC-to-VPC path through one transit gateway, debug four logical route-table decisions:
+For a direct VPC-to-VPC path through one transit gateway, start with four route tables that normally need explicit routes for remote CIDRs:
 
 1. source workload subnet VPC route table;
 2. source attachment's associated Transit Gateway route table;
 3. destination workload subnet VPC route table for the reply;
 4. destination attachment's associated Transit Gateway route table for the reply.
 
-The actual topology can include additional attachment-subnet, appliance, endpoint, or on-premises route tables. Start with these four decisions, then expand every intermediate hop explicitly.
+Every VPC attachment also uses an attachment subnet as an entry or exit point. On delivery from Transit Gateway into a VPC, that subnet's route table must route traffic toward the workload. This lookup may reuse a workload table or add a distinct table. Appliance, endpoint, and on-premises paths can add still more route tables. Start with these four checks, then expand every intermediate hop explicitly.
 
 ## Use One Concrete Flow
 
@@ -162,7 +162,7 @@ Check whether:
 - the route is blackhole;
 - the source attachment is available.
 
-Finally, delivery into the source VPC may traverse its attachment subnet route table before reaching the original workload. Inspect that table when custom middlebox routing replaces the ordinary VPC-local path.
+Finally, delivery into the source VPC uses its attachment subnet route table before reaching the original workload. Inspect that table explicitly when it differs from the workload table or when custom middlebox routing replaces the ordinary VPC-local path.
 
 ## Distinguish Routing from Filtering
 
@@ -174,8 +174,8 @@ The symptom helps narrow the layer:
 | Source VPC Flow Log accepts packet, no TGW delivery | Table 1, source AZ attachment, Table 2 |
 | Request reaches destination, no reply generated | Service, host firewall, destination security group |
 | Reply leaves destination, never reaches source | Table 3, Table 4, source attachment-subnet route |
-| Flow logs show `REJECT` | Security group or network ACL context represented by that log |
-| TGW flow log records no route or blackhole reason | Associated TGW table and winning route |
+| VPC Flow Logs show `REJECT` | Security group, network ACL, or packets arriving after a connection closed |
+| TGW Flow Logs show nonzero `packets-lost-no-route` or `packets-lost-blackhole` | Associated TGW table and winning route |
 
 Flow Logs report observed traffic and selected metadata; they do not replace configuration inspection. Collect logs at enough points to bracket where the tuple disappears.
 
@@ -193,7 +193,7 @@ Its documented boundary matters:
 
 Use it to validate Tables 2 and 4, then inspect Tables 1 and 3 separately. A successful Route Analyzer result does not prove that either subnet sends traffic to Transit Gateway.
 
-VPC Reachability Analyzer can evaluate supported paths through VPC resources, including many Transit Gateway scenarios. Confirm current supported resource types and model the actual source and destination. Neither tool sends test packets.
+VPC Reachability Analyzer can evaluate supported paths through VPC resources, including many Transit Gateway scenarios. Confirm current supported resource types and model the actual source and destination. For TCP paths that traverse a Transit Gateway route table, Reachability Analyzer analyzes only forward traffic. Neither tool sends test packets.
 
 ## Expand the Checklist for Middleboxes
 
@@ -220,7 +220,7 @@ For each failing flow:
 1. freeze one source IP, destination IP, protocol, and port;
 2. resolve each workload subnet to its actual VPC route table;
 3. confirm active VPC routes to Transit Gateway in both directions;
-4. confirm the VPC attachment covers both source Availability Zones;
+4. confirm each workload's Availability Zone is enabled on its VPC attachment;
 5. resolve each attachment to its associated Transit Gateway table;
 6. find the longest active Transit Gateway route in both directions;
 7. expand attachment-subnet and appliance routes where present;
@@ -228,7 +228,7 @@ For each failing flow:
 9. correlate VPC and Transit Gateway Flow Logs with packet captures where permitted;
 10. run positive and negative tests after one controlled change.
 
-Record route IDs and API output with timestamps. Routing and attachments may change while an incident is in progress.
+Record route-table IDs, destination prefixes, targets, and API output with timestamps. Routing and attachments may change while an incident is in progress.
 
 ## Official Documentation
 
@@ -243,4 +243,4 @@ Record route IDs and API output with timestamps. Routing and attachments may cha
 
 ## Conclusion
 
-A direct Transit Gateway flow has four essential route decisions: source VPC, forward Transit Gateway, destination VPC return, and return Transit Gateway. Trace the exact tuple through all four, verify the associated table on each ingress attachment, and expand attachment-subnet or appliance hops when the topology requires them. Forward success is never evidence that the return route exists.
+A direct Transit Gateway flow has four essential remote-routing checks: source VPC, forward Transit Gateway, destination VPC return, and return Transit Gateway. Trace the exact tuple through all four, verify the associated table on each ingress attachment, and include the attachment-subnet lookup for delivery into each VPC. Expand appliance hops when the topology requires them. Forward success is never evidence that the return route exists.
