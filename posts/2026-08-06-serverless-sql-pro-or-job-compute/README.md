@@ -20,7 +20,8 @@ Start with the workload interface. Then evaluate networking, concurrency, featur
 | SQL or dbt task in Lakeflow Jobs | Serverless SQL warehouse | Databricks recommends it for supported SQL and dbt tasks |
 | SQL endpoint needs customer-defined network connectivity unsupported by serverless | Pro SQL warehouse | Compute runs in the customer cloud account |
 | Python, notebook, or wheel ETL | Serverless jobs | Managed provisioning for supported job tasks |
-| JAR, Spark Submit, custom init script, or unsupported serverless feature | Classic job compute | Custom runtime and cluster configuration |
+| JAR task | Serverless jobs when Public Preview is acceptable; otherwise classic job compute | Serverless JAR support is in Public Preview |
+| Legacy Spark Submit task, custom init script, or unsupported serverless feature | Classic job compute | Spark Submit is classic-only and deprecated; classic compute supports custom runtime and cluster configuration |
 | Production job on all-purpose compute | Move to job compute | Better isolation, lifecycle, and run-level cost attribution |
 
 Databricks recommends serverless SQL warehouses for most SQL workloads and serverless jobs for supported job tasks. A recommendation is a starting point, not a substitute for checking region, network, data source, runtime, and security requirements.
@@ -65,7 +66,7 @@ Job compute is attached to Lakeflow Jobs tasks. It is not a shared SQL endpoint 
 - Serverless jobs, where Databricks manages provisioning and scaling
 - Classic job compute, where the job defines runtime, node types, autoscaling, policies, libraries, and other supported cluster settings
 
-Use serverless jobs for supported notebook, Python script, and Python wheel tasks. Use classic job compute when the workload requires JAR or Spark Submit tasks, unsupported APIs, custom cluster settings, compute policies, init scripts, or another feature listed in the serverless limitations.
+Use serverless jobs for supported notebook, Python script, and Python wheel tasks. Serverless support for JAR tasks is in Public Preview; use classic job compute when that preview is unsuitable or when the workload requires unsupported APIs, custom cluster settings, compute policies, init scripts, or another feature listed in the serverless limitations. Existing Spark Submit tasks are supported only on classic job compute, but the task type is deprecated and pending removal; migrate new use cases to a JAR, notebook, or Python script task.
 
 For a multi-task job, tasks can share a classic job compute resource to reduce repeated startup. Shared compute also shares process state and installed libraries for the run, so do not rely on mutable Scala singleton state or accidental task isolation.
 
@@ -161,7 +162,9 @@ Keep data, code, cache conditions, region, identity, and concurrency consistent.
 - [Connect to a SQL warehouse](https://docs.databricks.com/aws/en/compute/sql-warehouse)
 - [Configure compute for jobs](https://docs.databricks.com/aws/en/jobs/compute)
 - [Serverless compute limitations](https://docs.databricks.com/aws/en/compute/serverless/limitations)
+- [Configure the serverless environment](https://docs.databricks.com/aws/en/compute/serverless/dependencies)
 - [Run Lakeflow Jobs with serverless compute](https://docs.databricks.com/aws/en/jobs/run-serverless-jobs)
+- [Spark Submit task deprecation notice and migration guide](https://docs.databricks.com/aws/en/jobs/tasks/spark-submit)
 - [Billable usage system table reference](https://docs.databricks.com/aws/en/admin/system-tables/billing)
 
 ## Conclusion
