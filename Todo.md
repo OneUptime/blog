@@ -21,7 +21,6 @@
 
 ## Operational Readiness
 
-9. Building a Failure-Mode Inventory: Timeouts, Partial Outages, Queue Backlogs, and Dependency Loss
 10. A Backup Is Not a Recovery Plan: Proving RPO and RTO with Restore Drills
 11. Can You Actually Roll Back? Testing Database-Compatible Reverts and Forward Fixes Before Launch
 12. Feature Flags as Operational Controls: Kill Switches, Safe Defaults, Ownership, and Cleanup
