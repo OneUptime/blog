@@ -12,13 +12,13 @@ Moving from Databricks Runtime 10.x to 15.4 LTS crosses several platform generat
 
 Treat this as an application and data compatibility project, not a cluster setting change.
 
-As of August 2026, Databricks lists 15.4 LTS support through August 19, 2027. Newer LTS releases are available. If 15.4 is not a required intermediate target, compare its remaining support window with 16.4 LTS or 17.3 LTS before investing in the migration.
+As of August 2026, Databricks lists 15.4 LTS support through August 19, 2027. Newer LTS releases are available. If 15.4 is not a required intermediate target, compare its remaining support window with 16.4 LTS, 17.3 LTS, or 18 LTS before investing in the migration.
 
 ## Establish the exact baseline
 
 Runtime 10.x is not one environment. Record the full version and variant for every workload:
 
-- 10.0, 10.1, 10.2, 10.3, or 10.4 LTS
+- 10.0, 10.1, 10.2, 10.3, 10.4 LTS, or 10.5
 - Standard runtime or Machine Learning runtime
 - CPU or GPU instance family
 - Access mode and Unity Catalog use
@@ -89,7 +89,7 @@ For each JAR:
 - Test UDF registration, encoders, Dataset operations, serialization, and JDBC connectors.
 - Run the same JAR on the intended access mode, not only dedicated development compute.
 
-Starting in 15.4 LTS, Databricks makes all bundled Java and Scala libraries available in Unity Catalog access modes. Scala is generally available on standard compute, with expanded Dataset operations. Standard compute still has limitations, including no RDD APIs. Code that requires RDDs, R, GPUs, distributed ML, or privileged machine access may require dedicated compute.
+Starting in 15.4 LTS, Databricks makes all bundled Java and Scala libraries available in Unity Catalog access modes. Scala is generally available on Unity Catalog-enabled standard compute, with expanded Dataset operations. Standard compute still has limitations, including no RDD APIs. Code that requires RDDs, R, GPUs, distributed ML, or privileged machine access may require dedicated compute.
 
 Do not change runtime and access mode in one unobserved step. Test four combinations when both must change: old runtime and old mode, new runtime and old mode, old runtime and new mode if supported, and new runtime and new mode. This isolates the source of a failure.
 
