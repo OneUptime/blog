@@ -21,7 +21,6 @@
 
 ## Operational Readiness
 
-15. Designing a First-15-Minutes Incident Dashboard: Impact, Recent Changes, Dependencies, Logs, and Traces
 16. How Should a Service Degrade When a Dependency Fails? Budgets for Timeouts, Retries, and Circuit Breakers
 17. Production Security Readiness: Least Privilege, Secret Rotation, Audit Logs, and Break-Glass Access
 18. Launch-Day Go/No-Go: Which Metrics Must Be Green, Who Must Be Present, and What Triggers Rollback?
