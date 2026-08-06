@@ -46,7 +46,7 @@ availability = good eligible events / all eligible events
 A latency SLI is often expressed as the fraction of eligible events completed below a threshold:
 
 ```text
-latency_attainment = eligible events completed within 500 ms / all eligible events
+latency_attainment = good eligible events completed within 500 ms / all eligible events
 ```
 
 Define every term:
@@ -54,11 +54,11 @@ Define every term:
 | Field | Example |
 | --- | --- |
 | Population | Production checkout requests from enabled tenants |
-| Event | One accepted `PlaceOrder` operation |
+| Event | One `PlaceOrder` attempt received at the public edge |
 | Good availability event | Durable order confirmation, or idempotent replay of the same confirmation |
-| Bad availability event | Server rejection, ambiguous outcome, timeout, or lost accepted operation |
-| Excluded event | Auth failure, invalid payload, explicit client cancellation before acceptance |
-| Latency start | Request accepted at public edge |
+| Bad availability event | Rejection of an otherwise valid attempt, ambiguous outcome, timeout, or lost accepted operation |
+| Excluded event | Invalid or expired credentials, invalid payload, explicit client cancellation before acceptance |
+| Latency start | Eligible attempt received at public edge |
 | Latency stop | Durable confirmation returned to client |
 | Measurement point | Edge telemetry joined to order outcome |
 | Window | Rolling 28 days |
@@ -163,9 +163,10 @@ owners:
 sli:
   type: request-availability
   source: edge-and-order-outcome
-  eligible: accepted production operations from enabled tenants
+  eligible: production PlaceOrder attempts from enabled tenants received at public edge
   good: durable confirmation or idempotent replay
   exclusions:
+    - invalid or expired credentials rejected before acceptance
     - invalid payload rejected before acceptance
     - explicit client cancellation before acceptance
 slo:
