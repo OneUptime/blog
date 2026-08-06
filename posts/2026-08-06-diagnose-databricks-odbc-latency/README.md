@@ -36,11 +36,11 @@ client processing latency = t5 - t4
 
 Databricks query history decomposes server-side time. `total_duration_ms` excludes result fetch time, while `result_fetch_duration_ms` records fetching after execution. `waiting_for_compute_duration_ms` measures provisioning wait, and `waiting_at_capacity_duration_ms` measures queueing for available capacity.
 
-The client timer will be longer than the sum of server fields because connection setup, network round trips, driver work, and application rendering are outside parts of the server measurement.
+End-to-end client time will generally be longer than `total_duration_ms + result_fetch_duration_ms` because connection setup, network round trips, driver work, and application rendering are not all represented. Do not add `total_duration_ms` to its component duration fields.
 
 ## Start with query history
 
-Open Query History, filter to the warehouse, user, client, time, or statement ID, and inspect the wall-clock breakdown. The `system.query.history` table supports repeatable analysis and includes the driver and client application where reported.
+Open Query History, filter to the warehouse, user, time, or statement ID, and inspect the wall-clock breakdown. The `system.query.history` table supports repeatable analysis and includes the driver and client application where reported.
 
 ```sql
 SELECT
@@ -73,7 +73,7 @@ Match a client request with a statement ID when the application exposes it. Othe
 
 ## Phase 1: connection and authentication
 
-If `t1 - t0` is high but Databricks has not yet recorded a statement, investigate the client path:
+If `t1 - t0` is high but Databricks has not yet recorded a statement, investigate the client path and warehouse state:
 
 - DNS resolution and TCP connection time
 - TLS inspection or certificate validation
@@ -82,6 +82,7 @@ If `t1 - t0` is high but Databricks has not yet recorded a statement, investigat
 - OAuth token acquisition or refresh
 - Repeated creation of short-lived connections
 - Driver and client bitness or version mismatch
+- A stopped warehouse, because establishing a JDBC or ODBC connection can start it automatically
 
 Use the current Databricks ODBC Driver. As of February 2026, Databricks renamed the Simba Spark ODBC Driver and stopped distributing new legacy versions. Existing legacy versions have a limited support window, so test migration before spending time tuning an obsolete driver.
 
@@ -97,7 +98,7 @@ Serverless SQL warehouses have much faster documented startup than Pro and class
 
 1. Confirm the warehouse type.
 2. Check whether auto-stop is aligned with the actual request cadence.
-3. Prefer serverless when region, data governance, and networking requirements permit it.
+3. Prefer serverless when workspace eligibility, data governance, and networking requirements permit it.
 4. Schedule a dashboard refresh only when freshness value justifies keeping or waking compute.
 5. Compare cold and warm latency separately in service-level reports.
 
@@ -118,7 +119,7 @@ If many short queries queue:
 
 If one query is slow with no queue, adding clusters usually does not make that query faster. Optimize it or test a larger warehouse size instead.
 
-Monitor peak queued queries and queue wait by time and client:
+Monitor statement volume and queue wait by start time and client:
 
 ```sql
 SELECT
