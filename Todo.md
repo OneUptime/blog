@@ -21,7 +21,6 @@
 
 ## Operational Readiness
 
-16. How Should a Service Degrade When a Dependency Fails? Budgets for Timeouts, Retries, and Circuit Breakers
 17. Production Security Readiness: Least Privilege, Secret Rotation, Audit Logs, and Break-Glass Access
 18. Launch-Day Go/No-Go: Which Metrics Must Be Green, Who Must Be Present, and What Triggers Rollback?
 19. The Post-Launch Readiness Review: Catching Alert Noise, Capacity Misses, and Runbook Gaps
