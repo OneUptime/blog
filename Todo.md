@@ -3001,3 +3001,233 @@
 18. How to Debug Python Reference Cycles with gc.DEBUG_SAVEALL Without Mistaking Collectable Objects for Leaks
 19. How to Tune CPython’s Cyclic GC Thresholds After Python 3.14.5 Restored Generation 1
 20. How to Capture Near-Heap-Limit V8 Snapshots Before Node.js Crashes from OOM
+
+## Teradata
+
+1. Teradata Error 2646: Diagnose Spool Exhaustion Before Adding More Space
+2. Find and Fix AMP Skew in Teradata: Primary Indexes, Redistribution, and Hot Values
+3. Read a Teradata `EXPLAIN` Plan: All-AMP Scans, Redistributes, Duplicates, and Confidence
+4. Collect Teradata Statistics That the Optimizer Can Actually Use
+5. Choose a Teradata Primary Index for Even Distribution and Local Joins
+6. Build a Teradata Volatile Table That Keeps Its Rows: `ON COMMIT PRESERVE ROWS`, Primary Indexes, and Statistics
+7. CTE, Derived Table, or Volatile Table in Teradata: Which One Reduces Rework and Spool?
+8. Use `QUALIFY` with `ROW_NUMBER` to Deduplicate and Keep the Right Teradata Row
+9. `QUALIFY` vs `HAVING` vs `WHERE` in Teradata: Filter at the Correct Query Phase
+10. Teradata Window Frames Explained: Why `ROWS UNBOUNDED PRECEDING` Changes Running Totals
+11. Collapse Overlapping and Adjacent Date Ranges in Teradata with `PERIOD` and `NORMALIZE`
+12. Generate Calendar Rows in Teradata with `EXPAND ON`, `sys_calendar`, or Recursive CTEs
+13. Convert `YYYYMMDD` Integers and Mixed Timestamps Safely in Teradata
+14. Prevent Numeric Overflow in Teradata `COUNT`, `SUM`, and `CASE` Expressions
+15. Split and Aggregate Strings in Teradata: `STRTOK_SPLIT_TO_TABLE`, `XMLAGG`, and Delimiter Traps
+16. Write a Correct Teradata `UPDATE ... FROM` or `MERGE` Without Duplicate-Row Failures
+17. Bulk Load Teradata from Python: Batch Inserts vs FastLoad and When Parallel Sessions Pay Off
+18. Diagnose Teradata Python Driver Timeouts: Connection, Logon, Request, and Session Limits
+19. Configure Secure Teradata Connections with TLS, Browser/OIDC, Kerberos, and Stored Passwords
+20. Import and Export CSV with BTEQ, TPT, and Teradata Studio Without Losing Types or Headers
+
+## YDB
+
+1. Run YDB in Testcontainers Without Breaking Endpoint Discovery
+2. Fix “Unable to Connect” in YDB: Endpoint, Database Path, TLS, and Credentials Checklist
+3. Integrate YDB with Java: Native SDK, JDBC, Connection Pooling, and Retry Boundaries
+4. Connect SQLAlchemy 2.0 to YDB: URLs, Credentials, TLS, and Engine Configuration
+5. Use `Serial` and `BigSerial` in YDB Without Creating a Hot Primary-Key Partition
+6. Enforce Uniqueness in YDB with a Unique Secondary Index and Handle `PRECONDITION_FAILED`
+7. Design YDB Secondary Indexes: Synchronous vs. Asynchronous, Covering Columns, and Uniqueness
+8. Avoid Write Amplification from Too Many YDB Secondary Indexes
+9. Design YDB Primary Keys and Partitioning to Prevent Hot Shards
+10. Paginate YDB Tables by Primary Key Instead of `OFFSET`
+11. Configure YDB TTL and Understand Why Expired Rows Can Still Appear
+12. Change Compression on a Live YDB Column Table: `lz4`, `zstd`, and When Old Data Is Recompressed
+13. Build a YDB Changefeed Consumer That Preserves Per-Key Ordering and Survives Restarts
+14. Find YDB’s Top CPU and Read-Heavy Queries with `.sys` Views
+15. Read a YDB Query Plan to Spot Full Scans, Fan-Out, and Missing Indexes
+16. Retry YDB Transactions Correctly: Whole-Transaction Retries, Idempotency, and Commit Ambiguity
+17. Choose `BulkUpsert`, Transactional `UPSERT`, or Batch SQL for YDB Ingestion
+18. Size and Tune YDB SDK Session Pools for Serverless Cold Starts and Overload
+19. Back Up and Restore YDB with Local Dumps, S3 Export, and Incremental Backup Collections
+20. Deploy YDB on Kubernetes Without PDisk Permission and Storage-Pool Failures
+
+## Direct Connect
+
+1. AWS Direct Connect BGP Is Stuck in Idle: A Layer-by-Layer Troubleshooting Checklist
+2. Direct Connect Link Is Down or Shows No Light: Validate Optics, Cross-Connects, and LOA-CFA
+3. Public, Private, or Transit VIF: Choose the Right AWS Direct Connect Attachment
+4. Get an AWS Direct Connect Public VIF Out of “Verifying”: ASN and Prefix Approval Checklist
+5. Filter the Routes Received on a Direct Connect Public VIF with Prefix Lists and BGP Communities
+6. Respect Direct Connect’s 100-Prefix-Per-Address-Family Limit Before a Private or Transit VIF BGP Session Drops
+7. How to Trace Direct Connect Traffic with Transit Gateway Flow Logs and VPC Flow Logs
+8. How to Connect an AWS Cloud WAN Core Network to Direct Connect Through a Direct Connect Gateway
+9. How to Turn Direct Connect Maintenance Events into AWS Health and EventBridge Alerts
+10. Make Jumbo Frames Work Across Direct Connect, DX Gateway, and Transit Gateway
+11. Encrypt AWS Direct Connect with MACsec: Port, Cipher, CKN/CAK, and Rotation Prerequisites
+12. Encrypt a Hosted Direct Connect Connection with IPsec When MACsec Is Unavailable
+13. Monitor Direct Connect in CloudWatch: Link State, Throughput, MAC Errors, and Optical Levels
+14. Stop One Direct Connect VIF from Saturating a Shared Dedicated Port with VIF Rate Limiters
+15. Accept and Operate a Cross-Account Hosted VIF Without Confusing Connection and VIF Ownership
+16. How to Rotate a Direct Connect VIF BGP Authentication Key with a Controlled Session Reset
+17. Upgrade a Hosted Direct Connect Connection: What the Partner Can Resize and When to Replace It
+18. Build and Modify a Direct Connect LAG Without Overcommitting Member Links
+19. Connect Two On-Premises Sites with Direct Connect SiteLink and Avoid Duplicate-Route Black Holes
+20. Reach Amazon S3 over Direct Connect: Public VIF, PrivateLink, or VPN over a Public VIF?
+
+## PodDisruptionBudgets
+
+1. How to Calculate a PodDisruptionBudget from Replica Count, Failure Tolerance, and Drain Concurrency
+2. Why Is `ALLOWED DISRUPTIONS` Zero? How to Read Every PodDisruptionBudget Status Field
+3. How Kubernetes Rounds Percentage PDBs—and Why `minAvailable` and `maxUnavailable` Behave Oppositely at One Replica
+4. Why `kubectl delete pod` Bypasses Your PodDisruptionBudget but `kubectl drain` Does Not
+5. How `unhealthyPodEvictionPolicy: AlwaysAllow` Unblocks Node Drains—and What Recovery Protection You Give Up
+6. A NotReady Pod Is Blocking Node Drain: How to Break a Deadlocked PodDisruptionBudget
+7. How to Debug a PodDisruptionBudget Selector That Matches No Pods—or Far Too Many
+8. Why Overlapping PodDisruptionBudgets Make Eviction Fail—and How to Untangle Their Selectors
+9. Why `selector: {}` Matches Every Pod in a `policy/v1` PDB—and How to Audit the Blast Radius
+10. How to Test a PodDisruptionBudget Through the Eviction API Without Draining a Shared Node
+11. How to Coordinate HPA `minReplicas` with a PDB So Autoscaling Does Not Stall Maintenance
+12. Cluster Autoscaler Reports “Not Enough PodDisruptionBudget”: How to Find the Blocking Workload
+13. Karpenter Consolidation Is Blocked by a PDB: How Pod Budgets Differ from NodePool Disruption Budgets
+14. How to Design a PodDisruptionBudget for a StatefulSet That Must Preserve Quorum
+15. Can a Single-Replica Workload Survive a Zero-Downtime Drain? PDB Limits and Surge Workarounds
+16. Why a PDB Cannot Guarantee Node or Zone Availability—and How to Pair It with Topology Spread Constraints
+17. Why a PodDisruptionBudget Does Not Stop Node-Pressure Eviction, Graceful Shutdown, or Hardware Failure
+18. How to Enforce PDB Coverage for Deployments and StatefulSets Without Blocking Jobs or Single Replicas
+19. How to Alert Before a PDB Blocks Maintenance with `kube_poddisruptionbudget_status_pod_disruptions_allowed`
+20. How to Prevent a Helm Chart from Shipping a PDB That Deadlocks Single-Replica Installations
+
+## SpiceDB
+
+1. How to Model Organization, Workspace, Folder, and Document Inheritance in SpiceDB
+2. How to Combine Tenant Roles, Resource-Level Grants, and a Platform Super-Admin in SpiceDB
+3. How to Represent Public and Anonymous Access with SpiceDB Wildcards Without Overgranting Write Permissions
+4. How to Model Dynamic IP, Time, and Request Attributes with SpiceDB Caveats
+5. SpiceDB Returned `PERMISSIONSHIP_CONDITIONAL_PERMISSION`: How to Supply and Debug Missing Caveat Context
+6. SpiceDB Subject Relations vs. Arrow Operators: Which Schema Pattern Should You Use?
+7. Recursive Folder Permissions Hit the Maximum Depth: How to Find and Break SpiceDB Cycles
+8. How to Split a Large SpiceDB Schema with Imports and Partials and Validate It in CI
+9. How to Test SpiceDB Schema Changes with Assertions, Expected Relations, and `zed validate`
+10. How to Roll Out a SpiceDB Schema Migration Without Invalidating Existing Relationships
+11. How to List Every Resource a User Can Access with `LookupResources` and Cursor Pagination
+12. Need a Total Count from `LookupResources`? Why SpiceDB Cannot Return It Cheaply and What to Build Instead
+13. How to Combine SpiceDB Authorization with Database Search Filters Without Fetching Every Resource
+14. `CheckPermission`, `CheckBulkPermissions`, `LookupResources`, or `LookupSubjects`: Which SpiceDB API Fits Your Query?
+15. How to Guarantee Read-After-Write Authorization with ZedTokens and `at_least_as_fresh`
+16. Why `fully_consistent` May Still Miss a Recent CockroachDB Write—and How a ZedToken Fixes It
+17. How to Prevent Concurrent Relationship Writers from Reintroducing Revoked Access with Preconditions
+18. How to Keep Application Data and SpiceDB Relationships in Sync with Transactions, Outbox Events, or CQRS
+19. How to Bootstrap Millions of Relationships When Migrating from Legacy RBAC to SpiceDB
+20. Bulk Import Failed on an Existing Relationship: How to Resume with Skip or `TOUCH` Semantics
+
+## Postmortems
+
+1. How to Write a Postmortem When the Root Cause Is Still Unknown
+2. The Draft Named the Wrong Root Cause: How to Record Hypotheses, Confidence, and Red Herrings
+3. How to Prevent Hindsight Bias from Rewriting What Responders Knew at the Time
+4. How to Interview Incident Responders Without Contaminating Their Recollections
+5. How to Calculate Revenue, Error-Budget, and Customer Impact for a Postmortem
+6. How to Write a Postmortem Executive Summary That Preserves the Technical Truth
+7. How to Produce Internal and Customer-Facing Postmortems from One Incident Record
+8. What Should You Redact Before Publishing a Postmortem? Secrets, PII, Security Details, and Legal Review
+9. How to Run a Shared Postmortem with a Cloud Provider or Other Third-Party Vendor
+10. How to Review a Cross-Team Incident When No Single Service Owns the Failure
+11. How to Run an Asynchronous Postmortem Across Time Zones Without Losing Debate or Decisions
+12. How to Close a Postmortem When Corrective Actions Are Rejected or Deferred
+13. How to Use AI to Draft a Postmortem Without Inventing a Timeline or Exposing Sensitive Logs
+14. How to Reconcile Conflicting Incident Accounts with Evidence and Confidence Levels
+15. How to Use Postmortems to Expose Hidden Service Dependencies and Update the Architecture Map
+16. How to Review a Postmortem Draft for Unsupported Claims, Missing Evidence, and Ambiguous Language
+17. Which Postmortem Metrics Actually Improve Reliability? Action Closure, Recurrence, Detection, and Review Lag
+18. How to Turn Postmortem Findings into Runbook Updates That Help the Next On-Call
+19. How to Analyze “Where We Got Lucky” and Find the Safeguards You Still Need
+20. How to Separate Prevention, Detection, Mitigation, and Blast-Radius Actions in a Postmortem
+
+## Model Versioning
+
+1. MLflow Registry Stages Are Deprecated: Migrate Production and Staging to Aliases Without Breaking Model URIs
+2. What Should “Latest” Mean in a Model Registry? Use Immutable Versions and a Movable Champion Alias
+3. How to Promote an MLflow Model Across Dev, Staging, and Production Registered Models with `copy_model_version`
+4. How to Prevent Concurrent Training Jobs from Moving the Same Production Alias Out of Order
+5. How to Trace an MLflow Model Version Back to Its Run, Git Commit, Dataset Snapshot, and Environment
+6. How to Version a Model and Its Preprocessing Pipeline as One Deployable Artifact
+7. How to Block Model Promotion When a New Input Signature Breaks Existing Clients
+8. How to Version an Ensemble When Its Component Models Change Independently
+9. How to Version an LLM Application Snapshot: Model, Prompt, Tools, Retrieval Index, and Parameters
+10. Registry Version, Deployment Alias, or Artifact Digest: What Should Production Pin?
+11. How to Register an Existing Model Artifact in MLflow Without Retraining It
+12. Why an MLflow `models:/` URI Works Locally but Fails in Production: Tracking URI, Artifact URI, and Credentials
+13. How to Move an MLflow Artifact Store Without Stranding Existing Model Versions
+14. How to Migrate Registered Models Between MLflow Workspaces Without Losing Versions, Aliases, or Lineage
+15. How to Compare Model Versions with Equal Accuracy but Different Calibration, Latency, and Memory Use
+16. How to Reproduce a Model Version When Training Data Is Mutable or Later Backfilled
+17. DVC Model Artifact Is Missing After Checkout: Repair the Cache, Remote, and `.dvc` Metadata
+18. Why `mlflow gc` Can Delete Artifacts Referenced by Registered Models—and How to Build a Safe Reachability Check
+19. How to Keep Model Loader Dependencies Compatible Across Python, Framework, and Operating-System Upgrades
+20. How to Roll Back Weights, Code, Prompt, Data, and Configuration with One Versioned Model Manifest
+
+## pgBadger
+
+1. pgBadger Parsed the File but Found Zero Queries: Fix `log_line_prefix`, Format Detection, and Query Logging
+2. How to Capture Locks, Temp Files, Autovacuum, and Checkpoints for pgBadger Without Logging Every Statement
+3. `log_min_duration_statement` vs `log_duration` vs `log_statement`: Which Input Produces a Trustworthy pgBadger Report?
+4. How to Parse PostgreSQL `jsonlog` from CloudNativePG and Cloud SQL with pgBadger
+5. How to Build Gap-Free pgBadger Reports from Rotating Amazon RDS and CloudWatch Logs
+6. How to Run pgBadger Directly Against `journalctl` Without Copying PostgreSQL Logs to a Temporary File
+7. How to Analyze Remote and Compressed PostgreSQL Logs over SSH with pgBadger
+8. How to Generate Daily and Weekly Incremental pgBadger Reports Without Counting Rotated Logs Twice
+9. pgBadger Says “No New Entries Since Last Run”: Repairing Stale `--last-parsed` State After Rotation
+10. pgBadger `-j` vs `-J`: Parallelize One Huge Log or Hundreds of Small Logs?
+11. How to Stop pgBadger from Exhausting Memory on Busy PostgreSQL Logs
+12. How to Anonymize SQL Literals Before Sharing a pgBadger Report
+13. How to Exclude Health Checks, `pg_dump`, Migrations, and Other Noise from pgBadger
+14. How to Slice a pgBadger Report by Database, User, Application, Client, PID, or Session
+15. Slowest, Most Frequent, or Most Total Time: Which pgBadger Query Ranking Should You Fix First?
+16. How to Find Queries Spilling to Disk with pgBadger and `log_temp_files`
+17. How to Diagnose Lock Waits, Deadlocks, and Cancelled Queries with pgBadger
+18. How to Audit Autovacuum and Autoanalyze Activity with pgBadger
+19. How to Correlate PostgreSQL Checkpoint Spikes with Query Latency in pgBadger
+20. How to Export pgBadger JSON, Raw CSV, and Normalized Query Fingerprints into an Observability Pipeline
+
+## Kubernetes
+
+1. How to Fix Kubernetes 1.36 Rejections of Non-Canonical IP Addresses and CIDRs
+2. How to Mount Models and Static Assets from an OCI Registry with Kubernetes 1.36 Image Volumes
+3. How to Diagnose Unhealthy GPUs and DRA Devices from `allocatedResourcesStatus` in Pod Status
+4. How to Use Kubelet PSI Metrics to Detect CPU, Memory, and I/O Stalls Before Node Evictions
+5. Kubernetes 1.36 SELinux Volume Mounts: Preventing Label Conflicts When Pods Share a Volume
+6. How to Recover from Stale CSI Attach Limits with Mutable `CSINode` Allocatable Counts
+7. How to Query Kubelet and System Service Logs Through the Kubernetes Node Logs API Without SSH
+8. How to Externalize Kubernetes ServiceAccount Token Signing Without Distributing the Private Key to Every API Server
+9. How to Replace Broad `nodes/proxy` RBAC with Fine-Grained Kubelet Permissions—and What Still Requires Proxy Access
+10. How to Configure DRA Prioritized Alternatives When the Preferred GPU or Device Class Is Unavailable
+11. How to Give a CSI Driver Short-Lived ServiceAccount Tokens with `CSIDriver.spec.tokenRequests`
+12. How to Set Pod-Level CPU and Memory Budgets Without Double-Counting Container Requests
+13. How to Restart Only Selected Container Exit Codes with Kubernetes `restartPolicyRules`
+14. How to Prefer Same-Node Service Endpoints with `trafficDistribution` Without Assuming Guaranteed Locality
+15. How to Stop Unexpected Linux Group Membership with `supplementalGroupsPolicy: Strict`
+16. How to Project and Rotate Cluster CA Trust with `ClusterTrustBundle` Instead of Copying CA Secrets
+17. How to Change PVC IOPS or Throughput In Place with `VolumeAttributesClass`
+18. How to Recover from a Failed PVC Expansion by Retrying a Smaller—but Still Valid—Requested Size
+19. Kubernetes `StorageVersionMigration`: Rewrite Secrets Before Retiring an At-Rest Encryption Key
+20. Why Existing Custom Resources Fail New CEL Rules—and How CRD Validation Ratcheting Changes Upgrades
+
+## Infisical
+
+1. How to Back Up and Restore Self-Hosted Infisical: PostgreSQL, `ENCRYPTION_KEY`, and `AUTH_SECRET`
+2. How to Upgrade Self-Hosted Infisical Safely When Schema Migrations Run at Startup
+3. Infisical Is Stuck on “Boot up migration failed”: Check Database Privileges, Locks, and Version Jumps
+4. How to Run Infisical Highly Available with Multiple App Replicas, PostgreSQL, and Redis Sentinel
+5. Infisical Cannot Authenticate to Redis: Fix URI Encoding, TLS, ACLs, and Sentinel Settings
+6. How to Put Infisical Behind NGINX or Traefik with the Correct `SITE_URL`, TLS Headers, and Trusted Proxy CIDRs
+7. Self-Hosted Infisical Sends No Invite or MFA Emails: How to Configure and Test SMTP
+8. How to Authenticate the Infisical CLI in Headless CI with Universal Auth and No Browser Login
+9. Infisical Universal Auth Fails: Separate 401 Credential or Lockout Errors from 403 Role and Scope Denials
+10. How to Use Infisical Kubernetes Auth Without Storing a Machine-Identity Client Secret in the Cluster
+11. InfisicalSecret Reports “Unknown Field”: Repair Stale CRDs and Duplicate Operator Installations
+12. How to Sync Infisical Secrets Across Kubernetes Namespaces with Least-Privilege Operator RBAC
+13. How to Render `kubernetes.io/dockerconfigjson`, TLS, and Basic-Auth Secrets with the Infisical Operator
+14. How to Reload Deployments After an Infisical Secret Change Without Creating a Restart Loop
+15. Infisical Operator Stops Syncing at Access-Token Max TTL: Diagnose Reauthentication and Version Support
+16. How to Structure Shared and Per-Application Secrets in Infisical Without Widening Machine-Identity Access
+17. How to Use Infisical Secret References Across Folders and Environments Without Permission Failures
+18. How to Authenticate GitHub Actions to Infisical with OIDC Instead of a Long-Lived Client Secret
+19. How to Use Infisical `value_wo` and Ephemeral Terraform Resources Without Writing Secrets to State
+20. How to Rotate PostgreSQL Credentials with Infisical’s Dual-Phase User Pattern Without Downtime
