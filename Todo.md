@@ -14,7 +14,6 @@
 
 ## Transit Gateway
 
-17. Private DNS Across Transit Gateway: Building a Route 53 Resolver Hub for VPCs and On-Premises Networks
 18. Referencing Security Groups Across Transit Gateway: Supported Topologies, Prerequisites, and Gotchas
 19. Dual-Stack Transit Gateway Routing: Where IPv6 Propagation, Egress, and Inspection Differ from IPv4
 20. Updating Transit Gateway Route Tables with Terraform Without Creating a Connectivity Gap
