@@ -21,7 +21,6 @@
 
 ## Operational Readiness
 
-2. Which Changes Need a Full PRR? Designing Risk-Tiered Reviews for Features, Services, and Migrations
 3. Who Can Approve a Launch Exception? Defining PRR Roles, Waivers, Expiry Dates, and Escalation
 4. The Dependency Readiness Map: Owners, Health Checks, Failure Contracts, and Escalation Paths
 5. Defining SLIs and SLOs Before Launch: Start with User Journeys, Not Available Metrics
