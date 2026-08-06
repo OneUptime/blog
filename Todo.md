@@ -14,7 +14,6 @@
 
 ## Transit Gateway
 
-13. Transit Gateway or VPC Peering? Finding the Break-Even Point for VPC Count and Traffic Volume
 14. Why a Cross-Account Transit Gateway Attachment Stays Pending—and Who Owns Each Side of the Route
 15. Direct Connect Gateway to Transit Gateway: Allowed Prefixes, BGP Advertisements, and Route Precedence
 16. Direct Connect with VPN Backup Through Transit Gateway: Preventing Asymmetric Failover
