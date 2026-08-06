@@ -10,7 +10,7 @@ Description: Route features, services, migrations, and routine changes through p
 
 Applying a full production readiness review to every change creates delay without equal risk reduction. Applying one only to brand-new services misses migrations, dependency swaps, and configuration changes that can be more dangerous than a new binary.
 
-The answer is a risk-tiered intake process. Low-risk, well-understood changes follow a fast path backed by automation. Novel, irreversible, high-blast-radius changes receive deeper review. Google describes fast common launch paths and higher-touch treatment for complex launches. AWS documents standard, normal, and emergency change categories. Neither prescribes the scoring model below; it is an organizational design you should calibrate with your own incidents.
+The answer is a risk-tiered intake process. Low-risk, well-understood changes follow a fast path backed by automation. Novel, irreversible, high-blast-radius changes receive deeper review. Google describes fast common launch paths and higher-touch treatment for complex launches. An AWS cloud-foundation whitepaper, now retained for historical reference, documents standard, normal, and emergency change categories. Neither prescribes the scoring model below; it is an organizational design you should calibrate with your own incidents.
 
 ## Classify the Change, Not the Ticket Label
 
@@ -83,7 +83,7 @@ A fast path is not "no controls." It is a pre-reviewed change pattern with bound
 - no dependency, region, quota, or permission expansion;
 - deployment within an approved maximum blast radius.
 
-If any assumption is false, route the change to a scoped or full review. This is similar to AWS's description of a standard change as low risk, well understood, and handled through a condensed procedure.
+If any assumption is false, route the change to a scoped or full review. This is similar to that AWS whitepaper's description of a standard change as low risk, well understood, and handled through a condensed procedure.
 
 Promote a change pattern to the fast path only after repeated safe execution. Remove it when incidents, near misses, or platform changes invalidate its assumptions.
 
@@ -187,7 +187,7 @@ For each incident, ask whether a reasonable control could have detected the risk
 - [Google SRE Book: Reliable Product Launches at Scale](https://sre.google/sre-book/reliable-product-launches/)
 - [Google SRE: Creating a Production Launch Plan](https://sre.google/resources/practices-and-processes/production-launch-planning/)
 - [Google SRE Workbook: Canarying Releases](https://sre.google/workbook/canarying-releases/)
-- [AWS: Change Management Categories and Priorities](https://docs.aws.amazon.com/whitepapers/latest/establishing-your-cloud-foundation-on-aws/change-management-categories-priorities.html)
+- [AWS: Change Management Categories and Priorities (historical reference)](https://docs.aws.amazon.com/whitepapers/latest/establishing-your-cloud-foundation-on-aws/change-management-categories-priorities.html)
 - [AWS Well-Architected: Make Frequent, Small, Reversible Changes](https://docs.aws.amazon.com/wellarchitected/latest/framework/ops_dev_integ_freq_sm_rev_chg.html)
 - [AWS Well-Architected Tool: Identify and Understand Risks](https://docs.aws.amazon.com/wellarchitected/latest/userguide/identify-and-understand-risks.html)
 
