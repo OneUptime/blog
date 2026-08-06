@@ -27,10 +27,10 @@ This guide uses the Argo-managed GitHub EventSource. It can register the reposit
 
 ## Establish Namespaces and Prerequisites
 
-Assume Argo Events and Argo Workflows are installed, their CRDs exist, and the Argo Events controller watches the `argo-events` namespace. Check the relevant resources:
+Assume Argo Events and Argo Workflows are installed, their CRDs exist, and both controllers are configured to watch resources in the `argo-events` namespace. Check the relevant resources:
 
 ```bash
-kubectl api-resources | grep -E 'eventbus|eventsources|sensors|workflowtemplates|workflows'
+kubectl api-resources | grep -E 'eventbus|eventsources|sensors|workflowtemplates|workflows|workflowtaskresults'
 kubectl -n argo-events get deploy
 kubectl -n argo get deploy
 ```
@@ -74,11 +74,11 @@ kubectl -n argo-events create secret generic github-hook \
   --from-literal=secret='replace-with-a-high-entropy-random-value'
 ```
 
-If Argo Events should create and maintain the repository webhook, also provide either an appropriately scoped GitHub token through `apiToken` or GitHub App credentials through `githubApp`. Do not put that credential in the same Git manifest. If the hook is created manually in GitHub, omit `apiToken`; the EventSource can still validate deliveries using `webhookSecret`.
+If Argo Events should create and maintain the repository webhook, also provide either an appropriately scoped GitHub token through `apiToken` or GitHub App credentials through `githubApp`. Do not put that credential in the same Git manifest. If the hook is created manually in GitHub, omit both `apiToken` and `githubApp`; the EventSource can still validate deliveries using `webhookSecret`.
 
 ## Define the GitHub EventSource
 
-The following resource listens on `/push`, subscribes only to `push`, and references the validation secret:
+The following resource listens on `/push`, declares `push` for an Argo-managed hook, and references the validation secret:
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -103,7 +103,7 @@ spec:
         endpoint: /push
         port: "12000"
         method: POST
-        url: https://events.example.com/push
+        url: https://events.example.com
       events:
         - push
       webhookSecret:
@@ -113,9 +113,9 @@ spec:
       insecure: false
 ```
 
-If `apiToken` or `githubApp` is omitted, configure the payload URL, JSON content type, event selection, activation state, and the identical secret in GitHub yourself. In current Argo Events code, automatic hook creation requires both API credentials and a nonempty `webhook.url`; `active` controls the GitHub hook created through that API and does not activate the local HTTP route. The local route is activated by the EventSource process. This manually managed example therefore omits `active`. A manually managed hook already knows its payload URL, but retaining a correct declared URL documents the intended endpoint and will become significant if API credentials are later added.
+If both `apiToken` and `githubApp` are omitted, configure the payload URL (`https://events.example.com/push`), JSON content type, event selection, activation state, and the identical secret in GitHub yourself. In current Argo Events code, automatic hook creation requires either supported API credential and a nonempty `webhook.url`; `active` controls the GitHub hook created through that API and does not activate the local HTTP route. The local route is activated by the EventSource process. This manually managed example therefore omits `active`. A manually managed hook already knows its payload URL, but retaining the public base URL in `webhook.url` documents the intended endpoint and will become significant if API credentials and `active: true` are later added: Argo Events appends `webhook.endpoint` when it registers the hook.
 
-`insecure` concerns TLS verification used when Argo Events talks to GitHub's API. Keep it `false`. It is not a switch for HTTPS on the inbound endpoint.
+When Argo Events manages the hook, `insecure` maps to GitHub's `insecure_ssl` hook setting. Keep it `false` so GitHub verifies the inbound endpoint's TLS certificate. It neither enables HTTPS on the EventSource nor changes TLS verification for Argo Events' GitHub API client.
 
 Apply and observe the controller-created pod and Service:
 
@@ -165,15 +165,46 @@ Restrict the exposed path, apply a NetworkPolicy where supported, and use a vali
 
 ## Keep Workflow Logic in a WorkflowTemplate
 
-Create the reusable workflow independently:
+Create the reusable workflow independently. Give its pods a dedicated service account; on Argo Workflows 3.4 and later, the Emissary executor needs `create` and `patch` access to `workflowtaskresults`:
 
 ```yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: github-build
+  namespace: argo-events
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: github-build-executor
+  namespace: argo-events
+rules:
+  - apiGroups: ["argoproj.io"]
+    resources: ["workflowtaskresults"]
+    verbs: ["create", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: github-build-executor
+  namespace: argo-events
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: github-build-executor
+subjects:
+  - kind: ServiceAccount
+    name: github-build
+    namespace: argo-events
+---
 apiVersion: argoproj.io/v1alpha1
 kind: WorkflowTemplate
 metadata:
   name: build-revision
   namespace: argo-events
 spec:
+  serviceAccountName: github-build
   entrypoint: main
   arguments:
     parameters:
@@ -183,7 +214,7 @@ spec:
   templates:
     - name: main
       container:
-        image: alpine:3.20
+        image: alpine:3.24
         command: [sh, -c]
         args:
           - >-
@@ -256,7 +287,7 @@ spec:
       eventName: push
       filters:
         data:
-          - path: headers.X-Github-Event
+          - path: headers.X-Github-Event.0
             type: string
             value:
               - '^push$'
@@ -301,7 +332,7 @@ spec:
               dest: spec.arguments.parameters.2.value
 ```
 
-Argo Events data paths use GJSON-style paths, and destination paths use SJSON-style paths. The GitHub EventSource serializes Go's `http.Header`, so each header value is a JSON array. The `.0` selects the first delivery-ID value for the scalar Workflow parameter. Header spelling reflects Go's canonicalized key in the current official example. Capture one real event in a nonproduction Sensor log or a log trigger and verify paths against your installed release.
+Argo Events data paths use GJSON-style paths, and destination paths use SJSON-style paths. The GitHub EventSource serializes Go's `http.Header`, so each header value is a JSON array. The `.0` selects the first value for the event filter and delivery-ID Workflow parameter. Header spelling reflects Go's canonicalized key in the current official example. Capture one real event in a nonproduction Sensor log or a log trigger and verify paths against your installed release.
 
 ## Test One Hop at a Time
 
@@ -320,7 +351,7 @@ Common boundaries are easy to distinguish:
 
 - no GitHub delivery attempt: hook configuration or subscribed event problem;
 - DNS, TLS, or timeout error: public ingress path problem;
-- `401` or signature error: webhook secret mismatch or payload mutation;
+- `400` or signature error: webhook secret mismatch or payload mutation;
 - EventSource accepts but Sensor sees nothing: EventBus or dependency-name mismatch;
 - Sensor logs an invalid event: header or data-filter path mismatch;
 - Sensor trigger is forbidden: service account RBAC;
