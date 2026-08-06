@@ -44,7 +44,6 @@
 
 ## Transit Gateway
 
-9. Centralized Internet Egress Through a Shared NAT Gateway: Required Return Routes and Hidden Data Charges
 10. AWS Network Firewall Behind Transit Gateway: Designing Symmetric East-West Inspection Paths
 11. Overlapping VPC CIDRs: What Transit Gateway Cannot Route and When PrivateLink or Private NAT Helps
 12. Cross-Region Transit Gateway Peering: Static Routes, Non-Transitive Paths, and the Real Cost Model
