@@ -8,7 +8,7 @@ Description: Learn why VM hourly price is a poor Databricks sizing metric and ho
 
 ---
 
-Choosing the lowest-priced VM in the Databricks compute picker can increase the cost of a job. The VM might run longer, require more workers, spill more shuffle data, or fail and retry. Databricks usage rates can also vary by workload SKU, instance type, and Photon selection.
+Choosing the lowest-priced VM in the Databricks compute picker can increase the cost of a job. The VM might run longer, require more workers, spill more shuffle data, or fail and retry. Databricks usage charges also depend on the workload SKU and on DBU consumption, which varies by instance type and Photon selection.
 
 Optimize for the cost of a successful workload at an acceptable service level, not for one node's advertised hourly rate.
 
@@ -18,10 +18,10 @@ For classic job compute, a simplified comparison is:
 
 ```text
 cost per successful outcome
-  = Databricks usage cost
-  + driver and worker cloud cost over time
-  + attached storage and network cost
-  + cost of failed attempts and retries
+  = (Databricks usage cost
+     + driver and worker cloud cost over time
+     + attached storage and network cost) across all attempts
+    / number of successful outcomes
 ```
 
 The node count is a time series, not always the configured maximum. Autoscaling can add and remove workers, workers can take time to provision, and the driver often exists for longer than any individual worker.
@@ -126,7 +126,7 @@ Use a repeatable matrix rather than comparing unrelated production runs:
 4. Separate setup, execution, and cleanup duration.
 5. Record driver and worker counts over time, not only the maximum.
 6. Capture Spark metrics, spill, skew, failed tasks, CPU, memory, disk, and network evidence.
-7. Calculate Databricks usage from `system.billing.usage` and cloud cost from the provider export.
+7. Calculate DBU usage from `system.billing.usage`, join `system.billing.list_prices` for list-price cost or apply contract rates for effective cost, and calculate cloud cost from the provider export.
 8. Compare median and tail latency, total cost, and success rate.
 
 Warm caches can invalidate a comparison. Either start each candidate under equivalent cache conditions or report cold and warm results separately. Do not disable production optimizations merely to make the test look synthetic.
