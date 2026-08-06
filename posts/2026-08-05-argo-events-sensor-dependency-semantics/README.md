@@ -74,7 +74,7 @@ If every input must share a key, filtering `A` and `B` independently does not pr
 
 ## Understand OR State and Parameterization
 
-For `A || B`, either dependency can satisfy the trigger. Trigger parameters referencing the dependency that did not arrive resolve as missing unless a default is configured. Create separate triggers when source payloads differ materially, or normalize both to the same contract.
+For `A || B`, either dependency can satisfy the trigger. Trigger parameter resolution fails when a parameter references the dependency that did not arrive, unless a default `src.value` is configured. Create separate triggers when source payloads differ materially, or normalize both to the same contract.
 
 ```yaml
 triggers:
