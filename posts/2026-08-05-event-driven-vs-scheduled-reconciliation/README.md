@@ -24,7 +24,7 @@ The trigger says "this resource may need attention." It should not be treated as
 
 | Property | Event-driven | Scheduled reconciliation |
 |---|---|---|
-| Detection latency | Usually seconds | Up to the scan interval plus queue delay |
+| Detection latency | Usually seconds | Up to the scan interval plus time to reach the resource in the scan and queue delay |
 | Coverage | Only changes that emit and deliver usable events | Everything the scan can enumerate and read |
 | Duplicate input | Common with at-least-once delivery | Common after retries, controller restarts, or overlapping schedules |
 | Missed input | Possible with best-effort sources, routing errors, or retention expiry | Possible during scheduler outages, missed windows, or incomplete inventory |
@@ -48,7 +48,7 @@ Use events when:
 
 Examples include opening an incident on a critical IAM policy change, quarantining a newly non-compliant workload, or enqueueing a targeted drift check after a control-plane audit event.
 
-Do not let the event handler execute a destructive API call inline. A queue provides backpressure, retry visibility, and per-resource serialization. The consumer should collapse repeated hints for the same key.
+Do not let the event handler execute a destructive API call inline. A durable queue can provide backpressure and retry visibility. Configure the queue and consumer to serialize work per resource key, and collapse repeated hints for the same key.
 
 ```json
 {
@@ -60,7 +60,7 @@ Do not let the event handler execute a destructive API call inline. A queue prov
 }
 ```
 
-Use the event ID for delivery deduplication, but use the resource key for reconciliation coalescing. Two different events for one resource may both be valid hints that need only one current-state read.
+Use an event ID that remains stable across redelivery for delivery deduplication, but use the resource key for reconciliation coalescing. Two different events for one resource may both be valid hints that need only one current-state read.
 
 ## Understand Event Delivery, Not Just Routing
 
@@ -98,7 +98,7 @@ Examples include nightly Terraform drift detection, periodic validation of backu
 
 A scheduler does not provide exactly-once execution. Kubernetes documents that a CronJob creates a Job approximately once per scheduled time and that in some circumstances two Jobs or no Job may be created. Jobs should be idempotent.
 
-A guarded Kubernetes sweep can use:
+A guarded Kubernetes sweep can use the following manifest after replacing the illustrative image and arguments with those of your reconciler:
 
 ```yaml
 apiVersion: batch/v1
@@ -154,17 +154,17 @@ The event path reduces exposure between sweeps. This hybrid generally fits secur
 
 ## Make Reconciliation Level-Based
 
-A brittle event handler says: "the old value was public, so set private." A level-based reconciler says: "read the resource now; if current state violates current policy, move it toward current desired state."
+A brittle event handler says: "the event reports a public resource, so set it to private." A level-based reconciler says: "read the resource now; if current state violates current policy, move it toward current desired state."
 
 This matters when events arrive out of order:
 
 ```text
-E1 at 10:00: resource becomes public
-E2 at 10:01: authorized deployment makes it private
+E1 at 10:00: resource becomes public while policy requires private
+E2 at 10:01: authorized exception changes desired state to public
 delivery order: E2, then E1
 ```
 
-Replaying E1 as a command could undo the newer valid state. Treating both as hints results in a read that sees the current private state and does nothing.
+Replaying E1 as a command could undo the newer valid state. Treating both as hints results in a read that sees the current public state and current exception and does nothing.
 
 Kubernetes controllers illustrate the control-loop model: watch current state and make changes that move it toward desired state. The client-go workqueue is designed for multiple producers and consumers, avoids processing the same key concurrently within one queue, and supports rate-limited requeueing.
 
@@ -210,8 +210,8 @@ Define:
 
 ```yaml
 control: public-storage-remediation
-maximum_detection_latency: 60s
-maximum_convergence_latency: 5m
+event_path_detection_objective: 60s
+convergence_objective_after_detection: 5m
 event_source_delivery: best-effort
 scheduled_anti_entropy_interval: 30m
 maximum_event_burst: 10000
@@ -219,7 +219,7 @@ provider_concurrency: 20
 manual_decision_after_attempts: 5
 ```
 
-If the maximum tolerated exposure is shorter than the scan interval, scheduled-only cannot meet the objective. If the event source is best effort and missing one event is unacceptable, event-only cannot meet completeness. A hybrid makes the assumptions explicit.
+If the maximum tolerated exposure is shorter than the scheduled path's worst-case detection time, scheduled-only cannot meet the objective. If the event source is best effort and missing one event is unacceptable, event-only cannot meet completeness. A hybrid makes the fast-path latency target and slower completeness backstop explicit; it does not turn a best-effort event into a hard latency guarantee.
 
 ## Test Both Trigger Paths
 
