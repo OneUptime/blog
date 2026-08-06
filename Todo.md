@@ -44,7 +44,6 @@
 
 ## Transit Gateway
 
-8. When Transit Gateway Appliance Mode Fixes Stateful Inspection—and When It Creates Cross-AZ Surprises
 9. Centralized Internet Egress Through a Shared NAT Gateway: Required Return Routes and Hidden Data Charges
 10. AWS Network Firewall Behind Transit Gateway: Designing Symmetric East-West Inspection Paths
 11. Overlapping VPC CIDRs: What Transit Gateway Cannot Route and When PrivateLink or Private NAT Helps
