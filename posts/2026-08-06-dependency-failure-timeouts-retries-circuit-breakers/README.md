@@ -112,7 +112,7 @@ circuit_breakers:
         min_retry_concurrency: 3
 ```
 
-These limits are illustrative, not Envoy recommendations for an unknown workload. Envoy circuit breakers are distributed per proxy process rather than globally coordinated, and their live overflow statistics must be monitored. Load-test the aggregate behavior across all proxy instances.
+These limits are illustrative, not Envoy recommendations for an unknown workload. Envoy circuit breakers are distributed per proxy process rather than globally coordinated, and their live overflow statistics must be monitored. Envoy uses "circuit breaking" for these resource limits; this is distinct from a failure-triggered closed/open/half-open breaker. Load-test the aggregate behavior across all proxy instances.
 
 ## Know What Each Control Does
 
@@ -123,7 +123,7 @@ Do not use the terms interchangeably:
 | Deadline | stop work after the result is no longer useful |
 | Retry | recover from selected transient failures |
 | Backoff and jitter | spread retry load over time |
-| Circuit breaker | cap outstanding dependency work and fail fast |
+| Circuit breaker | block calls likely to fail, then allow bounded recovery probes |
 | Rate limit | control admitted request rate |
 | Bulkhead | isolate capacity so one dependency or tenant cannot consume all of it |
 | Load shedding | reject lower-value work to preserve useful service |
