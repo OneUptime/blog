@@ -61,16 +61,18 @@ The current documented considerations include:
 - cross-account deployment uses AWS Resource Access Manager and divides Transit Gateway and firewall ownership;
 - the Transit Gateway owner has limited visibility into firewall details in a separate firewall-owner account.
 
-Add static routes for inspected destinations to the network function attachment. The official CLI pattern is:
+Associate the spoke attachments with pre-inspection Transit Gateway route tables. Associate the network function attachment with a post-inspection Transit Gateway route table that contains routes to the final spoke attachments, typically propagated routes from those attachments. After the firewall passes a packet, Transit Gateway uses the route table associated with the network function attachment to reach the final destination.
+
+Add static routes for inspected destinations in the pre-inspection tables, targeting the network function attachment. The official CLI pattern is:
 
 ```bash
 aws ec2 create-transit-gateway-route \
   --transit-gateway-route-table-id tgw-rtb-0123456789abcdef0 \
   --destination-cidr-block 10.20.0.0/16 \
-  --transit-gateway-attachment-id tgw-attach-firewall0123456
+  --transit-gateway-attachment-id tgw-attach-0123456789abcdef0
 ```
 
-Traffic matching the route is sent to the firewall attachment for inspection before Transit Gateway forwards it to the final destination.
+Traffic matching the route is sent to the firewall attachment for inspection before the post-inspection table forwards it to the final destination.
 
 Install the reverse inspection route in the table used by traffic from the data attachment:
 
@@ -78,24 +80,25 @@ Install the reverse inspection route in the table used by traffic from the data 
 aws ec2 create-transit-gateway-route \
   --transit-gateway-route-table-id tgw-rtb-0fedcba9876543210 \
   --destination-cidr-block 10.10.0.0/16 \
-  --transit-gateway-attachment-id tgw-attach-firewall0123456
+  --transit-gateway-attachment-id tgw-attach-0123456789abcdef0
 ```
 
-If both spokes share one associated Transit Gateway table, that table needs static firewall routes for both destination CIDRs. In segmented designs, install the relevant route in every source-domain table that must inspect traffic.
+If both spokes share one associated pre-inspection Transit Gateway table, that table needs static firewall routes for both destination CIDRs. In segmented designs, install the relevant route in every source-domain table that must inspect traffic. In both cases, the post-inspection table associated with the firewall attachment needs routes to both spoke attachments.
 
 Review longest-prefix behavior. A direct propagated or static route more specific than the firewall route can bypass inspection. A broader firewall default does not override a specific spoke route.
 
 ## Configure Network Firewall Address Variables
 
-Centralized inspection sees addresses outside a firewall deployment VPC. Stateful domain list and Suricata-compatible rules can use `HOME_NET` and `EXTERNAL_NET`. AWS warns that transit gateway-attached firewalls using stateful rule groups that reference these variables must set values appropriate to the connected networks rather than relying on firewall-policy defaults.
+Centralized inspection sees addresses outside a firewall deployment VPC. Stateful domain list and Suricata-compatible rules can use `HOME_NET` and `EXTERNAL_NET`. AWS warns that transit gateway-attached firewalls using stateful rule groups that reference these variables must set values appropriate to the connected networks rather than relying on firewall-policy defaults. If a rule group overrides the policy variables, explicitly set both variables; otherwise, its `EXTERNAL_NET` inherits the policy value even when the rule group's `HOME_NET` is different.
 
-Define `HOME_NET` from the protected internal CIDRs, for example:
+Define the variables from the protected internal CIDRs, for example:
 
 ```text
 HOME_NET = [10.10.0.0/16, 10.20.0.0/16]
+EXTERNAL_NET = the negation of HOME_NET
 ```
 
-This is conceptual notation; configure the variable through the supported Network Firewall rule-group schema. Include every intended protected network and maintain the list as address plans change. An omitted CIDR can make a valid rule fail to match without any routing error.
+This is conceptual notation; configure the variables through the supported Network Firewall rule-group schema. Include every intended protected network and maintain the list as address plans change. An omitted CIDR can make a valid rule fail to match without any routing error. Because both spoke CIDRs are in `HOME_NET`, a rule from `$HOME_NET` to `$EXTERNAL_NET` does not match traffic between these spokes; use explicit internal source and destination variables or CIDRs for east-west rules.
 
 Choose the firewall policy's stateless default actions carefully. For stateful inspection, AWS guidance commonly forwards full and fragmented packets to the stateful engine. A unidirectional stateless `pass` can create asymmetric policy behavior when the reverse direction is forwarded to stateful inspection. Review paired directions.
 
@@ -139,10 +142,12 @@ Each firewall endpoint subnet needs a route back to Transit Gateway for the conn
 
 | Firewall subnet table | Destination | Target |
 | --- | --- | --- |
-| Zone A | `10.10.0.0/15` | Transit Gateway ID |
-| Zone B | `10.10.0.0/15` | Transit Gateway ID |
+| Zone A | `10.10.0.0/16` | Transit Gateway ID |
+| Zone A | `10.20.0.0/16` | Transit Gateway ID |
+| Zone B | `10.10.0.0/16` | Transit Gateway ID |
+| Zone B | `10.20.0.0/16` | Transit Gateway ID |
 
-The `/15` example covers both `/16` networks only when they are contiguous and aligned as shown. Use individual routes when the address plan differs.
+These CIDRs are not contiguous and cannot be summarized by `10.10.0.0/15`; use the two individual routes in each zonal route table.
 
 Network Firewall requires the request and response through the same endpoint. Appliance mode preserves the inspection attachment's zone for the flow; same-zone VPC route tables keep both directions on the corresponding endpoint.
 
@@ -220,7 +225,7 @@ Monitor:
 Moving from an inspection VPC to a direct firewall attachment changes the route insertion point. Do not run both paths accidentally for different directions.
 
 1. reproduce the policy and address variables on the direct firewall;
-2. create the network function attachment in every required zone;
+2. configure the transit gateway-attached firewall for every required zone, producing one multi-zone network function attachment;
 3. verify ownership and acceptance state;
 4. stage static Transit Gateway firewall routes without making them win prematurely;
 5. switch a nonproduction routing domain first;
@@ -243,4 +248,4 @@ Route-table changes are not one atomic transaction. Plan for session interruptio
 
 ## Conclusion
 
-For new AWS Network Firewall deployments, evaluate the direct Transit Gateway network function attachment first: appliance mode and infrastructure are managed, while static Transit Gateway routes insert inspection. Use an inspection VPC when the service chain requires it, with separate pre- and post-inspection tables plus same-zone endpoint routes. In either model, force both directions through the firewall, configure internal address variables, and prove symmetry from route and firewall logs.
+For new AWS Network Firewall deployments, evaluate the direct Transit Gateway network function attachment first: appliance mode and infrastructure are managed, static routes in pre-inspection tables insert inspection, and the route table associated with the firewall attachment provides the post-inspection path. Use an inspection VPC when the service chain requires it, with separate pre- and post-inspection tables plus same-zone endpoint routes. In either model, force both directions through the firewall, configure internal address variables, and prove symmetry from route and firewall logs.
