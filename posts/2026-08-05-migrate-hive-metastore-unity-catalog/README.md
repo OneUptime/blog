@@ -10,7 +10,7 @@ Description: A dependency-first migration plan for Hive tables, hard-coded names
 
 Moving a table from `hive_metastore` to Unity Catalog is rarely just a metadata operation. The table name changes from a workspace-local two-level identity to an account-governed three-level identity, storage access moves behind Unity Catalog, and consumers inherit a different privilege model.
 
-A technically successful `SYNC` or `DEEP CLONE` can still break jobs because a notebook contains `hive_metastore.sales.orders`, a library reads `/mnt/raw/orders`, or a view crosses a metastore boundary Unity Catalog does not permit. The safe migration unit is therefore a dependency group, not an isolated table.
+A technically successful `SYNC` or `DEEP CLONE` can still break jobs because a notebook contains `hive_metastore.sales.orders`, a library reads `/mnt/raw/orders`, or a Unity Catalog view that still references `hive_metastore` remains tied to the source workspace. The safe migration unit is therefore a dependency group, not an isolated table.
 
 This runbook begins with discovery, chooses the right migration mechanism per table, and keeps the old objects available until every read and write path has been exercised.
 
@@ -44,7 +44,7 @@ Build a manifest before selecting a tool. At minimum record:
 - grants, group types, and ownership expectations;
 - retention, table properties, constraints, and row-count baselines.
 
-Start with supported metadata commands:
+Start with supported metadata commands. `DESCRIBE DETAIL` applies to Delta Lake and Apache Iceberg tables, and Hive `SHOW GRANTS` is relevant where legacy table access control is enabled:
 
 ```sql
 SHOW SCHEMAS IN hive_metastore;
@@ -158,7 +158,7 @@ Unity Catalog managed tables are the preferred default. Choose external tables w
 
 ## Rebuild Views Only After Their Inputs Move
 
-Views are where partial migrations often fail. A Unity Catalog view must resolve its referenced objects in Unity Catalog. It cannot preserve a dependency on a workspace-local Hive table merely by qualifying that table as `hive_metastore`.
+Views are where partial migrations often fail. Databricks allows a Unity Catalog view to reference a table in the workspace-local Hive metastore, but that view can be accessed only from the workspace containing the Hive table. Treat this as a transitional dependency, not a portable Unity Catalog migration.
 
 Move a view's referenced tables and views into the same Unity Catalog metastore first. Then recreate the view with three-level names:
 
@@ -173,7 +173,7 @@ GROUP BY 1;
 
 Inventory nested views recursively. Migrating the outermost view first only moves the error to its first unresolved dependency. Review functions and path-based reads inside view SQL too.
 
-Workspace Hive views remain workspace-scoped. They are not a durable compatibility layer for account-governed Unity Catalog objects. If consumers need a temporary stable name, use a Unity Catalog compatibility view after all its inputs have migrated.
+Workspace Hive views remain workspace-scoped, and Unity Catalog views that point back to the workspace-local Hive metastore are workspace-dependent. Neither is a durable compatibility layer for a fully account-governed migration. If consumers need a temporary stable name, use a Unity Catalog compatibility view after all its inputs have migrated.
 
 ## Migrate Identities and Grants Deliberately
 
