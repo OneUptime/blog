@@ -8,7 +8,6 @@
 
 ## Databricks
 
-9. Azure Key Vault Secret Scopes and Unity Catalog Service Credentials: Use Cases, Governance, and Private Endpoint Trade-Offs
 10. Upgrading Databricks Runtime 10.x to 15.4 LTS: A Compatibility Test Matrix for Python, Scala, Libraries, and Unity Catalog
 
 ## Operational Readiness
