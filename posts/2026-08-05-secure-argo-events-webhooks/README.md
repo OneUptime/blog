@@ -20,7 +20,7 @@ Argo Events exposes different controls for different EventSource types. A GitHub
 
 GitHub signs the raw request body with a shared webhook secret and sends the HMAC in `X-Hub-Signature-256`. Signature validation proves both possession of the secret and integrity of the bytes that were signed. GitHub recommends a high-entropy secret, HMAC-SHA256, and constant-time comparison.
 
-The Argo Events GitHub EventSource implements provider-specific validation when `webhookSecret` is set:
+The Argo Events GitHub EventSource implements provider-specific validation when `webhookSecret` is set. This example assumes a repository administrator creates the GitHub hook manually:
 
 ```yaml
 apiVersion: v1
@@ -48,27 +48,21 @@ spec:
         endpoint: /github
         port: "12000"
         method: POST
-        url: https://events.example.com/github
-      events:
-        - push
-        - pull_request
       webhookSecret:
         name: github-webhook-v1
         key: secret
-      contentType: json
-      insecure: false
 ```
 
-Configure exactly the same plaintext value in GitHub's webhook settings. `stringData` is convenient input to the Kubernetes API; the stored Secret `data` is base64-encoded, not automatically encrypted. Enable Kubernetes encryption at rest, restrict Secret RBAC, and avoid printing the Secret in CI logs.
+In GitHub's webhook settings, set the payload URL to `https://events.example.com/github`, select `application/json`, subscribe only to `push` and `pull_request`, leave the hook active and SSL verification enabled, and configure exactly the same plaintext secret. `stringData` is convenient input to the Kubernetes API; the stored Secret `data` is base64-encoded, not automatically encrypted. Enable Kubernetes encryption at rest, restrict Secret RBAC, and avoid printing the Secret in CI logs.
 
 Do not confuse these fields:
 
 - `webhookSecret` verifies incoming GitHub deliveries.
 - `apiToken` authorizes Argo Events to call GitHub's API to create or manage repository hooks.
 - `githubApp` is an alternative API authentication method using an app private key, app ID, and installation ID.
-- `insecure` controls TLS verification by the GitHub API client. Keep it false outside tightly controlled testing.
+- `webhook.url`, `events`, `contentType`, `active`, and `insecure` configure a hook that Argo creates through GitHub's API. `insecure: false` tells GitHub to verify the delivery endpoint's TLS certificate; it does not control Argo's GitHub API client.
 
-If a repository administrator creates the hook manually, the EventSource does not need `apiToken`, but it still needs `webhookSecret` to validate deliveries. This example omits `active`: in current Argo Events code that field configures a hook that Argo creates through GitHub's API, while local route activation is handled by the EventSource process.
+If a repository administrator creates the hook manually, the EventSource does not need `apiToken`, but it still needs `webhookSecret` to validate deliveries. The provider-side fields above do not configure or filter a manually created hook, and `events` is not an incoming authorization policy. Local route activation is handled by the EventSource process; enforce repository, event, action, and branch authorization in Sensor filters or downstream code.
 
 ## Use Bearer Authentication for a Generic Webhook
 
@@ -100,7 +94,7 @@ spec:
         key: token
 ```
 
-The client sends the configured token as a bearer credential:
+After routing this EventSource through a Service and HTTPS Ingress, the client sends the configured token as a bearer credential:
 
 ```bash
 curl https://events.example.com/deploy \
@@ -115,9 +109,22 @@ Do not put the word `Bearer` in the Secret value unless you have tested that beh
 
 ## Terminate TLS Deliberately
 
-The most common topology terminates a publicly trusted certificate at an Ingress and forwards HTTP over a protected cluster network:
+The most common topology uses a Service to select the EventSource pods, terminates a publicly trusted certificate at an Ingress, and forwards HTTP over a protected cluster network:
 
 ```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: github-eventsource-svc
+  namespace: argo-events
+spec:
+  selector:
+    eventsource-name: github
+  ports:
+    - name: webhook
+      port: 12000
+      targetPort: 12000
+---
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
@@ -182,22 +189,22 @@ For GitHub, validate the signature before trusting `X-GitHub-Event`, `X-GitHub-D
 
 ## Design Secret Rotation as a Deployment
 
-Secret rotation fails when one side changes before the other. Argo Events reads mounted secret material when starting its webhook route in current implementations. Do not assume that changing a Secret causes an already running EventSource process to reload the value.
+Secret rotation fails when one side changes before the other. Loading behavior differs by field in Argo Events v1.9.11: the GitHub listener reads `webhookSecret` at startup, direct TLS loads its certificate and key when the server starts, and the generic webhook authentication handler reads `authSecret` from the mounted file for each request. Kubernetes updates mounted Secret volumes with eventual consistency. Verify the behavior of your installed release instead of assuming one reload model for every field.
 
 Use a tested sequence:
 
 1. Create a new, versioned Secret instead of overwriting an unknown live value.
 2. Update the provider and EventSource through a planned cutover.
-3. Restart or roll the EventSource pods so the new material is read.
+3. Restart or roll the EventSource pods for a GitHub webhook secret or direct TLS certificate. For generic `authSecret`, verify that the projected value is in use, or roll the pods for a deterministic cutover.
 4. Send a signed canary delivery and verify EventSource acceptance and Sensor receipt.
 5. Test that the old credential is rejected.
 6. Remove the old Secret only after provider redelivery windows and rollback needs are understood.
 
 A GitHub hook normally has one active webhook secret. There is no portable promise of dual-secret validation in the Argo Events `webhookSecret` field. If uninterrupted rotation is mandatory, create a second webhook/EventSource endpoint temporarily, or put a controlled signature-verifying gateway in front that explicitly supports overlapping keys. Test duplicate deliveries during overlap because two hooks can emit the same logical event.
 
-For a generic bearer token, a parallel endpoint is also clearer than assuming two `Authorization` values can be accepted. Give the new endpoint a distinct path and EventSource event name, route both dependencies to an idempotent handler during the overlap, then retire the old one.
+For a generic bearer token, a parallel endpoint is also clearer than relying on an eventually projected in-place update or assuming two `Authorization` values can be accepted. Give the new endpoint a distinct path and EventSource event name, route both dependencies to an idempotent handler during the overlap, then retire the old one.
 
-TLS certificate rotation depends on where TLS terminates. Ingress controllers and certificate operators often reload updated Secrets, while direct EventSource TLS uses the process' loaded certificate path and should be verified in the installed release. Observe a real TLS handshake after renewal:
+TLS certificate rotation depends on where TLS terminates. Ingress controllers and certificate operators often reload updated Secrets, while Argo Events v1.9.11 passes the direct-TLS certificate paths to Go's server at startup, which loads the key pair once. Restart the EventSource for direct-TLS renewal and verify the behavior in the installed release. Observe a real TLS handshake after renewal:
 
 ```bash
 openssl s_client -connect events.example.com:443 \
