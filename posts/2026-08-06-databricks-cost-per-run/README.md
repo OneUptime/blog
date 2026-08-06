@@ -40,24 +40,27 @@ Label the result. A list-cost estimate should not be presented as an invoice tot
 
 ## Calculate the Databricks usage component
 
-Unity Catalog exposes billable usage in `system.billing.usage`. For jobs on job compute or serverless compute, `usage_metadata.job_id` and `usage_metadata.job_run_id` support direct attribution. These fields are not populated for jobs that run on shared all-purpose compute.
+Unity Catalog exposes billable usage in `system.billing.usage`. For standard Lakeflow job runs on job compute or serverless compute, `usage_metadata.job_id` and `usage_metadata.job_run_id` support direct attribution. Notebook `WORKFLOW_RUN` entries are an exception: their compute usage is attributed to the parent notebook rather than to a separate workflow run. These fields are not populated for jobs that run on shared all-purpose compute.
 
 Join the usage table to `system.billing.list_prices` using the price validity interval. The current price structure is `pricing.effective_list.default`.
 
 ```sql
 SELECT
   u.workspace_id,
+  u.cloud,
   u.usage_metadata.job_id AS job_id,
   u.usage_metadata.job_run_id AS job_run_id,
   u.sku_name,
   u.usage_unit,
+  p.currency_code,
   SUM(u.usage_quantity) AS usage_quantity,
   SUM(
     u.usage_quantity * p.pricing.effective_list.default
   ) AS estimated_list_cost
 FROM system.billing.usage AS u
 JOIN system.billing.list_prices AS p
-  ON p.sku_name = u.sku_name
+  ON p.cloud = u.cloud
+ AND p.sku_name = u.sku_name
  AND u.usage_end_time >= p.price_start_time
  AND (
    p.price_end_time IS NULL
@@ -67,10 +70,12 @@ WHERE u.workspace_id = :workspace_id
   AND u.usage_metadata.job_run_id = :job_run_id
 GROUP BY
   u.workspace_id,
+  u.cloud,
   u.usage_metadata.job_id,
   u.usage_metadata.job_run_id,
   u.sku_name,
-  u.usage_unit;
+  u.usage_unit,
+  p.currency_code;
 ```
 
 Sum all records, including corrections. Billing corrections can be represented as retractions and restatements, so filtering for only `ORIGINAL` records can preserve a charge that Databricks later corrected.
@@ -85,12 +90,12 @@ For classic compute, obtain actual line items from the provider's billing export
 - Azure Cost Management exports
 - Google Cloud Billing export to BigQuery
 
-Attribute resources using cluster, pool, and business tags that are propagated to the provider bill. Include only charges that fall inside the documented scope:
+Attribute resources using provider resource identifiers and tags that are confirmed to propagate for the cloud and compute configuration. On AWS, for example, pool-backed cluster instances inherit workspace and pool tags, but not cluster tags. Include only charges that fall inside the documented scope:
 
 - Driver and worker VM runtime
 - Attached managed disks or persistent disks
 - Public IP, NAT, and cross-zone or cross-region network charges where applicable
-- Pool instances while they are idle
+- Pool instances while they are idle, allocated using a documented rule rather than treated as metered to one run
 - Storage and API operations that are directly attributable to the job
 
 Keep shared control-plane, logging, or network costs in a separate allocation layer unless the organization has a documented allocation rule. Otherwise, two teams can calculate different costs for the same run while both appear plausible.
@@ -123,7 +128,7 @@ That shortcut fails when:
 - A shared job cluster serves several tasks
 - The cloud provider applies billing minimums or discounts
 
-Use `system.lakeflow.job_task_run_timeline` to understand where run time was spent, and use metered Databricks and provider records for money. Duration data explains cost but should not replace the billing records.
+Use `system.lakeflow.job_task_run_timeline` to understand task setup, execution, and cleanup time for records emitted since early December 2025. It does not expose queue duration; the job-run duration fields are populated only for legacy single-task jobs. Use metered Databricks and provider records for money. Duration data explains cost but should not replace the billing records.
 
 ## Charge retries and repairs to the outcome
 
@@ -186,7 +191,7 @@ Before publishing cost per run:
 3. Test a fixed-size classic job and compare expected node time with exported VM line items.
 4. Test an autoscaling run and verify that the model does not assume maximum workers for the whole duration.
 5. Trigger a controlled retry and confirm both attempts are included.
-6. Verify that failed and canceled runs receive cost.
+6. Verify that any cost incurred by failed and canceled runs is attributed to them.
 7. Separate list cost from negotiated net cost.
 8. Document treatment of pools, shared networking, commitments, taxes, and credits.
 
