@@ -72,11 +72,7 @@ metadata:
 rules:
   - apiGroups: ["argoproj.io"]
     resources: ["workflows"]
-    verbs: ["create", "get", "list"]
-  - apiGroups: ["argoproj.io"]
-    resources: ["workflowtemplates"]
-    resourceNames: ["deploy-payments"]
-    verbs: ["get"]
+    verbs: ["create", "list"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
@@ -96,6 +92,8 @@ subjects:
 A RoleBinding can bind a service account from another namespace. A ClusterRoleBinding is not required merely because the subject is cross-namespace. Argo Events' general example uses broad verbs for several workflow resources; production policy should be narrowed to the operations actually used by your installed Argo Events and Argo Workflows versions.
 
 The Argo Workflow trigger currently invokes the `argo` CLI and lists the submitted Workflow by labels after submission, which is why `list` appears above. Validate permissions against the exact operation and release.
+
+The workflow controller, not the Sensor, resolves `workflowTemplateRef`, so this submit operation does not require the Sensor service account to read `WorkflowTemplate` resources.
 
 ## Point the Trigger at the Target Namespace
 
@@ -134,7 +132,6 @@ spec:
                 generateName: deploy-payments-
                 namespace: payments-prod
               spec:
-                serviceAccountName: payments-workflow
                 workflowTemplateRef:
                   name: deploy-payments
                 arguments:
@@ -196,7 +193,7 @@ Add workload-specific permissions separately. Do not give deployment, Secret, or
 
 ## Confirm the Controller Watches the Target
 
-RBAC can be correct while no controller reconciles the Workflow. Argo Workflows can be installed cluster-wide, in a managed namespace, or with an explicit set of managed namespaces depending on version and configuration. Confirm that the workflow controller is configured to watch `payments-prod` and has permissions there.
+RBAC can be correct while no controller reconciles the Workflow. Argo Workflows can be installed cluster-wide or in namespace-scoped mode with either its installation namespace or one separate managed namespace. Confirm that the workflow controller is configured to watch `payments-prod` and has permissions there.
 
 Check status after submission:
 
@@ -217,7 +214,7 @@ kubectl auth can-i create workflows.argoproj.io \
   --as=system:serviceaccount:argo-events:payments-workflow-trigger \
   -n payments-prod
 
-kubectl auth can-i get workflowtemplates.argoproj.io/deploy-payments \
+kubectl auth can-i list workflows.argoproj.io \
   --as=system:serviceaccount:argo-events:payments-workflow-trigger \
   -n payments-prod
 
@@ -244,7 +241,7 @@ Then submit a known fixture and verify the Workflow's namespace, template refere
 - [Argo Events Argo Workflow trigger](https://argoproj.github.io/argo-events/sensors/triggers/argo-workflow/)
 - [Argo Events example RBAC](https://github.com/argoproj/argo-events/tree/master/examples/rbac)
 - [Argo Workflows WorkflowTemplates](https://argo-workflows.readthedocs.io/en/latest/workflow-templates/)
-- [Argo Workflows service account secrets and RBAC](https://argo-workflows.readthedocs.io/en/latest/service-account-secrets/)
+- [Argo Workflows service accounts](https://argo-workflows.readthedocs.io/en/latest/service-accounts/)
 - [Argo Workflows workflow RBAC](https://argo-workflows.readthedocs.io/en/latest/workflow-rbac/)
 - [Kubernetes RBAC](https://kubernetes.io/docs/reference/access-authn-authz/rbac/)
 
