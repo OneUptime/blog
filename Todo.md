@@ -21,7 +21,6 @@
 
 ## Operational Readiness
 
-10. A Backup Is Not a Recovery Plan: Proving RPO and RTO with Restore Drills
 11. Can You Actually Roll Back? Testing Database-Compatible Reverts and Forward Fixes Before Launch
 12. Feature Flags as Operational Controls: Kill Switches, Safe Defaults, Ownership, and Cleanup
 13. Reducing Deployment Blast Radius with Canaries, Progressive Delivery, and Automated Abort Criteria
