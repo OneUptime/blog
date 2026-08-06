@@ -21,7 +21,6 @@
 
 ## Operational Readiness
 
-4. The Dependency Readiness Map: Owners, Health Checks, Failure Contracts, and Escalation Paths
 5. Defining SLIs and SLOs Before Launch: Start with User Journeys, Not Available Metrics
 6. Is This Alert Worth Paging? The Actionability Test Every Production Alert Should Pass
 7. What Makes an On-Call Runbook Usable at 3 A.M.? A Game-Day Validation Checklist
