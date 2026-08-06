@@ -44,7 +44,6 @@
 
 ## Transit Gateway
 
-5. Traffic Reaches the Transit Gateway but Never Returns: A Four-Table Return-Path Checklist
 6. Finding Transit Gateway Blackholes with Route Analyzer, Transit Gateway Flow Logs, and `PacketDropCountBlackhole`
 7. Which Subnets Should a VPC Transit Gateway Attachment Use? Availability-Zone and Routing Consequences
 8. When Transit Gateway Appliance Mode Fixes Stateful Inspection—and When It Creates Cross-AZ Surprises
