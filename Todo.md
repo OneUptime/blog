@@ -21,7 +21,6 @@
 
 ## Operational Readiness
 
-20. Continuous Operational Readiness: Turning Review Questions into Tested Policy and Service Metadata
 
 ## Transit Gateway
 
