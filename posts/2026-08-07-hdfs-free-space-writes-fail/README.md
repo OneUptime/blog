@@ -14,7 +14,7 @@ Diagnose the failed write by separating three views: the filesystem view returne
 
 ## Start with the Exact Failure
 
-Retain the client exception and timestamp. Messages such as “could only be replicated to 0 nodes,” quota exceeded, no space left on device, no required storage type, or pipeline recovery failure point to different layers.
+Retain the client exception and timestamp. Messages such as “could only be written to 0 of the 1 minReplication nodes,” quota exceeded, no space left on device, no required storage type, or pipeline recovery failure point to different layers.
 
 Confirm which filesystem and path the client addressed:
 
@@ -39,7 +39,7 @@ hdfs dfsadmin -report -dead
 hdfs dfsadmin -report -decommissioning
 ```
 
-For each candidate DataNode, examine configured capacity, DFS used, non-DFS used, DFS remaining, service state, last contact, and failed-volume count. Look for patterns hidden by the cluster total:
+For each candidate DataNode, examine configured capacity, DFS used, non-DFS used, DFS remaining, service state, and last contact. Also check the NameNode's cluster-wide failed-volume count and the affected DataNode's logs for volume failures. Look for patterns hidden by the cluster total:
 
 - empty capacity concentrated on dead, decommissioning, or maintenance nodes;
 - only a few nearly full live nodes in the required rack or storage tier;
@@ -136,7 +136,7 @@ hdfs storagepolicies -getStoragePolicy -path /data/target
 hdfs storagepolicies -listPolicies
 ```
 
-A `COLD` path prefers `ARCHIVE`, and SSD-oriented policies prefer their documented storage types. HDFS policies also define creation and replication fallbacks, so a different type such as `DISK` may be eligible when the preferred type is unavailable. Use `-listPolicies` to inspect those fallbacks; aggregate `-df` output alone does not show whether any policy-eligible type has room.
+A `COLD` path requires `ARCHIVE` for new blocks because that policy has no creation fallback. SSD-oriented policies prefer their documented storage types and may fall back to `DISK`. Use `-listPolicies` to inspect each policy's creation and replication fallbacks; aggregate `-df` output alone does not show whether any policy-eligible type has room.
 
 Placement also considers existing replica locations, rack awareness, upgrade domains where configured, service state, and client-excluded nodes. For a representative existing file in the same data set, inspect locations and topology:
 
@@ -147,7 +147,7 @@ hdfs dfsadmin -printTopology
 
 An aggregate 20 TB free could mean 200 GB on each of 100 nodes, yet no node has enough usable headroom for a large block plus safety checks. Or all free SSD space may be on a rack that cannot satisfy the next replica's diversity constraint.
 
-Replication requirements matter too. A small cluster may have bytes free but too few eligible DataNodes to establish the requested pipeline. Inspect the file or directory's intended replication:
+Replication requirements matter too. A small cluster may have bytes free but too few eligible DataNodes to establish the requested pipeline. Inspect a representative replicated file's replication and the settings that govern new replicated files:
 
 ```bash
 hdfs dfs -stat '%r %o %b %n' /data/target/example
