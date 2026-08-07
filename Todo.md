@@ -17,7 +17,6 @@
 
 ## Apache Hadoop
 
-7. The HDFS Small-Files Problem: NameNode Heap, Mapper Startup, and Practical Compaction Options
 8. Sizing NameNode Heap from File, Directory, and Block Counts Instead of Raw HDFS Capacity
 9. Choosing an HDFS Block Size for Splittable, Unsplittable, and Compressed Inputs
 10. What Happens to Existing Files When You Change `dfs.blocksize`?
