@@ -17,7 +17,6 @@
 
 ## Apache Hadoop
 
-16. Sizing `yarn.nodemanager.resource.memory-mb` and vCores Without Starving the Operating System
 17. DataNode Up, NodeManager Missing: Why HDFS and YARN See Different Cluster Membership
 18. Why a Map Task Reads Remote HDFS Blocks: Measuring and Improving Data Locality
 19. MapReduce Reducers Stuck in Shuffle: Diagnosing Skew, Spill, Merge, and Slow Fetches
