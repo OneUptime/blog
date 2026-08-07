@@ -3181,3 +3181,233 @@
 18. How to Authenticate GitHub Actions to Infisical with OIDC Instead of a Long-Lived Client Secret
 19. How to Use Infisical `value_wo` and Ephemeral Terraform Resources Without Writing Secrets to State
 20. How to Rotate PostgreSQL Credentials with Infisical’s Dual-Phase User Pattern Without Downtime
+
+## Oracle Database
+
+1. ORA-12514 After a PDB Restart: How to Trace Service Registration with `lsnrctl services`, `LOCAL_LISTENER`, and `ALTER SYSTEM REGISTER`
+2. ORA-12154 Works in SQL Developer but Fails in Cron or a Service: How to Trace `TNS_ADMIN`, Oracle Home, and Naming Resolution
+3. ORA-12516 Under Load: How to Distinguish Exhausted `PROCESSES` and `SESSIONS` from Missing Listener Handlers and Connection Leaks
+4. ORA-65096 When Creating an Oracle User: Are You in `CDB$ROOT` Instead of the Target PDB?
+5. Oracle PDB Returns to `MOUNTED` After Every Restart: How to Use `SAVE STATE` and Verify Its Service
+6. ORA-00257 Archiver Error: How to Recover a Full Fast Recovery Area Without Deleting Archive Logs Behind RMAN’s Back
+7. ORA-01653 or ORA-01654 “Unable to Extend”: How to Check Autoextend, `MAXSIZE`, Free Extents, and User Quotas
+8. ORA-01555 “Snapshot Too Old”: How to Separate Undersized Undo from Fetch-Across-Commit and Slow-Query Problems
+9. An Oracle Session Is Blocking Production: How to Find the Root Blocker and Choose `CANCEL SQL`, `DISCONNECT SESSION`, or `KILL SESSION`
+10. How to Restore an Oracle Database to a New Host When You Have RMAN Backups but No SPFILE or Control File
+11. An Oracle Table Was Dropped: When to Use Flashback Table, RMAN Table Recovery, or Database Point-in-Time Recovery
+12. How to Prove an Oracle RMAN Backup Is Recoverable with `RESTORE VALIDATE`, Logical Checks, and an Isolated Restore Drill
+13. RMAN Recovery Requests a Missing Archive Log: How to Resolve Sequence, Thread, Catalog, and `SET UNTIL` Problems
+14. How to Import an Oracle Data Pump Dump into a Different Schema and Tablespace Without Breaking Grants, Types, or Directory Objects
+15. Remote Oracle PDB Clone Fails or Lands in `UNUSABLE`: How to Preflight Database Links, File Names, Keystores, and Compatibility
+16. Oracle Data Guard Is Falling Behind: How to Tell Transport Lag, Apply Lag, Archive Gaps, and a Stuck Recovery Process Apart
+17. How to Validate an Oracle Data Guard Switchover Before Running It: Broker Checks, Standby Redo, Flashback, and Services
+18. How to Patch Oracle Database 19c Out of Place Without Missing `OPatch`, `datapatch`, or PDB Post-Checks
+19. How to Diagnose Slow Oracle SQL Without Accidentally Using AWR, ASH, or Tuning Pack Features You Have Not Licensed
+20. Oracle Database Container Starts but Setup Scripts Never Run: How to Check First-Start Semantics, Mount Paths, Ownership, and Health
+
+## Docker Desktop
+
+1. Docker CLI Says “Cannot Connect to the Daemon” While Docker Desktop Is Running: How to Repair Context, `DOCKER_HOST`, and Socket Conflicts
+2. Docker Desktop’s WSL Integration Toggle Is Missing—or `docker` Works in Only One Distro: What Should You Check?
+3. Docker Desktop Reports “Unexpected WSL Error” or Exit Code 4294967295: A Data-Preserving Recovery Checklist
+4. `docker system prune` Freed Space but the WSL VHDX Is Still Huge: How to Compact Docker Desktop’s Disk Safely
+5. Docker Desktop’s Disk Keeps Filling After Pruning: How to Find Unbounded Container Logs, BuildKit Cache, and Hidden Volume Usage
+6. How to Move Docker Desktop’s WSL Disk Image off the C: Drive Without Losing Images, Containers, or Volumes
+7. Docker Desktop Resource Saver Wakes Slowly or Freezes Other WSL Distros: How to Separate Idle-VM Resume from an Engine Failure
+8. `host.docker.internal` Resolves but the Connection Is Refused: How Host Binding, Firewalls, and Docker Desktop’s VM Affect Access
+9. A Docker Desktop Published Port Works on `localhost` but Not from Another Machine: How to Trace Bind Addresses, Host Firewalls, and VM Forwarding
+10. Docker Desktop Containers Lose DNS When the VPN Connects: How to Diagnose DNS Filtering, Proxy Routing, and Split-Tunnel Conflicts
+11. Browser Traffic Works Through the Corporate Proxy but Docker Pulls Fail with 407 or Timeouts: How to Configure Docker Desktop Correctly
+12. Docker Pull Works but `apt` or `npm` Fails Inside a Docker Desktop Build: How TLS Inspection Crosses Host, VM, and Image Trust Stores
+13. Docker Desktop’s Internal Subnet Overlaps Your VPN or Office Network: How to Change It Without Leaving Stale Compose Networks Behind
+14. WSL 2 Bind Mounts Are Slow or Miss File-Change Events: Why Moving Source Code from `/mnt/c` into the Linux Filesystem Helps
+15. A macOS Bind Mount Is Empty or Returns “Operation Not Permitted”: How to Check Protected Folders, Full Disk Access, and VM Sharing
+16. `nvidia-smi` Works in WSL but Not in a Docker Desktop Container: How to Trace GPU Drivers, WSL Versions, and `--gpus` Requests
+17. Docker Desktop Containers Stall on IPv6 or Return the Wrong DNS Record Type: How to Set Network Mode and DNS Inhibition
+18. Enhanced Container Isolation Breaks Testcontainers or Docker-Socket Mounts: How to Keep Local Tests Working Without Disabling Isolation Globally
+19. Docker Desktop Cannot Publish a Port Because Windows Reserved It: How to Diagnose Excluded Port Ranges, Hyper-V, and WSL
+20. Docker Desktop Login Loops or Reports `docker-credential-desktop` Missing: How to Repair `credsStore` Without Saving Passwords in Plaintext
+
+## NetworkPolicy
+
+1. Default-Deny NetworkPolicy Broke DNS: How to Allow Both UDP and TCP to the Resolver Pods Your Workloads Actually Use
+2. `namespaceSelector` Plus `podSelector`: How One YAML Dash Changes a NetworkPolicy Rule from AND to OR
+3. Why One Kubernetes NetworkPolicy Cannot Override Another: How Additive Allow Rules Change “Deny Exception” Designs
+4. NetworkPolicy Allows a Service Port but Traffic Still Fails: Should the Rule Match `port` or `targetPort`?
+5. How to Allow an Ingress Controller Through NetworkPolicy Without Opening the Application Port to Every Pod
+6. An `ipBlock` Rule Matches Direct Traffic but Not LoadBalancer Traffic: How SNAT, `externalTrafficPolicy`, and CNI Order Change the Source IP
+7. How to Allow Egress to a Changing DNS Name When Native Kubernetes NetworkPolicy Accepts Only IP Blocks
+8. Does `ipBlock: 0.0.0.0/0` Include Cluster Traffic? How Pod CIDRs, `except`, NAT, and CNI Implementations Change the Answer
+9. Default-Deny Egress Blocked the Kubernetes API: How to Allow the Service VIP and Real Control-Plane Endpoints Safely
+10. How to Block Pod Access to `169.254.169.254` When Node Traffic, Metadata Proxies, and CNI Rules Interfere
+11. Why `hostNetwork` Pods Can Evade `podSelector` and `namespaceSelector` Rules—and Where to Enforce Host-Level Policy Instead
+12. Readiness Probes Fail After NetworkPolicy: Why Standard Policy Allows Node-Origin Traffic and What Else to Check
+13. A Named-Port NetworkPolicy Works for One Deployment but Not Another: How Container Port Names and CNI Support Affect Matching
+14. NetworkPolicy `endPort` Is Accepted but the Port Range Is Not Enforced: How to Verify CNI Support and Numeric Port Requirements
+15. `curl` Works but `ping` Fails After NetworkPolicy: Why ICMP Is a Bad Test for TCP, UDP, and SCTP Policy
+16. Existing Connections Survive a NetworkPolicy Change: How Conntrack and Plugin Behavior Can Mislead Your Test
+17. Can a New Pod Send Traffic Before Its NetworkPolicy Is Enforced? How to Close the Pod-Startup Isolation Window
+18. How to Target a Namespace by Name Without Mutable Tenant Labels—and Prevent Namespace Relabeling from Bypassing Policy
+19. Why NetworkPolicy Cannot Isolate Two Containers in the Same Pod: Shared `localhost` and Network Namespaces Explained
+20. `egress: []`, an Omitted `egress`, and `policyTypes`: Which Version Actually Isolates a Pod?
+
+## SIEM
+
+1. How to Decide Which Log Sources Belong in Your SIEM by Starting from Detection and Investigation Use Cases
+2. Can You Run a SIEM on Alerts Without Raw Logs? How to Preserve Correlation and Forensic Lookback While Controlling Cost
+3. A SIEM Data Source Goes Silent Without an Error: How to Build Last-Seen, Volume, and Connector-Health Alerts
+4. A Detection Rule Has Fired Zero Times: How to Tell a Rare Threat from Missing Telemetry, Broken Field Mappings, or a Dead Rule
+5. How to Test SIEM Detections End to End with Synthetic Events, Atomic Red Team, and Log Replay
+6. How to Tune a Noisy SIEM Rule Without Creating a Blind Spot: Scoped Exceptions, Expiration Dates, Owners, and Review Evidence
+7. False Positive or Benign Positive? How to Classify SIEM Alerts So Analyst Dispositions Improve Detection Logic
+8. How to Deduplicate an EDR, NDR, and SIEM Alert Storm into One Incident Without Losing the Underlying Evidence
+9. How to Correlate VPN, Identity Provider, SSH, and RDP Logs When Usernames, IPs, and Service Accounts Do Not Line Up
+10. How to Normalize Security Logs into a Common Schema—and Measure Unmapped Fields and Parser Failures Before Rules Break
+11. A Vendor Changed Its Log Format: How to Detect SIEM Schema Drift with Sample Events and Parser Contract Tests
+12. SIEM Events Appear in the Past or Future: How to Fix UTC, Time Zones, NTP Drift, and Ambiguous Source Timestamps
+13. Late-Arriving Logs Miss Scheduled SIEM Detections: How to Set Lookback Windows, Ingestion Timestamps, and Deduplication
+14. How to Design Hot, Warm, Cold, and Archive Retention for SIEM Logs Around Investigation Lookback and Restore Time
+15. How to Filter Logs Before SIEM Ingestion Without Deleting the Evidence You Will Need During an Incident
+16. Secrets and Personal Data Are Leaking into Your SIEM: How to Redact or Tokenize Fields Without Breaking Correlation
+17. How to Build a Detection-as-Code CI Pipeline That Lints Rules, Compiles Queries, Replays Fixtures, and Supports Rollback
+18. A Sigma Rule Converts but Finds Nothing in Your SIEM: How to Debug Taxonomy, Field Mappings, Pipelines, and Backend Limitations
+19. How to Write Sigma Correlation Rules for Thresholds and Ordered Sequences Across Log Sources with Different Field Names
+20. How to Benchmark a SIEM with Repeatable Log Replay: Ingestion Lag, Parse Accuracy, Search Latency, Detection Fidelity, and Analyst Workflow
+
+## Log Enrichment
+
+1. Why a Second Fluent Bit Tail Input Loses Kubernetes Metadata: Aligning `Tag`, `Match`, and `Kube_Tag_Prefix`
+2. Fluent Bit Kubernetes Filter Returns “Pod Not Found” After Multiline or Rewrite-Tag: How to Preserve the Original Container Tag
+3. How to Merge CRI or Docker JSON Log Envelopes Without Double-Parsing the Application Payload
+4. Why Fluent Bit Namespace Labels Are Missing: Checking `Namespace_Labels`, Kubelet Limits, API RBAC, and Cache TTLs
+5. How to Allowlist Kubernetes Labels and Annotations Before They Create a High-Cardinality Log Schema
+6. How to Quarantine Unparseable Records While Enriching a Stream of Mixed JSON and Plain-Text Logs
+7. Fluent Bit Sends Kubernetes Metadata as OTLP Log Attributes: How to Remap It into Resource Attributes
+8. Why Kubernetes Metadata Stays Stale After a Pod Label Change: Tuning Fluent Bit Pod and Namespace Cache TTLs
+9. How to Preserve Raw and Normalized Severity When Syslog, JSON, and Windows Event Levels Disagree
+10. How to Prevent Lookup Enrichment from Reintroducing PII After the Original Log Has Been Redacted
+11. How to Enrich Reverse-Proxy Logs with Route and Upstream Service Names When They Contain Only a Backend IP
+12. How to Select the Real Client IP from `X-Forwarded-For` Before GeoIP and ASN Log Enrichment
+13. Elasticsearch Enrich Processor Misses Matches: How to Rebuild Policies and Debug Documents with `_simulate`
+14. How to Handle One-to-Many Elasticsearch Enrichment When `max_matches` Changes the Target from an Object to an Array
+15. Vector Enrichment Table Is Missing or Stale: How to Validate CSV Schemas and Define Safe Fallbacks
+16. How to Cache External Lookup Enrichment Without Blocking the Log Pipeline When the API or Database Is Slow
+17. How to Resolve Field Collisions When Parsers, Kubernetes Metadata, and Enrichment Tables Use the Same Keys
+18. How to Version a Log-Enrichment Schema So Parser Changes Do Not Break Saved Queries and Alerts
+19. How to Canary a Log-Enrichment Change and Compare Old vs New Records Before Cutting Over
+20. Edge vs Central Log Enrichment: How to Measure CPU Cost, Network Savings, and Replay Risk
+
+## OpenLineage
+
+1. How to Migrate Airflow 2.7+ from `openlineage-airflow` to `apache-airflow-providers-openlineage`
+2. Airflow 2.10+ OpenLineage Extraction Times Out After Task Success: Tuning `execution_timeout` and `task_success_overtime`
+3. How to Restore Airflow-to-Spark Parent Lineage When Explicit Spark Properties Override Provider Injection
+4. Custom OpenLineage Run Facets Are Missing from Airflow: How to Fix Listener Signatures and Return Types
+5. How to Test an OpenLineage Integration Locally with Console and File Transports Before Connecting Marquez
+6. OpenLineage Backend Is Down: How to Bound HTTP Retries and Timeouts Without Failing the Data Job
+7. How to Send OpenLineage Events Through Kafka Without Breaking Run Hierarchy or Event Ordering
+8. How to Archive OpenLineage Spark Events Directly to S3 or GCS with the Java Transport Artifacts
+9. OpenLineage Spark Agent Fails with `NoSuchMethodError` or `ClassNotFoundException`: Matching Spark, Scala, Connector, and Agent Versions
+10. Databricks Spark Job Has `START` but No Terminal OpenLineage Event: What to Inspect Before Cluster Shutdown
+11. Why Databricks CTAS, `MERGE`, or Unity Catalog Writes Appear as Inputs but Not Outputs in OpenLineage
+12. Delta Lake with Adaptive Query Execution Drops Column Lineage: How to Diagnose Filtered Spark Logical-Plan Events
+13. How to Keep Spark RDD Operations from Flooding OpenLineage with Low-Value Events
+14. How to Stop Flink Checkpoints from Flooding OpenLineage with `RUNNING` Events Using `openlineage.flink.disableCheckpointTracking`
+15. Why One Physical Table Appears as Several OpenLineage Datasets: Normalizing Namespaces, URIs, and Metastore Symlinks
+16. How to Strip Partition Paths and Query Parameters from OpenLineage Dataset Names Without Breaking Column Lineage
+17. OpenLineage SQL Parser Misses `SELECT *`, `COPY`, or `UNLOAD`: When to Supply Explicit Inputs and Outputs
+18. How to Version a Custom OpenLineage Facet Without Colliding with Standard Facets or Replacing Prior Metadata
+19. Why dbt’s Legacy Artifact Path Emits `COMPLETE` for Failed Data Quality Assertions—and the OpenLineage Upgrade That Fixes It
+20. How to Validate OpenLineage Event Lifecycles and Deduplicate Retries Before Ingestion
+
+## LogicMonitor
+
+1. LogicMonitor Collector Shows Connected but Resources Return No Data: A `!tlist`, Task Queue, and Protocol Test Workflow
+2. How to Size a LogicMonitor Collector Before WMI, SNMP, or Script Tasks Saturate Its Queues
+3. How to Build LogicMonitor Collector Failover That Actually Reaches the Same Devices and Credentials
+4. LogicMonitor Failback Keeps Moving Devices at the Wrong Time: How to Control Preferred and Auto-Balanced Collector Behavior
+5. Active Discovery Finds Only One Instance: How to Debug WildValue Uniqueness, Filters, and Script Output
+6. How to Prevent LogicMonitor Active Discovery from Deleting and Recreating Instances on Every Run
+7. LogicMonitor `AppliesTo` Evaluates False: How to Trace Custom, Auto, System, and Inherited Properties
+8. Why a LogicMonitor Dynamic Group Ignores an Inherited Property—and How to Materialize It with a PropertySource
+9. How to Design a LogicMonitor NetScan That Avoids Duplicate Devices Across Overlapping Ranges and DNS Names
+10. SNMP Traps Reach the LogicMonitor Collector but Create No Alert: Checking UDP 162 and the EventSource
+11. How to Alert on Partial “No Data” in LogicMonitor Without Triggering a Storm When SNMP Fails
+12. LogicMonitor Alert Routed to the Wrong Team: How First-Match Rule Priority and Catch-All Rules Interact
+13. How to Tune LogicMonitor Thresholds at DataSource, Group, and Instance Scope Without Override Sprawl
+14. How to Choose Between Static and Dynamic LogicMonitor Thresholds for Seasonal or Sparse Metrics
+15. How to Audit LogicMonitor Alert Rules and Escalation Chains for Duplicate Priorities and Dead Recipients
+16. How to Migrate LogicMonitor Automation from REST API v1/v2 to v3: Authentication, Filters, and Response-Shape Changes
+17. LogicMonitor API Returns 429 or “Server Is Busy”: How to Page and Back Off Using Rate-Limit Headers
+18. How to Import Existing LogicMonitor Resources into Terraform Without Property-Order or Group Drift
+19. Terraform Gets a 404 for a Deleted LogicMonitor Resource: How to Repair State Without Recreating Everything
+20. LogicMonitor Logs Land on `_resource.id=0`: How to Fix Ambiguous or Missing Resource Mapping
+
+## Leaderless Replication
+
+1. A Quorum Write Timed Out but May Have Committed: How Should a Client Retry Without Losing or Duplicating an Update?
+2. Why `R + W > N` Still Does Not Make Concurrent Leaderless Writes Linearizable
+3. A `LOCAL_QUORUM` Read Returned Old Data After a Successful Write: Trace Coordinators, Replica Sets, and Timestamps
+4. How to Choose `ONE`, `QUORUM`, and `ALL` When One Replica or an Entire Region Is Down
+5. Hints Expired Before a Replica Came Back: How to Reconcile Missed Writes with Anti-Entropy Repair
+6. Blocking Read Repair Fixed a Query but Replicas Still Diverge: What It Repairs—and What It Never Contacts
+7. A Delete Reappeared After Repair: How Tombstone Expiry and an Unrepaired Replica Create Zombie Data
+8. Clock Skew Made an Older Value Win: How to Protect Last-Write-Wins Replication from Bad Client Timestamps
+9. Two Writes Have the Same Timestamp: How a Leaderless Store Breaks the Tie—and Why You Should Not Depend on It
+10. Read-Modify-Write Lost a Concurrent Update: When to Use Compare-and-Set, Lightweight Transactions, or a CRDT
+11. `ANY` Write Succeeded but `ONE` Read Returned Nothing: Where the Hint Lives Before Handoff
+12. Sibling Count Keeps Growing After Concurrent Writes: How to Resolve and Write Back Version-Vector Conflicts
+13. A Digest Mismatch Appeared on Every Read: How to Distinguish Expected Read Repair from Persistent Replica Corruption
+14. How to Schedule Full and Incremental Repair Before Tombstone Grace Expires Without Saturating the Cluster
+15. Increasing the Replication Factor Did Not Copy Existing Data: How to Backfill New Replicas Safely
+16. A Node Was Offline Longer Than the Hint Window: Repair It, Rebuild It, or Replace It?
+17. `LOCAL_QUORUM` Survived a Region Outage but Remote Readers Saw Old Data: How to Plan Cross-Region Convergence
+18. Quorum Reads Became a Latency Spike: How Digest Checks, Speculative Retries, and Read Repair Amplify Work
+19. Rebalancing Added a Node but Hot Keys Stayed Hot: How Token Ownership and Replica Placement Affect Traffic
+20. A Network Partition Healed with Conflicting Values: How to Test Convergence, Conflict Resolution, and Read-Your-Writes
+
+## OpenBao
+
+1. OpenBao Helm Pods Start but Never Form HA: How to Configure Raft, `api_addr`, `cluster_addr`, and Internal TLS
+2. OpenBao Raft Join Fails Through a Load Balancer: Check Version, Active-Node Forwarding, SNI, and CA Trust
+3. OpenBao Self-Initialization and `retry_join`: How to Avoid Each Pod Bootstrapping Its Own Raft Cluster
+4. How to Bootstrap OpenBao 2.6 with `initialize` Without Returning or Retaining the Transient Root Token
+5. OpenBao Auto-Unseal Has Its Own Secret Zero: Choosing Shamir, Cloud KMS, PKCS#11, Transit, or Static Seal
+6. Preparing OpenBao 2.6 Auto-Unseal for 2.7: Install KMS Plugins While Keeping the Existing `seal` Stanza
+7. Vault CE 1.14 to OpenBao: A Rollback-Safe Raft Migration with Token, Plugin, and Seal Checks
+8. OpenBao Raft Restore Rejects a Snapshot: When to Fix Seal Keys and When `snapshot-force` Is Justified
+9. How to Test an OpenBao Raft Snapshot Without Letting Restored Leases Revoke Production Credentials
+10. OpenBao Kubernetes Auth Broke After ServiceAccount Token Rotation: Four Safe Reviewer-JWT Patterns
+11. External Secrets Operator Gets `403` from OpenBao: Trace JWT Audience, TokenReview RBAC, Bound Service Accounts, and Policy Paths
+12. OpenBao Agent Injector Leaves Pods in Init: Debug Webhook Mutation, Auth Roles, CA Trust, and KV Paths
+13. OpenBao KV v2 Reads Work but LIST Returns `403`: Split `data/` and `metadata/` Policy Capabilities
+14. An OpenBao Secret Was Deleted but Is Still Recoverable: KV v2 Soft Delete, Undelete, Destroy, and Metadata Deletion
+15. Two OpenBao Clients Overwrote the Same KV v2 Secret: Use `cas_required`, `-cas`, and `patch` Safely
+16. OpenBao OIDC Works in the UI but CLI Login Fails: Fix Keycloak Redirect URIs, Callback Mode, Proxy URLs, and Namespaces
+17. OpenBao 2.5+ Disabled Unauthenticated Rekey Endpoints: Migrate to `/sys/rotate/root` and `/sys/rotate/recovery`
+18. `bao audit enable` Fails with `cannot enable audit device via API`: Use Declarative `audit` Stanzas—or Deliberately Re-enable API Creation
+19. An OpenBao Plugin Starts on One Node but Fails on Another: Distribute OCI Plugins Declaratively and Pin SHA-256
+20. How to Give an OpenBao Tenant Its Own Shamir-Sealed Namespace—and Plan for Restart Unsealing
+
+## Build Automation
+
+1. A Gradle Custom Task Is Never `UP-TO-DATE`: Declare Inputs, Outputs, Path Sensitivity, and Cacheability Correctly
+2. `gradle tasks` Triggers Your Build Logic: Move Side Effects from Configuration into Task Actions
+3. Gradle Disables Caching Because Tasks Share an Output Directory: How to Separate or Model Overlapping Files
+4. Gradle Configuration Cache Fails on a Plugin: Read the Report, Replace Captured Project State, and Handle Secrets Safely
+5. Maven Chose the Wrong Transitive Version: Trace Nearest-Wins, Enforce Convergence, and Import the Right BOM
+6. A Maven Build Changed Without a Commit: Eliminate Mutable SNAPSHOTs, Version Ranges, and Unpinned Plugins
+7. Two Maven Builds Produce Different JAR Hashes: Normalize Timestamps, File Order, Manifests, and Environment Leaks
+8. `make: No rule to make target`: Trace Misspelled Paths, Generated Prerequisites, and Recipe Placement
+9. `make` Rebuilds a Real Target Every Time: Find Phony Prerequisites, Directory Timestamps, and Clock Skew
+10. Recursive Make Ignores `-j` or Spawns Too Many Jobs: Preserve GNU Make's Jobserver Tokens
+11. Ninja Says a Generated File Has No Known Rule: Model CMake `OUTPUT`, `BYPRODUCTS`, `DEPENDS`, and `DEPFILE`
+12. CMake and Ninja Rebuild Everything Twice: Stop Generated Headers from Changing During the Build
+13. Bazel Builds Locally but Fails in the Sandbox: Find Undeclared Files, Host Tools, Network Calls, and Source-Tree Writes
+14. The Same Bazel Action Produces Different Digests: Find Non-Deterministic Outputs Before They Corrupt a Shared Cache
+15. Generated Code Is Stale but the Build Is Green: Make Schemas, Generators, Flags, and Tool Versions First-Class Inputs
+16. How to Embed a Git SHA and Build Time Without Dirtying the Source Tree or Invalidating Every Cached Target
+17. The Build Is Green but Zero Tests Ran: Verify Maven Surefire, Gradle Test Discovery, Filters, and Lifecycle Wiring
+18. Parallel Builds Are Faster Until CI OOMs: Set Worker Limits from CPU, Memory, and Linker Pressure
+19. A Build Passes Only with Internet Access: Mirror Dependencies and Prove a Hermetic Offline Build
+20. `clean` Fixes the Build—but Only Once: How to Reproduce and Repair a Broken Incremental Dependency Graph
