@@ -17,7 +17,6 @@
 
 ## Apache Hadoop
 
-18. Why a Map Task Reads Remote HDFS Blocks: Measuring and Improving Data Locality
 19. MapReduce Reducers Stuck in Shuffle: Diagnosing Skew, Spill, Merge, and Slow Fetches
 20. When Speculative Execution Helps Hadoop—and When Duplicate Side Effects Make It Dangerous
 
