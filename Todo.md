@@ -23,7 +23,6 @@
 
 ## Postgres Replication
 
-3. Read-After-Write on a PostgreSQL Replica: `remote_apply`, LSN Fencing, or Primary Reads?
 10. Logical Replication Stopped on a Duplicate Key: How to Find Sequence Drift and Divergent Writes
 11. PostgreSQL Logical Replication Does Not Copy DDL: In What Order Should You Deploy Schema Changes?
 12. “No Replica Identity” on UPDATE or DELETE: Primary Key, Unique Index, or `REPLICA IDENTITY FULL`?
