@@ -17,7 +17,6 @@
 
 ## Apache Hadoop
 
-5. How JournalNodes, ZKFC, and Fencing Prevent Split Brain in HDFS HA
 6. HDFS Federation vs High Availability: Namespace Scale and Failover Solve Different Problems
 7. The HDFS Small-Files Problem: NameNode Heap, Mapper Startup, and Practical Compaction Options
 8. Sizing NameNode Heap from File, Directory, and Block Counts Instead of Raw HDFS Capacity
