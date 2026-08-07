@@ -29,7 +29,7 @@ hdfs balancer -policy datanode
 hdfs balancer -policy blockpool
 ```
 
-`datanode` is the default. In a federated cluster, `blockpool` is stricter because it balances each block pool on each DataNode, rather than only the DataNode's aggregate utilization. Record the chosen policy when comparing two runs; they can legitimately reach different conclusions.
+`datanode` is the default. In a federated cluster, `blockpool` is stricter because it balances each block pool on each DataNode, rather than only the DataNode's aggregate utilization for each storage type. Record the chosen policy when comparing two runs; they can legitimately reach different conclusions.
 
 Before starting, capture the actual distribution:
 
@@ -38,7 +38,7 @@ hdfs dfsadmin -report
 hdfs dfsadmin -printTopology
 ```
 
-Calculate utilization per DataNode and per storage type from the report. If all eligible nodes are already within the threshold, “no move” is the correct result.
+With the `datanode` policy, calculate utilization from configured capacity and remaining space for each DataNode, not only from the displayed `DFS Used%`. The standard report is DataNode-wide; in a mixed-storage cluster, obtain equivalent capacity and remaining metrics per storage type from DataNode or NameNode monitoring or APIs. If all eligible nodes are already within the threshold for each storage type, “no move” is the correct result.
 
 ## Read the Exit Reason, Not Just the Byte Counter
 
@@ -57,7 +57,7 @@ Only one Balancer should coordinate a nameservice at a time. Also verify that th
 
 ```bash
 hdfs getconf -confKey fs.defaultFS
-hdfs getconf -namenodes
+hdfs getconf -nnRpcAddresses
 ```
 
 It is surprisingly easy to inspect one cluster and invoke the Balancer against another configuration directory.
@@ -89,7 +89,7 @@ Utilization is only the first filter. For any candidate block, HDFS must find a 
 
 - replication factor and existing replica locations;
 - rack awareness and upgrade domains;
-- target storage type and storage policy;
+- target storage type, which the Balancer preserves when moving a replica;
 - available and reserved capacity on the target volume;
 - DataNode health, staleness, and service state;
 - blocks currently being written or otherwise unsuitable for movement; and
@@ -115,11 +115,21 @@ Three similarly named tools solve different problems:
 2. **Mover** relocates replicas among storage types so blocks comply with storage policies such as `HOT`, `WARM`, or `COLD`.
 3. **Disk Balancer** addresses uneven use among volumes inside a single DataNode.
 
-If SSD volumes are full while archive disks are empty, first decide whether the data's storage policy permits those archive targets. Changing DataNode utilization with Balancer cannot override a policy. After assigning the intended policy, request satisfaction or run Mover as supported by your version:
+If SSD volumes are full while archive disks are empty, first decide whether the data's storage policy permits those archive targets. Changing DataNode utilization with Balancer cannot override a policy. After assigning the intended policy, choose either Storage Policy Satisfier (SPS) or Mover as supported by your version:
 
 ```bash
 hdfs storagepolicies -setStoragePolicy -path /data/logs -policy COLD
+```
+
+With external SPS enabled and running, request satisfaction:
+
+```bash
 hdfs storagepolicies -satisfyStoragePolicy -path /data/logs
+```
+
+Alternatively, ensure SPS is disabled and run Mover:
+
+```bash
 hdfs mover -p /data/logs
 ```
 
