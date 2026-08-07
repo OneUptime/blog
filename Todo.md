@@ -20,7 +20,6 @@
 
 ## Pods
 
-17. Why Does a Long-Running Pod Exit as `Completed` and Keep Restarting?
 
 ## Postgres Replication
 
