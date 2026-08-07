@@ -17,7 +17,6 @@
 
 ## Apache Hadoop
 
-14. YARN “Container Is Running Beyond Memory Limits”: Heap, Off-Heap, and Process-Tree Accounting
 15. How YARN Rounds Container Requests: Minimum Allocation, Maximum Allocation, and Wasted Memory
 16. Sizing `yarn.nodemanager.resource.memory-mb` and vCores Without Starving the Operating System
 17. DataNode Up, NodeManager Missing: Why HDFS and YARN See Different Cluster Membership
