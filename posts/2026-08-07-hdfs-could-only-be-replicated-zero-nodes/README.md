@@ -8,7 +8,7 @@ Description: Troubleshoot HDFS write failures that find zero eligible DataNodes 
 
 ---
 
-An HDFS client can reach the NameNode, create a file, and still fail when it asks for targets for the next block. The familiar message that a block “could only be replicated to 0 nodes” means the placement attempt produced no usable write pipeline. It does not, by itself, mean the cluster contains zero DataNode processes.
+An HDFS client can reach the NameNode, create a file, and still fail when it asks for targets for the next block. The familiar message that a block “could only be replicated to 0 nodes”—worded as “could only be written to 0 of the ... minReplication nodes” in current Hadoop 3 releases—means the placement attempt produced no usable write pipeline. It does not, by itself, mean the cluster contains zero DataNode processes.
 
 The NameNode filters candidates by liveness, administrative state, free storage, storage type, topology, and recent failures. The client must then connect to the selected DataNode transfer addresses. Diagnose those layers in order.
 
@@ -60,8 +60,8 @@ Check each expected node's:
 - last contact and live/dead state;
 - admin state, such as in service or decommissioning;
 - configured capacity, DFS remaining, and non-DFS used space;
-- failed volume count; and
-- advertised hostname and ports.
+- failed-volume indicators in the NameNode web UI or DataNode metrics and logs; and
+- advertised hostname and transfer address.
 
 “One live DataNode” is not enough evidence. It may have no healthy writable volume, be excluded from new placement, lack the requested storage type, or be the only node already excluded after a pipeline failure.
 
