@@ -20,7 +20,6 @@
 
 ## Pods
 
-8. Pod Is `Running` but Not `Ready`: A Probe, Sidecar, and Readiness-Gate Checklist
 13. How to Retrieve Logs from a Restarted or Already-Deleted Kubernetes Pod
 17. Why Does a Long-Running Pod Exit as `Completed` and Keep Restarting?
 
