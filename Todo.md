@@ -17,7 +17,6 @@
 
 ## Apache Hadoop
 
-19. MapReduce Reducers Stuck in Shuffle: Diagnosing Skew, Spill, Merge, and Slow Fetches
 20. When Speculative Execution Helps Hadoop—and When Duplicate Side Effects Make It Dangerous
 
 ## Pods
