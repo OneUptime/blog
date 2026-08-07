@@ -125,7 +125,7 @@ For CPU detection, YARN supports:
 </property>
 ```
 
-These affect auto-calculation only when hardware detection is enabled and `cpu-vcores` is `-1`. Decide deliberately whether hyperthreads count as cores for your workloads. A logical processor rarely provides the same incremental throughput as a physical core under saturation.
+The logical-processor setting is Linux-only. Both properties affect auto-calculation only when hardware detection is enabled and `cpu-vcores` is `-1`. Decide deliberately whether hyperthreads count as cores for your workloads. A logical processor rarely provides the same incremental throughput as a physical core under saturation.
 
 ## Size vCores from Throughput, Not CPU Count Alone
 

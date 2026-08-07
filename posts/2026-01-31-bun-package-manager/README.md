@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Bun, Package Manager, npm, Yarn
+Tags: Bun, Package Manager, npm, YARN
 
 Description: A comprehensive guide to using Bun as a fast and efficient package manager for JavaScript and TypeScript projects.
 

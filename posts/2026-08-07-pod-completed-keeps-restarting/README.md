@@ -2,13 +2,13 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Pods, Container Lifecycle, RestartPolicy, CrashLoopBackOff, Troubleshooting
+Tags: Kubernetes, Pod, Container Lifecycle, RestartPolicy, CrashLoopBackOff, Troubleshooting
 
 Description: Diagnose containers that exit successfully but restart forever, fix service entrypoints, and choose a Job when completion is intentional.
 
 ---
 
-`Completed` does not mean Kubernetes decided that a long-running service was healthy. It normally reports that a container process terminated with exit code `0`. If the container follows the Pod-level `restartPolicy: Always`—the default, and the only Pod-level policy allowed for Deployments—the kubelet starts that container again even though the exit was successful.
+`Completed` does not mean Kubernetes decided that a long-running service was healthy. It normally reports that a container process terminated with exit code `0`. If the container follows the Pod-level `restartPolicy: Always`-the default, and the only Pod-level policy allowed for Deployments-the kubelet starts that container again even though the exit was successful.
 
 That produces a confusing loop: the previous container state says `Completed`, the restart count rises, and a sufficiently fast loop may be displayed as `CrashLoopBackOff`. The right fix depends on intent. A service process must remain in the foreground. A process that is supposed to finish belongs in a Job or CronJob, not a Deployment.
 
@@ -29,7 +29,7 @@ For a container that follows the Pod-level policy, the basic table is:
 | Exit code 0 | Restart | Do not restart | Do not restart |
 | Non-zero exit | Restart | Restart | Do not restart |
 
-The Pod-level default is `Always`. When the `ContainerRestartRules` feature gate is enabled—beta since Kubernetes v1.35 and enabled by default—application and regular init containers can set a container-level `restartPolicy` and `restartPolicyRules` that override the Pod-level behavior. Native sidecars are another special case: they are restartable init containers with their own `restartPolicy: Always` and continue to restart independently of the Pod-level policy.
+The Pod-level default is `Always`. When the `ContainerRestartRules` feature gate is enabled-beta since Kubernetes v1.35 and enabled by default-application and regular init containers can set a container-level `restartPolicy` and `restartPolicyRules` that override the Pod-level behavior. Native sidecars are another special case: they are restartable init containers with their own `restartPolicy: Always` and continue to restart independently of the Pod-level policy.
 
 ## Confirm the Exit-Restart Loop
 
@@ -206,4 +206,4 @@ Confirm that restart counts stay flat, readiness becomes true, and application l
 
 ## Conclusion
 
-`Completed` is a successful process exit, not a declaration that a service should stop. When a container follows `restartPolicy: Always`, Kubernetes correctly restarts that process and eventually backs off repeated short runs. Inspect the previous termination, effective command, and workload owner first. Keep a real service in the foreground—using `exec` when a wrapper is necessary—and move intentionally finite work to a Job or CronJob.
+`Completed` is a successful process exit, not a declaration that a service should stop. When a container follows `restartPolicy: Always`, Kubernetes correctly restarts that process and eventually backs off repeated short runs. Inspect the previous termination, effective command, and workload owner first. Keep a real service in the foreground-using `exec` when a wrapper is necessary-and move intentionally finite work to a Job or CronJob.

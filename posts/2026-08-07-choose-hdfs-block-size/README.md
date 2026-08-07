@@ -8,13 +8,13 @@ Description: Choose an HDFS block size by measuring file shape, input split beha
 
 ---
 
-HDFS block size is a storage-layout choice, not a universal performance knob. It controls the preferred length of blocks created for a file and therefore influences block count, replica placement, transfer and recovery units, and—in many file-based MapReduce jobs—the natural input-split size.
+HDFS block size is a storage-layout choice, not a universal performance knob. It controls the preferred length of blocks created for a file and therefore influences block count, replica placement, transfer and recovery units, and-in many file-based MapReduce jobs-the natural input-split size.
 
 The correct choice depends on whether the input can be split, how it is compressed, how long each task runs, and how much metadata the NameNode must hold. Start with those properties rather than copying a number from another cluster.
 
 ## Separate HDFS Blocks from Input Splits
 
-For an ordinary replicated file, an HDFS block is a physical storage and replica-placement unit. Erasure-coded files instead use striped block groups composed of data and parity internal blocks. An `InputSplit` is a logical unit of work assigned to one mapper. These storage and execution units can influence one another, but they are not the same object.
+For an ordinary replicated file, an HDFS block is a logical storage and replica-placement unit. Erasure-coded files instead use striped block groups composed of data and parity internal blocks. An `InputSplit` is a logical unit of work assigned to one mapper. These storage and execution units can influence one another, but they are not the same object.
 
 The standard `FileInputFormat` computes logical splits using file length, HDFS block locations, format constraints, and configured minimum and maximum split sizes. A record reader then respects record boundaries. A line that crosses a block boundary can still be read correctly; HDFS blocks do not cut the application's record model.
 
@@ -29,7 +29,7 @@ Larger blocks generally mean:
 - fewer blocks and less NameNode block metadata;
 - fewer natural map splits for splittable files;
 - longer work per task and less launch overhead; and
-- larger units for replication, recovery, and retry.
+- larger units for replica transfer and recovery and, when input splits follow blocks, more work per task retry.
 
 Smaller blocks generally mean:
 
@@ -50,7 +50,7 @@ Estimate task duration from measured scan throughput:
 target_split_bytes = measured_mapper_bytes_per_second × target_task_seconds
 ```
 
-If a mapper sustains 40 MiB/s and the desired useful runtime is 120 seconds, a first experiment around 4.8 GiB per split may seem mathematically attractive. But test it: CPU, decompression, remote reads, spills, skew, and downstream output can dominate. A multi-gigabyte block also increases recovery and locality constraints.
+If a mapper sustains 40 MiB/s and the desired useful runtime is 120 seconds, a first experiment around 4,800 MiB (about 4.69 GiB) per split may seem mathematically attractive. But test it: CPU, decompression, remote reads, spills, skew, and downstream output can dominate. A multi-gigabyte block also increases recovery and locality constraints.
 
 The official MapReduce tutorial gives a broad heuristic that maps should run at least about a minute to amortize setup and that practical parallelism can be many maps per node. Treat those as a starting range, not a service guarantee.
 
@@ -71,7 +71,7 @@ Avoid creating thousands of tiny gzip files. That restores parallelism at the co
 
 ## Case 3: Splittable Compression
 
-Splittability is codec and format specific. Hadoop's `BZip2Codec` implements `SplittableCompressionCodec`, while ordinary stream compression may not. Container formats can provide internal boundaries—such as blocks, row groups, or stripes—that allow readers to start at selected positions even when data inside those units is compressed.
+Splittability is codec and format specific. Hadoop's `BZip2Codec` implements `SplittableCompressionCodec`, while ordinary stream compression may not. Container formats can provide internal boundaries-such as blocks, row groups, or stripes-that allow readers to start at selected positions even when data inside those units is compressed.
 
 Ask three distinct questions:
 

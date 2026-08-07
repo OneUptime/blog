@@ -8,7 +8,7 @@ Description: Troubleshoot HDFS write failures that find zero eligible DataNodes 
 
 ---
 
-An HDFS client can reach the NameNode, create a file, and still fail when it asks for targets for the next block. The familiar message that a block “could only be replicated to 0 nodes”—worded as “could only be written to 0 of the ... minReplication nodes” in current Hadoop 3 releases—means the placement attempt produced no usable write pipeline. It does not, by itself, mean the cluster contains zero DataNode processes.
+An HDFS client can reach the NameNode, create a file, and still fail when it asks for targets for the next block. The familiar message that a block “could only be replicated to 0 nodes”-worded as “could only be written to 0 of the ... minReplication nodes” in current Hadoop 3 releases-means the placement attempt produced no usable write pipeline. It does not, by itself, mean the cluster contains zero DataNode processes.
 
 The NameNode filters candidates by liveness, administrative state, free storage, storage type, topology, and recent failures. The client must then connect to the selected DataNode transfer addresses. Diagnose those layers in order.
 
@@ -211,4 +211,4 @@ Run the probe from the same network zone and identity as the failing workload. A
 
 ## Conclusion
 
-“Could only be replicated to 0 nodes” is the end of a target-selection story, not the root cause. Prove the client and NameNode, inspect runtime membership, validate writable volumes and policy eligibility, then test the direct client-to-DataNode path. Once the first filter or pipeline failure is identified, the fix is usually precise—and far safer than lowering replication or reformatting storage.
+“Could only be replicated to 0 nodes” is the end of a target-selection story, not the root cause. Prove the client and NameNode, inspect runtime membership, validate writable volumes and policy eligibility, then test the direct client-to-DataNode path. Once the first filter or pipeline failure is identified, the fix is usually precise-and far safer than lowering replication or reformatting storage.

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Pods, Readiness Probe, Sidecar Containers, Readiness Gates, EndpointSlice
+Tags: Kubernetes, Pod, Readiness Probe, Sidecar Containers, Readiness Gates, EndpointSlice
 
 Description: Diagnose a Running Kubernetes Pod that remains unready by tracing container probes, sidecar readiness, custom gates, and Service endpoints.
 
@@ -257,4 +257,4 @@ Deleting a managed Pod creates a fresh instance with the same probe and gate con
 
 ## Conclusion
 
-`Running` answers whether containers are executing; `Ready` answers whether the Pod should receive traffic. Trace `ContainersReady` first, then container and native-sidecar probes, then custom readiness gates, and finally EndpointSlice conditions. Once you identify which condition is false and who owns it, the fix becomes specific—and restarting an unchanged Pod stops looking like a solution.
+`Running` answers whether containers are executing; `Ready` answers whether the Pod should receive traffic. Trace `ContainersReady` first, then container and native-sidecar probes, then custom readiness gates, and finally EndpointSlice conditions. Once you identify which condition is false and who owns it, the fix becomes specific-and restarting an unchanged Pod stops looking like a solution.

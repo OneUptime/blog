@@ -73,13 +73,13 @@ A safe compaction flow is:
 6. Keep the old generation through an agreed rollback period or snapshot.
 7. Remove old files only after every consumer uses the new layout.
 
-Target size should come from workload tests. Hundreds of MiB per file is a common analytical starting range, but block size, compression ratio, scan selectivity, parallelism, and object retention all matter. A single multi-terabyte file can remove too much parallelism and make retries expensive.
+Target size should come from workload tests. Hundreds of MiB per file is a common analytical starting range, but block size, compression ratio, scan selectivity, parallelism, and object retention all matter. A single multi-terabyte file in a nonsplittable format can remove too much parallelism and make retries expensive.
 
 Prevent recurrence at ingestion. Buffer records by partition and time window, control the number of output writers, and periodically compact late-arriving data. A daily cleanup job cannot keep up with an unbounded producer that opens a new HDFS file per event.
 
 ## Option 2: Combine Logical Input Splits
 
-`CombineFileInputFormat` can put blocks from multiple files into one `CombineFileSplit`. It prefers blocks on the same node, then the same rack, when constructing splits. This reduces map-task count and preserves some locality.
+`CombineFileInputFormat` can put blocks from multiple files into one `CombineFileSplit`. When a maximum split size is configured, it first combines blocks on the same node, then leftover blocks on the same rack. Without a maximum split size, it combines blocks at rack scope and does not attempt node-local splits. This reduces map-task count and preserves some locality.
 
 Its important limitation is architectural: all original HDFS files still exist. The NameNode still holds their file and block metadata, checkpoints still contain them, and path listing still touches them.
 

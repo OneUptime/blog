@@ -194,4 +194,4 @@ Coordinate this probe if writers watch the directory, and choose a designated di
 
 ## Conclusion
 
-Free space is not a single truth in HDFS. The client sees an aggregate filesystem, the NameNode selects eligible replicas from reported DataNode capacity, and each DataNode ultimately depends on a real local filesystem. Reconcile those views, then check reserved space, failed volumes, quotas, storage types, replication, and topology. The right fix follows from the layer that rejected the write—not from the largest free-space number on the screen.
+Free space is not a single truth in HDFS. The client sees an aggregate filesystem, the NameNode selects eligible replicas from reported DataNode capacity, and each DataNode ultimately depends on a real local filesystem. Reconcile those views, then check reserved space, failed volumes, quotas, storage types, replication, and topology. The right fix follows from the layer that rejected the write-not from the largest free-space number on the screen.

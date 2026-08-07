@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, Yarn, JavaScript, Linux
+Tags: RHEL, YARN, JavaScript, Linux
 
 Description: Learn how to install Yarn Package Manager on RHEL with step-by-step instructions, configuration examples, and best practices.
 

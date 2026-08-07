@@ -138,7 +138,7 @@ Run both commands on the same connection to the same writer history, and return 
 
 `pg_current_wal_insert_lsn()` is cluster-wide, so concurrent activity can move it beyond this transaction's exact commit record. That is safe but conservative: the replica may wait for a little unrelated WAL too. Capturing an LSN before `COMMIT` is unsafe because the target could precede the transaction's commit record.
 
-On the selected standby, test the replay position—not merely the receive or flush position:
+On the selected standby, test the replay position-not merely the receive or flush position:
 
 ```sql
 SELECT pg_is_in_recovery() AS is_standby,

@@ -843,6 +843,7 @@
 - Apache Druid
 - Apache Flink
 - Apache Geode
+- Apache Hadoop
 - Apache HBase
 - Apache Hive
 - Apache Hudi
@@ -4945,6 +4946,7 @@
 - DataIntegrity
 - DataLoader
 - DataManagement
+- DataNode
 - DataOps
 - DataPipeline
 - DataPlacement
@@ -11733,6 +11735,7 @@
 - Named Resources
 - Named Volumes
 - NameFormat
+- NameNode
 - NamePrefix
 - Namespace
 - Namespace Configuration
@@ -12220,6 +12223,7 @@
 - NodeLocal DNSCache
 - Nodelocal-dns
 - Nodemailer
+- NodeManager
 - Nodemon
 - NodePools
 - NodePort
@@ -12838,6 +12842,7 @@
 - Output Parameters
 - Output Redirection
 - output_format_json_quote_64bit_integers
+- OutputCommitter
 - OvenMediaEngine
 - OVER
 - Overcommit
@@ -14656,6 +14661,7 @@
 - Read Throughput
 - Read Your Writes
 - read_overflow_mode
+- Read-After-Write
 - Read-Ahead
 - Read-Only
 - Read-Only Filesystem
@@ -15252,6 +15258,7 @@
 - Resource-optimization
 - Resource-Ordering
 - Resource-quota
+- ResourceManager
 - ResourceQuota
 - ResourceSets
 - ResourceVersion
@@ -16073,6 +16080,7 @@
 - Secondary Region
 - Secondary Replica
 - Secondary Sort
+- SecondaryNameNode
 - Secret
 - Secret Distribution
 - Secret Encryption
@@ -16263,6 +16271,7 @@
 - Sequelize
 - Sequence
 - Sequence Analysis
+- Sequence Drift
 - Sequence Generation
 - Sequence Numbers
 - SequenceCount
@@ -17051,6 +17060,7 @@
 - Special-Purpose Addresses
 - Specification
 - Spectrum
+- Speculative Execution
 - Speculative Plans
 - Speech Adaptation
 - Speech API
@@ -17491,6 +17501,7 @@
 - Storage Optimization
 - Storage Performance
 - Storage Planning
+- Storage Policies
 - Storage Policy
 - Storage Pool
 - Storage Profile
@@ -20153,7 +20164,7 @@
 - YARA
 - YARA-L
 - Yard Management
-- Yarn
+- YARN
 - YARP
 - YEAR
 - Year over Year

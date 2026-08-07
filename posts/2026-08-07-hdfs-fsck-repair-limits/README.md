@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Apache Hadoop, HDFS, fsck, Data Recovery, Troubleshooting
+Tags: Apache Hadoop, HDFS, Fsck, Data Recovery, Troubleshooting
 
 Description: Understand why hdfs fsck primarily reports HDFS damage, what its replicate, move, and delete actions do, and how to recover corrupt or missing blocks safely.
 

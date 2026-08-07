@@ -8,7 +8,7 @@ Description: Understand YARN minimum, maximum, and scheduler-specific allocation
 
 ---
 
-An application may ask YARN for 1500 MiB and receive a 2048 MiB container. Another may ask for 9000 MiB and be rejected instead of receiving the configured maximum. These outcomes follow different rules: a minimum is a lower bound, a maximum is a validation ceiling, and an allocation increment—when the selected scheduler uses one—defines the next grantable size.
+An application may ask YARN for 1500 MiB and receive a 2048 MiB container. Another may ask for 9000 MiB and be rejected instead of receiving the configured maximum. These outcomes follow different rules: a minimum is a lower bound, a maximum is a validation ceiling, and an allocation increment-when the selected scheduler uses one-defines the next grantable size.
 
 Treat resource normalization as a contract between applications and the ResourceManager. It influences container concurrency, queue usage, fragmentation, and memory-limit enforcement, even when the application never uses the extra bytes.
 

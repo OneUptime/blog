@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Apache Hadoop, HDFS, DataNode, Decommissioning, Operations
+Tags: Apache Hadoop, HDFS, DataNode, Decommissioning, Operation
 
 Description: Remove an HDFS DataNode without losing redundancy by checking capacity, updating host state, waiting for replication, and verifying decommission completion.
 
@@ -207,4 +207,4 @@ That arithmetic does not prove feasibility. If decommission requires 40 TiB of n
 
 ## Conclusion
 
-Safe DataNode removal is a replication workflow governed by NameNode state. Prove remaining capacity and placement first, mark the node for decommission, keep it alive as a source, and wait for `DECOMMISSIONED` in every relevant nameservice. Only that evidence—not a quiet process or an elapsed maintenance window—makes shutdown safe.
+Safe DataNode removal is a replication workflow governed by NameNode state. Prove remaining capacity and placement first, mark the node for decommission, keep it alive as a source, and wait for `DECOMMISSIONED` in every relevant nameservice. Only that evidence-not a quiet process or an elapsed maintenance window-makes shutdown safe.

@@ -124,16 +124,17 @@ The DistCp preserve flag uses `b` for block size. Preserve the attributes you re
 ```bash
 hadoop distcp \
   -Ddfs.blocksize=268435456 \
+  -Ddfs.checksum.combine.mode=COMPOSITE_CRC \
   -overwrite -prugpt \
   /warehouse/events/current \
   /warehouse/events/reblocked-staging
 ```
 
-Here the preservation letters retain replication (`r`), user (`u`), group (`g`), permission (`p`), and timestamp (`t`) but intentionally omit block size (`b`). Test this exact flow against your Hadoop release and destination policy. DistCp options, encryption, ACLs, extended attributes, checksums, and erasure coding require deliberate preservation choices.
+Here the preservation letters retain replication (`r`), user (`u`), group (`g`), permission (`p`), and timestamp (`t`) but intentionally omit block size (`b`). The `COMPOSITE_CRC` setting is also intentional: Hadoop's default `MD5MD5CRC` file checksum is not comparable across different block layouts, so the copy can otherwise fail post-copy checksum validation. `COMPOSITE_CRC` keeps that validation independent of block layout when the source and destination expose checksums over the same underlying bytes with compatible checksum types. If their checksums remain incomparable, such as when an encrypted destination uses a new encrypted data encryption key and therefore different ciphertext, use `-skipcrccheck` only with independent end-to-end content validation. Test this exact flow against your Hadoop release and destination policy. DistCp options, encryption, ACLs, extended attributes, checksums, and erasure coding require deliberate preservation choices.
 
 This example assumes replicated source and destination trees. Current DistCp documentation states that preserving replication with `-pr` is valid only when neither directory is erasure coded. For EC data, create staging under the intended destination policy and choose compatible preservation flags rather than copying this command unchanged.
 
-Do not use `-pb` when the goal is a new block size: it explicitly preserves the source block size.
+Do not use `-pb` when the goal is a new block size: it explicitly preserves the source block size. Do not add checksum-type preservation (`c`) either; current DistCp also preserves the source block size when it preserves checksum type.
 
 For structured data, an engine-native rewrite can simultaneously choose output file size, format units, compression, partitioning, and HDFS block size. That often produces a larger benefit than byte-for-byte copying.
 

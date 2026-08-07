@@ -199,4 +199,4 @@ Before approving a new heap value, verify:
 
 ## Conclusion
 
-NameNode capacity follows namespace complexity, not stored terabytes. Measure files, directories, blocks, replicas, snapshots, and transient recovery state; calibrate their memory cost on the exact software stack; and reserve tested headroom for GC and failover. That turns heap sizing from folklore into a forecast—and makes it clear when compaction or federation is the real next step.
+NameNode capacity follows namespace complexity, not stored terabytes. Measure files, directories, blocks, replicas, snapshots, and transient recovery state; calibrate their memory cost on the exact software stack; and reserve tested headroom for GC and failover. That turns heap sizing from folklore into a forecast-and makes it clear when compaction or federation is the real next step.

@@ -10,7 +10,7 @@ Description: Diagnose YARN container memory-limit failures by separating heap, o
 
 A YARN container represents a resource allocation, not a synonym for one Java heap. When memory control is enabled, its accounted memory can include the task JVM, native and direct allocations, metaspace, thread stacks, memory-mapped data, and every child process associated with the container. Setting `-Xmx` equal to the container request therefore leaves no operating margin.
 
-The familiar “container is running beyond memory limits” diagnostic is also incomplete without context. Determine whether YARN measured physical or virtual memory, whether the NodeManager used periodic process-tree polling or Linux cgroups, and whether the kernel—not YARN—reported an out-of-memory event.
+The familiar “container is running beyond memory limits” diagnostic is also incomplete without context. Determine whether YARN measured physical or virtual memory, whether the NodeManager used periodic process-tree polling or Linux cgroups, and whether the kernel-not YARN-reported an out-of-memory event.
 
 ## Preserve the Evidence from the Failed Container
 
