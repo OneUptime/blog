@@ -54,11 +54,11 @@ Useful bounds include:
 # Last 200 lines.
 kubectl logs "$POD" -n "$NAMESPACE" -c app --tail=200
 
-# Logs at and after an RFC3339 incident timestamp.
+# Logs after an RFC3339 incident timestamp.
 kubectl logs "$POD" -n "$NAMESPACE" -c app \
   --since-time=2026-08-07T09:35:00Z --timestamps
 
-# Continue streaming even when an individual log request has an error.
+# Continue following even if errors occur.
 kubectl logs "$POD" -n "$NAMESPACE" -c app \
   --follow --ignore-errors=true
 ```
@@ -185,11 +185,11 @@ timestamp
 
 Pod UID is essential. Names can be reused; UIDs identify one object. Also preserve the original event timestamp at collection time, use synchronized node clocks, and define retention that covers the incident-discovery window.
 
-Prefer application output on stdout and stderr. If a legacy application writes files, mount a shared volume and use a lightweight sidecar to stream each file to its own stdout, or configure an agent to collect the files deliberately. Avoid writing two incompatible formats into one stream.
+Prefer application output on stdout and stderr. If a legacy application writes files, mount a shared volume and use a lightweight sidecar per file to stream each file to that sidecar's stdout, or configure an agent to collect the files deliberately. Avoid writing two incompatible formats into one stream.
 
 ## Preserve a small termination clue
 
-Container termination messages can preserve a concise final error in Pod status. The default path is `/dev/termination-log`. Kubernetes can also use the tail of container logs when the termination file is empty:
+Container termination messages can preserve a concise final error in Pod status. The default path is `/dev/termination-log`. Kubernetes can also use the tail of container logs when the termination file is empty and the container exits with an error:
 
 ```yaml
 apiVersion: v1
