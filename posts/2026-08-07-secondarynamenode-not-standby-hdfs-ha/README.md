@@ -97,7 +97,7 @@ A shortened shape looks like this:
 </property>
 ```
 
-This is illustrative, not a complete deployment. Address, fencing, security, local metadata, and automatic-failover settings are also required.
+This is illustrative, not a complete deployment. Address, fencing, local metadata, and, where applicable, security and automatic-failover settings are also required.
 
 ## Manual and Automatic Failover Are Different
 
@@ -133,9 +133,9 @@ Treat conversion as a controlled metadata change:
 5. Bootstrap the unformatted standby with `hdfs namenode -bootstrapStandby`.
 6. Configure and test fencing before enabling automatic promotion.
 7. If using automatic failover, configure ZooKeeper, secure its ACLs, and initialize the HA znode once.
-8. Verify both NameNode states, edit tailing, DataNode reporting, and logical-URI client access.
+8. Stop the SecondaryNameNode before starting the HA NameNodes, then verify both NameNode states, edit tailing, DataNode reporting, and logical-URI client access.
 9. Perform planned and failure-mode tests during an approved window.
-10. Retire the SecondaryNameNode only after the standby is checkpointing successfully.
+10. Retire or repurpose the former SecondaryNameNode host only after the standby is checkpointing successfully.
 
 Never independently format the standby for an existing nameservice. Formatting creates identity and metadata consequences; use the documented bootstrap flow.
 
