@@ -8,19 +8,19 @@ Description: Diagnose node-local, rack-local, and remote MapReduce reads, then i
 
 ---
 
-A map task reads an HDFS block remotely when YARN runs the task somewhere other than a DataNode that holds a replica for its input split. That is not automatically a fault. Hadoop trades locality against queue fairness, available containers, placement constraints, and the cost of leaving resources idle.
+A map task must read an HDFS block over the network when its container is not colocated with a DataNode that holds a replica of that block. MapReduce's locality counters classify the container against the locations reported for the whole input split; they do not measure which replica served each byte. A remote read is not automatically a fault. Hadoop trades locality against queue fairness, available containers, placement constraints, and the cost of leaving resources idle.
 
 The useful question is not “Why did one map run remotely?” It is “Is remote reading frequent enough to constrain the job, and which layer removed the local choices?” Answer that with job counters, split locations, HDFS block placement, and scheduler evidence before changing replication or scheduler settings.
 
 ## How MapReduce locality actually works
 
-MapReduce creates one map task for each logical `InputSplit` produced by the job's `InputFormat`. An `InputSplit` describes both its length and the hosts where its bytes are available. For the normal file-based input formats, those locations are derived from filesystem block locations.
+MapReduce creates one map task for each logical `InputSplit` produced by the job's `InputFormat`. An `InputSplit` reports its length and locality hints: the hosts where its input would be local. For the normal file-based input formats, those locations are derived from filesystem block locations.
 
 The application asks YARN for containers with locality preferences. A map attempt can then be classified as:
 
 - **Data-local (node-local):** the container runs on a host listed for the split.
-- **Rack-local:** the container is on the same rack as a host holding the data, but not on that host.
-- **Other-local / off-switch:** the container is outside those local choices and reads across racks or another network boundary.
+- **Rack-local:** the container is on the same rack as a host listed for the split, but not on that host.
+- **Other-local / off-switch:** the container is outside the node and rack choices reported for the split. For HDFS input, this normally requires non-local reads.
 
 HDFS replication creates several possible local hosts, but it does not reserve compute on them. If those hosts have no free YARN capacity, are excluded by a node label, do not run NodeManagers, or are unavailable, the scheduler may place the attempt elsewhere.
 
@@ -59,7 +59,7 @@ Calculate an off-switch ratio rather than reacting to a single attempt:
 off_switch_ratio = OTHER_LOCAL_MAPS / TOTAL_LAUNCHED_MAPS
 ```
 
-Compare that ratio with map duration, HDFS read throughput, host and rack network traffic, and queue wait time. A CPU-heavy mapper can tolerate remote input. A scan whose map phase is network-bound may not.
+This is the ratio of off-switch attempt placements, not the fraction of input bytes read remotely. Compare it with map duration, HDFS read throughput, host and rack network traffic, and queue wait time. A CPU-heavy mapper can tolerate remote input. A scan whose map phase is network-bound may not.
 
 ## Verify the split and its replicas
 
@@ -113,7 +113,7 @@ Also check whether local hosts had allocatable containers when the maps launched
 
 ### Compute and storage do not overlap
 
-Data locality assumes that HDFS DataNodes and YARN NodeManagers share hosts. If compute-only nodes consume most containers while storage nodes have little YARN capacity, remote maps are an architectural outcome.
+Node-local execution requires HDFS DataNodes and YARN NodeManagers to share hosts. If compute-only nodes consume most containers while storage nodes have little YARN capacity, remote maps are an architectural outcome.
 
 Restore healthy NodeManagers on storage hosts, reserve suitable map capacity there, or accept that the cluster is disaggregated and size the network accordingly. Increasing HDFS replication does not help if every replica host is ineligible for the job.
 
@@ -137,15 +137,15 @@ Choose a splittable format for scan-heavy datasets, compact small files into app
 
 ### Replication is too low for the workload
 
-A replication factor of one gives the scheduler one node-local option and no replica tolerance. Raising replication can improve both resilience and placement choice for a hot dataset, but it costs storage and replication bandwidth.
+A replication factor of one leaves only one replica host per block and no replica tolerance. Raising replication can improve both resilience and placement choice for a hot dataset, but it costs storage and replication bandwidth.
 
-Use replication as a deliberate data-policy decision:
+For replicated files, use replication as a deliberate data-policy decision:
 
 ```bash
 hdfs dfs -setrep -w 3 /warehouse/events/day=2026-08-06
 ```
 
-Wait for replication to finish, rerun a representative job, and compare locality counters. Do not increase cluster-wide replication just to mask failed NodeManagers or bad queue placement.
+The command ignores erasure-coded files. Wait for replication to finish, rerun a representative job, and compare locality counters. Do not increase cluster-wide replication just to mask failed NodeManagers or bad queue placement.
 
 ## A practical investigation sequence
 
@@ -182,4 +182,4 @@ Keep input volume, queue load, mapper version, and container sizing constant dur
 
 ## Conclusion
 
-A remote HDFS read means the scheduler could not or chose not to place that map attempt on one of its split-location hosts. Measure the job counters first, prove where the replicas and eligible containers were, and then decide whether the real constraint is HDFS placement, YARN capacity, topology, or input layout. The goal is not perfect locality at any cost; it is the best end-to-end job throughput without an avoidable network bottleneck.
+An off-switch locality result means the scheduler could not or chose not to place that map attempt on one of its split-location hosts; it is strong evidence of non-local input, not a byte-level measurement. Measure the job counters first, prove where the replicas and eligible containers were, and then decide whether the real constraint is HDFS placement, YARN capacity, topology, or input layout. The goal is not perfect locality at any cost; it is the best end-to-end job throughput without an avoidable network bottleneck.
