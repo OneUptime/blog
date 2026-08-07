@@ -10,7 +10,7 @@ Description: Separate key skew, map spill, reducer merge, and failed shuffle fet
 
 A reducer that spends a long time in “shuffle” is not necessarily stuck. Each reducer must fetch its partition from every successful mapper, merge those segments, sort and group the keys, and only then run most of the user reducer logic. One slow map, one unreachable NodeManager, thousands of spill files, or one oversized partition can hold up that pipeline.
 
-Diagnose the phase with attempt timelines, counters, and logs before increasing reducer memory or parallel copies. The same progress symptom can come from four very different bottlenecks: skew, spill, merge, or fetch.
+Diagnose the phase with attempt timelines, counters, and logs before increasing reducer memory or parallel copies. The same progress symptom can come from five very different bottlenecks: a map delay, skew, spill, merge, or fetch.
 
 ## What the shuffle is waiting for
 
@@ -64,7 +64,7 @@ A reducer cannot fetch output that a mapper has not successfully produced. In th
 - blocked on HDFS or an external system;
 - running on a slow or unhealthy node;
 - handling a pathological record;
-- waiting for a speculative attempt to finish.
+- waiting for either the original or a speculative attempt to succeed.
 
 Do not tune reducer shuffle settings to fix a map straggler. Compare that map's input bytes, input records, CPU time, GC time, and task logs with its peers. Correct input splitting, the mapper, or the node-level fault.
 
@@ -97,7 +97,7 @@ Common fetch causes are:
 - TLS or encrypted-shuffle settings disagree;
 - the source node is overloaded by concurrent fetches.
 
-Current Apache defaults include five reducer-side parallel copies, 180-second connect and read timeouts, and retry controls for recoverable NodeManager restarts. These values are diagnostics, not universal tuning targets. Raising timeouts can make a broken path fail more slowly; raising parallel copies can overload the same source disks and network.
+Current Apache defaults include five reducer-side parallel copies and 180-second connect and read timeouts. Fetch retry during a NodeManager restart follows `yarn.nodemanager.recovery.enabled`, which is `false` by default. These values are diagnostics, not universal tuning targets. Raising timeouts can make a broken path fail more slowly; raising parallel copies can overload the same source disks and network.
 
 ## Case 3: partitions are skewed
 
@@ -105,7 +105,7 @@ The default hash partitioner sends every instance of the same map-output key to 
 
 Confirm skew by ranking reducer shuffle bytes, input records, and elapsed time. Also sample map-output keys using a representative dataset. Causes include:
 
-- a null, empty, default, or “unknown” key used by a large fraction of records;
+- a null sentinel, empty, default, or “unknown” key used by a large fraction of records;
 - a naturally hot customer, tenant, date, or country;
 - a custom partitioner that uses too little of the key;
 - keys whose `hashCode`, equality, grouping comparator, and serialization disagree;
