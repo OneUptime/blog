@@ -10,6 +10,8 @@ Description: Understand why hdfs fsck primarily reports HDFS damage, what its re
 
 The name `fsck` invites the wrong mental model. A local filesystem checker can reason about on-disk allocation structures and sometimes rebuild them. HDFS has a different architecture: the NameNode owns file-to-block metadata, while DataNodes store replicas of those blocks. `hdfs fsck` queries that distributed state and reports inconsistencies; it does not invent the bytes of a replica that no longer exists.
 
+Most examples below focus on replicated files. Erasure-coded files use block groups instead: HDFS can reconstruct a missing internal block when enough data and parity internal blocks survive, but `fsck` still does not perform that reconstruction itself.
+
 That distinction determines whether an incident is automatically recoverable, administratively containable, or a true restore-from-source event.
 
 ## Start with a Non-Destructive Report
@@ -24,10 +26,10 @@ hdfs fsck / -list-corruptfileblocks
 
 Useful report terms mean different things:
 
-- **Under-replicated:** fewer live replicas than the file's requested replication factor, but at least one usable replica may remain.
+- **Under-replicated:** for a replicated file, at least one replica is counted but the total is below the requested replication factor. The detailed report separates live replicas from decommissioned and decommissioning replicas, and `-maintenance` adds maintenance-state detail.
 - **Mis-replicated:** replicas exist, but their placement does not satisfy the configured rack, upgrade-domain, or other placement policy.
 - **Corrupt replica:** a DataNode or client detected data that failed checksum or integrity validation.
-- **Missing block:** the NameNode has a block in a file's metadata but currently knows of no usable replica.
+- **Missing block:** for a replicated file, the NameNode has a block in the file's metadata but no reported replica in its current inventory. A block whose available replicas are all marked corrupt is reported separately as corrupt.
 - **Open for write:** the file may still be under construction. `fsck` ignores open files by default unless asked to include them.
 
 Add `-includeSnapshots` when snapshot-only references matter. Without it, a check of a snapshottable tree may not represent every block retained by snapshots.
@@ -37,6 +39,8 @@ Add `-includeSnapshots` when snapshot-only references matter. Without it, a chec
 The NameNode continuously tracks replica health. When a DataNode stops heartbeating, a disk fails, or a replica is declared corrupt, the NameNode can schedule a copy from another healthy replica. No byte-level repair by `fsck` is required.
 
 For example, suppose a replicated block has three copies and one fails checksum verification. If the other two are readable, HDFS can create a replacement elsewhere and later invalidate the bad replica. The incident is a redundancy and placement problem, not yet data loss.
+
+For an erasure-coded block group, the analogous recoverable case is one in which enough source internal blocks remain for a DataNode's erasure-coding worker to decode and replace the missing data or parity.
 
 Observe the transition rather than repeatedly launching broad scans:
 
@@ -55,11 +59,11 @@ Current Hadoop exposes this action:
 hdfs fsck /data/important -replicate
 ```
 
-The official commands guide describes it as initiating replication work so mis-replicated blocks satisfy block placement policy. It is useful when replicas exist but their topology or placement is wrong. It is not a generic “repair everything” switch.
+The official commands guide describes it as initiating replication work so mis-replicated blocks satisfy block placement policy. The scan asks the NameNode to reprocess blocks that violate that policy; when such a block is also under-replicated, the NameNode may add it to the low-redundancy reconstruction queue. It is not a generic “repair everything” switch.
 
 In particular, `-replicate` cannot:
 
-- reconstruct a missing block with no readable source replica;
+- reconstruct a replicated block with no readable source replica, or an erasure-coded block group with too few surviving internal blocks;
 - infer application records from adjacent HDFS blocks;
 - repair corrupt bytes when every replica contains those corrupt bytes;
 - override the absence of an eligible destination storage type or rack; or
@@ -67,25 +71,25 @@ In particular, `-replicate` cannot:
 
 After invoking it, monitor the NameNode's work and re-run a scoped report. An accepted command means work was initiated, not that all constraints can be satisfied.
 
-## Why `-move` Is Containment, Not Repair
+## Why `-move` Is Salvage, Not Repair
 
-The following option moves corrupt files under `/lost+found`:
+The following option copies readable portions of corrupt files under `/lost+found`:
 
 ```bash
 hdfs fsck /data/important -move
 ```
 
-This can separate damaged files from a production path and may preserve recoverable block chains for forensic work. It does not recreate missing blocks or guarantee a semantically valid application file. Applications that expect the original path will also stop finding it.
+Despite the option name and the commands guide's “move” description, current Hadoop copies remaining readable blocks into one or more block chains under `/lost+found/<original-path>/` and leaves the corrupt original file in place. This may preserve recoverable data for forensic work, but it does not quarantine the source, recreate missing blocks, or guarantee a semantically valid application file. Applications can continue to find the damaged original path until an administrator separately isolates, deletes, or replaces it.
 
 Before using `-move`:
 
 1. Save the complete `fsck` output.
 2. Record snapshots, retention policies, and external copies.
 3. Stop writers that could complicate the affected path.
-4. Confirm how downstream jobs react to the path change.
+4. Prevent downstream jobs from continuing to consume the damaged original path.
 5. Treat any recovered fragments as untrusted until the data format validates them.
 
-If the data format is Parquet, Avro, ORC, SequenceFile, or another structured container, use that format's own reader and validation tools after HDFS-level containment.
+If the data format is Parquet, Avro, ORC, SequenceFile, or another structured container, use that format's own reader and validation tools after HDFS-level salvage.
 
 ## Why `-delete` Is Explicit Data Loss
 
@@ -125,7 +129,7 @@ Under- or mis-replication can persist when the requested replication factor exce
 
 ### Does every known copy fail integrity checks?
 
-HDFS checksums can identify corruption but cannot derive the original content. Recovery must come from a backup, snapshot that still references a healthy block, upstream source, another cluster, or application-level regeneration.
+For a replicated block, HDFS checksums can identify corruption but cannot derive the original content when every copy fails. For an erasure-coded block group, recovery is likewise impossible when too few valid data and parity internal blocks survive for the policy to decode the missing content. Recovery must then come from a backup, snapshot that still references a healthy block, upstream source, another cluster, or application-level regeneration.
 
 ## Build a Recovery Plan by Damage Class
 
@@ -137,7 +141,7 @@ Stabilize the source node, restore eligible targets, leave safe mode if its norm
 
 Keep the NameNode metadata intact. Restore the original mount, permissions, identity, and network path. Start the DataNode and watch registration and block-report processing. The goal is to make existing bytes visible, not create empty replacement storage under the same path.
 
-### No replica remains
+### No replicated copy remains, or EC inputs are insufficient
 
 List every affected file and map it to a restore authority:
 
@@ -168,7 +172,7 @@ HDFS health and data correctness are separate gates. First confirm the block sta
 hdfs fsck /data/important -files -blocks -locations
 ```
 
-Then use the owning application's checks: file-format readers, manifests, row counts, event offsets, checksums, or reconciliation queries. HDFS can confirm that replicas agree with their stored checksums; it cannot determine whether the producer wrote the correct business data.
+Then use the owning application's checks: file-format readers, manifests, row counts, event offsets, checksums, or reconciliation queries. HDFS clients can verify readable block data against stored checksums, while `fsck` reports the resulting block state; neither can determine whether the producer wrote the correct business data.
 
 ## Official Documentation
 
@@ -176,7 +180,8 @@ Then use the owning application's checks: file-format readers, manifests, row co
 - [HDFS Commands Guide: `fsck`](https://hadoop.apache.org/docs/current/hadoop-project-dist/hadoop-hdfs/HDFSCommands.html#fsck)
 - [HDFS Architecture: re-replication](https://hadoop.apache.org/docs/current/hadoop-project-dist/hadoop-hdfs/HdfsDesign.html#Data_Disk_Failure.2C_Heartbeats_and_Re-Replication)
 - [HDFS Architecture: data integrity](https://hadoop.apache.org/docs/current/hadoop-project-dist/hadoop-hdfs/HdfsDesign.html#Data_Integrity)
+- [HDFS Erasure Coding: architecture and reconstruction](https://hadoop.apache.org/docs/current/hadoop-project-dist/hadoop-hdfs/HDFSErasureCoding.html#Architecture)
 
 ## Conclusion
 
-`hdfs fsck` is primarily an evidence and classification tool. HDFS can automatically replace a bad or missing replica only when another healthy source exists, and current `-replicate` can initiate limited placement correction. When every copy of a block is gone, no command-line flag can recreate its bytes. Preserve evidence, restore original replicas when possible, and use a verified external source when the damage is real.
+`hdfs fsck` is primarily an evidence and classification tool. For replicated files, HDFS can automatically replace a bad or missing replica only when another healthy source exists; for erasure-coded files, it can reconstruct an internal block only while enough valid data and parity inputs remain. Current `-replicate` can initiate limited placement and reconstruction-queue processing. When the remaining replicas or EC inputs cannot recover the content, no command-line flag can recreate its bytes. Preserve evidence, restore original storage when possible, and use a verified external source when the damage is real.
