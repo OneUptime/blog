@@ -17,7 +17,6 @@
 
 ## Apache Hadoop
 
-1. Why the HDFS NameNode Stays in Safe Mode: Diagnose Block Reports Before Forcing It to Leave
 2. Why `hdfs fsck` Reports but Does Not Repair Corrupt and Missing HDFS Blocks
 3. “Could Only Be Replicated to 0 Nodes”: A Systematic HDFS Write-Failure Checklist
 4. The SecondaryNameNode Is Not a Standby: Designing Real HDFS NameNode High Availability
