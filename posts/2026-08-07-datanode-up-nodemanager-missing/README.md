@@ -78,7 +78,7 @@ Do not repeatedly restart before retaining the original startup log; rapid resta
 
 ## Confirm the NodeManager Loaded the Intended YARN Configuration
 
-Hadoop daemons can start from different installations, symlinks, environment files, containers, or configuration directories. Compare the running NodeManager with a known-good peer:
+Hadoop daemons can start from different installations, symlinks, environment files, containers, or configuration directories. Compare the NodeManager's launch context with a known-good peer. Run `yarn envvars` under the same service account and service environment; it shows the computed environment for that invocation, not the environment of the already-running daemon:
 
 ```bash
 yarn envvars
@@ -146,7 +146,7 @@ yarn rmadmin -refreshNodes
 
 The command also supports graceful decommissioning options; use those for intentional removal rather than treating refresh as an indiscriminate repair command.
 
-The top-level Hadoop `workers` file is different. The official cluster setup guide explains that it is used by helper scripts to run commands on multiple hosts. It is not a Java configuration file and does not define live HDFS or YARN membership. Adding a hostname there may cause a future start script to launch a NodeManager, but it cannot make a failed registration healthy.
+The Hadoop `etc/hadoop/workers` file is different. The official cluster setup guide explains that it is used by helper scripts to run commands on multiple hosts. It is not a Java configuration file and does not define live HDFS or YARN membership. Adding a hostname there may cause a future start script to launch a NodeManager, but it cannot make a failed registration healthy.
 
 ## Distinguish Missing from Unhealthy
 
@@ -168,9 +168,9 @@ df -i /data/yarn/local /data/yarn/log
 namei -l /data/yarn/local
 ```
 
-Check NodeManager health details with `yarn node -status` and its web interface. The current reference defaults run the disk check every two minutes, require at least 25% of local and log disks to remain healthy, and mark a disk bad at 90% utilization. Local overrides may differ.
+Check NodeManager health details with `yarn node -status` and its web interface. The current reference defaults run the disk check every two minutes, require at least 25% of each configured local-directory and log-directory set to remain healthy, and set 90% as the maximum allowed per-disk utilization. Local overrides may differ.
 
-An external health script can also mark the node unhealthy. The NodeManager documentation notes a non-obvious rule: script output beginning with `ERROR` marks failure, while a nonzero exit code alone is not considered failure. Inspect the configured script, its output, execution permissions, and timeout.
+An external health script can also mark the node unhealthy. The NodeManager documentation notes a non-obvious rule: any output line beginning with `ERROR` marks failure, while a nonzero exit code alone is not considered failure. Inspect the configured script, its output, execution permissions, and timeout.
 
 Health failure explains a node that is present but unschedulable. A node absent from `-list -all` generally failed before registration, contacted a different RM, was removed from retained state, or is being queried through the wrong client configuration.
 
@@ -216,7 +216,7 @@ Use this sequence:
 6. Correlate NodeManager and ResourceManager registration logs.
 7. Check YARN include/exclude state, then use `refreshNodes` only after a reviewed correction.
 8. Check local/log directory health, security, hostname identity, and advertised resources.
-9. Restart or re-register through the deployment's normal procedure and verify the new NodeId.
+9. Restart or re-register through the deployment's normal procedure and verify the registered NodeId.
 
 Finally, run a small canary application and confirm the ResourceManager assigns a container to the recovered node. Registration alone does not prove localization, container launch, local disk, cgroups, and log handling all work.
 
