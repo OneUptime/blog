@@ -8,7 +8,7 @@ Description: Diagnose YARN container memory-limit failures by separating heap, o
 
 ---
 
-A YARN container is a resource boundary, not a synonym for one Java heap. Its memory can include the task JVM, native and direct allocations, metaspace, thread stacks, memory-mapped data, and every child process in the container's process tree. Setting `-Xmx` equal to the container request therefore leaves no operating margin.
+A YARN container represents a resource allocation, not a synonym for one Java heap. When memory control is enabled, its accounted memory can include the task JVM, native and direct allocations, metaspace, thread stacks, memory-mapped data, and every child process associated with the container. Setting `-Xmx` equal to the container request therefore leaves no operating margin.
 
 The familiar “container is running beyond memory limits” diagnostic is also incomplete without context. Determine whether YARN measured physical or virtual memory, whether the NodeManager used periodic process-tree polling or Linux cgroups, and whether the kernel—not YARN—reported an out-of-memory event.
 
@@ -30,7 +30,7 @@ In the ResourceManager UI or aggregated log, record:
 - application, NodeManager, and operating-system timestamps; and
 - whether all attempts fail at the same data stage or only on one node.
 
-An exit code of `137` means a process received `SIGKILL`, but it does not identify the actor by itself. The official YARN cgroups guide recommends checking the host system log for an OOM cause when a container exits with 137. Also inspect the NodeManager log and the container's stderr. A Java `OutOfMemoryError`, a NodeManager polling kill, a cgroup OOM kill, and a host-wide kernel OOM can look similar at the application level but require different fixes.
+An exit code of `137` usually indicates that a shell or launcher reported `SIGKILL` (`128 + 9`), but it does not identify the actor by itself. The official YARN cgroups guide recommends checking the host system log for an OOM cause when a container exits with 137. Also inspect the NodeManager log and the container's stderr. A Java `OutOfMemoryError`, a NodeManager polling kill, a cgroup OOM kill, and a host-wide kernel OOM can look similar at the application level but require different fixes.
 
 ## Separate the Container Request from the Java Heap
 
@@ -57,7 +57,7 @@ Other engines have their own request and overhead properties. Do not tune MapRed
 
 ## Understand Process-Tree Accounting
 
-The NodeManager launches and manages the container, then attributes resource use to its process tree. If the task starts helpers, their memory belongs to the same allocation:
+The NodeManager launches and manages the container. Polling-based accounting attributes resource use to its process tree, while cgroup-based accounting reads the container's cgroup. In either mode, if the task starts helpers, their memory belongs to the same allocation:
 
 ```text
 container launcher
@@ -108,7 +108,7 @@ Apache Hadoop documents `CGroupsResourceCalculator` as a more representative alt
 </property>
 ```
 
-This class is the cgroup v1 calculator in the current API. A cgroup v2 host must use the calculator and resource-handler configuration supported for cgroup v2 by its Hadoop release. In either case, do not paste the class setting alone and assume enforcement changed; resource calculation and enforcement are related but separate choices.
+This class is the cgroup v1 calculator in the current API. For cgroup-based calculation on a cgroup v2 host, use `org.apache.hadoop.yarn.server.nodemanager.containermanager.linux.resources.CGroupsV2ResourceCalculator` and the resource-handler configuration supported for cgroup v2 by its Hadoop release. In either case, do not paste the class setting alone and assume enforcement changed; resource calculation and enforcement are related but separate choices.
 
 ## Identify the Enforcement Mode
 
@@ -187,4 +187,4 @@ This order preserves the distinction between making the workload fit and hiding 
 
 ## Conclusion
 
-YARN kills a container based on the container's accounted process tree, not just its Java heap. Diagnose the exact physical or virtual limit, include child and off-heap memory, and identify whether polling, strict cgroups, elastic cgroups, or the host kernel acted. Then size the request and heap from measured peaks while preserving node headroom. That turns a vague memory-limit message into a specific, testable resource decision.
+YARN enforces a container against the processes accounted through its process tree or cgroup, not just its Java heap. Diagnose the exact physical or virtual limit, include child and off-heap memory, and identify whether polling, strict cgroups, elastic cgroups, or the host kernel acted. Then size the request and heap from measured peaks while preserving node headroom. That turns a vague memory-limit message into a specific, testable resource decision.
