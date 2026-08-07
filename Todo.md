@@ -17,7 +17,6 @@
 
 ## Apache Hadoop
 
-10. What Happens to Existing Files When You Change `dfs.blocksize`?
 11. How to Decommission an HDFS DataNode Without Losing Replicas or Stranding Under-Replicated Blocks
 12. Why the HDFS Balancer Moves Nothing: Thresholds, Storage Policies, and Pinned Blocks
 13. HDFS Says Space Is Available but Writes Fail: Reconciling `hdfs dfs -df`, Reserved Space, and Disk Health
