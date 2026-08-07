@@ -8,7 +8,7 @@ Description: Remove an HDFS DataNode without losing redundancy by checking capac
 
 ---
 
-Stopping a DataNode is not decommissioning it. An abrupt stop makes its replicas unavailable and asks the NameNode to recover after a failure. Decommissioning first marks the node unavailable for new placement, copies its needed replicas elsewhere, and transitions it to `DECOMMISSIONED` only after HDFS's safety conditions are met.
+Stopping a DataNode is not decommissioning it. An abrupt stop makes its replicas unavailable and asks the NameNode to recover after a failure. For a live DataNode, decommissioning first marks the node unavailable for new placement, copies its needed replicas elsewhere, and transitions it to `DECOMMISSIONED` only after HDFS's safety conditions are met.
 
 The process can move a large amount of data and metadata work. Plan capacity, topology, and recovery load before changing host state.
 
@@ -41,13 +41,13 @@ Check:
 - no missing or corrupt blocks are being ignored;
 - current under-replication and pending replication are understood;
 - enough eligible capacity remains after removing the node;
-- each storage policy still has eligible target volumes;
+- each storage policy has sufficient capacity in its preferred storage types or permitted replication fallbacks;
 - rack and upgrade-domain diversity can still satisfy placement;
 - no overlapping node, rack, or disk maintenance removes the other replicas;
 - NameNode is operational rather than in safe mode; and
 - replication traffic fits network and disk headroom.
 
-Calculate raw data on the target node and expected replica movement from `dfsadmin -report`, but do not assume every byte must move. Some blocks already have sufficient replicas elsewhere; others may need one or more new copies.
+Use the target node's `DFS Used` value from `dfsadmin -report` as a rough capacity input, not as an exact replica-movement forecast. Some blocks already have sufficient replicas elsewhere; others may need one or more new copies.
 
 In a federated cluster, the DataNode serves multiple block pools. Decommission it through every NameNode/nameservice that uses it. Completion in one namespace does not prove all block pools are safe.
 
@@ -56,10 +56,13 @@ In a federated cluster, the DataNode serves multiple block pools. Decommission i
 Discover the effective host files:
 
 ```bash
+hdfs getconf -confKey dfs.namenode.hosts.provider.classname
 hdfs getconf -includeFile
 hdfs getconf -excludeFile
 hdfs dfsadmin -printTopology
 ```
+
+The provider class determines which returned paths are effective. The default `HostFileManager` uses both `dfs.hosts` and `dfs.hosts.exclude`; `CombinedHostFileManager` reads the JSON file in `dfs.hosts` and does not use `dfs.hosts.exclude`.
 
 Match the hostname or IP exactly as the NameNode knows the DataNode. Short names, fully qualified names, multiple interfaces, and reused addresses are common sources of decommissioning the wrong identity or no identity at all.
 
@@ -73,13 +76,13 @@ In the default host-provider mode, keep the node in `dfs.hosts` if an include li
 dn17.example.com
 ```
 
-Deploy the updated file to the active NameNode's effective configuration path and reload host state:
+Deploy the updated file to the effective configuration path on the NameNode, or on every NameNode in an HA nameservice, and reload host state:
 
 ```bash
 hdfs dfsadmin -refreshNodes
 ```
 
-In HA, keep host configuration consistent across NameNodes so failover does not restore stale policy. Use your configuration-management rollout, then confirm the active loaded the intended state.
+In HA, keep host configuration consistent across NameNodes so failover does not restore stale policy. When the command uses a logical HA URI, `-refreshNodes` contacts every NameNode in that nameservice; confirm that every refresh succeeds.
 
 The DataNode should transition to `DECOMMISSION_INPROGRESS`. HDFS stops choosing it for new replicas while the NameNode arranges required copies elsewhere.
 
@@ -131,8 +134,8 @@ Decommission large nodes in controlled batches. Removing several nodes from the 
 A node remains `DECOMMISSION_INPROGRESS` when HDFS cannot satisfy all relevant safety conditions. Common causes include:
 
 - insufficient remaining capacity;
-- requested replication greater than eligible node count;
-- an unavailable storage type required by policy;
+- too few eligible nodes to meet HDFS's decommission-sufficiency threshold;
+- no eligible storage type remains in a policy's requested types or permitted replication fallbacks;
 - rack, node-group, or upgrade-domain placement constraints;
 - another replica on a dead or decommissioning node;
 - blocks open for write;
@@ -158,7 +161,7 @@ Confirm the target is `Decommissioned`, not `Decommission In Progress`. Then ver
 - under-replication returned to the accepted baseline;
 - critical paths have healthy placement;
 - all federated nameservices show completion;
-- applications no longer read from or write to the node; and
+- applications can tolerate losing the node; HDFS does not choose it for new replicas, but the live decommissioned node can still serve reads until shutdown; and
 - monitoring and inventory identify it as intentionally retired.
 
 Only then stop the DataNode using the service manager deployed in your environment. Preserve disks until the rollback and data-retention policy permits sanitization. A decommissioned DataNode is not automatically shut down, and HDFS completion does not authorize immediate destruction of hardware evidence.
@@ -177,9 +180,9 @@ Recommissioning can leave data distribution uneven. The cluster Balancer may be 
 
 ## Capacity Example
 
-Suppose a 12-node cluster has 100 TiB usable per node and is 75% full. Removing one node leaves 1,100 TiB raw capacity for roughly 900 TiB of used data, or about 82% average utilization before considering reserved space and storage types.
+Suppose a 12-node cluster has 100 TiB of configured capacity per node and is 75% full. Removing one node leaves 1,100 TiB of configured capacity for roughly 900 TiB of used data, or about 82% average utilization before considering reserved space and storage types.
 
-That arithmetic does not prove feasibility. If the removed node contains 40 TiB of `SSD` blocks and the remaining SSD tier has only 20 TiB free, aggregate `DISK` space cannot satisfy that policy. Perform the calculation per storage type and failure domain.
+That arithmetic does not prove feasibility. If decommission requires 40 TiB of new `ARCHIVE` replicas for blocks under the `COLD` policy but the remaining ARCHIVE tier has only 20 TiB free, aggregate `DISK` space cannot be used because `COLD` has no replication fallback. Perform the calculation per storage type, including each policy's replication fallbacks, and failure domain.
 
 ## Operational Checklist
 
