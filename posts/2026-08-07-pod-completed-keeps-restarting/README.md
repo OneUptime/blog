@@ -8,7 +8,7 @@ Description: Diagnose containers that exit successfully but restart forever, fix
 
 ---
 
-`Completed` does not mean Kubernetes decided that a long-running service was healthy. It means a container process terminated with exit code `0`. If the Pod has `restartPolicy: Always`—the default, and the policy used by Deployments—the kubelet starts that container again even though the exit was successful.
+`Completed` does not mean Kubernetes decided that a long-running service was healthy. It normally reports that a container process terminated with exit code `0`. If the container follows the Pod-level `restartPolicy: Always`—the default, and the only Pod-level policy allowed for Deployments—the kubelet starts that container again even though the exit was successful.
 
 That produces a confusing loop: the previous container state says `Completed`, the restart count rises, and a sufficiently fast loop may be displayed as `CrashLoopBackOff`. The right fix depends on intent. A service process must remain in the foreground. A process that is supposed to finish belongs in a Job or CronJob, not a Deployment.
 
@@ -20,16 +20,16 @@ Kubernetes reports status at two different levels:
 - A **Pod phase** is a coarse summary such as `Running`, `Succeeded`, or `Failed`. A Pod is `Succeeded` only when every container terminated successfully and none will be restarted.
 - The `STATUS` column printed by `kubectl get pods` is a human-oriented display. Values such as `Completed` and `CrashLoopBackOff` are not additional Pod phases.
 
-With `restartPolicy: Always`, an exit-zero container is eligible for restart. The Pod therefore does not settle in `Succeeded`; while the container is starting or restarting, the Pod phase can remain `Running`.
+When a container follows the Pod-level `restartPolicy: Always`, an exit-zero container is eligible for restart. The Pod therefore does not settle in `Succeeded`; while the container is starting or restarting, the Pod phase can remain `Running`.
 
-The policy table is simple:
+For a container that follows the Pod-level policy, the basic table is:
 
 | Container result | `Always` | `OnFailure` | `Never` |
 | --- | --- | --- | --- |
 | Exit code 0 | Restart | Do not restart | Do not restart |
 | Non-zero exit | Restart | Restart | Do not restart |
 
-The Pod-level default is `Always`. Native sidecars are a special case: they are restartable init containers with their own `restartPolicy: Always` and continue to restart independently of the Pod-level policy.
+The Pod-level default is `Always`. When the `ContainerRestartRules` feature gate is enabled—beta since Kubernetes v1.35 and enabled by default—application and regular init containers can set a container-level `restartPolicy` and `restartPolicyRules` that override the Pod-level behavior. Native sidecars are another special case: they are restartable init containers with their own `restartPolicy: Always` and continue to restart independently of the Pod-level policy.
 
 ## Confirm the Exit-Restart Loop
 
@@ -81,7 +81,7 @@ kubectl describe pod "$POD" -n "$NS"
 kubectl get pod "$POD" -n "$NS" --watch
 ```
 
-`--previous` is important because the current instance may have emitted nothing yet. Events show restart backoff, but the previous termination record proves whether this was a clean exit, application error, signal, OOM kill, or probe-triggered restart.
+`--previous` is important because the current instance may have emitted nothing yet. The previous termination record reports how the process ended, including its exit code, signal, and reason. Events and timestamps are still needed to attribute that termination to a failed probe or another external action.
 
 ## Find Why the Main Process Returned Zero
 
@@ -141,7 +141,7 @@ containers:
         exec /app/api serve --config=/work/config.yaml --foreground
 ```
 
-`exec` makes the server the container's process 1. That also lets normal termination signals reach the application directly. Do not “fix” the restart loop with `sleep infinity` or `tail -f /dev/null`; that only keeps an otherwise finished container alive while the real workload is absent.
+`exec` replaces the shell with the server as the container's main process. That also lets normal termination signals reach the application directly. Do not “fix” the restart loop with `sleep infinity` or `tail -f /dev/null`; that only keeps an otherwise finished container alive while the real workload is absent.
 
 Deployments, StatefulSets, and DaemonSets model continuously running workloads. Their Pod templates use `restartPolicy: Always`. Trying to turn a finite program into a service by changing that policy fights the controller's contract; change the process behavior or choose a different controller.
 
@@ -167,7 +167,7 @@ spec:
           args: ["rebuild", "--all"]
 ```
 
-A Job tracks successful completions and retries failures according to its Job policy. Job Pod templates allow `Never` or `OnFailure`, not `Always`. Use `Never` during troubleshooting so each failed Pod and its logs remain easy to inspect; the Job controller can create another Pod up to `backoffLimit`.
+A Job tracks successful completions and retries failures according to its Job policy. Job Pod templates allow `Never` or `OnFailure`, not `Always`. Use `Never` during troubleshooting so each failed Pod and its logs remain easy to inspect; the Job controller creates replacement Pods while the failure count remains below `backoffLimit`.
 
 Use a CronJob if the finite task must run on a schedule. Use a Deployment only when the program should keep serving, polling, or waiting until Kubernetes asks it to stop.
 
@@ -206,4 +206,4 @@ Confirm that restart counts stay flat, readiness becomes true, and application l
 
 ## Conclusion
 
-`Completed` is a successful process exit, not a declaration that a service should stop. Under `restartPolicy: Always`, Kubernetes correctly restarts that process and eventually backs off repeated short runs. Inspect the previous termination, effective command, and workload owner first. Keep a real service in the foreground—using `exec` when a wrapper is necessary—and move intentionally finite work to a Job or CronJob.
+`Completed` is a successful process exit, not a declaration that a service should stop. When a container follows `restartPolicy: Always`, Kubernetes correctly restarts that process and eventually backs off repeated short runs. Inspect the previous termination, effective command, and workload owner first. Keep a real service in the foreground—using `exec` when a wrapper is necessary—and move intentionally finite work to a Job or CronJob.
