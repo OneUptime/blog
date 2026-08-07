@@ -40,38 +40,13 @@
 
 ## Pods
 
-1. Kubernetes Pod Is in `CrashLoopBackOff` but Logs Are Empty: Where Did the Error Go?
-2. Why Is a Kubernetes Pod Pending When the Cluster Still Has Free CPU and Memory?
-3. Kubernetes Pod Stuck in `ContainerCreating`: How to Separate CNI, CSI, and Image Failures
-4. `ErrImagePull` vs `ImagePullBackOff`: Which Registry Failure Should You Fix First?
-5. Why Was a Pod `OOMKilled` When `kubectl top` Never Reached Its Memory Limit?
-6. `Evicted` vs `OOMKilled`: How to Tell Node Pressure from a Container Memory Limit
-7. Kubernetes Pod Stuck in `Terminating`: When Is Force Deletion Safe?
 8. Pod Is `Running` but Not `Ready`: A Probe, Sidecar, and Readiness-Gate Checklist
-9. Kubernetes Service Has No Endpoints: Checking Pod Labels, Readiness, and EndpointSlices
-10. Pod Can Reach a Service IP but Not Its DNS Name: Debugging CoreDNS and Search Domains
-11. Liveness, Readiness, or Startup Probe: What Should Each Health Check Actually Test?
-12. Why Deleting a `CrashLoopBackOff` Pod Usually Does Not Fix the Crash
 13. How to Retrieve Logs from a Restarted or Already-Deleted Kubernetes Pod
-14. How to Debug a Distroless Pod When `kubectl exec` Has No Shell or Debugging Tools
-15. CPU Requests, CPU Limits, and Memory Limits: What Actually Schedules, Throttles, or Kills a Pod?
-16. How to Shut Down Kubernetes Pods Without Dropping In-Flight Requests
 17. Why Does a Long-Running Pod Exit as `Completed` and Keep Restarting?
-18. How Do Containers in the Same Pod Share `localhost`, Volumes, and Health State?
-19. Why Did a ConfigMap or Secret Change Not Reach a Running Pod?
-20. Init Container Is Stuck or Failing: How to Debug Pod Startup Dependencies and Resource Math
 
 ## Postgres Replication
 
-1. PostgreSQL Replication Lag: When Should You Trust Bytes, LSNs, or Replay Time?
-2. Why Does PostgreSQL Replica Lag Grow While the Primary Is Idle?
 3. Read-After-Write on a PostgreSQL Replica: `remote_apply`, LSN Fencing, or Primary Reads?
-4. How to Recover from “Requested WAL Segment Has Already Been Removed” Without Guesswork
-5. PostgreSQL `pg_wal` Is Filling the Disk: Is the Cause a Slot, Archive, or Standby?
-6. Why Do PostgreSQL Writes Hang When a Synchronous Standby Goes Offline?
-7. `synchronous_commit = on` but the Standby Is Still Async: What Configuration Is Missing?
-8. Physical vs Logical PostgreSQL Replication: Which One Fits HA, Upgrades, and Selective Tables?
-9. “Canceling Statement Due to Conflict with Recovery”: How to Balance Replica Queries, Lag, and Bloat
 10. Logical Replication Stopped on a Duplicate Key: How to Find Sequence Drift and Divergent Writes
 11. PostgreSQL Logical Replication Does Not Copy DDL: In What Order Should You Deploy Schema Changes?
 12. “No Replica Identity” on UPDATE or DELETE: Primary Key, Unique Index, or `REPLICA IDENTITY FULL`?
