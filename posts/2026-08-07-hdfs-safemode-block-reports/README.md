@@ -16,12 +16,12 @@ Leaving safe mode prematurely can turn an inventory delay into incorrect recover
 
 A heartbeat tells the NameNode that a DataNode is alive. A block report tells it which block replicas exist on that DataNode's storage volumes. Those signals answer different questions, so a cluster can show many live DataNodes while the safe-block count is still too low.
 
-During startup safe mode, a block is considered safe after at least the configured minimum number of its replicas have reported. The principal controls are:
+During startup safe mode, a replicated block is considered safe after at least the configured minimum number of its replicas have reported. For an erasure-coded block group, HDFS instead requires as many reported internal blocks as the group's real data-block count. The principal controls are:
 
 - `dfs.namenode.safemode.threshold-pct`: fraction of blocks that must be safe; the current default is `0.999f`.
 - `dfs.namenode.safemode.min.datanodes`: minimum number of live DataNodes, if configured above zero.
 - `dfs.namenode.safemode.extension`: extra time to remain in safe mode after the threshold is reached; the current default is 30 seconds.
-- `dfs.namenode.safemode.replication.min`: optional safe-mode-specific minimum replication. If unset, HDFS uses `dfs.namenode.replication.min`.
+- `dfs.namenode.safemode.replication.min`: optional safe-mode-specific minimum replication for replicated blocks. If unset, HDFS uses `dfs.namenode.replication.min`.
 
 Safe mode deliberately suppresses block replication and deletion. The NameNode cannot solve an under-replication backlog while it is still collecting the inventory that tells it which replicas already exist.
 
@@ -39,9 +39,11 @@ Then inspect the NameNode web UI and log. The web UI is normally available on po
 - blocks that have reached minimum replication;
 - live DataNode count;
 - whether the threshold has been reached and only the extension remains; and
-- whether HDFS reports a metadata anomaly that requires `forceExit` rather than a normal automatic exit.
+- whether HDFS reports low NameNode resources or a metadata anomaly that requires `forceExit` rather than a normal automatic exit.
 
 Recheck the numbers after a few minutes. A steadily rising safe-block count points to slow inventory. A flat count points to absent DataNodes, rejected reports, failed volumes, or replicas that no longer exist.
+
+If the message says NameNode resources are low, address the checked NameNode storage volumes. This condition is independent of block-report progress, and the NameNode will re-enter safe mode if an administrator leaves it before the resource problem is corrected.
 
 ## Compare DataNode Liveness with Block Inventory
 
@@ -53,9 +55,9 @@ hdfs dfsadmin -report -live
 hdfs dfsadmin -report -dead
 ```
 
-For each expected DataNode, verify its hostname, transfer address, last contact, configured capacity, remaining space, failed volumes, and admin state. Common patterns include:
+For each expected DataNode, verify its hostname, transfer address, last contact, last block report, configured capacity, remaining space, and admin state. Check DataNode logs or monitoring separately for failed-volume details. Common patterns include:
 
-- **Most nodes are dead:** investigate DataNode startup, DNS, routing, TLS or Kerberos, and the NameNode service address.
+- **Most nodes are dead:** investigate DataNode startup, DNS, routing, Kerberos or RPC protection settings, and the NameNode service address.
 - **Nodes are live but capacity is missing:** the DataNode may have rejected or lost one or more `dfs.datanode.data.dir` volumes.
 - **Nodes are decommissioning or excluded:** confirm that host include/exclude files were intentional and consistent on the active NameNode.
 - **Unexpected identities appear:** check hostname resolution, multihoming configuration, and whether the daemon advertises the address the NameNode expects.
@@ -83,7 +85,7 @@ Service names vary by package, so use the unit deployed in your environment. Loo
 - full block reports taking unusually long to build or transmit; and
 - repeated registration or report rejection.
 
-Never format a DataNode as a troubleshooting shortcut. Formatting or replacing its storage metadata can make valid replicas invisible and permanently reduce the safe-block count.
+Never delete or reinitialize a DataNode's storage directories as a troubleshooting shortcut. Doing so can destroy valid replicas and permanently reduce the safe-block count.
 
 ## Trigger a Report Only After Fixing the Cause
 
@@ -120,11 +122,11 @@ hdfs dfsadmin -metasave safemode-2026-08-07.txt
 
 The file can help identify under-replicated blocks and DataNodes awaiting decommission, but handle it as operational metadata and avoid publishing it indiscriminately.
 
-## Distinguish Three Safe-Mode Cases
+## Distinguish Startup, Manual, and Force-Exit Cases
 
 ### Normal startup safe mode
 
-The safe-block percentage rises, reaches its threshold, the extension elapses, and HDFS exits automatically. The fix is usually to restore missing DataNodes or let their full reports finish.
+The safe-block percentage rises, reaches its threshold, the extension elapses, and HDFS exits automatically. The fix is usually to restore missing DataNodes or let their full reports finish. If the threshold cannot be met because replicas are confirmed lost, `hdfs dfsadmin -safemode leave` is the normal manual exit after the loss and resulting reconstruction work are understood; `forceExit` is not required unless the NameNode reports the specific metadata anomaly described below.
 
 ### Manually entered safe mode
 
@@ -153,11 +155,11 @@ Use this order during an incident:
 1. Confirm that the client is talking to the intended nameservice and active NameNode.
 2. Capture the exact safe-mode status and whether its counts are moving.
 3. Compare expected, live, dead, excluded, and decommissioning DataNodes.
-4. Repair DataNode storage, identity, authentication, or network failures.
+4. Repair NameNode storage-resource pressure or DataNode storage, identity, authentication, or network failures.
 5. Trigger full reports only on repaired, registered DataNodes.
 6. Inspect missing blocks and recent infrastructure changes.
 7. Let normal startup safe mode exit automatically when its conditions are met.
-8. Use `leave` only for a known manual entry, and `forceExit` only for a documented anomaly with understood data-loss consequences.
+8. Use `leave` for a known manual entry or a fully diagnosed startup case whose thresholds cannot be met, and `forceExit` only for a documented anomaly with understood data-loss consequences.
 
 ## Official Documentation
 
