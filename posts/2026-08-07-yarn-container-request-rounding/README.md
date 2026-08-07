@@ -151,7 +151,7 @@ remaining = 4 GiB
 
 That 4 GiB can run smaller work, but not another 5 GiB container. If every pending request is 5 GiB, the scheduler displays free memory while the job waits.
 
-Now add CPU. If each container requests 1 vCore and the node advertises only 4 vCores, CPU limits concurrency to four even if memory could fit more. Conversely, an 8 GiB, 8-vCore node cannot place an 8 GiB request needing 9 vCores. YARN schedules a resource vector, not memory independently.
+Now add CPU. Whether CPU constrains placement depends on the scheduler's resource policy or calculator. For example, with Capacity Scheduler configured to use `DominantResourceCalculator`, if each container requests 1 vCore and the node advertises only 4 vCores, CPU limits concurrency to four even if memory could fit more. Conversely, under multidimensional scheduling, an 8 GiB, 8-vCore node cannot place an 8 GiB request needing 9 vCores. Capacity Scheduler's default `DefaultResourceCalculator` uses only memory for resource comparisons, so do not assume advertised vCores cap container concurrency without checking the active configuration. YARN represents a resource vector, but the scheduler configuration determines which dimensions affect placement.
 
 Node labels, placement constraints, queues, user limits, custom resources such as GPUs, and locality further reduce the eligible pool. Do not call all unallocated memory “rounding loss” until these constraints are separated.
 
@@ -197,7 +197,7 @@ For Capacity Scheduler, inspect per-queue settings such as:
 
 The queue maximum must be no greater than the cluster maximum. A job can therefore pass its framework validation but be rejected under the queue's applicable resource ceiling.
 
-Also compare `yarn.nodemanager.resource.memory-mb` and `.cpu-vcores` across node classes. Scheduler settings determine allowed request shapes; NodeManager advertisements determine where those shapes can actually fit.
+Also compare `yarn.nodemanager.resource.memory-mb` and `.cpu-vcores` across node classes. Scheduler settings determine allowed request shapes; for resource dimensions considered by the active scheduler, NodeManager advertisements determine where those shapes can actually fit.
 
 When changing resource boundaries:
 
