@@ -14,13 +14,13 @@ Do not start by resetting a sequence or skipping an LSN. First identify the exac
 
 ## Understand What the Error Proves
 
-Logical replication applies row changes on the subscriber much like normal DML. PostgreSQL 18 classifies a unique violation from an incoming insert as `insert_exists` and one from an incoming update as `update_exists`. An error-producing conflict stops replication and must be resolved manually.
+Logical replication applies row changes on the subscriber much like normal DML. PostgreSQL 18 classifies a violation of one `NOT DEFERRABLE` unique constraint by an incoming insert as `insert_exists` and by an incoming update as `update_exists`; a row that violates multiple such constraints is classified as `multiple_unique_conflicts`. An error-producing conflict stops replication and must be resolved manually.
 
 The conflict proves that the incoming row cannot satisfy the subscriber's current unique constraints. It does **not** by itself prove which copy is correct or how the divergence began. Possible causes include:
 
 - an application, administrator, or maintenance job wrote directly to a subscriber;
 - a promoted subscriber accepted writes and was later reattached without reconciliation;
-- two publications write overlapping key spaces into one table;
+- two subscriptions apply changes from publishers with overlapping key spaces into one table;
 - seed data or a restore pre-populated the subscriber;
 - the subscriber has an extra unique constraint not present on the publisher;
 - a local sequence generated an ID already used, or soon to be used, by the publisher;
@@ -46,7 +46,12 @@ SELECT subname,
        subskiplsn,
        subpublications
 FROM pg_subscription
-WHERE subname = 'orders_sub';
+WHERE subname = 'orders_sub'
+  AND subdbid = (
+      SELECT oid
+      FROM pg_database
+      WHERE datname = current_database()
+  );
 
 SELECT subname,
        worker_type,
@@ -71,7 +76,7 @@ FROM pg_stat_subscription_stats
 WHERE subname = 'orders_sub';
 ```
 
-These are cumulative counters, not the complete incident record. Preserve the subscriber's PostgreSQL server log. Current releases log the relation, conflict type, key, existing local row, remote row, replication origin, and transaction finish LSN when that information is available. A representative message is:
+These are cumulative counters, not the complete incident record. Preserve the subscriber's PostgreSQL server log. PostgreSQL 18 logs the relation, conflict type, key, existing local row, remote row, replication origin, and transaction finish LSN when that information is available. A representative message is:
 
 ```text
 ERROR:  conflict detected on relation "public.orders": conflict=insert_exists
@@ -197,7 +202,7 @@ If conflicts recur across many rows, a one-row repair is probably hiding broader
 
 ## Repair the Sequence Only After Rows Converge
 
-If this subscriber may accept writes during a future promotion, synchronize sequences during the controlled cutover after the old writer is fenced and replicated rows are caught up. For the common positive increment-by-one sequence:
+If this subscriber may accept writes during a future promotion, synchronize sequences during the controlled cutover after the old writer is fenced and replicated rows are caught up. For the common sequence that starts at 1 and increments by 1:
 
 ```sql
 BEGIN;
@@ -215,7 +220,7 @@ COMMIT;
 
 For a non-empty table, `is_called = true` means the next `nextval()` advances beyond the maximum. For an empty table, `setval(..., 1, false)` makes the next value exactly 1. Avoid the common off-by-one mistake of setting `max(id) + 1` with `is_called = true`, which makes the following default sequence value `max(id) + 2`.
 
-Adapt this procedure for descending sequences, custom increments, cycling, or allocated key ranges. Stop all writers while calculating and setting the value. PostgreSQL documents that `setval` changes are immediately visible and are not undone if the surrounding transaction rolls back, so inspect first and make the `setval` operation the final controlled change.
+Adapt this procedure for custom start or minimum values, descending sequences, custom increments, cycling, or allocated key ranges. Stop all writers while calculating and setting the value. PostgreSQL documents that `setval` changes are immediately visible and are not undone if the surrounding transaction rolls back, so inspect first and make the `setval` operation the final controlled change.
 
 Resetting the sequence cannot resolve the current apply error: the conflicting subscriber row still exists. It only prevents the same source of collision from generating future rows.
 
