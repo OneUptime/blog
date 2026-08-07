@@ -17,7 +17,6 @@
 
 ## Apache Hadoop
 
-4. The SecondaryNameNode Is Not a Standby: Designing Real HDFS NameNode High Availability
 5. How JournalNodes, ZKFC, and Fencing Prevent Split Brain in HDFS HA
 6. HDFS Federation vs High Availability: Namespace Scale and Failover Solve Different Problems
 7. The HDFS Small-Files Problem: NameNode Heap, Mapper Startup, and Practical Compaction Options
