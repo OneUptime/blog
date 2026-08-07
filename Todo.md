@@ -17,7 +17,6 @@
 
 ## Apache Hadoop
 
-20. When Speculative Execution Helps Hadoop—and When Duplicate Side Effects Make It Dangerous
 
 ## Pods
 
