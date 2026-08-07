@@ -17,7 +17,6 @@
 
 ## Apache Hadoop
 
-8. Sizing NameNode Heap from File, Directory, and Block Counts Instead of Raw HDFS Capacity
 9. Choosing an HDFS Block Size for Splittable, Unsplittable, and Compressed Inputs
 10. What Happens to Existing Files When You Change `dfs.blocksize`?
 11. How to Decommission an HDFS DataNode Without Losing Replicas or Stranding Under-Replicated Blocks
