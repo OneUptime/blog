@@ -38,7 +38,7 @@ kubectl get pod checkout-7b8f9d6c5-x4k2m -n production \
 The important built-in conditions are:
 
 - `PodScheduled`: a node was selected.
-- `PodReadyToStartContainers`: sandbox creation and networking completed.
+- `PodReadyToStartContainers`: sandbox creation and networking completed (when the feature gate is enabled, as it is by default).
 - `Initialized`: regular init containers completed.
 - `ContainersReady`: all containers whose readiness contributes are ready.
 - `Ready`: containers are ready **and** every custom readiness gate is true.
@@ -223,7 +223,7 @@ kubectl get endpointslice -n production \
   -l kubernetes.io/service-name=checkout -o yaml
 ```
 
-For Pod-backed endpoints, EndpointSlice readiness reflects Pod readiness. Look at each endpoint's `conditions.ready`, `conditions.serving`, and `conditions.terminating`. A normal Service does not route regular traffic to an unready Pod.
+For Pod-backed endpoints, `conditions.serving` reflects Pod readiness. `conditions.ready` normally means that the endpoint is serving and not terminating, except that it is always true when the Service sets `publishNotReadyAddresses: true`. Look at each endpoint's `conditions.ready`, `conditions.serving`, and `conditions.terminating`. A normal Service does not route regular traffic to an unready Pod.
 
 `publishNotReadyAddresses: true` changes this behavior for discovery use cases such as clustered systems that must find peers before becoming ready. It is not a general workaround for a broken readiness probe; it can deliberately send traffic to unready backends.
 
