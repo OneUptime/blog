@@ -58,7 +58,7 @@ hdfs oiv -i fsimage_0000000001234567890 \
   -o file-distribution.txt -p FileDistribution -format
 ```
 
-Delimited output can support per-owner, depth, file-size, and feature analysis:
+Delimited output can support per-owner, path-depth, file-size, block-count, and quota analysis:
 
 ```bash
 hdfs oiv -i fsimage_0000000001234567890 \
@@ -122,11 +122,11 @@ For each object type, forecast a growth rate and horizon:
 
 ```text
 future_files = current_files
-             + files_created_per_day × retention_days
-             - files_compacted_or_deleted
+             + files_created_per_day × forecast_horizon_days
+             - files_compacted_or_deleted_during_horizon
 ```
 
-Do the same for directories and blocks. For ordinary replicated files with a uniform preferred block size, block growth depends on file-size distribution and block size, not just aggregate bytes:
+Do the same for directories and blocks. For closed replicated files with full non-final blocks and a uniform preferred block size, block growth depends on file-size distribution and block size, not just aggregate bytes:
 
 ```text
 blocks_for_file = ceiling(file_length / preferred_block_size)

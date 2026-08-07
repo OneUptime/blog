@@ -91,7 +91,7 @@ hdfs zkfc -formatZK
 
 This is an initialization action, not a routine restart command. Use the non-interactive and force options only with a clear understanding of existing HA state.
 
-Monitor ZKFC as its own daemon. A healthy NameNode with a dead ZKFC can serve normally now but may not fail over automatically later.
+Monitor ZKFC as its own daemon. If a standby-side ZKFC dies, that NameNode cannot participate in automatic failover until ZKFC is restored. If the active-side ZKFC dies long enough for its ZooKeeper session to expire, the election lock disappears and another ZKFC may initiate failover and fence the still-running active.
 
 ## Fencing Neutralizes the Old Active
 
@@ -105,9 +105,13 @@ Journal fencing prevents the old NameNode from committing edits, but the officia
   <value>sshfence
 shell(/opt/hdfs/bin/fence-host.sh $target_host)</value>
 </property>
+<property>
+  <name>dfs.ha.fencing.ssh.private-key-files</name>
+  <value>/home/hdfs/.ssh/id_rsa</value>
+</property>
 ```
 
-The methods are tried in order until one returns success. A successful return must mean the target is truly neutralized. A script that exits zero after merely submitting an asynchronous power-off request is not a reliable fence.
+`sshfence` requires passwordless SSH using the configured private key. The methods are tried in order until one returns success. A successful return must mean the target is truly neutralized. A script that exits zero after merely submitting an asynchronous power-off request is not a reliable fence.
 
 Design fencing around failure independence:
 
@@ -127,13 +131,13 @@ hdfs haadmin -transitionToStandby nn1
 hdfs haadmin -transitionToActive nn2
 ```
 
-They do not perform fencing. The official guide says they should rarely be used. Prefer the coordinated operation:
+They do not perform fencing. With automatic failover enabled, Hadoop rejects these direct transitions unless the dangerous `--forcemanual` override is supplied. The official guide says they should rarely be used. Prefer the coordinated operation:
 
 ```bash
 hdfs haadmin -failover nn1 nn2
 ```
 
-It first tries a graceful demotion. If that fails, it runs configured fencing and promotes the target only after fencing succeeds. With automatic failover enabled, use documented coordinated procedures rather than forcing manual state.
+With automatic failover disabled, HAAdmin first tries a graceful demotion. If that fails, it runs configured fencing and promotes the target only after fencing succeeds. With automatic failover enabled, the same command asks the target ZKFC to coordinate a graceful failover. In either mode, use the coordinated operation rather than forcing direct state transitions.
 
 ## Failure Behavior by Component
 
@@ -145,7 +149,8 @@ It first tries a graceful demotion. If that fails, it runs configured fencing an
 | ZooKeeper majority is lost | Existing HDFS service can continue, but no automatic failover occurs |
 | Active NameNode crashes | Its ZK session expires; healthy peer can win election and promote |
 | Active is network-partitioned | Election plus fencing must neutralize stale service before promotion |
-| ZKFC dies | Local NameNode may keep serving, but automatic failover readiness is degraded |
+| Active-side ZKFC dies | After its ZooKeeper session expires, another ZKFC may initiate failover and fence the still-running active |
+| Standby-side ZKFC dies | That NameNode cannot participate in automatic failover until its ZKFC is restored |
 | Standby stops tailing edits | Do not promote it until health and synchronization are restored |
 
 ## Validate the Configuration Before a Crisis
@@ -157,6 +162,8 @@ hdfs haadmin -getAllServiceState
 hdfs haadmin -checkHealth nn1
 hdfs haadmin -checkHealth nn2
 ```
+
+As of Hadoop 3.5.0, the official guide notes that `-checkHealth` is not yet implemented beyond returning failure when the NameNode is completely down. Do not treat a zero exit code as a comprehensive health check.
 
 Then perform controlled tests in a non-production environment and an approved production exercise:
 
