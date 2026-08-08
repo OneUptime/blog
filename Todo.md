@@ -29,7 +29,6 @@
 
 ## ESXi
 
-8. How Much Free Datastore Space Does ESXi Need to Consolidate a Snapshot?
 9. ESXi Snapshots vs Backups: What Can Each One Actually Recover?
 10. How Long Should You Keep an ESXi Snapshot Before It Becomes a Risk?
 11. ESXi Datastore Disappeared After a Firmware Update: Driver, HCL, and LUN Checks
