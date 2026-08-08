@@ -29,7 +29,6 @@
 
 ## ESXi
 
-1. ESXi Datastore Is Full: How to Find Hidden Snapshots, Swap Files, ISOs, and Orphaned VMDKs
 2. Why Does ESXi Show More Provisioned Space Than Your VMs Actually Use?
 3. How to Fix “Virtual Machine Disks Consolidation Is Needed” Without Damaging the Snapshot Chain
 4. ESXi VM Won’t Power On: How to Troubleshoot “Failed to Lock the File”
