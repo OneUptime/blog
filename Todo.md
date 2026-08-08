@@ -29,7 +29,6 @@
 
 ## ESXi
 
-15. ESXi Purple Screen of Death: What Evidence to Capture Before Rebooting
 16. How to Upgrade a Standalone ESXi Host When Every VM Is Stored Locally
 17. How to Move an ESXi VM Between Isolated Hosts Without vMotion
 18. ESXi Boot Device Is Failing: How to Migrate from USB or SD to Persistent Storage
