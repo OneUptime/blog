@@ -21,6 +21,7 @@ type User {
   required email: str {
     constraint exclusive;
   };
+  display_name: str;
   multi posts := .<author[is Post];
 }
 
@@ -60,7 +61,7 @@ SELECT u.id AS user_id,
        t.id AS tag_id,
        t.name AS tag_name
 FROM app_user AS u
-JOIN post AS p ON p.author_id = u.id
+LEFT JOIN post AS p ON p.author_id = u.id
 LEFT JOIN post_tag AS pt ON pt.post_id = p.id
 LEFT JOIN tag AS t ON t.id = pt.tag_id
 WHERE u.email = $1
@@ -74,17 +75,15 @@ The result is flat. An author and post repeat for every tag. An application must
 In EdgeQL, a dot path follows links and properties:
 
 ```edgeql
-select User.posts.tags.name
-filter User.email = <str>$email;
+select (select User filter .email = <str>$email).posts.tags.name;
 ```
 
-That expression reads from left to right: select users, follow their `posts` link, follow each post's `tags`, and return tag names. Each component is resolved against the schema.
+That expression reads from left to right: select matching users, follow their `posts` link, follow each post's `tags`, and return tag names. Each component is resolved against the schema.
 
-Paths are set-oriented. If a user has three posts and their tags produce five reachable tag objects, the path produces the corresponding set of names. EdgeQL sets are formally multisets, so use `distinct` when the desired business result is unique values:
+Paths are set-oriented. If a user has three posts and their tags produce five distinct reachable tag objects, the path produces the corresponding set of names. Object paths contain unique reachable objects, and `Tag.name` is exclusive in this schema, so those names are already unique. Scalar results can otherwise contain duplicates because EdgeQL sets are formally multisets; for example, use `distinct` to return unique post titles:
 
 ```edgeql
-select distinct User.posts.tags.name
-filter User.email = <str>$email;
+select distinct (select User filter .email = <str>$email).posts.title;
 ```
 
 This is not an N+1 loop. It is one declarative database query that Gel compiles and plans.
@@ -126,7 +125,7 @@ This keeps derived values in the same typed query result instead of requiring a 
 
 ## Cardinality Is Checked During Query Compilation
 
-Gel tracks ranges such as empty, exactly one, zero or one, one or more, and many. This allows it to reject an expression that cannot satisfy a required single link.
+Gel tracks ranges such as empty, exactly one, zero or one, one or more, and many. This allows it to reject an expression that may return more than one value for a single link; an empty value for a required link is rejected at runtime.
 
 Suppose `email` is exclusive. This link assignment is statically known to return at most one user:
 
@@ -180,7 +179,7 @@ select Post
 filter (.subtitle ?? '') != 'retired';
 ```
 
-For equality that should be false rather than empty when one side is absent, EdgeQL provides coalescing comparison operators such as `?=`:
+For equality that should always produce a boolean, EdgeQL provides coalescing comparison operators such as `?=`. It returns `true` when both operands are empty, `false` when exactly one is empty, and otherwise behaves like `=`:
 
 ```edgeql
 select Post
