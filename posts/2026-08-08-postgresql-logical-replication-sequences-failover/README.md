@@ -8,7 +8,7 @@ Description: Inventory, fence, and advance PostgreSQL sequences before promoting
 
 ---
 
-PostgreSQL logical replication sends the value stored in a `serial` or identity column, but it does not replicate the state of the sequence that generated that value. A read-only subscriber can therefore contain order ID 94000 while its local `orders_id_seq` is still near 1. Reads are correct. The first local insert after failover may not be.
+PostgreSQL logical replication sends the value stored in a `serial` or identity column, but it does not continuously replicate changes to the state of the sequence that generated that value. A read-only subscriber can therefore contain order ID 94000 while its local `orders_id_seq` is still near 1. Reads are correct. The first local insert after failover may not be.
 
 Sequence preparation belongs in every logical switchover and failover runbook. The safe process is to fence the old writer, let table changes catch up, inventory every sequence, set the new writer's next values from authoritative evidence, and only then enable application writes.
 
@@ -27,7 +27,7 @@ CREATE TABLE public.orders (
 There are two different pieces of state:
 
 - `orders.id` values are ordinary table data and are logically replicated.
-- The backing sequence's current value and `is_called` state belong to a sequence object and are not logically replicated.
+- The backing sequence's current value and `is_called` state belong to a sequence object and are not continuously replicated with table changes.
 
 Logical apply inserts the publisher's row value. It does not need to call the subscriber's `nextval()` to reproduce that ID. That is why replication can be healthy while the local sequence falls far behind.
 
@@ -55,7 +55,7 @@ SELECT n.nspname AS table_schema,
 FROM pg_class AS c
 JOIN pg_namespace AS n ON n.oid = c.relnamespace
 JOIN pg_attribute AS a ON a.attrelid = c.oid
-WHERE c.relkind IN ('r', 'p')
+WHERE c.relkind IN ('r', 'p', 'f', 'v')
   AND a.attnum > 0
   AND NOT a.attisdropped
   AND pg_get_serial_sequence(
@@ -66,7 +66,7 @@ WHERE c.relkind IN ('r', 'p')
 ORDER BY n.nspname, c.relname, a.attnum;
 ```
 
-This catches sequences owned by table columns. It does not find every free-standing sequence called explicitly from a function, trigger, expression, or application. Review all sequence objects as well:
+This catches sequences owned by columns of ordinary, partitioned, and foreign tables, as well as views. It does not find every free-standing sequence called explicitly from a function, trigger, expression, or application. Review all sequence objects as well:
 
 ```sql
 SELECT schemaname,
@@ -106,6 +106,8 @@ SELECT setval(
 
 Between the `max(id)` scan and `setval`, another session can allocate or insert a value. A session may also hold cached values. A free-standing sequence might be shared by multiple tables, so one table's maximum is incomplete. Finally, `setval` changes are immediately visible and are not undone if the surrounding transaction rolls back.
 
+Any boundary scan used as evidence must run with full-row visibility. Row-level security can otherwise hide rows and yield an unsafe maximum.
+
 The computation must happen after write fencing, not as an online housekeeping task.
 
 ## Planned Switchover Runbook
@@ -120,24 +122,40 @@ Capture a final publisher WAL position after the last committed application writ
 SELECT pg_current_wal_insert_lsn() AS final_publisher_lsn;
 ```
 
-Logical replication progress uses publisher LSNs, but compare them through subscription state and your tested cutover procedure. Do not compare unrelated local WAL positions from two independent clusters.
+Logical replication progress uses publisher LSNs, but receive-side fields do not by themselves prove apply. Use the boundary through your tested cutover procedure, and do not compare unrelated local WAL positions from two independent clusters.
 
 ### 2. Wait for the Subscription to Apply the Fence
 
-On the subscriber:
+On the subscriber, inspect the main apply worker's receive-side telemetry:
 
 ```sql
 SELECT subname,
-       worker_type,
        received_lsn,
        latest_end_lsn,
        latest_end_time,
        last_msg_receipt_time
 FROM pg_stat_subscription
-WHERE subname = 'orders_sub';
+WHERE subname = 'orders_sub'
+  AND relid IS NULL
+  AND received_lsn IS NOT NULL;
 ```
 
-Also verify the business rows written immediately before the fence. An LSN field alone does not prove that every expected table is in the publication, that apply did not hit a conflict, or that the schema is correct.
+`received_lsn` is the last WAL location received, while `latest_end_lsn` is the last WAL location reported to the origin WAL sender. Neither field is an apply-completion position.
+
+Before relying on a sentinel, verify that every known subscribed relation is ready:
+
+```sql
+SELECT r.srrelid::regclass AS relation,
+       r.srsubstate
+FROM pg_subscription_rel AS r
+JOIN pg_subscription AS s ON s.oid = r.srsubid
+WHERE s.subname = 'orders_sub'
+  AND r.srsubstate <> 'r';
+```
+
+This query must return no rows. Initial table synchronization uses separate workers, so a sentinel on one ready table cannot prove that another table still being copied is caught up.
+
+Make the final committed application write a uniquely identifiable sentinel included in the publication and passing any row filter, and wait until that exact row is visible on the subscriber. Repeat the check for every subscription. Logical apply preserves transactional order within a subscription, so this proves that the apply stream has advanced past every earlier published transaction in that subscription. It still does not prove that every expected table is in the publication, that a row filter omitted nothing, that no transaction or individual change was skipped because of a conflict, or that the schema is correct.
 
 Once caught up, disable the subscription if the cutover design requires the former subscriber to become an independent writer:
 
@@ -168,7 +186,7 @@ SELECT last_value, is_called
 FROM public.orders_id_seq;
 ```
 
-The next value should be greater than every ID that must never be reused. A conservative standard-sequence bound considers at least the publisher's final sequence state, the subscriber's table maximum, and any IDs reserved outside the database.
+The next value should be greater than every ID that must never be reused. A conservative standard-sequence bound considers at least the publisher's final sequence state, the subscriber's current sequence state, the subscriber's table maximum, and any IDs reserved outside the database.
 
 Do not blindly add one to a descending sequence or one whose `increment_by` is not 1. Do not infer safety from table maximum when sequence numbers are used before an insert and exposed to external systems. Define the allocation policy for those values explicitly.
 
@@ -191,17 +209,17 @@ COMMIT;
 
 The write fence is still essential. A sequence can be called directly without inserting into the table, and a sequence shared by multiple tables is not protected by locking only one table.
 
-An equivalent `setval` pattern for a non-empty, standard sequence is:
+An equivalent `setval` pattern for a non-empty, standard sequence, provided no other backend holds preallocated values, is:
 
 ```sql
 SELECT setval('public.orders_id_seq', 94217, true);
 ```
 
-With `is_called = true`, the following `nextval()` advances before returning. With `is_called = false`, it returns exactly the value passed to `setval`. Prefer one documented convention in the runbook and test empty tables so an off-by-one error does not become the first production collision.
+With `is_called = true`, the following `nextval()` advances before returning. With `is_called = false`, it returns exactly the value passed to `setval`. `setval` does not make other sessions discard preallocated values, so use it only after recycling those sessions or proving that they have no cached values. Prefer one documented convention in the runbook and test empty tables so an off-by-one error does not become the first production collision.
 
 ### 5. Verify Before Opening Writes
 
-Do not consume a production ID merely to inspect it. `currval()` is session-local and errors in a session that has not called `nextval()`. Instead, verify recorded state and then run a controlled insert that can remain as a canary or be rolled back with full awareness that its sequence value will still be consumed:
+Do not consume a production ID merely to inspect it. `currval()` is session-local, is not reset by `ALTER SEQUENCE`, and errors unless that session has called `nextval()` or a successful `setval()` with `is_called = true` for the sequence. Instead, verify recorded state and then run a controlled insert that can remain as a canary or be rolled back with full awareness that its sequence value will still be consumed:
 
 ```sql
 BEGIN;
@@ -219,7 +237,7 @@ Repeat the process for every owned and free-standing sequence, then switch appli
 
 ## Emergency Failover Has a Different Limit
 
-If the publisher is unavailable, its final sequence state may be unknowable. Start from the subscriber's maximum replicated values, known external allocations, reserved key ranges, and an explicit safety margin appropriate to the key space:
+If the publisher is unavailable, its final sequence state may be unknowable. Start from the subscriber's maximum replicated values and local sequence state, known external allocations, reserved key ranges, and an explicit safety margin appropriate to the key space:
 
 ```sql
 SELECT max(id) AS max_replayed_id
