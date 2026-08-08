@@ -24,6 +24,8 @@ Common evidence includes:
 - image extraction or update failures involving OSData; and
 - SD, USB, RAID, or controller health alarms from the server's management controller.
 
+These messages are not diagnostic by themselves. For example, the persistent-storage warning can indicate a USB- or SD-only layout with no persistent OSData device, and the boot errors can also result from bad installer media, incompatible firmware, or unsupported hardware. Correlate them with device health, controller health, and logs.
+
 Do not keep rebooting to test a deteriorating device. If the host is running and manageable, use the remaining session to evacuate workloads or shut them down cleanly, collect inventory, and obtain a configuration bundle. If storage-controller errors implicate more than the boot medium, pause and involve the server vendor before assuming that only a USB stick has failed.
 
 Broadcom's current guidance still describes supported USB and SD cases for previously certified systems through current product releases, but recommends persistent boot and OSData media. The operational concern is reliability and endurance, not merely whether the installer accepts the device.
@@ -38,6 +40,8 @@ esxcli storage core device list
 esxcli storage filesystem list
 esxcli system syslog config get
 esxcli system coredump partition get
+esxcli system coredump file get
+esxcli system coredump network get
 ls -ld /bootbank /altbootbank
 ```
 
@@ -51,7 +55,7 @@ Record:
 - TPM, Secure Boot, encryption, vSAN, NSX, and DPU state; and
 - boot order and controller mode from the firmware interface.
 
-Do not infer disk identity from `naa` ordering or displayed size alone. Capture serial numbers and use the vendor controller inventory. A replacement install that targets the VMFS disk instead of the failed boot disk causes data loss.
+Do not infer disk identity from `naa` ordering or displayed size alone. Capture serial numbers and use the vendor controller inventory. A replacement install that targets the VMFS disk instead of the failed boot disk can cause data loss.
 
 If the host reports bootbank loss plus SCSI device timeouts, Broadcom says the underlying cause can be the drive, RAID configuration, controller, or backplane. Run vendor offline diagnostics during the maintenance window and preserve their logs.
 
@@ -74,7 +78,7 @@ vim-cmd hostsvc/firmware/backup_config
 
 Download the generated `configBundle-HostName.tgz` to independent storage. Also export or document standard-switch networking, VMkernel adapters, DNS, NTP, syslog, licenses, certificates, users, storage presentation, multipathing, advanced settings, and any vendor agents.
 
-Broadcom requires the destination ESXi build to match the build that created the bundle, and ordinarily requires the same host UUID. TPM-protected configuration can prevent a forced restore on changed hardware. Do not assume the bundle can be restored to an arbitrary replacement server or a different patch level. Keep a human-readable build sheet so the host can be rebuilt when bundle restoration is not appropriate.
+Broadcom requires the destination ESXi build to match the build that created the bundle, and ordinarily requires the same host UUID. TPM-protected configuration can prevent a forced restore on changed hardware. The configuration backup and restore workflow is not supported for Distributed Services Engine hosts with DPUs and does not apply to Auto Deploy hosts. Do not assume the bundle can be restored to an arbitrary replacement server or a different patch level. Keep a human-readable build sheet so the host can be rebuilt when bundle restoration is not appropriate.
 
 ## Select a Supported Persistent Device
 
@@ -82,7 +86,7 @@ Check the Broadcom Compatibility Guide and server vendor matrix for the exact se
 
 Broadcom's revised boot guidance recommends a native SATA, SAS, or PCIe NVMe SSD that meets the documented endurance requirements, or an HDD. It cautions that a device reached through a USB conversion does not become a supported native NVMe or SAS boot device.
 
-For ESXi 8.x, Broadcom documents 32 GB as the minimum boot-device size and recommends 128 GB. Its fresh-install KB states that ESXi 8 requires at least 32 GB of persistent HDD, SSD, or NVMe storage and that a boot device must not be shared between ESXi hosts. For ESX 9.x, current guidance raises the minimum to 128 GB. Confirm the exact target release because layout options and minimums change.
+For ESXi 8.x, Broadcom documents 32 GB as the minimum boot-device size and recommends 128 GB. Its fresh-install KB states that ESXi 8 requires at least 32 GB of persistent HDD, SSD, or NVMe storage and that a boot device must not be shared between ESXi hosts. For ESX 9.x, the revised boot guidance lists 128 GB as the minimum for the all-in-one persistent boot and system-storage design. Confirm the exact target release because layout options and minimums change.
 
 Capacity is not the only criterion. Check endurance, performance, redundancy, monitoring, replaceability, controller support, and whether the server can boot it in the required firmware mode.
 
@@ -92,7 +96,7 @@ The cleanest long-term design places bootbanks and ESX-OSData on the new persist
 
 Broadcom also documents a design where USB or SD retains bootbanks and a separate persistent device stores ESX-OSData. That can be valid for certified existing hardware, but it does not solve a boot medium that is already failing. It also leaves two devices to manage. Use this design only when the platform and release documentation explicitly support it.
 
-Do not manually create or move VMFS-L partitions with generic partitioning tools. Broadcom documents automatic selection and installer or upgrade behavior for OSData. The `autoPartition=TRUE` remedy in its persistent-storage warning applies to its described workflow and can initialize a device. It is not a harmless discovery option and must never be aimed at a disk containing needed VMFS data.
+Do not manually create or move VMFS-L partitions with generic partitioning tools. Broadcom documents automatic selection and installer or upgrade behavior for OSData. On ESXi 7.x and 8.x, the `autoPartition=TRUE` remedy in its persistent-storage warning automatically partitions unused local storage devices; it is not a discovery or device-targeting option, and it does not apply to ESX 9.x. Do not enable it until every exposed local device has been identified and any needed data protected.
 
 ## Build the Recovery Package Before Shutdown
 
@@ -113,11 +117,11 @@ If the plan also upgrades ESXi, separate the goals where practical. Reinstalling
 
 Stop application traffic and shut down or evacuate all VMs. Confirm no backup, replication, snapshot, consolidation, update, or datastore operation remains active. Enter maintenance mode if host management is still functional.
 
-Use the server vendor's replacement procedure. Label every device and preserve the failed medium without modifying it. Do not raw-clone the old USB or SD card as the production migration method: a block copy can reproduce corruption, an obsolete partition layout, device identifiers, and unreadable sectors without providing a supported recovery state.
+Use the server vendor's replacement procedure. Label every device and preserve the failed medium without modifying it. Do not raw-clone the old USB or SD card as the production migration method: a block copy can reproduce corruption, an obsolete partition layout, and device identifiers, and it can fail or produce an incomplete copy when source sectors are unreadable, without providing a supported recovery state.
 
 Boot the approved installer through out-of-band media. At disk selection, match the intended new persistent device by vendor inventory and capacity. If the device also contains a VMFS datastore, the installer presents materially different choices:
 
-- **Install ESXi, preserve VMFS datastore** keeps VMFS but replaces host configuration;
+- **Install ESXi, preserve VMFS datastore** keeps the VMFS datastore selected for preservation but replaces host configuration; on ESXi 7.x disks with multiple VMFS partitions, Broadcom documents that only the first VMFS partition is preserved, so verify the partition layout and keep external backups;
 - **Upgrade ESXi, preserve VMFS datastore** applies only when a compatible installation is detected; and
 - **Install ESXi, overwrite VMFS datastore** erases VMFS data.
 
@@ -127,7 +131,7 @@ Broadcom warns that failing to choose a preserve-VMFS option clears both ESXi an
 
 After the fresh host boots, verify the ESXi build, boot mode, new device, system-storage layout, scratch, syslog, and coredump before adding workloads. Confirm `/bootbank` and `/altbootbank` resolve normally and the hardware controller reports healthy media.
 
-Restore the configuration bundle only when Broadcom's build, UUID, TPM, and platform requirements are satisfied. The documented restore enters maintenance mode and reboots the host. Treat it as a change with console access, not as a live troubleshooting command.
+Restore the configuration bundle only when Broadcom's build, UUID, TPM, and platform requirements are satisfied. The documented restore workflow requires placing the host in maintenance mode and rebooting it before the restore; the restore command then initiates another automatic reboot. Treat it as a change with console access, not as a live troubleshooting command.
 
 When requirements do not match, reconfigure the host from the build sheet through supported UI or API workflows. Recreate management networking first, then storage, VMkernel services, standard switches, time, logging, access, licensing, and integrations. A configuration restore does not re-register VMs; use Datastore Browser to register intact `.vmx` files if necessary.
 
@@ -143,7 +147,7 @@ Keep the host in maintenance mode while checking:
 - management, storage, vMotion, vSAN, and workload networks behave as designed; and
 - no old removable boot device remains first in the firmware boot order.
 
-Start one low-risk workload and test console, guest network, storage I/O, time, monitoring, and backup. Then restore service in dependency order. Retain the failed device, configuration bundle, installer, and external VM backups through the observation period.
+Exit maintenance mode, start one low-risk workload, and test console, guest network, storage I/O, time, monitoring, and backup. Then restore service in dependency order. Retain the failed device, configuration bundle, installer, and external VM backups through the observation period.
 
 ## Official Documentation
 
