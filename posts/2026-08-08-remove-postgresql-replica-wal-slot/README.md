@@ -8,7 +8,7 @@ Description: Decommission physical and logical PostgreSQL replicas while proving
 
 ---
 
-Stopping or deleting a PostgreSQL replica does not necessarily remove its replication slot. Slots are persistent, cluster-wide objects that survive client disconnects and server crashes. An abandoned slot can retain WAL indefinitely and, for logical decoding, can also hold row or catalog cleanup horizons.
+Stopping or deleting a PostgreSQL replica does not necessarily remove its replication slot. Non-temporary slots are persistent, cluster-wide objects that survive client disconnects and server crashes. An abandoned slot can retain WAL indefinitely and, for logical decoding, can also hold row or catalog cleanup horizons.
 
 A safe decommission has two sides: stop the consumer so it cannot reconnect, then remove the slot on the exact upstream that owns it. Logical subscriptions can coordinate both operations when the publisher is reachable. Physical standbys and custom CDC consumers require an explicit slot lifecycle.
 
@@ -71,6 +71,8 @@ SELECT slot_name, sender_host, sender_port, conninfo
 FROM pg_stat_wal_receiver;
 ```
 
+Protect `primary_conninfo` as a secret if it contains credentials. The `conninfo` value in `pg_stat_wal_receiver` has security-sensitive fields obfuscated.
+
 For a logical subscription, record the publisher connection and main slot before changing anything:
 
 ```sql
@@ -80,14 +82,17 @@ SELECT oid,
        subslotname,
        subpublications
 FROM pg_subscription
-WHERE subname = 'orders_sub';
+WHERE subdbid = (SELECT oid
+                 FROM pg_database
+                 WHERE datname = current_database())
+  AND subname = 'orders_sub';
 ```
 
-Protect `subconninfo` as a secret if it must be inspected. Also look for generated table-synchronization slots on the publisher when an initial copy was in progress.
+The examples below assume the recorded `subslotname` is the default `orders_sub`. If it differs, use the captured value in publisher-side slot queries and drop commands. Protect `subconninfo` as a secret if it must be inspected. Also look for generated table-synchronization slots on the publisher when an initial copy was in progress.
 
 ## Quantify Retention Before the Change
 
-On a primary or publisher, estimate each slot's WAL distance:
+On a primary or a publisher that is not in recovery, estimate each slot's WAL distance:
 
 ```sql
 SELECT slot_name,
@@ -104,7 +109,9 @@ FROM pg_replication_slots
 ORDER BY pg_wal_lsn_diff(pg_current_wal_lsn(), restart_lsn) DESC NULLS LAST;
 ```
 
-The LSN distance is not the exact filesystem space that will be freed. WAL can also be retained for archiving, checkpoints, backup, `wal_keep_size`, or other slots. Capture filesystem use separately and preserve this baseline for the change record.
+`pg_current_wal_lsn()` cannot run during recovery. When inspecting slots on a hot standby, use `pg_last_wal_replay_lsn()` as the comparison point instead.
+
+The LSN distance is not the exact filesystem space that will be freed. WAL can also be retained for archiving, checkpoints, `wal_keep_size`, or other slots. Capture filesystem use separately and preserve this baseline for the change record.
 
 ## Remove a Physical Standby
 
@@ -172,7 +179,7 @@ WHERE slot_name = 'orders_sub'
    OR slot_name LIKE 'pg\_%\_sync\_%' ESCAPE '\';
 ```
 
-The wildcard can match synchronization slots for other subscriptions. Use the former subscription OID, relation OID, and system identifier naming pattern before attributing or deleting any result.
+The wildcard can match synchronization slots for other subscriptions. Use the former subscription OID, subscriber relation OID, and subscriber system identifier naming pattern before attributing or deleting any result.
 
 ## Remove a Logical Subscription When the Publisher Is Unreachable
 
@@ -187,13 +194,15 @@ SET (slot_name = NONE);
 DROP SUBSCRIPTION orders_sub;
 ```
 
-Disabling stops local workers. Setting `slot_name = NONE` disassociates the remote slot, so the final drop no longer contacts the publisher.
+Disabling stops local workers. Setting `slot_name = NONE` disassociates the main remote slot, so the final drop does not try to drop that slot. It can still attempt a publisher connection to remove internally created table-synchronization slots if synchronization was left unfinished. If the publisher is unreachable, PostgreSQL allows the local drop to complete and leaves those remote slots for manual cleanup.
 
-This removes only local ownership. If the publisher still exists but is temporarily unreachable, its main and table-synchronization slots continue retaining resources. Put explicit remote cleanup into the incident record. When the publisher is reachable, identify and drop those exact slots there:
+This deliberately leaves the main remote slot in place. If the publisher still exists but is temporarily unreachable, that slot and any remaining table-synchronization slots continue retaining resources. Put explicit remote cleanup into the incident record. When the publisher is reachable, identify and drop each exact slot individually. For the default main slot:
 
 ```sql
 SELECT pg_drop_replication_slot('orders_sub');
 ```
+
+Repeat the function call for every approved remaining table-synchronization slot. A direct `pg_drop_replication_slot()` call drops only the named slot.
 
 If the remote database instance was permanently destroyed, there is no remote slot to clean. If it can return from a snapshot, account for stale slots in its restoration procedure.
 
@@ -234,7 +243,7 @@ pg_recvlogical \
   --drop-slot
 ```
 
-Use protected password files rather than command-line secrets. A logical slot is tied to one database, so connect to the correct database. Either command is destructive to stream continuity; coordinate the downstream checkpoint and re-seed plan first.
+Use protected password files rather than command-line secrets. A logical slot is associated with one database, and creating or streaming from it requires the correct database. In PostgreSQL 18, the `--drop-slot` action does not require `--dbname`; using it as a connection string as shown remains valid. Either command is destructive to stream continuity; coordinate the downstream checkpoint and re-seed plan first.
 
 ## Handle Failover and Synchronized Slots Carefully
 
@@ -246,9 +255,9 @@ Physical slots are not automatically transplanted to an arbitrary new upstream d
 
 ## Safety Limits Are Not Lifecycle Management
 
-`max_slot_wal_keep_size` can allow a lagging slot to lose required WAL rather than fill the disk. PostgreSQL 18's `idle_replication_slot_timeout` can invalidate certain long-inactive slots at checkpoint. Neither feature understands whether a replica was intentionally retired.
+At checkpoint time, `max_slot_wal_keep_size` can allow a lagging slot to lose required WAL; it is not a hard cap on `pg_wal` usage. PostgreSQL 18's `idle_replication_slot_timeout` can invalidate certain long-inactive slots at checkpoint. Neither feature understands whether a replica was intentionally retired.
 
-An invalidated slot can remain visible for investigation, and a lost consumer still needs re-seeding. Use limits as containment, then remove approved orphaned slots explicitly.
+An invalidated slot can remain visible for investigation, and its consumer may need re-seeding or another documented recovery source. Use limits as containment, then remove approved orphaned slots explicitly.
 
 Never automate `pg_drop_replication_slot()` solely from `active = false` or age. Require at least:
 
