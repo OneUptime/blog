@@ -88,14 +88,14 @@ The documented coarse output includes `Time`, `Cost`, `Loops`, `Rows`, `Width`, 
 
 Read them as signals, not as isolated verdicts:
 
-- `Time` shows where measured execution time is attributed.
+- `Time` is measured execution time in milliseconds for the node across all loops; plan-node timings include child work and are not additive.
 - `Cost` is the planner's estimate for comparing possible plans, not application latency in milliseconds.
-- `Loops` exposes work performed repeatedly by a plan node.
-- `Rows` shows the amount of data flowing through a node.
-- `Width` estimates the size of each row.
+- `Loops` is the number of times a plan node was executed.
+- `Rows` is the average number of rows emitted per loop; multiply it by `Loops` to estimate total rows emitted by the node.
+- `Width` is the planner's estimated average output-row width in bytes.
 - `Relations` maps the work to Gel object types and links.
 
-A node with modest work per loop can dominate after many loops. A node with many rows may be acceptable if the query intentionally exports them, but suspicious when the final result contains only 50 objects. A wide nested shape can spend meaningful time producing and transferring data even after object lookup is efficient.
+A node with modest work per loop can dominate after many loops. A node with a large `Rows × Loops` product may be acceptable if the query intentionally exports that volume, but suspicious when the final result contains only 50 objects. A wide nested shape can spend meaningful time producing and transferring data even after object lookup is efficient.
 
 Use expanded output to inspect the lower-level access path. Gel's analyzer maps EdgeQL portions to the underlying PostgreSQL plan, so exact plan-node names can change as the schema, data statistics, server version, and query change.
 
@@ -136,7 +136,7 @@ limit 50;
 
 The outer `limit 50` does not automatically limit the number of comments inside every incident's shape. Bound multi relationships independently when the product requirement permits it.
 
-For approximate type size, Gel exposes a statistics-based helper:
+For approximate type size, Gel 7 and later expose a statistics-based helper:
 
 ```edgeql
 select sys::approximate_count(introspect Incident);
@@ -184,7 +184,7 @@ type Incident {
 
 After applying the migration in a safe branch, rerun the same query, parameters, and globals. In expanded output, inspect the access path for the relevant relation and compare rows, loops, time, and total latency.
 
-The PostgreSQL planner may still choose a scan. That can be correct when the type is small or when the predicate matches a large fraction of objects. The existence of an index does not require its use.
+The PostgreSQL planner may still choose a sequential scan. That can be correct when the type is small or when the predicate matches a large fraction of objects. The existence of an index does not require its use.
 
 ## Match Expression Indexes Exactly
 
@@ -234,15 +234,15 @@ limit 20;
 
 Interpret aggregate fields in context:
 
-- high `mean_exec_time` identifies individually slow calls;
+- high `mean_exec_time` identifies queries that are slow on average;
 - high `total_exec_time` identifies workload impact;
-- `calls` distinguishes a rare outlier from a hot path;
-- `rows` helps reveal high result volume; and
+- `calls` distinguishes a rarely executed statement from a hot path;
+- `rows` is the cumulative number of rows retrieved or affected, so compare it with `calls` to gauge average per-call volume; and
 - `plans` and planning times show how much time is spent preparing backend plans.
 
 The server caches planned statements and reuses them when possible, so execution and planning totals answer different questions. Query tags can help distinguish origins when clients set them.
 
-In Gel 7's permission model, a non-superuser needs `sys::perm::query_stats_read` to read these objects and `sys::perm::analyze` to analyze queries. Grant only the operational permissions the role actually needs.
+In Gel 7's permission model, a non-superuser needs `sys::perm::query_stats_read` to read these objects, `sys::perm::analyze` to analyze queries, and `sys::perm::approximate_count` to call the approximate-count helper. Grant only the operational permissions the role actually needs.
 
 Gel also provides `sys::reset_query_stats()`, including branch-specific and entry-specific options. Resetting discards accumulated evidence, so make it a deliberate measurement boundary rather than a routine troubleshooting first step.
 
@@ -259,13 +259,13 @@ Use a controlled sequence:
 
 Do not change the query shape, add an index, reduce result size, and upgrade the server in one experiment. Even if latency improves, you will not know which change produced it.
 
-For a large existing type, Gel supports `build_concurrently := true` on an index and `gel migration apply --no-index-build` to defer the build. Until a deferred index is built, it remains inactive, so verify completion before testing index use.
+For a large existing type, Gel 7 and later support `build_concurrently := true` on an index. This defers the build to the final step of `gel migration apply` (or `gel migrate`), where it runs without locking reads or writes. Use `gel migration apply --no-index-build` to skip that final build and trigger it later with another `gel migration apply`. Until the index is built, it remains inactive, so verify completion before testing index use.
 
 ## Version-aware Notes
 
 Query analysis arrived before the EdgeDB-to-Gel rename. Older material may show `edgedb analyze` and the `edgedb` REPL; current tooling uses `gel analyze` and `gel`.
 
-`sys::QueryStats` was added in Gel 6, so it is not available on EdgeDB 5 and older servers. The fine-grained permission names discussed above apply to Gel 7's permissions feature. On every version, match the CLI to the server and consult that version's documentation before automating plan parsing, because human-readable output can evolve.
+`sys::QueryStats` was added in Gel 6, so it is not available on EdgeDB 5 and older servers. `sys::approximate_count()`, concurrent index building, and the fine-grained permission names discussed above were added in Gel 7. On every version, use an up-to-date CLI compatible with the target server and consult that server version's documentation before automating plan parsing, because human-readable output can evolve.
 
 ## Official Documentation
 
