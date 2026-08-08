@@ -37,7 +37,7 @@ Record the server version too:
 gel query 'select sys::get_version_as_str()'
 ```
 
-Gel 6 naming uses `gel.toml`, `.gel` schema files, and `GEL_*` connection variables. Legacy EdgeDB projects may still use `edgedb.toml`, `.esdl`, and `EDGEDB_*`. Mixed naming can cause tooling to discover a different project contract than the operator expects.
+The Gel 6 rebrand introduced `gel.toml`, `.gel` schema files, and `GEL_*` connection variables as the preferred names. Current Gel tooling still accepts the deprecated `edgedb.toml`, `.esdl`, and `EDGEDB_*` aliases, but update these names as a coordinated change and avoid defining both generations during an incident.
 
 ## Ask the CLI for Status Before Applying
 
@@ -105,12 +105,12 @@ The safest recovery is often to:
 
 1. preserve both histories and dumps;
 2. choose the authoritative migration chain in version control;
-3. reproduce the merge in an isolated Gel branch;
+3. reproduce the merge in an isolated Gel branch based on that chain;
 4. create a new migration from the reconciled SDL;
 5. test data transformation and application compatibility; and
 6. deploy through the normal migration path.
 
-If a production branch has already applied an unwanted divergent history, a fresh instance or branch restored and migrated through the authoritative chain may be safer than manually rewriting history. Migration rewrite features are advanced tools, not a routine incident shortcut.
+If a production branch has already applied an unwanted divergent history, a fresh instance or branch restored from a backup at the common revision and then migrated through the authoritative chain may be safer than manually rewriting history. Migration rewrite features are advanced tools, not a routine incident shortcut.
 
 ### SDL differs from the last filesystem revision
 
@@ -162,7 +162,7 @@ gel branch create --empty drift-rehearsal
 gel --branch drift-rehearsal migrate
 ```
 
-Load sanitized representative data, apply the disputed transition, and exercise application reads and writes. Drop the rehearsal branch only after preserving the result and closing connections.
+That empty-branch run validates the full chain. To test the disputed transition with data, create or restore a separate disposable branch at the transition's parent revision, load sanitized representative data, apply the transition, and exercise application reads and writes. Drop rehearsal branches only after preserving the results and closing connections.
 
 For a production repair, also verify:
 
