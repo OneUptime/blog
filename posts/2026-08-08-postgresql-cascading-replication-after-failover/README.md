@@ -13,7 +13,7 @@ In cascading PostgreSQL replication, each standby connects to exactly one upstre
 After failover, the outcome depends on which node changes role:
 
 - if B is promoted, C can normally continue streaming from B and follow its new timeline;
-- if B fails while A remains primary, C does not automatically discover A and must be reparented;
+- if B fails while A remains primary, C does not automatically discover A and must be reparented unless A or an HA endpoint was preconfigured in `primary_conninfo`;
 - if a sibling of B is promoted, B and C may need new connection settings and may need rewind or rebuild if they replayed beyond the new timeline's fork point.
 
 PostgreSQL supplies streaming, promotion, timeline history, and recovery tools. It does not provide the cluster manager that detects failure, fences the old primary, chooses a promotion target, rewrites topology, and verifies every descendant.
@@ -95,7 +95,7 @@ SHOW wal_level;
 SHOW hot_standby;
 ```
 
-B needs WAL sender capacity, matching HBA access for C, a login replication role, and any physical slot named by C's `primary_slot_name`. PostgreSQL notes that sending parameters retain their meaning when a standby becomes primary, which is why they must be configured before an incident.
+B needs `hot_standby = on`, WAL sender capacity, matching HBA access for C, a login replication role, and any physical slot named by C's `primary_slot_name`. PostgreSQL notes that sending parameters retain their meaning when a standby becomes primary, which is why they must be configured before an incident.
 
 Promote only after the old primary is fenced from accepting writes:
 
@@ -135,7 +135,7 @@ Make a canary write on B and prove C replays it. A connected receiver on the old
 
 ## Case 2: The Relay Fails but the Primary Is Healthy
 
-If B fails while A remains primary, C keeps trying the host in its `primary_conninfo`. PostgreSQL does not traverse a topology map or ask A where to reconnect.
+If B fails while A remains primary and C's `primary_conninfo` names only B, C keeps trying B. PostgreSQL does not traverse a topology map or ask A where to reconnect.
 
 A cascading standby can continue sending WAL already received or restored from archive for as long as new records are available. Once B is gone, that buffer is unavailable to C. Reparent C to A or to another compatible relay through the HA manager.
 
@@ -144,7 +144,7 @@ Before changing C, verify A can serve it:
 - C's source address matches an HBA rule on A;
 - the replication role and TLS trust work against A;
 - A has a free WAL sender;
-- required WAL is still in `pg_wal` or the archive;
+- required WAL is still in A's `pg_wal`, or C can retrieve it through its `restore_command` from an accessible archive;
 - C's configured slot name exists on A, or slot use is changed deliberately;
 - C has not diverged from A's timeline history.
 
@@ -189,7 +189,7 @@ FROM pg_replication_slots
 WHERE slot_name IN ('standby_c_slot', 'standby_c_slot_on_a');
 ```
 
-Creating a new slot now cannot restore WAL already removed. If C's requested start point is older than A's retained WAL, it needs the archive or a fresh base backup. A slot prevents future removal from its reservation point; it is not a historical recovery service.
+Creating a new slot now cannot restore WAL already removed. If C's requested start point is older than A's retained WAL, C needs access to the missing segments through its archive recovery path or a fresh base backup. Once it has reserved WAL, a valid slot prevents normal removal of WAL still claimed by its `restart_lsn`, subject to configured retention and invalidation limits; it is not a historical recovery service.
 
 After C is safely attached elsewhere and B is permanently retired, remove B-only orphaned slots through a controlled decommissioning procedure so they do not retain WAL.
 
@@ -234,18 +234,20 @@ Capture this before destructive recovery work. Use version-matched binaries and 
 
 PostgreSQL currently documents cascading replication as asynchronous. Synchronous replication settings on A do not extend through B to C. A knows only directly connected senders when choosing synchronous standbys.
 
-If B is synchronous to A, a commit can wait for B at the configured write, flush, or apply level. That does not mean C has received the commit. Promoting C after losing both A and B can therefore have a larger recovery point than operators expect.
+If B is synchronous to A, a commit can wait for B at the configured write, flush, or apply level. That does not mean C has received the commit. Promoting C after losing both A and B can therefore have a larger data-loss window than operators expect, potentially violating the recovery point objective (RPO).
 
-If C must be a zero-data-loss candidate, connect it directly as an eligible synchronous standby or design another topology whose documented acknowledgment path includes it. Do not label a cascade descendant synchronous because its parent is synchronous.
+If C must retain every acknowledged write covered by a zero-data-loss policy, connect it directly and configure those commits to wait for C as an active synchronous standby at the required durability level, or design another topology whose documented acknowledgment path includes it. Do not label a cascade descendant synchronous because its parent is synchronous.
 
-Hot standby feedback does propagate upstream through a cascade. This can reduce recovery conflicts for downstream queries, but it can also hold cleanup horizons and contribute to bloat on the primary. Monitor the whole chain.
+Hot standby feedback does propagate upstream through a cascade. This can reduce downstream query cancellations caused by cleanup conflicts, but it can also hold cleanup horizons and contribute to bloat on the primary. Monitor the whole chain.
 
 ## Preconfigure Every Node for Both Roles
 
 Every possible relay or primary should have, before failover:
 
 - `wal_level = replica` or higher;
-- enough `max_wal_senders` and `max_replication_slots` for its possible children and backups;
+- `hot_standby = on` on every possible relay;
+- `max_wal_senders` at least as high as on the primary while the node is a standby, and sufficient for its possible children and backups;
+- enough `max_replication_slots` for its possible child and backup slots;
 - HBA rules for the exact downstream networks and replication roles;
 - server TLS certificates valid for the names downstreams will use;
 - archive access and a collision-safe archive design;
@@ -282,4 +284,4 @@ Automate these steps in an HA manager, but keep the evidence and stop conditions
 
 ## Conclusion
 
-Downstream standbys keep following a promoted relay because their endpoint already names it and the new timeline descends from their history. They do not automatically reroute around a failed relay or follow a promoted sibling. Model every direct edge, preconfigure every possible sender, treat slots as upstream-local, validate timeline ancestry, and let a fenced HA workflow reparent, rewind, or rebuild each node explicitly.
+Downstream standbys keep following a promoted relay because their endpoint already names it and the new timeline descends from their history. They do not discover an unconfigured alternative when a relay fails, and a promoted sibling is usable only when connection settings and timeline ancestry are compatible. Model every direct edge, preconfigure every possible sender, treat slots as upstream-local, validate timeline ancestry, and let a fenced HA workflow reparent, rewind, or rebuild each node explicitly.
