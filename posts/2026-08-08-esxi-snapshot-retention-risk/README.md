@@ -23,8 +23,8 @@ Longer retention increases the chance that:
 - the datastore runs out of capacity;
 - a backup proxy or failed job leaves an external lock;
 - consolidation collides with another backup or migration;
-- a thin base must grow substantially during commit;
-- online helper-delta writes consume the remaining margin;
+- on traditional redo-log storage, a thin base must grow substantially during commit;
+- online redo-log consolidation can create a helper delta whose writes consume the remaining margin;
 - operators forget why the snapshot exists; and
 - the snapshot is mistaken for a backup even though it depends on the base disk.
 
@@ -65,24 +65,25 @@ Do not stretch a snapshot to meet this requirement. Create a backup with suitabl
 
 ## Estimate the Safe Window Before Creation
 
-Measure the VM's write workload and available capacity on every datastore that holds one of its disks. A basic planning estimate is:
+Measure the VM's write workload and available capacity on every datastore involved in its disk chains, including any datastore used by a configured snapshot working directory. A basic planning estimate for one active delta is:
 
 ```text
-potential delta growth = unique changed blocks during retention
+potential active-delta growth ≈ unique disk regions changed while that delta is active + format overhead
 ```
 
-Sequential write throughput multiplied by time provides a conservative warning signal, but delta allocation follows unique block changes, not raw bytes written. Use historical datastore and VM write metrics from a comparable busy period.
+Sustained write throughput multiplied by time provides a coarse planning signal, but delta allocation follows changed disk regions, not cumulative raw bytes written. Across a chain, the same logical region can appear in more than one delta. Use historical datastore and VM write metrics from a comparable busy period.
 
 Include:
 
 - current free datastore capacity;
 - other snapshots and thin disks growing on the datastore;
 - VM swap and planned power-on demand;
+- memory-state (`.vmsn`) space if the snapshot includes VM memory;
 - backup and migration activity;
 - vSAN policy and operational-reserve requirements; and
 - headroom needed to remove or clone the snapshot.
 
-Broadcom's large-VM guidance recommends reserving 20 to 30 percent additional datastore capacity for snapshot growth. That is creation-planning guidance, not a guarantee that every consolidation succeeds within that amount.
+Broadcom's large-VM guidance recommends reserving additional free datastore capacity equal to 20 to 30 percent of the VM's total virtual-disk size for snapshot growth. That is creation-planning guidance, not a guarantee that every consolidation succeeds within that amount.
 
 ## Make Expiry Part of Creation
 
@@ -130,9 +131,9 @@ Before deletion or consolidation:
 5. Schedule low write load and acceptable stun risk.
 6. Use **Delete**, **Delete All**, or **Consolidate** through the vSphere Client according to the actual state.
 
-Deleting a snapshot preserves current VM state by committing changes. It does not revert. Once the operation starts, do not cancel it or restart services to force it to stop. Broadcom documents that progress can appear stuck while I/O and timestamps continue to change.
+Deleting a snapshot preserves current VM state; it does not revert. On traditional redo-log storage, **Delete** commits the selected delta to its parent, while **Delete All** commits the chain to the base disks. On ESXi 8.x and earlier, do not cancel a running deletion or consolidation. For VMs registered to ESX 9 hosts, use only the supported cancel action; powered-off consolidation can be resumed, while other canceled work must be retried. On any version, do not restart services or the host to force the operation to stop. On releases without ESX 9 progress reporting, progress can appear stuck while I/O and timestamps continue to change.
 
-For a very large or risky chain, consider a powered-off maintenance window or cloning the active leaf to a healthy datastore. A clone needs destination capacity and validation, but it leaves the original chain intact while a consolidated recovery disk is tested.
+For a very large or risky traditional redo-log chain, consider a powered-off maintenance window or a supported vCenter VM clone to a healthy datastore. If cloning active-leaf VMDKs at disk level, power off the VM first and clone every current disk needed by the VM. A clone needs destination capacity and validation, but it leaves the original chain intact while a consolidated recovery copy is tested.
 
 ## Respond to an Expired Snapshot
 
@@ -147,7 +148,7 @@ An expired snapshot is not permission for immediate deletion. First determine wh
 
 Escalate ownership and stop additional snapshots. Measure the delta and workload. Add storage headroom or reduce writes before committing. If a parent is missing or the chain is inconsistent, preserve all files and contact Broadcom Support.
 
-Avoid the opposite failure too: extending retention repeatedly because removal looks risky. Delta growth normally makes later removal harder. Convert the risk into a scheduled, resourced recovery change.
+Avoid the opposite failure too: extending retention repeatedly because removal looks risky. For non-native snapshots, delta growth normally makes later removal harder. Convert the risk into a scheduled, resourced recovery change.
 
 ## Verify Removal
 
