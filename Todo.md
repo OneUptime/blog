@@ -29,7 +29,6 @@
 
 ## ESXi
 
-4. ESXi VM Won’t Power On: How to Troubleshoot “Failed to Lock the File”
 5. How to Find Which ESXi Host or Backup Proxy Owns a VMDK Lock
 6. How to Verify a Broken ESXi Snapshot Chain with `vmkfstools`
 7. ESXi Snapshot Manager Is Empty but Delta Files Remain: What Happened?
