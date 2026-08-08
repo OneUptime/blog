@@ -26,7 +26,6 @@
 
 ## EdgeDB
 
-8. EdgeDB 5 to Gel 6: When Can You Use CLI Upgrade, and When Is Dump-and-Restore Required?
 9. Gel Branches vs EdgeDB Databases: Which Kind of Branch Should Development and CI Use?
 10. Why Did an EdgeDB Access Policy Suddenly Hide Every Object?
 11. How to Pass Per-Request User Context to EdgeDB Access Policies Without Mutating a Shared Client
