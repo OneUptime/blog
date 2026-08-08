@@ -26,7 +26,6 @@
 
 ## EdgeDB
 
-16. Unique, Composite, or Expression Index: Which Should You Define in EdgeDB?
 17. EdgeQL Query Is Slow: How to Read `analyze`, Check Cardinality, and Verify Index Use
 18. Why Does the EdgeDB JavaScript Client Trigger “Can’t Resolve `fs`” in a Next.js Build?
 19. How to Configure EdgeDB/Gel TLS in Docker Without Shipping Certificates in Environment Variables
