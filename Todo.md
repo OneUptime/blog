@@ -29,7 +29,6 @@
 
 ## ESXi
 
-16. How to Upgrade a Standalone ESXi Host When Every VM Is Stored Locally
 17. How to Move an ESXi VM Between Isolated Hosts Without vMotion
 18. ESXi Boot Device Is Failing: How to Migrate from USB or SD to Persistent Storage
 19. How to Build an ESXi VM and Datastore Inventory Report with PowerCLI
