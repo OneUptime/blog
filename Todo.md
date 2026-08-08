@@ -29,7 +29,6 @@
 
 ## ESXi
 
-12. Why a Brief Network Outage Can Take ESXi VMs Offline on NFS or iSCSI Storage
 13. ESXi Management Network Cannot Reach the Gateway: A vSwitch and VLAN Checklist
 14. ESXi VM Has No Network Connectivity: How to Trace the Path from vNIC to Physical Switch
 15. ESXi Purple Screen of Death: What Evidence to Capture Before Rebooting
