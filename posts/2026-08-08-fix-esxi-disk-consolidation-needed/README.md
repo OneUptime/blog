@@ -18,7 +18,7 @@ Deleting a snapshot does not revert the VM. It commits the changes represented b
 
 Revert is different: it deliberately returns the VM to an earlier snapshot state and discards later state from the active path. Do not use Revert to clear a consolidation warning.
 
-On a traditional VMFS snapshot, the VM writes to an active delta. An online consolidation can create a helper delta to capture new writes while older deltas are merged. The operation is I/O intensive, can cause performance degradation or a brief stun, cannot safely be interrupted, and may take much longer than the task percentage suggests.
+On a traditional VMFS snapshot, the VM writes to an active delta. An online consolidation can create a helper delta to capture new writes while older deltas are merged. The operation is I/O intensive, can cause performance degradation and a stun that is usually brief but can become disruptive under heavy guest writes or storage latency, cannot safely be interrupted, and may take much longer than the task percentage suggests.
 
 ## Preserve Evidence and Stop New Snapshot Work
 
@@ -61,17 +61,17 @@ grep -i '.vmdk' /vmfs/volumes/DatastoreName/VMFolder/VMName.vmx
 
 If a disk points to `VMName-000003.vmdk`, that descriptor is the active leaf, and earlier descriptors lead back to the base. The numerical sequence alone does not prove parent order because snapshot branches and past operations can leave gaps.
 
-When the error suggests a broken or missing parent, a support-guided consistency test can inspect the active descriptor:
+When the error suggests a broken or missing parent, run a support-guided read-only query on the ESXi host where the VM is registered to trace the active descriptor:
 
 ```bash
-vmkfstools -e /vmfs/volumes/DatastoreName/VMFolder/VMName-000003.vmdk
+vmkfstools -q -v10 '/vmfs/volumes/DatastoreName/VMFolder/VMName-000003.vmdk'
 ```
 
-Treat this as inspection only. An inconsistency, missing parent, CID mismatch, or absent extent is a stop condition. Copy the small descriptors and preserve all extents, then open a Broadcom Support case. Repointing the VM to an older delta can discard every write in a missing part of the chain.
+Treat this as inspection only. A reported chain inconsistency, missing parent, CID mismatch, or absent extent is a stop condition. Copy the small descriptors and preserve all extents, then open a Broadcom Support case. Repointing the VM to an older delta can discard every write in a missing part of the chain.
 
 ## Calculate Working Space Conservatively
 
-Check free space on every datastore that holds one of the VM's disks. Snapshot deltas live with their corresponding base disks in the normal layout, so a multi-datastore VM can have one healthy chain and one space-starved chain.
+Check free space on every datastore that holds a VM base disk, delta or redo log, or configured snapshot working directory. In the default ESXi 5.0 and later file-backed layout, snapshot deltas live with their corresponding base disks, so a multi-datastore VM can have one healthy chain and one space-starved chain.
 
 Broadcom's current insufficient-space guidance says available free space should be at least 1.5 times the total snapshot-file size for the affected VM in the documented file-too-large scenario. Treat that as a troubleshooting minimum for that scenario, not a universal formula. Thin base disks can grow while blocks are committed, and an online helper delta can grow with the guest's write workload.
 
@@ -93,12 +93,12 @@ First inspect the backup console and every proxy VM's Edit Settings. Match the c
 For VMFS, Broadcom documents lock inspection with:
 
 ```bash
-vmfsfilelockinfo -p '/vmfs/volumes/DatastoreName/VMFolder/Disk-flat.vmdk' -v
+vmfsfilelockinfo -p '/vmfs/volumes/DatastoreName/VMFolder/Disk-flat.vmdk'
 ```
 
-Run it for the exact file named in the error. Map the reported MAC address or host identity to the ESXi inventory. vSAN locks require the vSAN-specific investigation procedure rather than assumptions based on VMFS lock output.
+Run it against the exact VMFS `-flat.vmdk`, `-delta.vmdk`, or `-sesparse.vmdk` extent implicated by the error or VM log. Map the reported MAC address or host identity to the ESXi inventory. vSAN locks require the vSAN-specific investigation procedure rather than assumptions based on VMFS lock output.
 
-Do not kill a process or restart `hostd` and `vpxa` merely because a lock exists. Confirm that it is stale, identify the owning workflow, and use the specific Broadcom KB or Support direction. Restarting agents does not stop VM execution, but it disrupts management and can interfere with in-flight operations. A host reboot is a last resort after evacuating or shutting down workloads and proving that no supported release path remains.
+Do not kill a process or restart `hostd` and `vpxa` merely because a lock exists. Confirm that it is stale, identify the owning workflow, and use the specific Broadcom KB or Support direction. Restarting agents normally does not power off running VMs, but it disrupts management and can interfere with in-flight operations. A host reboot is a last resort after evacuating or shutting down workloads and proving that no supported release path remains.
 
 ## Run the Supported Consolidation
 
@@ -116,15 +116,15 @@ Once a commit begins, let it finish. The progress bar can remain at 99 percent e
 
 ## Classify a Failed Retry
 
-The retry text determines the next branch:
+The retry text and supporting log context determine the next branch:
 
-- **Not enough space** or **File too large**: add verified headroom and recalculate thin-disk and online-write exposure.
+- **Not enough space**: add verified headroom and recalculate thin-disk and online-write exposure. **File too large**: verify actual free space and inspect the host logs because Broadcom also documents stale datastore-size metadata and host-side free-space query failures with that task text.
 - **Failed to lock the file** or **One or more disks are busy**: identify the external host, process, or proxy attachment.
-- **File not found** or **Unable to enumerate all disks**: preserve the directory and inspect the complete parent chain; do not fabricate a descriptor casually.
-- **I/O error**, **APD**, or **device busy**: restore storage health before touching snapshots.
+- **File not found** or **Unable to enumerate all disks**: preserve the directory and inspect the complete parent chain; on vSAN, also verify the backing objects and lock state. Do not fabricate a descriptor casually.
+- **I/O error** or **APD**: restore storage health before touching snapshots. **Device or resource busy**: inspect the full log context because it can indicate a file lock or a transient SESparse bitmap error rather than a storage outage.
 - task says complete but the warning remains: recheck active backing, external locks, and residual API snapshots; collect a support bundle if the state is ambiguous.
 
-If the chain is complete but normal consolidation cannot proceed, Broadcom documentation describes cloning a powered-off VM or cloning an individual active disk with `vmkfstools -i` as recovery paths. These require enough destination capacity and a verified source chain. Prefer a vSphere Client clone. Use CLI cloning only with a Broadcom KB or Support plan, never by copying sparse VMDK components with generic `cp` or `scp`.
+If the chain is complete but normal consolidation cannot proceed, Broadcom documentation describes cloning a powered-off VM or, with the VM powered off, cloning an individual disk from its current active descriptor with `vmkfstools -i` as recovery paths. These require enough destination capacity and a verified source chain. Prefer a vSphere Client clone. Use CLI cloning only with a Broadcom KB or Support plan, never by copying sparse VMDK components with generic `cp` or `scp`.
 
 ## Validate the Result
 
@@ -132,7 +132,7 @@ After consolidation:
 
 - the warning is gone;
 - Snapshot Manager shows only snapshots intentionally retained;
-- each disk backs onto the expected base descriptor;
+- each disk's active chain resolves to the expected base and any intentionally retained snapshot leaf;
 - no unexpected VM disk remains attached to a proxy;
 - datastore free capacity is stable;
 - the VM and application pass functional checks; and
@@ -142,7 +142,7 @@ Old-looking files can remain for legitimate reasons. Do not make cosmetic direct
 
 ## Prevent Recurrence
 
-Alert on snapshot age, delta growth, consolidation-needed events, datastore growth rate, backup snapshot-removal failures, and abnormal VMDK attachments to proxies. Broadcom recommends no more than 72 hours for a single VMware snapshot and only two or three snapshots in a chain for better performance, despite a supported maximum of 32.
+Alert on snapshot age, delta growth, consolidation-needed events, datastore growth rate, backup snapshot-removal failures, and abnormal VMDK attachments to proxies. Broadcom recommends no more than 72 hours for a single VMware snapshot and only two or three snapshots in a chain for better performance, despite an overall supported maximum of 32.
 
 Shorter is better for high-write databases. Use application-aware backups for durable recovery and remove change-window snapshots as soon as validation completes.
 
