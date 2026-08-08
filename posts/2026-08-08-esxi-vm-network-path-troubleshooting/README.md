@@ -25,7 +25,7 @@ The fastest branch comes from scope:
 
 Test a working VM on the same host and port group, another VM on the same VLAN but a different host, and the default gateway. Two VMs on the same standard switch and VLAN can communicate without traversing the physical uplink, so same-host success does not validate the external path.
 
-Record the affected VM, vNIC MAC, guest IP and prefix, gateway, DNS, port group, VLAN, host, vSwitch or vDS, active uplink, and physical switch port.
+Record the affected VM, vNIC MAC, guest IP and prefix, gateway, DNS, port group, VLAN, host, vSwitch or vDS, active uplink or bundle members, and physical switch port or port-channel members.
 
 ## Verify the Guest Without Assuming ESXi Is at Fault
 
@@ -36,9 +36,9 @@ Open the VM console. If the console is also frozen, investigate storage or resou
 - default route points to the right gateway;
 - no duplicate IP or stale static configuration exists;
 - local firewall permits the test; and
-- VMware Tools and the paravirtual NIC driver are healthy.
+- VMware Tools and the guest NIC driver, such as VMXNET3 when used, are healthy.
 
-Test in increasing distance: loopback, the VM's own IP, a same-subnet peer, gateway, remote IP, then DNS name. An IP connection that works while name resolution fails is a DNS issue, not a vSwitch failure.
+Test in increasing distance: loopback, the VM's own IP, a same-subnet peer, gateway, remote IP, then DNS name. An IP connection that works while name resolution fails points first to DNS configuration or resolver reachability, not a general vSwitch outage.
 
 If the VM was converted or restored, check for a hidden old guest adapter retaining the static IP. If the virtual NIC type changed, install the supported guest driver before removing the only working adapter.
 
@@ -49,7 +49,7 @@ In **VM > Edit Settings**, confirm:
 - the intended Network Adapter exists;
 - **Connected** and **Connect at power on** are selected;
 - its MAC matches the guest and network records;
-- it connects to the correct VM port group, not a VMkernel port group; and
+- on a standard switch, it connects to a Virtual Machine port group rather than a VMkernel port group; on a vDS, it connects to the intended distributed port group; and
 - the backing exists on the current host.
 
 Do not repeatedly disconnect and reconnect a production vNIC before capturing state. That can clear symptoms and creates an application-visible link flap.
@@ -72,7 +72,7 @@ Common mismatches are:
 
 Check both directions. A capture can show outbound frames correctly tagged while inbound replies arrive untagged and are dropped as `VlanTag Mismatch`.
 
-## Trace the Uplink Selected for the VM
+## Trace the Uplink Path for the VM
 
 Check physical adapters:
 
@@ -80,7 +80,7 @@ Check physical adapters:
 esxcli network nic list
 ```
 
-Use `esxtop`, press `n`, and identify the VM's virtual port, team uplink, and packet counters. Broadcom uses this workflow to determine which vmnic currently carries a VM or VMkernel.
+Use `esxtop`, press `n`, and identify the VM's virtual port, `TEAM-PNIC` mapping, packet rates, and drop percentages. Broadcom uses this workflow to determine which vmnic currently carries a VM or VMkernel. With a static EtherChannel or LACP LAG, `TEAM-PNIC` can show `all(n)` because traffic may use any bundle member.
 
 Review teaming at both vSwitch and port-group levels. If load balancing is **Route based on originating virtual port**, isolate one uplink at a time through the supported UI. For IP hash, the physical ports must form the matching static port channel. LACP belongs on a supported vSphere Distributed Switch design.
 
@@ -94,7 +94,7 @@ Broadcom's `pktcap-uw` tool can observe frames near the VM's switch port and at 
 net-stats -l
 ```
 
-Capture a short, filtered test at the VM port and uplink. Broadcom documents these capture points:
+Capture a short test at the VM port and uplink. Broadcom documents these unfiltered live-display examples:
 
 ```bash
 pktcap-uw --switchport 123456 --capture VnicTx,VnicRx -o - |
@@ -106,25 +106,25 @@ pktcap-uw --uplink vmnic2 --capture UplinkSndKernel,UplinkRcvKernel -o - |
   tcpdump-uw -r - -enn
 ```
 
-Stop each capture with Ctrl+C after the test. Substitute the actual switch-port ID and uplink. Add a specific MAC, IP, and protocol filter using the official syntax to reduce load.
+Stop each capture with Ctrl+C after the test. Substitute the actual switch-port ID and uplink. If `TEAM-PNIC` shows `all(n)`, capture every participating uplink simultaneously. Add a specific MAC, IP, and protocol filter using the official syntax to reduce load.
 
-Interpret the four directions:
+For a controlled test to an off-host destination, interpret matching request and reply frames across the four directions:
 
 | Observation | Likely boundary |
 | --- | --- |
 | Guest sends but no VnicTx | guest driver or virtual adapter path |
 | VnicTx exists but no uplink send | port group, VLAN, teaming, or vSwitch |
-| Uplink send exists but no uplink receive | physical network, gateway, or destination |
+| Uplink send exists but no uplink receive | physical NIC or driver, external network, gateway, or destination |
 | Uplink receive exists but no VnicRx | VLAN mismatch, vSwitch policy, or wrong destination port |
-| VnicRx exists but guest does not answer | guest IP stack or firewall |
+| VnicRx exists but guest does not answer | guest vNIC driver or receive path, IP stack, or firewall |
 
 Packet capture is a debugging tool, not continuous monitoring. Broadcom warns that unfiltered or multiple long sessions can consume resources. Do not save captures to `/tmp`; use a healthy persistent datastore and protect them because they can contain sensitive traffic.
 
 ## Check MTU and Advanced Policies Last
 
-If small traffic succeeds but larger transfers fail, validate MTU end to end. Guest vNIC, VM port group, vSwitch, vmnic, physical switch, and routed path must agree. Do not enable jumbo frames only on ESXi to fix an external mismatch.
+If small traffic succeeds but larger transfers fail, validate MTU end to end. The guest interface, vSwitch or vDS, vmnic, physical switch, and routed path must all support the intended frame size. Do not enable jumbo frames only on ESXi to fix an external mismatch.
 
-Review vSwitch security policies when the workload legitimately changes source MACs, uses nested virtualization, load balancers, clustering, or packet capture. **Forged transmits**, **MAC address changes**, and **promiscuous mode** should remain at secure defaults unless the workload design requires an exception. Do not enable all three as a generic connectivity test.
+Review vSwitch security policies when the workload legitimately changes source MACs, uses nested virtualization, load balancers, clustering, or an in-guest capture that must receive frames not addressed to its vNIC. **Forged transmits**, **MAC address changes**, and **promiscuous mode** should remain at secure defaults unless the workload design requires an exception. Do not enable all three as a generic connectivity test.
 
 For NSX-backed networks, add segment, logical port, transport-node, TEP, tunnel, and distributed-firewall checks. A standard-vSwitch fix does not apply automatically to an overlay path.
 
@@ -160,4 +160,4 @@ Preserve a support bundle and the captures if the drop remains inside ESXi after
 
 ## Conclusion
 
-Trace a failed VM network in order: guest, vNIC, port group, virtual switch, selected vmnic, physical port, VLAN, and destination. A two-point capture shows where the frame disappears. Fix that boundary, then test every host and uplink that can carry the VM so the next vMotion or failover does not recreate the outage.
+Trace a failed VM network in order: guest, vNIC, port group, virtual switch, selected vmnic or uplink bundle, physical port, VLAN, and destination. A two-point capture shows where the frame disappears. Fix that boundary, then test every host and uplink that can carry the VM so the next vMotion or failover does not recreate the outage.
