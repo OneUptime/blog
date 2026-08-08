@@ -8,7 +8,7 @@ Description: Run Gel in Compose and create migrations as your host user without 
 
 ---
 
-`gel project init` is a local-development convenience that links a source directory to a CLI-managed instance. It is not a required server bootstrap step. Running it as root inside a container often creates root-owned `gel.toml`, `dbschema`, migration, and local CLI configuration files on a bind mount.
+`gel project init` is a local-development convenience that links a source directory to an instance using user-local CLI metadata. It is not a required server bootstrap step. Running it as root inside a container can create root-owned `gel.toml` and `dbschema` scaffolding on a source bind mount. Later migration commands run as root can likewise create root-owned migration files, while the project association and any credentials are stored in root's CLI configuration rather than the source tree.
 
 With Docker Compose, keep three concerns separate:
 
@@ -42,7 +42,7 @@ A minimal current project file is:
 server-version = "6"
 ```
 
-Pin a point release if reproducibility requires it. The project file is a repository artifact, so create and edit it as the host user.
+`"6"` lets the CLI choose the latest compatible 6.x release when it manages an instance. To pin the manifest exactly, prefix the version with `=`, for example `server-version = "=6.1"`; pin the independently managed Compose image by point-release tag or digest. The project file is a repository artifact, so create and edit it as the host user.
 
 ## A Development Compose File
 
@@ -58,7 +58,7 @@ services:
       - gel-data:/var/lib/gel/data
       - ./dbschema:/dbschema:ro
     ports:
-      - '5656:5656'
+      - '127.0.0.1:5656:5656'
 
   cli:
     image: geldata/gel-cli
@@ -67,6 +67,8 @@ services:
     working_dir: /workspace
     environment:
       HOME: /tmp/gel-cli-home
+    tmpfs:
+      - /tmp:mode=1777
     volumes:
       - .:/workspace
     entrypoint:
@@ -83,7 +85,7 @@ volumes:
 
 The named volume persists the database. The read-only schema mount lets the server image read committed migrations without giving the server process ownership of source files. The tools service is disabled during ordinary `docker compose up` because it belongs to a profile.
 
-The official image attempts to apply migrations found in `/dbschema/migrations` unless `GEL_DOCKER_APPLY_MIGRATIONS` is set to `never`. This documented default behavior applies committed migrations at server startup; it does not invent a first migration from an edited `.gel` schema. The explicit writable `HOME` also prevents the arbitrary-UID tools process from trying to place cache or configuration under a root-owned home directory.
+The official image attempts to apply migrations found in `/dbschema/migrations` unless `GEL_DOCKER_APPLY_MIGRATIONS` is set to `never`. This documented default behavior applies committed migrations at server startup; it does not invent a first migration from an edited `.gel` schema. The `tmpfs` mount makes `/tmp` writable by the arbitrary UID, and the explicit `HOME` keeps disposable CLI cache and configuration out of a root-owned home directory and the source tree.
 
 ## Start the Server Without Initializing a Project
 
@@ -122,7 +124,7 @@ LOCAL_UID=$(id -u) LOCAL_GID=$(id -g) \
   docker compose run --rm cli migration create
 ```
 
-Because `/workspace` is a bind mount and the CLI process runs with the host identity, the new file under `dbschema/migrations` is host-owned. Review it before applying it.
+On a conventional rootful Linux Docker Engine without user-namespace remapping, `/workspace` is a bind mount and the CLI process runs with the host identity, so the new file under `dbschema/migrations` is host-owned. Review it before applying it.
 
 On Linux, verify ownership and the migration chain:
 
@@ -133,7 +135,7 @@ LOCAL_UID=$(id -u) LOCAL_GID=$(id -g) \
   docker compose run --rm cli migration log --from-fs
 ```
 
-macOS and Windows Desktop use a virtualized file-sharing layer, so numeric ownership presentation differs, but avoiding a root CLI still prevents common permission problems and makes Linux CI behavior predictable.
+Rootless Docker and daemons with `userns-remap` translate container IDs, so the direct UID/GID mapping above may need an engine-specific adjustment. The `LOCAL_UID=$(id -u)` examples also assume a POSIX shell. macOS and Windows Desktop mediate bind-mount permissions through a virtualized file-sharing layer, so numeric ownership presentation differs; from native PowerShell or `cmd.exe`, omit the POSIX assignments and run the `docker compose` commands directly.
 
 Apply a newly reviewed migration explicitly:
 
