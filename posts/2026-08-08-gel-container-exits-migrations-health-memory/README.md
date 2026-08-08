@@ -8,7 +8,7 @@ Description: Separate migration failures, intentional bootstrap exits, signals, 
 
 ---
 
-A Gel container that stops near a migration message has not necessarily been stopped by the migration. The official image performs entrypoint work before or around server startup, Docker records only the final container state, and an orchestrator may stop a healthy process because of a deployment or health-check decision.
+A Gel container that stops near a migration message has not necessarily been stopped by the migration. The official image performs entrypoint work before or around server startup, `docker inspect` reports the current or final state without by itself identifying the initiating cause, and an orchestrator may stop a healthy process because of a deployment or health-check decision.
 
 Diagnose in this order: exact container state, complete logs, configured command and environment, migration behavior, host or runtime events, then resource pressure. Do not enable an unconditional restart loop until the first failure has been preserved.
 
@@ -25,18 +25,18 @@ docker inspect gel
 If Compose generated the container name, get it first:
 
 ```bash
-docker compose ps -q gel
+docker compose ps -a -q gel
 ```
 
 Inspect the fields that distinguish process exit from health state:
 
 ```bash
 docker inspect --format \
-  'status={{.State.Status}} exit={{.State.ExitCode}} oom={{.State.OOMKilled}} error={{json .State.Error}}' \
+  'status={{.State.Status}} health={{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}} exit={{.State.ExitCode}} oom={{.State.OOMKilled}} error={{json .State.Error}}' \
   gel
 ```
 
-Also record start and finish timestamps, restart count, image digest, and the resolved Compose configuration:
+Also record start and finish timestamps, restart count, image ID, and the resolved Compose configuration:
 
 ```bash
 docker compose config
@@ -100,8 +100,7 @@ Common causes include:
 - the database migration history is ahead of or diverged from the mounted files;
 - an applied migration file was edited and its content hash no longer matches;
 - existing data cannot satisfy a new required property or constraint;
-- the container mounted the wrong branch, revision, or empty directory;
-- schema files were included but migration files were omitted from the image; or
+- the container mounted a wrong branch or revision whose migration history conflicts with the database; or
 - two deployment actors are applying incompatible revisions.
 
 Do not solve history disagreement by deleting the persistent volume. Compare `gel migration status` and database versus filesystem migration logs against a restored copy first. Production data is not disposable migration cache.
@@ -154,13 +153,13 @@ Then correlate container timestamps with:
 - configuration-management activity; and
 - operator shell history or audit logs.
 
-A graceful shutdown message immediately after readiness often points to an external stop request, not an internal crash.
+The image starts and then shuts down a temporary server while bootstrapping or applying migrations, so first distinguish that expected shutdown from the final server. A graceful shutdown of the final server immediately after readiness often points to an external stop request, not an internal crash.
 
 ## Confirm Memory Before Calling It an OOM
 
 Gel's deployment overview gives 1 GB RAM as a rule-of-thumb minimum for the Docker container and warns that smaller environments can behave unexpectedly during startup. Compilation, migrations, PostgreSQL, and index creation can create startup peaks above steady-state use.
 
-Collect evidence:
+During a controlled reproduction, collect live usage samples; `docker stats --no-stream` captures only one instant. After exit, inspect the termination state:
 
 ```bash
 docker stats --no-stream gel
@@ -171,7 +170,7 @@ On Linux, inspect kernel logs or cgroup events using the host's approved observa
 
 If memory is the cause:
 
-- raise the container limit and reservation based on measured peaks;
+- raise the hard memory limit based on measured peaks and tune the reservation from the expected working set;
 - avoid starting many compiler-heavy services simultaneously;
 - review `GEL_SERVER_COMPILER_POOL_MODE` and `GEL_SERVER_COMPILER_POOL_SIZE` against current documentation;
 - avoid large concurrent index builds and migrations during a tight startup window;
@@ -199,7 +198,7 @@ Before enabling it, make failures observable, keep logs outside the container, a
 - [Running Gel with Docker](https://docs.geldata.com/reference/running/deployment/docker)
 - [Gel server configuration](https://docs.geldata.com/reference/running/configuration)
 - [Gel health and metrics HTTP API](https://docs.geldata.com/reference/running/http)
-- [Gel deployment requirements](https://docs.geldata.com/guides/deployment)
+- [Gel deployment requirements](https://docs.geldata.com/reference/running/deployment)
 - [Docker Compose service configuration](https://docs.docker.com/reference/compose-file/services/)
 - [Docker restart policies](https://docs.docker.com/engine/containers/start-containers-automatically/)
 - [Docker Compose startup order](https://docs.docker.com/compose/how-tos/startup-order/)
