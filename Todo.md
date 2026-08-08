@@ -26,7 +26,6 @@
 
 ## EdgeDB
 
-5. How to Initialize EdgeDB/Gel with Docker Compose Without Running `project init` as Root
 6. EdgeDB Container Exits After Applying Migrations: How to Diagnose Signals, Health Checks, and Memory
 7. EdgeDB Schema and Migration History Disagree: How to Diagnose Drift Before Applying Changes
 8. EdgeDB 5 to Gel 6: When Can You Use CLI Upgrade, and When Is Dump-and-Restore Required?
