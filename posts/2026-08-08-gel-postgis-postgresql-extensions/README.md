@@ -137,13 +137,13 @@ limit 20;
 
 For PostGIS `geography`, `ST_DWithin` and `ST_Distance` use meters by default; Gel exposes those functions with adapted EdgeQL names. For `geometry`, distance units come from the geometry's spatial reference system. A 4326 geometry is not a shortcut for an accurate global meter distance.
 
-Use `dwithin()` for the radius predicate, then calculate and order by distance for the candidates. On large datasets, spatial indexing and operator compatibility are essential. Gel's PostGIS reference marks index-related operator wrappers with an `op_` prefix and documents the applicable PostgreSQL index families. Consult the exact Gel and PostGIS versions, create a supported operator-and-index combination in Gel schema, and verify the EdgeQL query with `analyze`. Do not assume that merely storing a spatial scalar or calling an adapted function creates the intended spatial access path.
+Use `dwithin()` for the radius predicate, then calculate and order by distance for the candidates. On large datasets, spatial indexing and operator compatibility are essential. Gel's PostGIS reference marks wrappers for index-aware PostGIS operators with an `op_` prefix and identifies the relevant Gel PostgreSQL index types (`pg::gist`, `pg::brin`, and `pg::spgist`). Consult the exact Gel and PostGIS versions, create an appropriate spatial index in Gel schema, use a compatible function or operator in the query, and verify the EdgeQL query with `analyze`. Do not assume that merely storing a spatial scalar or calling an adapted function creates the intended spatial access path.
 
 ## Geometry and Geography Are Different Choices
 
-`ext::postgis::geometry` represents planar geometry in a coordinate system. It supports the broadest range of spatial functions, with measurements expressed in the chosen projection's units.
+`ext::postgis::geometry` represents planar geometry in a coordinate system. It supports the broadest range of spatial functions, with measurements expressed in the geometry's spatial reference system units.
 
-`ext::postgis::geography` represents geodetic coordinates on Earth. It makes longitude-and-latitude distance behavior easier to reason about, but PostGIS supports fewer geography operations and they can cost more computation.
+`ext::postgis::geography` represents spatial features in a geodetic coordinate system. It makes longitude-and-latitude distance behavior easier to reason about, but PostGIS supports fewer geography operations and they can cost more computation.
 
 Choose based on the workload:
 
