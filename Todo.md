@@ -29,7 +29,6 @@
 
 ## ESXi
 
-14. ESXi VM Has No Network Connectivity: How to Trace the Path from vNIC to Physical Switch
 15. ESXi Purple Screen of Death: What Evidence to Capture Before Rebooting
 16. How to Upgrade a Standalone ESXi Host When Every VM Is Stored Locally
 17. How to Move an ESXi VM Between Isolated Hosts Without vMotion
