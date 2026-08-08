@@ -160,7 +160,7 @@ set {
 };
 ```
 
-Do not use a nested insert to represent an edit. Repeated edits would create orphaned address objects unless cleanup is modeled.
+Do not use a nested insert to represent an edit. Repeated edits can leave old address objects orphaned when nothing else links to them, unless cleanup is modeled.
 
 ## Preserve Multi-link Members With `+=` and `-=`
 
@@ -241,7 +241,7 @@ Even with exclusive ownership, the target is still an object. Gel does not autom
 
 To update a target, it must be visible under applicable select and update-read policies, and its final state must pass update-write policies. The parent can be visible while the linked child is hidden by a policy on the child's type.
 
-Test the exact request-scoped client and globals. A selector that becomes empty under policy can look like a missing relationship. `assert_exists` produces a clear failure, but error messages must not leak the existence of another tenant's object to an untrusted caller.
+Test the exact request-scoped client and globals. Select and update-read policies can filter targets out of the update result, and the `assert_exists` above checks only the parent order. If the caller requires exactly one updated address, use a client method such as `queryRequiredSingle` to reject an empty result. Do not let the resulting error reveal the existence of another tenant's object to an untrusted caller.
 
 ## Use a Client Transaction for Separate Statements
 
