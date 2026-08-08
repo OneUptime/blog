@@ -109,7 +109,7 @@ Gel's object types, links, shapes, computed fields, constraints, and migrations 
 
 ### The PostgreSQL ecosystem is the requirement
 
-Choose PostgreSQL directly when the system depends on arbitrary PostgreSQL extensions, replication tooling, foreign data wrappers, administration extensions, vendor-specific managed features, or SQL tools that expect full control of the PostgreSQL catalog. Gel 6 added first-class PostGIS support and a PostgreSQL-compatible SQL interface, but that does not mean every PostgreSQL extension or every administration command is available through Gel.
+Choose PostgreSQL directly when the system depends on arbitrary PostgreSQL extensions, replication tooling, foreign data wrappers, administration extensions, vendor-specific managed features, or SQL tools that expect full control of the PostgreSQL catalog. Gel 6 added first-class PostGIS support and data modification through its existing PostgreSQL-compatible SQL interface, but that does not mean every PostgreSQL extension or every administration command is available through Gel.
 
 ### SQL is already the team's shared interface
 
@@ -125,9 +125,9 @@ A self-hosted Gel service adds its own server, compiler behavior, client protoco
 
 ## Do Not Use the SQL Adapter as an Escape Hatch
 
-Gel 6 introduced PostgreSQL protocol support and a subset of data modification through SQL. That is useful for supported SQL clients and gradual integration. It does not turn a Gel-managed database into an ordinary schema that every PostgreSQL administration tool may mutate safely.
+Gel 6 extended its existing PostgreSQL-protocol SQL interface with a subset of data modification support. That is useful for supported SQL clients and gradual integration. It does not turn a Gel-managed database into an ordinary schema that every PostgreSQL administration tool may mutate safely.
 
-Gel's documentation says the database schema is managed through Gel SDL, and the SQL adapter lists unsupported DDL and administration operations. Keep schema evolution in Gel migrations. Direct catalog or table changes can violate assumptions held by the Gel compiler and migration history.
+Gel's documentation says the database schema is managed through Gel SDL, and the SQL adapter lists unsupported DDL and administration operations. Keep schema evolution in Gel migrations. Bypassing Gel to change the backing PostgreSQL catalog or tables directly can violate assumptions held by the Gel compiler and migration history.
 
 ## Evaluate With a Representative Slice
 
