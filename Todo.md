@@ -29,7 +29,6 @@
 
 ## ESXi
 
-20. ESXi Host Is Disconnected from vCenter but VMs Still Run: What Should You Check First?
 
 ## OTel
 
