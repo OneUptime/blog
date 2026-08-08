@@ -43,7 +43,7 @@ FROM pg_replication_slots
 WHERE slot_name = 'orders_sub';
 ```
 
-This full distance query uses `pg_current_wal_lsn()`, so it is for a server that is not in recovery. It targets PostgreSQL 18. Several columns were added in recent major releases; remove unavailable columns when diagnosing an older server and consult that version's view definition. `pg_size_pretty(NULL)` is `NULL`, which is expected when a position or safety limit is unavailable.
+This full distance query uses `pg_current_wal_lsn()`, so it is for a server that is not in recovery. It targets PostgreSQL 18. Several columns were added in recent major releases; remove unavailable columns when diagnosing an older server and consult that version's view definition. The typed `pg_size_pretty(...)` expressions in this query return `NULL` when a position or safety limit is `NULL`.
 
 PostgreSQL can expose logical slots on a standby, including slots synchronized from its primary. Diagnose those with recovery-safe positions:
 
@@ -62,7 +62,7 @@ FROM pg_replication_slots
 WHERE slot_name = 'orders_sub';
 ```
 
-Choose the receive or replay position explicitly when calculating a standby-side byte distance, because they answer different questions. On a hot standby, a slot marked `synced = true` cannot be used for logical decoding or dropped manually. Leave its lifecycle to slot synchronization and follow the documented failover procedure. The WAL-control examples later in this article are not standby procedures.
+Choose the receive or replay position explicitly when calculating a standby-side byte distance, because they answer different questions. On a hot standby, a slot marked `synced = true` cannot be used for logical decoding or dropped manually. For such a slot, `inactive_since` records when synchronization most recently stopped, not consumer inactivity. Leave its lifecycle to slot synchronization and follow the documented failover procedure. The WAL-control examples later in this article are not standby procedures.
 
 Interpret the key fields as follows:
 
@@ -121,11 +121,13 @@ FROM pg_stat_subscription
 WHERE subname = 'orders_sub';
 ```
 
+Use the subscription name in this query. It equals the slot name only when the default slot-name mapping is in use.
+
 Preserve publisher and subscriber logs. An apply worker can reconnect after each crash, making `active` alternate between true and false while the same transaction fails indefinitely.
 
 ### `confirmed_flush_lsn` Moves but `restart_lsn` Does Not
 
-This is the case most often misdiagnosed. The consumer is acknowledging newer data, but PostgreSQL still needs an older restart point. Logical decoding reconstructs transactions from WAL and must be able to recover coherent decoding state after a crash. A transaction or decoding snapshot that began far back can keep the safe restart boundary behind acknowledged commits.
+This is the case most often misdiagnosed. The consumer is acknowledging newer data, but PostgreSQL still needs an older restart point. Logical decoding reconstructs transactions from WAL and must be able to recover coherent decoding state after a crash. A transaction with relevant WAL records that began far back, or decoding state rooted in an old snapshot, can keep the safe restart boundary behind acknowledged commits.
 
 Look for long-running and prepared transactions on the publisher:
 
@@ -154,7 +156,7 @@ FROM pg_prepared_xacts
 ORDER BY prepared;
 ```
 
-Long or very large transactions are especially relevant. Logical decoding preserves transaction ordering; a transaction that began before many later commits can anchor resources even while later work appears to flow. Do not terminate it based only on age. Identify the application owner and the rollback or commit impact first.
+Long transactions that generate relevant WAL, including very large ones, are especially relevant. Logical decoding preserves transaction ordering; a transaction that began before many later commits can anchor resources even while later work appears to flow. Do not terminate it based only on age. Identify the application owner and the rollback or commit impact first.
 
 The restart position also need not advance for every acknowledgement. Treat small or brief separation as normal. Alert on retained bytes and duration under real WAL generation, not on equality between the two LSNs.
 
@@ -209,7 +211,7 @@ WHERE slot_type = 'logical'
 ORDER BY slot_name;
 ```
 
-`age(NULL)` is `NULL`. Transaction-ID ages require thresholds based on autovacuum settings and wraparound headroom, not a universal number copied from another cluster.
+When either transaction-ID column is `NULL`, the corresponding `age(...)` result is `NULL`. Transaction-ID ages require thresholds based on autovacuum settings and wraparound headroom, not a universal number copied from another cluster.
 
 ## Understand the Safety Limit
 
@@ -224,7 +226,7 @@ On PostgreSQL 18, `idle_replication_slot_timeout` can invalidate slots that rema
 
 With a finite WAL limit:
 
-- `reserved` is healthy within normal WAL bounds;
+- `reserved` means the claimed files are within `max_wal_size`;
 - `extended` means retention exceeds `max_wal_size` but files are still retained;
 - `unreserved` means required files are no longer reserved and may be removed at the next checkpoint;
 - `lost` means the slot is unusable and the consumer needs recovery or re-seeding.
@@ -249,13 +251,13 @@ Measure WAL generation against confirmed-byte progress. Scale the sink, resolve 
 
 ### Slot Is Already Invalid
 
-If `wal_status = 'lost'` or `invalidation_reason` is set, required state is gone. Preserve the reason, stop endless reconnects, and follow the consumer's documented re-seed procedure. Recreating a slot at the current LSN skips the missing interval unless a consistent snapshot supplies the corresponding base state.
+If `wal_status = 'lost'` or `invalidation_reason` is set, the slot is unusable; depending on the reason, required WAL or catalog state may already be gone. Preserve the reason, stop endless reconnects, and follow the consumer's documented recovery or re-seed procedure. If the consumer is behind, recreating a slot at the current LSN skips that interval unless a consistent snapshot supplies the corresponding base state.
 
 ## Dangerous Shortcuts
 
 ### Advancing the Slot
 
-Run this only on the writable publisher or primary. It is not valid as a recovery-mode standby repair:
+Run this form only on the writable publisher or primary, because `pg_current_wal_lsn()` cannot run during recovery. It is not a repair for a synchronized standby slot:
 
 ```sql
 SELECT *
@@ -265,13 +267,13 @@ FROM pg_replication_slot_advance(
 );
 ```
 
-This is not a performance repair. It advances confirmed position and makes skipped changes unavailable from that slot. PostgreSQL explicitly warns that careless replication-position changes can produce inconsistent data. Use it only when the consumer owner has identified the exact disposable interval and has an independent reconciliation plan.
+The slot must be inactive; otherwise PostgreSQL rejects the call. This is not a performance repair. It advances confirmed position and makes skipped changes unavailable from that slot. Careless use can leave the consumer's data inconsistent with the publisher. Use it only when the consumer owner has identified the exact disposable interval and has an independent reconciliation plan.
 
 The advanced position is persisted at the next checkpoint, so a crash can also return it to an earlier point. Consumer idempotency remains necessary.
 
 ### Dropping and Recreating the Slot
 
-Dropping releases retained resources immediately, but also discards backlog and continuity. A newly created slot begins from a new consistent point. It does not somehow rediscover changes held only by the old slot. Coordinate a new snapshot or re-seed.
+Dropping immediately releases the slot's retention claims, but also discards backlog and continuity. A newly created slot begins from a new consistent point. It does not somehow rediscover changes held only by the old slot. Coordinate a new snapshot or re-seed.
 
 ### Forcing Repeated Checkpoints
 
