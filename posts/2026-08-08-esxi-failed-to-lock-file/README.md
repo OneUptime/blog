@@ -36,7 +36,7 @@ Use the supported inventory to identify registrations. A read-only host command 
 vim-cmd vmsvc/getallvms
 ```
 
-Also check whether a similarly named duplicate VM was registered from the same `.vmx` file. If an old host is isolated but might still be running the VM, fence that host from the storage or network according to the cluster's recovery procedure before powering on another copy. Two writers against one virtual disk can corrupt it.
+Also check whether a similarly named duplicate VM was registered from the same `.vmx` file. If an old host is isolated but might still be running the VM, power it off or fence it from the shared storage according to the cluster's recovery procedure before powering on another copy. Two writers against one virtual disk can corrupt it.
 
 If vSphere HA recently restarted the VM, allow inventory and storage ownership to settle and check the HA event. Do not remove lock artifacts merely to make a second power-on attempt proceed.
 
@@ -56,13 +56,13 @@ Coordinate this with the backup vendor. Detaching a disk that an active job is r
 
 ## Query a VMFS Lock
 
-For VMFS, Broadcom documents `vmfsfilelockinfo` as the primary inspection tool. Run it against the exact path from the error, adding `-v` for verbose ownership information:
+For VMFS, Broadcom documents `vmfsfilelockinfo` as the primary inspection tool. For a virtual disk, run it against the exact flat, delta, or sesparse backing file identified from the detailed error or logs:
 
 ```bash
-vmfsfilelockinfo -p '/vmfs/volumes/DatastoreName/VMFolder/Disk-flat.vmdk' -v
+vmfsfilelockinfo -p '/vmfs/volumes/DatastoreName/VMFolder/Disk-flat.vmdk'
 ```
 
-For a snapshot error, inspect the named snapshot descriptor or extent as directed by the relevant KB. A result can include the lock mode, MAC address of the owning host, and a world identifier. Map that MAC address to an ESXi management or VMkernel interface rather than guessing from host names.
+If a high-level snapshot error names only a descriptor, use the descriptor and detailed logs to identify the corresponding `-delta.vmdk` or `-sesparse.vmdk` extent as directed by the relevant KB. To have the utility use vCenter to map the owner, append `-v <vCenter_IP_or_FQDN> -u <SSO_user>`. The result can include the lock mode and MAC address of the owning host. Map that MAC address to an ESXi host through the vCenter lookup or the host's networking information rather than guessing from host names.
 
 On the reported owner, inspect open files for the VM name:
 
@@ -79,10 +79,10 @@ Do not apply VMFS lock commands to vSAN as if vSAN were a directory of ordinary 
 The error may name a snapshot disk because a parent is missing, inaccessible, or already held by another process. In Edit Settings, record the active backing for every disk. On VMFS, the VMX file provides a read-only cross-check:
 
 ```bash
-grep -i '.vmdk' /vmfs/volumes/DatastoreName/VMFolder/VMName.vmx
+grep -i '\.vmdk' '/vmfs/volumes/DatastoreName/VMFolder/VMName.vmx'
 ```
 
-If the active backing is a delta, preserve every descriptor and extent. A consistency check can diagnose the chain when a Broadcom KB calls for it:
+If the active backing is a delta, preserve every descriptor and extent. With the VM powered off, a consistency check can diagnose the chain when a Broadcom KB calls for it:
 
 ```bash
 vmkfstools -e /vmfs/volumes/DatastoreName/VMFolder/VMName-000002.vmdk
