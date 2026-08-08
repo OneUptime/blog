@@ -94,13 +94,13 @@ Most standard-switch management designs use independent switch ports with **Rout
 
 If the physical ports form a static EtherChannel, the ESXi policy must match the supported IP-hash design. LACP is supported on a vSphere Distributed Switch, not a standard vSwitch. Do not enable a port channel merely because two uplinks exist.
 
-For troubleshooting, fail over to one known-good uplink through the supported teaming interface and test again. Coordinate with the network team and retain console access. Cycle through one uplink at a time to identify a bad vmnic, cable, or physical port without changing several variables together.
+For troubleshooting, retain console access and coordinate with the network team. On a non-aggregated team, use the supported teaming interface to leave one uplink active at a time and test each path. With IP-hash/static EtherChannel or an LACP LAG, preserve the bundle configuration and isolate members only through a coordinated, channel-aware procedure.
 
 Check that active and standby policy is consistent at both the switch and port-group override layers. A port-group override can silently differ from the parent vSwitch policy.
 
 ## Check MTU Only After Basic Reachability
 
-Management usually uses a 1500-byte MTU. Verify VMkernel, port group or vSwitch, physical switches, and routed links use a compatible value. A jumbo-frame mismatch normally does not explain a complete failure of small ARP and ping, so restore ordinary reachability first.
+Management usually uses a 1500-byte MTU. Verify the VMkernel adapter, virtual switch, physical switches, and routed links use a compatible value. A jumbo-frame mismatch normally does not explain a complete failure of small ARP and ping, so restore ordinary reachability first.
 
 When jumbo frames are intentionally configured, test a non-fragmenting packet using the payload size appropriate to the design:
 
