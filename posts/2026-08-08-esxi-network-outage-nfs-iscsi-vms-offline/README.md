@@ -25,7 +25,8 @@ For software iSCSI:
 
 ```text
 VM I/O -> VMFS -> SCSI multipathing -> iSCSI adapter/session
--> bound storage VMkernel -> port group -> uplink -> target portal -> LUN
+-> storage VMkernel selected by routing or iSCSI port binding
+-> port group -> uplink -> target portal -> LUN
 ```
 
 A successful ping from a guest, management workstation, or `vmk0` does not validate the storage path. The storage VMkernel can use another VLAN, route, uplink, MTU, or switch fabric.
@@ -34,7 +35,7 @@ A successful ping from a guest, management workstation, or `vmk0` does not valid
 
 **All Paths Down**, or APD, means ESXi has no working path and cannot tell whether the device loss is temporary or permanent. It continues retrying I/O. Broadcom documents that both guest I/O and management-agent I/O can wait, making VMs unresponsive and the host appear disconnected from vCenter.
 
-**Permanent Device Loss**, or PDL, means the array returns supported sense information that tells ESXi the device is permanently unavailable. ESXi can stop indefinite retries and vSphere HA can apply its configured PDL response.
+For SCSI-backed storage such as iSCSI, **Permanent Device Loss**, or PDL, means the target returns supported SCSI sense information that tells ESXi the device is permanently unavailable. ESXi can stop indefinite retries and vSphere HA can apply its configured PDL response.
 
 A network outage more commonly produces APD because the host receives no authoritative storage response. Do not label every inaccessible datastore PDL or detach a device as if it will never return.
 
@@ -78,6 +79,8 @@ esxcli network ip interface ipv4 get
 esxcli network ip route ipv4 list
 ```
 
+If the storage VMkernel uses a non-default TCP/IP stack, use `esxcli network ip route ipv4 list -N <netstack>` and add `-S <netstack>` to the `vmkping` commands below.
+
 Test the target from the actual storage VMkernel:
 
 ```bash
@@ -92,13 +95,13 @@ vmkping -I vmk2 -d -s 8972 192.0.2.40
 
 Do not use jumbo parameters on a 1500-byte design. A standard ping can succeed while large storage traffic fails because MTU is inconsistent.
 
-For NFS, inspect the host route because ESXi selects a VMkernel according to its routing table; there is no NFS service checkbox that overrides routing. Check the NFS server service and export configuration, and verify TCP 2049 reachability when the official NFS procedure calls for it:
+For NFS without explicit VMkernel binding, inspect the host route because ESXi selects a VMkernel according to its routing table; there is no NFS service checkbox that overrides routing. On releases that support NFS VMkernel binding (NFS 3 in ESXi 8.0 Update 1 and later, and NFS 4.1 in ESXi 8.0 Update 3 and later), also verify the datastore's binding. Check the NFS server service and export configuration, and verify TCP 2049 reachability when the official NFS procedure calls for it:
 
 ```bash
 nc -vz 192.0.2.40 2049
 ```
 
-For iSCSI, verify VMkernel binding, target portal reachability, discovery sessions, CHAP where used, and the physical switch path. Compare with a healthy host instead of deleting and recreating the adapter.
+For iSCSI, verify route selection and, where applicable, VMkernel port binding, target portal reachability, discovery sessions, CHAP where used, and the physical switch path. Compare with a healthy host instead of deleting and recreating the adapter.
 
 ## Verify Virtual and Physical Network State
 
@@ -116,13 +119,13 @@ A single-host failure often indicates a vmnic, VLAN allow-list, LAG member, VMke
 
 ## Restore Storage Before Management Cosmetics
 
-Fix the failed link, switch, route, target service, export, controller, or array condition first. Confirm sustained VMkernel connectivity and healthy target service. Then use the vSphere Client storage rescan or the documented CLI action:
+Fix the failed link, switch, route, target service, export, controller, or array condition first. Confirm sustained VMkernel connectivity and healthy target service. For iSCSI/VMFS, then use the vSphere Client storage rescan or the documented CLI action:
 
 ```bash
 esxcli storage core adapter rescan --all
 ```
 
-Verify iSCSI paths return active or NFS mounts become accessible, and confirm APD clear events. Avoid repeated cluster-wide rescans while the network remains broken.
+The command rescans SCSI HBAs; it does not remount NFS datastores. Verify iSCSI paths return active. For NFS, verify mounts become accessible and use the documented NFS remount procedure only if a mount remains disconnected. Confirm APD clear events. Avoid repeated cluster-wide rescans while the network remains broken.
 
 Restarting `hostd` or `vpxa` can refresh management after storage has recovered, but it does not repair the data path. Broadcom warns that management-agent restarts can disrupt tasks and should be limited to individual services, especially with vSAN, LACP, or NSX.
 
@@ -130,11 +133,11 @@ A controlled host reboot is a last recovery step for residual APD references or 
 
 ## Understand VMCP Behavior
 
-vSphere HA VM Component Protection can respond to APD and PDL, but only according to cluster policy. For APD, **Disabled** and **Issue Events** do not alter the VM. Other policies can power off and restart affected VMs after configured timing and conditions.
+vSphere HA VM Component Protection can respond to APD and PDL when VMCP is enabled, according to cluster policy and any per-VM HA overrides. Host Monitoring and VM Restart Priority must also be enabled for VMCP to restart VMs. For APD, **Disabled** and **Issue Events** do not alter the VM. Other policies can power off and restart affected VMs after configured timing and conditions.
 
-Broadcom documents that if an intermittent APD clears within **Delay for failure response**, VMCP does not trigger a restart. That is expected and avoids unnecessary recovery for a brief event. It also means VMCP is not proof that a flapping storage path is harmless.
+On vSphere 8.0, VMCP first waits for the ESXi APD timeout, 140 seconds by default, and then **Delay for failure response**, 3 minutes by default. If access returns before those failure-response timers expire, VMCP does not execute the configured APD failover response. A separately configured APD response-on-clear action can still reset a powered-on VM after a timed-out APD clears. This behavior avoids unnecessary failover for a brief event, but it does not prove that a flapping storage path is harmless.
 
-Review **Cluster > Configure > vSphere Availability > Datastore with APD** and the PDL policy. Validate admission capacity and datastore accessibility from potential restart hosts. Do not change VMCP policy in the middle of an outage without understanding whether another VM copy can access the same disks.
+Review **Cluster > Configure > vSphere Availability > Edit > Failures and Responses > Datastore with APD** and **Datastore with PDL**, and check **Cluster > Configure > VM Overrides** for affected VMs. Validate admission capacity and datastore accessibility from potential restart hosts. Do not change VMCP policy in the middle of an outage without understanding whether another VM copy can access the same disks.
 
 ## Validate Every Affected VM
 
