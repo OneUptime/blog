@@ -28,6 +28,10 @@ type User {
 type Post {
   required title: str;
   required author: User;
+  required published: bool {
+    default := false;
+  }
+  published_at: datetime;
 }
 ```
 
@@ -185,7 +189,7 @@ type User {
 
 The exclusive constraint prevents two profiles from linking to the same user. The explicit `single` computed backlink now agrees with the stored invariant.
 
-Declaring a backlink `single` without a supporting invariant does not pick an arbitrary source. It should fail cardinality checking or eventually expose a modeling error. Use `limit 1` only when arbitrary selection is the actual business rule and define deterministic ordering.
+Declaring this plain backlink `single` without a supporting invariant does not pick an arbitrary source. Gel rejects the schema because the inferred `multi` cardinality disagrees with the explicit `single` modifier. Use `order by ... limit 1` only when selecting one source is the actual business rule, and define deterministic ordering.
 
 ## Filter and Paginate the Reverse Set
 
@@ -197,7 +201,7 @@ select User {
   recent_posts := (
     select .<author[is Post]
     filter .published
-    order by .published_at desc
+    order by .published_at desc empty last then .id
     limit 10
   ) {
     id,
