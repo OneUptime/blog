@@ -31,7 +31,7 @@ If the host runs critical VMs on local storage, a reboot can turn a management i
 Broadcom distinguishes the states:
 
 - **Not Responding** means vCenter stopped receiving host heartbeats. Network loss, blocked UDP 902, failed `hostd` or `vpxa`, resource exhaustion, storage trouble, or host failure can cause it. It can recover automatically when the underlying problem clears.
-- **Disconnected** is a vCenter-side state that suspends monitoring. It can follow an explicit disconnect, an unsuccessful connect attempt from Not Responding, or a license issue. After the cause is fixed, an administrator must connect the host again.
+- **Disconnected** is a vCenter-side state that suspends monitoring. It can follow an explicit disconnect, an unsuccessful connect attempt from Not Responding, or an expired host license. After the cause is fixed, an administrator must connect the host again.
 
 This distinction matters for HA. Broadcom documents that vCenter has no current health knowledge for a disconnected host, does not treat it as a guaranteed failover target, and disables HA on that host as part of disconnection. Do not assume the still-running VMs have their normal cluster protection until the host is healthy and reconnected.
 
@@ -75,7 +75,7 @@ vmkping -I vmk0 <management-gateway-ip>
 vmkping -I vmk0 <vcenter-ip>
 ```
 
-Replace `vmk0` if the management service is deliberately on another VMkernel adapter. A successful ping proves only ICMP reachability. It does not prove that the required TCP and UDP flows, MTU, or return path work.
+Replace `vmk0` if the management service is deliberately on another VMkernel adapter. A successful ping proves ICMP reachability and a reply path only for the tested packet size. It does not prove that the required TCP and UDP flows, larger MTU sizes, or the intended return path work.
 
 Verify the active management uplink, standard or distributed port, VLAN ID, NIC link state, physical switch port, allowed VLANs, LACP state, and MTU end to end. Compare against a healthy peer, but do not copy its configuration blindly. Management adapters can legitimately use different uplinks or addresses.
 
@@ -85,7 +85,7 @@ Check `/var/run/log/vobd.log` for duplicate-IP events. Broadcom documents that a
 
 Broadcom's generic disconnected-host runbook calls for checking TCP and UDP 902 and TCP 443 between vCenter and ESXi. Validate the current release and topology against the official ports matrix, especially when proxies, NSX, or segmented management networks are present.
 
-From the vCenter Server Appliance, examples of TCP reachability checks are:
+From the vCenter Server Appliance Bash shell, examples of TCP reachability checks are:
 
 ```bash
 nslookup <esxi-fqdn>
@@ -163,7 +163,7 @@ Use this order after evidence identifies the layer:
 1. Correct the duplicate IP, VLAN, route, MTU, DNS, firewall, or vCenter service issue.
 2. Confirm bidirectional management traffic and stable DNS.
 3. If the host is **Not Responding**, allow it to recover or use **Connection > Connect** after the path is healthy.
-4. If it is explicitly **Disconnected**, select **Connection > Connect**, provide authorized credentials, and validate the expected certificate.
+4. If it is explicitly **Disconnected**, select **Connection > Connect**, provide authorized credentials if prompted, and validate any presented certificate thumbprint against the expected host.
 5. Restart a single implicated management service only when logs and service status justify it.
 
 Broadcom supports restarting `hostd` or `vpxa` individually through **Host > Manage > Services** or with:
