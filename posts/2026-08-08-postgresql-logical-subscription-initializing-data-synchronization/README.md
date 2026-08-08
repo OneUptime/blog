@@ -45,7 +45,7 @@ PostgreSQL 18 documents these codes:
 - `s`: the table synchronized with changes that occurred during the copy;
 - `r`: the table is ready for normal replication.
 
-`srsublsn` is meaningful for synchronization coordination in `s` or `r`; it is normally `NULL` in earlier states. Do not update this system catalog manually to force a table to `r`. The state coordinates snapshots, temporary slots, and the main apply worker. Forging it can silently omit data.
+`srsublsn` is meaningful for synchronization coordination in `s` or `r`; it is normally `NULL` in earlier states. Do not update this system catalog manually to force a table to `r`. The state coordinates snapshots, table-synchronization slots, and the main apply worker. Forging it can silently omit data.
 
 Count states to see whether the problem is global or isolated:
 
@@ -62,7 +62,7 @@ A large table can legitimately remain in `d` for hours. It is stuck only when th
 
 ## Find the Worker Responsible
 
-Current PostgreSQL exposes the worker type directly:
+Current PostgreSQL exposes the worker type directly. Because `pg_subscription` is cluster-shared and subscription names only need to be unique within a database, resolve the current database's subscription OID when filtering the shared statistics view:
 
 ```sql
 SELECT subname,
@@ -75,11 +75,20 @@ SELECT subname,
        last_msg_send_time,
        last_msg_receipt_time
 FROM pg_stat_subscription
-WHERE subname = 'orders_sub'
-ORDER BY worker_type, relation::text NULLS FIRST, pid;
+WHERE subid = (
+    SELECT oid
+    FROM pg_subscription
+    WHERE subname = 'orders_sub'
+      AND subdbid = (
+          SELECT oid
+          FROM pg_database
+          WHERE datname = current_database()
+      )
+)
+ORDER BY worker_type, (relid::regclass)::text NULLS FIRST, pid;
 ```
 
-Normally an enabled subscription has one leader apply worker. During initial copy it can also have table synchronization workers, and a subscription using parallel streaming can have parallel apply workers. A disabled subscription or one whose worker keeps crashing can have no rows.
+Normally an enabled subscription has one leader apply worker. During initial copy it can also have table synchronization workers, and a subscription using parallel streaming can have parallel apply workers. On PostgreSQL 18, a disabled subscription or one whose worker keeps crashing still has a placeholder row with null worker fields, notably a null `pid`.
 
 On older supported releases, the exact columns differ. Check that release's `pg_stat_subscription` documentation instead of deploying a current-version query unchanged. Where `worker_type` is unavailable, a non-null `relid` identifies a table synchronization worker in older layouts.
 
@@ -98,7 +107,16 @@ FROM pg_stat_activity
 WHERE pid IN (
     SELECT pid
     FROM pg_stat_subscription
-    WHERE subname = 'orders_sub'
+    WHERE subid = (
+        SELECT oid
+        FROM pg_subscription
+        WHERE subname = 'orders_sub'
+          AND subdbid = (
+              SELECT oid
+              FROM pg_database
+              WHERE datname = current_database()
+          )
+    )
 );
 ```
 
@@ -114,16 +132,25 @@ SELECT subname,
        sync_error_count,
        stats_reset
 FROM pg_stat_subscription_stats
-WHERE subname = 'orders_sub';
+WHERE subid = (
+    SELECT oid
+    FROM pg_subscription
+    WHERE subname = 'orders_sub'
+      AND subdbid = (
+          SELECT oid
+          FROM pg_database
+          WHERE datname = current_database()
+      )
+);
 ```
 
-Counters prove that failures occurred; they do not contain the relation, SQLSTATE, or first cause. Preserve subscriber logs around each increase. A synchronization worker that fails is automatically respawned, so a repeating error may look like periodic activity without progress.
+Counters prove that failures occurred; they do not contain the relation, SQLSTATE, or first cause. Preserve subscriber logs around each increase. With the default `disable_on_error = false`, a synchronization worker that fails is automatically respawned, so a repeating error may look like periodic activity without progress. With `disable_on_error = true`, an error disables the subscription instead.
 
 Also read publisher logs. Connection rejection, replication-slot exhaustion, missing `SELECT` privilege, row-security behavior, and WAL sender termination are often clearer there.
 
 ## Inspect Main and Table Synchronization Slots
 
-Each active subscription uses one logical slot on the publisher. Initial synchronization creates additional table-synchronization slots whose generated names follow the documented `pg_<subscription_oid>_sync_<relation_oid>_<system_identifier>` pattern. PostgreSQL drops them when synchronization finishes. Inspect the `temporary` field instead of assuming a persistence class from the generated name.
+Each active subscription uses one logical slot on the publisher. Initial synchronization creates additional table-synchronization slots whose generated names follow the documented `pg_<subscription_oid>_sync_<relation_oid>_<system_identifier>` pattern; all three generated identifiers are subscriber-side. Although transient in lifecycle, PostgreSQL 18 creates these as permanent slots (`temporary = false`) and drops them when synchronization finishes.
 
 On the subscriber, first record the main slot name and subscription OID:
 
@@ -134,10 +161,15 @@ SELECT oid AS subscription_oid,
        subslotname,
        subpublications
 FROM pg_subscription
-WHERE subname = 'orders_sub';
+WHERE subname = 'orders_sub'
+  AND subdbid = (
+      SELECT oid
+      FROM pg_database
+      WHERE datname = current_database()
+  );
 ```
 
-Then inspect slots on the publisher:
+Then inspect slots on the publisher. This query targets PostgreSQL 18 and assumes the default main slot name; if `subslotname` differs, replace `'orders_sub'` with the value returned above. On older releases, select only columns available in that release:
 
 ```sql
 SELECT slot_name,
@@ -195,7 +227,7 @@ Typical copy failures include:
 
 - the subscriber table or column does not exist;
 - a source value cannot be converted to the subscriber type;
-- a subscriber `NOT NULL`, check, unique, or foreign-key constraint rejects copied rows;
+- a subscriber `NOT NULL`, check, or unique constraint rejects copied rows;
 - a generated expression or default depends on a missing function or extension;
 - an existing subscriber row collides with copied primary or unique keys;
 - `binary = true` encounters incompatible type send/receive support across versions.
@@ -204,7 +236,7 @@ Initial copy does not truncate the subscriber table. `copy_data = true` into pre
 
 ## Failure Class 2: Trigger Side Effects
 
-Normal logical apply runs with `session_replication_role = replica`, so ordinary triggers and rules do not fire. Initial table synchronization is implemented like `COPY`, and PostgreSQL documents that it fires both row and statement triggers for `INSERT`.
+Logical apply and table synchronization both run with `session_replication_role = replica`, so ordinary triggers and rules do not fire. Normal apply can fire eligible row triggers but not statement triggers. Initial table synchronization is implemented like `COPY` and can fire both row and statement triggers for `INSERT`, but only when those triggers are configured `ENABLE REPLICA` or `ENABLE ALWAYS`.
 
 Inventory subscriber triggers on the stuck table:
 
@@ -218,22 +250,26 @@ WHERE t.tgrelid = 'public.orders'::regclass
 ORDER BY t.tgname;
 ```
 
-A trigger can call a missing function, reject a row, write to another constrained table, or make the copy unexpectedly expensive. Do not disable it reflexively. Determine whether its semantics are required during initial load, then use a reviewed maintenance change and restore the intended trigger mode afterward.
+Such a trigger can call a missing function, reject a row, write to another constrained table, or make the copy unexpectedly expensive. Do not disable it reflexively. Determine whether its semantics are required during initial load, then use a reviewed maintenance change and restore the intended trigger mode afterward.
 
 ## Failure Class 3: Publisher Permissions or Row Security
 
-The connection role needs `LOGIN`, `REPLICATION`, a matching `pg_hba.conf` rule, and `SELECT` on every table whose initial contents it copies. On the publisher:
+The connection role needs `LOGIN` and a matching `pg_hba.conf` rule. Unless it is a superuser, it also needs `REPLICATION`, `CONNECT` on the publisher database, `USAGE` on each containing schema, and `SELECT` on every table whose initial contents it copies. On the publisher:
 
 ```sql
-SELECT rolname, rolcanlogin, rolreplication, rolbypassrls
+SELECT rolname, rolsuper, rolcanlogin, rolreplication, rolbypassrls
 FROM pg_roles
 WHERE rolname = 'logical_replicator';
 
-SELECT has_table_privilege(
-    'logical_replicator',
-    'public.orders',
-    'SELECT'
-) AS can_copy_orders;
+SELECT has_database_privilege(
+           'logical_replicator', current_database(), 'CONNECT'
+       ) AS can_connect,
+       has_schema_privilege(
+           'logical_replicator', 'public', 'USAGE'
+       ) AS can_use_orders_schema,
+       has_table_privilege(
+           'logical_replicator', 'public.orders', 'SELECT'
+       ) AS can_copy_orders;
 ```
 
 If a non-superuser role lacks `BYPASSRLS`, publisher row-security policies can execute. PostgreSQL recommends considering `options=-crow_security=off` when the replication role does not trust every table owner; that makes the session stop instead of unexpectedly applying a newly added row-security policy. Treat any connection-string change as sensitive because `pg_subscription.subconninfo` can contain credentials.
@@ -251,7 +287,13 @@ SHOW max_sync_workers_per_subscription;
 SHOW max_parallel_apply_workers_per_subscription;
 ```
 
-`max_logical_replication_workers` includes leader apply workers, table synchronization workers, and parallel apply workers. Increasing only `max_sync_workers_per_subscription` cannot create capacity in the other pools. Some parameters require a server restart, so confirm their context with `pg_settings` and plan the change.
+PostgreSQL 18 also limits active replication origins separately:
+
+```sql
+SHOW max_active_replication_origins;
+```
+
+`max_logical_replication_workers` includes leader apply workers, table synchronization workers, and parallel apply workers. Increasing only `max_sync_workers_per_subscription` cannot create capacity in the other pools. On PostgreSQL 18, `max_active_replication_origins` must cover the subscriptions plus reserve for table synchronization; on earlier releases, `max_replication_slots` provides this subscriber-side limit. Some parameters require a server restart, so confirm their context with `pg_settings` and plan the change.
 
 Worker limits normally reduce parallelism rather than corrupting state, but an undersized pool shared across several subscriptions can make tables wait in `i` much longer than expected. Logs typically report failure to obtain a worker when exhaustion is the cause.
 
@@ -269,7 +311,16 @@ FROM pg_stat_activity AS a
 WHERE a.pid IN (
     SELECT pid
     FROM pg_stat_subscription
-    WHERE subname = 'orders_sub'
+    WHERE subid = (
+        SELECT oid
+        FROM pg_subscription
+        WHERE subname = 'orders_sub'
+          AND subdbid = (
+              SELECT oid
+              FROM pg_database
+              WHERE datname = current_database()
+          )
+    )
 );
 ```
 
@@ -281,7 +332,7 @@ Check filesystem space on both nodes. The publisher retains WAL through replicat
 
 ## Choose a Recovery That Preserves the Snapshot Contract
 
-For a transient connection or resource error, fix the cause and allow PostgreSQL to respawn the synchronization worker. For schema, permission, trigger, or data conflicts, correct the exact issue and observe the retry.
+For a transient connection or resource error, fix the cause and allow PostgreSQL to respawn the synchronization worker. For schema, permission, trigger, or data conflicts, correct the exact issue and observe the retry. If `disable_on_error = true` disabled the subscription, re-enable it only after repairing the cause.
 
 Avoid these shortcuts:
 
