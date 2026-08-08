@@ -8,19 +8,19 @@ Description: Trace a PostgreSQL standby connection failure through recovery stat
 
 ---
 
-A PostgreSQL standby that cannot connect is rarely fixed by changing every replication setting at once. The WAL receiver follows a specific path: the server must be in standby mode, resolve and reach the upstream address, negotiate TLS if requested, match the first applicable `pg_hba.conf` rule, authenticate a login role with replication privilege, start a WAL sender, select the configured slot if any, and request WAL that still exists.
+A PostgreSQL standby that cannot connect is rarely fixed by changing every replication setting at once. The WAL receiver follows a specific path: the server must be in standby mode, resolve and reach the upstream address, negotiate TLS if requested, match the first applicable `pg_hba.conf` rule, authenticate a role with `LOGIN` and either `REPLICATION` or `SUPERUSER`, start a WAL sender, select the configured slot if any, and request WAL that still exists.
 
 Work through those layers in order. Keep the first error from both the standby and upstream logs, because later retries often replace a precise authentication or certificate failure with repetitive reconnect noise.
 
 ## Start by Proving the Node Is Still a Standby
 
-Run locally on the affected node:
+If the standby has reached consistent recovery and accepts read-only connections with `hot_standby = on`, run locally on the affected node. Otherwise, start with its logs because these SQL checks are unavailable:
 
 ```sql
 SELECT pg_is_in_recovery() AS is_standby,
        pg_last_wal_receive_lsn() AS receive_lsn,
        pg_last_wal_replay_lsn() AS replay_lsn,
-       pg_last_xact_replay_timestamp() AS last_replayed_commit;
+       pg_last_xact_replay_timestamp() AS last_xact_replay_timestamp;
 ```
 
 If `pg_is_in_recovery()` is false, there should be no physical WAL receiver. The node may have been promoted, may have started without `standby.signal`, or may be the wrong endpoint. Do not recreate `standby.signal` on a node that accepted writes after promotion. Its timeline may have diverged, requiring `pg_rewind` or a new base backup after the old writer is fenced.
@@ -75,14 +75,14 @@ Treat `primary_conninfo` as sensitive. It can contain a password, and privileged
 A secure example is:
 
 ```conf
-primary_conninfo = 'host=primary-db.internal port=5432 user=replicator application_name=standby_a sslmode=verify-full sslrootcert=/etc/postgresql/certs/root.crt passfile=/etc/postgresql/replication.pass connect_timeout=5'
+primary_conninfo = 'host=primary-db.internal port=5432 user=replicator application_name=standby_a sslmode=verify-full gssencmode=disable sslrootcert=/etc/postgresql/certs/root.crt passfile=/etc/postgresql/replication.pass connect_timeout=5'
 primary_slot_name = 'standby_a_slot'
 recovery_target_timeline = 'latest'
 ```
 
 The host and port must name the upstream **sending server**. In cascading replication that may be another standby, not the original primary.
 
-PostgreSQL documents `primary_conninfo` as reloadable: when it changes while the WAL receiver runs, that process is signaled to stop and is expected to restart with the new setting. Confirm the reload succeeded and check the log:
+PostgreSQL documents `primary_conninfo` as reloadable: when it changes while the WAL receiver runs, that process is signaled to stop and is expected to restart with the new setting, except when `primary_conninfo` is an empty string. Request a reload, then re-query `pg_settings` to confirm the applied values and check the server log:
 
 ```sql
 SELECT pg_reload_conf();
@@ -107,7 +107,8 @@ Interpret failures narrowly:
 - name lookup failure: fix DNS or the configured host;
 - timeout: inspect routing, security groups, firewall, load balancer, and whether the server listens on that interface;
 - connection refused: nothing is accepting at that address and port, or an active reject is present;
-- PostgreSQL rejection: transport worked, so continue to HBA, role, TLS, or capacity.
+- `pg_isready` reports rejecting connections: the server is reachable but is in a state that disallows connections, such as startup, shutdown, or crash recovery; inspect its state and logs;
+- a `FATAL` from the actual standby connection: transport worked, so follow the specific error through HBA, role, or capacity.
 
 Avoid pointing physical replication through a generic SQL connection pooler unless that product explicitly supports the streaming replication protocol and preserves long-lived sessions.
 
@@ -124,6 +125,8 @@ SHOW wal_level;
 SHOW max_wal_senders;
 SHOW max_replication_slots;
 ```
+
+`inet_server_addr()` and `inet_server_port()` describe the endpoint on which the current SQL session was accepted and return null for a Unix-domain socket connection; they do not enumerate every listening interface.
 
 Remote TCP connections require `listen_addresses` to cover the desired interface. Physical streaming requires `wal_level = replica` or higher and an available WAL sender. `max_wal_senders = 0` disables replication connections.
 
@@ -152,6 +155,7 @@ On the upstream:
 
 ```sql
 SELECT rolname,
+       rolsuper,
        rolcanlogin,
        rolreplication,
        rolvaliduntil
@@ -159,13 +163,13 @@ FROM pg_roles
 WHERE rolname = 'replicator';
 ```
 
-For a physical replication connection, the role needs both `LOGIN` and `REPLICATION`, unless it is a superuser. Do not make it superuser to bypass diagnosis:
+For a physical replication connection, the role always needs `LOGIN`; it also needs `REPLICATION` unless it is a superuser. Do not make it superuser to bypass diagnosis:
 
 ```sql
 ALTER ROLE replicator WITH LOGIN REPLICATION;
 ```
 
-Set or rotate its password through the organization's secret-management process. An expired `rolvaliduntil`, wrong password, or password stored with an authentication format unsupported by an old client can all block login.
+Set or rotate its password through the organization's secret-management process. For password authentication, an expired `rolvaliduntil`, wrong password, or password stored with an authentication format unsupported by an old client can all block login.
 
 Logical replication differs here: its connection names a real database and the role also needs table access for initial copy. A physical replication HBA rule using the special database field `replication` does not match a logical replication connection.
 
@@ -180,7 +184,7 @@ hostssl    replication   replicator    10.20.30.41/32   scram-sha-256
 
 The `replication` database keyword matches physical replication requests. Quote it and it loses that special meaning. Use the source IP observed by the upstream, which may be a NAT address rather than the standby interface you expected.
 
-HBA evaluation is first-match only. PostgreSQL does not fall through to a later rule when authentication under an earlier matching rule fails. Inspect the current file contents in evaluation order:
+HBA evaluation is first-match only. PostgreSQL does not fall through to a later rule when authentication under an earlier matching rule fails. Inspect the current file contents in evaluation order. The query below uses `rule_number`, available in PostgreSQL 16 and later; on PostgreSQL 15 and earlier, omit that column and order by `line_number`:
 
 ```sql
 SELECT rule_number,
@@ -238,7 +242,7 @@ SHOW ssl_key_file;
 SHOW ssl_ca_file;
 ```
 
-For production replication, `sslmode=verify-full` both verifies the certificate chain and checks the requested host against the certificate identity. `sslmode=require` encrypts but does not provide the same server-identity guarantee.
+For production replication, `sslmode=verify-full` both verifies the certificate chain and checks the requested host against the certificate identity. `sslmode=require` encrypts but does not provide the same server-identity guarantee. Libpq prefers GSSAPI encryption when it is available regardless of `sslmode`; when policy specifically requires TLS and a `hostssl` rule, set `gssencmode=disable` as in the earlier example.
 
 Common failures have different fixes:
 
@@ -266,7 +270,7 @@ ORDER BY r.application_name;
 
 ## Check the Physical Replication Slot
 
-If `primary_slot_name` is set, the named physical slot must exist on the connected upstream:
+If `primary_slot_name` is set, the named physical slot must exist on the connected upstream. The query below uses `inactive_since` and `invalidation_reason`, available in PostgreSQL 17 and later; omit those columns on older releases:
 
 ```sql
 SELECT slot_name,
@@ -292,7 +296,7 @@ SELECT *
 FROM pg_create_physical_replication_slot('standby_a_slot', true);
 ```
 
-The `true` argument reserves WAL immediately. That protects continuity but starts retention immediately too. Monitor it and drop it if the planned standby is abandoned.
+The `true` argument reserves the slot's LSN immediately, so WAL retention starts immediately; it cannot restore WAL that was already removed. Monitor it and drop it if the planned standby is abandoned.
 
 ## A Connection Can Succeed but WAL Retrieval Can Still Fail
 
@@ -304,7 +308,7 @@ requested starting point ... is ahead of the WAL flush position
 requested timeline ... is not a child of this server's history
 ```
 
-If required WAL was removed, the standby can continue only if its `restore_command` can retrieve the missing segments from a valid archive. Otherwise take a new base backup. Increasing `wal_keep_size` after removal cannot recreate old segments.
+If the connected upstream removed required WAL, the standby can continue only if another valid source, typically `restore_command` backed by a WAL archive, can supply it. If no source has the missing WAL, take a new base backup. Increasing `wal_keep_size` after removal cannot recreate old segments.
 
 A permanent physical slot prevents required WAL removal while usable, but unlimited slot retention can fill `pg_wal`. Use `max_slot_wal_keep_size`, filesystem alerts, and slot lifecycle management according to the desired tradeoff.
 
@@ -319,7 +323,7 @@ Timeline errors usually follow failover or an incorrect upstream choice. `recove
 | Connection refused | Port, process, interface, load balancer |
 | No `pg_hba.conf` entry | Connection type, source address, database keyword, rule order |
 | Password authentication failed | Role, password source, passfile match, expiry |
-| Must be superuser or replication role | `LOGIN` and `REPLICATION` attributes |
+| Must be superuser or replication role | `LOGIN`, plus `REPLICATION` or `SUPERUSER` |
 | Certificate verify or hostname error | CA chain, validity, requested host, certificate names |
 | Replication slot does not exist or is active | `primary_slot_name` and slot ownership |
 | Requested WAL removed | Archive availability, slot/retention policy, re-seed |
@@ -329,7 +333,7 @@ Timeline errors usually follow failover or an incorrect upstream choice. `recove
 
 On the upstream, the standby should have one sender row with the expected `application_name`, source address, TLS state, and eventually `streaming` state. On the standby, `pg_stat_wal_receiver` should identify the expected sender and both receive and replay LSNs should move under write activity.
 
-Make a harmless canary transaction on the actual writer and verify it becomes visible on the standby after replay. Then check that archive fallback, slot retention, monitoring, and automatic reconnect still behave under a controlled restart. A connected socket is only the first half of recovery.
+On a queryable hot standby, make a harmless canary transaction on the actual writer and verify it becomes visible in a new query snapshot after replay. Then check that archive fallback, slot retention, monitoring, and automatic reconnect still behave under a controlled restart. A connected socket is only the first half of recovery.
 
 ## Official Documentation
 
