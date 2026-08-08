@@ -26,7 +26,6 @@
 
 ## EdgeDB
 
-20. Can EdgeDB Use PostGIS and Other PostgreSQL Extensions? What Changed in Gel 6
 
 ## ESXi
 
