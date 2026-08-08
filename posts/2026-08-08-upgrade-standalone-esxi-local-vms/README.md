@@ -8,7 +8,7 @@ Description: Upgrade a standalone ESXi host with local-only VMs by creating exte
 
 ---
 
-A standalone ESXi host with local-only VM storage cannot evacuate running workloads. The maintenance window is therefore a planned outage, and the local datastore must not be the only recovery copy. An ESXi host-configuration backup does not include VM disks and does not include the bootbank.
+In the single-host scenario described here, there is nowhere to evacuate running workloads stored on local-only VM storage. The maintenance window is therefore a planned outage, and the local datastore must not be the only recovery copy. An ESXi host-configuration backup does not include VM disks and does not include the bootbank.
 
 The safe plan creates independent VM backups, verifies hardware and image compatibility, records the local disk layout, powers off every VM, enters maintenance mode, and uses an upgrade method that explicitly preserves VMFS.
 
