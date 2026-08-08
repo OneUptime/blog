@@ -23,7 +23,6 @@
 
 ## Postgres Replication
 
-15. Why Is a Logical Replication Slot’s `restart_lsn` Not Moving?
 16. Can Physical PostgreSQL Replication Span Major Versions? Planning an Upgrade Without Breaking the Standby
 17. PostgreSQL Standby Cannot Connect: Debugging `pg_hba.conf`, Replication Roles, TLS, and `primary_conninfo`
 18. Cascading PostgreSQL Replication: What Happens to Downstream Standbys After Failover?
