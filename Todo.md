@@ -26,7 +26,6 @@
 
 ## EdgeDB
 
-4. EdgeQL vs SQL: How Do Links, Shapes, and Cardinality Replace Joins and Result Mapping?
 5. How to Initialize EdgeDB/Gel with Docker Compose Without Running `project init` as Root
 6. EdgeDB Container Exits After Applying Migrations: How to Diagnose Signals, Health Checks, and Memory
 7. EdgeDB Schema and Migration History Disagree: How to Diagnose Drift Before Applying Changes
