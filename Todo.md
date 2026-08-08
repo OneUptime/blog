@@ -23,7 +23,6 @@
 
 ## Postgres Replication
 
-20. PostgreSQL Replication Monitoring: What to Alert On in `pg_stat_replication`, `pg_stat_wal_receiver`, and `pg_replication_slots`
 
 ## EdgeDB
 
