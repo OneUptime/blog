@@ -55,7 +55,7 @@ FROM pg_publication AS p
 WHERE p.puballtables;
 ```
 
-Schema-level publications and partition ancestry can make membership broader than a direct `pg_publication_rel` row. Use `pg_get_publication_tables()` on supported releases or inspect `pg_publication_tables` to see the effective published relations:
+Schema-level publications and partition ancestry can make membership broader than a direct `pg_publication_rel` row. On PostgreSQL 15 and later, inspect `pg_publication_tables` to see each publication's expanded relation mapping, column list, and row filter. The exact-name filter below checks only `public.orders`; for a partition tree, repeat it for the relevant root and leaf names because the view reports leaves by default and the effective published ancestor when `publish_via_partition_root` is enabled:
 
 ```sql
 SELECT pubname, schemaname, tablename, attnames, rowfilter
@@ -68,23 +68,34 @@ The catalog code `d` means `DEFAULT`, which uses the primary key. If no primary 
 
 ## Inventory Candidate Keys Before Choosing One
 
-List primary, unique, partial, expression, nullable, and currently selected indexes:
+List primary, unique, immediately enforced, partial, expression, and nullable indexes, plus indexes explicitly selected as replica identity:
 
 ```sql
 SELECT i.indexrelid::regclass AS index_name,
        i.indisprimary,
        i.indisunique,
+       i.indimmediate AS uniqueness_is_immediate,
        i.indisvalid,
        i.indisready,
        i.indisreplident,
        i.indpred IS NOT NULL AS is_partial,
+       i.indexprs IS NOT NULL AS has_expressions,
+       NOT EXISTS (
+           SELECT 1
+           FROM unnest(i.indkey) WITH ORDINALITY AS k(attnum, ord)
+           LEFT JOIN pg_attribute AS a
+             ON a.attrelid = i.indrelid
+            AND a.attnum = k.attnum
+           WHERE k.ord <= i.indnkeyatts
+             AND (k.attnum = 0 OR a.attnotnull IS NOT TRUE)
+       ) AS key_columns_marked_not_null,
        pg_get_indexdef(i.indexrelid) AS definition
 FROM pg_index AS i
 WHERE i.indrelid = 'public.orders'::regclass
 ORDER BY i.indisprimary DESC, i.indisunique DESC, i.indexrelid::regclass::text;
 ```
 
-A replica-identity index named by `USING INDEX` must be unique, non-partial, non-deferrable, and cover only columns marked `NOT NULL`. Do not choose a key merely because its current values happen to be unique. It must remain stable and uniquely identify a row for the lifetime of queued changes.
+A replica-identity index named by `USING INDEX` must be unique, non-partial, non-deferrable, and have only simple key columns marked `NOT NULL`. Do not choose a key merely because its current values happen to be unique. It must continue to identify rows uniquely as changes are applied; prefer a semantically stable key.
 
 Useful questions are:
 
@@ -129,16 +140,21 @@ FROM pg_index
 WHERE indexrelid = 'public.orders_id_uq'::regclass;
 ```
 
-Then attach it as the primary key:
+Then attach it as the primary key and explicitly select `DEFAULT`. Adding a primary key does not replace an existing `NOTHING`, `FULL`, or `USING INDEX` setting:
 
 ```sql
 ALTER TABLE public.orders
 ADD CONSTRAINT orders_pkey PRIMARY KEY USING INDEX orders_id_uq;
+
+ALTER TABLE public.orders
+REPLICA IDENTITY DEFAULT;
 ```
 
 If `id` is nullable, changing it to `NOT NULL` requires validation. PostgreSQL can sometimes prove null absence from an existing valid constraint, but the exact locking and scan behavior depends on the migration and release. Rehearse it with production-sized data.
 
-The primary key must also exist on the subscriber before incoming changes rely on it. PostgreSQL's logical replication documentation requires a subscriber replica identity with the same or fewer columns when the publisher identity is not `FULL`. Keep constraints aligned so apply does not accept a row shape that the publisher rejects, or reject one the publisher accepts.
+The concurrent index examples in Options 1 and 2 are for non-partitioned tables. On a partitioned parent, `CREATE INDEX CONCURRENTLY` and `ADD CONSTRAINT ... USING INDEX` are not supported; build and attach indexes per partition, and ensure that any parent primary key or unique constraint includes every partition-key column.
+
+A compatible replica identity must exist on the subscriber before incoming changes rely on it; it need not be declared as a primary key. PostgreSQL's logical replication documentation requires a subscriber replica identity with the same or fewer columns when the publisher identity is not `FULL`. Keep constraints aligned so apply does not accept a row shape that the publisher rejects, or reject one the publisher accepts.
 
 ## Option 2: Select a Unique Index
 
@@ -158,7 +174,7 @@ ON public.orders (tenant_id, external_id);
 
 Both columns must be `NOT NULL` before PostgreSQL accepts that index as replica identity. A partial unique index such as `WHERE deleted_at IS NULL` is not eligible, because rows outside its predicate would have no identity. A deferrable unique constraint is not eligible either.
 
-Selecting an index as replica identity does not create a primary key and does not change application semantics. It only changes what old key values PostgreSQL records in WAL for logical decoding. Keep the index protected in schema migrations: if it is dropped, published updates and deletes fail again.
+Selecting an index as replica identity does not create a primary key or add a new uniqueness rule. It changes which old key values PostgreSQL records in WAL for logical decoding and can make published updates and deletes permissible. Keep the index protected in schema migrations: if it is dropped, published updates and deletes fail again.
 
 Apply the compatible index and identity on subscribers as part of the same controlled rollout. Check the result on each node:
 
@@ -214,15 +230,13 @@ Logical replication does not copy the `ALTER TABLE` command. Deploy the key and 
 
 If publications use column lists, every column in the replica identity must be published for `UPDATE` and `DELETE`. If they use row filters, columns referenced by those filters must also satisfy the documented replica-identity rules for the published operation.
 
-Partitioned tables need topology-aware testing. By default, changes are published using leaf partition identity and schema. A publication with `publish_via_partition_root = true` uses the root's identity and schema instead. Inspect the effective publication and every relevant root and leaf rather than changing only the table named in application SQL.
+Partitioned tables need topology-aware testing. By default, changes are published using leaf partition identity and schema. A publication with `publish_via_partition_root = true` uses the identity and schema of the topmost partitioned ancestor included in the publication instead. Inspect the effective publication and every relevant root and leaf rather than changing only the table named in application SQL.
 
 ## Verify the Repair
 
-Make one canary row exercise each published operation:
+Make one canary row exercise each published operation. Run and commit each statement separately, waiting for the subscriber to catch up before continuing:
 
 ```sql
-BEGIN;
-
 INSERT INTO public.orders (id, tenant_id, external_id, status)
 VALUES (900000001, 42, 'replica-identity-canary', 'created');
 
@@ -232,11 +246,9 @@ WHERE id = 900000001;
 
 DELETE FROM public.orders
 WHERE id = 900000001;
-
-COMMIT;
 ```
 
-Use a collision-free test key and do this only where a canary transaction is acceptable. Verify the final state and application logs on the subscriber. Also inspect worker health:
+Use a collision-free test key whose values satisfy any row filters, and do this only where canary writes are acceptable. After the `INSERT`, verify the `created` row on the subscriber; after the `UPDATE`, verify the `verified` status; after the `DELETE`, verify its absence. On PostgreSQL 17 and later, also inspect worker activity:
 
 ```sql
 SELECT subname,
