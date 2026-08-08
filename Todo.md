@@ -29,7 +29,6 @@
 
 ## ESXi
 
-10. How Long Should You Keep an ESXi Snapshot Before It Becomes a Risk?
 11. ESXi Datastore Disappeared After a Firmware Update: Driver, HCL, and LUN Checks
 12. Why a Brief Network Outage Can Take ESXi VMs Offline on NFS or iSCSI Storage
 13. ESXi Management Network Cannot Reach the Gateway: A vSwitch and VLAN Checklist
