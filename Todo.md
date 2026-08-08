@@ -23,7 +23,6 @@
 
 ## Postgres Replication
 
-13. Why PostgreSQL Logical Replication Does Not Advance Sequences—and How to Prepare for Failover
 14. Logical Subscription Stuck in `initializing` or `data synchronization`: What Should You Inspect?
 15. Why Is a Logical Replication Slot’s `restart_lsn` Not Moving?
 16. Can Physical PostgreSQL Replication Span Major Versions? Planning an Upgrade Without Breaking the Standby
