@@ -10,7 +10,7 @@ Description: Choose ESXi snapshots or backups by the failure they can recover, t
 
 An ESXi snapshot and a backup can both expose a past point in time, but they solve different problems. A snapshot is a short-lived change mechanism tied to the VM's existing virtual disks and datastore. A backup is a data-protection copy created and retained by a backup system, ideally in a separate failure domain.
 
-That distinction determines recovery. A snapshot can make a tested patch rollback fast. It cannot recover the VM after the base VMDK or datastore is lost. A backup can recover from source-storage loss only if its repository, catalog, credentials, and restore path survived and the backup was successfully validated.
+That distinction determines recovery. A snapshot can make a tested patch rollback fast. It cannot recover the VM after the base VMDK or datastore is lost. A backup can recover from source-storage loss only if its backup data, any metadata, credentials, or encryption keys required to use it, and the restore path remain available and usable. Prior validation provides evidence that those dependencies work.
 
 ## What an ESXi Snapshot Contains
 
@@ -83,10 +83,10 @@ Map dependencies explicitly:
 
 ```text
 snapshot recovery depends on:
-VM configuration + active leaf + every parent + datastore + usable ESXi access
+VM configuration + selected snapshot disk state + every required parent + datastore(s) + usable ESXi access
 
 backup recovery depends on:
-repository + catalog + credentials/keys + restore compute/storage/network + tested workflow
+backup data + required metadata/catalog + required credentials/keys + restore compute/storage/network + workable restore procedure
 ```
 
 For critical applications, add native database or application backups when VM-level crash consistency cannot meet the recovery objective. A whole-VM restore and a database transaction restore are different controls.
