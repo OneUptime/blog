@@ -26,7 +26,6 @@
 
 ## EdgeDB
 
-19. How to Configure EdgeDB/Gel TLS in Docker Without Shipping Certificates in Environment Variables
 20. Can EdgeDB Use PostGIS and Other PostgreSQL Extensions? What Changed in Gel 6
 
 ## ESXi
