@@ -26,7 +26,6 @@
 
 ## EdgeDB
 
-2. Gel vs PostgreSQL: When Is EdgeDB’s Higher-Level Data Model Worth the Extra Layer?
 3. EdgeDB vs Prisma vs Hasura: Are You Choosing a Database, an ORM, or an API Layer?
 4. EdgeQL vs SQL: How Do Links, Shapes, and Cardinality Replace Joins and Result Mapping?
 5. How to Initialize EdgeDB/Gel with Docker Compose Without Running `project init` as Root
