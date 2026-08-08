@@ -26,7 +26,6 @@
 
 ## EdgeDB
 
-13. “Modification of Computed Link Is Prohibited”: How Stored and Computed Links Differ in EdgeDB
 14. How to Filter for Either an Empty Link or a Matching Link in EdgeQL
 15. EdgeDB Backlinks Explained: How to Traverse Reverse Relationships Without Storing Both Directions
 16. Unique, Composite, or Expression Index: Which Should You Define in EdgeDB?
