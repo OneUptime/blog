@@ -26,7 +26,6 @@
 
 ## EdgeDB
 
-1. EdgeDB Is Now Gel: What Must Change in Your CLI, Packages, Schema Files, and `gel.toml`?
 2. Gel vs PostgreSQL: When Is EdgeDB’s Higher-Level Data Model Worth the Extra Layer?
 3. EdgeDB vs Prisma vs Hasura: Are You Choosing a Database, an ORM, or an API Layer?
 4. EdgeQL vs SQL: How Do Links, Shapes, and Cardinality Replace Joins and Result Mapping?
