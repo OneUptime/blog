@@ -26,7 +26,6 @@
 
 ## EdgeDB
 
-14. How to Filter for Either an Empty Link or a Matching Link in EdgeQL
 15. EdgeDB Backlinks Explained: How to Traverse Reverse Relationships Without Storing Both Directions
 16. Unique, Composite, or Expression Index: Which Should You Define in EdgeDB?
 17. EdgeQL Query Is Slow: How to Read `analyze`, Check Cardinality, and Verify Index Use
