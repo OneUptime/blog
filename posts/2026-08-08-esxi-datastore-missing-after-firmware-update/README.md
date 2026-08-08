@@ -8,7 +8,7 @@ Description: Trace a datastore lost after firmware or ESXi maintenance from adap
 
 ---
 
-When a datastore disappears immediately after server firmware, HBA firmware, or ESXi maintenance, do not recreate it. The data is usually behind a broken discovery layer: the controller is absent, its driver did not claim it, SAN or iSCSI connectivity is missing, the LUN is not presented, paths are down, or VMFS is not mounted.
+When a datastore disappears immediately after server firmware, HBA firmware, or ESXi maintenance, do not recreate it. The cause may be a broken discovery layer: the controller is absent, its driver did not claim it, SAN or iSCSI connectivity is missing, the LUN is not presented, paths are down, or VMFS is not mounted.
 
 Creating a new datastore on the same device initializes new filesystem metadata and can make recovery impossible. Preserve the device and partition state, compare against a working host, and move downward from hardware to filesystem.
 
@@ -29,7 +29,7 @@ Collect an ESXi support bundle before rolling back or installing a driver when t
 
 ## Identify the Missing Layer
 
-Use the vSphere Client first: **Host > Configure > Storage Adapters**, **Storage Devices**, and **Datastores**. Then corroborate with read-only commands:
+Use the vSphere Client first: **Host > Configure > Storage > Storage Adapters**, **Storage Devices**, and **Datastores**. Then corroborate with read-only commands:
 
 ```bash
 vmware -vl
@@ -43,8 +43,8 @@ Classify the result:
 
 | Observation | Investigation layer |
 | --- | --- |
-| PCI device and HBA absent | BIOS, hardware, firmware, or unsupported adapter |
-| PCI device present but no storage adapter | driver binding, image contents, driver-firmware support |
+| PCI device absent | BIOS, PCIe slot or riser, hardware, or firmware |
+| PCI device present but no storage adapter | PCI passthrough, driver binding, image contents, unsupported adapter, or driver-firmware compatibility |
 | Adapter present but target or LUN absent | SAN zoning, LUN masking, iSCSI network or discovery |
 | Device present but every path down | fabric, array ports, network, credentials, multipathing |
 | Device and paths present but no VMFS mount | snapshot LUN signature, mount state, partition or metadata issue |
@@ -73,7 +73,7 @@ Check the installed driver VIB only after identifying the driver name from the a
 esxcli software vib list
 ```
 
-Do not pipe to an assumed driver name from another host model. Record driver version and firmware as a pair. Broadcom's compatibility guidance is based on tested combinations, and an individually newer driver or firmware is not automatically supported with the other component.
+Do not pipe to an assumed driver name from another host model. Record the driver and firmware versions together. For non-vSAN I/O devices, the firmware shown on a Compatibility Guide driver line records the certification test level; it is not by itself a prescription for an exact pair. Confirm the current supported pairing in the server or device vendor's matrix.
 
 ## Check the Broadcom Compatibility Guide
 
@@ -82,12 +82,12 @@ Search the I/O Devices section with the full PCI IDs and select the exact ESXi r
 - adapter model and device revision;
 - supported ESXi version and update;
 - driver name, version, and type;
-- corresponding firmware version; and
+- firmware version recorded at certification and the vendor's current pairing guidance; and
 - any footnotes, OEM qualifications, or feature limits.
 
 Also verify the server platform and storage array where applicable. Use an OEM-customized ESXi image when the server vendor requires it, and compare its add-ons with the image that previously worked.
 
-Do not solve a mismatch by cycling through arbitrary driver VIBs. Plan one supported pair, obtain it from Broadcom or the hardware vendor as directed, validate its checksum, and retain a rollback path.
+Do not solve a mismatch by cycling through arbitrary driver VIBs. Confirm one vendor-supported driver and firmware pairing for the exact server, adapter, and ESXi release; obtain the packages from the hardware vendor or Broadcom as directed, validate their checksums, and retain a rollback path.
 
 ## Check SAN or iSCSI Presentation
 
@@ -113,10 +113,16 @@ A firmware update can reset HBA personality, boot mode, BIOS enablement, or port
 
 ## Rescan Only After Connectivity Is Correct
 
-Use **Storage > Adapters > Rescan Storage** in the vSphere Client after the adapter, fabric, and presentation are healthy. The CLI equivalent documented in Broadcom recovery articles is:
+Right-click the host and choose **Storage > Rescan Storage** in the vSphere Client after the adapter, fabric, and presentation are healthy. Select the scans for new storage devices and new VMFS volumes as required. To rescan all adapters from the CLI, run:
 
 ```bash
 esxcli storage core adapter rescan --all
+```
+
+Then search explicitly for new VMFS datastores:
+
+```bash
+vmkfstools -V
 ```
 
 Then repeat device, path, and filesystem inventory. Repeated rescans do not fix an unsupported driver or blocked VLAN and can add load while storage is unstable.
@@ -133,7 +139,7 @@ For a local datastore, check the server management controller before ESXi change
 - controller mode and boot virtual-disk configuration; and
 - offline hardware diagnostics.
 
-Broadcom documents missing local datastores after ESXi 8.0 Update 3 when controller driver or firmware communication is incompatible. It also directs operators to validate the exact combination against the Compatibility Guide and engage the hardware vendor when certified software does not restore detection.
+Broadcom documents missing local datastores after upgrading to ESXi 8.0 Update 3 when controller driver or firmware communication is incompatible. It also directs operators to validate driver and firmware compatibility for the release and engage the hardware vendor when certified software does not restore detection.
 
 Do not initialize a degraded or foreign RAID set to make it visible. Import or recovery decisions belong to the server or controller vendor.
 
@@ -154,11 +160,11 @@ If the device and paths are healthy but logs report VMFS corruption, a changed p
 After the datastore returns:
 
 - expected devices, paths, and multipathing policy are present;
-- the original VMFS UUID mounts without resignaturing;
+- the original VMFS UUID mounts when the original LUN identity is restored, or the expected new UUID is present if the documented snapshot-LUN procedure required resignaturing;
 - all VMs and templates are inventoried correctly;
 - no APD, PDL, SCSI, or filesystem errors recur;
 - storage latency is normal under controlled load; and
-- driver and firmware match the Compatibility Guide entry.
+- the driver is certified for the adapter and ESXi release, and firmware aligns with the applicable Compatibility Guide or vendor matrix.
 
 Test one canary host through the complete firmware and ESXi lifecycle before rolling the same combination across a cluster.
 
