@@ -4,15 +4,15 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Gel, EdgeDB, Upgrade, Migration, Dump and Restore, Operations
 
-Description: Choose the supported EdgeDB 5 to Gel 6 path for Cloud, CLI-managed local, and self-hosted remote instances.
+Description: Choose the supported EdgeDB 5 to Gel 6 path for CLI-managed local and self-hosted remote instances, with context on the retired Gel Cloud service.
 
 ---
 
 The EdgeDB 5 to Gel 6 transition combines a product rename with a major server upgrade. Updating the CLI to `gel` does not upgrade a server. Renaming `edgedb.toml` does not convert data. Replacing a Docker tag without following a supported data path can leave an unusable instance.
 
-The official v5 upgrade guide draws the operational boundary clearly:
+The official v5 upgrade guide draws the operational boundary clearly, although its Gel Cloud option is now historical:
 
-- Gel Cloud can perform the managed upgrade.
+- Gel Cloud could perform the managed upgrade while the service operated; it fully shut down on January 31, 2026.
 - A local instance created and managed by the CLI can use the project or instance upgrade command.
 - A self-hosted remote EdgeDB 5 instance should move to a new Gel 6 instance through dump and restore.
 
@@ -24,10 +24,11 @@ Do not choose a command based only on where the application source lives.
 
 ### CLI-managed local project instance
 
-`gel project init` created a local instance and linked it to the current source directory. `gel project info` shows that relationship:
+`gel project init` created a local instance and linked it to the current source directory. `gel project info` shows that relationship; `gel instance list` lets you confirm that the linked instance is local:
 
 ```bash
 gel project info
+gel instance list
 gel query 'select sys::get_version_as_str()'
 ```
 
@@ -35,7 +36,7 @@ The CLI owns the local server installation and data-conversion workflow.
 
 ### CLI-managed standalone local instance
 
-The instance was created with `gel instance create` and is not linked to the current project. It appears in:
+The CLI-managed local instance is not linked to any project. It may have been created with `gel instance create` or unlinked from a project. It appears in:
 
 ```bash
 gel instance list
@@ -43,9 +44,9 @@ gel instance list
 
 The CLI can upgrade this local managed instance with `gel instance upgrade`.
 
-### Gel Cloud instance
+### Former Gel Cloud instance
 
-Its name has the organization and instance form, and Gel Cloud owns the service lifecycle. Use the Cloud console or documented Cloud CLI operation.
+Gel Cloud used the organization and instance name form and owned the service lifecycle. The service fully shut down on January 31, 2026, so this instance class is now historical.
 
 ### Self-hosted remote instance
 
@@ -81,7 +82,7 @@ Run the version-aware migration check before scheduling downtime:
 gel migration upgrade-check --to-version 6
 ```
 
-The check is also performed during a CLI-managed upgrade, but running it early exposes incompatible schema while there is still time to fix and test it. Confirm the migration history is clean and that the correct branch is selected.
+The check is also performed during a local `gel project upgrade`, but running it early exposes incompatible repository schema while there is still time to fix and test it. It checks the schema and migration files on disk, not a selected live source branch. Separately run `gel migration status` against each relevant source branch to confirm that its database and repository migration history are synchronized.
 
 ## Choose the Supported Path
 
@@ -95,7 +96,7 @@ gel project upgrade --to-version 6
 
 The CLI reference says this updates the project server version and preserves and converts data using a dump-and-restore mechanism. It is automation around the conversion, not proof that no data copy occurs.
 
-Afterward, inspect `gel.toml`, query the server version, and test every branch the project relies on.
+Afterward, inspect `gel.toml` (or the deprecated `edgedb.toml`), query the server version, and test every branch the project relies on.
 
 ### Local standalone instance
 
@@ -105,28 +106,22 @@ Use its local name:
 gel instance upgrade --to-version 6 local_instance
 ```
 
-For major CLI-managed upgrades, the CLI keeps old instance data so `gel instance revert` can restore the previous local copy. This revert command is also not intended for self-hosted instances. Test it in a disposable environment before treating it as a rollback guarantee.
+For this CLI-managed EdgeDB 5-to-Gel 6 upgrade, the CLI keeps old instance data so `gel instance revert` can restore the previous local copy. This revert command is also not intended for self-hosted instances. Test it in a disposable environment before treating it as a rollback guarantee.
 
-### Gel Cloud
+### Former Gel Cloud
 
-Use the Cloud console or:
-
-```bash
-gel instance upgrade my-org/my-instance --to-version 6
-```
-
-Check the current Cloud documentation and maintenance behavior before a production upgrade. Take a manual dump as an independent recovery artifact if policy requires it.
+There is no longer a live Cloud console or managed Cloud upgrade command: Gel Cloud stopped accepting new registrations or creation of new database instances on December 2, 2025, and fully shut down on January 31, 2026. A Cloud dump retained before shutdown must instead be restored to a compatible self-hosted instance using the version-specific restore guidance.
 
 ### Self-hosted remote instance
 
 Follow the documented new-instance flow:
 
 1. Verify the backend requirement. Gel 6 supports PostgreSQL 14 or later; upgrade an older external backend first through its supported procedure.
-2. Provision an empty Gel 6 instance using the correct package or image.
+2. Provision an empty Gel 6 instance using the correct package or image. Before restore, install every required standalone Gel extension; for an external PostgreSQL backend, also install any underlying PostgreSQL extension required by the schema.
 3. Record the old and new DSNs without exposing them in logs.
 4. Rehearse dump and restore with a recent production-sized copy.
 5. Stop application writes for the final consistent cutover.
-6. Dump all branches and instance data required by the documented `--all` format.
+6. Dump all branches and the server configuration with the documented `--all` format.
 7. Restore into the empty Gel 6 target.
 8. Validate schema, migration history, roles, branches, counts, constraints, and application behavior.
 9. Change the application connection and keep the old instance fenced from writes.
@@ -148,13 +143,13 @@ Gel 6 uses current names:
 - `gel.toml` instead of deprecated `edgedb.toml`;
 - `[instance]` instead of `[edgedb]`;
 - `.gel` schema files instead of `.esdl`;
-- `gel` and `@gel/*` client packages;
+- `gel` client packages on PyPI and npm, and `@gel/*` JavaScript tooling and integration packages;
 - `GEL_*` connection and server variables; and
 - `geldata/gel` container images.
 
 Migration and query scripts remain `.edgeql`, because the language is still EdgeQL.
 
-Make the naming-only repository change before or after the data upgrade as a separately reviewable step. The current CLI supports the deprecated project filename, so there is no need to mix every rename into the outage window.
+Make client and repository naming changes before or after the data upgrade as a separately reviewable step. Keep `EDGEDB_*` server variables while EdgeDB 5 is running, and switch the deployment to `GEL_*` when starting Gel 6. The current CLI supports the deprecated project filename, so there is no need to mix every rename into the outage window.
 
 For Docker, pin the target Gel 6 image deliberately. Never reuse an old data volume with a new major image merely because both use a similarly named data directory. The official remote path is a new empty instance and restore.
 
@@ -190,7 +185,7 @@ Once Gel 6 accepts writes, rolling back is a data migration, not a connection to
 
 ## What In-place Upgrade in Gel 6 Means
 
-Gel's version 6 announcement says the server can compartmentalize internal structures and standard-library versions, enabling later major-version switching without the historical full dump and restore. Read that as an architectural capability for upgrades from Gel 6 onward, exposed through supported tooling and release-specific guidance.
+Gel's version 6 announcement says the server can compartmentalize internal structures and standard-library versions, enabling later major-version switching without the historical full dump and restore. Read that as an architectural capability introduced in Gel 6, not as a blanket guarantee that every later upgrade is in-place.
 
 It does not authorize:
 
@@ -207,10 +202,13 @@ Always follow the source version, target version, and deployment-type instructio
 - [Gel project upgrade](https://docs.geldata.com/reference/using/cli/gel_project/gel_project_upgrade)
 - [Gel instance upgrade](https://docs.geldata.com/reference/using/cli/gel_instance/gel_instance_upgrade)
 - [Gel migration upgrade check](https://docs.geldata.com/reference/using/cli/gel_migration/gel_migration_upgrade_check)
+- [Gel migration status](https://docs.geldata.com/reference/using/cli/gel_migration/gel_migration_status)
 - [Gel dump](https://docs.geldata.com/reference/using/cli/gel_dump)
 - [Gel restore](https://docs.geldata.com/reference/using/cli/gel_restore)
+- [Gel extensions](https://docs.geldata.com/reference/datamodel/extensions)
 - [Gel 6 in-place upgrade architecture](https://www.geldata.com/blog/gel-6-query-stats-and-in-place-upgrade)
+- [Gel Cloud shutdown announcement](https://www.geldata.com/blog/gel-joins-vercel)
 
 ## Conclusion
 
-Use CLI upgrade commands only where the CLI or Gel Cloud owns the instance. For a self-hosted remote EdgeDB 5 server, provision an empty Gel 6 target and use the documented all-branch dump-and-restore cutover. Gel 6 improves the foundation for later major upgrades, but the safe 5 to 6 plan still depends on deployment ownership, a tested data copy, and a fenced rollback boundary.
+Use CLI upgrade commands only where the CLI owns the local instance; Gel Cloud's former managed path is no longer available. For a self-hosted remote EdgeDB 5 server, provision an empty Gel 6 target and use the documented all-branch dump-and-restore cutover. Gel 6 improves the foundation for later major upgrades, but the safe 5 to 6 plan still depends on deployment ownership, a tested data copy, and a fenced rollback boundary.
