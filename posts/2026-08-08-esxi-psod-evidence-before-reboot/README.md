@@ -10,7 +10,7 @@ Description: Preserve the ESXi purple-screen message, core dump, hardware teleme
 
 An ESXi purple diagnostic screen means the VMkernel stopped after a severe software or hardware condition. The failed host is no longer scheduling its VMs, although vSphere HA may restart eligible VMs elsewhere. The screen, core dump, and hardware-controller logs are the best evidence of why it stopped.
 
-Do not immediately power-cycle the server. Photograph the entire console, allow the configured core dump to complete, capture out-of-band hardware state, and record the exact time. Reboot only after evidence is preserved and the service-restoration decision is clear.
+Do not immediately power-cycle the server. Photograph the entire console, allow the configured core-dump attempt to finish or reach the documented timeout, capture out-of-band hardware state, and record the exact time. Reboot only after evidence is preserved and the service-restoration decision is clear.
 
 ## Confirm the Incident and Protect Workloads
 
@@ -37,7 +37,7 @@ Use the server's remote management controller screenshot function when available
 - VMkernel uptime;
 - register values;
 - complete backtrace and loaded module names;
-- core-dump progress or completion message; and
+- core-dump progress, completion, or failure message; and
 - any hardware machine-check or NMI text.
 
 Do not crop the screenshot to one driver-like word. Backtrace context, build, and uptime help distinguish a known software defect, firmware interaction, or hardware instability.
@@ -46,9 +46,9 @@ Transcribe the first error line exactly into the incident record. Search the Bro
 
 ## Wait for Core-Dump Completion
 
-After a PSOD, ESXi writes VMkernel state to its configured coredump target. Broadcom explicitly advises allowing enough time for the dump to reach persistent storage before rebooting. Watch the console for completion or failure status and follow the environment's documented timeout.
+After a PSOD, ESXi attempts to write VMkernel state to one or more configured coredump targets. Broadcom explicitly advises allowing enough time for the dump to reach persistent storage before rebooting. Watch for `Disk Dump Successful` or an explicit failure. If neither appears, allow more time—Broadcom notes that a dump may take up to an hour—and follow the environment's documented timeout.
 
-Do not reset the server while the dump is in progress. A partial or absent dump can prevent root-cause analysis, especially when logs were stored on a ramdisk or the boot device also failed.
+Do not reset the server while the dump is in progress unless the documented timeout has expired and the service-restoration decision authorizes it. A partial or absent dump can prevent root-cause analysis, especially when logs were stored on a ramdisk or the boot device also failed.
 
 The coredump target should have been verified before incidents. On healthy hosts, inspect file and partition configuration with:
 
@@ -59,7 +59,7 @@ esxcli system coredump partition get
 
 These commands cannot be run on the frozen PSOD console. Use them after reboot and proactively on peer hosts. ESXi 7 and later normally configure a dump file in the ESX-OSData system volume during installation or upgrade, but configuration can still become inactive or inaccessible.
 
-Do not disable coredump just to clear an alarm. Broadcom notes that dumps contain working memory and system state needed for troubleshooting. If a local target is unsuitable, configure a supported network dump collector before disabling it.
+Do not disable a local coredump target just to clear an alarm. Broadcom notes that dumps contain working memory and system state needed for troubleshooting. If a local target is unsuitable, configure and verify a supported network dump collector before disabling the local target.
 
 ## Capture Out-of-Band Hardware Evidence
 
@@ -96,7 +96,7 @@ Do not label the component named at the top of the stack as defective without th
 
 ## Decide When to Reboot
 
-After the screen and hardware evidence are saved and dump completion is confirmed, choose a controlled reboot through the out-of-band controller. Ensure:
+After the screen and hardware evidence are saved and the coredump has completed successfully, explicitly failed, or reached the environment's documented timeout, choose a controlled reboot through the out-of-band controller. Preserve the displayed result or unresolved status. Ensure:
 
 - HA restarts have settled;
 - storage presents no ongoing APD or PDL risk;
@@ -124,7 +124,7 @@ Collect or preserve:
 - `/var/run/log/hostd.log`;
 - boot and jumpstart logs;
 - the VMkernel core or zdump referenced by the host; and
-- vCenter events and HA agent logs for the same interval.
+- vCenter events and `/var/run/log/fdm.log` from the primary and relevant secondary FDM hosts for the same interval.
 
 Confirm that the configured coredump target is still active. If the dump failed because its target was missing, fix target configuration before the host returns to service, but preserve the failure evidence first.
 
@@ -168,4 +168,4 @@ Run a tabletop PSOD exercise so operators know how long to preserve the screen, 
 
 ## Conclusion
 
-The first PSOD response is evidence preservation: full-screen image, completed core dump, hardware logs, and synchronized timeline. Reboot only after those artifacts and workload ownership are safe. Then collect the ESXi support bundle, correlate the exact stack with the exact build and hardware, and apply a version-specific fix before returning the host to service.
+The first PSOD response is evidence preservation: full-screen image, completed core dump or captured failure/timeout status, hardware logs, and synchronized timeline. Reboot only after those artifacts and workload ownership are safe. Then collect the ESXi support bundle, correlate the exact stack with the exact build and hardware, and apply a version-specific fix before returning the host to service.
