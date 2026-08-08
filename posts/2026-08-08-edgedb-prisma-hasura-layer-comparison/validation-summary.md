@@ -1,0 +1,70 @@
+# Validation Summary: EdgeDB vs Prisma vs Hasura: Which Layer Are You Choosing?
+
+## Status
+
+validated
+
+## Post Type
+
+Technical architecture comparison and decision guide
+
+## Technologies Covered
+
+- Gel (formerly EdgeDB), Gel SDL, EdgeQL, migrations, clients, access policies, roles, permissions, and the SQL adapter
+- PostgreSQL
+- Prisma ORM, Prisma Client, Prisma Schema, Prisma Migrate, and TypeScript
+- Hasura GraphQL Engine v2, Hasura DDN v3, metadata, permissions, connectors, and migrations
+- GraphQL
+
+## Sources Consulted
+
+- [Gel documentation overview](https://docs.geldata.com/)
+- [Gel's EdgeDB-to-Gel rename and PostgreSQL front-end architecture](https://www.geldata.com/blog/edgedb-is-now-gel-and-postgres-is-the-future)
+- [Gel object types](https://docs.geldata.com/reference/datamodel/objects)
+- [Gel globals](https://docs.geldata.com/reference/datamodel/globals)
+- [Gel access policies](https://docs.geldata.com/reference/datamodel/access_policies)
+- [Gel permissions](https://docs.geldata.com/reference/datamodel/permissions)
+- [Gel migrations](https://docs.geldata.com/reference/datamodel/migrations)
+- [Gel TypeScript code generation](https://docs.geldata.com/reference/using/js/generation)
+- [Gel query-builder cardinality inference](https://docs.geldata.com/reference/clients/js/for)
+- [Gel SQL adapter and known limitations](https://docs.geldata.com/reference/using/sql_adapter)
+- [Gel 6 changelog](https://docs.geldata.com/resources/changelog/6_x)
+- [Gel Cloud migration notice](https://docs.geldata.com/cloud/migrate_from)
+- [Prisma ORM documentation](https://www.prisma.io/docs/orm)
+- [Prisma Schema reference for `uuid()`](https://www.prisma.io/docs/orm/reference/prisma-schema-reference#uuid)
+- [Prisma relation modeling](https://www.prisma.io/docs/orm/prisma-schema/data-model/relations)
+- [Prisma relation queries](https://www.prisma.io/docs/orm/prisma-client/queries/relation-queries)
+- [Prisma filtering and sorting](https://www.prisma.io/docs/orm/prisma-client/queries/filtering-and-sorting)
+- [Prisma Migrate overview](https://www.prisma.io/docs/orm/prisma-migrate)
+- [Prisma customizable migrations](https://www.prisma.io/docs/orm/prisma-migrate/workflows/customizing-migrations)
+- [Prisma supported databases](https://www.prisma.io/docs/orm/reference/supported-databases)
+- [Prisma ORM 7 upgrade guide](https://www.prisma.io/docs/guides/upgrade-prisma-orm/v7)
+- [Hasura PostgreSQL GraphQL API](https://hasura.io/graphql/database/postgresql)
+- [Hasura GraphQL Engine v2 PostgreSQL views](https://hasura.io/docs/2.0/schema/postgres/views/)
+- [Hasura GraphQL Engine v2 custom functions](https://hasura.io/docs/2.0/schema/postgres/custom-functions/)
+- [Hasura GraphQL Engine v2 naming conventions](https://hasura.io/docs/2.0/schema/postgres/naming-convention/)
+- [Hasura DDN data sources](https://hasura.io/docs/3.0/data-sources/overview/)
+- [Hasura DDN data modeling](https://hasura.io/docs/3.0/data-modeling/overview/)
+- [Hasura DDN PostgreSQL connector](https://hasura.io/docs/3.0/reference/connectors/postgresql/)
+- [Hasura DDN authentication and authorization](https://hasura.io/docs/3.0/auth/overview/)
+- [Hasura DDN permissions](https://hasura.io/docs/3.0/auth/permissions/)
+- [Hasura GraphQL Engine v2 migrations and metadata](https://hasura.io/docs/2.0/migrations-metadata-seeds/migrations-metadata-setup/)
+- [GraphQL September 2025 specification](https://spec.graphql.org/September2025/)
+
+## Issues Found
+
+- The PostgreSQL integration description blended GraphQL Engine v2 and DDN v3 behavior by saying that Hasura introspects tables, views, and functions without qualification. It now distinguishes v2's supported tracked functions from DDN v3's configured native operations while retaining the accurate query-compilation claim.
+- The GraphQL example used GraphQL Engine v2's default lowercase `uuid` scalar and naming convention without identifying the version or required source metadata. Its introduction now states that it assumes v2's default naming convention, a tracked `project` table, a UUID `owner_id` column, and an `owner` object relationship.
+- The combination guidance said PostgreSQL-plus-Hasura migrations were "owned separately." That could incorrectly imply that Hasura cannot manage database migrations. The sentence now says that database migrations remain an explicit concern and can be managed through Hasura's v2 CLI or another tool. Hasura's v2 CLI can version, apply, inspect, squash, and roll back SQL migration files alongside metadata.
+
+No other technical issues were found.
+
+## Review Notes
+
+- The Gel SDL example was accepted by a current Gel server migration parser. Its optional UUID global, exclusive constraint, inferred required link, and `?=` access-policy expression are valid.
+- The Prisma models were accepted by the current Prisma CLI, and the `findMany` filter and `include` usage match the generated client API. On PostgreSQL, the unannotated `String` fields map to `text`, and `uuid()` is generated by Prisma ORM; native PostgreSQL `uuid` columns would require consistent `@db.Uuid` annotations. The example is valid as written.
+- The Hasura GraphQL document is syntactically valid under the GraphQL Engine v2 assumptions now stated in the post. DDN v3 commonly generates `Uuid` instead of v2's `uuid`, while root fields, field names, relationships, and scalar names remain metadata-dependent.
+- Prisma ORM 7 requires a database driver adapter. Omitting it from the explicitly simplified request-path diagram does not change the architectural comparison.
+- Gel permissions were added in Gel 7, while the SQL DML support discussed in the post arrived in Gel 6. The table describes the current Gel feature set, so this is not a contradiction.
+- Gel Cloud ended service on January 31, 2026. The post does not rely on Gel Cloud and remains applicable to open-source/self-hosted Gel deployments.
+- All eight documentation links already present in the post returned HTTP 200 and pointed to the intended official documentation.

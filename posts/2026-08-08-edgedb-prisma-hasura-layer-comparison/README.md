@@ -94,9 +94,9 @@ Do not call Prisma a database. Its client cannot make an unavailable PostgreSQL 
 
 ## Hasura Owns a Data API
 
-Hasura connects to data sources and builds API models, relationships, permissions, and operations above them. Its PostgreSQL integration introspects tables, views, and functions and compiles nested GraphQL requests into database queries.
+Hasura connects to data sources and builds API models, relationships, permissions, and operations above them. Its PostgreSQL integration introspects tables and views, can expose supported tracked functions in GraphQL Engine v2 or configured native operations in DDN v3, and compiles nested GraphQL requests into database queries.
 
-A client can ask for a graph-shaped response:
+With GraphQL Engine v2's default naming convention, a tracked `project` table with a UUID `owner_id` column, and an `owner` object relationship, a client can ask for a graph-shaped response:
 
 ```graphql
 query MyProjects($ownerId: uuid!) {
@@ -135,7 +135,7 @@ Similar-looking nested results do not mean equivalent guarantees. Gel shapes are
 Products at different layers can sometimes be combined, but technical possibility is not automatically a good architecture.
 
 - PostgreSQL plus Prisma is a normal two-layer choice.
-- PostgreSQL plus Hasura is a normal API choice, with migrations owned separately.
+- PostgreSQL plus Hasura is a normal API choice, with database migrations managed explicitly through Hasura's v2 CLI or another tool.
 - PostgreSQL plus Prisma plus Hasura can work when server code needs an ORM and external clients need GraphQL, but it creates two data-access contracts and two places to coordinate authorization.
 - Gel already supplies a high-level schema, query layer, clients, and policies. Adding a second mapping or API layer should solve a specific integration need, not recreate features by habit.
 
