@@ -8,7 +8,7 @@ Description: Debug empty Gel query results by checking default deny, request glo
 
 ---
 
-When a Gel access policy makes a query return `{}`, the objects may still exist. Select policies filter the visible object set before the query result is produced. That is deliberately different from a write-policy violation, which normally raises an `AccessPolicyError`.
+When a Gel access policy makes a query return `{}`, the objects may still exist. Select policies filter the visible object set before the query result is produced. That is deliberately different from an `insert` or `update write` policy violation, which raises an `AccessPolicyError`.
 
 The most important rule is easy to miss: when an object type has no access policies, authenticated clients can access it subject to other authorization layers. As soon as any access policy is defined on that type, operations are denied by default unless applicable policies explicitly allow them.
 
@@ -112,7 +112,7 @@ Or coalesce a boolean explicitly:
 (global current_user.is_admin ?? false)
 ```
 
-These operators make absence behavior explicit. They should not turn a missing identity into access. A request without identity should normally remain denied.
+These operators make absence behavior explicit. Here, `.tenant.id` is non-empty because `tenant` is required, so a missing identity remains denied. Because `?=` considers two empty operands equal, guard the comparison explicitly if its other side can also be empty.
 
 ## Inventory Policies by Operation
 
@@ -129,12 +129,19 @@ type Event {
 }
 ```
 
-Because the type now has a policy, `select Event` is denied by default. If an administrative reader is required, add an explicit select policy:
+Because the type now has a policy, `select Event` is denied by default. Assuming the schema defines a computed `current_user` global whose target has an `is_admin` property, the corrected `Event` definition adds an explicit select policy:
 
 ```gel
-access policy admins_read
-  allow select
-  using ((global current_user.is_admin) ?? false);
+type Event {
+  required body: json;
+
+  access policy public_ingest
+    allow insert;
+
+  access policy admins_read
+    allow select
+    using ((global current_user.is_admin) ?? false);
+}
 ```
 
 The same rule affects updates. An object that cannot be selected cannot be updated. Gel distinguishes:
@@ -179,7 +186,7 @@ Check inherited policies too. Subtypes inherit policies from supertypes and may 
 
 ## Inspect Visibility of Linked Types
 
-Access policies define the visible object graph, not only top-level queries. If a user may see `Document` but not its linked `Tenant`, the nested link can be empty or unavailable according to its cardinality and policy context.
+Access policies define the visible object graph, not only top-level queries. If a user may see `Document` but not its linked `Tenant`, an optional link can appear empty. For the required `Document.tenant` link shown here, normal dereference instead raises a `CardinalityViolationError` saying that the required link is hidden by an access policy.
 
 Test each type directly with the same request globals:
 
