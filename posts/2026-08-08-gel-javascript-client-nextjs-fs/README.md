@@ -125,7 +125,7 @@ export default async function IncidentsPage() {
 
 The Gel client, pool, credentials, and connection configuration stay on the server. Only the result data crosses the React Server Component boundary.
 
-For mutations initiated by the browser, call a Server Action or Route Handler that validates authorization and executes the EdgeQL on the server. Do not pass a client object through props; it is neither serializable nor an appropriate browser capability.
+For mutations initiated by the browser, call a Server Action or Route Handler that uses the Node.js runtime, validates authorization, and executes the EdgeQL on the server. Do not pass a client object through props; it is neither serializable nor an appropriate browser capability.
 
 ## Find the Import That Crossed the Boundary
 
@@ -204,30 +204,36 @@ const client = createHttpClient(/* explicit connection options */);
 
 Before shipping this design, address all of the following:
 
-- configure the Gel HTTP endpoint and CORS allowlist;
+- for direct browser access, configure the Gel HTTP endpoint and CORS allowlist;
 - use TLS with certificate and hostname verification;
-- expose only credentials or tokens appropriate for the end user;
-- enforce access policies and, on Gel 7, role permissions;
+- for direct browser access, expose only credentials or tokens appropriate for an untrusted end user;
+- enforce access policies and, on Gel 7 and newer, role permissions;
 - keep administrative DSNs and secret keys out of public bundles; and
 - test the browser client against the exact Gel and `gel` package versions deployed.
 
-`NEXT_PUBLIC_` variables are included in the client bundle by design. Never put a privileged Gel password, DSN, or Cloud secret key in one. A direct browser connection needs a database security model designed for untrusted clients, not the server application's administrator credentials.
+Statically referenced `NEXT_PUBLIC_` variables are inlined into client JavaScript at build time. Never put a privileged Gel password, DSN, or secret key in one. A direct browser connection needs a database security model designed for untrusted clients, not the server application's administrator credentials.
 
 For most applications, a server-side Gel client plus a narrow application API remains easier to secure and operate.
 
 ## Do Not Hide the Error With a Webpack Fallback
 
-This configuration is a tempting workaround:
+For a project explicitly using Webpack, this configuration is a tempting workaround:
 
 ```javascript
 // next.config.js
-config.resolve.fallback = {
-  ...config.resolve.fallback,
-  fs: false,
+module.exports = {
+  webpack(config) {
+    config.resolve.fallback = {
+      ...config.resolve.fallback,
+      fs: false,
+    };
+
+    return config;
+  },
 };
 ```
 
-It tells the bundler that no filesystem implementation is available. It does not turn Node credential discovery, TCP connections, or the binary client into browser-compatible code. The build might progress only to fail when another Node API is resolved or when the client tries to connect.
+It tells Webpack that no filesystem implementation is available. Next.js 16 uses Turbopack by default, so this callback applies only when the project opts into Webpack. It does not turn Node credential discovery, TCP connections, or the binary client into browser-compatible code. The build might progress only to fail when another Node API is resolved or when the client tries to connect.
 
 Use a fallback only when the imported library officially treats that module as optional in the selected runtime. The Gel Node client is the wrong module on the browser side of the boundary.
 
@@ -253,7 +259,7 @@ Use this sequence when the build fails:
 
 - confirm the error's first application-owned importer;
 - move `createClient()` to a module importing `server-only`;
-- import that module only from Server Components, Server Actions, or Node Route Handlers;
+- import that module only from Node-runtime Server Components, Server Actions, or Route Handlers;
 - pass serializable results into Client Components;
 - remove mixed server/client barrels;
 - make runtime selection explicit where needed;
@@ -268,7 +274,7 @@ If the requirement is genuinely browser or Edge access, stop treating the issue 
 - [Gel JavaScript client](https://docs.geldata.com/reference/using/js/client)
 - [Gel Next.js App Router guide](https://docs.geldata.com/guides/tutorials/nextjs_app_router)
 - [Gel connection parameters](https://docs.geldata.com/reference/using/connection)
-- [Gel HTTP protocol](https://docs.geldata.com/reference/running/http)
+- [Gel HTTP client in a Next.js Edge route](https://docs.geldata.com/resources/guides/tutorials/chatgpt_bot)
 - [Gel server configuration and CORS](https://docs.geldata.com/reference/running/configuration)
 - [Official gel-js package metadata](https://github.com/geldata/gel-js/blob/master/packages/gel/package.json)
 - [Official gel-js browser client source](https://github.com/geldata/gel-js/blob/master/packages/gel/src/browserClient.ts)
