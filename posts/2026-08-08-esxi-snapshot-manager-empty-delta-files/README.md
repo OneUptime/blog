@@ -16,7 +16,7 @@ The important question is not whether a filename remains. It is whether the VM's
 
 An empty Snapshot Manager with delta-looking files can represent:
 
-1. **The VM is actively running on an undetected snapshot.** Its `.vmx` or Edit Settings backing points to a numbered descriptor.
+1. **The VM is actively running on an undetected snapshot.** Its `.vmx` or Edit Settings backing points to a numbered descriptor whose parent links show that it is a snapshot leaf.
 2. **Consolidation is needed.** vCenter knows residual deltas must be committed and shows a warning.
 3. **The files are abandoned and unreferenced.** A completed migration, deleted disk, or failed cleanup left storage artifacts.
 4. **The files are solution-managed.** Backup, replication, VDI, or another platform controls redo objects that should not be removed manually.
@@ -40,9 +40,9 @@ If the VM is still running, do not power it off casually. A broken on-disk chain
 
 ## Find the Current Disk Backing
 
-The path in **Edit Settings** is the supported starting point. Expand each hard disk. If it shows a path such as `[Datastore1] AppVM/AppVM-000007.vmdk`, the VM is using a snapshot descriptor even though Snapshot Manager is empty.
+The path in **Edit Settings** is the supported starting point. Expand each hard disk. If it shows a path such as `[Datastore1] AppVM/AppVM-000007.vmdk`, the VM is using that numbered descriptor. On VMFS it commonly represents a snapshot leaf, but confirm the descriptor's parent relationship because a numbered filename alone is not proof.
 
-On VMFS, inspect the configured leaves without changing them:
+On VMFS, connect to the ESXi host where the VM is registered and inspect the configured leaves without changing them:
 
 ```bash
 grep -i '.vmdk' /vmfs/volumes/Datastore1/AppVM/AppVM.vmx
@@ -71,7 +71,7 @@ ls -lah /vmfs/volumes/Datastore1/AppVM
 Common names include:
 
 - `AppVM-000007.vmdk`, a small descriptor;
-- `AppVM-000007-delta.vmdk` or `-sesparse.vmdk`, its data extent;
+- `AppVM-000007-delta.vmdk` or `AppVM-000007-sesparse.vmdk`, its data extent;
 - `AppVM.vmdk` and `AppVM-flat.vmdk`, the base descriptor and extent; and
 - `AppVM.vmsd`, the snapshot-manager metadata file.
 
@@ -79,7 +79,7 @@ The presence of `-000000.vmdk` does not establish a special failure type. Broadc
 
 ## Verify the Chain Before Consolidating
 
-When the VM can be safely powered off and the datastore is VMFS, Broadcom documents checking the active leaf from the host where the VM is registered:
+On VMFS, Broadcom documents checking the active leaf from the ESXi host where the VM is running or, if it is powered off, registered:
 
 ```bash
 vmkfstools -qv10 \
@@ -88,7 +88,7 @@ vmkfstools -qv10 \
 
 A healthy result opens and closes each parent. A missing file, CID mismatch, or I/O error is a stop condition. Preserve descriptors and logs and engage Broadcom Support rather than repointing to an older disk.
 
-A lock failure can simply mean the VM is powered on. It must be distinguished from a chain error. Investigate unexpected ownership with `vmfsfilelockinfo`, or use the vSAN-specific lock procedure.
+A powered-on VM legitimately locks its active disks, so Broadcom directs running `vmkfstools -qv10` on its owning host to avoid lock errors. If the command still reports a lock error, distinguish it from a chain error and investigate unexpected ownership by another VM or backup proxy with `vmfsfilelockinfo`, or use the vSAN-specific lock procedure.
 
 ## Check Space and Storage Health
 
@@ -116,7 +116,7 @@ Once deletion or consolidation starts, do not interrupt it. Task percentages can
 
 ## Clone a Healthy Leaf When Consolidation Is Not Appropriate
 
-For an undetected but healthy chain, Broadcom documents cloning the active leaf to a new virtual disk. Power off the VM first and provide a healthy destination with enough capacity:
+For an undetected but healthy chain on VMFS, Broadcom documents cloning the active leaf to a new virtual disk. Power off the VM first and provide a healthy destination with enough capacity:
 
 ```bash
 vmkfstools -i \
@@ -125,7 +125,7 @@ vmkfstools -i \
   -d thin
 ```
 
-The source is the leaf from Edit Settings, not the base and not the highest number guessed from a listing. After the clone completes, use the vSphere UI to detach the old disk without deleting it and attach the clone, or attach the clone to an isolated validation VM. Confirm application data before any cleanup.
+The source is the leaf from Edit Settings, not the base and not the highest number guessed from a listing. After the clone completes, use the vSphere UI to detach the old disk without deleting it and attach the clone, or attach the clone to an isolated validation VM. Ensure the clone uses the same virtual SCSI controller type as the source; Broadcom warns that a CLI clone can be tagged for LSI even when the source uses PVSCSI, which can prevent the VM from booting until the controller type matches. Confirm application data before any cleanup.
 
 CLI cloning is a recovery path, not the default operational procedure. Prefer a vSphere Client clone when available and use Broadcom Support for complex multi-disk, vSAN, vVols, encryption, shared-disk, or missing-parent cases.
 
@@ -134,13 +134,13 @@ CLI cloning is a recovery path, not the default operational procedure. Prefer a 
 After a successful supported consolidation or clone, files can still remain. Prove each candidate is unreferenced by:
 
 1. inventorying all VM and template disk paths in vCenter;
-2. checking every `.vmx` that can reference it;
+2. checking every `.vmx` and template `.vmtx` that can reference it;
 3. confirming it is not a parent of any active leaf;
 4. checking backup proxies and replication products;
 5. checking file locks on all hosts with datastore access; and
 6. verifying a recoverable backup and service-owner approval.
 
-A storage-only migration of the active VM can help isolate leftovers because VMware moves configured files. It is still not a substitute for checking shared disks, templates, linked clones, and backup references.
+A storage-only migration of the active VM can help isolate leftovers by moving the VM's configured storage to another datastore. It is still not a substitute for checking shared disks, templates, linked clones, and backup references.
 
 Delete a proven orphan through Datastore Browser using an explicit filename. Never use a wildcard against delta or VMDK files.
 
