@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: ESXi, vSphere, NFS, iSCSI, APD, VMCP, Storage Network, High Availability
+Tags: ESXi, vSphere, NFS, iSCSI, APD, VMCP, Storage Networks, High Availability
 
 Description: Explain and troubleshoot how a short storage-network interruption becomes blocked guest I/O, APD, lost NFS locks, or a VMCP recovery event.
 

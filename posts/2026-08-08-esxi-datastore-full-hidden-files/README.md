@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: ESXi, vSphere, Datastore, VMFS, Snapshots, VMDK, Storage Troubleshooting
+Tags: ESXi, vSphere, Datastore, VMFS, Snapshot, VMDK, Storage Troubleshooting
 
 Description: Recover a full ESXi datastore by finding its real consumers, creating safe headroom, and proving that files are unused before removal.
 

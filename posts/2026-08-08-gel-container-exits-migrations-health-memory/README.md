@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Gel, EdgeDB, Docker, Migrations, Health Checks, Memory, Troubleshooting
+Tags: Gel, EdgeDB, Docker, Migration, Health Check, Memory, Troubleshooting
 
 Description: Separate migration failures, intentional bootstrap exits, signals, bad health checks, and memory kills when a Gel container stops.
 

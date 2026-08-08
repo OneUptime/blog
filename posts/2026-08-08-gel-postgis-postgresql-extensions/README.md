@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Gel, EdgeDB, PostgreSQL, PostGIS, Extensions, Geospatial
+Tags: Gel, EdgeDB, PostgreSQL, PostGIS, Extension, Geospatial
 
 Description: Use Gel 6 PostGIS through supported extension packages and EdgeQL, and understand why arbitrary PostgreSQL extensions still do not work.
 

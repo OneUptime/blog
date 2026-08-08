@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: ESXi, vSphere, Snapshots, Disk Consolidation, VMDK, Backup, Troubleshooting
+Tags: ESXi, vSphere, Snapshot, Disk Consolidation, VMDK, Backup, Troubleshooting
 
 Description: Clear an ESXi consolidation warning by checking the live disk chain, free space, locks, and storage health before using supported vSphere actions.
 

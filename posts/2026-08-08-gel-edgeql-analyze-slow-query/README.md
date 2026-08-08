@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Gel, EdgeDB, EdgeQL, Analyze, Query Performance, Indexes
+Tags: Gel, EdgeDB, EdgeQL, ANALYZE, Query Performance, Indexes
 
 Description: Diagnose slow EdgeQL with Gel analyze, realistic cardinalities, expanded plans, query statistics, and measured index changes.
 

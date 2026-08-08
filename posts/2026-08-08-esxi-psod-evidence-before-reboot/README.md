@@ -46,7 +46,7 @@ Transcribe the first error line exactly into the incident record. Search the Bro
 
 ## Wait for Core-Dump Completion
 
-After a PSOD, ESXi attempts to write VMkernel state to one or more configured coredump targets. Broadcom explicitly advises allowing enough time for the dump to reach persistent storage before rebooting. Watch for `Disk Dump Successful` or an explicit failure. If neither appears, allow more time—Broadcom notes that a dump may take up to an hour—and follow the environment's documented timeout.
+After a PSOD, ESXi attempts to write VMkernel state to one or more configured coredump targets. Broadcom explicitly advises allowing enough time for the dump to reach persistent storage before rebooting. Watch for `Disk Dump Successful` or an explicit failure. If neither appears, allow more time-Broadcom notes that a dump may take up to an hour-and follow the environment's documented timeout.
 
 Do not reset the server while the dump is in progress unless the documented timeout has expired and the service-restoration decision authorizes it. A partial or absent dump can prevent root-cause analysis, especially when logs were stored on a ramdisk or the boot device also failed.
 

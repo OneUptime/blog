@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: ESXi, vSphere, VMFS, vSAN, VMDK Lock, Backup Proxy, HotAdd, Troubleshooting
+Tags: ESXi, vSphere, VMFS, VSAN, VMDK Lock, Backup Proxy, HotAdd, Troubleshooting
 
 Description: Trace a VMDK lock from the failed task to its ESXi host, process, or hot-add backup proxy without releasing a legitimate writer.
 

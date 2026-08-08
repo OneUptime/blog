@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: ESXi, vSphere, VMDK, File Lock, VMFS, vSAN, Backup, Troubleshooting
+Tags: ESXi, vSphere, VMDK, File Lock, VMFS, VSAN, Backup, Troubleshooting
 
 Description: Restore an ESXi VM that cannot power on by identifying the exact locked file and its legitimate owner before releasing anything.
 

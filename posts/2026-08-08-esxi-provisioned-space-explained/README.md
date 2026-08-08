@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: ESXi, vSphere, Datastore, Thin Provisioning, VMDK, Snapshots, Capacity Planning
+Tags: ESXi, vSphere, Datastore, Thin Provisioning, VMDK, Snapshot, Capacity Planning
 
 Description: Reconcile ESXi provisioned, consumed, guest, and array capacity without mistaking expected thin-provisioning math for missing storage.
 
@@ -23,7 +23,7 @@ Use four separate layers in every investigation:
 | Datastore consumed space | Blocks or files currently allocated at the ESXi datastore layer | vSphere operations |
 | Backend physical capacity | Array or vSAN consumption after policy, metadata, compression, deduplication, and sparseness | Storage operations |
 
-These values are not expected to match. A thin VMDK exposes its configured capacity to the guest while allocating datastore blocks as they are written. Deleting a file inside the guest does not automatically guarantee that all layers reclaim those blocks. The guest, virtual disk, and datastore platform—and, where applicable, the backing array—must support the relevant discard or UNMAP path for reclamation to reach the lowest physical layer.
+These values are not expected to match. A thin VMDK exposes its configured capacity to the guest while allocating datastore blocks as they are written. Deleting a file inside the guest does not automatically guarantee that all layers reclaim those blocks. The guest, virtual disk, and datastore platform-and, where applicable, the backing array-must support the relevant discard or UNMAP path for reclamation to reach the lowest physical layer.
 
 ## Why Provisioned Space Can Exceed Datastore Capacity
 

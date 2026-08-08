@@ -140,7 +140,7 @@ Do not restart management agents to force the task to stop, reboot the host, or 
 
 ## Validate the Result
 
-After completion, confirm that the warning clears, each disk points to the descriptor expected for the chosen workflow—the base descriptor after Delete All or another workflow that removes the full chain, or the active leaf when snapshots are deliberately retained—and Snapshot Manager contains only deliberately retained snapshots. Validate the application, not merely VM power state. Check datastore and backend capacity after the files are removed, and confirm that the next backup can create and delete its temporary snapshot.
+After completion, confirm that the warning clears, each disk points to the descriptor expected for the chosen workflow-the base descriptor after Delete All or another workflow that removes the full chain, or the active leaf when snapshots are deliberately retained-and Snapshot Manager contains only deliberately retained snapshots. Validate the application, not merely VM power state. Check datastore and backend capacity after the files are removed, and confirm that the next backup can create and delete its temporary snapshot.
 
 Update capacity alerts to include snapshot growth rate and time-to-full. A datastore at 60 percent can be more dangerous than one at 80 percent if a high-write delta is growing rapidly.
 

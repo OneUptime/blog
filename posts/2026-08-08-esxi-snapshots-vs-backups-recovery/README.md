@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: ESXi, vSphere, Snapshots, Backups, Disaster Recovery, VADP, Data Protection
+Tags: ESXi, vSphere, Snapshot, Backup, Disaster Recovery, VADP, Data Protection
 
 Description: Choose ESXi snapshots or backups by the failure they can recover, their dependency on source storage, and the consistency the application requires.
 

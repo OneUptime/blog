@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Gel, EdgeDB, Access Policies, Globals, TypeScript, Connection Pooling
+Tags: Gel, EdgeDB, Access Policies, Global, TypeScript, Connection Pooling
 
 Description: Use a shared Gel connection pool with request-scoped client clones so access-policy identity cannot leak between concurrent users.
 

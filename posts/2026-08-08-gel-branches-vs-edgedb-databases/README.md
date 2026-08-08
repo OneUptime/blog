@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Gel, EdgeDB, Branches, Databases, CI, Development Workflow
+Tags: Gel, EdgeDB, Branches, Database, CI, Development Workflow
 
 Description: Choose empty, schema-only, or data-copy Gel branches for development and CI while avoiding legacy database terminology traps.
 

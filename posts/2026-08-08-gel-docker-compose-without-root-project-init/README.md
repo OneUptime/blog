@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Gel, EdgeDB, Docker Compose, Containers, Migrations, Local Development
+Tags: Gel, EdgeDB, Docker Compose, Container, Migration, Local Development
 
 Description: Run Gel in Compose and create migrations as your host user without using root-owned project initialization inside the server container.
 

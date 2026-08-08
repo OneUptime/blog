@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Gel, EdgeDB, Links, Computed Fields, EdgeQL, Schema
+Tags: Gel, EdgeDB, Links, Computed Field, EdgeQL, Schema
 
 Description: Fix prohibited computed-link mutations by identifying the stored source of truth and updating that forward relationship instead.
 

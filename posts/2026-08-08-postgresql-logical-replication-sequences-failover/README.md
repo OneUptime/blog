@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: PostgreSQL, Logical Replication, Sequences, Failover, Identity Columns, Runbook
+Tags: PostgreSQL, Logical Replication, Sequence, Failover, Identity Columns, Runbook
 
 Description: Inventory, fence, and advance PostgreSQL sequences before promoting a logical subscriber so new writes cannot reuse replicated identifiers.
 

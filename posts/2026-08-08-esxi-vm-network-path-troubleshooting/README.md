@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: ESXi, vSphere, VM Networking, Virtual NIC, Port Group, VLAN, Virtual Switch, Packet Capture
+Tags: ESXi, vSphere, VM Networking, Virtual NIC, Port Groups, VLAN, Virtual Switch, Packet Capture
 
 Description: Isolate an ESXi VM network outage hop by hop across the guest, virtual adapter, port group, vSwitch, uplink, VLAN, and physical fabric.
 

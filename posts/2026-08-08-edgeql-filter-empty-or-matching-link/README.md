@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Gel, EdgeDB, EdgeQL, Filters, Empty Sets, Links
+Tags: Gel, EdgeDB, EdgeQL, Filter, Empty Sets, Links
 
 Description: Keep objects whose link is empty or contains a match by turning each EdgeQL condition into a definite singleton boolean.
 

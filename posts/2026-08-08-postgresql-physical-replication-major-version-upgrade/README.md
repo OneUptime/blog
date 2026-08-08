@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: PostgreSQL, Physical Replication, Major Upgrade, pg_upgrade, Logical Replication, High Availability
+Tags: PostgreSQL, Physical Replication, Major Upgrade, Pg_upgrade, Logical Replication, High Availability
 
 Description: Plan a PostgreSQL major upgrade without trying to stream physical WAL between incompatible server generations or strand old standbys.
 

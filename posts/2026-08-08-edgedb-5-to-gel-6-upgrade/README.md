@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Gel, EdgeDB, Upgrade, Migration, Dump and Restore, Operations
+Tags: Gel, EdgeDB, Upgrade, Migration, Dump and Restore, Operation
 
 Description: Choose the supported EdgeDB 5 to Gel 6 path for CLI-managed local and self-hosted remote instances, with context on the retired Gel Cloud service.
 

@@ -862,6 +862,7 @@
 - Apache Traffic Server
 - Apache ZooKeeper
 - Apache-Camel
+- APD
 - Apdex
 - API
 - API Abuse
@@ -1850,6 +1851,7 @@
 - BackgroundService
 - Backing Image
 - Backint
+- Backlinks
 - Backlog
 - Backlog Management
 - Backoff
@@ -1873,6 +1875,7 @@
 - Backup Plan
 - Backup Planning
 - Backup Policy
+- Backup Proxy
 - Backup Recovery
 - Backup Reports
 - Backup Restore
@@ -2240,6 +2243,7 @@
 - Boosting
 - Boot
 - Boot Configuration
+- Boot Device
 - Boot Diagnostics
 - Boot Failures
 - Boot Issues
@@ -2955,6 +2959,7 @@
 - CI/CD
 - CIAM
 - CIB
+- CID
 - CIDR
 - CIDR Routing
 - CIDRGroup
@@ -4964,6 +4969,7 @@
 - DataSource
 - Datasources
 - Datastore
+- Datastore Capacity
 - Datastore Migration
 - Datastream
 - DataSync
@@ -5165,6 +5171,7 @@
 - Dell
 - Delta
 - Delta Codec
+- Delta Disk
 - Delta Lake
 - Delta Temporality
 - DeltaLake
@@ -5517,6 +5524,7 @@
 - Disk Cleanup
 - Disk Clone
 - Disk Configuration
+- Disk Consolidation
 - Disk Conversion
 - Disk Encryption
 - Disk Errors
@@ -5958,6 +5966,7 @@
 - DUID
 - Dummy Prefix
 - Dump
+- Dump and Restore
 - Duplex
 - Duplex Mismatch
 - Duplicate
@@ -6126,9 +6135,11 @@
 - Edge TPU
 - Edge Workers
 - EdgeConnect
+- EdgeDB
 - EdgeMesh
 - EdgeNgram
 - EdgeOS
+- EdgeQL
 - EdgeRouter
 - EdgeX Foundry
 - EDI
@@ -6253,6 +6264,7 @@
 - empty
 - Empty Blocks
 - Empty Population
+- Empty Sets
 - Empty Values
 - EMQX
 - EMR
@@ -6470,6 +6482,7 @@
 - ESR Rule
 - estimatedDocumentCount
 - Estimation
+- ESX-OSData
 - ESXi
 - ETA Prediction
 - ETag
@@ -6957,6 +6970,7 @@
 - File IO
 - File Layout
 - File Loading
+- File Lock
 - File Management
 - File Monitoring
 - File Mount
@@ -7466,6 +7480,7 @@
 - GDPR
 - GDS
 - Geekbench
+- Gel
 - GELF
 - Gem
 - Gemini
@@ -8078,6 +8093,8 @@
 - HAVING
 - Haystack
 - Hazelcast
+- HBA
+- HBA Configuration
 - HBAC
 - HBase
 - HBONE
@@ -8302,6 +8319,7 @@
 - Host Access
 - Host command
 - Host Communication
+- Host Connectivity
 - Host Control
 - Host Count
 - Host Endpoint
@@ -8364,6 +8382,7 @@
 - Hot Warm Cold
 - Hot-Reload
 - Hot-Warm-Cold
+- HotAdd
 - Hotel
 - Hotel PMS
 - Hotfix
@@ -8605,6 +8624,7 @@
 - Identifier
 - Identity
 - Identity Association
+- Identity Columns
 - Identity Experience Framework
 - Identity Federation
 - Identity Governance
@@ -8878,6 +8898,7 @@
 - Indexer
 - Indexer Management
 - Indexer Manager
+- Indexes
 - Indexing
 - indexOf
 - IndexOutOfRangeException
@@ -8974,6 +8995,7 @@
 - Init Process
 - Init System
 - Initial Setup
+- Initial Sync
 - Initialization
 - Initializer
 - initializeUnorderedBulkOp
@@ -9395,6 +9417,7 @@
 - ISO Date
 - ISO Repository
 - ISODate
+- Isolated Hosts
 - Isolated Network
 - Isolated Worker
 - Isolation
@@ -10204,6 +10227,7 @@
 - Linked Services
 - Linked Templates
 - Linkerd
+- Links
 - Linksys
 - Linkwarden
 - Linode
@@ -10336,6 +10360,7 @@
 - Local AI
 - Local Backend
 - Local chat
+- Local Datastore
 - Local Development
 - Local Environment
 - Local Execution
@@ -10664,6 +10689,7 @@
 - Maintenance
 - Maintenance Mode
 - Maintenance Window
+- Major Upgrade
 - Make
 - Makefile
 - Malicious Domains
@@ -12867,6 +12893,7 @@
 - Override Resources
 - Overseerr
 - Overview
+- OVF
 - OVH
 - OVHcloud
 - oVirt
@@ -13341,6 +13368,7 @@
 - PhpLDAPadmin
 - phpredis
 - Phrase
+- Physical Replication
 - PI
 - Pi-hole
 - Pick
@@ -13764,6 +13792,7 @@
 - Power Query
 - Power Systems
 - POWER10
+- PowerCLI
 - PowerDNS
 - Powers of Two
 - PowerShell
@@ -13890,6 +13919,7 @@
 - Pricing Calculator
 - Primary
 - Primary Affinity
+- Primary Connection Info
 - Primary Index
 - Primary Key
 - Primary Key Table
@@ -14204,6 +14234,7 @@
 - PSETEX
 - Pseudo-filesystem
 - PSK
+- PSOD
 - PSP
 - PSP Migration
 - PSRP
@@ -15051,6 +15082,8 @@
 - Replatform
 - Replay
 - Replica
+- Replica Decommissioning
+- Replica Identity
 - Replica Placement
 - Replica Rebuilding
 - Replica Set
@@ -15069,7 +15102,10 @@
 - Replication
 - Replication Filters
 - Replication Lag
+- Replication Monitoring
 - Replication Policy
+- Replication Slots
+- Replication Statistics
 - Reply Event
 - Repo Server
 - Report
@@ -15284,6 +15320,7 @@
 - REST Framework
 - Rest-server
 - Restart
+- Restart LSN
 - Restart Policies
 - Restart Policy
 - RestartPolicy
@@ -16022,6 +16059,7 @@
 - SCT
 - SCTP
 - ScyllaDB
+- SD Card
 - SD-WAN
 - SDIFF
 - SDIFFSTORE
@@ -16838,9 +16876,13 @@
 - Snappy
 - Snappy Compression
 - Snapshot
+- Snapshot Chain
+- Snapshot Consolidation
 - Snapshot Debugger
 - Snapshot Interval
+- Snapshot Manager
 - Snapshot Mirroring
+- Snapshot Retention
 - Snapshot Testing
 - SnapStart
 - SNAT
@@ -17307,6 +17349,7 @@
 - Stampede
 - Stampede Prevention
 - Standalone
+- Standalone Host
 - Standalone Mode
 - Standard
 - Standard Deviation
@@ -17515,6 +17558,7 @@
 - Storage Tier
 - Storage Tiering
 - Storage Transfer Service
+- Storage Troubleshooting
 - Storage Tuning
 - Storage Write API
 - StorageClass
@@ -19287,6 +19331,7 @@
 - VA-API
 - VAAPI
 - VACUUM
+- VADP
 - Vagrant
 - Valheim
 - Valid Lifetime
@@ -19485,6 +19530,7 @@
 - Virtual Network Gateway
 - Virtual Network Peering
 - Virtual Networking
+- Virtual NIC
 - Virtual Nodes
 - Virtual Repository
 - Virtual Rooms
@@ -19550,6 +19596,7 @@
 - VM Manager
 - VM Migration
 - VM Monitoring
+- VM Networking
 - VM Onboarding
 - VM Provisioning
 - VM Recovery
@@ -19563,7 +19610,12 @@
 - VM Templates
 - Vm.swappiness
 - VManage
+- VMCP
 - VMDK
+- VMDK Lock
+- VMDK Tools
+- VMFS
+- VMkernel
 - VMotion
 - VMs
 - VMSS
@@ -19574,6 +19626,7 @@
 - VMware NSX
 - VMware SD-WAN
 - VMware Tanzu
+- VMware vCenter
 - VMware VeloCloud
 - VMXNET3
 - VNC
@@ -19706,6 +19759,8 @@
 - Wake-on-LAN
 - WAL
 - WAL Archiving
+- WAL Receiver
+- WAL Retention
 - WAL-G
 - WAMP
 - WAN

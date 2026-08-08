@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Gel, EdgeDB, Schema, Migrations, Drift, Troubleshooting
+Tags: Gel, EdgeDB, Schema, Migration, Drift, Troubleshooting
 
 Description: Compare Gel schema source, filesystem migrations, and database history safely before repairing a drifted branch.
 

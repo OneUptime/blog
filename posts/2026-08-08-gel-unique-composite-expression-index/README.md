@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Gel, EdgeDB, EdgeQL, Indexes, Constraints, Query Performance
+Tags: Gel, EdgeDB, EdgeQL, Indexes, Constraint, Query Performance
 
 Description: Choose the right Gel constraint or index for uniqueness, multi-field lookups, normalized values, and production migrations.
 
