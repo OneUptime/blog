@@ -10,7 +10,7 @@ Description: Trace a VMDK lock from the failed task to its ESXi host, process, o
 
 A VMDK lock is useful evidence. It can identify the host running a VM, a backup proxy reading a disk, or a stale process left after a failed operation. The lock should not be removed until its owner and purpose are known because ESXi uses locking to prevent simultaneous writers from corrupting a virtual disk.
 
-This runbook begins with the file named in the error, follows ownership to a host and process, and then correlates that process with vCenter and the backup platform. It treats VMFS and vSAN separately because a VMFS virtual disk has a flat or delta extent, while a vSAN virtual disk is an object rather than a conventional `-flat.vmdk` file.
+This runbook begins with the file named in the error, follows ownership to a host and process, and then correlates that process with vCenter and the backup platform. It treats standard VMFS VMDKs and vSAN separately because a standard VMFS VMDK has a flat, delta, or SEsparse extent, while a vSAN virtual disk is an object rather than a conventional `-flat.vmdk` file.
 
 ## Start with the Exact Failed Object
 
@@ -25,7 +25,7 @@ Cannot open the disk '/vmfs/volumes/Datastore/VM/VM-000004.vmdk'
 or one of the snapshot disks it depends on.
 ```
 
-Do not reduce that path to `VM.vmdk`. The reported object might be the active snapshot descriptor, a delta extent, a base extent, or a vSAN lock object. A VM can have several disks with different owners during backup cleanup.
+Do not reduce that path to `VM.vmdk`. The reported object might be the active snapshot descriptor, a delta or SEsparse extent, a base extent, or a vSAN lock object. A VM can have several disks with different owners during backup cleanup.
 
 Record:
 
@@ -57,10 +57,10 @@ For a powered-off VM, no VMX process should normally hold its ordinary files. A 
 Run `vmfsfilelockinfo` from an ESXi host that can access the VMFS datastore. Quote paths containing spaces:
 
 ```bash
-vmfsfilelockinfo -p '/vmfs/volumes/DatastoreName/VMFolder/Disk-flat.vmdk' -v
+vmfsfilelockinfo -p '/vmfs/volumes/DatastoreName/VMFolder/Disk-flat.vmdk'
 ```
 
-Use the exact extent or descriptor called out by the error or the applicable Broadcom procedure. The output can report a lock mode, a MAC address, and, when Fault Domain Manager can resolve it, the owning host name.
+Preserve the exact path in the error, then use the applicable Broadcom procedure to select the file to test. For a VMFS disk, that normally means following the descriptor to the corresponding `-flat`, `-delta`, or `-sesparse` extent; inspect the descriptor itself when the error or datastore-specific procedure identifies it as the locked object. The output can report a lock mode, a MAC address, and, when Fault Domain Manager can resolve it, the owning host name.
 
 Lock modes commonly encountered in Broadcom's lock guidance are:
 
@@ -127,11 +127,16 @@ for file in *; do
   echo "${file}"
   vmfsfilelockinfo -p "${file}" | grep -i mode
 done
+
+for file in .*lck; do
+  echo "${file}"
+  vmfsfilelockinfo -p "${file}" | grep -i mode
+done
 ```
 
-Run only in the verified VM namespace and treat the output as inspection. Hidden `.<uuid>.lck` objects can require the additional commands in the version-specific Broadcom procedure. Resolve the MAC to the vSAN host, then use `lsof` with the namespace UUID or exact lock object on that host.
+Run only in the verified VM namespace and treat the output as inspection. The second loop checks hidden `.<uuid>.lck` objects. Resolve the MAC to the vSAN host, then use `lsof` with the namespace UUID or exact lock object on that host.
 
-Do not inflate, copy, delete, or edit a vSAN VMDK using a VMFS procedure. If the object reports multiple faults, use vSAN health and object diagnostics and contact Broadcom Support.
+Do not inflate a vSAN VMDK directly from a host or manipulate its backing object with flat-file VMFS steps. Use only a vSAN-specific Broadcom procedure for copying, deleting, or editing a descriptor. If the object reports multiple faults, use vSAN health and object diagnostics and contact Broadcom Support.
 
 ## Choose the Correct Release Action
 
@@ -148,7 +153,7 @@ Release the lock through its cause:
 | Stale process | End only the precisely identified non-owner process under the documented procedure |
 | Persistent host lock with no safe release | Evacuate or shut down VMs, collect logs, then perform a controlled reboot |
 
-Restarting `hostd` or `vpxa` disrupts management and does not power off running VMs, but it should still be a targeted remediation, not a harmless probe. A host reboot is last resort and requires workload evacuation or coordinated outage.
+Restarting `hostd` or `vpxa` normally does not change VM power state, but it disrupts management, can affect current tasks and guest performance, and can cause instability that requires a reboot. It should be a targeted remediation, not a harmless probe. A host reboot is last resort and requires workload evacuation or coordinated outage.
 
 ## Verify Release and Repair the Workflow
 
