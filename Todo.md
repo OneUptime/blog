@@ -29,7 +29,6 @@
 
 ## ESXi
 
-18. ESXi Boot Device Is Failing: How to Migrate from USB or SD to Persistent Storage
 19. How to Build an ESXi VM and Datastore Inventory Report with PowerCLI
 20. ESXi Host Is Disconnected from vCenter but VMs Still Run: What Should You Check First?
 
