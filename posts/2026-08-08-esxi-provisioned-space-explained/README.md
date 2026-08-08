@@ -23,7 +23,7 @@ Use four separate layers in every investigation:
 | Datastore consumed space | Blocks or files currently allocated at the ESXi datastore layer | vSphere operations |
 | Backend physical capacity | Array or vSAN consumption after policy, metadata, compression, deduplication, and sparseness | Storage operations |
 
-These values are not expected to match. A thin VMDK exposes its configured capacity to the guest while allocating datastore blocks as they are written. Deleting a file inside the guest does not automatically guarantee that all layers reclaim those blocks. The guest, virtual disk, VMFS or vSAN, and array must support and pass discard or unmap semantics for reclamation to reach the bottom layer.
+These values are not expected to match. A thin VMDK exposes its configured capacity to the guest while allocating datastore blocks as they are written. Deleting a file inside the guest does not automatically guarantee that all layers reclaim those blocks. The guest, virtual disk, and datastore platform—and, where applicable, the backing array—must support the relevant discard or UNMAP path for reclamation to reach the lowest physical layer.
 
 ## Why Provisioned Space Can Exceed Datastore Capacity
 
@@ -31,7 +31,7 @@ Thin provisioning deliberately permits overcommitment. Ten VMs can each have a 1
 
 That is a risk position, not free capacity. If the disks grow concurrently, VMFS can exhaust space before guests exhaust their own filesystems. Treat the gap between potential and available capacity as an obligation that needs growth monitoring, quotas or placement controls, and an expansion plan.
 
-Thick disks behave differently. A thick-provisioned disk reserves its configured datastore footprint up front, even when the guest has barely used it. Its guest-used number can be small while datastore consumption remains near the full configured disk size.
+On VMFS, thick disks behave differently. A thick-provisioned disk reserves its configured datastore footprint up front, even when the guest has barely used it. Its guest-used number can be small while datastore consumption remains near the full configured disk size.
 
 ## Snapshots Multiply Potential Footprint
 
@@ -44,16 +44,16 @@ Backup-created snapshots might not remain visible in Snapshot Manager after a fa
 - the VM Summary tab for **Consolidation needed**;
 - Snapshot Manager for operator-created snapshots;
 - each virtual disk's backing path in Edit Settings;
-- the datastore folder for `-00000N.vmdk`, `-delta.vmdk`, or `-sesparse.vmdk` files; and
+- the relevant datastore folders for `-00000N.vmdk`, `-delta.vmdk`, or `-sesparse.vmdk` files; and
 - the backup product for an incomplete hot-add or snapshot-removal task.
 
 Do not delete delta files to make the report smaller. Snapshot files form an ordered dependency chain. Use supported deletion or consolidation after verifying chain health, file locks, and free space.
 
 ## Include Swap, Memory State, Logs, and Media
 
-Virtual disks are not the VM's whole datastore footprint. A powered-on VM normally creates a `.vswp` file based on configured memory minus memory reservation. A 32 GB VM without a reservation can add roughly 32 GB of used datastore space. This file disappears when the VM powers off and is recreated at its configured swap location on power-on.
+Virtual disks are not the VM's whole datastore footprint. A powered-on VM normally creates a `.vswp` file based on configured memory minus memory reservation. A 32 GB VM without a reservation can add roughly 32 GB of used datastore space. This file is normally removed when the VM powers off and is recreated at its configured swap location on power-on.
 
-A snapshot that includes VM memory can create a large memory-state file. VM configuration, NVRAM, change-block-tracking files, suspend state, logs, and core dumps add smaller or occasionally substantial amounts. Mounted or abandoned ISO images live on a datastore but are not guest filesystem data. Templates, content libraries, and detached VMDKs can also consume capacity outside the set of powered-on VMs.
+A snapshot that includes VM memory can create a large memory-state file. VM configuration, NVRAM, change-block-tracking files, suspend state, logs, and core dumps add smaller or occasionally substantial amounts. Datastore-resident ISO images, whether mounted or abandoned, consume capacity but are not guest filesystem data. Templates, content libraries, and detached VMDKs can also consume capacity outside the set of powered-on VMs.
 
 This explains why adding the guest-used values of all VMs rarely equals datastore consumption.
 
@@ -65,7 +65,7 @@ For vSAN, storage policy affects physical consumption. Replication, erasure codi
 
 For vVols, virtual disks, snapshots, and swap can be native array objects. Array efficiency and snapshot implementation determine physical use. The vSphere provisioned number remains useful for exposure, but it is not a substitute for the VASA-backed datastore and array reports.
 
-On external arrays, compression, deduplication, thin LUN allocation, and zero-block handling are invisible to vCenter. Broadcom documents that vCenter, the Host Client, and `df` can agree while the array shows less usage. Neither side is necessarily wrong.
+For traditional VMFS or NFS datastores backed by external arrays, compression, deduplication, thin-pool allocation, and zero-block handling are generally invisible to vCenter. Broadcom documents that vCenter, the Host Client, and `df` can agree while the array shows less usage. Neither side is necessarily wrong.
 
 ## Run a Reconciliation
 
@@ -84,7 +84,7 @@ At the ESXi layer, these commands provide a read-only filesystem comparison:
 ```bash
 esxcli storage filesystem list
 df -h
-du -h /vmfs/volumes/DatastoreName/*
+du -sh "/vmfs/volumes/DatastoreName/"
 ```
 
 For VMFS, compare `du` with `df` and the Host Client. Do not use the apparent size of a thin or sparse file from a generic listing as its allocated-block count without understanding the command's output. On vSAN, use native object and capacity tooling instead.
