@@ -16,11 +16,11 @@ The first objective is to stop growth and create a small amount of safe headroom
 
 Record the affected datastore, hosts, virtual machines, active alarms, free capacity, and the time at which capacity was exhausted. Pause new deployments, snapshot-based backups, replication jobs, and other workflows that create files on it. Reduce application write load where the service owner can do so safely.
 
-If the storage platform can extend the backing LUN or export without disrupting service, expansion is normally the least risky way to regain working room. Extend the backing storage first, rescan according to the array procedure, and then expand VMFS through the vSphere Client. Do not create a new VMFS datastore over an existing LUN and do not change partitions to make space appear.
+If the storage platform can extend the backing LUN or the NAS filesystem behind an export without disrupting service, expansion is normally the least risky way to regain working room. For VMFS, extend the backing LUN first, rescan every host that can access it according to the array procedure, and then expand VMFS through the vSphere Client. VMFS growth itself needs space for metadata updates, so a completely full datastore may need a small amount of headroom before the grow operation can succeed. For NFS, expand the backing filesystem according to the storage platform procedure and refresh the datastore's Summary page in vCenter; there is no VMFS partition to expand. Do not create a new VMFS datastore over an existing LUN and do not change partitions to make space appear.
 
 When another datastore is available, migrate an unaffected VM or cold-migrate a powered-off VM through the vSphere Client. Do not begin an online Storage vMotion if the source is so full that it cannot create metadata or a required swap file. Broadcom's full-datastore guidance specifically identifies power-off and cold migration as recovery options when online operations cannot start.
 
-Do not start consolidation merely because snapshots are large. Consolidation needs healthy storage and working space, and an online consolidation creates a helper delta that can keep growing while the guest writes.
+Do not start consolidation merely because snapshots are large. Check storage health and the chain's space requirements first. An online consolidation creates a helper delta that can keep growing while the guest writes.
 
 ## Confirm Capacity at the ESXi Layer
 
@@ -60,7 +60,7 @@ File size is evidence, not ownership. Sparse and thin files can have a logical s
 
 A powered-on VM normally has a `.vswp` file sized from configured memory minus its memory reservation. A VM with 64 GB of memory and no reservation can therefore consume roughly 64 GB of datastore capacity before considering its virtual disks. Powering off the VM removes the active swap file and can create emergency headroom, but that is an outage and must be coordinated.
 
-Do not add memory reservations merely to reclaim datastore space. Reservations consume guaranteed host or cluster memory capacity and can prevent other VMs from powering on. If swap placement is the long-term issue, use the supported cluster or host swap-file-location setting and a planned power cycle or migration so ESXi recreates the files in the intended location.
+Do not add memory reservations merely to reclaim datastore space. Reservations consume guaranteed host or cluster memory capacity and can prevent other VMs from powering on. If swap placement is the long-term issue, use the supported cluster or host swap-file-location setting. Coordinate a full power-off and power-on, or a compute-only vMotion to another host configured for the destination swap datastore, so ESXi recreates the files in the intended location. A guest reboot is not sufficient, and Storage vMotion does not move `.vswp` files kept on a host swap datastore.
 
 An old `.vswp` file is not safe to delete just because another one exists. Confirm the VM's power state and registration, check that no task is running, and use the supported lifecycle operation. Manual deletion belongs only to a specific diagnosed stale-file case with a backup and a documented recovery path.
 
@@ -74,15 +74,15 @@ The active `.vmx` file identifies the descriptor attached to each controller. Br
 grep -i '.vmdk' /vmfs/volumes/DatastoreName/VMFolder/VMName.vmx
 ```
 
-If it points to `VMName-00000N.vmdk`, the VM is running on a snapshot chain. Do not delete any base, delta, descriptor, change-tracking, or snapshot metadata file. Use Snapshot Manager or **Snapshots > Consolidate** only after checking locks, chain health, and space. If a parent is missing or `vmkfstools -e` reports inconsistency, stop and preserve the directory for Broadcom Support.
+If it points to `VMName-00000N.vmdk`, the VM is running on a snapshot chain. Do not delete any base, delta, descriptor, change-tracking, or snapshot metadata file. Use Snapshot Manager or **Snapshots > Consolidate** only after checking for conflicting file locks, chain health, and space. If a parent is missing or `vmkfstools -qv10 <current-descriptor.vmdk>` on the ESXi host running the VM reports failed opens or chain errors, stop and preserve the directory for Broadcom Support. For broker-managed VDI linked or instant clones, do not use the standard vCenter **Consolidate** or **Delete All Snapshots** operations; remediate them through the VDI management console.
 
 ## Prove Whether a VMDK Is Orphaned
 
-An unreferenced file in one `.vmx` is not necessarily orphaned. It may be attached to another VM, a template, a backup proxy, or a VM whose configuration lives on another datastore. It may also be a parent in a snapshot chain.
+An unreferenced file in one `.vmx` is not necessarily orphaned. It may be attached to another VM, a template, a backup proxy, or a VM whose configuration lives on another datastore. It may also be stored in a Content Library, registered as a First Class Disk such as one backing a Cloud Native Storage volume, or used as a parent in a snapshot chain.
 
 Use this proof sequence:
 
-1. Inventory every VM and template disk path in vCenter, not only objects currently powered on.
+1. Inventory every VM and template disk path in vCenter, including powered-off objects. Also check Content Libraries and the First Class Disk or Cloud Native Storage inventory.
 2. Inspect Snapshot Manager, consolidation state, and the current hard-disk backing for the suspected VM.
 3. Check backup and replication consoles for an active or stranded hot-add attachment.
 4. Check whether the descriptor is referenced as a snapshot parent.
@@ -100,7 +100,7 @@ Use the least ambiguous consumers first:
 2. Remove obsolete ISO references from VM CD/DVD devices before deleting the ISO.
 3. Cold-migrate or temporarily power off approved VMs to release their swap files.
 4. Extend the datastore or migrate complete VMs through supported workflows.
-5. Consolidate healthy, unlocked snapshot chains after sufficient headroom exists.
+5. Consolidate healthy snapshot chains with no conflicting file locks after sufficient headroom exists.
 6. Delete a VMDK only after the full orphan proof is documented.
 
 Monitor datastore free space and array capacity throughout. Once recovery begins, snapshot commit can generate sustained reads and writes, and delta files are not necessarily removed one by one. Do not interrupt an active consolidation, restart management agents to force it to stop, or reboot its host.
@@ -113,7 +113,7 @@ Create alerts with enough lead time for the largest plausible snapshot, swap, mi
 
 ## Official Documentation
 
-- [Datastore is full, need to free disk space](https://knowledge.broadcom.com/external/article/414077/datastore-is-full-need-to-free-disk-spa.html)
+- [Datastore is full, need to free disk space](https://knowledge.broadcom.com/external/article/414077/datastore-is-full-need-to-free-disk-spac.html)
 - [Orphaned VMDK and zombie files on datastore](https://knowledge.broadcom.com/external/article/404094/orphaned-vmdk-and-zombie-files-on-datast.html)
 - [How to validate if a VM is using a VMDK file](https://knowledge.broadcom.com/external/article/430686/how-to-validate-if-a-vm-is-using-a-vmdk.html)
 - [Higher than expected datastore usage due to large VM swap files](https://knowledge.broadcom.com/external/article/342554/higher-than-expected-datastore-usage-due.html)
