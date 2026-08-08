@@ -20,7 +20,7 @@ Capacity can therefore be required for:
 
 - growth of a thin base as changed blocks are committed;
 - growth of a parent delta when a child is deleted into it;
-- the online helper delta that captures new writes;
+- the active leaf or online helper delta that captures new writes;
 - filesystem metadata and operational overhead;
 - other VMs, swap files, logs, backups, and snapshots sharing the datastore; and
 - temporary recovery clones when in-place consolidation is not used.
@@ -58,29 +58,29 @@ For a child merged into another delta, the parent can grow. For **Delete All**, 
 
 Do not estimate from guest-used space. A guest can overwrite blocks repeatedly, and a deleted guest file might still occupy virtual-disk blocks until an end-to-end reclamation process succeeds.
 
-## Add Online Helper-Delta Growth
+## Add Online Delta Growth
 
-If the VM remains powered on, estimate writes during the whole consolidation window:
+If the VM remains powered on, estimate writes during the whole consolidation window. Delete All and full consolidation normally direct those writes to a helper delta. Deleting a single non-current snapshot does not require an additional helper, but the existing active leaf can still grow.
 
 ```text
-helper growth estimate = sustained guest write rate x conservative duration
+online delta growth estimate = sustained guest write rate x conservative duration
 ```
 
 Use storage or VM performance data from a comparable busy interval, not an idle five-minute sample. Add margin for bursts and for a consolidation that runs slower than expected because it competes with production I/O.
 
 For example, a VM writing 25 MB/s for four hours can generate about 360 GB of writes. Snapshot allocation tracks changed blocks rather than a simple stream total, so actual unique-block growth may be lower, but the calculation shows why a small fixed margin is unsafe for a busy database.
 
-Powering off the VM prevents new guest writes and avoids creation and growth of an online helper delta. Broadcom's snapshot FAQ notes that a powered-off delete does not need that additional online-write space and normally completes faster. A thin base can still need to grow as existing snapshot data is committed, so powered off does not mean that a nearly full datastore is automatically safe.
+Powering off the VM prevents new guest writes, active-leaf growth, and creation and growth of an online helper delta. Broadcom's snapshot FAQ notes that a powered-off delete does not need that additional online-write space and normally completes faster. A thin base can still need to grow as existing snapshot data is committed, so powered off does not mean that a nearly full datastore is automatically safe.
 
 ## Apply Official Rules Only to Their Scenario
 
-For the error documented in Broadcom KB 398339, **File too large** caused by insufficient free space, Broadcom specifies free space of at least 1.5 times the total size of all snapshot files for the VM. Use that threshold when diagnosing that documented scenario, then add room for concurrent datastore growth and online writes.
+For the ESXi 7.0.x and 8.0.x error documented in Broadcom KB 398339, **File too large** caused by insufficient free space, Broadcom specifies free space of at least 1.5 times the total size of all snapshot files for the VM. Use that threshold when diagnosing that documented scenario, then add room for concurrent datastore growth and online writes.
 
 Do not turn 1.5 times into a universal vSphere guarantee. Disk layout, changed-block distribution, thin-base expansion, helper-delta growth, and other workloads can require a different amount.
 
-Broadcom KB 341646 states that space to clone or commit snapshots varies with delta size and the amount of changes, from almost zero to almost 100 percent of the virtual snapshot disk size. A recovery clone generally needs destination capacity for a new consolidated disk and should be sized against its logical output plus datastore overhead.
+Broadcom KB 341646 states that space to clone or commit snapshots varies with the size of the virtual snapshot disks and the amount of changes, from almost zero to almost 100 percent of the virtual snapshot disk size. A recovery clone generally needs destination capacity for a new consolidated disk and should be sized against its logical output plus datastore overhead.
 
-Broadcom's large-VM snapshot guidance recommends reserving 20 to 30 percent additional free datastore capacity when planning to create snapshots. That is planning guidance for snapshot growth, not a calculation that proves an existing consolidation is safe.
+Broadcom's ESXi 7.x and 8.x large-VM snapshot guidance recommends sizing datastore capacity for the total virtual machine disk size plus another 20 to 30 percent of that size as free capacity for snapshot growth. That is planning guidance, not a calculation that proves an existing consolidation is safe.
 
 ## Create a Conservative Capacity Budget
 
@@ -89,7 +89,7 @@ For each datastore, build this budget:
 ```text
 estimated required headroom =
   possible merge-target growth
-  + possible online helper growth
+  + possible online delta growth
   + unrelated planned growth during the window
   + operational safety margin
 ```
@@ -140,7 +140,7 @@ Do not restart management agents to force the task to stop, reboot the host, or 
 
 ## Validate the Result
 
-After completion, confirm that the warning clears, every disk points to the expected base descriptor, and Snapshot Manager contains only deliberately retained snapshots. Validate the application, not merely VM power state. Check datastore and backend capacity after the files are removed, and confirm that the next backup can create and delete its temporary snapshot.
+After completion, confirm that the warning clears, each disk points to the descriptor expected for the chosen workflow—the base descriptor after Delete All or another workflow that removes the full chain, or the active leaf when snapshots are deliberately retained—and Snapshot Manager contains only deliberately retained snapshots. Validate the application, not merely VM power state. Check datastore and backend capacity after the files are removed, and confirm that the next backup can create and delete its temporary snapshot.
 
 Update capacity alerts to include snapshot growth rate and time-to-full. A datastore at 60 percent can be more dangerous than one at 80 percent if a high-write delta is growing rapidly.
 
