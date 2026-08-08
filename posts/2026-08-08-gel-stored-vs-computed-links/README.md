@@ -23,13 +23,14 @@ type Post {
 }
 ```
 
-`author: User` is persisted relationship data. It can be assigned during insert and updated later, subject to cardinality, constraints, read-only settings, and access policies.
+`author: User` is persisted relationship data. It can be assigned during insert and updated later, subject to cardinality, constraints, read-only settings, access policies, and, on Gel 7 and later, role permissions.
 
 A computed link declares an expression with `:=`:
 
 ```gel
 type User {
   required name: str;
+  required active: bool;
   multi posts := .<author[is Post];
 }
 ```
@@ -70,7 +71,7 @@ set {
 };
 ```
 
-The next read of `target_user.posts` includes that post automatically.
+A subsequent read of that user's `posts` includes that post automatically.
 
 To remove it, either point `Post.author` at a different user or, if the link is optional, assign an empty set:
 
@@ -204,8 +205,8 @@ When the declaration is far from the failing query:
 3. Read the expression from right to left and list its stored inputs.
 4. For `.<name[is Type]`, find forward link `Type.name`.
 5. Check whether the pointer is inherited from an abstract supertype.
-6. Use `gel describe object` or the Gel UI to inspect the live schema.
-7. Confirm the selected branch matches the repository.
+6. Use `gel describe object User` or the Gel UI to inspect the live schema.
+7. Confirm the selected branch, or database before EdgeDB 5, matches the repository.
 
 Then express the business action against stored inputs. For a backlink, update the forward source. For a filtered membership view, change stored membership or the filter property. For a union of links, decide which stored link should own the new relationship.
 
@@ -228,7 +229,7 @@ If both stored and computed pointers remain, name them by meaning, such as `memb
 
 The computed expression may traverse protected object types. Access policies define which resulting objects the caller can see, even though policy expressions themselves have their documented non-recursive evaluation behavior. A computed backlink can therefore appear empty for one user and populated for another.
 
-Updates must target the stored source with sufficient select, update-read, and update-write access. Never bypass policy enforcement simply because a convenient reverse pointer is read-only.
+Updates must target the stored source. Its access policies must permit `select`, `update read`, and `update write`; on Gel 7 and later, the connected role must also have `sys::perm::data_modification` (superuser roles receive all permissions implicitly). Never bypass policy enforcement simply because a convenient reverse pointer is read-only.
 
 ## Official Documentation
 
@@ -238,6 +239,7 @@ Updates must target the stored source with sufficient select, update-read, and u
 - [EdgeQL update](https://docs.geldata.com/reference/edgeql/update)
 - [EdgeQL volatility](https://docs.geldata.com/reference/reference/edgeql/volatility)
 - [Gel indexes](https://docs.geldata.com/reference/datamodel/indexes)
+- [Gel permissions](https://docs.geldata.com/reference/datamodel/permissions)
 
 ## Conclusion
 
