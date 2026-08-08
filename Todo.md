@@ -26,7 +26,6 @@
 
 ## EdgeDB
 
-7. EdgeDB Schema and Migration History Disagree: How to Diagnose Drift Before Applying Changes
 8. EdgeDB 5 to Gel 6: When Can You Use CLI Upgrade, and When Is Dump-and-Restore Required?
 9. Gel Branches vs EdgeDB Databases: Which Kind of Branch Should Development and CI Use?
 10. Why Did an EdgeDB Access Policy Suddenly Hide Every Object?
