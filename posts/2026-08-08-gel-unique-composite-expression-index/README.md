@@ -194,7 +194,7 @@ Expression matching matters. If one code path uses `str_lower(.display_name)` an
 
 ## Enforce Normalized Uniqueness With a Computed Property
 
-An expression index makes lookup faster but still does not enforce uniqueness. To forbid usernames that differ only by case or surrounding whitespace, use a computed property and an exclusive constraint as documented by Gel:
+An expression index may make lookup faster but still does not enforce uniqueness. To forbid usernames that differ only by case or surrounding spaces, use a computed property and an exclusive constraint as documented by Gel:
 
 ```gel
 type User {
@@ -205,7 +205,7 @@ type User {
 }
 ```
 
-Now `Alice`, `alice`, and a whitespace-padded equivalent collide on the computed value. This makes the invariant explicit and gives the exclusive expression an implicit index.
+Now `Alice`, `alice`, and a space-padded equivalent collide on the computed value. This makes the invariant explicit and gives the exclusive expression an implicit index.
 
 Choose the normalization carefully. Lowercasing, trimming, Unicode behavior, and product-specific identity rules are not interchangeable. Once the constraint reaches production, changing the expression can reveal collisions in existing data, so audit before applying the migration.
 
@@ -263,17 +263,17 @@ Until the build completes, the index is inactive and cannot speed up queries. A 
 
 ## Verify the Result Instead of Guessing
 
-Use the CLI analyzer with the exact parameterized query:
+Use the CLI analyzer with the query shape and a representative value:
 
 ```bash
 gel analyze --expand \
-  'select Incident { id, created_at }
-   filter .status = <str>$status
+  "select Incident { id, created_at }
+   filter .status = 'open'
    order by .created_at desc
-   limit 100'
+   limit 100"
 ```
 
-For parameters, the REPL or application-level test harness may be more convenient. Compare realistic values, including common and rare statuses. An index that is attractive for a rare value may be ignored for a value matching most objects.
+The standalone `gel analyze` subcommand does not provide a way to supply query parameters, so use representative literals as above. To analyze the exact parameterized query, use the REPL, which prompts for parameter values, or an application-level test harness. Compare realistic values, including common and rare statuses. An index that is attractive for a rare value may be ignored for a value matching most objects.
 
 Keep these checks separate:
 
