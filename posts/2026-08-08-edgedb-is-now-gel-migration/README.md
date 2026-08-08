@@ -110,7 +110,7 @@ Update package scripts too:
 }
 ```
 
-Delete or regenerate generated query-builder output according to the project's normal policy. Do not leave generated files importing `edgedb` while application code imports `gel`; that can install two compatibility layers and obscure which version is actually used.
+Delete or regenerate generated query-builder output according to the project's normal policy. Do not leave generated files importing `edgedb` while application code imports `gel`; that retains the deprecated `edgedb` compatibility package in the dependency graph and obscures which import surface is actually used.
 
 Gel's official v5 upgrade guide lists the current language clients as `gel` on PyPI and npm, `gel-go`, and `gel-rust`. Search lockfiles and deployment images for old package names, but let the package manager rewrite lock data rather than editing it by hand.
 
@@ -119,10 +119,10 @@ Gel's official v5 upgrade guide lists the current language clients as `gel` on P
 Current clients discover production connections through Gel-prefixed settings such as:
 
 ```bash
-GEL_DSN='gel://app_user:secret@db.example.com:5656/main'
+export GEL_DSN='gel://app_user:secret@db.example.com:5656/main'
 ```
 
-Current server and Docker settings similarly use names such as `GEL_SERVER_PASSWORD`, `GEL_SERVER_DATADIR`, and `GEL_SERVER_TLS_CERT_FILE`. Official configuration documentation explicitly says versions before 6 use the `EDGEDB_` prefix. Therefore, change variables in the same deployment that changes the server generation, or temporarily provide a tested compatibility bridge in the deployment system. Never print either form of a DSN to CI logs.
+`GEL_DSN` follows the CLI and client-library naming transition, so migrate client connection variables when adopting Gel clients. Server and Docker configuration follows the server generation: `GEL_SERVER_DATADIR` and `GEL_SERVER_TLS_CERT_FILE` are server startup settings, while the official Docker image uses `GEL_SERVER_PASSWORD` only during the first initialization of an instance. Official configuration documentation explicitly says server versions before 6 use the `EDGEDB_` prefix. Change those server and Docker variables in the same deployment that changes the server generation, or temporarily provide a tested compatibility bridge in the deployment system. Never print either form of a DSN to CI logs.
 
 For GitHub Actions, update both setup and commands:
 
@@ -137,7 +137,8 @@ Pinning the action by commit SHA may be required by your supply-chain policy.
 
 The supported path depends on how the instance is managed:
 
-- Gel Cloud instances can be upgraded through the Cloud console or `gel instance upgrade`.
+- Gel Cloud was scheduled to shut down on January 31, 2026 and is no longer an upgrade path.
+- Local standalone instances managed by the CLI can use `gel instance upgrade <name> --to-version=6`. This command is not for self-hosted instances.
 - Local project-managed instances can use `gel project upgrade --to-latest`. This command is not for self-hosted remote instances.
 - The official EdgeDB 5 to Gel 6 guide recommends a new Gel 6 instance plus dump and restore for remote instances.
 
@@ -147,7 +148,7 @@ Do not infer server state from the executable name. Query it:
 gel query 'select sys::get_version_as_str()'
 ```
 
-For a remote upgrade, confirm the backend PostgreSQL prerequisite, test dump and restore with production-like volume, freeze writes for the final dump, restore into an empty target, and update the application DSN only after verification. Keep the old instance read-only and recoverable during the rollback window.
+For a remote upgrade, confirm that the backend is PostgreSQL 14 or later, test dump and restore with production-like volume, freeze writes for the final dump, restore into an empty target, and update the application DSN only after verification. Keep the old instance read-only and recoverable during the rollback window.
 
 ## A Safe Commit Sequence
 
@@ -169,8 +170,9 @@ Compatibility shims are a migration aid, not a reason to leave mixed naming inde
 - [Gel connection parameters](https://docs.geldata.com/reference/using/connection)
 - [Gel server configuration and environment variables](https://docs.geldata.com/reference/running/configuration)
 - [Gel schema reference](https://docs.geldata.com/reference/datamodel)
-- [EdgeDB to Gel JavaScript and TypeScript migration guide](https://www.geldata.com/updates)
+- [EdgeDB to Gel JavaScript and TypeScript migration guide](https://www.geldata.com/updates#js-ts-migration-guide-edgedb-to-gel)
 - [EdgeDB is now Gel announcement](https://www.geldata.com/blog/edgedb-is-now-gel-and-postgres-is-the-future)
+- [Gel Cloud sunset and self-hosting migration](https://docs.geldata.com/cloud/migrate_from)
 
 ## Conclusion
 
