@@ -29,7 +29,6 @@
 
 ## ESXi
 
-5. How to Find Which ESXi Host or Backup Proxy Owns a VMDK Lock
 6. How to Verify a Broken ESXi Snapshot Chain with `vmkfstools`
 7. ESXi Snapshot Manager Is Empty but Delta Files Remain: What Happened?
 8. How Much Free Datastore Space Does ESXi Need to Consolidate a Snapshot?
