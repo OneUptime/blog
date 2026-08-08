@@ -16,7 +16,7 @@ The important decision is not whether to call an isolated namespace a branch or 
 
 Before EdgeDB 5, instances exposed databases and used commands such as `create database`. EdgeDB 5 and current Gel use branches. The old DDL remains documented as deprecated, but it does not offer the same schema and data branching workflow.
 
-Current defaults also changed:
+Defaults for newly created instances also changed:
 
 | Generation | Isolation term | Default name | Default user |
 | --- | --- | --- | --- |
@@ -87,7 +87,7 @@ For an ordinary Git feature branch:
 6. Make schema changes and create migrations there.
 
 ```bash
-gel branch create feature-notifications
+gel branch create --from main feature-notifications
 gel branch switch feature-notifications
 gel query 'select sys::get_current_branch()'
 ```
@@ -155,7 +155,7 @@ Branches live in one Gel instance and their data is isolated, but they still sha
 
 Roles are instance-wide rather than per branch. On current Gel versions, role configuration and permissions therefore require explicit thought when CI branches share an instance. A branch is not a complete security boundary comparable to a separate account or cluster.
 
-Use separate instances when tests need:
+Use separate Gel instances when tests need:
 
 - different Gel major versions;
 - destructive server configuration;
@@ -163,6 +163,8 @@ Use separate instances when tests need:
 - strict workload or security isolation;
 - backend failover testing; or
 - a separate backup and recovery boundary.
+
+When the requirement is a strict resource, security, failover, or recovery boundary, also separate the backend PostgreSQL cluster or deployment account.
 
 ## Clean Up Safely
 
