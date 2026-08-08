@@ -28,12 +28,14 @@ Assume this schema:
 ```gel
 type User {
   required name: str;
+  required active: bool;
 }
 
 type Ticket {
   required subject: str;
   assignee: User;
   multi watchers: User;
+  multi members: User;
 }
 ```
 
