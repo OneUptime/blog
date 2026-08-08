@@ -3361,3 +3361,233 @@
 18. Parallel Builds Are Faster Until CI OOMs: Set Worker Limits from CPU, Memory, and Linker Pressure
 19. A Build Passes Only with Internet Access: Mirror Dependencies and Prove a Hermetic Offline Build
 20. `clean` Fixes the Build—but Only Once: How to Reproduce and Repair a Broken Incremental Dependency Graph
+
+## Argo Rollouts
+
+1. How to Install and Operate Argo Rollouts on AKS Without the Optional kubectl Plugin
+2. How to Fix `client.authentication.k8s.io/v1alpha1` Errors in the Argo Rollouts Dashboard on EKS
+3. How to Query Multi-Tenant Prometheus from Argo Rollouts with `X-Scope-OrgID` Headers
+4. How to Delay Argo Rollouts Analysis Until Prometheus Has Metrics for New Pods
+5. How to Auto-Promote an Argo Rollout with Datadog Analysis and Secret-Backed Credentials
+6. How to Keep AWS ALB Session Affinity from Pinning Users to the Wrong Canary Version
+7. How to Run Multiple Argo Rollouts Controllers in One Cluster Without Cross-Reconciliation
+8. How to Restrict an Argo Rollouts Controller to Its Own Namespace with `namespace-install.yaml`
+9. How to Run the Argo Rollouts Controller in High-Availability Mode with Leader Election
+10. How to Reuse a `ClusterAnalysisTemplate` Across Namespaces Without Missing Arguments
+11. How to Pass Kubernetes Secrets and Rollout Metadata into `AnalysisTemplate` Metrics
+12. How to Run Continuous Background Analysis Alongside Step-Based Canary Checks
+13. How to Retain Failed `AnalysisRun` Measurements Long Enough to Debug Them
+14. How to Dry-Run New Argo Rollouts Metrics Before They Can Abort Production Releases
+15. How to Compare Baseline and Canary Versions with an Argo Rollouts Experiment Step
+16. How to Restart Argo Rollouts Pods Without Changing the Image or Pod Template
+17. How to Configure `rollbackWindow` for Fast Rollbacks Without Re-running Canary Steps
+18. How to Delay Argo Rollouts ReplicaSet Scale-Down Until In-Flight Connections Drain
+19. How to Separate Stable and Canary Pods Across Nodes with Argo Rollouts Anti-Affinity
+20. How to Build Custom Argo Rollouts Notification Triggers with `when` Conditions
+
+## Data Volume
+
+1. How to Adopt an Existing PVC into a CDI DataVolume Without Reimporting Its Data
+2. How to Expose `cdi-uploadproxy` Securely Through Ingress for `virtctl image-upload`
+3. How to Fix Expired or Unauthorized CDI Upload Tokens During `virtctl image-upload`
+4. How to Import a VM Image Directly into a Raw Block PersistentVolume with CDI
+5. How to Bind a CDI DataVolume to a Specific Local PV and Node with a Label Selector
+6. How to Enable CDI DataVolume Preallocation and Diagnose Slow Full-Allocation Fallbacks
+7. How to Validate HTTP DataVolume Imports with SHA-256 or SHA-512 Checksums
+8. How to Send Custom HTTP Headers with a CDI DataVolume Import Without Exposing Tokens
+9. How to Import a Tar Archive into a Filesystem DataVolume with `contentType: archive`
+10. How to Create a Blank Raw DataVolume for a New KubeVirt VM Disk—and Format It Inside the Guest
+11. How to Import a VMware VMDK into KubeVirt with CDI VDDK
+12. How to Run Incremental VMware Imports with CDI VDDK `checkpoints` and `finalCheckpoint`
+13. How to Transfer a DataVolume and Its PVC Between Kubernetes Namespaces Safely
+14. How to Run CDI Import and Upload Pods Under a Custom ServiceAccount
+15. How to Give CDI Import, Upload, and Clone Pods a PriorityClass
+16. How to Configure CDI HTTP Imports Through a Proxy with a Trusted CA and No-Proxy Exceptions
+17. How to Monitor CDI Import, Upload, and Clone Progress with Prometheus Metrics
+18. How to Import KubeVirt VM Images from S3 or GCS with CDI Credentials
+19. CDI Image Import Fails with `qemu-img` Locking Errors on NFSv3: Why CDI Requires NFSv4 or Another Supported Backend
+20. How to Prevent CDI Worker Pods from Failing with `argument list too long` in Service-Heavy Namespaces
+
+## MQTT
+
+1. How to Stop an MQTT 5 Client Receiving Its Own Publications with the `No Local` Subscription Option
+2. MQTT Subscribers Receive Duplicate Messages: How to Separate QoS Redelivery from Overlapping Topic Filters
+3. How to Decide Whether to Resubscribe After MQTT Reconnect Using CONNACK `Session Present` and Session Expiry
+4. Retained Message or Offline Queue? How to Choose the Right MQTT Storage Mechanism
+5. How to Delete Stale MQTT Retained Messages by Publishing a Zero-Length Retained Payload
+6. An MQTT 5 Will Message Fires After a Brief Disconnect: How to Align Will Delay and Session Expiry Intervals
+7. How to Stop MQTT Reconnect Wars Caused by Duplicate Client IDs
+8. How to Configure Paho MQTT Reconnect Backoff Without Resubscribing Over an Existing Session
+9. How to Run Separate Mosquitto mTLS and Username/Password Listeners with Listener-Scoped Authentication Plugins
+10. MQTT TLS Fails with a Hostname Mismatch: How to Issue Certificates with Correct SANs
+11. How to Expose Mosquitto to Browser Clients with MQTT over Secure WebSockets
+12. How to Write Mosquitto ACLs for Per-Device Topic Trees Without Accidental Wildcard Access
+13. How to Load-Balance MQTT Consumers with Shared Subscriptions—and Predict Delivery and Ordering
+14. How to Prevent Mosquitto Bridge Loops and Duplicate Storms with Directional Topic Remapping and `try_private`
+15. Mosquitto Bridge Drops or Replays Messages After Reconnect: How to Tune Sessions, Inflight Limits, and Queues
+16. When Can MQTT Preserve Message Order? How QoS Retries, Multiple Publishers, and Shared Subscriptions Break Assumptions
+17. Why an MQTT `#` Subscription Misses `$SYS`: How Leading-Dollar Topics Change Wildcard Matching
+18. How to Bound Mosquitto Offline Backlogs with `max_queued_messages`, `max_queued_bytes`, and MQTT 5 Message Expiry Intervals
+19. How to Make MQTT QoS 1 Consumers Idempotent When the Broker Redelivers a Message
+20. An MQTT Publish Call Succeeds but the Broker Rejects the Topic: How to Read MQTT 5 PUBACK/PUBREC Reason Codes and Mosquitto Logs
+
+## BigQuery
+
+1. BigQuery Says “Could Not Serialize Access to Table”: How to Batch, Sequence, and Retry Conflicting DML
+2. BigQuery Says `Concurrent jobs in the same session are not allowed`: How to Sequence Session Queries Without Losing Temporary State
+3. A Failed BigQuery Transaction Keeps Blocking Updates: How to Find and Terminate the Abandoned Session
+4. BigQuery `MERGE` Scans the Entire Target Table: How to Push Partition Filters into the Join
+5. Your BigQuery Partition Filter Still Scans Every Partition: Constant Expressions, Dynamic Predicates, and `OR`
+6. Newly Streamed BigQuery Rows Have a NULL `_PARTITIONTIME`: How to Query the `__UNPARTITIONED__` Buffer
+7. BigQuery Rejects a Correlated Subquery It Cannot De-Correlate: Rewriting It as a Join or Window Function
+8. BigQuery Says “Scalar Subquery Produced More Than One Element”: Choose `ARRAY`, Aggregation, or a Deterministic Row
+9. BigQuery `ORDER BY … LIMIT … OFFSET` Runs Out of Memory: Replace Deep Pagination with `ROW_NUMBER`
+10. BigQuery Says “Query Is Too Complex”: Breaking Nested Views, Reused CTEs, and `UNION ALL` into Stages
+11. You Can Read a BigQuery Table but Cannot Run the Query: Fix `bigquery.jobs.create` on the Billing Project
+12. BigQuery Cannot Get Drive Credentials for a Google Sheets External Table: Sharing, OAuth Scopes, and Service Accounts
+13. Why an Identical BigQuery Query Misses the Result Cache: Streaming Buffers, Wildcards, Security Policies, and Nondeterminism
+14. Why `LIMIT 10` Does Not Make a BigQuery Query Cheaper—and What Actually Reduces Bytes Scanned
+15. BigQuery Clustering Is Not Pruning Blocks: Check Filter Shape, Column Order, and Data Distribution
+16. A Dynamic `_TABLE_SUFFIX` Filter Still Scans Every BigQuery Shard: Use a Two-Step Constant Query
+17. BigQuery Ignores Your Materialized View: How to Read `rejected_reason` and Repair Smart Tuning
+18. BigQuery Avro Loads Fail Randomly with “Cannot Skip Stream”: Reconciling Schemas Across Input Files
+19. BigQuery Storage Read API Says “Stream Memory Usage Exceeded”: Reduce Wide Rows with `selected_fields`
+20. A BigQuery Scheduled Query Broke After Its Owner Left: Move the Transfer to Service-Account Credentials
+
+## DPDK
+
+1. `dpdk-devbind.py` Cannot Bind to `vfio-pci`: How to Check IOMMU Groups, Kernel Drivers, and No-IOMMU Mode
+2. DPDK `VFIO_MAP_DMA` Fails: How to Check `RLIMIT_MEMLOCK`, `vfio_iommu_type1.dma_entry_limit`, and Device Permissions
+3. DPDK Reports `No Ethernet Ports`: How to Verify PMD Support, PCI Allowlists, and Device Binding
+4. How to Choose DPDK IOVA=VA vs IOVA=PA—and Diagnose Address-Translation Failures
+5. DPDK Drops RX Packets Under Load: How to Interpret `imissed`, `rx_nombuf`, and Descriptor Errors
+6. How to Size DPDK Mempools, Per-Lcore Caches, and RX/TX Descriptor Rings Without Hiding Backpressure
+7. DPDK Throughput Collapses Across NUMA Nodes: How to Co-Locate NIC Queues, Lcores, and Mempools
+8. How to Configure DPDK RSS and Prove Flows Are Reaching Every RX Queue
+9. DPDK Hardware Checksum Offload Produces Bad Packets: How to Set `ol_flags`, Header Lengths, and Device Capabilities
+10. How to Handle Multi-Segment DPDK Mbufs Without Breaking TX Offloads or Leaking Buffers
+11. `rte_eth_tx_burst()` Sends Fewer Packets Than Requested: How to Retry and Free Unsent Mbufs
+12. How to Build a Zero-Copy DPDK Worker Pipeline with `rte_ring` Without Double-Freeing Mbufs
+13. DPDK Secondary Process Cannot Attach: How to Align `--file-prefix`, Hugepage Layout, and `--proc-type`
+14. How to Capture Live DPDK Traffic with `dpdk-pdump` Without Distorting the Dataplane
+15. How to Benchmark a DPDK Forwarder with `testpmd` and Isolate NIC, CPU, Memory, and Generator Bottlenecks
+16. A DPDK `rte_flow` Rule Validates but Matches No Packets: How to Inspect Masks, Priorities, and PMD Limits
+17. How to Replace Removed DPDK KNI with Virtio-User or TAP for Kernel-Stack Exception Traffic
+18. A Vhost-User Socket Connects but Virtio Packets Do Not Flow: How to Align Queues, Features, and NUMA
+19. How to Run DPDK in a Container Without `--privileged`: Mount Hugepages, Pass VFIO Devices, and Grant Minimal Capabilities
+20. DPDK Polling Pins a Core at 100%: How to Add Power Management or Interrupt-Assisted RX Without Latency Spikes
+
+## ECR
+
+1. Amazon ECR Login Worked but the Token Expired Mid-Pipeline: How to Refresh 12-Hour Credentials Safely
+2. ECR Push Fails on `InitiateLayerUpload` or `PutImage`: Build the Minimum IAM Permission Set
+3. IAM Allows ECR but the Repository Still Returns `AccessDenied`: How Identity, Repository, Registry, and Endpoint Policies Combine
+4. An ECR Image Was Archived and Can No Longer Be Pulled: Restore It and Fix the Lifecycle Transition Rule
+5. Private-Subnet ECR Pulls Time Out: Verify `ecr.api`, `ecr.dkr`, S3 Gateway Endpoints, DNS, and Security Groups
+6. ECR Layer Downloads Return 403 After Locking Down an S3 Endpoint: Allow the Regional Starport Bucket
+7. ECR Pull-Through Cache Works Except on the First Pull: Why PrivateLink Still Needs Upstream Internet Access
+8. ECR Pull-Through Cache Keeps Serving an Old Tag: Check the Refresh Window, Upstream Credentials, and Tag Mutability
+9. ECR Replication Is Enabled but Existing Images Are Missing: How to Backfill Without Rebuilding Artifacts
+10. ECR Replication Produced an Untagged Image: Resolve Destination Tag-Immutability Collisions
+11. How to Auto-Create ECR Repositories on First Push with `CREATE_ON_PUSH` Templates—and Still Enforce Encryption, Policies, and Lifecycle
+12. An ECR Lifecycle Policy Deleted the Wrong Environment’s Images: Test Rule Priority and Tag-Prefix Selection
+13. Docker Buildx Created Untagged Images in ECR: How Multi-Architecture Indexes Protect Their Child Manifests
+14. ECR Returns `ImageReferencedByManifestList`: Delete the Multi-Architecture Index Before Its Platform Manifests
+15. ECR `PutImage` Returns `ImageAlreadyExistsException` or `ImageTagAlreadyExistsException`: Distinguish Idempotent Replays from Immutable-Tag Conflicts
+16. How to Keep ECR Release Tags Immutable While Allowing `latest` and `dev-*` to Move
+17. ECR Shows Images but Inspector Findings Are Empty: Add the Missing `inspector2` Read Permissions
+18. Your CI Checks ECR Scan Findings Too Early: Wait for the Correct Basic or Enhanced Scan Completion Event
+19. ECR Basic Scanning Returns `UnsupportedImageTypeException` for a Multi-Architecture Index: Scan Each Platform Manifest Digest
+20. How to Use ECR as a BuildKit Registry Cache Without Lifecycle Rules Expiring the Cache Manifest
+
+## Container Networking
+
+1. Two Compose Projects Share an External Network and Resolve the Wrong Container: How to Avoid Alias Collisions
+2. A Compose Sidecar Cannot Publish Ports with `network_mode: service:`: How Shared Network Namespaces Change Port Ownership
+3. A Container Loses the Real Client IP: How DNAT, SNAT, the Userland Proxy, and Hairpin Traffic Rewrite Sources
+4. A Multi-Network Container Uses the Wrong Default Gateway: How to Set Compose `gw_priority` and Verify Routes
+5. Compose Says `Network Declared as External, but Could Not Be Found`: How Project Names and External Networks Work
+6. Rootless Docker Cannot Publish Ports 80 or 443: Safe Options for Privileged Ports
+7. A Rootless Container Cannot Reach the Host: How RootlessKit Namespaces and `host-loopback` Change Routing
+8. How to Give a Container Internet Access While Blocking Access to the Host LAN
+9. Container DNS Breaks Behind `systemd-resolved` or `dnsmasq`: How to Make the Host Resolver Reachable Without Public-DNS Fallback
+10. How to Prevent Docker Static-IP Collisions with `ip_range`, `aux_addresses`, and Reserved Addresses
+11. A Container Name Resolves to an Old IP After Replacement: How to Handle Docker DNS TTL and Long-Lived Connection Pools
+12. Docker IPv6 Breaks After an ISP Renumbers the Delegated Prefix: How to Detect Stale IPAM and Recreate Networks Safely
+13. Containers Randomly Time Out Under High Connection Churn: How to Diagnose `nf_conntrack` and Ephemeral-Port Exhaustion
+14. How to Assign Stable Interface Names to Multi-Network Compose Containers with `interface_name`
+15. Why Compose `ports:` Is Ignored with `network_mode: host`: How to Bind and Diagnose Host-Network Services
+16. How to Debug a Distroless Container’s Network Namespace with `nsenter`, `ip`, `dig`, and `tcpdump` from the Host
+17. Docker Fails to Program the `FORWARD` Chain: How to Detect Missing Chains and an iptables-nft/legacy Split-Brain
+18. Docker Containers Lose Internet Access After a Firewall Reload: How to Restore Docker-Managed iptables or nftables Rules Safely
+19. How to Dual-Home a Reverse Proxy on Public and `internal: true` Docker Networks Without Giving Backends Internet Access
+20. Why `tcpdump` Shows Bad Checksums on Container veth Interfaces—and How to Tell Offload Artifacts from Real Drops
+
+## Server-Side Apply
+
+1. How to Decode `fieldsV1` Paths in Kubernetes `managedFields` for Lists, Maps, and Subresources
+2. How to Resolve a Server-Side Apply Conflict Without `--force-conflicts`: Relinquish or Co-Own the Field
+3. How to Use `--force-conflicts` Safely and Verify That Field Ownership Was Transferred
+4. How to Migrate Existing `kubectl apply` Resources from Client-Side to Server-Side Apply Without Spurious Conflicts
+5. How to Switch a Resource from Server-Side Apply Back to Client-Side Apply—and Rebuild the Last-Applied Annotation Safely
+6. How to Catch Server-Side Apply Ownership Conflicts in CI with `--dry-run=server`
+7. How to Fix `fieldManager: Required value` When Calling Server-Side Apply with `client-go`
+8. How to Use the Kubernetes Dynamic Client’s `Apply()` Method for Both Create and Update
+9. How to Send a Server-Side Apply Request Directly to the Kubernetes REST API
+10. Why Server-Side Apply Conflicts with the Same Manager—and How to Stop Mixing `Create`, `Update`, and `Apply`
+11. How to Apply Only the `status` Subresource Without Taking Ownership of `spec`
+12. How to Hand Off Deployment `spec.replicas` Ownership to the Horizontal Pod Autoscaler
+13. How to Design CRD List Schemas for Server-Side Apply with `x-kubernetes-list-type` and Map Keys
+14. How to Troubleshoot List Replacement or Duplication After Server-Side Apply by Checking `x-kubernetes-list-type` and `x-kubernetes-list-map-keys`
+15. How to Diagnose Server-Side Apply Conflicts Introduced by Mutating Admission Webhooks and API Defaults
+16. How to Remove an Owned Field with Server-Side Apply—and Predict Whether It Is Deleted or Defaulted
+17. How to Patch One Kubernetes Field with Server-Side Apply Without Sending the Whole Resource
+18. How to Exclude `managedFields` from Kubernetes Audit Logs Without Disabling Server-Side Apply
+19. How to Verify Server-Side Apply Support and Field Validation Behavior on a Kubernetes Cluster
+20. How to Prevent `managedFields` Bloat by Keeping Server-Side Apply Manager Names Stable
+
+## Litmus
+
+1. How to Fix Litmus Chaos Experiments Stuck in Queued or Pending in ChaosCenter
+2. How to Debug `failed in chaos injection phase` in Litmus CPU-Hog Experiments
+3. How to Configure Litmus for containerd Instead of `/var/run/docker.sock`
+4. How to Fix Litmus Probe `must be of type integer` Errors After a CRD Upgrade
+5. How to Recover a Litmus Subscriber from `dial:websocket: bad handshake`
+6. How to Fix ChaosCenter MongoDB CrashLoopBackOff on a Read-Only `.snapshot` Directory
+7. How to Remove Litmus Subscriber, Exporter, and Chaos CRs During a Clean Helm Uninstall
+8. How to Repair a Litmus ChaosHub That Cannot Clone Its Git Repository
+9. How to Connect a Private GitLab Repository as a Custom Litmus ChaosHub
+10. How to Run Litmus in an Air-Gapped Kubernetes Cluster with a Private Image Registry
+11. How to Scope Litmus Chaos Infrastructure to One Namespace with Least-Privilege RBAC
+12. How to Run Litmus Chaos Experiments on Pull Requests with GitHub Actions
+13. How to Fix Litmus Workflows Ignored by Argo Because `workflows.argoproj.io/controller-instanceid` Is Missing or Mismatched
+14. How to Renew an Expired Litmusctl Token and Repair `.litmusconfig`
+15. How to Export Litmus `ChaosResult` Metrics to Prometheus with a ServiceMonitor
+16. How to Install Litmus ChaosCenter on an ARM64 Local Kubernetes Cluster on Apple Silicon
+17. How to Gate a Litmus Experiment on Service Health with a Continuous HTTP Probe
+18. How to Stop a Litmus Fault Immediately When a Continuous Probe Fails
+19. How to Target Selected Pods and Limit Blast Radius in a Litmus Chaos Experiment
+20. How to Connect Litmus ChaosCenter to External MongoDB with an SSL Connection String
+
+## JFR
+
+1. How to Start Java Flight Recorder Automatically for a JAR with `-XX:StartFlightRecording`
+2. How to Attach JFR to a Running JVM with `jcmd` and Start, Check, Dump, and Stop a Recording
+3. How to Keep a Continuous Rolling JFR Recording Bounded with `maxage` and `maxsize`
+4. How to Dump Only the Last Hour or an Exact Time Window from a Disk-Backed JFR Recording
+5. How to Stop `JFR.dump` from Stalling a Production JVM by Replacing `disk=false` with a Disk-Backed Recording
+6. How to Prevent a Zero-Byte JFR Dump When an `OutOfMemoryError` Interrupts `dumponexit`
+7. How to Collect JFR in Docker or Kubernetes When `jcmd` Cannot Attach: Startup Flags, JMX, and Writable Volumes
+8. How to Choose Between `default.jfc` and `profile.jfc` and Tune JFR Overhead for Production
+9. How to Build a Custom `.jfc` Profile with Event Thresholds, Periods, Stack Traces, and Throttling
+10. How to Diagnose a Java Memory Leak with JFR Old Object Samples and `path-to-gc-roots`
+11. How to Find JFR Allocation Hotspots and Read Allocation Flame Graphs in JDK Mission Control
+12. How to Find Hot Methods and CPU-Hungry Threads from JFR Without Guessing from Process CPU
+13. How to Diagnose Lock Contention and Long Thread Parks with JFR Monitor Events
+14. How to Interpret `jdk.VirtualThreadPinned` Events Before and After JDK 24
+15. How to Check Programmatically Whether Any JFR Recording Is Actually Running
+16. How to Define Low-Overhead Custom JFR Events with `shouldCommit()`, Thresholds, and Stack Traces
+17. How to Parse Built-In and Custom JFR Event Fields with `RecordingFile`
+18. How to Stream JFR Events Live with `RecordingStream` and `RemoteRecordingStream`
+19. How to Remove Environment-Variable and System-Property Events from a JFR File with `jfr scrub` Before Sharing It
+20. How to Analyze JFR Headlessly with `jfr summary`, `jfr view`, and Filtered `jfr print --json` Output
