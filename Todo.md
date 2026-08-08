@@ -26,7 +26,6 @@
 
 ## EdgeDB
 
-11. How to Pass Per-Request User Context to EdgeDB Access Policies Without Mutating a Shared Client
 12. How to Update a Nested Linked Object in EdgeDB Without Accidentally Replacing the Link
 13. “Modification of Computed Link Is Prohibited”: How Stored and Computed Links Differ in EdgeDB
 14. How to Filter for Either an Empty Link or a Matching Link in EdgeQL
