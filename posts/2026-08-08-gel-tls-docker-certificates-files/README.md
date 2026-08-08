@@ -150,7 +150,7 @@ If network routing requires connecting to one address while presenting a differe
 
 ## Do Not Use Development Security Flags in Production
 
-Gel's binary and HTTP endpoints default to TLS. Keep them in `tls` mode as shown. Do not use:
+Gel's binary endpoint defaults to TLS. The official Docker image defaults the HTTP endpoint to `optional`, so set both endpoints explicitly to `tls` as shown. Do not use:
 
 ```yaml
 environment:
@@ -245,9 +245,9 @@ Do not infer that editing a host file caused a running process to reload it. Rep
 
 ## Version-aware Names
 
-Gel 6 introduced the current `GEL_` prefix. Servers older than 6 use corresponding `EDGEDB_` environment-variable names, and older CLI commands use `edgedb` rather than `gel`.
+Gel 6 introduced the `GEL_` prefix for server configuration. Server releases before 6.0 use corresponding `EDGEDB_` names. Client connection-variable names follow the installed client or CLI generation rather than the target server version: current Gel clients use `GEL_`, while EdgeDB-era clients used `EDGEDB_`. The `gel` executable alias was already available for several pre-6 CLI releases, although older documentation and scripts generally use `edgedb`.
 
-Do not set both generations speculatively. Identify the server image version, use its documentation, and migrate the configuration as part of the version upgrade. The current client variable is `GEL_CLIENT_TLS_SECURITY`, while the CA file variable is `GEL_TLS_CA_FILE`.
+Do not set both generations speculatively. Identify the server image version and the installed client or CLI version, use their documentation, and migrate each configuration as part of the corresponding upgrade. The current client variable is `GEL_CLIENT_TLS_SECURITY`, while the CA file variable is `GEL_TLS_CA_FILE`.
 
 ## Official Documentation
 
