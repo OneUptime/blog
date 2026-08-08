@@ -16,10 +16,11 @@ This gives each query explicit context without creating a pool per user or retai
 
 ## Define an Optional Identity Global
 
-A UUID global keeps authentication identity separate from application objects:
+UUID globals keep authentication identity and tenant context separate from application objects:
 
 ```gel
 global current_user_id: uuid;
+global current_tenant_id: uuid;
 
 type User {
   required email: str {
@@ -35,9 +36,14 @@ type Document {
     allow all
     using (global current_user_id ?= .owner.id);
 }
+
+type AuditEntry {
+  required action: str;
+  required document_id: uuid;
+}
 ```
 
-The global is optional by default. An unauthenticated request leaves it empty, and the coalescing equality `?=` makes the comparison false rather than producing a surprising empty boolean. The policy still denies access, as it should.
+The globals are optional by default. An unauthenticated request leaves `current_user_id` empty, and the coalescing equality `?=` makes the comparison false rather than producing a surprising empty boolean. The policy still denies access, as it should.
 
 You can define a computed object global for convenience:
 
@@ -180,7 +186,8 @@ The JavaScript client can retry a transaction callback after a retryable network
 The EdgeQL REPL supports session commands such as:
 
 ```edgeql
-set global current_user_id := <uuid>'...';
+set global current_user_id :=
+  <uuid>'00ea8eaa-02f9-11ed-a676-6bd11cc6c557';
 ```
 
 That is useful interactively. It is a poor abstraction for request identity on a pooled application client. A pool may use different physical connections for later statements, and session state can outlive the request on a reused connection if managed incorrectly.
@@ -189,7 +196,7 @@ That is useful interactively. It is a poor abstraction for request identity on a
 
 ## Treat Authentication and Authorization as Separate Proofs
 
-An access policy trusts the global value supplied to it. It does not prove that a bearer token belongs to that UUID. The application or Gel Auth integration must validate token signature, issuer, audience, expiry, session state, and any revocation rule before deriving the client.
+An access policy trusts the global value supplied to it. It does not prove that a bearer token belongs to that UUID. For application-managed authentication, validate the credential according to its protocol, including its signature, issuer, audience, and expiry where applicable, and enforce any session or revocation rules before deriving the client.
 
 Follow these rules:
 
@@ -200,7 +207,7 @@ Follow these rules:
 - keep service credentials and DSNs out of browser bundles; and
 - avoid logging tokens, DSNs, or full global maps.
 
-Gel's built-in Auth can expose a token-backed computed global linked to `ext::auth::Identity`. If using it, follow the current Auth integration guide rather than designing an incompatible token parser.
+Gel Auth accepts its `auth_token` through the `ext::auth::client_token` global and exposes the authenticated identity as the computed global `ext::auth::ClientTokenIdentity`. If using it, follow the current Auth integration guide rather than parsing its internal JWT yourself.
 
 ## Avoid Accidental Context Merging
 
