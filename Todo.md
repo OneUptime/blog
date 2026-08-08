@@ -23,7 +23,6 @@
 
 ## Postgres Replication
 
-11. PostgreSQL Logical Replication Does Not Copy DDL: In What Order Should You Deploy Schema Changes?
 12. “No Replica Identity” on UPDATE or DELETE: Primary Key, Unique Index, or `REPLICA IDENTITY FULL`?
 13. Why PostgreSQL Logical Replication Does Not Advance Sequences—and How to Prepare for Failover
 14. Logical Subscription Stuck in `initializing` or `data synchronization`: What Should You Inspect?
