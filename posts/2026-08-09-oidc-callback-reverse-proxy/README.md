@@ -66,16 +66,16 @@ server {
     location / {
         proxy_pass http://web:8080;
 
-        proxy_set_header Host              $host;
+        proxy_set_header Host              app.example.com;
         proxy_set_header X-Forwarded-For   $remote_addr;
-        proxy_set_header X-Forwarded-Host  $host;
+        proxy_set_header X-Forwarded-Host  app.example.com;
         proxy_set_header X-Forwarded-Proto $scheme;
         proxy_set_header X-Forwarded-Port  443;
     }
 }
 ```
 
-This example assumes NGINX is the Internet-facing TLS terminator and the only path to the application. If a load balancer sits before NGINX, derive public values only from a documented, trusted chain or configure the canonical public origin explicitly. Do not blindly pass a client-supplied `X-Forwarded-Host` or `X-Forwarded-Proto` downstream.
+This example assumes NGINX is the Internet-facing TLS terminator and the only path to the application. Because the deployment has one canonical host, it pins the upstream host values to `app.example.com`. The complete edge configuration should also use a separate default server to reject unrecognized `Host` values; `server_name` selects a virtual server but does not by itself reject unmatched hosts. If a load balancer sits before NGINX, derive public values only from a documented, trusted chain or configure the canonical public origin explicitly. Do not blindly pass a client-supplied `X-Forwarded-Host` or `X-Forwarded-Proto` downstream.
 
 NGINX changes the upstream `Host` header by default, so setting it intentionally matters. The edge should validate the accepted public hosts and overwrite forwarded host and scheme values rather than letting an Internet client choose them. A spoofed forwarded host can influence callback URLs, password-reset links, and other security-sensitive absolute URLs.
 
@@ -144,21 +144,21 @@ If users can enter through aliases such as `app.internal.example` and `app.examp
 
 OIDC middleware commonly sets a short-lived correlation, state, nonce, or PKCE transaction cookie before redirecting to the provider. The browser must send that cookie to the public callback.
 
-RFC 6265's path rules are mechanical: a browser sends a cookie only when the request path matches the cookie's `Path`. A cookie created by `/tools/login` with a default or explicit path of `/tools` is not sent to `/oidc/callback`. Align the login and callback under one prefix or set the narrowest cookie path that contains both endpoints.
+RFC 6265's path rules are mechanical: a browser sends a cookie only when the request path matches the cookie's `Path`. A cookie created by `/tools/login` with a default or explicit path of `/tools` is not sent to `/oidc/callback`. Set the cookie's `Path` to the narrowest path that path-matches every endpoint that must receive it, normally the public callback itself. The path does not have to match the endpoint whose response sets the cookie.
 
 For example:
 
 ```text
 Login endpoint:      /tools/oidc/login
 Callback endpoint:   /tools/oidc/callback
-Cookie Path:         /tools/oidc
+Cookie Path:         /tools/oidc/callback
 ```
 
-Using `Path=/` also reaches both endpoints, but it exposes the cookie to every path on that host. Prefer the narrowest common parent supported by the OIDC middleware. Cookie Path is a delivery rule, not a strong isolation boundary.
+Using `Path=/` also reaches the callback, but it exposes the cookie to every path on that host. Prefer the narrowest path that reaches the callback and any other endpoint required by the OIDC middleware. Cookie Path is a delivery rule, not a strong isolation boundary.
 
 Check these attributes in browser developer tools:
 
-- **Host or Domain:** it must match the canonical callback host.
+- **Host or Domain:** a host-only cookie requires the exact callback host; otherwise, the callback host must domain-match the cookie's `Domain` value.
 - **Path:** it must path-match the public callback.
 - **Secure:** production transaction and session cookies should be sent only over HTTPS.
 - **SameSite:** the correct value depends on the response mode and library; a cross-site form POST can require different handling from a top-level GET redirect.
@@ -184,7 +184,7 @@ Use this order during an incident:
 
 1. Copy the registered redirect URI from the provider configuration.
 2. Start a fresh private-browser session and inspect the outbound authorization request.
-3. Decode only its `redirect_uri` and compare it byte for byte with registration.
+3. Decode only its `redirect_uri` and compare it character for character with registration.
 4. Confirm that the browser returns to that exact public scheme, host, port, and path.
 5. At the edge, confirm the callback matched the intended virtual host and location.
 6. At the application, temporarily record only sanitized `scheme`, `host`, `pathBase`, and `path` values plus a request correlation ID.
@@ -193,7 +193,7 @@ Use this order during an incident:
 9. Confirm the token request repeats the same redirect URI; do not log the code or client credentials.
 10. With multiple replicas, verify shared transaction state and key material.
 
-Make one correction at a time and begin a new login transaction after each change. Authorization codes and transaction cookies are short-lived and one-use; replaying an old callback produces misleading failures.
+Make one correction at a time and begin a new login transaction after each change. Authorization codes are short-lived and single-use, and OIDC middleware normally scopes transaction state to one short-lived login flow; replaying an old callback produces misleading failures.
 
 ## Roll Out a Callback Change Safely
 
