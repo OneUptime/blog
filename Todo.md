@@ -36,11 +36,6 @@
 
 ## OIDC
 
-2. OAuth 2.0 vs OpenID Connect: Why an Access Token Alone Is Not a Login
-6. How to Validate an OIDC ID Token Correctly: Signature, Issuer, Audience, Nonce, and Time Claims
-7. Unknown `kid` After an Identity-Provider Key Rotation: How to Refresh and Cache JWKS Safely
-8. Why an OIDC Access Token May Be Opaque—and When to Use Introspection Instead of JWT Parsing
-10. OIDC Refresh Token Returns `invalid_grant`: Rotation, Reuse, Expiry, and Revocation Checks
 11. Why OIDC Group or Role Claims Are Missing—and Where to Retrieve Authorization Data
 12. OIDC Authorization Code Flow for SPAs: Where PKCE Helps and Where It Does Not
 13. Should a Backend Trust Claims from the ID Token or Call the OIDC UserInfo Endpoint?
