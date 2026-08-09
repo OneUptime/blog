@@ -32,26 +32,6 @@
 
 ## OTel
 
-1. OpenTelemetry Traces Are Missing: How to Test Every Hop from SDK to Backend
-2. OTLP Port 4317 vs 4318: When to Use gRPC, HTTP, and `/v1/traces`
-3. Why Does OpenTelemetry Show `unknown_service`? Fixing `service.name` and Resource Attributes
-5. How to Troubleshoot OpenTelemetry “context deadline exceeded” and “connection closed” Export Errors
-6. OpenTelemetry Collector Says “Sending Queue Is Full”: How to Find the Real Bottleneck
-7. How to Reduce OpenTelemetry Data Loss During Backend Outages with Queues and Retries
-8. OpenTelemetry Collector Keeps Getting OOMKilled: Tuning the Memory Limiter, Batch Processor, and Queues
-9. Does OpenTelemetry Collector Processor Order Matter? A Safe Pipeline Ordering Guide
-10. OpenTelemetry Agent, Sidecar, DaemonSet, or Gateway: Which Deployment Pattern Fits?
-11. Head Sampling vs Tail Sampling in OpenTelemetry: Which Traces Will You Lose?
-12. How to Keep Error and High-Latency Traces with OpenTelemetry Tail Sampling
-13. Why Tail Sampling Breaks Across Multiple OpenTelemetry Collectors—and How Trace-Aware Routing Fixes It
-14. OpenTelemetry Trace Context Breaks Across Async Jobs, Queues, or Webhooks: How to Repair It
-15. OpenTelemetry Collector Starts Successfully but Exports Nothing: Are Your Components Wired into a Pipeline?
-16. OpenTelemetry Logs Have No Trace ID or Span ID: How to Restore Log-Trace Correlation
-17. Auto-Instrumentation Plus Manual Spans: How to Avoid Duplicate or Split OpenTelemetry Traces
-18. How to Fix OpenTelemetry TLS Errors with Self-Signed Collector Certificates
-19. How High-Cardinality OpenTelemetry Attributes Inflate Cost and Collector Memory
-20. Which OpenTelemetry Collector Metrics Reveal Backpressure, Dropped Data, and Exporter Failures?
-
 ## Volume Snapshots
 
 2. Why Does Kubernetes Say “No Matches for Kind VolumeSnapshot”? Installing the CRDs, Controller, and CSI Sidecar
