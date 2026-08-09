@@ -3539,3 +3539,233 @@
 18. How to Stream JFR Events Live with `RecordingStream` and `RemoteRecordingStream`
 19. How to Remove Environment-Variable and System-Property Events from a JFR File with `jfr scrub` Before Sharing It
 20. How to Analyze JFR Headlessly with `jfr summary`, `jfr view`, and Filtered `jfr print --json` Output
+
+## Promptfoo
+
+1. How to Build a Promptfoo Eval Matrix That Compares Multiple Prompts and Models Against the Same Golden Tests
+2. How to Fix Promptfoo `llm-rubric` “API Key Not Set” Errors by Configuring the Grader Separately from the Target
+3. How to Make Promptfoo’s Non-Deterministic LLM Judges Stable Enough for CI with Pinned Graders, Thresholds, and Repeated Runs
+4. How to Gate Pull Requests with Promptfoo GitHub Actions Without Exposing Provider Secrets to Untrusted Forks
+5. How to Make Promptfoo Re-Evaluate Changes to Custom Providers, Prompt Files, and External Assertions in GitHub Actions
+6. Why Promptfoo Keeps Reusing Old Model Responses—and How `--no-cache`, Cache Namespaces, and `--repeat` Interact
+7. How to Turn a CSV Golden Dataset into Promptfoo Tests with Multiple `__expected` Assertions and Metadata Filters
+8. How to Write Reusable JavaScript or Python Assertions That Inspect Both Promptfoo Test Variables and Model Output
+9. How to Test a Non-OpenAI HTTP Endpoint with Promptfoo Request Templates, Auth Headers, and `transformResponse`
+10. How to Assert That an LLM Called the Right Tool with Valid Arguments—and Did Not Call a Tool When It Shouldn’t
+11. How to Evaluate a RAG Pipeline in Two Stages: Retriever Recall First, Then Answer Faithfulness in Promptfoo
+12. How to Fix Promptfoo’s “context-faithfulness Assertion Requires String Output” Error for Providers That Return Objects
+13. How to Test Multi-Turn Conversations in Promptfoo with `_conversation`, `storeOutputAs`, and Output Transforms
+14. How to Grade an Agent’s Tool Sequence and Arguments with Promptfoo OpenTelemetry Traces and Trajectory Assertions
+15. How to Red-Team an MCP Agent for Tool Poisoning, Tool Shadowing, and Cross-Server Data Exfiltration with Promptfoo
+16. How to Connect Promptfoo Red Teaming to a Custom RAG or Agent Through Python, JavaScript, Exec, or Webhook Targets
+17. How to Run a Promptfoo Red-Team Scan Locally Without Accidentally Sending Prompts or Documents to Hosted Services
+18. How to Stop Promptfoo Eval Runs from Overwhelming Model APIs: Concurrency Limits, Timeouts, Retries, and 429 Backoff
+19. How to Enforce Per-Response Token, Latency, and Cost Budgets with Promptfoo Assertions Instead of Dashboard-Only Checks
+20. How to Compare an LLM Provider Migration in Promptfoo Without Letting Provider-Specific Prompt Formats Skew the Result
+
+## Calico
+
+1. Calico BGP Is Established but Remote Pod Routes Are Missing: Compare BIRD Routes, the Linux FIB, and `disableBGPExport`
+2. Pods Communicate on the Same Node but Not Across Nodes: How to Trace Calico BGP and Underlay Routing
+3. How to Fix Calico CNI’s “Route Already Exists for an Interface Other Than cali…” After a Stale Pod Sandbox
+4. How to Stop NetworkManager from Rewriting Calico’s `cali*`, `tunl*`, VXLAN, and WireGuard Routes
+5. How to Diagnose Calico Packet Loss on Large Responses by Testing Path MTU Across VXLAN, IP-in-IP, and WireGuard
+6. Why a Calico MTU Change Fixes New Pods but Not Existing Ones—and How to Roll It Out Safely
+7. How to Allow Calico Egress to a Headless Service with Namespace and Pod Selectors Instead of a ClusterIP
+8. How to Debug a Calico Policy That Selects Zero Workloads by Inspecting Endpoint Labels and Namespace Scope
+9. How to Fix `calicoctl` Datastore and Version Errors That Appear Only When the Command Is Run with `sudo`
+10. How to Discover Calico’s VXLAN VNI and UDP Port from a Running Cluster Before Writing Firewall Rules
+11. How to Debug `tigerastatus/calico` Stuck in `Degraded` by Reading Operator and `Installation` Conditions
+12. How to Migrate Calico from the Aggregated API Server to Native `projectcalico.org/v3` CRDs with `DatastoreMigration`
+13. How to Resolve `WaitingForConflictResolution` During Calico’s Native-CRD Datastore Migration
+14. How to Run Calico’s nftables Data Plane Without Accidentally Leaving `kube-proxy` in iptables Mode
+15. How to Fix “No Matches for Kind GlobalNetworkPolicy in projectcalico.org/v3” by Checking the APIService and CRDs
+16. Calico eBPF NodePorts Work Locally but Time Out on Remote Backends: How to Check VXLAN UDP 4789 and BPF NAT Maps
+17. How to Find the Exact Calico eBPF Policy Dropping a Packet with `calico-node -bpf policy dump`
+18. How to Restore Linux-to-Windows Pod Connectivity in Calico by Checking HNS, IP-in-IP, and AWS Source/Destination Checks
+19. How to Preserve Client IPs with `externalTrafficPolicy: Local`—and Mitigate Uneven Traffic for Calico BGP Services
+20. How to Restore AWS Instance Metadata on a Calico Windows Node After HNS Recreates the Container vSwitch
+
+## Foreign Keys
+
+1. How to Find and Repair Orphaned Rows Before Adding a Foreign Key to a Live Table
+2. How to Add a PostgreSQL Foreign Key with `NOT VALID` and Validate It Later Without Blocking Normal Writes
+3. How to Decide Whether a Foreign-Key Column Needs Its Own Index in PostgreSQL, MySQL, and SQLite
+4. Why a Composite Foreign Key Fails When Column Order, Data Types, Collations, or Uniqueness Do Not Match
+5. How to Model a Self-Referential Foreign Key for Trees Without Breaking Root Rows or Cascading Deletes
+6. How to Insert Circularly Dependent Rows with PostgreSQL `DEFERRABLE` Foreign Keys
+7. How to Fix SQL Server’s “May Cause Cycles or Multiple Cascade Paths” Error Without Dropping Referential Integrity
+8. How to Change a Foreign Key from `ON DELETE CASCADE` to `RESTRICT` Without Losing Its Supporting Index
+9. How to Choose Between `CASCADE`, `RESTRICT`, `NO ACTION`, and `SET NULL` for Parent Deletions
+10. Why `ON DELETE SET NULL` Fails on a `NOT NULL` Child Column—and How to Migrate the Relationship
+11. Why Soft Deletes Do Not Trigger Foreign-Key Cascades—and How to Keep Parent and Child Visibility Consistent
+12. How to Delete a Parent with Millions of Child Rows Without One Giant Cascading Transaction
+13. How to Rotate a Parent Table’s Natural Key Without Breaking Child Rows, CDC Consumers, or Read Replicas
+14. How to Enforce a Polymorphic Relationship with a Supertype Table Instead of an Unconstrained `type`/`id` Pair
+15. How to Prevent Cross-Tenant References with a Composite Foreign Key on `(tenant_id, id)`
+16. How `NULL`, `MATCH SIMPLE`, and `MATCH FULL` Change Composite Foreign-Key Enforcement in PostgreSQL
+17. Why SQLite `INSERT OR IGNORE` Still Fails on Foreign-Key Violations—and How to Handle the Conflict Explicitly
+18. How to Diagnose SQLite’s “Foreign Key Mismatch” Error in Composite and Non-Primary Parent Keys
+19. How to Bulk-Load Parent and Child Data Without Globally Disabling Foreign-Key Checks
+20. How to Map a Foreign-Key Cascade Graph Before a Schema Change Deletes More Rows Than Intended
+
+## Scaling
+
+1. How to Make a Stateful Web App Horizontally Scalable by Moving Sessions, Uploads, and Locks Off Individual Instances
+2. How to Scale CPU-Bound and I/O-Bound Tasks in Separate Worker Pools
+3. How to Buffer a 60-Second Flash Crowd Without Waiting for Two-Minute Instance Startup
+4. How to Write Readiness Checks That Keep Cold Replicas Out of the Load Balancer Until Caches and Dependencies Are Ready
+5. How to Shed Low-Priority Requests and Return `Retry-After` Before Overload Becomes a Cascading Failure
+6. How to Bound an HTTP-to-Queue-to-Worker Pipeline So a Backlog Creates Backpressure Instead of an Out-of-Memory Crash
+7. How to Scale Batch Workers Without Letting Large Jobs Starve Small Ones
+8. How to Stop Simultaneous Cache Warm-Ups from Overwhelming the Database When a Fleet Scales Out
+9. How to Elect One Scheduler Across Replicas with a Lease—and Recover Jobs Missed During Failover
+10. How to Allocate API Rate-Limit Quotas to Regions Without a Synchronous Global Counter on Every Request
+11. How to Set Per-Instance Concurrency Limits So Scaling Adds Throughput Instead of Queueing Work Until OOM
+12. How to Scale Queue Consumers from Oldest-Message Age and Drain Time Instead of Raw Queue Depth Alone
+13. How to Scale a Partitioned Consumer When One Tenant Owns the Hot Partition and the Other Workers Are Idle
+14. How to Scale a Fan-Out Request Without Letting Tail Latency Grow with Every Downstream Call
+15. How to Keep One Noisy Tenant from Consuming Every Worker, Database Connection, and Queue Slot
+16. How to Scale Calls to a Rate-Limited Third-Party API with Shared Quotas, Work Queues, and Jittered Retries
+17. Why New Replicas Receive No Traffic After Scale-Out: Long-Lived Connections, Keep-Alive, and Load-Balancer Imbalance
+18. How to Detect Coordinated Omission in Load Tests Before It Hides Your Worst Latency Under Saturation
+19. How to Replay Production Key and Payload Skew Instead of Load-Testing Only Uniform Requests per Second
+20. How to Find the New Bottleneck After Every Scale-Out Step with Queue Wait, Pool Wait, Run-Queue, and Event-Loop Metrics
+
+## Firebase RTDB
+
+1. How to Model Many-to-Many Relationships in Firebase Realtime Database Without Deep Nesting
+2. How to Keep Denormalized Firebase RTDB Paths Consistent with Atomic Multi-Location Updates
+3. How to Query Firebase RTDB by Multiple Fields with a Composite-Key Index
+4. How to Add `.indexOn` Rules That Match `orderByChild()` Queries and Eliminate Index Warnings
+5. How to Paginate Firebase RTDB Reliably with Push IDs, `orderByKey()`, `startAfter()`, and `limitToFirst()`
+6. How to Implement Prefix Search in Firebase RTDB with `startAt()` and `\uf8ff`
+7. How to Fix Firebase RTDB `PERMISSION_DENIED` When Security Rules Are Not Query Filters
+8. How to Write Per-User RTDB Rules for `/users/{uid}` Without Exposing the Parent Node
+9. How to Validate Required Fields, Data Types, and Immutable Values with RTDB `.validate` Rules
+10. How to Reserve Unique Usernames in Firebase RTDB Under Concurrent Sign-Ups
+11. How to Increment Shared Counters Safely with RTDB Transactions and Server-Side Increments
+12. How to Build Reliable Online Presence with `.info/connected`, `onDisconnect()`, and Server Timestamps
+13. How to Enable Selective Offline Caching in Firebase RTDB on Android and Flutter with `keepSynced()`
+14. How to Detach Firebase RTDB Listeners Correctly and Prevent Duplicate Callbacks
+15. How to Cut Firebase RTDB Bandwidth by Moving Listeners Off Large Parent Nodes
+16. How to Return Firebase RTDB Data from Async Listeners Without Empty or `undefined` Results
+17. How to Make Conditional RTDB REST Writes with ETags and `If-Match`
+18. How to Test RTDB Security Rules and Database-Triggered Functions with the Emulator Suite
+19. How to Make 2nd-Gen Firebase RTDB Triggers Idempotent and Avoid Self-Trigger Loops
+20. How to Shard a Firebase RTDB App Across Multiple Database Instances Before Reaching Connection Limits
+
+## TCP/IP
+
+1. How to Loop Correctly on Short `send()` and `recv()` Results in POSIX TCP Code
+2. How to Use `MSG_WAITALL` Without Assuming TCP Preserves Message Boundaries
+3. How to Choose Between `SO_REUSEADDR` and `SO_REUSEPORT` on Linux TCP Servers
+4. How to Diagnose Client-Side Ephemeral Port Exhaustion in High-Rate TCP Workloads
+5. How a Single TCP Listening Port Handles More Than 65,535 Concurrent Clients
+6. How to Choose Between TCP Loopback and Unix Domain Sockets for Local IPC
+7. How to Bound Unacknowledged TCP Data on Linux with `TCP_USER_TIMEOUT`—and When Keepalive Is Still Needed
+8. How to Choose Between `TCP_NODELAY` and `TCP_CORK` for Small Writes on Linux
+9. How to Handle `SIGPIPE` and `EPIPE` When a TCP Peer Closes During a Write
+10. How to Interpret TCP Half-Closes and the Four-Way FIN/ACK Teardown in Wireshark
+11. How to Distinguish Real TCP Retransmissions from TSO/GRO Capture Artifacts
+12. How to Verify TCP Payload Integrity Beyond the Protocol's 16-Bit Checksum
+13. How to Cancel a Blocking TCP `recv()` Safely on Linux Without Closing a Reused File Descriptor
+14. How to Read RTT, Retransmit, and Congestion State Programmatically with Linux `TCP_INFO`
+15. How to Handle `accept()` Returning `EMFILE` Without Busy-Looping or Locking Out Health Checks
+16. How to Bind an Outbound TCP Connection to a Specific Source IP or Network Interface
+17. How to Test TCP Simultaneous Open Through NAT—and Fall Back to a Relay When Mapping or Filtering Blocks It
+18. How to Choose and Register a Default TCP Port Without Squatting on an IANA Assignment
+19. How to Run TCP and UDP Services on the Same Numeric Port Safely
+20. How to Use Zero-Copy `sendfile()` for Large TCP Transfers on Linux
+
+## Backstage
+
+1. How to Bulk-Import Thousands of GitHub Repositories into the Backstage Catalog with `GithubEntityProvider`
+2. How to Fix Backstage Repository Discovery Finding Repos but Registering No Catalog Entities
+3. How to Write `catalog-info.yaml` for Components, APIs, Systems, and Ownership Relations
+4. How to Fix `NotAllowedError` When Registering a Backstage Software Template
+5. How to Register a Backstage Catalog Entity Only After Its Scaffolder Pull Request Is Merged
+6. How to Add Conditional Fields and Steps to a Backstage Template with JSON Schema and Nunjucks
+7. How to Populate a Backstage Template Dropdown from a Live API with a Custom Field Extension
+8. How to Add Files to an Existing GitHub Repository from a Backstage Template Without Recreating It
+9. How to Access the Signed-In User Entity and Ownership References Inside a Backstage Scaffolder Task
+10. How to Restrict Backstage Templates and Scaffolder Actions with Conditional Permissions
+11. How to Configure OIDC Sign-In Resolvers Without “Provider Is Not Configured to Support Sign-In”
+12. How to Fix Missing Backstage Session Cookies Behind a Cross-Domain Reverse Proxy
+13. How to Fix “Failed to Load Entity Kinds” by Aligning Backstage Base URLs and CORS
+14. How to Load Secrets and Environment-Specific Overrides Safely in Backstage `app-config.yaml`
+15. How to Run Backstage in Production with PostgreSQL TLS and Automatic Database Migrations
+16. How to Fix `ENOENT /app/plugins/...` Errors in a Backstage Production Docker Image
+17. How to Move TechDocs Builds to CI and Publish Static Sites to Amazon S3
+18. How to Fix TechDocs Stuck at “Publishing Docs” in a Containerized Backstage Deployment
+19. How to Add a Custom Search Collator to Backstage’s New Backend System
+20. How to Migrate a Backstage App and Internal Plugins to the New Frontend System
+
+## Varnish
+
+1. How to Explain a Varnish Cache Miss with `varnishlog`, TTL Records, and the Built-In VCL
+2. How to Stop `Set-Cookie` on Static Responses from Making Every Varnish Request Uncacheable
+3. How to Strip Analytics Cookies in Varnish Without Dropping Login or Shopping-Cart Sessions
+4. How to Normalize UTM Parameters and Query-String Order Without Creating Duplicate Varnish Cache Objects
+5. How to Cache a Response in Varnish While Telling Browsers Not to Store It
+6. PURGE or BAN? How to Invalidate One URL, All Variants, or an Entire Content Family in Varnish
+7. How to Secure Varnish PURGE and BAN Endpoints with ACLs Without Locking Out Your Deployment Pipeline
+8. How to Serve Stale Content During a Backend Outage with Varnish Grace, Keep, and Health Probes
+9. Varnish Returns `503 Backend fetch failed`: How to Isolate DNS, Port, Probe, and Timeout Failures
+10. How to Terminate TLS Before Varnish Without Losing the Client IP or Original HTTPS Scheme
+11. How to Pass WebSocket and Server-Sent Event Traffic Through Varnish Without Bypassing the Rest of the Site
+12. How to Cache Authenticated API Responses in Varnish Without Serving One User’s Data to Another
+13. How to Cache a Shared Page Shell with Varnish ESI While Keeping User-Specific Fragments Private
+14. How to Handle Large and Range-Based Downloads in Varnish Without Filling Storage with One-Off Objects
+15. How to Size Varnish’s `malloc` Cache Using the Hot Working Set, Object Overhead, and `n_lru_nuked`
+16. Why Did This Varnish Request Stop Hitting Cache? Tracing TTL Expiry, LRU Nukes, Bans, and Hit-for-Pass
+17. How to Fail Over Between Varnish Backends with Directors, Health Probes, and Retry Boundaries
+18. How to Prevent a Cache Stampede with Varnish Request Coalescing, Grace, and Background Fetches
+19. How to Validate, Load, Activate, and Roll Back VCL Without Restarting Varnish
+20. How to Tell Varnish HIT, MISS, PASS, Hit-for-Pass, and Hit-for-Miss Apart in Logs and Response Headers
+
+## Release Engineering
+
+1. How to Prove a Release Tag Points to the Reviewed Commit Before Signing and Publishing
+2. How to Cut Independent Monorepo Releases Without Versioning Every Unchanged Service
+3. How to Recover When a Multi-Package Release Publishes Half the Workspace and Then Fails
+4. How to Freeze a Release Candidate While Mainline Development Continues on the Next Version
+5. How to Stop Concurrent Release Jobs from Racing to Create the Same Semantic Version and Git Tag
+6. How to Make a Release Pipeline Safe to Retry After It Tagged Git but Failed Before Publishing Every Artifact
+7. How to Version Reusable GitHub Actions Independently While Maintaining Stable Moving Major Tags
+8. How to Automate Semantic Releases Without Letting a Mislabeled Breaking Change Produce a Minor Version
+9. How to Generate Auditable Release Notes from Pull Requests, Work Items, Test Results, and Approvals
+10. How to Backport an Urgent Fix Across Supported Release Branches and Forward-Port It to `main`
+11. How to Eliminate Version-File Merge Conflicts by Calculating the Release Version After Merge
+12. How to Embed Commit, Build, and Dependency Provenance in `--version` Output for Production Debugging
+13. How to Version Breaking Changes Before 1.0 Without Surprising Semantic Versioning Consumers
+14. How to Release a Shared Library and Its Dependent Services in a Safe Order Without Lockstep Versions
+15. How to Build a Release Compatibility Manifest for Independently Versioned Microservices
+16. How to Resume a Release After a Long Approval Delay Without Shipping a Stale Scan or Superseded Artifact
+17. How to Set a Release-Train Cutoff and Handle Late Fixes Without Reopening the Whole Branch
+18. How to Publish Cross-Platform Binaries Only After Every Architecture Produces a Complete Release Set
+19. How to Recover from a Bad Package Version That the Registry Will Not Let You Overwrite
+20. How to Support Several Customer-Deployed Versions with Patch Branches, Compatibility Windows, and Upgrade Bundles
+
+## Pod Priority
+
+1. How to Inventory Every Pod’s PriorityClass and Resolved Numeric Priority with `kubectl`
+2. How to Default `priorityClassName` by Namespace with Kubernetes 1.36 MutatingAdmissionPolicy
+3. How to Design Kubernetes Priority Bands Without Colliding with Reserved System Priorities
+4. Pod Creation Fails with “no PriorityClass with name”: How to Fix the Reference and Deployment Order
+5. Why Kubernetes Rejects a Manually Set `.spec.priority`—and How Priority Admission Resolves It Correctly
+6. `system-node-critical` or `system-cluster-critical`? How to Choose a Priority for Cluster Add-ons
+7. How to Diagnose Scheduling Order When Several Pending Pods Have the Same PriorityClass
+8. Why PriorityClass Cannot Define Pod Shutdown Order—and What Kubernetes Controls Actually Can
+9. Where `priorityClassName` Belongs in Deployment, StatefulSet, Job, and CronJob Manifests
+10. How to Stop a High-Priority Rolling Update from Preempting Unrelated Pods During `maxSurge`
+11. How to Prevent Priority Inversion When Critical Pods Depend on Lower-Priority DNS, Storage, or Admission Services
+12. Why Low-Priority Pods Do Not Trigger Cluster Autoscaler Scale-Up: Understanding the Expendable-Pod Cutoff
+13. How to Alert When High-Priority Pods Wait Too Long Using Scheduler Metrics, Events, and Queue State
+14. How to Add `priorityClassName` When a Helm Chart or Operator Does Not Expose It
+15. How to Rename or Delete a PriorityClass Without Breaking New Pods or Misreading Existing Ones
+16. How to Find and Repair Multiple `globalDefault` PriorityClasses Before the Smallest Value Wins
+17. How to Protect Critical Pods from the Kubernetes Descheduler with `priorityThreshold`
+18. How to Detect Priority Inflation When Every Team Marks Its Kubernetes Workloads Critical
+19. How to Test Pod Priority Deterministically with Artificial Resource Contention and Scheduler Events
+20. Why Kubernetes Cannot Prioritize Containers Within One Pod—and When to Split a Critical Sidecar Out
