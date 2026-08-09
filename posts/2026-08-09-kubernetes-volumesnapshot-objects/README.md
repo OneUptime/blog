@@ -8,7 +8,7 @@ Description: Understand the three Kubernetes CSI snapshot objects, who creates e
 
 ---
 
-Kubernetes represents one storage snapshot with three different API objects because users, cluster administrators, and storage drivers need different controls. A `VolumeSnapshot` is the namespaced request, a `VolumeSnapshotContent` is the cluster-scoped record of the storage-system snapshot, and a `VolumeSnapshotClass` supplies driver-specific policy for dynamic creation.
+Kubernetes's storage snapshot API uses three different object kinds because users, cluster administrators, and storage drivers need different controls. A `VolumeSnapshot` and a `VolumeSnapshotContent` form the one-to-one binding for a snapshot, while a `VolumeSnapshotClass` supplies shared driver-specific policy for dynamic creation.
 
 The relationship resembles PVC, PV, and StorageClass, but it is not identical. All three snapshot kinds are CustomResourceDefinitions (CRDs), not built-in core API types. They work only with CSI drivers that implement snapshot operations, and they require both the common snapshot controller and a driver-side external-snapshotter.
 
@@ -65,7 +65,7 @@ Do not patch `readyToUse` to true. It is observed state, not an operator overrid
 
 ## VolumeSnapshotContent: the Cluster-Scoped Binding
 
-`VolumeSnapshotContent` is analogous to a PV in one important respect: it is cluster-scoped and binds to one namespaced request. In dynamic provisioning, the common snapshot controller creates it. Its spec identifies the CSI driver, deletion policy, source volume handle, snapshot class, volume mode, and the exact `VolumeSnapshot` reference.
+`VolumeSnapshotContent` is analogous to a PV in one important respect: it is cluster-scoped and binds to one namespaced request. In dynamic provisioning, the common snapshot controller creates it. Its spec identifies the CSI driver, deletion policy, source volume handle, snapshot class, the source volume mode when populated, and the exact `VolumeSnapshot` reference.
 
 An abbreviated dynamically created object looks like this:
 
@@ -89,7 +89,7 @@ spec:
 
 After the CSI driver creates the snapshot, the content status contains the opaque `snapshotHandle` returned by that driver. Treat that handle as provider-specific. It is not inherently usable by another driver, region, account, or cluster.
 
-For a pre-provisioned snapshot, an administrator creates the content and sets `spec.source.snapshotHandle` instead of `volumeHandle`. The `volumeSnapshotRef` must point to the intended claim. A user then creates a `VolumeSnapshot` whose source is that content object's name. Binding is one-to-one; do not try to attach one content object to several namespaced snapshots.
+For a pre-provisioned snapshot, an administrator creates the content and sets `spec.source.snapshotHandle` instead of `volumeHandle`. The `volumeSnapshotRef` must point to the intended `VolumeSnapshot`. A user then creates that `VolumeSnapshot` with the content object's name as its source. Binding is one-to-one; do not try to attach one content object to several namespaced snapshots.
 
 Because the object can control a real backend asset, restrict create, update, patch, and delete permission on `VolumeSnapshotContent` to trusted administrators and controllers.
 
@@ -108,7 +108,7 @@ parameters:
   snapshotTier: durable
 ```
 
-The driver name must exactly match the source PV's CSI driver. The parameters are not portable Kubernetes settings; use only keys documented by that driver. Class objects are effectively configuration contracts, and their key fields are immutable. Create a new class rather than trying to repurpose an existing one.
+The driver name must exactly match the source PV's CSI driver. The parameters are not portable Kubernetes settings; use only keys documented by that driver. Class objects are effectively configuration contracts. Create a new class rather than trying to repurpose an existing one.
 
 The required `deletionPolicy` has two values:
 
@@ -125,7 +125,7 @@ metadata:
     snapshot.storage.kubernetes.io/is-default-class: "true"
 ```
 
-Kubernetes selects a default whose driver matches the source PVC's storage driver. There must be no more than one default `VolumeSnapshotClass` for the same CSI driver. Naming a class explicitly is clearer for production backup policy.
+When a dynamically provisioned `VolumeSnapshot` omits `volumeSnapshotClassName`, Kubernetes selects a default whose driver matches the source PVC's storage driver. There must be no more than one default `VolumeSnapshotClass` for the same CSI driver. Naming a class explicitly is clearer for production backup policy.
 
 ## Dynamic and Pre-Provisioned Lifecycles
 
@@ -134,13 +134,13 @@ Most application snapshots are dynamic:
 1. A user creates a `VolumeSnapshot` from a PVC.
 2. The snapshot controller selects the class and creates content.
 3. The driver's external-snapshotter sees that content and calls `CreateSnapshot` on the CSI driver.
-4. The driver returns a snapshot handle, creation time, size, and readiness.
+4. The driver returns a snapshot handle, creation time, readiness, and the size when known.
 5. Controllers publish that state back to the two API objects.
 
 Static, or pre-provisioned, binding starts with a snapshot that already exists in the storage system:
 
 1. An administrator confirms its driver, handle, source volume mode, credentials, and accessibility.
-2. The administrator creates `VolumeSnapshotContent` with `source.snapshotHandle` and the future claim reference.
+2. The administrator creates `VolumeSnapshotContent` with `source.snapshotHandle` and the future `VolumeSnapshot` reference.
 3. The user creates the matching `VolumeSnapshot` with `source.volumeSnapshotContentName`.
 4. The controller verifies and binds the pair.
 
@@ -169,7 +169,7 @@ spec:
     name: orders-db-before-upgrade
 ```
 
-The external provisioner asks the CSI driver to create a new volume from the bound snapshot handle. This does not overwrite the original PVC. The target StorageClass must use a driver that can access and restore the snapshot, the requested size cannot be below `restoreSize`, and the volume mode must be compatible unless an administrator has explicitly allowed a mode change on the content.
+The external provisioner asks the CSI driver to create a new volume from the bound snapshot handle. This does not overwrite the original PVC. The target StorageClass's `provisioner` must exactly match the content's `spec.driver`, and that driver must be able to access and restore the snapshot. The requested size cannot be below `restoreSize`, and the volume mode must be compatible unless an administrator has added the `snapshot.storage.kubernetes.io/allow-volume-mode-change: "true"` annotation to the content.
 
 ## Inspect the Relationship Safely
 
