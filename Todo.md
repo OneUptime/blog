@@ -34,23 +34,7 @@
 
 ## Volume Snapshots
 
-2. Why Does Kubernetes Say “No Matches for Kind VolumeSnapshot”? Installing the CRDs, Controller, and CSI Sidecar
-3. Kubernetes VolumeSnapshot Stuck at `readyToUse: false`: A Layer-by-Layer Troubleshooting Guide
-4. CSI Driver Does Not Support VolumeSnapshots: What Backup Options Still Work?
-6. PVC Restored from a VolumeSnapshot Is Empty: Check the StorageClass and CSI Driver
-7. How to Restore a Kubernetes PVC from a VolumeSnapshot Without Losing the Original
-8. How to Restore One StatefulSet Replica from a VolumeSnapshot Without Replacing the Whole Set
-10. Are Kubernetes VolumeSnapshots Backups? Understanding Storage-System and Cluster Failure Boundaries
-11. `Retain` vs `Delete`: What Happens When You Remove a VolumeSnapshot?
 12. VolumeSnapshot Stuck in Terminating: How to Diagnose Finalizers Before Removing Them
-13. Why Does Deleting a Kubernetes VolumeSnapshot Not Free Storage?
-14. How Kubernetes Chooses a Default VolumeSnapshotClass—and Why Multiple Defaults Fail
-15. How to Schedule Kubernetes VolumeSnapshots and Keep Only the Latest N Copies
-16. How to Restore a VolumeSnapshot into a Different Namespace with `dataSourceRef` and `ReferenceGrant`
-17. Can You Move a Kubernetes VolumeSnapshot to Another Cluster? Static Content and Provider Limits
-18. Snapshot Restore Size Does Not Match Used Space: What `restoreSize` Really Means
-19. PVC Clone vs VolumeSnapshot vs File-Level Backup: Which Kubernetes Data Copy Method Fits?
-20. How to Snapshot Multiple PVCs Consistently: Quiescing Workloads vs CSI Volume Group Snapshots
 
 ## OIDC
 
