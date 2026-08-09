@@ -21,7 +21,7 @@ Do not fix this by increasing a timeout or retrying harder. The OTLP specificati
 
 ## What the Error Proves
 
-OTLP/gRPC defines a separate export service for each signal:
+OTLP/gRPC defines separate export services for the three stable telemetry signals discussed here:
 
 ```text
 Traces  opentelemetry.proto.collector.trace.v1.TraceService/Export
@@ -68,7 +68,7 @@ Signal-specific settings take precedence over general OTLP settings. Also inspec
 The Collector accepted metrics, then one of its exporters called an incompatible destination. Recent Collector log records commonly identify the exporter and data type. Look for fields equivalent to:
 
 ```text
-kind=exporter data_type=metrics name=otlp/jaeger
+otelcol.component.kind=exporter otelcol.signal=metrics otelcol.component.id=otlp_grpc/jaeger
 ```
 
 Log field names can change between Collector versions, so also inspect the pipeline configuration and the `exporter` label on internal metrics. A rising value for the following metric narrows the failure to metrics export:
@@ -81,7 +81,7 @@ Prometheus may expose counters with a `_total` suffix. Query the Collector's act
 
 ## Confirm What Jaeger Accepts
 
-Current Jaeger documentation lists these OTLP write endpoints:
+Current Jaeger documentation lists these default OTLP write endpoints:
 
 | Port | Protocol | Accepted write target |
 | ---: | --- | --- |
@@ -102,7 +102,7 @@ grpcurl -plaintext jaeger:4317 list
 
 Use `-plaintext` only for a known plaintext listener. Absence of reflection or a proxy that blocks reflection makes this test inconclusive; Jaeger's API documentation remains the source of truth.
 
-Also verify that the endpoint is actually the Jaeger OTLP write port. Jaeger query port `16685` and legacy collector gRPC port `14250` expose different APIs. They are not substitutes for OTLP on `4317`.
+Also verify that the endpoint is actually the Jaeger OTLP write port. Jaeger query port `16685` and legacy collector gRPC port `14250` expose different APIs. They are not substitutes for OTLP/gRPC on its configured listener (`4317` by default).
 
 ## The Common Collector Misconfiguration
 
@@ -119,7 +119,7 @@ processors:
   batch:
 
 exporters:
-  otlp/jaeger:
+  otlp_grpc/jaeger:
     endpoint: jaeger:4317
     tls:
       insecure: true
@@ -129,14 +129,14 @@ service:
     traces:
       receivers: [otlp]
       processors: [batch]
-      exporters: [otlp/jaeger]
+      exporters: [otlp_grpc/jaeger]
     metrics:
       receivers: [otlp]
       processors: [batch]
-      exporters: [otlp/jaeger] # Wrong: Jaeger does not accept OTLP metrics.
+      exporters: [otlp_grpc/jaeger] # Wrong: Jaeger does not accept OTLP metrics.
 ```
 
-The Collector's `otlp` exporter supports multiple signals, but that says nothing about the remote server. Component compatibility is required at both ends.
+The Collector's `otlp_grpc` exporter supports multiple signals, but that says nothing about the remote server. Component compatibility is required at both ends.
 
 The example uses plaintext only to make the mistake easy to see. Do not expose an insecure, unauthenticated receiver or exporter path across untrusted networks.
 
@@ -157,12 +157,12 @@ processors:
   batch:
 
 exporters:
-  otlp/jaeger:
+  otlp_grpc/jaeger:
     endpoint: jaeger:4317
     tls:
       insecure: true # Plaintext only inside this controlled example network.
 
-  otlp/metrics_backend:
+  otlp_grpc/metrics_backend:
     endpoint: metrics-backend.example.com:4317
     tls:
       ca_file: /etc/otel/certs/metrics-backend-ca.pem
@@ -172,11 +172,11 @@ service:
     traces:
       receivers: [otlp]
       processors: [batch]
-      exporters: [otlp/jaeger]
+      exporters: [otlp_grpc/jaeger]
     metrics:
       receivers: [otlp]
       processors: [batch]
-      exporters: [otlp/metrics_backend]
+      exporters: [otlp_grpc/metrics_backend]
 ```
 
 The metrics destination must actually implement the OTLP `MetricsService`. If it expects Prometheus scraping, remote write, or a vendor-specific API instead, use the matching Collector exporter and follow that backend's official integration guide.
@@ -192,12 +192,12 @@ service:
   pipelines:
     traces:
       receivers: [otlp]
-      exporters: [otlp/jaeger]
+      exporters: [otlp_grpc/jaeger]
 ```
 
 If the Collector should handle metrics, define a metrics exporter and add a metrics pipeline. If it is intentionally traces-only, stop sending metrics to that endpoint or send them to the organization's metrics Collector.
 
-Running `otelcol components` proves that a distribution contains a receiver or exporter and shows its supported signals. It does not prove that the running configuration enabled a metrics pipeline or that a remote backend supports metrics.
+Running `otelcol components` proves that a distribution contains a receiver or exporter and shows its trace, metric, and log support and stability. It does not prove that the running configuration enabled a metrics pipeline or that a remote backend supports metrics.
 
 ## If You Intentionally Do Not Collect Metrics
 
@@ -242,7 +242,7 @@ Likewise, Jaeger's management `/metrics` endpoint exposes Jaeger's own internal 
 3. Resolve the configured hostname from the emitting process or pod.
 4. Inspect the exact endpoint, protocol, and signal-specific overrides.
 5. Confirm that the destination documents OTLP metrics ingest support.
-6. Ensure `otlp/jaeger` appears only in traces pipelines.
+6. Ensure `otlp_grpc/jaeger` appears only in traces pipelines.
 7. Route metrics to a metrics-capable backend, or deliberately disable metric export.
 8. Verify that `otelcol_exporter_send_failed_metric_points` stops rising while trace export remains healthy.
 
