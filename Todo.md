@@ -58,7 +58,6 @@
 2. Why Does Kubernetes Say “No Matches for Kind VolumeSnapshot”? Installing the CRDs, Controller, and CSI Sidecar
 3. Kubernetes VolumeSnapshot Stuck at `readyToUse: false`: A Layer-by-Layer Troubleshooting Guide
 4. CSI Driver Does Not Support VolumeSnapshots: What Backup Options Still Work?
-5. Why Is a PVC Restored from a Kubernetes VolumeSnapshot Stuck in Pending?
 6. PVC Restored from a VolumeSnapshot Is Empty: Check the StorageClass and CSI Driver
 7. How to Restore a Kubernetes PVC from a VolumeSnapshot Without Losing the Original
 8. How to Restore One StatefulSet Replica from a VolumeSnapshot Without Replacing the Whole Set
