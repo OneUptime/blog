@@ -30,13 +30,13 @@ The browser then leaves the application for the OpenID Provider. When it returns
 
 OIDC also commonly creates a cookie beginning with `.AspNetCore.OpenIdConnect.Nonce.`. The nonce binds the client session to the ID token and mitigates replay. A missing correlation cookie causes the literal correlation error; a missing nonce cookie normally fails later with a nonce-validation message. Inspect both because the same browser or proxy policy can break both cookies.
 
-OpenID Connect Core describes `state` as the value used to maintain request-to-callback state and notes that CSRF mitigation commonly binds it to a browser cookie. OAuth 2.0 Security Best Current Practice likewise requires clients to prevent CSRF. Removing the correlation check, accepting an unmatched callback, or inventing a constant `state` value converts an availability problem into an authentication vulnerability.
+OpenID Connect Core describes `state` as the value used to maintain request-to-callback state and notes that CSRF mitigation commonly binds it to a browser cookie. OAuth 2.0 Security Best Current Practice likewise requires clients to prevent CSRF. Bypassing the framework's correlation check, accepting an unmatched callback, or replacing its protected `state` with a constant weakens the client's intended CSRF defenses and can create an authentication vulnerability.
 
 ## Why SameSite Changes the Result
 
-The authorization response comes from an identity-provider site to the client site. That is a cross-site navigation even though the final URL belongs to the application.
+When the OpenID Provider and client are on different schemeful sites, the authorization response returns to the client as a cross-site navigation even though the destination URL belongs to the application.
 
-Modern browsers generally treat a cookie without an explicit `SameSite` attribute as `Lax`. A `Lax` cookie can be included on some top-level safe navigations, so an authorization-code response delivered with a query-string `GET` may appear to work. An OIDC response delivered with `response_mode=form_post` is a cross-site `POST`; a `Lax` or `Strict` correlation cookie is not sent in that case. This explains failures that appear only with one provider or after changing the response mode.
+Modern browsers generally apply `Lax`-like enforcement to a cookie without an explicit `SameSite` attribute. An explicitly `Lax` cookie can be included on some top-level safe navigations, so an authorization-code response delivered with a query-string `GET` may appear to work. An OIDC response delivered with `response_mode=form_post` is a cross-site `POST`; an explicitly `Lax` or `Strict` correlation cookie is not sent in that case. Some browsers apply a short `Lax-allowing-unsafe` grace period to recently created cookies that omit `SameSite`, but that compatibility behavior is not portable and should not be relied on. This explains failures that appear only with one provider or after changing the response mode.
 
 For remote-authentication and OIDC nonce cookies, current ASP.NET Core defaults are intentionally:
 
@@ -117,6 +117,8 @@ builder.Services
         options.NonceCookie.SecurePolicy = CookieSecurePolicy.Always;
         options.NonceCookie.HttpOnly = true;
     });
+
+builder.Services.AddAuthorization();
 ```
 
 Keep the client secret in a secret manager or protected configuration source, not in source control. Register the exact public callback URI, including scheme, host, port, path base, and `/signin-oidc`, with the provider.
@@ -129,7 +131,7 @@ Review `CookiePolicyOptions`, consent middleware, and every `OnAppendCookie` cal
 
 TLS often terminates at an ingress or load balancer, while the proxy connects to Kestrel over HTTP. The public request is secure, but without trusted forwarded headers the application sees `Request.Scheme == "http"`. That can produce incorrect redirect URIs and, in older or customized configurations that use `SameAsRequest`, a `SameSite=None` cookie without `Secure` that Chromium-based browsers reject.
 
-Have the proxy preserve the public host and send the original scheme. For NGINX, the relevant portion is:
+Have the proxy preserve the public host and send the original scheme. For an NGINX instance that receives the browser-facing TLS connection and serves the callback without a non-default public port, the relevant portion is:
 
 ```nginx
 location / {
@@ -140,7 +142,7 @@ location / {
 }
 ```
 
-Then trust only the real proxy in ASP.NET Core and run Forwarded Headers Middleware before HTTPS redirection and authentication:
+Then add the real proxy's observed address to ASP.NET Core's trusted-proxy configuration and run Forwarded Headers Middleware before HTTPS redirection and authentication:
 
 ```csharp
 using System.Net;
@@ -180,9 +182,9 @@ Avoid concurrent automatic challenges. A page that starts several OIDC logins, a
 
 In a web farm, the browser still sends a host-scoped correlation cookie to any healthy replica. However, the callback replica must also unprotect the OIDC `state`, and replicas must be compatible with the authentication scheme and Data Protection configuration. Ephemeral, per-container Data Protection keys can therefore cause a neighboring "unable to unprotect state" failure during a deployment or load-balanced callback.
 
-Use one persistent, protected Data Protection key ring for all replicas of the same application and set a stable application discriminator. Choose a supported shared provider such as protected shared storage, Azure Blob Storage, or Redis according to the official Data Protection guidance, and protect keys at rest. Do not delete old Data Protection keys merely because a new key became active; payloads created with deleted keys cannot be recovered.
+Use one persistent, protected Data Protection key ring for all replicas of the same application and set a stable application discriminator. Choose a supported shared provider such as protected shared storage, Azure Blob Storage, or Redis with data persistence enabled according to the official Data Protection guidance, and protect keys at rest. Do not delete old Data Protection keys merely because a new key became active; payloads created with deleted keys cannot be recovered.
 
-Sticky sessions can hide this configuration defect but do not repair it. First prove whether the callback lacks the correlation cookie or whether the server cannot unprotect state, then fix the corresponding layer.
+Sticky sessions are a documented alternative that can avoid cross-node failures, but with ephemeral per-instance keys they do not preserve protected payloads when the selected node restarts or is replaced. A shared persistent key ring is more resilient. First prove whether the callback lacks the correlation cookie or whether the server cannot unprotect state, then fix the corresponding layer.
 
 ## Turn on Focused Diagnostics
 
