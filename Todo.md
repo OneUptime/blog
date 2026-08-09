@@ -60,7 +60,6 @@
 6. PVC Restored from a VolumeSnapshot Is Empty: Check the StorageClass and CSI Driver
 7. How to Restore a Kubernetes PVC from a VolumeSnapshot Without Losing the Original
 8. How to Restore One StatefulSet Replica from a VolumeSnapshot Without Replacing the Whole Set
-9. Can You Snapshot a PVC While It Is Mounted? Crash Consistency vs Application Consistency
 10. Are Kubernetes VolumeSnapshots Backups? Understanding Storage-System and Cluster Failure Boundaries
 11. `Retain` vs `Delete`: What Happens When You Remove a VolumeSnapshot?
 12. VolumeSnapshot Stuck in Terminating: How to Diagnose Finalizers Before Removing Them
