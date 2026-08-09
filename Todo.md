@@ -35,7 +35,6 @@
 1. OpenTelemetry Traces Are Missing: How to Test Every Hop from SDK to Backend
 2. OTLP Port 4317 vs 4318: When to Use gRPC, HTTP, and `/v1/traces`
 3. Why Does OpenTelemetry Show `unknown_service`? Fixing `service.name` and Resource Attributes
-4. OpenTelemetry Collector Returns “Unimplemented MetricsService”: Are You Sending the Wrong Signal to Jaeger?
 5. How to Troubleshoot OpenTelemetry “context deadline exceeded” and “connection closed” Export Errors
 6. OpenTelemetry Collector Says “Sending Queue Is Full”: How to Find the Real Bottleneck
 7. How to Reduce OpenTelemetry Data Loss During Backend Outages with Queues and Retries
