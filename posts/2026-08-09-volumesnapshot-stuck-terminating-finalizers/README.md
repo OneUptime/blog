@@ -40,7 +40,7 @@ kubectl -n "$snapshot_namespace" describe volumesnapshot "$snapshot_name"
 If `deletionTimestamp` is null, the object is not in finalization. Check whether the delete request was rejected by RBAC, an admission policy, or a validating webhook. If the timestamp is set, inspect every finalizer. Current external-snapshotter releases can use these keys:
 
 - `snapshot.storage.kubernetes.io/volumesnapshot-as-source-protection` protects a snapshot while a pending PVC is being created from it.
-- `snapshot.storage.kubernetes.io/volumesnapshot-bound-protection` keeps a dynamically bound snapshot with `deletionPolicy: Delete` until its content deletion is complete.
+- `snapshot.storage.kubernetes.io/volumesnapshot-bound-protection` keeps a bound snapshot whose matching content has `deletionPolicy: Delete` until its content deletion is complete.
 - `snapshot.storage.kubernetes.io/volumesnapshotcontent-bound-protection` appears on the cluster-scoped `VolumeSnapshotContent`; the CSI snapshotter removes it after the required provider-side work.
 - `snapshot.storage.kubernetes.io/volumesnapshot-in-group-protection` can appear when the optional volume group snapshot feature manages the member snapshot.
 
@@ -87,14 +87,14 @@ Verify that the content reference points back to the snapshot's name, namespace,
 
 ## Understand the Expected Deletion Chain
 
-For `deletionPolicy: Delete`, normal deletion crosses two controllers:
+For an independent snapshot that is not a group member, `deletionPolicy: Delete` normally crosses two controllers:
 
 1. The common snapshot controller sees the `VolumeSnapshot` deletion timestamp.
 2. It verifies that no pending PVC restore still uses the snapshot.
 3. It marks and deletes the bound `VolumeSnapshotContent`.
 4. The CSI external-snapshotter sidecar that owns `spec.driver` sees the content deletion.
 5. The sidecar calls the CSI driver's `DeleteSnapshot` operation.
-6. After success, it clears snapshot status and removes the content finalizer.
+6. After success, it clears the snapshot-related fields from `VolumeSnapshotContent.status` and removes the content finalizer.
 7. The content disappears; the common controller can then remove the snapshot's bound finalizer.
 8. The API server finally removes the `VolumeSnapshot`.
 
@@ -143,7 +143,7 @@ kubectl get pods -A -o json |
     @tsv'
 ```
 
-Read the relevant container logs from the discovered Pods, including previous logs after a restart:
+Read the relevant current container logs from the discovered Pods:
 
 ```bash
 kubectl -n SNAPSHOT_CONTROLLER_NAMESPACE logs SNAPSHOT_CONTROLLER_POD \
@@ -152,6 +152,8 @@ kubectl -n SNAPSHOT_CONTROLLER_NAMESPACE logs SNAPSHOT_CONTROLLER_POD \
 kubectl -n CSI_DRIVER_NAMESPACE logs CSI_CONTROLLER_POD \
   -c csi-snapshotter --since=1h
 ```
+
+After a container restart, repeat the relevant command with `--previous` to read logs from the immediately previous container instance in that Pod.
 
 In a replicated controller deployment, inspect the leader's logs as well as restarts and leader-election events. Common blockers include:
 
@@ -171,7 +173,7 @@ kubectl -n "$snapshot_namespace" get events \
   --sort-by=.lastTimestamp
 
 kubectl get events -A --sort-by=.lastTimestamp |
-  rg "$snapshot_name|$snapshot_content|SnapshotDelete"
+  rg "$snapshot_name${snapshot_content:+|$snapshot_content}|SnapshotDelete"
 ```
 
 If the content annotations reference a deletion Secret, verify only that the named Secret exists and that the sidecar's ServiceAccount can read it. Do not print secret data into a ticket or terminal transcript. Restore missing credentials through the driver's documented procedure and let the controller retry.
@@ -191,7 +193,7 @@ Prefer these recovery actions, in order:
 
 Do not install manifests from the external-snapshotter repository's default branch blindly into a managed cluster. The distribution owns the CRDs and common controller, and an arbitrary newest controller can be incompatible with the installed APIs or CSI driver.
 
-`kubectl delete --force --grace-period=0` is not a storage cleanup mechanism. Finalizers are not Pod grace periods, and forcing an API object away does not prove that the backend snapshot was deleted.
+`kubectl delete --force --grace-period=0` does not remove finalizers from an ordinary `VolumeSnapshot` or perform storage cleanup. Finalizers are not Pod grace periods, and removal of an API object alone never proves that the backend snapshot was deleted.
 
 ## When Manual Finalizer Removal Is Defensible
 
