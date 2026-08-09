@@ -37,7 +37,6 @@
 ## OIDC
 
 2. OAuth 2.0 vs OpenID Connect: Why an Access Token Alone Is Not a Login
-4. Why Your OIDC Callback Fails Behind a Reverse Proxy: Redirect URIs, Forwarded Headers, and Cookie Paths
 6. How to Validate an OIDC ID Token Correctly: Signature, Issuer, Audience, Nonce, and Time Claims
 7. Unknown `kid` After an Identity-Provider Key Rotation: How to Refresh and Cache JWKS Safely
 8. Why an OIDC Access Token May Be Opaque—and When to Use Introspection Instead of JWT Parsing
