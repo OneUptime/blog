@@ -8,7 +8,7 @@ Description: Trace a snapshot-backed PVC that remains Pending through data-sourc
 
 ---
 
-A PVC restored from a `VolumeSnapshot` becomes `Bound` only after Kubernetes and the CSI driver create a new volume from the snapshot. `Pending` therefore does not identify one problem. It can be the expected state for a `WaitForFirstConsumer` StorageClass, or it can mean that the snapshot reference, target class, size, topology, credentials, capacity, external provisioner, CSI driver, or storage backend rejected the request.
+For a dynamically provisioned snapshot restore, the CSI external-provisioner asks the driver to create a new volume from the snapshot, then creates a PV for Kubernetes to bind to the PVC. `Pending` therefore does not identify one problem. It can be the expected state for a `WaitForFirstConsumer` StorageClass, or it can mean that the snapshot reference, target class, size, topology, credentials, capacity, external provisioner, CSI driver, or storage backend rejected the request.
 
 Do not delete the source `VolumeSnapshot`, its bound `VolumeSnapshotContent`, or the original PVC while investigating. A restore creates a new volume; it does not need to replace the original. Preserve the recovery point and diagnose the new claim layer by layer.
 
@@ -22,9 +22,11 @@ claim=orders-data-restore
 
 kubectl -n "$namespace" get pvc "$claim" -o yaml
 kubectl -n "$namespace" describe pvc "$claim"
+claim_uid=$(kubectl -n "$namespace" get pvc "$claim" \
+  -o jsonpath='{.metadata.uid}')
 kubectl -n "$namespace" get events \
-  --field-selector involvedObject.kind=PersistentVolumeClaim,involvedObject.name="$claim" \
-  --sort-by=.lastTimestamp
+  --field-selector involvedObject.kind=PersistentVolumeClaim,involvedObject.name="$claim",involvedObject.uid="$claim_uid" \
+  --sort-by=.metadata.creationTimestamp
 ```
 
 The `describe` output is normally the fastest discriminator. Common event families include:
@@ -36,7 +38,7 @@ The `describe` output is normally the fastest discriminator. Common event famili
 - no available topology or capacity; and
 - driver-specific `CreateVolume` failures.
 
-Record the exact event message and count. Repeated messages show the active blocker; an old event may describe a condition that has already changed.
+Record the exact event message, count, and last-seen time. Repeated events whose last-seen time continues to advance usually show the active blocker; an old event may describe a condition that has already changed.
 
 ## Verify That This Is Actually a Snapshot Restore
 
@@ -92,7 +94,7 @@ Confirm all of the following:
 - no current `status.error` is reported; and
 - the backend snapshot still exists and is accessible to the CSI driver.
 
-Do not patch readiness, the binding, or the snapshot handle. Those fields describe controller and driver state. If readiness is false, troubleshoot snapshot creation before troubleshooting restore provisioning.
+Do not patch readiness, the binding, or the snapshot handle. Those fields describe controller and driver state. If readiness is not `true`, troubleshoot snapshot creation before troubleshooting restore provisioning.
 
 ## Match the StorageClass to the Snapshot Driver
 
@@ -107,7 +109,7 @@ kubectl get volumesnapshotcontent "$content" \
   -o jsonpath='{.spec.driver}{"\n"}'
 ```
 
-The StorageClass `provisioner` must be a CSI driver that can consume the snapshot handle. In the common case it exactly matches `VolumeSnapshotContent.spec.driver`. A similarly named class backed by another driver cannot translate the handle. A class in another region, account, project, or storage system may use the same driver name yet still lack access to the snapshot; check the provider's documented scope.
+For a native CSI StorageClass, its `provisioner` must exactly match `VolumeSnapshotContent.spec.driver`. If CSI migration is involved, the external-provisioner first translates the legacy in-tree provisioner name to its CSI driver name before this comparison. In either case, that CSI driver must be able to consume the snapshot handle. A similarly named class backed by another driver cannot translate the handle. A class in another region, account, project, or storage system may use the same driver name yet still lack access to the snapshot; check the provider's documented scope.
 
 Driver parameters also matter. Encryption keys, filesystem type, volume type, replication mode, and topology settings can make a target incompatible even when the driver name matches. Compare with a known-good restore example from the specific CSI driver, not just an ordinary blank-volume PVC.
 
@@ -124,7 +126,7 @@ kubectl -n "$namespace" get pvc "$claim" \
 
 `restoreSize` is a minimum restore capacity, not the live bytes used in the filesystem. Request that size or a supported larger size. A larger request also depends on the CSI driver's create-from-snapshot and expansion behavior.
 
-Check the content's `spec.sourceVolumeMode` and the PVC's `spec.volumeMode`. Kubernetes protects against silently converting a filesystem snapshot into block mode or the reverse. An administrator can allow a mode change only through the documented annotation on `VolumeSnapshotContent`, and only when the storage driver actually supports the result. Do not add it merely to suppress an error.
+Check the content's `spec.sourceVolumeMode` and the PVC's `spec.volumeMode`. When `sourceVolumeMode` is populated and the CSI external-provisioner runs with `--prevent-volume-mode-conversion=true` (the default in supported releases), the external-provisioner rejects a restore that changes `Filesystem` to `Block` or the reverse. An administrator can allow the change by adding `snapshot.storage.kubernetes.io/allow-volume-mode-change: "true"` to the `VolumeSnapshotContent`, and only when the storage driver actually supports the result. For pre-provisioned content, the administrator must populate `spec.sourceVolumeMode`; if it is absent, the source mode is unknown. Do not add the annotation merely to suppress an error.
 
 Access modes must also be accepted by the target driver and class. They are not inferred from the snapshot data.
 
@@ -136,7 +138,7 @@ A StorageClass with this setting deliberately delays volume provisioning:
 volumeBindingMode: WaitForFirstConsumer
 ```
 
-The PVC can remain `Pending` until a schedulable Pod references it, allowing Kubernetes to choose a compatible zone or node topology. Create an isolated validation Pod rather than starting the production application:
+The PVC can remain `Pending` until a schedulable Pod references it, allowing Kubernetes to choose a compatible zone or node topology. For the filesystem-mode PVC shown above, create an isolated validation Pod rather than starting the production application:
 
 ```yaml
 apiVersion: v1
@@ -159,9 +161,11 @@ spec:
         claimName: orders-data-restore
 ```
 
+This Pod uses `volumeMounts` and does not work for a raw `Block` PVC. A block-mode claim requires `volumeDevices` with a `devicePath` instead.
+
 Apply only after reviewing image and security policy for the cluster. Do not set `spec.nodeName`; Kubernetes documentation warns that bypassing the scheduler this way can leave a `WaitForFirstConsumer` PVC pending. Use supported node affinity or a node selector if you must constrain placement.
 
-Then inspect both Pod and PVC events. Unsatisfied node selectors, taints, resource requests, allowed topologies, and storage capacity can prevent the scheduler from selecting a consumer topology.
+Then inspect both Pod and PVC events. Unsatisfied node selectors or resource requests, untolerated taints, incompatible allowed topologies, and, when CSI capacity tracking is enabled, insufficient reported storage capacity can prevent the scheduler from selecting a consumer topology.
 
 ## Follow the Provisioning Control Path
 
@@ -172,11 +176,13 @@ PVC -> external-provisioner -> CSI CreateVolume
     -> storage backend creates volume from snapshot handle -> PV -> binding
 ```
 
-Locate the CSI controller Deployment and its external-provisioner sidecar:
+Locate the CSI controller workload and its external-provisioner sidecar:
 
 ```bash
 kubectl get csidrivers
-kubectl -n kube-system get pods -o wide | grep -E 'csi|provision'
+kubectl get pods --all-namespaces \
+  -o custom-columns='NAMESPACE:.metadata.namespace,NAME:.metadata.name,CONTAINERS:.spec.containers[*].name,IMAGES:.spec.containers[*].image' \
+  | grep -E 'csi|provision'
 ```
 
 Use the actual driver namespace rather than assuming `kube-system`. Inspect logs for the PVC UID, claim namespace/name, snapshot handle, and the `CreateVolume` response. Check both the external-provisioner container and the CSI driver container around the same timestamp.
@@ -196,17 +202,17 @@ Use the provider console or API read-only to corroborate the handle and operatio
 
 ## Retry Without Endangering the Recovery Point
 
-After correcting class, size, topology, permissions, or driver configuration, first allow the provisioner to retry. Controllers normally retry transient provisioning failures.
+After correcting topology, permissions, driver configuration, or a transient backend condition, first allow the provisioner to retry. Controllers normally retry transient provisioning failures. If the class, requested size, data source, access modes, or volume mode is wrong on this `Pending` claim, recreate the PVC as described below.
 
 If the PVC manifest itself is wrong and must be recreated:
 
-1. Confirm that no PV or backend volume was created for the failed attempt.
+1. Confirm that no PV or backend volume was created for the failed attempt and that no backend create operation remains in flight.
 2. Keep the source `VolumeSnapshot`, content, and original PVC unchanged.
-3. Delete only the failed restore PVC after recording its UID and events.
+3. Delete any isolated validation Pod that references the failed claim, then delete only the failed restore PVC after recording its UID and events.
 4. Create a corrected PVC under a new diagnostic name.
 5. Mount it in an isolated validation Pod before application cutover.
 
-Provider operations can outlive Kubernetes objects. Verify the backend inventory before repeating deletion and creation, or retries can leave chargeable orphan volumes.
+Provider operations can outlive CSI timeouts and Kubernetes objects. Verify the backend inventory before deleting and recreating the claim; the new PVC has a new provisioning identity, so an earlier in-flight operation can later complete as a chargeable orphan.
 
 ## Official Documentation
 
