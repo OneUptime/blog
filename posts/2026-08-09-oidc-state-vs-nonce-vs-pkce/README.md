@@ -183,7 +183,7 @@ Capture only sanitized error categories. Authorization codes, state values, nonc
 
 ## Official Documentation
 
-- [OpenID Connect Core 1.0](https://openid.net/specs/openid-connect-core-1_0-18.html)
+- [OpenID Connect Core 1.0 incorporating errata set 2](https://openid.net/specs/openid-connect-core-1_0.html)
 - [RFC 9700: Best Current Practice for OAuth 2.0 Security](https://www.rfc-editor.org/rfc/rfc9700.html)
 - [RFC 6749: The OAuth 2.0 Authorization Framework](https://www.rfc-editor.org/rfc/rfc6749.html)
 - [RFC 7636: Proof Key for Code Exchange](https://www.rfc-editor.org/rfc/rfc7636.html)
