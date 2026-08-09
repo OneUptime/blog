@@ -34,8 +34,6 @@
 
 ## Volume Snapshots
 
-12. VolumeSnapshot Stuck in Terminating: How to Diagnose Finalizers Before Removing Them
-
 ## OIDC
 
 1. ID Token vs Access Token in OIDC: Which Token Belongs in Your API Authorization Header?
