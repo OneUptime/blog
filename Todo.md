@@ -55,7 +55,6 @@
 
 ## Volume Snapshots
 
-1. Kubernetes `VolumeSnapshot`, `VolumeSnapshotContent`, and `VolumeSnapshotClass`: What Does Each Object Do?
 2. Why Does Kubernetes Say “No Matches for Kind VolumeSnapshot”? Installing the CRDs, Controller, and CSI Sidecar
 3. Kubernetes VolumeSnapshot Stuck at `readyToUse: false`: A Layer-by-Layer Troubleshooting Guide
 4. CSI Driver Does Not Support VolumeSnapshots: What Backup Options Still Work?
