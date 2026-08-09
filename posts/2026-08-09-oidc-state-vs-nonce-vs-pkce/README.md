@@ -20,7 +20,7 @@ Modern security guidance recognizes overlap: a correctly enforced PKCE exchange 
 
 | Control | Sent in authorization request | Returned or proved at | Primary binding | Primary attack addressed |
 | --- | --- | --- | --- | --- |
-| `state` | `state=...` | Authorization response | Browser session and login transaction to callback | Login CSRF and unsolicited or swapped callback responses |
+| `state` | `state=...` | Authorization response | Browser session and login transaction to callback | Login CSRF and callbacks not correlated with the initiating browser transaction |
 | `nonce` | `nonce=...` | `nonce` claim in validated ID token | Authentication request to ID token | ID-token replay or substitution; also OIDC response/code injection defenses |
 | PKCE | `code_challenge` and `code_challenge_method=S256` | `code_verifier` at token endpoint | Authorization code to initiating client instance | Authorization-code interception and injection |
 
@@ -38,9 +38,9 @@ Also support parallel login attempts. A single `oauth_state` slot per user sessi
 
 ## Nonce Correlates the ID Token
 
-OIDC defines `nonce` as a value passed unchanged from the authentication request into the ID token's `nonce` claim. After validating the ID token's signature, issuer, audience, authorized party, and time claims, the client must compare that claim with the nonce stored for the transaction.
+OIDC defines `nonce` as a value passed unchanged from the authentication request into the ID token's `nonce` claim. After validating the ID token—including its issuer, subject, audience, expiration, configured signature and algorithm policy, and any applicable `azp` requirements—the client must compare that claim with the nonce stored for the transaction.
 
-This makes an old or substituted ID token fail in a new login transaction. It also helps detect authorization-code injection because the ID token obtained from an injected code carries the attacker's transaction nonce rather than the victim client's stored value. Current OAuth security guidance also recognizes nonce as a valid OIDC CSRF defense.
+This makes an old or substituted ID token fail in a new login transaction. It also helps detect authorization-code injection because the ID token obtained from an injected code carries the nonce bound to the transaction that issued that code, rather than the nonce stored for the current browser transaction. Current OAuth security guidance also recognizes nonce as a valid OIDC CSRF defense.
 
 Nonce is not an access-token claim and does not prove that an API request is authorized. It does not stop a thief from redeeming a stolen authorization code at the token endpoint; the code verifier does that. Validate nonce at the OIDC client and reject the entire login when it is missing or mismatched under the selected flow.
 
@@ -59,7 +59,7 @@ The authorization server records the challenge with the authorization code. Duri
 
 An attacker who steals the code from a redirect cannot redeem it without the verifier. If an attacker injects a code created in another transaction, the victim client sends its own verifier, which does not match the challenge bound to the injected code.
 
-Use `S256`; do not silently fall back to `plain`. RFC 9700 requires public clients to use PKCE, requires authorization servers to support it, and recommends protections against PKCE downgrade. Server-side web clients also benefit because PKCE addresses code injection independently of a static client secret.
+Use `S256`; do not silently fall back to `plain`. RFC 9700 requires public clients to use PKCE, requires authorization servers to support it, and requires authorization servers to mitigate PKCE downgrade attacks. Server-side web clients also benefit because PKCE addresses code injection independently of a static client secret.
 
 The verifier is transaction secret material. Keep it in a server-side transaction store or the platform's protected storage, give it a short lifetime, never send it through the browser authorization request, and delete it when the transaction is consumed.
 
@@ -124,11 +124,12 @@ At the redirect endpoint:
 1. Reject malformed responses and unexpected HTTP methods or response modes.
 2. Retrieve and atomically consume the transaction addressed by the received `state`.
 3. Verify that it exists, has not expired, and belongs to the current browser session.
-4. If the response is an OAuth/OIDC error, record a sanitized reason and end the transaction.
-5. Exchange the code at the configured issuer's token endpoint using the exact stored `redirect_uri` and `code_verifier`.
-6. Validate the ID token with the issuer's OIDC metadata and the client's configured algorithms, issuer, audience, time rules, and stored `nonce`.
-7. Create the local application session only after all checks succeed.
-8. Redirect only to the previously allow-listed local `returnPath`.
+4. For a multi-issuer client, validate the authorization response's issuer against the stored issuer or verify that the response arrived at that issuer's distinct redirect URI.
+5. If the response is an OAuth/OIDC error, record a sanitized reason and end the transaction.
+6. Exchange the code at the configured issuer's token endpoint using the exact stored `redirect_uri` and `code_verifier`.
+7. Validate the ID token with the issuer's OIDC metadata and the client's configured algorithms, issuer, audience, time rules, and stored `nonce`.
+8. Create the local application session only after all checks succeed.
+9. Redirect only to the previously allow-listed local `returnPath`.
 
 A callback sketch makes the separation clear:
 
@@ -159,7 +160,7 @@ The method names are illustrative. Use your library's documented callback API be
 None of the three replaces the rest of the protocol validation:
 
 - **Redirect URI abuse:** register exact redirect URIs and reject open redirects.
-- **Authorization-server mix-up:** validate the expected issuer and, for multi-issuer clients, use the authorization-response issuer mechanism or distinct callback endpoints described by the relevant specifications.
+- **Authorization-server mix-up:** for multi-issuer clients, validate the authorization-response issuer before exchanging the code or use and verify a distinct callback URI for each issuer; still validate the ID token's issuer.
 - **Bad audience or signature:** validate the complete ID token and validate access tokens at their resource server.
 - **Malicious scripts or browser compromise:** state, nonce, and PKCE do not neutralize XSS or malware that can steal active browser state.
 - **Leaked bearer access tokens:** protect tokens with TLS, short lifetimes, audience restriction, secure storage, and sender-constraining where the deployment supports it.
@@ -173,7 +174,7 @@ A useful pre-production test suite changes one artifact at a time:
 
 - omit, alter, expire, or replay `state`; the callback must fail before session creation;
 - start two parallel logins and complete both; each must use its own transaction;
-- exchange a code with the wrong verifier; the token endpoint must return an error such as `invalid_grant`;
+- exchange a code with the wrong verifier; the token endpoint must return an `invalid_grant` error;
 - omit PKCE or downgrade to `plain`; a client profile that requires PKCE must refuse to proceed;
 - return an otherwise valid ID token with the wrong nonce; the OIDC client must reject it;
 - return an ID token from another configured issuer; issuer validation or mix-up defenses must reject it; and
