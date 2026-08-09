@@ -68,23 +68,23 @@ An application-consistent snapshot is captured after the workload reaches a docu
 
 Use the database, filesystem, and operator documentation for the exact version. A command copied from another database—or even another storage engine in the same product—can create a snapshot that looks healthy but cannot be recovered.
 
-The most portable workflow is a controlled shutdown, snapshot, and restart. Online quiescing reduces downtime but adds failure modes: a hook can time out, the snapshot can take longer than expected, or the workload can remain frozen after an automation error.
+The most portable workflow is to shut down the workload cleanly, wait for any driver-required unmount or detachment, take the snapshot, and restart. Online quiescing reduces downtime but adds failure modes: a hook can time out, the snapshot can take longer than expected, or the workload can remain frozen after an automation error.
 
 ## A Failure-Safe Online Workflow
 
-Design quiescing as a transaction with a guaranteed thaw path:
+Design quiescing as a transaction with an independently enforced thaw path:
 
 1. Confirm the CSI driver supports snapshots while the volume is attached.
 2. Confirm the application supports the intended recovery method.
 3. Stop background jobs, compaction, schema changes, and backup operations that would conflict.
 4. Enter the application's documented backup or quiesced state.
 5. Request the snapshot and record its name, source PVC UID, and start time.
-6. Wait for the backend capture boundary required by the provider's documentation.
-7. Exit backup mode in a `finally`-style path, even when snapshot creation fails.
+6. Wait until the integration confirms that the snapshot has been cut; for a conformant dynamic CSI snapshot, this is recorded in the correctly bound snapshot's `status.creationTime`.
+7. Exit backup mode in a `finally`-style path backed by an independently enforced thaw deadline or watchdog, even when snapshot creation fails. If the capture boundary was not confirmed before thaw, discard the snapshot even if it later becomes ready.
 8. Wait for `readyToUse: true` before using the snapshot as a restore source.
 9. Restore to a new PVC and run application recovery and integrity checks.
 
-The subtle part is step 6. `VolumeSnapshot` creation is asynchronous. Some backends establish the point-in-time boundary before all snapshot data has finished materializing; others expose only eventual readiness. Do not keep a filesystem or database frozen until `readyToUse` unless the driver explicitly documents that requirement. A backup controller or storage integration should know which event marks the safe thaw boundary.
+The subtle part is step 6. Creating the Kubernetes `VolumeSnapshot` object is asynchronous, but CSI `CreateSnapshot` must block until the snapshot is cut. For a conformant dynamically provisioned snapshot, the driver returns that point-in-time cut in `creation_time`, which the controllers propagate to `.status.creationTime`; `readyToUse` can remain false while post-cut processing finishes. Confirm the bidirectional binding and observe that cut while the workload is still quiesced. Once the cut is confirmed, do not keep a filesystem or database frozen merely waiting for `readyToUse` unless the driver explicitly documents that requirement.
 
 If no supported integration exposes that boundary, prefer a clean shutdown or an application-native backup instead of inventing timing with `sleep`.
 
@@ -94,16 +94,16 @@ Backup systems such as Velero can execute pre- and post-backup hooks. Its offici
 
 Before using `fsfreeze`:
 
-- verify that the container has the required binary and privileges;
+- verify that the container has the required binary and privileges and that the mounted filesystem supports freezing;
 - freeze the actual mounted filesystem, not an overlay or wrong path;
-- define a short timeout and a post-hook that always unfreezes;
+- set explicit hook timeouts, configure an unfreeze post-hook for the normal path, and add an independently tested fail-safe that bounds the total freeze duration if the post-hook cannot run;
 - alert when either hook fails;
 - understand how the backup tool orders hooks and snapshot actions; and
 - test node, controller, and network failure while the filesystem is frozen.
 
-Filesystem freeze flushes and pauses filesystem I/O. It does not necessarily make database caches, remote dependencies, or multi-volume application state consistent. Prefer an application-native checkpoint or backup mode when one exists, optionally followed by a brief filesystem freeze if the vendor procedure calls for it.
+Filesystem freeze flushes dirty filesystem state and blocks new writes and other filesystem modifications. It does not necessarily make database caches, remote dependencies, or multi-volume application state consistent. Prefer an application-native checkpoint or backup mode when one exists, optionally followed by a brief filesystem freeze if the vendor procedure calls for it.
 
-Do not run ad hoc `fsfreeze --freeze` from a terminal during a production backup unless another tested control path guarantees `fsfreeze --unfreeze` after your session or node fails.
+Do not run ad hoc `fsfreeze --freeze` from a terminal during a production backup unless an independently tested watchdog or fail-safe thaw path can recover without depending on the same terminal or backup-controller session.
 
 ## Multiple PVCs Need One Recovery Boundary
 
@@ -121,7 +121,7 @@ Volume Group Snapshot support has separate CRDs, controller settings, sidecar ve
 
 ## Inspect What Kubernetes Actually Recorded
 
-After a request, follow status and events without altering controller-owned fields:
+After a request, follow status and events without altering controller-owned fields. Once `boundVolumeSnapshotContentName` is populated, use it to inspect the content:
 
 ```bash
 namespace=orders
