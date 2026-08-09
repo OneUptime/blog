@@ -48,7 +48,7 @@ OpenID Connect defines the ID token as a signed token containing claims about th
 }
 ```
 
-The client validates that token against its OIDC transaction: correct issuer, its own client ID in `aud`, signature and allowed algorithm, expiry and issuance time, and the expected `nonce` when one was sent. The subject identifier can then anchor the client's session.
+The client validates that token against its OIDC transaction: correct issuer, its own client ID in `aud`, signature and allowed algorithm, expiry, and the expected `nonce` when one was sent. A client can also reject an implausibly old `iat` value using a documented, client-specific acceptable range; OpenID Connect does not define one universal maximum token age. The subject identifier can then anchor the client's session.
 
 That client-focused audience is exactly why the ID token usually does not belong at `api.example.com`. The API is not `web-client-123`. The presence of useful-looking claims such as email, groups, or roles does not change the token's intended recipient.
 
@@ -67,7 +67,7 @@ An access token may be:
 
 Do not require it to look like a JWT. OAuth does not make that universal promise. Follow the API contract and the authorization server's metadata: locally validate a supported JWT access-token profile, or use the protected introspection endpoint for an opaque token when the issuer requires it.
 
-The token response's `token_type` tells the client how to present the token. For a bearer token, RFC 6750 defines the `Authorization: Bearer` method and recommends it over putting the token in a query string.
+The token response's `token_type` tells the client how to present the token. For a bearer token, RFC 6750 defines the `Authorization: Bearer` method. Current OAuth security guidance says clients must not pass access tokens in URI query parameters, where browser history, logs, and referrers can expose them.
 
 ## Audience Is the Critical Difference
 
@@ -106,7 +106,7 @@ For a JWT access token, use a maintained middleware or library configured for th
 
 Do not configure a generic JWT validator to accept both ID-token and access-token audiences. Use an access-token validation configuration dedicated to the API.
 
-For an opaque token, the API can send it to the authorization server's authenticated introspection endpoint when that is the issuer's contract. Require an `active` response and validate the returned issuer, client, audience or resource, expiry, scope, and subject semantics that the API relies on. Protect introspection credentials and cache only within the issuer's permitted lifetime and revocation model.
+For an opaque token, the API can send it to the authorization server's authenticated introspection endpoint when that is the issuer's contract. Require `active: true`. RFC 7662 makes fields such as issuer, client ID, audience, expiry, scope, and subject optional, so define which of them the issuer/API contract requires, validate each returned value, and reject a response that omits a contract-required field. Protect introspection credentials and cache only within the issuer's permitted lifetime and revocation model.
 
 Authorization still happens after token validation. A valid token with `orders.read` should not be allowed to perform `orders.delete`, and a subject may still be denied by tenant, object ownership, or application policy.
 
@@ -158,7 +158,7 @@ Bearer access tokens are usable by whoever possesses them. Sender-constrained ap
 
 ## Official Documentation
 
-- [OpenID Connect Core 1.0](https://openid.net/specs/openid-connect-core-1_0-18.html)
+- [OpenID Connect Core 1.0 incorporating errata set 2](https://openid.net/specs/openid-connect-core-1_0.html)
 - [OAuth 2.0 Authorization Framework: Access Tokens](https://www.rfc-editor.org/rfc/rfc6749.html)
 - [OAuth 2.0 Bearer Token Usage](https://www.rfc-editor.org/rfc/rfc6750.html)
 - [JWT Profile for OAuth 2.0 Access Tokens](https://www.rfc-editor.org/rfc/rfc9068.html)
