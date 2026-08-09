@@ -36,7 +36,6 @@
 
 ## OIDC
 
-1. ID Token vs Access Token in OIDC: Which Token Belongs in Your API Authorization Header?
 2. OAuth 2.0 vs OpenID Connect: Why an Access Token Alone Is Not a Login
 3. OIDC State vs Nonce vs PKCE: Which Attack Does Each One Prevent?
 4. Why Your OIDC Callback Fails Behind a Reverse Proxy: Redirect URIs, Forwarded Headers, and Cookie Paths
