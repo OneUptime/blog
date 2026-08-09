@@ -90,7 +90,7 @@ The API must require its configured audience or resource identifier. It must not
 
 If an authorization server issues access tokens with more than one audience, use its documented profile and validate every applicable restriction. Do not reuse the ID token's client audience as a fallback API audience.
 
-OAuth Resource Indicators, where supported, let a client identify the target resource using a `resource` parameter. Other providers use registered API scopes or audience-specific configuration. Use the issuer's documented method; inventing an `audience` request parameter is not portable.
+OAuth Resource Indicators, where supported, let a client identify the target resource using a `resource` parameter. Other providers use registered API scopes or audience-specific configuration. For ordinary authorization and token requests, use the issuer's documented method; provider-specific `audience` parameters are not portable. RFC 8693 separately defines `audience` for token-exchange requests.
 
 ## Validate the Access Token at the API
 
@@ -163,6 +163,7 @@ Bearer access tokens are usable by whoever possesses them. Sender-constrained ap
 - [OAuth 2.0 Bearer Token Usage](https://www.rfc-editor.org/rfc/rfc6750.html)
 - [JWT Profile for OAuth 2.0 Access Tokens](https://www.rfc-editor.org/rfc/rfc9068.html)
 - [OAuth 2.0 Resource Indicators](https://www.rfc-editor.org/rfc/rfc8707.html)
+- [OAuth 2.0 Token Exchange](https://www.rfc-editor.org/rfc/rfc8693.html)
 - [OAuth 2.0 Token Introspection](https://www.rfc-editor.org/rfc/rfc7662.html)
 - [OAuth 2.0 Security Best Current Practice](https://www.rfc-editor.org/rfc/rfc9700.html)
 

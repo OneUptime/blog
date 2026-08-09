@@ -37,15 +37,7 @@ offline_access absent   => refresh_token impossible       # also wrong
 Inspect the actual redirect, not only the application configuration that was meant to build it. A typical request for a public client has this shape:
 
 ```http
-GET /authorize?response_type=code
-    &client_id=example-client
-    &redirect_uri=https%3A%2F%2Fapp.example.com%2Fcallback
-    &scope=openid%20profile%20offline_access
-    &state=RANDOM_STATE
-    &nonce=RANDOM_NONCE
-    &code_challenge=BASE64URL_SHA256_CHALLENGE
-    &code_challenge_method=S256
-    &prompt=consent HTTP/1.1
+GET /authorize?response_type=code&client_id=example-client&redirect_uri=https%3A%2F%2Fapp.example.com%2Fcallback&scope=openid%20profile%20offline_access&state=RANDOM_STATE&nonce=RANDOM_NONCE&code_challenge=BASE64URL_SHA256_CHALLENGE&code_challenge_method=S256&prompt=consent HTTP/1.1
 Host: identity.example.com
 ```
 
@@ -65,6 +57,8 @@ Do not record the complete authorization code, PKCE verifier, tokens, or client 
 Fetch the configuration for the exact issuer used by the client:
 
 ```bash
+set -o pipefail
+
 oidc_issuer='https://identity.example.com'
 
 curl --fail --silent --show-error \
@@ -94,6 +88,8 @@ For a one-time diagnostic of a public PKCE client, exchange a fresh code and red
 
 ```bash
 # A code is single-use. Run this only with a newly returned code.
+set -o pipefail
+
 token_endpoint='https://identity.example.com/token'
 client_id='example-public-client'
 redirect_uri='https://app.example.com/callback'
@@ -139,7 +135,7 @@ When the wire request and token response are understood, review the registration
 - Does the client use the registered token-endpoint authentication method?
 - Does policy permit long-lived delegated access for this user, tenant, requested resource, and scope set?
 
-The security policy is not incidental. Refresh tokens can mint new access tokens after the user leaves, so RFC 9700 treats them as attractive attack targets. Providers may refuse them, bind them to a client, set inactivity expiry, rotate them, or require sender-constraining for public clients. A browser-only architecture may need a provider-supported rotation design or a backend-for-frontend that keeps the refresh token out of JavaScript. Do not weaken policy merely to make a token appear.
+The security policy is not incidental. Refresh tokens can mint new access tokens after the user leaves, so RFC 9700 treats them as attractive attack targets. Providers may refuse them or set inactivity expiry. Issued refresh tokens must remain bound to the client, and refresh tokens for public clients must be sender-constrained or use rotation. A browser-only architecture may need a provider-supported rotation design or a backend-for-frontend that keeps the refresh token out of JavaScript. Do not weaken policy merely to make a token appear.
 
 Existing grants create another provider-specific edge case. Some providers return a refresh token only when the offline grant is first created or when consent is deliberately renewed. If the application discarded that credential, repeating a silent login may return only new short-lived tokens. Consult the provider's official documentation for its re-consent or revocation procedure; do not build an endless `prompt=consent` loop.
 
@@ -160,7 +156,12 @@ if (!tokenSet.refresh_token) {
   // Choose a product policy: short session, interactive reauthentication,
   // or a clear message that background access was not granted.
 } else {
-  await storeRefreshTokenEncryptedAndAtomically(tokenSet.refresh_token);
+  await createRenewableSessionWithEncryptedRefreshTokenAtomically({
+    accessToken: tokenSet.access_token,
+    expiresIn: tokenSet.expires_in,
+    refreshToken: tokenSet.refresh_token,
+    renewable: true,
+  });
 }
 ```
 
