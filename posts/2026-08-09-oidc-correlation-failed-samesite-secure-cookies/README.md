@@ -1,8 +1,8 @@
-# How to Fix an OIDC “Correlation Failed” Error Caused by SameSite and Secure Cookies
+# Fix OIDC Correlation Failed Errors from SameSite and Secure Cookies
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenID Connect, OIDC, ASP.NET Core, SameSite, Cookies, Authentication, Troubleshooting
+Tags: OpenID Connect, OIDC, ASP.NET Core, SameSite, Cookie, Authentication, Troubleshooting
 
 Description: Diagnose and fix ASP.NET Core OIDC correlation failures by preserving correlation and nonce cookies across cross-site redirects, TLS termination, proxies, and multi-instance deployments.
 

@@ -1,4 +1,4 @@
-# Kubernetes `VolumeSnapshot`, `VolumeSnapshotContent`, and `VolumeSnapshotClass`: What Does Each Object Do?
+# Kubernetes VolumeSnapshot Objects: Snapshot, Content, and Class
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,10 +1,10 @@
-# ID Token vs Access Token in OIDC: Which Token Belongs in Your API Authorization Header?
+# OIDC ID Token vs Access Token: Which Belongs in an API Header?
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenID Connect, OAuth 2.0, ID Token, Access Token, API Security, Authentication, Authorization
+Tags: OpenID Connect, OAuth 2.0, ID Token, Access Tokens, API Security, Authentication, Authorization
 
-Description: Send the access token—not the OIDC ID token—to an API, then validate its issuer, audience, lifetime, and authorization according to the token format.
+Description: Send the access token-not the OIDC ID token-to an API, then validate its issuer, audience, lifetime, and authorization according to the token format.
 
 ---
 

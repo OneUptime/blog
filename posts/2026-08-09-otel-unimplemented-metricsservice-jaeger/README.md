@@ -1,8 +1,8 @@
-# OpenTelemetry Collector Returns “Unimplemented MetricsService”: Are You Sending the Wrong Signal to Jaeger?
+# OpenTelemetry MetricsService Is Unimplemented When Sending Metrics to Jaeger
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, OpenTelemetry Collector, Jaeger, OTLP, Metrics, Troubleshooting
+Tags: OpenTelemetry, OpenTelemetry Collector, Jaeger, OTLP, Metric, Troubleshooting
 
 Description: Diagnose OTLP MetricsService UNIMPLEMENTED errors by identifying the responder and routing traces and metrics only to backends that support each signal.
 

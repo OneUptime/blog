@@ -1,8 +1,8 @@
-# VolumeSnapshot Stuck in Terminating: How to Diagnose Finalizers Before Removing Them
+# VolumeSnapshot Stuck Terminating: Diagnose Finalizers Before Removal
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, CSI, VolumeSnapshot, VolumeSnapshotContent, Finalizers, Storage, Troubleshooting
+Tags: Kubernetes, CSI, VolumeSnapshot, VolumeSnapshotContent, Finalizer, Storage, Troubleshooting
 
 Description: Trace a terminating VolumeSnapshot through restore protection, content deletion, the CSI snapshotter, credentials, and backend cleanup before considering manual finalizer removal.
 

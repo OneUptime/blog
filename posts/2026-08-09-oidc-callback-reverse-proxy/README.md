@@ -1,4 +1,4 @@
-# Why Your OIDC Callback Fails Behind a Reverse Proxy: Redirect URIs, Forwarded Headers, and Cookie Paths
+# Fix OIDC Callbacks Behind Proxies: Headers, Redirects, and Cookies
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

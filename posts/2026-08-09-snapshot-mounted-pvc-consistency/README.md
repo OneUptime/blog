@@ -1,4 +1,4 @@
-# Can You Snapshot a PVC While It Is Mounted? Crash Consistency vs Application Consistency
+# Snapshotting a Mounted PVC: Crash vs Application Consistency
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -66,7 +66,7 @@ An application-consistent snapshot is captured after the workload reaches a docu
 - snapshotting data and log volumes together; or
 - cleanly stopping the application.
 
-Use the database, filesystem, and operator documentation for the exact version. A command copied from another database—or even another storage engine in the same product—can create a snapshot that looks healthy but cannot be recovered.
+Use the database, filesystem, and operator documentation for the exact version. A command copied from another database-or even another storage engine in the same product-can create a snapshot that looks healthy but cannot be recovered.
 
 The most portable workflow is to shut down the workload cleanly, wait for any driver-required unmount or detachment, take the snapshot, and restart. Online quiescing reduces downtime but adds failure modes: a hook can time out, the snapshot can take longer than expected, or the workload can remain frozen after an automation error.
 

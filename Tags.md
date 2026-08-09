@@ -7273,6 +7273,7 @@
 - Forward Proxy
 - Forward Zone
 - Forwardable
+- Forwarded Headers
 - Forwarding
 - Forwarding Database
 - ForwardRef
@@ -8612,6 +8613,7 @@
 - ID Generation
 - ID Generator
 - ID Mapping
+- ID Token
 - IDE
 - IDE Configuration
 - IDE Integration
@@ -12511,6 +12513,7 @@
 - Offline Scanning
 - Offline Testing
 - Offline validation
+- offline_access
 - Offline-First
 - Offload
 - Offset
@@ -15867,6 +15870,7 @@
 - SAM
 - Samba
 - Same-Region Replication
+- SameSite
 - SAML
 - SAMPLE
 - SAMPLE BY

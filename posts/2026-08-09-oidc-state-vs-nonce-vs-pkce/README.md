@@ -38,7 +38,7 @@ Also support parallel login attempts. A single `oauth_state` slot per user sessi
 
 ## Nonce Correlates the ID Token
 
-OIDC defines `nonce` as a value passed unchanged from the authentication request into the ID token's `nonce` claim. After validating the ID token—including its issuer, subject, audience, expiration, configured signature and algorithm policy, and any applicable `azp` requirements—the client must compare that claim with the nonce stored for the transaction.
+OIDC defines `nonce` as a value passed unchanged from the authentication request into the ID token's `nonce` claim. After validating the ID token-including its issuer, subject, audience, expiration, configured signature and algorithm policy, and any applicable `azp` requirements-the client must compare that claim with the nonce stored for the transaction.
 
 This makes an old or substituted ID token fail in a new login transaction. It also helps detect authorization-code injection because the ID token obtained from an injected code carries the nonce bound to the transaction that issued that code, rather than the nonce stored for the current browser transaction. Current OAuth security guidance also recognizes nonce as a valid OIDC CSRF defense.
 
