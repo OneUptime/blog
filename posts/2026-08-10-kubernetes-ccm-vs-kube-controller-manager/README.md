@@ -17,7 +17,7 @@ That distinction is the fastest way to choose the right logs during an incident.
 | Symptom or resource | Primary owner | Why |
 | --- | --- | --- |
 | Deployment, ReplicaSet, StatefulSet, Job, or namespace reconciliation | `kube-controller-manager` | These are cloud-independent Kubernetes API control loops |
-| Node heartbeats becoming `Unknown`, `NotReady` taints, and pod eviction after lost heartbeats | `kube-controller-manager` node lifecycle logic | This is based on Kubernetes Node status and leases |
+| Node `Ready` becoming `False` or `Unknown`, the corresponding `not-ready` or `unreachable` taints, and taint-based Pod eviction | `kube-controller-manager` node-lifecycle and taint-eviction controllers | Node lifecycle evaluates Node status and Lease heartbeats; taint eviction acts on `NoExecute` taints |
 | Initial cloud identity, topology labels, provider ID, and cloud-reported Node addresses | CCM node controller | The values come from the provider API |
 | Checking whether an unresponsive Node's backing server was deleted | CCM cloud node lifecycle controller, where implemented | Only the provider can authoritatively answer whether the instance exists |
 | Assigning Pod CIDRs to Nodes | Usually `kube-controller-manager` node IPAM | Allocation is a Kubernetes cluster concern |
@@ -30,7 +30,7 @@ Provider implementations can split the standard CCM node work into separate node
 
 ## What the CCM Node Controller Changes
 
-With an external provider, a kubelet registers a Node without claiming to know cloud facts. The CCM finds the matching server and initializes fields such as:
+With an external provider, a kubelet registers a Node but does not perform cloud-provider initialization; it can still supply a provider ID or bootstrap node IP explicitly. The CCM queries the provider for the matching server and initializes or reconciles cloud-derived fields such as:
 
 ```bash
 kubectl get node worker-1 -o jsonpath='{.spec.providerID}{"\n"}'
@@ -40,7 +40,7 @@ kubectl get node worker-1 --show-labels
 
 Common results include a provider-specific `.spec.providerID`, `topology.kubernetes.io/region`, `topology.kubernetes.io/zone`, instance-type labels, and `InternalIP` or `ExternalIP` entries. Before that second initialization finishes, a kubelet configured with `--cloud-provider=external` adds the `node.cloudprovider.kubernetes.io/uninitialized:NoSchedule` taint. The CCM removes it after successful initialization.
 
-This is different from ordinary Node health monitoring. The kubelet continues to update Node status and its Lease. The cloud-independent node lifecycle controller in `kube-controller-manager` observes those signals and manages `NotReady` or `Unreachable` behavior. The CCM's cloud lifecycle check adds a separate fact: whether the backing server still exists at the provider.
+This is different from ordinary Node health monitoring. The kubelet continues to update Node status and its Lease. The cloud-independent node lifecycle controller in `kube-controller-manager` observes those signals, updates the Node's `Ready` condition, and manages the corresponding `not-ready` or `unreachable` taints. The separate taint-eviction controller, also in `kube-controller-manager`, handles taint-based Pod eviction. The CCM's cloud lifecycle check adds a separate fact: whether the backing server still exists at the provider.
 
 ## Routes: Allocation Is Not Programming
 
@@ -50,7 +50,7 @@ A common diagnostic mistake is to treat Pod CIDR allocation and cloud route crea
 2. If the cluster uses provider routes, the CCM route controller programs the infrastructure so that traffic for that CIDR reaches the correct Node.
 3. If the CNI uses an overlay, BGP, or its own routing integration, the CCM route controller may be unsupported or intentionally disabled.
 
-Therefore, a Node with no Pod CIDR points toward IPAM configuration. A Node with a Pod CIDR but no corresponding provider route points toward the CCM, its flags, cloud permissions, quotas, or provider support. Never enable cloud-route reconciliation just because the flag exists; it can conflict with the CNI's routing model.
+Therefore, in a cluster configured to allocate per-Node Pod CIDRs, a Node with no Pod CIDR points toward IPAM configuration. In a cluster that expects provider routes, a Node with a Pod CIDR but no corresponding provider route points toward the CCM, its flags, cloud permissions, quotas, or provider support. Never enable cloud-route reconciliation just because the flag exists; it can conflict with the CNI's routing model.
 
 ## Services: The CCM Does Not Implement All Service Networking
 
@@ -64,16 +64,16 @@ Use this sequence when a Service is stuck:
 kubectl describe service -n app web
 kubectl get service -n app web -o yaml
 kubectl get endpointslice -n app -l kubernetes.io/service-name=web
-kubectl logs -n kube-system -l component=cloud-controller-manager --since=20m
+kubectl logs -n kube-system -l k8s-app=cloud-controller-manager --since=20m --tail=-1
 ```
 
-Events and `.status.loadBalancer` show the control-plane result. EndpointSlices and NodePort reachability show whether the backend data path is usable.
+Adjust the namespace and CCM label selector to match the provider's manifest. Events and `.status.loadBalancer` show the control-plane result. EndpointSlices show which backends the control plane selected. Testing NodePort reachability, when a NodePort was allocated, exercises the backend data path.
 
 ## Storage Belongs to CSI, Not CCM
 
 External cloud providers do not turn the CCM into a storage plugin. CSI drivers run their own controller-side components for operations such as provision and attach, and a node-side plugin for stage and mount. Kubernetes still contains generic persistent-volume controllers that coordinate through API objects, but provider storage calls belong behind CSI.
 
-This matters during migration. Moving node, route, and Service integration to an external CCM does not by itself migrate an in-tree volume plugin. CSI migration, the provider's CSI driver, snapshot components, and credential configuration are separate workstreams.
+This matters during migration. Moving node, route, and Service integration to an external CCM does not by itself migrate an in-tree volume plugin. CSI migration, the provider's CSI driver, snapshot components when snapshots are used, and credential configuration are separate workstreams.
 
 ## A Fast Incident Triage
 
@@ -109,4 +109,4 @@ Do not restart every controller at once. That destroys evidence and can turn a l
 
 ## Conclusion
 
-The CCM owns control loops that need cloud knowledge: Node initialization and cloud lifecycle checks, provider routes where supported, and provider load balancers for Services it owns. `kube-controller-manager` retains cloud-independent workload, lifecycle, endpoint, service-account, garbage-collection, and other Kubernetes controllers. CSI owns storage, while an Ingress, Gateway, or specialized load-balancer controller may own additional networking APIs. Match the failing external effect to that boundary and the correct logs become much easier to find.
+The CCM owns control loops that need cloud knowledge: Node initialization and cloud lifecycle checks, provider routes where supported, and provider load balancers for Services it owns. `kube-controller-manager` retains cloud-independent workload, lifecycle, endpoint, service-account, garbage-collection, and other Kubernetes controllers. CSI drivers own provider-specific storage operations, while an Ingress, Gateway, or specialized load-balancer controller may own additional networking APIs. Match the failing external effect to that boundary and the correct logs become much easier to find.
