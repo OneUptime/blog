@@ -37,7 +37,7 @@ CCM route controller lists Nodes and provider routes
         ↓
 provider Routes implementation creates/deletes routes
         ↓
-Node NetworkUnavailable condition reflects the result
+Node NetworkUnavailable condition is updated for reconciled route actions
 ```
 
 Kubernetes' shared controller-manager configuration describes `allocateNodeCIDRs` as enabling Pod CIDR allocation and `configureCloudRoutes` as configuring allocated CIDRs on the provider. In the current upstream cloud-provider route implementation, reconciliation itself reads `.spec.podCIDRs`; it skips a Node whose list is empty.
@@ -90,17 +90,16 @@ Kubernetes defines `cloudprovider.Interface.Routes()` to return both a `Routes` 
 If `--configure-cloud-routes=true` but the provider returns unsupported, upstream CCM logs this warning and does not start the controller:
 
 ```text
---configure-cloud-routes is set, but cloud provider does not support routes.
-Will not configure cloud provider routes.
+--configure-cloud-routes is set, but cloud provider does not support routes. Will not configure cloud provider routes.
 ```
 
 This is not fixed with broader IAM. It means the installed provider integration has not offered that controller contract. Read the exact provider release documentation for the chosen networking mode and CCM version.
 
-Also verify that the provider binary actually started its expected controller set. Standard controller aliases include `route`, while current canonical names can differ in generated flags. Prefer the provider manifest's documented name over guessing.
+Also verify that the provider binary actually started its expected controller set. In cloud-provider v0.36.0, the canonical controller name is `node-route-controller`, and `route` remains a backward-compatible alias. Downstream provider binaries can register different controller sets, so prefer the provider manifest's documented name over guessing.
 
 ## Inspect Events, Conditions, and Logs
 
-The upstream controller records a `FailedToCreateRoute` warning Event against the Node when `CreateRoute` fails. It also updates the `NetworkUnavailable` Node condition: successful routes produce a `RouteCreated` reason, while missing routes produce `NoRouteCreated`.
+The upstream controller records a `FailedToCreateRoute` warning Event against the Node when `CreateRoute` fails. For Nodes it reconciles, having no unresolved create or update action sets `NetworkUnavailable=False` with reason `RouteCreated`; an unresolved create or update action sets `NetworkUnavailable=True` with reason `NoRouteCreated`. A `ListRoutes` failure returns before any condition update, and `DeleteRoute` failures are only logged, so this condition is not a complete signal for every reconciliation failure.
 
 ```bash
 kubectl describe node <node-name>
@@ -134,13 +133,13 @@ Compare three sets explicitly:
 2. routes returned as managed for this cluster; and
 3. all relevant entries visible in the provider console or API.
 
-Do not manually delete every “extra” route without understanding the ownership filter. The route controller removes blackhole routes and managed routes that no longer correspond to Nodes; unrelated network routes must remain outside its managed scope.
+Do not manually delete every “extra” route without understanding the ownership filter. The route controller only considers routes returned by `ListRoutes(clusterName)`, and it deletes blackhole routes or routes that no longer correspond to Nodes and their Pod CIDRs only when their destinations are in its configured cluster CIDR scope; returned routes outside that scope are ignored.
 
 ## Reconciliation Timing in Kubernetes v1.36
 
-The standard controller traditionally reconciles at `--route-reconciliation-period`. Kubernetes v1.35 added the alpha `CloudControllerManagerWatchBasedRoutesReconciliation` feature gate, disabled by default. When enabled, Node addition, deletion, `.spec.podCIDRs` changes, and `.status.addresses` changes enqueue a cluster route reconciliation; a randomized 12-to-24-hour resync provides cleanup.
+The standard controller traditionally reconciles at `--route-reconciliation-period`. Kubernetes v1.35 added the alpha `CloudControllerManagerWatchBasedRoutesReconciliation` feature gate, disabled by default. When enabled, Node addition, deletion, `.spec.podCIDRs` changes, and `.status.addresses` changes enqueue a cluster route reconciliation; an informer resync randomized between `--min-resync-period` and twice that value (12 to 24 hours by default) provides cleanup.
 
-Kubernetes v1.36 adds the alpha counter `route_controller_route_sync_total`, which increments each time routes are synchronized. It can help distinguish “the loop never starts” from “the loop runs but provider operations fail.” With the watch-based gate disabled, a stable cluster's counter should rise on the fixed interval. With it enabled, the counter is event-driven and can remain unchanged while Nodes are stable.
+Kubernetes v1.36 adds the alpha counter `route_controller_route_sync_total`, which increments at the start of each route synchronization attempt. It can help distinguish “the loop never starts” from “the loop runs but provider operations fail.” With the watch-based gate disabled, a stable cluster's counter should rise on the fixed interval. With it enabled, the counter is event-driven and can remain unchanged while Nodes are stable.
 
 Treat a rising counter as evidence of attempts, not success. Pair it with warning Events, Node conditions, and provider API metrics.
 
