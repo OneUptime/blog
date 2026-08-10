@@ -21,7 +21,7 @@ Use this order:
 
 ## First: Make Sure This Token Should Contain Your Role
 
-An OIDC sign-in can return an ID token and one or more access tokens. Roles can appear in different tokens according to the scenario:
+An OIDC sign-in can return an ID token, while OAuth token requests associated with that session can obtain access tokens. Roles can appear in different tokens according to the scenario:
 
 - roles assigned for a user signing in to an application can appear in that application's ID token;
 - roles defined by an API can appear in an access token whose audience is that API;
@@ -53,12 +53,13 @@ For client credentials:
 2. Add it to the calling client's API permissions as an **Application permission**.
 3. Grant admin consent in the resource tenant.
 4. Confirm the resulting app-role assignment from the **client service principal** to the **resource service principal**.
-5. Request `{resource}/.default` with `grant_type=client_credentials`.
+5. Request `scope={resource}/.default` from the v2.0 token endpoint with `grant_type=client_credentials`, where `{resource}` is the API's Application ID URI.
 
-The token should contain the granted application role in `roles`:
+The token should contain the granted application role in `roles`. For example, a v2.0 access token for a resource configured to emit the optional `idtyp` claim can contain:
 
 ```json
 {
+  "ver": "2.0",
   "aud": "resource-api-client-id",
   "azp": "calling-client-id",
   "idtyp": "app",
@@ -66,6 +67,8 @@ The token should contain the granted application role in `roles`:
   "roles": ["Orders.Read.All"]
 }
 ```
+
+A v1.0 access token uses `appid` instead of `azp`; do not expect `idtyp` unless it is configured as an optional claim on the resource API.
 
 Adding a role with only `User` as an allowed member type does not create an application permission.
 
@@ -143,7 +146,7 @@ Do not decide that the assignment failed merely because an existing session cont
 Group assignment can make user-role management scalable, but test its semantics:
 
 - group-based enterprise-application assignment requires Microsoft Entra ID P1 or P2;
-- nested group membership is not universally supported across assignment features;
+- enterprise-application assignments do not cascade to nested groups; only direct user members are effective;
 - token group overage is separate from app-role emission; and
 - Microsoft explicitly documents that placing a **service principal** in a group and assigning an app role to that group does not produce a `roles` claim for the service principal.
 
@@ -155,12 +158,12 @@ Microsoft Entra group-claim configuration has an option to emit groups as role c
 
 If `roles` contains group identifiers or names but not the application values:
 
-1. inspect **Enterprise applications > Single sign-on > Attributes & Claims**;
-2. check whether groups are emitted as roles;
+1. inspect **App registrations > [resource API] > Token configuration**, or the resource application's `optionalClaims.accessToken` manifest entry;
+2. check whether the access-token groups claim uses **Emit groups as role claims**;
 3. decide whether the application expects compatibility group values or actual app roles; and
 4. use one explicit contract rather than merging ambiguous values.
 
-Custom claims mappings and SAML role-claim configuration can also affect a SAML assertion. Keep SAML troubleshooting separate from JWT access-token behavior.
+Claims-mapping policies can also affect JWT access tokens, while SAML role-claim configuration affects SAML assertions. Keep SAML troubleshooting separate from JWT access-token behavior.
 
 ## Enabled State and Revocation
 
@@ -197,7 +200,7 @@ Validate:
 - intended audience;
 - lifetime and token version;
 - delegated versus app-only identity context; and
-- required scope or role for the operation.
+- the required delegated scope and any required user app role for a user call, or the required application role for an app-only call.
 
 Then apply object ownership, tenant isolation, and business policy. A valid `Orders.Reader` role does not grant update permission by implication.
 
