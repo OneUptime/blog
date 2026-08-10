@@ -42,8 +42,6 @@
 
 ## Entra ID
 
-6. How to Fix AADSTS50011 When the Entra Redirect URI Looks Correct
-14. Single-Tenant vs Multi-Tenant Entra Apps: How `common`, `organizations`, and Tenant Endpoints Change Validation
 
 ## Image Signing
 
