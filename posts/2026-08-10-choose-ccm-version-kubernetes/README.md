@@ -26,14 +26,16 @@ Do not override a managed control-plane component because upstream has a newer t
 
 ## Inventory Every API Server Version
 
-In an HA upgrade, a CCM can reach an older API server through the control-plane load balancer. It cannot be newer than that oldest reachable server.
+In an HA upgrade, a CCM can reach an older API server through the control-plane load balancer. It cannot be newer than that oldest reachable server. On a kubeadm-style self-managed control plane, inspect the mirrored API server static Pods with:
 
 ```bash
 kubectl get pods -n kube-system -l component=kube-apiserver \
-  -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.spec.containers[0].image}{"\n"}{end}'
+  -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.spec.containers[?(@.name=="kube-apiserver")].image}{"\n"}{end}'
 
 kubectl version
 ```
+
+`kubectl version` reports only the API server that handles that request, not every HA backend. Managed services and distributions that hide or label control-plane Pods differently require their own inventory mechanism.
 
 Suppose API servers are temporarily v1.35 and v1.36. A CCM that can reach either must not be v1.36 because it would be newer than the v1.35 API server. Keep it at v1.35 until all reachable API servers are v1.36, then upgrade CCM. Kubernetes documents no required order among `kube-controller-manager`, `kube-scheduler`, and CCM after API servers are ready.
 
@@ -90,13 +92,13 @@ Storage compatibility belongs to the CSI driver. A matching CCM version does not
 
 For a normal minor upgrade from N to N+1:
 
-1. Upgrade current components to supported current-minor patches.
+1. Bring forward any kubelet or kube-proxy instances already three minors behind the current API server, then upgrade current components to supported current-minor patches.
 2. Review the provider's specific migration and release notes.
 3. Upgrade all API servers the CCM can reach to N+1, following HA version-skew policy.
-4. Upgrade CCM to the provider-supported N+1 release.
+4. Upgrade CCM to the provider-supported release for Kubernetes N+1.
 5. Upgrade or roll kubelets and other components in the documented order.
 
-For an in-tree-to-external migration, use the provider procedure and Kubernetes Controller Manager Leader Migration where supported. That transition can intentionally coordinate an N in-tree controller with an N+1 external CCM through a shared Lease; do not replace it with an ordinary image rollout.
+For an HA in-tree-to-external migration from a Kubernetes release that still contains the in-tree provider, use the provider procedure and Kubernetes Controller Manager Leader Migration where supported. That transition can intentionally coordinate a version-N `kube-controller-manager` running in-tree controllers with an external CCM built for Kubernetes N+1 through a shared Lease; do not replace it with an ordinary image rollout.
 
 Never skip Kubernetes minor versions for the API server. A CCM matrix listing both endpoints does not make a skipped control-plane upgrade supported.
 
@@ -114,9 +116,10 @@ kubectl get pod -n kube-system CCM_POD -o json | jq '{
 # Node initialization
 kubectl get nodes -o custom-columns=NAME:.metadata.name,PROVIDER_ID:.spec.providerID,TAINTS:.spec.taints
 
-# Leadership and recent errors
-kubectl get leases -A | grep -i cloud
-kubectl logs -n kube-system CCM_LEADER_POD --since=30m
+# Leadership and recent errors; use the provider's Lease and container names
+kubectl get lease -n kube-system CCM_LEASE \
+  -o custom-columns=NAME:.metadata.name,HOLDER:.spec.holderIdentity,RENEWED:.spec.renewTime
+kubectl logs -n kube-system CCM_LEADER_POD -c CCM_CONTAINER --since=30m
 ```
 
 Create and remove one canary Node. Create, update, and delete one disposable `LoadBalancer` Service. If provider routes are enabled, compare routes before and after the canary Node. Check provider audit logs for unexpected replacement or deletion.
@@ -143,7 +146,7 @@ Use provider-supported rollback and verify ownership before restoring traffic.
 
 As of Kubernetes v1.36 documentation, maintained upstream release branches are v1.36, v1.35, and v1.34. That window changes over time; do not hard-code it into long-lived automation. Query current Kubernetes support and provider release pages during every upgrade.
 
-Kubernetes v1.31+ has no in-tree provider fallback. If a current CCM release is unavailable for the planned Kubernetes minor, that is an upgrade blocker. Leaving a historical provider name on core components is not a supported bridge.
+Kubernetes v1.31+ has no in-tree provider fallback. If a compatible CCM release is unavailable for a cluster that depends on that provider integration, the planned upgrade is blocked. Leaving a historical provider name on core components is not a supported bridge.
 
 ## Official Documentation
 
