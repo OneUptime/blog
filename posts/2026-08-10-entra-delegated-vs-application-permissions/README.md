@@ -73,10 +73,7 @@ With a standard app registration, the client uses the **client credentials flow*
 POST https://login.microsoftonline.com/<tenant-id>/oauth2/v2.0/token
 Content-Type: application/x-www-form-urlencoded
 
-client_id=11112222-bbbb-3333-cccc-4444dddd5555
-&scope=https%3A%2F%2Fgraph.microsoft.com%2F.default
-&client_secret=<url-encoded-secret>
-&grant_type=client_credentials
+client_id=11112222-bbbb-3333-cccc-4444dddd5555&scope=https%3A%2F%2Fgraph.microsoft.com%2F.default&client_secret=<url-encoded-secret>&grant_type=client_credentials
 ```
 
 Client-credentials requests use `{resource}/.default`. They cannot request an individual application permission by placing its name in `scope`. Entra includes the application permissions already granted for that resource.
@@ -95,7 +92,7 @@ Delegated permissions can receive:
 - **tenant-wide admin consent**, which preauthorizes delegated permissions for users in the tenant; or
 - a principal-specific delegated grant created by an authorized administrator.
 
-Application permissions require administrator consent. The resulting assignment connects the client service principal to an app role exposed by the resource service principal.
+Application permissions generally require administrator consent. For a custom API, an owner of the resource service principal can also consent to its exposed app roles. The resulting assignment connects the client service principal to an app role exposed by the resource service principal.
 
 Admin consent does not choose which employees may sign in to an enterprise application. That is a separate assignment/access-management decision.
 
@@ -130,7 +127,7 @@ Use on-behalf-of with delegated permissions. Do not replace the user token with 
 
 ### Scheduled processing triggered by a user
 
-The fact that a user originally configured the schedule does not keep an interactive user present forever. If the job must continue independently, design an app-only authorization model. Do not indefinitely store a user's refresh token as a shortcut without a documented requirement and lifecycle controls.
+The fact that a user originally configured the schedule does not keep an interactive user present forever. If the job must continue independently of that user's identity and authorization, design an app-only authorization model. Do not indefinitely store a user's refresh token as a shortcut without a documented requirement and lifecycle controls.
 
 ### API needing both user and daemon clients
 
@@ -147,7 +144,7 @@ Do not make one permission name silently stand for both security contexts.
 
 ### Requesting a delegated scope with client credentials
 
-There is no user to delegate from. Configure an application permission on the target API, grant admin consent, and request the resource's `.default` scope.
+There is no user to delegate from. For an API that uses app roles, configure and grant an application permission; for a custom API designed around an application ACL, configure that ACL instead. In either case, request the resource's `.default` scope.
 
 ### Expecting `scp` in an app-only token
 
@@ -171,7 +168,7 @@ The target API exposes scopes and app roles. The client then requests those perm
 - Never put a client secret in a browser, mobile app, or distributed desktop binary.
 - Prefer managed identity, federation, or certificates for confidential workloads.
 - Grant least-privilege permissions and review tenant-wide consent.
-- Validate issuer, audience, lifetime, token version, and the required scopes or roles at the API.
+- Validate the signature, issuer, audience, lifetime, token version, and the required scopes or roles at the API.
 - Apply resource-specific authorization after token validation.
 - Monitor user, service-principal, and managed-identity sign-ins in their appropriate log categories.
 
@@ -188,4 +185,4 @@ The target API exposes scopes and app roles. The client then requests those perm
 
 ## Conclusion
 
-Delegated permissions mean a client acts with a signed-in user's context and normally use an interactive or on-behalf-of grant. Application permissions mean the service principal acts as itself and use client credentials. Model the actor first, configure the matching permission and consent, request a token for the correct resource, and have the API enforce the correct `scp` or `roles` contract.
+Delegated permissions mean a client acts with a signed-in user's context and normally use an interactive or on-behalf-of grant. Application permissions mean the service principal acts as itself; standard confidential clients normally use client credentials, while managed identities use Azure's managed identity service. Model the actor first, configure the matching permission and consent, request a token for the correct resource, and have the API enforce the correct `scp` or `roles` contract.
