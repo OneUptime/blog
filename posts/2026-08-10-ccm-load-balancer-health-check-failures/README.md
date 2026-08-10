@@ -19,13 +19,14 @@ First determine which path the controller built:
 ```text
 health checker
   -> firewall / security group / network policy boundary
-  -> node address + healthCheckNodePort or Service NodePort
+  -> node address + service-proxy health endpoint
+     OR node address + Service NodePort
+        -> kube-proxy / CNI data plane -> ready application endpoint
      OR pod IP + target port
-  -> kube-proxy / CNI data plane where applicable
-  -> ready application endpoint
+        -> ready application endpoint
 ```
 
-A public address proves the front end exists. It does not prove targets are registered, probes can traverse the network, or the application answers the configured check.
+Some checks terminate at kube-proxy or its replacement and report proxy, Node, or local-endpoint state; others reach the application. An assigned load-balancer address proves the front end exists. It does not prove targets are registered, probes can traverse the network, or the application answers a check that targets it.
 
 ## Capture Service Ownership and Status
 
@@ -48,14 +49,14 @@ Record:
 - `allocateLoadBalancerNodePorts`;
 - each Service `port`, `targetPort`, `nodePort`, protocol, and `appProtocol`;
 - `healthCheckNodePort` if present;
-- selector and ready EndpointSlice addresses; and
+- selector, `publishNotReadyAddresses`, and EndpointSlice addresses and conditions; and
 - `loadBalancerSourceRanges`, IP families, and traffic distribution settings.
 
 Identify the controller from class, Events, installed admission webhooks, and logs. A cluster can have a default CCM Service controller plus a specialized provider load-balancer controller. Reading the wrong controller's annotation guide wastes time and can introduce conflicting ownership.
 
 ## 1. Prove the Application Endpoint Is Ready
 
-Health checks cannot succeed when the Service has no ready endpoints:
+Application traffic requires usable Service endpoints, but a provider's node-level health check can, depending on the traffic policy and implementation, pass without probing the application. Verify endpoint readiness independently:
 
 ```bash
 kubectl get pods -n "$NS" -l app=web -o wide
@@ -63,21 +64,21 @@ kubectl describe pod -n "$NS" WEB_POD
 kubectl get endpointslice -n "$NS" -l kubernetes.io/service-name="$SVC"
 ```
 
-Verify the Service selector matches the intended Pods, readiness probes succeed, `targetPort` resolves to the actual listening container port, and the application listens on the Pod interface rather than only `127.0.0.1`.
+Verify the Service selector matches the intended Pods or, for a selectorless Service, that its externally managed EndpointSlices contain the intended backends. Confirm Pod readiness probes succeed, `targetPort` resolves to the actual listening container port, and the application listens on the Pod interface rather than only `127.0.0.1`. When `publishNotReadyAddresses: true`, Kubernetes-generated EndpointSlices report endpoints as ready even when the Pods are not, so inspect Pod readiness separately.
 
 Test from inside the cluster using an approved diagnostic image:
 
 ```bash
 kubectl run -n "$NS" lb-debug --rm -it --restart=Never \
   --image=curlimages/curl -- \
-  curl -fsS http://SERVICE_CLUSTER_IP:SERVICE_PORT/HEALTH_PATH
+  curl -fsS "http://${SVC}:SERVICE_PORT/HEALTH_PATH"
 ```
 
-Use the real protocol, port, and path. An HTTP probe usually expects a success status; redirects, authentication challenges, host-header requirements, or TLS name mismatch may mark an otherwise functional application unhealthy.
+Use the real protocol, port, and path. If `internalTrafficPolicy: Local`, run the diagnostic Pod on a Node with a local ready endpoint or test an endpoint directly; the Service proxy drops ClusterIP traffic originating on a Node without a local endpoint. An HTTP probe usually expects a success status; redirects, authentication challenges, host-header requirements, or TLS name mismatch may mark an otherwise functional application unhealthy.
 
 ## 2. Understand `externalTrafficPolicy`
 
-With `externalTrafficPolicy: Cluster`, provider traffic can normally arrive at a Node and be forwarded to a ready endpoint elsewhere, depending on the implementation. With `Local`, traffic is kept on Nodes that have local ready endpoints to preserve source IP and avoid an extra hop. The load balancer must stop sending application traffic to Nodes without local endpoints.
+With `externalTrafficPolicy: Cluster`, provider traffic can normally arrive at a Node and be forwarded to a ready endpoint elsewhere, depending on the implementation. With `Local`, a Node forwards traffic only to local ready endpoints, preserving the source IP at the Service proxy and avoiding an extra hop. A Node without a local endpoint drops the traffic, so the load balancer should remove that Node from its eligible targets after health-check convergence.
 
 Kubernetes supports a `healthCheckNodePort` for `LoadBalancer` Services using `externalTrafficPolicy: Local`. The provider can probe that port to decide which Nodes have local endpoints.
 
@@ -91,7 +92,7 @@ Common failures include:
 - the health-check source ranges cannot reach `healthCheckNodePort`;
 - kube-proxy or its replacement does not program the port correctly;
 - no ready endpoint is local to a registered Node;
-- a controller expects instance targets but the manifest disables NodePort allocation; or
+- a controller expects instance targets but automatic NodePort allocation is disabled and the required NodePorts were not assigned; or
 - the provider target set includes Nodes that should not receive traffic.
 
 Do not switch to `Cluster` merely to make the health check green without evaluating client IP preservation, traffic path, and provider behavior.
@@ -115,7 +116,7 @@ For Pod/IP targets, verify:
 - the CNI and provider controller agree on address family; and
 - the controller version supports the chosen target type.
 
-`spec.allocateLoadBalancerNodePorts: false` is valid only when the load-balancer implementation can route without NodePorts. If an annotation selects instance targets while NodePorts are disabled, the design is internally inconsistent.
+`spec.allocateLoadBalancerNodePorts: false` disables automatic NodePort allocation; it does not remove existing NodePorts, and explicitly requested NodePorts are still honored. Use it when the load-balancer implementation can route without NodePorts, or follow controller documentation that permits assigning the required NodePorts manually. If an annotation selects instance targets while the required NodePorts are absent, the design is internally inconsistent.
 
 ## 4. Compare the Actual Provider Health Check
 
@@ -197,7 +198,7 @@ Build a health endpoint that is cheap and reflects the dependency boundary the l
 - [Kubernetes: EndpointSlices](https://kubernetes.io/docs/concepts/services-networking/endpoint-slices/)
 - [AWS Load Balancer Controller: Service annotations](https://kubernetes-sigs.github.io/aws-load-balancer-controller/latest/guide/service/annotations/)
 - [Google Kubernetes Engine: LoadBalancer Service parameters](https://cloud.google.com/kubernetes-engine/docs/concepts/service-load-balancer-parameters)
-- [Azure Kubernetes Service: Customize the load balancer health probe](https://learn.microsoft.com/en-us/azure/aks/load-balancer-standard#customize-the-load-balancer-health-probe)
+- [Azure Kubernetes Service: Customize the load balancer health probe](https://learn.microsoft.com/en-us/azure/aks/configure-load-balancer-standard#customize-the-load-balancer-health-probe)
 
 ## Conclusion
 
