@@ -40,10 +40,10 @@ Do not turn that observation into a guarantee. A provider resource can fail inde
 With an external CCM, the kubelet and `kube-controller-manager` are configured for an external cloud provider. A registering kubelet adds this taint:
 
 ```text
-node.cloudprovider.kubernetes.io/uninitialized:NoSchedule
+node.cloudprovider.kubernetes.io/uninitialized=true:NoSchedule
 ```
 
-The CCM's cloud node controller looks up the backing instance, sets fields such as `.spec.providerID`, cloud-reported addresses, zone and region labels, and then removes the initialization taint. Kubernetes documentation explicitly notes that if the CCM is unavailable, new Nodes remain unschedulable.
+The CCM's cloud node controller looks up the backing instance, populates available fields such as `.spec.providerID` and zone and region labels, removes the initialization taint as part of that Node update, and then separately updates any cloud-reported `.status.addresses`. Exactly which fields it populates depends on the provider interfaces and returned metadata. Kubernetes documentation explicitly notes that if the CCM is unavailable, new Nodes remain unschedulable.
 
 Inspect the boundary directly:
 
@@ -56,14 +56,14 @@ A Node can be `Ready` from the kubelet's perspective yet still be unschedulable 
 
 ## Cloud Routes Stop Reconciling
 
-The standard CCM route controller takes each Node's `.spec.podCIDR` or `.spec.podCIDRs` and asks a provider that implements the Kubernetes `Routes` interface to create the matching infrastructure route. It also deletes stale or blackhole routes that fall within its managed cluster CIDR.
+The standard CCM route controller iterates over each Node's `.spec.podCIDRs` and asks a provider that implements the Kubernetes `Routes` interface to create an infrastructure route for each CIDR. It also deletes provider-returned managed routes whose destinations fall within its configured cluster CIDR or CIDRs when they are blackholes or no longer match current Node and Pod CIDR state.
 
 During an outage, routes already stored by the provider generally remain. However:
 
 - a newly added Node can have a Pod CIDR but no provider route;
-- a changed Node address may not produce a route update;
+- for providers that opt into address-aware routes, a changed Node address cannot be reconciled; the controller normally handles that change by deleting and recreating the route;
 - routes for deleted Nodes can remain; and
-- the Node's `NetworkUnavailable` condition may not reflect a completed route reconciliation.
+- the Node's `NetworkUnavailable` condition can remain stale because the route controller is unavailable to patch it based on route reconciliation.
 
 The symptom is often asymmetric. Pods on the same Node communicate, while traffic to the new Node's Pod CIDR fails. Clusters whose CNI uses an overlay, BGP, or its own provider integration may not use the CCM route controller at all, so prove controller ownership before treating every Pod-network failure as a CCM outage.
 
@@ -81,7 +81,7 @@ If every CCM replica is unavailable, an existing provider load balancer commonly
 
 - a new `type: LoadBalancer` Service can remain with a pending external address;
 - new Nodes might not be registered as backends;
-- changed ports, annotations, traffic policies, or source ranges may remain unapplied; and
+- changed ports, annotations, `.spec.externalTrafficPolicy`, or `.spec.loadBalancerSourceRanges` may remain unapplied; and
 - deleting a Service may leave provider infrastructure until reconciliation resumes.
 
 Inspect the Kubernetes side without assuming that a populated status is current:
@@ -124,7 +124,7 @@ Use this sequence:
 
 1. Restore at least one correctly configured replica; preserve logs from the failed leader first.
 2. Confirm it acquires leadership and starts the expected node, lifecycle, route, and service controllers.
-3. Watch new Nodes lose only the `uninitialized` taint after provider fields are populated.
+3. Watch new Nodes lose only the `uninitialized` taint, and independently confirm the provider fields expected from the installed integration.
 4. Compare Node Pod CIDRs with provider routes if the cluster uses cloud routes.
 5. Compare `LoadBalancer` Service status with actual provider resources and backends.
 6. Watch warning Events, provider API rate limits, and authentication errors until the queue drains.
