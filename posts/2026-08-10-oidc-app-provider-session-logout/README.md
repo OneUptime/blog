@@ -1,4 +1,4 @@
-# Implement OIDC Logout When App and Identity-Provider Sessions Disagree
+# How to Implement OIDC Logout When the App Session and Identity-Provider Session Disagree
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

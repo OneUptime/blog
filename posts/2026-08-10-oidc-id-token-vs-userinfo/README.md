@@ -1,4 +1,4 @@
-# Should a Backend Trust ID Token Claims or Call the OIDC UserInfo Endpoint?
+# Should a Backend Trust Claims from the ID Token or Call the OIDC UserInfo Endpoint?
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

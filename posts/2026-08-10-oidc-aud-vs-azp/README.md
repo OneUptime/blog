@@ -1,4 +1,4 @@
-# OIDC `aud` vs `azp`: Validate ID Tokens with Multiple Audiences
+# OIDC `aud` vs `azp`: How to Validate Tokens Issued to Multiple Clients
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

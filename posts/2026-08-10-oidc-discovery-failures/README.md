@@ -1,4 +1,4 @@
-# Debug OIDC Discovery Failures: Issuer URLs, TLS, DNS, and Metadata
+# How to Debug OIDC Discovery Failures: Issuer URLs, `/.well-known/openid-configuration`, TLS, and DNS
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

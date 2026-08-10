@@ -1,4 +1,4 @@
-# Where Should a Browser App Store OIDC Tokens? Cookies, Memory, and BFF Compared
+# Where Should a Browser App Store OIDC Tokens? Cookies, Memory, and the BFF Pattern Compared
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
