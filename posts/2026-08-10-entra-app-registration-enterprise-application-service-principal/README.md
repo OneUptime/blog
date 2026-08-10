@@ -28,7 +28,7 @@ Registering an application establishes a trust configuration with Microsoft Entr
 - supported account types;
 - redirect URIs;
 - credentials owned by the confidential client;
-- APIs and delegated permissions the client requests;
+- APIs and the delegated or application permissions the client requests;
 - scopes and app roles exposed when the application is an API;
 - branding and other protocol settings.
 
@@ -103,11 +103,13 @@ If the app query succeeds but the service-principal query does not, the applicat
 
 ## Important Exceptions
 
-Microsoft documents three service-principal types:
+Microsoft's application-model overview documents three traditional service-principal types:
 
 - **Application** service principals normally reference an application object.
 - **Managed identity** service principals are created for Azure managed identities and do not have an associated application object that you manage as an app registration.
 - **Legacy** service principals can exist without an associated app registration and work only in their tenant.
+
+Microsoft Graph also exposes `ServiceIdentity` for Microsoft Entra Agent ID agent identities and `SocialIdp` for internal use.
 
 These exceptions are why “every Enterprise application must appear under App registrations” is not a valid rule.
 
