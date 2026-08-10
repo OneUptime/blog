@@ -40,7 +40,6 @@
 15. Why an OIDC Token Is “Not Yet Valid” or Already Expired: Clock Skew and Time-Sync Troubleshooting
 16. How to Validate Tokens from Multiple OIDC Issuers Without Creating an Issuer-Confusion Bug
 17. Why Your OIDC Redirect URI Matches Visually but Is Still Rejected
-18. OIDC `aud` vs `azp`: How to Validate Tokens Issued to Multiple Clients
 19. Where Should a Browser App Store OIDC Tokens? Cookies, Memory, and the BFF Pattern Compared
 20. How to Debug OIDC Discovery Failures: Issuer URLs, `/.well-known/openid-configuration`, TLS, and DNS
 
