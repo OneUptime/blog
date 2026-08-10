@@ -8,17 +8,19 @@ Description: Use the current Kubernetes cloud-provider flag correctly, distingui
 
 ---
 
-On Kubernetes v1.31 and later, core components accept only two meanings for `--cloud-provider`: an empty value for no cloud integration, or `external` for integration through a separate provider-specific cloud-controller-manager (CCM). Historical values such as `aws`, `azure`, `gce`, `openstack`, and `vsphere` belonged to in-tree provider code and are no longer valid in current Kubernetes core.
+On Kubernetes v1.31 and later, the upstream kubelet and `kube-controller-manager` accept only two meanings for `--cloud-provider`: an empty value for no cloud integration, or `external` for integration through a separate provider-specific cloud-controller-manager (CCM). Historical values such as `aws`, `azure`, `gce`, `openstack`, and `vsphere` belonged to in-tree provider code and are no longer valid in current Kubernetes core.
+
+In v1.31 and v1.32, the deprecated kube-apiserver `--cloud-provider` flag followed the same value restriction. Kubernetes v1.33 removed that flag and `--cloud-config` from kube-apiserver entirely, so do not pass either flag to a v1.33+ kube-apiserver.
 
 The important subtlety is that `external` is a signal to cloud-independent Kubernetes components. It is not necessarily the value passed to the provider's own CCM binary. That binary, chart, or configuration file follows the provider project's documentation.
 
 ## The Current Decision
 
-| Cluster design | Core-component configuration |
+| Cluster design | kubelet and `kube-controller-manager` configuration |
 | --- | --- |
 | No cloud API integration | Leave `--cloud-provider` unset or empty |
-| External provider CCM installed | Set `--cloud-provider=external` where the provider and Kubernetes documentation require it, especially kubelet and `kube-controller-manager` |
-| Legacy in-tree provider name | Migrate; provider names are not accepted by Kubernetes v1.31+ core components |
+| External provider CCM installed | Set `--cloud-provider=external` where the provider and Kubernetes documentation require it |
+| Legacy in-tree provider name | Migrate; provider names are not accepted by the upstream v1.31+ kubelet or `kube-controller-manager` |
 
 Kubernetes v1.29 changed the default feature-gate behavior so built-in integrations were disabled unless operators explicitly opted back in. Kubernetes v1.31 completed the removal: the old provider implementations and opt-back path are gone. Treat advice that recommends a named in-tree provider on current core binaries as version-bound legacy documentation.
 
@@ -27,7 +29,7 @@ Kubernetes v1.29 changed the default feature-gate behavior so built-in integrati
 When a kubelet runs with external cloud-provider mode, it registers a Node that requires a second initialization by the CCM. The Node receives this scheduling taint:
 
 ```text
-node.cloudprovider.kubernetes.io/uninitialized:NoSchedule
+node.cloudprovider.kubernetes.io/uninitialized=true:NoSchedule
 ```
 
 The provider CCM identifies the backing instance, sets cloud-derived data such as `.spec.providerID`, topology labels, and Node addresses, and removes the taint. If the CCM is absent, cannot become leader, lacks credentials, or cannot match the Node to an instance, the taint remains.
@@ -45,7 +47,7 @@ ps -ef | grep '[k]ubelet'
 
 # Inspect kube-controller-manager arguments in a kubeadm-style control plane
 kubectl -n kube-system get pod -l component=kube-controller-manager \
-  -o jsonpath='{range .items[*].spec.containers[*].command}{.}{"\n"}{end}'
+  -o jsonpath='{range .items[*].spec.containers[*].command[*]}{@}{"\n"}{end}'
 
 # Inspect the resulting Node state
 kubectl get nodes -o custom-columns=NAME:.metadata.name,PROVIDER_ID:.spec.providerID,TAINTS:.spec.taints
@@ -65,7 +67,7 @@ Use the image's own help output in a non-production environment, inspect the cha
 helm template ccm PROVIDER_REPOSITORY/PROVIDER_CHART \
   --namespace kube-system -f values.yaml > rendered-ccm.yaml
 
-grep -n -- '--cloud-provider\|--cloud-config' rendered-ccm.yaml
+grep -En -- '--cloud-provider|--cloud-config' rendered-ccm.yaml
 ```
 
 Do not copy the Kubernetes documentation's historical `cloud-controller-manager` DaemonSet literally. That manifest is explicitly a guideline and contains placeholders and an old example image. A maintained provider chart should supply the image, RBAC, arguments, probes, leader-election settings, and tolerations appropriate to that provider and release.
@@ -75,11 +77,11 @@ Do not copy the Kubernetes documentation's historical `cloud-controller-manager`
 For a cluster still using an in-tree provider on an old Kubernetes release:
 
 1. Read the provider's external CCM migration and compatibility documentation for the exact source and target minors.
-2. Inventory other extracted integrations. Storage requires CSI, and private-registry authentication may require a kubelet credential-provider plugin; the CCM does not replace either one.
+2. Inventory other extracted integrations. Migrated in-tree cloud volume integrations require their corresponding CSI drivers, and private-registry authentication may require a kubelet credential-provider plugin; the CCM does not replace either one.
 3. Back up cluster state and test rollback using a non-production cluster with the same topology.
-4. Install the external CCM with correct RBAC, cloud identity, config, tolerations, and high-availability settings.
-5. For a replicated control plane, use the documented controller-manager Leader Migration procedure where applicable so an in-tree and external controller cannot both reconcile the same resource.
-6. Change the provider-managed core-component configuration to `external` in the documented order.
+4. Prepare the external CCM deployment with correct RBAC, cloud identity, config, tolerations, and high-availability settings, but do not start its controllers yet.
+5. For a replicated control plane, enable and configure controller-manager Leader Migration as documented where applicable before starting the external CCM, so an in-tree and external controller cannot both reconcile the same resource.
+6. Activate the external CCM and change the provider-managed core-component configuration to `external` in the documented order.
 7. Prove new Node initialization, provider ID and topology, `LoadBalancer` Service reconciliation, routes if used, and Node deletion behavior.
 8. Advance one Kubernetes minor at a time and remove obsolete in-tree configuration only when the provider procedure says it is safe.
 
@@ -117,9 +119,10 @@ Stop and check the migration procedure. Duplicate events, conflicting status upd
 - [Kubernetes: Cloud Controller Manager Administration](https://kubernetes.io/docs/tasks/administer-cluster/running-cloud-controller/)
 - [Kubernetes: v1.29 cloud provider integration changes](https://kubernetes.io/blog/2023/12/14/cloud-provider-integration-changes/)
 - [Kubernetes: Completing the cloud provider migration](https://kubernetes.io/blog/2024/05/20/completing-cloud-provider-migration/)
+- [Kubernetes: v1.33 changelog](https://github.com/kubernetes/kubernetes/blob/v1.33.0/CHANGELOG/CHANGELOG-1.33.md)
 - [Kubernetes: Migrate a replicated control plane to CCM](https://kubernetes.io/docs/tasks/administer-cluster/controller-manager-leader-migration/)
 - [Kubernetes: kubelet command-line reference](https://kubernetes.io/docs/reference/command-line-tools-reference/kubelet/)
 
 ## Conclusion
 
-For Kubernetes v1.31 and later, core components use no cloud provider or `external`; they do not accept historical provider names. Configure `external` only when a compatible external CCM is installed and ready to initialize Nodes. Configure the provider CCM itself according to its own versioned documentation, not by assuming its provider-selection flag has the same semantics. Verify live arguments and rollout behavior because a single mismatched node pool can leave new Nodes permanently tainted.
+For Kubernetes v1.31 and later, the upstream kubelet and `kube-controller-manager` use no cloud provider or `external`; they do not accept historical provider names. Configure `external` only when a compatible external CCM is installed and ready to initialize Nodes. Do not pass the removed cloud-provider flags to a v1.33+ kube-apiserver. Configure the provider CCM itself according to its own versioned documentation, not by assuming its provider-selection flag has the same semantics. Verify live arguments and rollout behavior because a single mismatched node pool can leave new Nodes permanently tainted.
