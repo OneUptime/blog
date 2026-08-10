@@ -39,7 +39,6 @@
 
 ## Cloud Controller
 
-2. Do You Need a Cloud Controller Manager on Bare-Metal Kubernetes?
 3. `--cloud-provider=external` vs a Provider Name: What Kubernetes Accepts Now
 4. Why Nodes Stay Tainted `node.cloudprovider.kubernetes.io/uninitialized` After Bootstrap
 5. ProviderID Is Empty on Kubernetes Nodes: How to Trace Cloud Node Initialization
