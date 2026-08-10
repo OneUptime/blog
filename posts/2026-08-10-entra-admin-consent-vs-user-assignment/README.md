@@ -10,8 +10,8 @@ Description: Use Entra consent to approve API authority and enterprise-applicati
 
 Admin consent and user assignment protect different boundaries in Microsoft Entra ID:
 
-- **Consent** authorizes a client application to request specified permissions to a resource API.
-- **Assignment** determines which users, groups, or service principals are allowed to access an enterprise application and can also associate them with an app role.
+- **Consent** authorizes a client application to access a resource API under specified permissions.
+- **Assignment** binds a user, group, or service principal to an enterprise application, optionally in an app role; when assignment is required, those assignments form the Entra-enforced access allowlist.
 
 An application often needs both. Consent without assignment can approve API use for a larger population than intended. Assignment without consent can let a user reach the application but leave its API calls failing with insufficient privileges.
 
@@ -20,10 +20,10 @@ An application often needs both. Consent without assignment can approve API use 
 | Question | Admin consent | User or service assignment |
 | --- | --- | --- |
 | What does it answer? | May this client use these API permissions? | May this principal access this app, and in which app role? |
-| Main objects | `oauth2PermissionGrant` for delegated grants; `appRoleAssignment` for application permissions | `appRoleAssignment` to the resource application's service principal |
+| Main objects | `oAuth2PermissionGrant` for delegated grants; `appRoleAssignment` for application permissions | `appRoleAssignment` to the resource application's service principal |
 | Managed from | App registrations or Enterprise applications permission views and consent workflows | Enterprise applications > Users and groups, or Microsoft Graph |
 | Does it restrict sign-in by itself? | No | Yes, when assignment is required and Entra governs the sign-in |
-| Does it grant API scopes by itself? | Yes, according to permission type | No, except that assigning an app role is itself the app-role relationship used for that resource |
+| Does it grant API permissions by itself? | Yes: delegated scopes or application app roles, depending on permission type | It doesn't grant delegated scopes; an app-role assignment is itself the role grant for that resource |
 | Is a signed-in user required? | Delegated consent: yes at runtime; application permission: no | User/group assignment for interactive access; service-principal assignment for workload access |
 
 The reuse of `appRoleAssignment` in both app permissions and enterprise-app role assignments can make the model look circular. Always identify the **principal**, **resource service principal**, and **app role** in the assignment.
@@ -91,16 +91,13 @@ Removing the Graph consent breaks the profile API call but does not automaticall
 
 Suppose a daemon calls a custom Invoicing API. The API exposes `Invoices.Read.All` as an app role with `allowedMemberTypes` containing `Application`. An administrator assigns that app role to the daemon's service principal.
 
-The daemon then requests:
+Assuming the API uses the default Application ID URI `api://<invoice-api-client-id>`, the daemon then requests:
 
 ```http
 POST https://login.microsoftonline.com/<tenant-id>/oauth2/v2.0/token
 Content-Type: application/x-www-form-urlencoded
 
-client_id=<daemon-client-id>
-&scope=api%3A%2F%2F<invoice-api-client-id>%2F.default
-&client_secret=<url-encoded-secret>
-&grant_type=client_credentials
+client_id=<daemon-client-id>&scope=api%3A%2F%2F<invoice-api-client-id>%2F.default&client_secret=<url-encoded-secret>&grant_type=client_credentials
 ```
 
 The API expects `roles` to contain `Invoices.Read.All`. There is no employee assignment to narrow this token; the daemon service principal is the assigned principal.
@@ -188,4 +185,4 @@ Restricting future user consent does not revoke existing grants. Review and remo
 
 ## Conclusion
 
-Use consent to approve what a client may request from an API. Use assignment required and user, group, or service-principal assignments to control who may access an enterprise application and in which app role. Then enforce business authorization inside the application. Keeping these layers separate makes approvals predictable, troubleshooting faster, and access reviews meaningful.
+Use consent to approve which permissions a client may use when accessing an API. Use assignment required and user, group, or service-principal assignments to control who may access an enterprise application and in which app role. Then enforce business authorization inside the application. Keeping these layers separate makes approvals predictable, troubleshooting faster, and access reviews meaningful.
