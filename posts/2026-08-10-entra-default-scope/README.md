@@ -8,7 +8,7 @@ Description: Understand Entra's resource-specific .default scope, static consent
 
 ---
 
-In Microsoft Entra ID, `{resource}/.default` means: **request a token for this resource using the permissions that have been statically configured and granted for the client**. It is a resource-specific shorthand, not a universal “give me normal permissions” switch.
+In Microsoft Entra ID, `{resource}/.default` means: **request a token for this resource without naming individual API permissions in the request**. Existing grants determine the token's permissions; when an interactive `.default` request triggers a consent prompt, Entra uses the client's statically configured required permissions for that prompt. It is a resource-specific shorthand, not a universal “give me normal permissions” switch.
 
 Examples:
 
@@ -30,7 +30,7 @@ It does not mean:
 - the API may skip scope/role checks; or
 - Microsoft Graph unless the resource identifier actually is Graph.
 
-The word describes the statically configured permission set for a particular resource.
+The word denotes Entra's static-consent mechanism; the access token remains resource-specific and reflects the permissions granted for that resource.
 
 ## Static vs Dynamic Consent
 
@@ -42,7 +42,7 @@ scope=openid profile https://graph.microsoft.com/User.Read
 
 The application can later request another Graph scope, such as `Mail.Read`, when the user reaches that feature.
 
-With static consent, the app registration lists required resource access ahead of time. A request for the resource's `.default` refers to that configured list. If consent is needed in a user flow, Entra can present the configured permissions for approval.
+With static consent, the app registration lists required resource access ahead of time. When an interactive `.default` request triggers a consent prompt, Entra presents that configured list for approval.
 
 Microsoft documents an important side effect: a `.default` consent prompt can include all required permissions statically listed by the client application, including permissions across APIs in that configured list, even though the returned access token is still for one resource. Review the app registration's complete **API permissions** page before triggering tenant-wide consent.
 
@@ -78,11 +78,11 @@ The Orders API must still validate `aud` and require the expected `roles` value.
 
 ## Delegated Flows Can Use It Too
 
-`.default` is not limited to daemons. Microsoft supports it in OAuth flows generally and requires it in scenarios including on-behalf-of.
+`.default` is not limited to daemons. Microsoft supports it in OAuth flows generally, including on-behalf-of scenarios.
 
 In a delegated context, the token reflects delegated permissions granted for the signed-in user/client-resource relationship. If an existing grant covers `User.Read` and `Mail.Read` for Graph, a Graph `.default` request can return those granted scopes according to the current consent state.
 
-This is different from requesting one explicit dynamic scope. Use explicit scopes for incremental-consent user experiences. Use `.default` when the protocol or static-consent design requires the configured permission set.
+This is different from requesting one explicit dynamic scope. Use explicit scopes for incremental-consent user experiences. Use `.default` when the protocol requires it or when the design calls for static-consent behavior.
 
 ## You Cannot Mix `.default` and Dynamic Scopes
 
@@ -166,7 +166,7 @@ Changing the configured required permissions does not automatically grant them. 
 
 ### Token has the wrong audience
 
-The resource prefix is wrong. Request `.default` for the target API, not for the client or Graph by habit.
+Check that the resource prefix identifies the target API and that the API validates the expected audience. Request `.default` for the target API, not for the client or Graph by habit.
 
 ### App-only token lacks `roles`
 
@@ -228,4 +228,4 @@ Avoid:       using .default when a narrow incremental prompt is intended
 
 ## Conclusion
 
-`.default` is Microsoft's resource-specific static permission scope. Prefix it with the API you need, use it where client credentials or on-behalf-of requires it, and grant the corresponding permissions beforehand. Do not mix it with dynamic API scopes, do not use one token for several resources, and do not confuse a successful token request with authorization at the API.
+`.default` is Microsoft's resource-specific scope for requesting a token without naming individual API permissions. Prefix it with the API you need, use it where the client-credentials flow requires it or where an on-behalf-of/static-consent design calls for it, and ensure the corresponding permissions are granted through the applicable consent flow. Do not mix it with dynamic API scopes, do not use one token for several resources, and do not confuse a successful token request with authorization at the API.
