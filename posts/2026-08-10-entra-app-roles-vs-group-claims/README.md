@@ -10,13 +10,13 @@ Description: Compare Entra app roles and group claims for portable, least-privil
 
 For most new applications, **app roles scale better than raw group claims**. Microsoft recommends app roles as the preferred Microsoft identity platform RBAC approach, and specifically recommends them over groups when an application can define its own authorization vocabulary and does not require nested-group semantics.
 
-Groups remain useful as an administrative source of assignment. A strong pattern is:
+Security groups remain useful as an administrative source of assignment. A strong pattern is:
 
 ```text
-Tenant administrators manage users in groups
+Tenant administrators manage users in security groups
                  |
                  v
-Groups are assigned to application roles
+Security groups are assigned to application roles
                  |
                  v
 Application authorizes stable roles claim values
@@ -36,7 +36,7 @@ This gives administrators group-based lifecycle management without coupling appl
 | Business meaning | Explicit, such as `Orders.Approver` | Often indirect, based on directory organization |
 | Can support users | Yes | Yes |
 | Can support workload applications | Yes, when `allowedMemberTypes` includes `Application` | Not as a substitute for app-role assignment |
-| Nested group behavior | Assignment semantics must be verified | Can include transitive memberships depending on group-claim configuration |
+| Nested group behavior | Only direct members inherit group assignments; nested memberships aren't supported | Can include transitive memberships depending on group-claim configuration |
 
 The model should describe application capabilities, not mirror an org chart by accident.
 
@@ -59,7 +59,7 @@ Orders.Approver
 Orders.Administrator
 ```
 
-An administrator assigns users, groups, or client service principals to those roles on the enterprise application. When Entra issues the relevant token, role values appear in `roles`.
+An administrator assigns users or security groups to roles whose `allowedMemberTypes` includes `User`, and client service principals to roles whose `allowedMemberTypes` includes `Application`; these assignments target the resource application's service principal (enterprise application). When Entra issues the relevant token, role values appear in `roles`.
 
 For a user signing into the application, assigned roles can appear in the ID token. When a client requests an access token for an API, roles defined by that API and assigned in the resource tenant can appear in the access token.
 
@@ -87,13 +87,13 @@ The application then maps those IDs to permissions:
 
 This can work for an internal application tightly aligned to one directory. It becomes operationally expensive for SaaS because every customer has different group IDs and naming conventions.
 
-Group claims also have hard token limits. Microsoft documents 200 groups for JWT and 150 for SAML, with an overage marker instead of the normal group array when exceeded. The application must then query Microsoft Graph or use a different authorization design.
+Group claims also have hard token limits. Microsoft documents limits of 200 groups for JWT and 150 for SAML, with a much lower limit for tokens issued through the implicit flow. When a limit is exceeded, Entra emits an overage indicator instead of the normal group array; implicit-flow overage uses `hasgroups`. The application must then query Microsoft Graph or use a different authorization design.
 
 ## Why App Roles Usually Scale Better
 
 ### Stable Contract
 
-Application code can consistently require `Orders.Approver` in every tenant. Customers map their own users or groups to that role. A redesign of the customer's department groups does not require a code release.
+Application code can consistently require `Orders.Approver` in every tenant. Customers map their own users or security groups to that role. A redesign of the customer's department groups does not require a code release.
 
 ### Smaller Tokens
 
@@ -120,23 +120,23 @@ Use group claims when:
 - nested group semantics are required and verified;
 - the relevant group set is small and overage is handled;
 - the app can maintain tenant-scoped mappings safely; and
-- administrators need immediate control through established group processes.
+- administrators need control through established group processes, with token-lifetime delays accounted for.
 
 Even then, emit only relevant groups where practical. Do not send every membership just because the option exists.
 
 ## The Hybrid Pattern
 
-For many organizations, the best design uses groups for administration and roles for the application contract:
+For many organizations, the best design uses security groups for administration and roles for the application contract:
 
 1. The API defines `Orders.Reader` and `Orders.Approver`.
-2. A customer administrator creates or reuses local groups.
+2. A customer administrator creates or reuses local security groups.
 3. The admin assigns those groups to the appropriate app roles on the enterprise application.
 4. Users receive `roles` values in tokens.
 5. The API authorizes role values and tenant/resource policy.
 
-Group-based enterprise-application assignment requires Microsoft Entra ID P1 or P2. Include that in design and procurement decisions.
+Group-based enterprise-application assignment requires Microsoft Entra ID P1 or P2 and supports security groups. Include that in design and procurement decisions.
 
-Do not assume nested group assignment is evaluated. Assign the group that directly contains the intended users or verify current product behavior with a controlled test. Microsoft's app-role guidance also documents a specific limitation: adding a service principal to a group and assigning an app role to that group does not cause Entra to include the `roles` claim in tokens issued for that service principal. Assign application roles directly to workload service principals.
+Nested group memberships aren't supported for group-based assignment to applications. Assign a security group that directly contains the intended users. Microsoft's app-role guidance also documents a specific limitation: adding a service principal to a group and assigning an app role to that group does not cause Entra to include the `roles` claim in tokens issued for that service principal. Assign application roles directly to workload service principals.
 
 ## Multitenant SaaS Design
 
@@ -164,7 +164,7 @@ Migrate without an authorization outage:
 1. Inventory every group ID the application currently checks.
 2. Define a small role vocabulary based on actual capabilities.
 3. Add roles to the resource app registration.
-4. Assign existing groups to the new roles in a pilot tenant.
+4. Assign existing security groups to the new roles in a pilot tenant.
 5. Temporarily accept both old group mappings and new role values, with telemetry.
 6. Acquire fresh tokens and test direct, nested, and overage users.
 7. Move all tenants and remove raw group authorization.
@@ -216,7 +216,7 @@ Entra can emit groups as role claims for compatibility. Microsoft warns that in 
 
 ### Using role disable as revocation
 
-Microsoft documents that existing assignments can continue to emit a disabled app role. Remove the assignments when revoking authority, then obtain fresh tokens.
+Microsoft documents that existing assignments can continue to emit a disabled app role. Remove the assignments when revoking authority; newly issued tokens will then omit the role. Already-issued access tokens can remain usable until they expire.
 
 ## Official Documentation
 
@@ -228,4 +228,4 @@ Microsoft documents that existing assignments can continue to emit a disabled ap
 
 ## Conclusion
 
-Use app roles as the application's stable authorization language, especially for SaaS, large directories, and workload clients. Use groups as an administrative mechanism and assign them to roles when licensing and membership semantics support it. Raw group claims remain useful for tightly scoped internal scenarios, but require tenant-specific mappings, overage handling, and careful control of names and nesting.
+Use app roles as the application's stable authorization language, especially for SaaS, large directories, and workload clients. Use security groups as an administrative mechanism and assign them to roles when licensing and membership semantics support it. Raw group claims remain useful for tightly scoped internal scenarios, but require tenant-specific mappings, overage handling, and careful control of names and nesting.
