@@ -38,7 +38,7 @@ Microsoft's current workload policy supports service principals for line-of-busi
 
 - the service principal must be single-tenant and registered in the tenant;
 - it must be selected directly as a workload identity in the policy;
-- policies can block requests outside allowed named/public IP locations;
+- policies can block requests outside known public IP ranges configured as IP-based named locations;
 - policies can block based on detected service-principal risk;
 - supported authentication-context scenarios can participate; and
 - **Block access** is the available grant control.
@@ -62,7 +62,7 @@ State:           report-only, then enabled
 
 Microsoft Entra **Workload Identities Premium** licenses are required to create or modify Conditional Access policies scoped to service principals. Microsoft states that existing workload-identity policies continue to function in a directory that loses the appropriate license, but they cannot be modified.
 
-Do not assume an Entra ID P1/P2 user license alone grants this workload feature. Review the current Workload ID licensing terms and license each workload identity as required before rollout.
+Do not assume an Entra ID P1/P2 user license alone grants this workload feature. Review the current Workload ID licensing terms and procure enough licenses for the eligible workload identities that will use premium features; licenses are not assigned to individual workload identity objects.
 
 Service-principal risk uses Microsoft Entra workload risk capabilities. Include licensing and data-availability checks in the design rather than discovering them when the risk condition is unavailable.
 
@@ -171,7 +171,7 @@ As of the current 2026 documentation, workload CAE has important limits:
 - the client must declare the `cp1` capability and handle claims challenges;
 - only eligible single-tenant line-of-business service principals are supported;
 - managed identities, multitenant apps, and third-party SaaS are excluded; and
-- Workload Identities Premium licensing is required.
+- Workload Identities Premium licenses are required to create or modify the service-principal Conditional Access policies that CAE enforces.
 
 CAE-enabled workload tokens can have a lifetime up to 24 hours because the resource continuously reevaluates supported events. A client must handle a `401` claims challenge and reacquire a token. Do not enable `cp1` without implementing that protocol loop.
 
@@ -212,7 +212,7 @@ They are explicitly excluded from workload Conditional Access. Use managed-ident
 
 ### Treating “Not applied” as success
 
-It can mean the identity or application type is out of scope, the wrong principal was selected, or the sign-in category is wrong. Investigate.
+It can mean the identity or application type is out of scope or the policy targets a different service-principal object. Also confirm that you are reviewing the correct sign-in-log category; managed identities appear separately. Investigate.
 
 ### Blocking before testing failover
 
@@ -229,4 +229,4 @@ An unlisted disaster-recovery egress address turns identity policy into an outag
 
 ## Conclusion
 
-User-scoped Conditional Access does not protect client-credential sign-ins because no user participates. Use Conditional Access for workload identities only for its documented, licensed scope: directly selected, eligible single-tenant service principals, with block controls based on supported location, risk, and authentication-context conditions. Account for the exclusions—especially managed identities and multitenant SaaS—and layer the policy with safer credentials, least privilege, resource authorization, and workload-specific monitoring.
+User-scoped Conditional Access does not protect client-credential sign-ins because no user participates. Use Conditional Access for workload identities only for its documented, licensed scope: directly selected, eligible single-tenant service principals, with block controls using supported location and service-principal-risk conditions and supported authentication-context targets. Account for the exclusions—especially managed identities and multitenant SaaS—and layer the policy with safer credentials, least privilege, resource authorization, and workload-specific monitoring.
