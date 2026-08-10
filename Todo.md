@@ -40,7 +40,6 @@
 ## Cloud Controller
 
 7. Why a `LoadBalancer` Service Stays Pending Even Though cloud-controller-manager Is Running
-8. Cloud Controller Manager vs CSI Driver vs Load Balancer Controller: Which Component Owns What?
 9. Why cloud-controller-manager Sets the Wrong `InternalIP` or `ExternalIP` on a Node
 10. How to Troubleshoot Cloud Controller Manager IAM and API Permission Failures
 11. What Happens When cloud-controller-manager Goes Down? New Nodes, Routes, and Load Balancers Explained
