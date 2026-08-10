@@ -48,7 +48,6 @@
 4. Why “Grant Admin Consent” Does Not Limit an Entra App to One User
 5. Entra Admin Consent vs User Assignment: How to Control Permissions and Sign-In Separately
 6. How to Fix AADSTS50011 When the Entra Redirect URI Looks Correct
-8. How to Fix AADSTS7000215 Without Confusing the Client Secret Value and Secret ID
 9. “Invalid Audience” in an Entra Access Token: How to Request a Token for the Right API
 10. Why Entra Group Claims Disappear for Users in Many Groups—and How to Handle Overage
 11. Entra App Roles vs Group Claims: Which Model Scales Better for Application Authorization?
