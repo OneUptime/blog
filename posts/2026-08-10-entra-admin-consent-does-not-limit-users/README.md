@@ -78,7 +78,7 @@ With assignment required and only the Finance group assigned:
 - unassigned users are blocked by Entra at the enterprise application; and
 - the application should still enforce its own roles and business authorization.
 
-Consent and assignment work together, but changing one does not implicitly configure the other.
+Consent grants and assignments remain separate directory objects: changing one does not create or remove the other. However, requiring assignment disables individual user consent, so an administrator must grant the app's needed permissions.
 
 ## What If Exactly One User Needs Delegated Access?
 
@@ -112,13 +112,10 @@ Do not use the identity of the consent administrator as an implicit “owner” 
 
 ## Application Permissions Need Extra Care
 
-Application permissions are frequently misunderstood because administrators encounter them on the same API permissions screen as delegated scopes. In client credentials:
+Application permissions are frequently misunderstood because administrators encounter them on the same API permissions screen as delegated scopes. In client credentials, an `application/x-www-form-urlencoded` token request body looks like:
 
-```http
-client_id=<application-client-id>
-&scope=https%3A%2F%2Fgraph.microsoft.com%2F.default
-&client_secret=<encoded-secret>
-&grant_type=client_credentials
+```text
+client_id=<application-client-id>&scope=https%3A%2F%2Fgraph.microsoft.com%2F.default&client_secret=<url-encoded-secret>&grant_type=client_credentials
 ```
 
 There is no username. The token represents the client service principal. If the granted Graph role permits organization-wide data access, assigning one user to the app's sign-in experience does not necessarily narrow the daemon's app-only API authority.
@@ -132,7 +129,7 @@ After changing consent or assignment:
 1. Review **Enterprise applications > Permissions** and confirm whether grants are delegated or application permissions.
 2. Review **Users and groups** and the **Assignment required?** value.
 3. Acquire a fresh token through the intended flow.
-4. Confirm the token audience and the expected `scp` or `roles` values without logging the raw token.
+4. For an API you control, validate the token audience and expected `scp` or `roles` claims at the API. Treat access tokens for Microsoft-owned APIs such as Microsoft Graph as opaque; decode them only as a debugging aid, and never log the raw token.
 5. Test assigned and unassigned users.
 6. Separately test app-only authentication if the service uses client credentials.
 7. Review sign-in logs in the correct category: interactive/noninteractive user, service principal, or managed identity.
