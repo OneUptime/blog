@@ -54,7 +54,7 @@ For client credentials, on-behalf-of, and other static-consent scenarios that re
 scope=api://11112222-bbbb-3333-cccc-4444dddd5555/.default
 ```
 
-That means “issue a token for this resource using the permissions already configured and granted.” It does not mean “use default permissions for whichever API I call later.”
+That means “request a token for this resource using the permissions granted for it”; where interactive consent applies, Entra can prompt for the configured required permissions. It does not mean “use default permissions for whichever API I call later.”
 
 Microsoft Entra does not support combining scopes from multiple resources in one access-token request. Acquire a separate token for each API.
 
@@ -72,7 +72,7 @@ client_id=<calling-client-id>
 &grant_type=client_credentials
 ```
 
-The API registration—not the calling client—must expose the application permission. The caller's service principal must receive that app-role assignment/admin consent in the resource tenant.
+If the API uses application permissions, the API registration—not the calling client—must expose the corresponding app role. The caller's service principal must be assigned that role in the resource tenant, normally through admin consent.
 
 For delegated authorization code, request the exposed delegated scope:
 
@@ -86,7 +86,7 @@ The OIDC scopes support sign-in. The API scope selects the resource access token
 
 An ID token is issued to the OIDC client and normally has the client's ID as its audience. It tells the client about the user authentication event.
 
-An access token is issued for a resource API. If the browser application sends its ID token in `Authorization: Bearer`, the API should report an audience mismatch because the ID token was addressed to the client, not the API.
+An access token is issued for a resource API. If the browser application sends its ID token in `Authorization: Bearer`, the API must reject it. With separate client and API registrations, audience validation fails because the ID token was addressed to the client, not the API.
 
 Send:
 
@@ -143,11 +143,11 @@ Capture the scope names without logging authorization codes, client secrets, or 
 
 ### 4. Compare the resource contract
 
-In a secure local diagnostic environment, inspect only the claim metadata needed to compare `aud`, `iss`, `tid`, token version, `scp`, and `roles`. Do not paste a production bearer token into public tools.
+In a secure local diagnostic environment, when the credential is a decodable JWT issued for an API you own, inspect only the claim metadata needed to compare `aud`, `iss`, `tid`, token version, `scp`, and `roles`. For an opaque token, rely on the requested scopes and token-response metadata. Do not paste a production bearer token into public tools.
 
 ### 5. Fix the request, not the validator
 
-Request the target API's permission and acquire a fresh token. Clear or bypass the token cache while testing so an old wrong-audience token does not obscure the fix.
+Request the target API's permission and acquire a fresh token. Clear or bypass any custom application-level token cache while testing so an old wrong-audience token does not obscure the fix.
 
 ### 6. Verify authorization
 
@@ -162,9 +162,9 @@ Graph token:  scope=https://graph.microsoft.com/User.Read
 Orders token: scope=api://<orders-api-client-id>/Orders.Read
 ```
 
-Cache them under keys that include at least authority/tenant, account where applicable, client, resource/scopes, and authorization context as required by the library. A cache keyed only by user can return a valid token for the wrong API.
+Use the authentication library's token cache and let it select entries using its documented account, authority/tenant, client, resource/scopes, and authorization context. Do not add an application-level cache that maps a user to a single raw access token; it can return a valid token for the wrong API.
 
-If API A needs to call API B for the current user, use the Microsoft identity platform on-behalf-of flow. API A must not forward a token whose audience is only API A. For app-only downstream work, acquire a client-credentials token for API B according to the intended trust model.
+If API A needs to call API B for the current user, use the Microsoft identity platform on-behalf-of flow. API A must not forward its incoming API-A token directly to API B; it must exchange that token for an API-B token. For app-only downstream work, acquire a client-credentials token for API B according to the intended trust model.
 
 ## Common Entra Audience Mistakes
 
@@ -190,7 +190,7 @@ Microsoft tells clients to treat access tokens as opaque. Only the resource shou
 
 ### Using one validator for ID and access tokens
 
-Separate OIDC client validation from API access-token validation. Each has a different audience and protocol purpose.
+Separate OIDC client validation from API access-token validation. Each has a distinct protocol purpose and validation requirements.
 
 ## Security Rules
 
