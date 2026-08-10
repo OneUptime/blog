@@ -8,7 +8,7 @@ Description: Separate Kubernetes RBAC from cloud IAM, identify the CCM's active 
 
 ---
 
-A cloud-controller-manager (CCM) crosses two independent authorization systems. It needs Kubernetes RBAC to watch and update cluster objects, and it needs cloud IAM to describe or mutate infrastructure. “Forbidden” in either system can stop Node initialization, route reconciliation, load-balancer provisioning, or cloud lifecycle checks, but the fix belongs to a different administrator and policy.
+A cloud-controller-manager (CCM) crosses two independent authorization systems. It needs Kubernetes API authorization, usually through RBAC, to watch and update cluster objects, and it needs cloud IAM to describe or mutate infrastructure. “Forbidden” in either system can stop Node initialization, route reconciliation, load-balancer provisioning, or cloud lifecycle checks, but the fix belongs to a different administrator and policy.
 
 Start by identifying which API denied which principal. Do not attach an administrator role until errors disappear; that hides the missing contract and leaves a highly privileged control-plane credential behind.
 
@@ -42,7 +42,7 @@ User "system:serviceaccount:kube-system:cloud-controller-manager"
 cannot patch resource "nodes"
 ```
 
-Extract the live ServiceAccount and test the exact operation:
+Extract the live ServiceAccount and test the exact operation. Your current identity must be allowed to impersonate the ServiceAccount when using `--as`:
 
 ```bash
 kubectl get pod -n kube-system CCM_POD \
@@ -51,20 +51,26 @@ kubectl get pod -n kube-system CCM_POD \
 SA=system:serviceaccount:kube-system:cloud-controller-manager
 kubectl auth can-i get nodes --as="$SA"
 kubectl auth can-i patch nodes --as="$SA"
-kubectl auth can-i update nodes/status --as="$SA"
+kubectl auth can-i patch nodes --subresource=status --as="$SA"
+kubectl auth can-i update nodes --subresource=status --as="$SA"
 kubectl auth can-i list services --all-namespaces --as="$SA"
-kubectl auth can-i update services/status --all-namespaces --as="$SA"
-kubectl auth can-i get leases.coordination.k8s.io -n kube-system --as="$SA"
-kubectl auth can-i update leases.coordination.k8s.io -n kube-system --as="$SA"
+kubectl auth can-i patch services --subresource=status --all-namespaces --as="$SA"
+kubectl auth can-i update services --subresource=status --all-namespaces --as="$SA"
+
+LEASE_NS=kube-system
+LEASE=ACTUAL_CCM_LEASE
+kubectl auth can-i create leases.coordination.k8s.io -n "$LEASE_NS" --as="$SA"
+kubectl auth can-i get leases.coordination.k8s.io/"$LEASE" -n "$LEASE_NS" --as="$SA"
+kubectl auth can-i update leases.coordination.k8s.io/"$LEASE" -n "$LEASE_NS" --as="$SA"
 ```
 
-The generic Kubernetes CCM documentation lists access used by shared controllers, but external providers can add controllers and API resources. Compare the ClusterRole and binding shipped with the exact provider release. Do not grant `cluster-admin` as a permanent shortcut if the maintained chart supplies narrower RBAC.
+The generic Kubernetes CCM documentation lists access used by shared controllers, but external providers can add controllers and API resources. Compare the Roles, ClusterRoles, and bindings shipped with the exact provider release. Do not grant `cluster-admin` as a permanent shortcut if the maintained chart supplies narrower RBAC.
 
-If every replica fails before acquiring its Lease, repair Lease access first. If leadership works but one controller fails, test the object and subresource named in the error; permission on `services` does not imply permission on `services/status`.
+If every replica reports a Lease authorization failure before acquiring the shared leader-election Lease, repair that Lease access first. If leadership works but one controller fails, test the object and subresource named in the error; permission on `services` does not imply permission on `services/status`.
 
 ## Second Boundary: Cloud IAM
 
-Cloud IAM denial originates from the provider API and should appear in the provider's audit log. Determine how the Pod obtains its cloud identity:
+Cloud IAM denial originates from the provider API. Look for the corresponding event in the provider's audit log; coverage and retention vary by provider, service, event type, and logging configuration. Determine how the Pod obtains its cloud identity:
 
 - a control-plane VM instance role or managed identity;
 - workload identity bound to a Kubernetes ServiceAccount;
@@ -80,21 +86,21 @@ kubectl get pod -n kube-system CCM_POD -o json | jq '{
   serviceAccount: .spec.serviceAccountName,
   env: [.spec.containers[].env[]? | {name, valueFrom}],
   envFrom: [.spec.containers[].envFrom[]?],
-  volumes: [.spec.volumes[] | {name, secret, configMap, projected}],
+  volumes: [.spec.volumes[]? | {name, secret, configMap, projected}],
   mounts: [.spec.containers[].volumeMounts[]?]
 }'
 ```
 
-Then use official provider identity diagnostics to reveal the principal without printing credentials. Check the workload identity binding, role trust policy, token issuer and audience, subject, account/project/subscription, region, resource group, and API endpoint.
+Then use official provider identity diagnostics from the same credential context as the CCM to reveal the principal without printing credentials. Check the workload identity binding, role trust policy, token issuer and audience, subject, account/project/subscription, region, resource group, and API endpoint.
 
 ## Match Permissions to the Enabled Controllers
 
-Required cloud actions depend on features:
+Required cloud actions depend on the provider, enabled controllers, and configuration:
 
-- Node initialization needs instance, network, address, zone, and related metadata reads.
-- Cloud node lifecycle needs enough read access to determine whether a backing server exists.
-- Route reconciliation needs route-table discovery and create/update/delete actions, often scoped to cluster networks.
-- Service reconciliation needs load balancer, listener, backend/target, address, firewall or security-group, subnet, and health-check operations.
+- Node initialization needs provider-specific reads sufficient to obtain instance identity and type, node addresses, zone or region, and provider labels.
+- Cloud node lifecycle needs enough provider-specific read access to determine whether a backing server exists.
+- Route reconciliation needs route discovery plus create and delete actions, and any provider-specific replace or update calls, often scoped to cluster networks.
+- Service reconciliation can require operations on load balancers, listeners, backends or targets, addresses, firewalls or security groups, subnets, and health checks, depending on the provider and enabled Service features.
 
 Do not copy a policy for all CCM features if the deployment disables routes or Services. Conversely, do not use a node-read-only policy for a CCM expected to provision load balancers.
 
@@ -108,7 +114,7 @@ Not every failed request is IAM:
 | --- | --- |
 | HTTP 401, invalid signature, expired token | Credential acquisition, audience, time, or secret rotation |
 | HTTP 403 with principal/action | IAM policy, organization policy, scope, or explicit deny |
-| Kubernetes `forbidden` naming a ServiceAccount | Kubernetes RBAC or admission policy |
+| Kubernetes `forbidden` naming a ServiceAccount | Kubernetes authorization (commonly RBAC), or admission policy on a write |
 | HTTP 404 / instance not found | Wrong region/account/identifier, stale Node, or deliberately hidden unauthorized resource |
 | HTTP 409 | Conflicting resource state or duplicate reconciliation |
 | HTTP 429 / quota exceeded | API throttling or resource quota, not necessarily missing permission |
@@ -126,14 +132,14 @@ For federated workload identity, validate the full trust tuple:
 - token audience;
 - namespace and ServiceAccount subject;
 - provider role or identity binding;
-- annotations or labels expected by the admission webhook; and
-- the token file path injected into the correct container.
+- annotations or labels required by an admission webhook, if applicable; and
+- the credential source exposed to the correct container, such as a projected token file or metadata endpoint.
 
-Clock skew can invalidate a token before the request reaches IAM evaluation. Confirm time synchronization on control-plane hosts.
+Clock skew can make a projected token fail validation or exchange before IAM authorization is evaluated. Confirm time synchronization on API server hosts that issue tokens and nodes that run the CCM.
 
 ## Verify the Repair by Reconciliation
 
-An IAM simulator or `can-i` result is necessary but not sufficient. Exercise the affected controller with a safe canary:
+An IAM policy simulator or `can-i` check can help, but neither is sufficient. Exercise the affected controller with a safe canary:
 
 ```bash
 # Watch a new Node initialize through normal provisioning
@@ -144,7 +150,7 @@ kubectl get service -n ccm-canary test-lb -w
 kubectl describe service -n ccm-canary test-lb
 ```
 
-Confirm the audit log records the intended principal and allowed action, the CCM stops retrying, and Kubernetes status converges. For permissions that include deletion, use a disposable test resource and verify cleanup so stale cloud infrastructure is not left behind.
+Where the provider audits the action, confirm that the audit log records the intended principal and allowed action. In all cases, confirm that the CCM stops retrying and Kubernetes status converges. For permissions that include deletion, use a disposable test resource and verify cleanup so stale cloud infrastructure is not left behind.
 
 Keep alerts on denied requests and reconciliation errors. A one-time fix can regress when policies, workload-identity bindings, chart versions, or control-plane instance profiles change.
 
@@ -159,4 +165,4 @@ Keep alerts on denied requests and reconciliation errors. A one-time fix can reg
 
 ## Conclusion
 
-Treat a CCM permission incident as two separate authorization investigations. Use `kubectl auth can-i` and Kubernetes audit data for the ServiceAccount boundary; use the exact provider request ID and cloud audit log for IAM. Identify the elected replica and active principal, grant only actions required by enabled controllers, and prove the repair with real reconciliation and cleanup. Broad administrator access may silence the error, but it does not produce a safe control plane.
+Treat a CCM permission incident as two separate authorization investigations. Use `kubectl auth can-i` and, when enabled, Kubernetes audit data for the ServiceAccount boundary; use the provider error and request ID plus available cloud audit data for IAM. Identify the elected replica and active principal, grant only actions required by enabled controllers, and prove the repair with real reconciliation and cleanup. Broad administrator access may silence the error, but it does not produce a safe control plane.
