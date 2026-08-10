@@ -42,7 +42,6 @@
 
 ## Entra ID
 
-2. Client ID, Tenant ID, Object ID, and Principal ID in Entra ID: Which One Does Each API Need?
 3. Delegated vs Application Permissions in Entra ID: Which OAuth Flow Uses Each?
 4. Why “Grant Admin Consent” Does Not Limit an Entra App to One User
 5. Entra Admin Consent vs User Assignment: How to Control Permissions and Sign-In Separately
