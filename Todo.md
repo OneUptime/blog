@@ -3719,3 +3719,233 @@
 18. How to Detect Priority Inflation When Every Team Marks Its Kubernetes Workloads Critical
 19. How to Test Pod Priority Deterministically with Artificial Resource Contention and Scheduler Events
 20. Why Kubernetes Cannot Prioritize Containers Within One Pod—and When to Split a Critical Sidecar Out
+
+## Continuous Profiling
+
+1. How to Measure the Real CPU and Memory Overhead of an Always-On Profiler Before a Full Rollout
+2. How to Run Grafana Alloy eBPF Profiling in Kubernetes Without Giving the DaemonSet Full Privileged Access
+3. Grafana Alloy Collects No Profiles: How to Debug Host PID Namespace, Kernel, `MEMLOCK`, and Target Discovery
+4. Why Do Continuous Profiles Show `[unknown]` or Shallow Stacks? Fixing Debug Symbols, ELF Access, and Frame Pointers
+5. How to Label Profiles by Service, Version, Pod, and Region Without Creating Unbounded Cardinality
+6. CPU Is Low but Latency Is High: How to Use Wall-Time and Off-CPU Profiles to Find Blocking Code
+7. How to Distinguish a True Heap Leak from Allocator Fragmentation by Correlating In-Use Profiles with RSS
+8. Java RSS Keeps Growing but Pyroscope Live-Allocation Samples Stay Flat: How to Check Native Memory, Direct Buffers, and Thread Stacks
+9. How to Profile Python Workers Without Confusing GIL Wait Time, Native Extensions, and Python Frames
+10. Why Does Go Heap Profiling Increase CPU? Tuning Pyroscope’s Forced GC with `DisableGCRuns`
+11. How to Detect Dropped Profile Uploads with Alloy’s `pyroscope_write_dropped_profiles_total` and Retry Metrics
+12. Pyroscope Profiles Disappear Earlier Than Expected: How to Audit v1 Compactor and v2 Metastore Retention
+13. Why Does a Short Trace Span Have No Profile? Understanding Sample Intervals, the 20 ms Guidance, and Statistical Gaps
+14. Pyroscope Works Directly but Fails Behind an Ingress: How to Route Query, Render, and Push Endpoints Correctly
+15. How to Send Profiles to Pyroscope with TLS, Basic Auth, and `X-Scope-OrgID` in Grafana Alloy
+16. How to Choose Sampling Rate, Collection Interval, and Upload Interval for a Production Overhead Budget
+17. How to Keep the eBPF Symbol Cache from Filling Node Disk in Long-Running Kubernetes Clusters
+18. How to Capture Profiles from Short-Lived Kubernetes Jobs Before the Process Exits
+19. Kubernetes CPU Is Throttled but the Flame Graph Looks Quiet: How to Correlate CFS Metrics with Continuous Profiles
+20. How to Use Kubernetes Discovery and Relabeling to Exclude Sidecars, System Pods, and Idle Processes from Profiling
+
+## MLOps
+
+1. How to Verify an ML Serving Endpoint Loaded the Requested Artifact Digest Instead of a Stale Cached Model
+2. How to Detect Numerical Drift Between Python Training Code and ONNX, TensorRT, or JVM Inference
+3. How to Detect GPU Nondeterminism When Seeds and Locked Environments Still Do Not Reproduce Training
+4. How to Test an ML Pipeline in CI Without Downloading the Full Dataset or Reserving a GPU
+5. How to Trigger Expensive Training Jobs from CI Without Running Them on Ephemeral CI Workers
+6. How to Catch CPU Instruction-Set, CUDA Toolkit, and Driver Incompatibilities Before Shipping an ML Serving Image
+7. How to Detect Duplicate Entities and Group Leakage Across Train, Validation, and Test Splits
+8. How to Detect Temporal Feature Leakage with Event-Time Cutoffs and Point-in-Time Tests
+9. Labels Arrive Weeks Late: How to Join Predictions to Ground Truth and Backfill Model-Performance Metrics
+10. How to Monitor an Unlabeled Model with Prediction Drift, Feature Drift, and Proxy Metrics Without Calling Them Accuracy
+11. Data Drift Alert or Broken Pipeline? How to Separate Distribution Shift from Nulls, Schema Changes, and Stale Features
+12. How to Set Drift Thresholds Per Feature Without Creating a Storm of False Retraining Alerts
+13. How to Cancel or Supersede Stale Training Runs When New Data Arrives Mid-Pipeline
+14. How to Monitor Calibration Drift When Ranking and Classification Metrics Stay Flat
+15. Model Server Is Healthy but Predictions Are Constant: How to Detect Degenerate Outputs Before Users Do
+16. How to Invalidate Prediction Caches Safely When a Model or Feature Definition Changes
+17. How to Detect Online Feature Hot Keys and Uneven Read Latency Before They Breach Inference SLOs
+18. How to Log Features and Predictions for Debugging Without Storing Raw PII
+19. How to Right-Size GPU Inference with Batch Size, Concurrency, Tail Latency, and Cost per Prediction
+20. How to Set Promotion Gates for a Shared Model When Tenant-Level Metrics Disagree
+
+## Roadie
+
+1. Why Does Roadie GitHub Autodiscovery Report `Unable to read URL`? Separating Missing Catalog Files from Real Access Failures
+2. How to Import GitHub Teams and Users into Roadie and Make `spec.owner` Resolve Correctly
+3. Roadie Entity Stopped Updating After a File or Repository Rename: How to Force a Clean Refresh
+4. `BuiltinKindsEntityProcessor` Rejected Your Roadie Entity: How to Debug the Unprocessed YAML and Schema Error
+5. How to Validate a Generated `catalog-info.yaml` Inside a Roadie Scaffolder Template Before Opening a Pull Request
+6. How to Sync an Internal System into Roadie Idempotently with Entity Sets—and Remove Orphans Safely
+7. How to Merge GitHub, Cloud, and Internal API Data into Catalog Entities with Roadie Catalog Builder Workflows
+8. How to Add Plugin Annotations and Links with Roadie Decorators Without Editing Source YAML
+9. How to Remove an Auto-Discovered Roadie Entity Without Having It Reappear on the Next Sync
+10. How to Preview Roadie TechDocs Locally and Fix Navigation, Root README, and Diagram Rendering Problems
+11. Roadie Access Is Denied Despite an Allow Policy: How Merged Roles and DENY Precedence Work
+12. How to Connect Roadie to a Private Kubernetes Cluster or Internal API with a Least-Privilege Broker `accept.json`
+13. Roadie Broker Returns 403, 404, or Certificate Errors: How to Debug Tokens, Allowlists, and Private CAs
+14. How to Call an Authenticated Internal API from a Roadie Scaffolder Template Without Exposing Credentials
+15. Roadie Scaffolder Says `Resource not accessible by integration`: Fixing GitHub App Permissions and OwnerPicker Values
+16. Roadie’s Pull-Request Scaffolder Action Hits GitHub’s Secondary Rate Limit: How to Publish Only Changed Files
+17. How to Dry-Run and Branch-Preview a Roadie Scaffolder Template Before Users See It
+18. How to Build a Roadie Tech Insights Scorecard from Custom API Facts and Target It with Entity Filters
+19. How to Run a Self-Hosted Scaffolder Action with Roadie Agent and the `roadie:agent` Action
+20. How to Build, Deploy, and Register a Custom Backstage Frontend Plugin in Roadie with the Roadie CLI
+
+## Subnetting
+
+1. How to Model CIDR Capacity, Protocol-Reserved Addresses, and Cloud-Provider Reservations as Separate IPAM Policies
+2. Interface CIDR or Route Prefix? How to Preserve the Host Address While Canonicalizing the Network
+3. How to Fit a New Subnet into Free Address-Space Gaps Without Renumbering Existing CIDR Allocations
+4. How to Convert an Arbitrary Inclusive IP Range into the Smallest Exact Set of CIDR Prefixes
+5. How to Reject Host-Bit-Set CIDRs Like `10.0.0.7/24` in Python Configuration Validators
+6. How to Audit Hundreds of CIDRs for Duplicate, Contained, and Partially Overlapping Subnets
+7. How Proxy ARP Can Hide an Incorrect Subnet Mask—and How to Detect It Before a Router Migration
+8. Off-Subnet Gateway Rejected: How to Prove Layer-2 Reachability Before Using an `onlink` Route
+9. How to Advertise Classless Static Routes with DHCP Option 121 Without Accidentally Replacing the Default Route
+10. How to Reserve Growth Space in a VLSM Plan Without Forcing Future Renumbering
+11. How to Design Non-Overlapping CIDR Pools for VPCs, Kubernetes Pods and Services, Docker, and VPN Clients
+12. How to Renumber Overlapping RFC 1918 Networks Before Connecting Them with VPN or VPC Peering
+13. How to Subtract Reserved or Legacy CIDRs from a Parent Prefix and Return the Remaining Minimal Prefix Set
+14. Why Can a Summary Route Black-Hole Unallocated Subnets? Add Safe More-Specific and Discard Routes
+15. Why Does a More-Specific Route Lose Inside a Linux VRF? Trace Policy-Rule and Table Selection Before Longest-Prefix Match
+16. How to Route Identical Tenant CIDRs with VRFs Without Leaking Routes Between Address Spaces
+17. Why Does Changing a Host from /24 to /16 Trigger ARP Instead of Routing—and Break Connectivity?
+18. How to Migrate Point-to-Point Links from /30 to /31 Without Breaking Routing Protocol Neighbors
+19. How to Operate OSPF over IPv4 Unnumbered Links When Interface Addresses Are Borrowed from Loopbacks
+20. How to Keep IPv6 Subnet IDs Stable When DHCPv6 Prefix Delegation Changes the Parent Prefix
+
+## Page Cache
+
+1. How to Read Linux `free`, `top`, and `/proc/meminfo` Without Double-Counting the Page Cache
+2. How to Find Which Pages of One File Are Cached with `fincore` and `mincore()`
+3. How to Measure Page-Cache Hit and Miss Rates with BCC `cachestat` and eBPF
+4. How to Run a Repeatable Cold-Cache Linux Storage Benchmark—and Separate Page Cache from Device Cache
+5. Why Did `drop_caches` Free Less Memory Than Expected? Check Dirty Pages, tmpfs, and Slab
+6. How to Request Page-Cache Eviction for an Aligned File Range with `POSIX_FADV_DONTNEED` Without Assuming Dirty Pages Were Freed
+7. How to Reduce Streaming-Read Cache Pressure with `POSIX_FADV_NOREUSE` on Linux 6.3+—and Measure Whether It Helps
+8. How to Prefetch a Working Set with `POSIX_FADV_WILLNEED`, `readahead`, or `vmtouch`
+9. How to Tune Sequential and Random File Access with `POSIX_FADV_SEQUENTIAL` and `POSIX_FADV_RANDOM`
+10. How to Use `O_DIRECT` Safely by Querying `STATX_DIOALIGN` Buffer and Offset Requirements
+11. Why Can Mixing `O_DIRECT` and Buffered I/O on the Same File Hurt Performance?
+12. How to Separate Anonymous Memory, File Cache, tmpfs, and Slab in cgroup v2 `memory.stat`
+13. How to Prove Page Cache Is Driving a Kubernetes Container OOM Instead of the Application Heap
+14. How to Use cgroup v2 `memory.high` to Trigger Reclaim Before `memory.max` Kills the Workload
+15. How to Detect Page-Cache Thrashing with `workingset_refault_file`, `pgscan`, and Memory PSI
+16. How to Tune `vm.dirty_bytes` and `vm.dirty_background_bytes` Without Creating Writeback Stalls
+17. Why Are `fsync()`, `sync()`, and `drop_caches` Different? Durability, Writeback, and Residency Explained
+18. Why Does a Running Process Keep the Old Executable After an Atomic Deployment? Inodes, Mappings, and Page Residency Explained
+19. Why Does Linux Swap While Reclaimable Page Cache Still Exists?
+20. How to Warm and Lock Startup-Critical Files with `vmtouch` Without Creating OOM Risk
+
+## Grafana Loki
+
+1. How to Migrate Promtail Pipelines to Grafana Alloy After Promtail’s Removal in Loki 3.7.3
+2. How to Cut Over from Promtail to Alloy Without Blind Replay or Gaps: Persistent Alloy Storage, `tail_from_end`, and Side-by-Side Validation
+3. Alloy Is Reading Files but Loki Shows No Logs: Trace Targets, Receivers, Push Errors, and Tenant Headers
+4. Why Does Log Rotation Create Duplicate or Missing Loki Entries? Debug Alloy File Positions and `tail_from_end`
+5. How to Parse Nested JSON in Alloy Without Turning Every Field into a Loki Label
+6. How to Configure Alloy Multiline Parsing—and Recognize When Interleaved Stack Traces Cannot Be Reconstructed Safely
+7. How to Store Kubernetes Pod IDs and Trace IDs as Loki Structured Metadata Instead of Indexed Labels
+8. How to Change Loki’s Default OTLP Attribute Mapping Before It Creates High-Cardinality Streams
+9. How to Parse a JSON Object Embedded After a Text Prefix with LogQL `regexp`, `line_format`, and `json`
+10. How to Graph Numeric Durations from JSON Logs with LogQL `unwrap` and `__error__` Filtering
+11. Loki 3.7 Returns `maximum number of series (<limit>) reached for a single query`: Reduce Cardinality with Narrower Selectors, `keep`, and `drop`
+12. How to Make Grafana Dashboard Variables Work in Loki Regex Selectors, Including the `All` Value
+13. Loki Returns 429 `maximum active stream limit exceeded`: Find and Remove the Exploding Label
+14. Loki Returns 429 `ingestion rate limit exceeded`: Separate Tenant Limits, Per-Stream Limits, and Alloy Batching
+15. Why Does Loki Reject Backfilled Logs as `entry too far behind` Even When `reject_old_samples` Is Disabled?
+16. Why Are Loki Logs Duplicated After Scaling Alloy? Prevent Multiple Collectors from Tailing the Same Files
+17. Why Does Loki Retention Hide Old Logs Without Shrinking Object Storage? Trace Compactor Markers, Permissions, and Deletion Delay
+18. How to Add a Date-Bounded `store: tsdb`, `schema: v13` Period Without Breaking Reads of Older Loki Data
+19. Why Is a Loki Query Slower After Adding a Parser? Order Cheap Line Filters Before JSON or Regex Stages
+20. How to Detect Silent Loki Data Loss with `loki_discarded_samples_total` Grouped by Tenant and Reason
+
+## StarRocks
+
+1. How to Perform a Rolling StarRocks Upgrade with Graceful Exit and Quorum Checks
+2. How to Migrate Between StarRocks Clusters with the Cross-Cluster Data Migration Tool
+3. StarRocks Cannot Elect an FE Leader: How to Diagnose BDBJE Journal and Metadata Replication Failures
+4. How to Remove StarRocks Nodes Correctly: Drop FE and CN Nodes, Decommission BEs, and Preserve Quorum and Replicas
+5. StarRocks Tablets Are Unhealthy: How to Diagnose Replica Versions and Run ADMIN REPAIR Safely
+6. StarRocks Disks Are Uneven: How to Diagnose and Tune Tablet Rebalancing
+7. Why Is StarRocks Data Cache Disabled? Check Disk Quotas, Hit Rate, and Auto-Adjustment
+8. How to Build a Correct StarRocks Stream Load Client with Redirect Handling, 100-Continue, and Safe Retries
+9. StarRocks Stream Load Says “Label Already Exists”: How to Make Retries Idempotent
+10. How to Debug Rejected CSV and JSON Rows in StarRocks with ErrorURL and Filter Metrics
+11. How to Change StarRocks Replication Counts Across Existing and Future Partitions Without Leaving Mixed Policies
+12. How to Capture Kafka Topic, Partition, Offset, Timestamp, and Headers with StarRocks Routine Load
+13. How to Connect Apache Superset to StarRocks and Fix Driver or SQLAlchemy Dialect Errors
+14. StarRocks Cannot Read HDFS Through a Hive Catalog: How to Fix XML, DNS, and Kerberos Settings
+15. How to Load Parquet from S3 with StarRocks FILES() and Validate Schema Mapping
+16. How to Choose Full, Sampled, and Histogram Statistics in StarRocks—and Detect Stale Estimates Before They Distort Plans
+17. How to Build a Searchable StarRocks Audit Log for Slow SQL, Errors, and User Activity
+18. How to Enforce TLS for StarRocks MySQL and JDBC Connections Without Breaking Clients
+19. How to Integrate StarRocks with LDAP or Active Directory and Map Groups to RBAC Roles
+20. How to Build Incremental dbt Models on StarRocks with Dynamic Partition Overwrite
+
+## Nova
+
+1. Nova Says “No Valid Host”: How to Trace Placement Allocation Candidates and Scheduler Filters
+2. Nova Exhausted All Build Retries: How to Diagnose a Neutron Port-Binding Failure
+3. Nova Server Stuck in BUILD with `task_state=spawning`: How to Trace Its Request ID Across Services
+4. Nova Compute Service Shows `down`: How to Diagnose Heartbeat Age, `service_down_time`, and Conductor/RabbitMQ Connectivity
+5. New Nova Compute Host Is Not Listed: How to Repair Its Cells v2 Host Mapping
+6. How to Add a New Nova Cells v2 Cell and Discover Its Compute Hosts
+7. How to Find and Heal Orphaned Nova Placement Allocations Without Damaging Active Migrations
+8. How to Evacuate Instances Safely After a Nova Compute Failure—and Know When Ephemeral Data Cannot Be Preserved
+9. How to Reset a Nova Server from ERROR to ACTIVE—and Verify You Are Not Hiding the Underlying Failure
+10. How to Repair a Stale Nova–Cinder Volume Attachment Without Editing Either Database
+11. Nova Live Migration Timed Out: How to Monitor, Abort, or Force-Complete It Safely
+12. How to Choose Between Nova Live Migration, Cold Migration, Resize, Evacuation, and Shelving
+13. Nova Says “PCI Alias Is Not Defined”: How to Configure GPU Passthrough and PCI Tracking in Placement
+14. How to Configure Nova CPU Pinning, Huge Pages, and NUMA Affinity Without Causing NoValidHost
+15. How to Place Nova Instances with Host Aggregates and Traits Instead of Hard-Coding Hosts
+16. Boot-from-Volume Fails in Nova: How to Fix Compute and Cinder Availability-Zone Mismatches
+17. How to Perform a Rolling Nova Upgrade with nova-status Checks and Online Data Migrations
+18. How to Change Nova’s Default QEMU Machine Type Without Silently Changing Existing Instances
+19. Cloud-Init Cannot Reach 169.254.169.254: How to Debug Nova Metadata and Use Config Drives
+20. Nova Console Will Not Open: How to Diagnose noVNC, Serial Console, Proxy, and Token Failures
+
+## PolarDB
+
+1. Cannot Connect to PolarDB for MySQL: How to Check VPC Routing, IP Whitelists, Endpoints, and Account Grants
+2. How to Enable PolarDB SSL with Certificate Verification and Rotate Certificates Without an Outage
+3. How to Configure PolarDB Cluster Endpoints for Read Scaling Without Violating Read-After-Write Consistency
+4. PolarDB Returns Stale Reads Through a Connection Pool: How to Choose Session or Global Consistency
+5. PolarDB Returns `wait replication complete timeout`: How to Diagnose Replica Lag, Consistency Timeouts, and Primary-Node Fallback
+6. PolarDB ePQ Is Enabled but EXPLAIN Is Still Serial: How to Check DOP, Cost, and Row Thresholds
+7. Why Is PolarDB Elastic Parallel Query Slower Than Serial? Tune Worker Budgets, Queues, and Fallbacks
+8. Why Is PolarDB IMCI Not Used? Check Column Coverage, Unsupported Operators, and Cost-Based Fallback
+9. Why Does PolarDB IMCI Storage Stay High After DELETE? Understand Deletion Labels, Row Groups, and Background Compaction
+10. PolarDB Undo Tablespaces Keep Growing: How to Find Purge Lag and Long-Running Transactions
+11. PolarDB `ALTER TABLE` Returns `ERROR 8007`: How to Find an MDL Blocker on a Read-Only Node
+12. How to Switch a Database Endpoint in PolarDB Multi-master Cluster (Limitless) Without Breaking Dependent Objects
+13. How to Scale PolarDB Multi-master Sharded Tables to More RW Nodes Without Data Migration or Application Rerouting
+14. Why Is PolarDB for PostgreSQL Using a Sequential Scan? Check Statistics, Selectivity, and Cross-Node Parallel Execution
+15. How to Archive PolarDB Cold Data to OSS Without Creating a Backup and Recovery Blind Spot
+16. Why Can’t You See PolarDB Archived Files in OSS—and How Should You Verify Them?
+17. How to Roll Out TDE to Existing PolarDB for MySQL Tables and Plan for ALTER TABLE Locks
+18. How to Restore Specific PolarDB for PostgreSQL Databases or Tables to a Point in Time Under New Names
+19. How to Migrate Self-Managed MySQL to PolarDB with DTS and Validate a Minimal-Downtime Cutover
+20. How to Speed Up Filtered Vector Search in PolarDB for PostgreSQL with HNSW and Exact Indexes
+
+## Value Streams
+
+1. How to Define Software Value Stream Boundaries from Customer Request to Measurable Outcome
+2. How to Choose the Unit of Work for a Value Stream When Features, Incidents, and Requests Follow Different Paths
+3. How to Map the Workflow Your Team Actually Uses Instead of the Process It Claims to Use
+4. How to Decide Whether You Need a Value Stream Map, Process Map, Story Map, or Customer Journey
+5. How to Distinguish Operational and Development Value Streams Without Treating Teams or Projects as Streams
+6. How to Show Branches, Parallel Work, Exception Paths, and Rework Loops on a Value Stream Map
+7. How to Calculate Lead Time, Cycle Time, Touch Time, Wait Time, and Flow Efficiency Correctly
+8. How to Expose Batch Releases and Queue Time in a Software Value Stream Map
+9. How to Measure Rework with Percent Complete and Accurate Across a Software Value Stream
+10. How to Build Value Stream Metrics from Jira, GitHub, and CI/CD Event Timestamps
+11. Value Stream Data Is Incomplete: How to Fix Missing Transitions and Unreliable Workflow Timestamps
+12. How to Find the Real Value Stream Bottleneck with WIP, Queue Age, and Throughput
+13. How to Compare Value Stream Performance Across Different Work Types with Cohorts and Percentiles
+14. How to Design a Future-State Value Stream with Pull, WIP Limits, and Fewer Handoffs
+15. How to Turn a Future-State Value Stream Map into Prioritized Experiments with Owners and Outcomes
+16. How to Align Team Topologies to Value Streams Without Duplicating Platform Capabilities
+17. How to Model Shared Security, Compliance, Architecture, and Platform Gates in a Value Stream
+18. How to Connect Value Stream Metrics to DORA Without Confusing Lead Time Definitions
+19. How to Prove a Value Stream Change Worked Without Encouraging Metric Gaming
+20. How to Keep a Value Stream Map Current with Ownership, Review Cadence, and Automated Evidence
