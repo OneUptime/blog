@@ -26,7 +26,7 @@ After an OIDC code flow, a typical web application has:
 1. an OP session cookie on `id.example.com`, which the application cannot read; and
 2. an application session cookie on `app.example.com`, backed by local server state.
 
-The application may also hold an ID token, access token, and refresh token on the server. Their expirations are independent of both session lifetimes. OIDC Core explicitly notes that ID-token expiration is unrelated to the authenticated session between the RP and OP.
+The application may also hold an ID token, access token, and refresh token on the server. Their lifetimes need not coincide with either the application session or the OP session. OIDC Core explicitly notes that ID-token expiration is unrelated to the authenticated session between the RP and OP.
 
 This produces four ordinary states:
 
@@ -49,6 +49,7 @@ Before deleting the session, retain only what is needed to construct the provide
 
 - the validated issuer;
 - a previously issued ID token for `id_token_hint`, if your policy stores it;
+- the configured client ID;
 - the discovered `end_session_endpoint`;
 - the registered post-logout URI; and
 - a fresh, one-time logout `state` value.
@@ -62,7 +63,7 @@ If discovery advertises `end_session_endpoint`, redirect the user's browser ther
 - `id_token_hint`, recommended to identify the OP/RP session;
 - `post_logout_redirect_uri`, which must be pre-registered;
 - `state`, returned to correlate the post-logout callback;
-- `client_id` in defined cases where an ID-token hint is absent; and
+- `client_id`, most commonly when `post_logout_redirect_uri` is used without `id_token_hint`; and
 - optionally `logout_hint` and `ui_locales` according to provider support.
 
 Example:
@@ -76,19 +77,23 @@ https://id.example.com/logout
 
 Build the URL with a URL API so values are encoded once. Obtain the endpoint from validated discovery metadata or trusted configuration, never from a request parameter or unverified JWT.
 
-The OP can ask the user to confirm logout. Without a valid hint, confirmation is especially important because otherwise an attacker could use logout links for denial of service. A post-logout redirect is not guaranteed: the OP must reject an unregistered target, and the user or OP policy may stop the flow.
+The OP should ask the user to confirm logout. It must do so when no `id_token_hint` is provided or when the supplied token does not belong to the current OP session with that RP and the currently logged-in user; otherwise, an attacker could use logout links for denial of service. A post-logout redirect is not guaranteed: the OP must not redirect to a URI that does not exactly match a registered value, and the user or OP policy may stop the flow.
 
 ## A Server-Side Logout Skeleton
 
 The following Express-style pseudocode shows the ordering. Framework-specific OIDC libraries should be preferred when they implement RP-Initiated Logout correctly.
 
 ```javascript
+import { randomBytes } from "node:crypto";
+
 app.post("/logout", requireSameOriginOrCsrf, async (req, res) => {
-  const session = await sessions.get(req.cookies.__Host_app_session);
+  const sessionId = req.cookies["__Host-app_session"];
+  const session = sessionId ? await sessions.get(sessionId) : null;
 
   const logoutContext = session && {
     endSessionEndpoint: session.oidc.endSessionEndpoint,
     idTokenHint: session.oidc.idToken,
+    clientId: session.oidc.clientId,
     issuer: session.oidc.issuer
   };
 
@@ -96,7 +101,7 @@ app.post("/logout", requireSameOriginOrCsrf, async (req, res) => {
     await sessions.delete(session.id); // invalidate server state first
   }
 
-  res.clearCookie("__Host_app_session", {
+  res.clearCookie("__Host-app_session", {
     path: "/",
     secure: true,
     httpOnly: true,
@@ -107,7 +112,7 @@ app.post("/logout", requireSameOriginOrCsrf, async (req, res) => {
     return res.redirect(303, "/signed-out?scope=local");
   }
 
-  const state = crypto.randomBytes(32).toString("base64url");
+  const state = randomBytes(32).toString("base64url");
   await logoutTransactions.put(state, {
     issuer: logoutContext.issuer,
     expiresAt: Date.now() + 5 * 60_000
@@ -117,6 +122,7 @@ app.post("/logout", requireSameOriginOrCsrf, async (req, res) => {
   if (logoutContext.idTokenHint) {
     url.searchParams.set("id_token_hint", logoutContext.idTokenHint);
   }
+  url.searchParams.set("client_id", logoutContext.clientId);
   url.searchParams.set(
     "post_logout_redirect_uri",
     "https://app.example.com/oidc/logout/callback"
@@ -135,13 +141,13 @@ Use a state-changing method and CSRF defense for the local logout endpoint. A cr
 
 ### App session is missing but OP session remains
 
-This is normal after local logout. Decide whether the product should offer "Sign out of this app" and "Sign out of the identity provider" as separate choices. If the user selects provider logout but the local session is already gone, you may lack an ID-token hint. A trusted `end_session_endpoint` plus `client_id` and a registered post-logout URI can be supported by some OPs, but the OP may require confirmation.
+This is normal after local logout. Decide whether the product should offer "Sign out of this app" and "Sign out of the identity provider" as separate choices. If the user selects provider logout but the local session is already gone, you may lack an ID-token hint. A trusted `end_session_endpoint` plus `client_id` and a registered post-logout URI can be supported by some OPs, but the OP must ask the user to confirm logout when `id_token_hint` is absent.
 
 If a new login immediately reuses the OP session and the product needs an account chooser or fresh authentication, use appropriate OIDC authentication request controls such as `prompt` or `max_age`; do not pretend that clearing the app cookie ended SSO.
 
 ### OP session is already gone but app session remains
 
-The application may continue because its local session is independent. End it on explicit local logout and normal expiry. If near-real-time OP-initiated sign-out is a requirement, register and implement a supported notification mechanism rather than polling UserInfo.
+The application may continue because its local session is independent. End it on explicit local logout and normal expiry. If near-real-time OP-initiated sign-out is a requirement, configure and implement a supported notification mechanism rather than polling UserInfo.
 
 RP-Initiated Logout is designed to be idempotent: requesting logout when the OP no longer considers the RP logged in is not itself an error. The local operation should be idempotent too.
 
@@ -150,14 +156,14 @@ RP-Initiated Logout is designed to be idempotent: requesting logout when the OP 
 Single logout across RPs requires coordination:
 
 - **Front-channel logout** loads registered RP logout URLs through the browser. Browser privacy controls, frame restrictions, and network failures can make delivery unreliable.
-- **Back-channel logout** sends a signed logout token directly from the OP to an RP endpoint. It avoids third-party-cookie dependence but requires a reachable, authenticated endpoint and correct replay/session handling.
+- **Back-channel logout** sends a signed logout token directly from the OP to an RP endpoint. It avoids third-party-cookie dependence but requires a reachable endpoint that validates the signed logout token, plus correct replay and session handling.
 - **Session Management** can detect OP session-state changes in supported browser deployments.
 
-The OP and each RP must advertise and register compatible features. RP-Initiated Logout alone does not prove that every application session ended.
+The OP and each RP must mutually support and configure compatible features. RP-Initiated Logout alone does not prove that every application session ended.
 
 ## Revoke Tokens Separately
 
-OAuth token revocation, defined by RFC 7009, is a server-to-server request concerning a token. It can be useful when a refresh token should no longer mint access tokens. It does not necessarily clear the OP's browser SSO cookie, and clearing cookies does not necessarily invalidate already issued access tokens at resource servers.
+OAuth token revocation, defined by RFC 7009, is an HTTPS POST from the OAuth client to the authorization server's revocation endpoint. It can be useful when a refresh token should no longer mint access tokens. It does not necessarily clear the OP's browser SSO cookie, and clearing cookies does not necessarily invalidate already issued access tokens at resource servers.
 
 If the application stores refresh tokens, define whether local logout also revokes the refresh token. Consider the user's expectations, multi-device sessions, provider behavior, and whether revoking one grant should affect other sessions. Always remove local token copies regardless of the revocation response, and do not block local sign-out on a network call.
 
