@@ -1,4 +1,4 @@
-# Validation Summary: What Happens When cloud-controller-manager Goes Down? New Nodes, Routes, and Load Balancers Explained
+# Validation Summary: What Happens When cloud-controller-manager Goes Down?
 
 ## Status
 validated

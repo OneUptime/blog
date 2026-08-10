@@ -1,4 +1,4 @@
-# Validation Summary: How to Monitor cloud-controller-manager Health: Leader Leases, Reconcile Errors, and API Throttling
+# Validation Summary: Monitoring cloud-controller-manager Health and Reconcile Errors
 
 ## Status
 

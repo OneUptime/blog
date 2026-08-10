@@ -1,4 +1,4 @@
-# Validation Summary: Can cloud-controller-manager Delete a Kubernetes Node? Understanding Cloud Node Lifecycle Checks
+# Validation Summary: Can cloud-controller-manager Delete a Kubernetes Node?
 
 ## Status
 

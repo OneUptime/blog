@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Microsoft Entra ID, App Registration, Enterprise Application, Service Principal, Microsoft Graph, Troubleshooting
+Tags: Microsoft Entra ID, App Registration, Enterprise Applications, Service Principal, Microsoft Graph, Troubleshooting
 
 Description: Trace an Entra app registration to its tenant-local service principal, fix portal and tenant mismatches, and safely create a missing enterprise application.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, ProviderID, Cloud Controller Manager, Nodes, Cluster Autoscaler, Troubleshooting
+Tags: Kubernetes, ProviderID, Cloud Controller Manager, Node, Cluster Autoscaler, Troubleshooting
 
 Description: Trace an empty Node spec.providerID through kubelet registration, external CCM instance discovery, identity matching, API authorization, and reconciliation.
 

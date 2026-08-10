@@ -1,4 +1,4 @@
-# Validation Summary: How to Break the Cloud Controller Manager Bootstrap Deadlock When Its Own Pods Cannot Schedule
+# Validation Summary: Breaking the Cloud Controller Manager Bootstrap Scheduling Deadlock
 
 ## Status
 

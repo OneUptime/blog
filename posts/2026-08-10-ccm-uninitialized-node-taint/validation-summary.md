@@ -1,4 +1,4 @@
-# Validation Summary: Why Nodes Stay Tainted `node.cloudprovider.kubernetes.io/uninitialized` After Bootstrap
+# Validation Summary: Why Nodes Keep the `node.cloudprovider.kubernetes.io/uninitialized` Taint
 
 ## Status
 

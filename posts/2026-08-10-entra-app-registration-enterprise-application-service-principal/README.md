@@ -1,8 +1,8 @@
-# Microsoft Entra App Registration vs Enterprise Application vs Service Principal: What Is the Difference?
+# Entra App Registration vs Enterprise Application vs Service Principal
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Microsoft Entra ID, App Registrations, Enterprise Applications, Service Principals, OAuth 2.0, Identity
+Tags: Microsoft Entra ID, App Registration, Enterprise Applications, Service Principal, OAuth 2.0, Identity
 
 Description: Understand the application object and service principal model behind App registrations and Enterprise applications, including which settings belong in each portal view.
 

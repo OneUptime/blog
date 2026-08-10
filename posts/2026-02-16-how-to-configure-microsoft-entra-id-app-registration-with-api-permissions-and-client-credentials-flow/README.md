@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Microsoft Entra ID, App Registration, API Permissions, Client Credential, OAuth, Service Principal
+Tags: Azure, Microsoft Entra ID, App Registration, API Permissions, Client Credentials, OAuth, Service Principal
 
 Description: A detailed walkthrough for setting up Microsoft Entra ID app registrations with API permissions and client credentials flow for service-to-service authentication.
 

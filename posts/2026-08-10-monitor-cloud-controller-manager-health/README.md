@@ -1,4 +1,4 @@
-# How to Monitor cloud-controller-manager Health: Leader Leases, Reconcile Errors, and API Throttling
+# Monitoring cloud-controller-manager Health and Reconcile Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

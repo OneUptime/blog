@@ -1,4 +1,4 @@
-# Validation Summary: How to Debug OIDC Discovery Failures: Issuer URLs, `/.well-known/openid-configuration`, TLS, and DNS
+# Validation Summary: Debugging OIDC Discovery: Issuer URLs, TLS, DNS, and Metadata
 
 ## Status
 validated

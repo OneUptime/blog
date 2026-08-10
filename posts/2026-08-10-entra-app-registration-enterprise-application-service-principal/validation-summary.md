@@ -1,4 +1,4 @@
-# Validation Summary: Microsoft Entra App Registration vs Enterprise Application vs Service Principal: What Is the Difference?
+# Validation Summary: Entra App Registration vs Enterprise Application vs Service Principal
 
 ## Status
 

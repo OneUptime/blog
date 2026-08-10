@@ -1,4 +1,4 @@
-# Validation Summary: What Does Kubernetes cloud-controller-manager Actually Do—and What Still Belongs to kube-controller-manager?
+# Validation Summary: Kubernetes CCM vs kube-controller-manager: Which Component Owns What?
 
 ## Status
 validated

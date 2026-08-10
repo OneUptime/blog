@@ -1,8 +1,8 @@
-# Why Standard Conditional Access Does Not Protect Client-Credential Sign-Ins—and What Workload Identity Policies Cover
+# Protecting Entra Client-Credential Sign-Ins with Workload Policies
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Microsoft Entra ID, Conditional Access, Workload Identities, Service Principals, Client Credentials, Zero Trust
+Tags: Microsoft Entra ID, Conditional Access, Workload Identities, Service Principal, Client Credentials, Zero Trust
 
 Description: Protect eligible service-principal token requests with Entra Conditional Access for workload identities while accounting for licensing, identity, policy, and CAE limitations.
 
@@ -121,7 +121,7 @@ Avoid location enforcement when the workload uses unpredictable shared egress un
 
 ### 2. Select the Service Principal Object ID
 
-The workload policy needs the **Object ID from Enterprise applications**—the service principal Object ID. Microsoft explicitly warns not to use the Object ID shown for the app registration/application object.
+The workload policy needs the **Object ID from Enterprise applications**-the service principal Object ID. Microsoft explicitly warns not to use the Object ID shown for the app registration/application object.
 
 Record:
 
@@ -229,4 +229,4 @@ An unlisted disaster-recovery egress address turns identity policy into an outag
 
 ## Conclusion
 
-User-scoped Conditional Access does not protect client-credential sign-ins because no user participates. Use Conditional Access for workload identities only for its documented, licensed scope: directly selected, eligible single-tenant service principals, with block controls using supported location and service-principal-risk conditions and supported authentication-context targets. Account for the exclusions—especially managed identities and multitenant SaaS—and layer the policy with safer credentials, least privilege, resource authorization, and workload-specific monitoring.
+User-scoped Conditional Access does not protect client-credential sign-ins because no user participates. Use Conditional Access for workload identities only for its documented, licensed scope: directly selected, eligible single-tenant service principals, with block controls using supported location and service-principal-risk conditions and supported authentication-context targets. Account for the exclusions-especially managed identities and multitenant SaaS-and layer the policy with safer credentials, least privilege, resource authorization, and workload-specific monitoring.

@@ -1,8 +1,8 @@
-# Why cloud-controller-manager Sets the Wrong `InternalIP` or `ExternalIP` on a Node
+# Why cloud-controller-manager Sets the Wrong Node InternalIP or ExternalIP
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Cloud Controller Manager, Node IP, InternalIP, ExternalIP, Troubleshooting
+Tags: Kubernetes, Cloud Controller Manager, Node IP, InternalIP, ExternalIPs, Troubleshooting
 
 Description: Trace incorrect Node addresses to instance matching, provider network selection, stale identity, multihoming, and competing writers without patching status by hand.
 

@@ -1,4 +1,4 @@
-# Validation Summary: Why a New Entra Client Secret Still Fails After Rotation: Deployment, Caching, and Encoding Checks
+# Validation Summary: Why a New Entra Client Secret Still Fails After Rotation
 
 ## Status
 validated

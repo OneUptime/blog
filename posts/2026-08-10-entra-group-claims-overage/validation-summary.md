@@ -1,4 +1,4 @@
-# Validation Summary: Why Entra Group Claims Disappear for Users in Many Groups—and How to Handle Overage
+# Validation Summary: Why Entra Group Claims Disappear and How to Handle Overage
 
 ## Status
 

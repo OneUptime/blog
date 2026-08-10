@@ -1,4 +1,4 @@
-# Validation Summary: Cloud Controller Manager as a Deployment, DaemonSet, or Static Pod: Which Topology Fits?
+# Validation Summary: Choosing a Cloud Controller Manager Deployment Topology
 
 ## Status
 validated

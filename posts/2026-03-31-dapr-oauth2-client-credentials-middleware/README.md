@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Dapr, OAuth2, Middleware, Security, Client Credential
+Tags: Dapr, OAuth2, Middleware, Security, Client Credentials
 
 Description: Learn how to configure the Dapr OAuth2 client credentials middleware to automatically inject access tokens into outbound service-to-service calls.
 

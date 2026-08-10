@@ -1,4 +1,4 @@
-# Why OIDC Group or Role Claims Are Missing—and Where to Retrieve Authorization Data
+# Why OIDC Group or Role Claims Are Missing and Where to Find Authorization Data
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -102,7 +102,7 @@ This works well for low-latency decisions whose acceptable staleness is the acce
 
 SCIM defines APIs and schemas for retrieving and provisioning Users and Groups, but an OIDC login does not automatically grant SCIM access. Use a separately authorized directory or provider API when the application genuinely needs directory membership and the provider supports that access model.
 
-Application roles often belong in the application itself. Map the stable OIDC principal key—normally the tuple `(iss, sub)`—to local roles, tenant membership, ownership, or policy records. This avoids coupling business permissions to display names or mutable email addresses.
+Application roles often belong in the application itself. Map the stable OIDC principal key-normally the tuple `(iss, sub)`-to local roles, tenant membership, ownership, or policy records. This avoids coupling business permissions to display names or mutable email addresses.
 
 ## A Repeatable Troubleshooting Runbook
 
@@ -121,11 +121,11 @@ Fail closed when a required authorization claim is absent. "Missing" must not me
 
 Every embedded authorization claim has a staleness window. Document whether changes take effect at access-token renewal, at the next OIDC login, at application-session refresh, or after a live policy lookup. Shorter access-token lifetimes can reduce stale decisions but increase renewal traffic; live lookups can improve freshness but add latency and availability dependencies.
 
-For high-impact operations, combine a validated token identity with a current application-side decision. For ordinary operations, a short-lived, resource-specific access-token claim may be enough. The correct answer depends on the consequence of a revoked role remaining effective until the next refresh—not on which token is easiest to decode.
+For high-impact operations, combine a validated token identity with a current application-side decision. For ordinary operations, a short-lived, resource-specific access-token claim may be enough. The correct answer depends on the consequence of a revoked role remaining effective until the next refresh-not on which token is easiest to decode.
 
 ## Sources
 
-- [OpenID Connect Core 1.0 — ID Tokens and Claims](https://openid.net/specs/openid-connect-core-1_0.html)
-- [RFC 9068 — JWT Profile for OAuth 2.0 Access Tokens](https://datatracker.ietf.org/doc/html/rfc9068)
-- [RFC 7643 — SCIM Core Schema](https://datatracker.ietf.org/doc/html/rfc7643)
-- [RFC 7644 — SCIM Protocol](https://datatracker.ietf.org/doc/html/rfc7644)
+- [OpenID Connect Core 1.0 - ID Tokens and Claims](https://openid.net/specs/openid-connect-core-1_0.html)
+- [RFC 9068 - JWT Profile for OAuth 2.0 Access Tokens](https://datatracker.ietf.org/doc/html/rfc9068)
+- [RFC 7643 - SCIM Core Schema](https://datatracker.ietf.org/doc/html/rfc7643)
+- [RFC 7644 - SCIM Protocol](https://datatracker.ietf.org/doc/html/rfc7644)

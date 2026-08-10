@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Microsoft Entra ID, AADSTS700016, Service Principals, Client ID, Tenant ID, OAuth 2.0, Troubleshooting
+Tags: Microsoft Entra ID, AADSTS700016, Service Principal, Client ID, Tenant ID, OAuth 2.0, Troubleshooting
 
 Description: Diagnose AADSTS700016 by verifying the runtime client ID, authority tenant, application object, service principal, supported account type, and consent state.
 
@@ -47,7 +47,7 @@ The identifier in this error is normally the OAuth `client_id`. It should be the
 
 Inspect the effective runtime configuration. Do not rely on the app registration screenshot or the deployment manifest in source control; a stale secret store, slot setting, Helm value, or pipeline variable may override it.
 
-For a raw client-credentials request, the relevant fields look like:
+For a raw client-credentials request, the relevant fields look like this (line breaks are for readability):
 
 ```http
 POST https://login.microsoftonline.com/<tenant-id>/oauth2/v2.0/token
@@ -58,6 +58,8 @@ client_id=00001111-aaaa-2222-bbbb-3333cccc4444
 &client_secret=<redacted>
 &grant_type=client_credentials
 ```
+
+Form-encode every value, including the client secret, before sending the request.
 
 Log only a safe fingerprint such as the client ID, tenant ID, credential key ID, and configuration version. Never log the secret value.
 
@@ -133,11 +135,11 @@ If the request targets another organization but `signInAudience` is `AzureADMyOr
 
 A multitenant application has one application object in its publisher tenant and a service principal in each customer tenant that uses it. Customer consent normally creates the local service principal.
 
-As of March 2026, Microsoft Entra blocks remaining non-Microsoft multitenant app-only authentication scenarios that lack a service principal in the tenant. Service-principal-less authentication should not be treated as a compatibility option.
+Effective March 31, 2026, Microsoft Entra blocks remaining non-Microsoft multitenant app-only authentication scenarios that lack a service principal in the tenant. Service-principal-less authentication should not be treated as a compatibility option.
 
 For an authorized customer tenant:
 
-- complete the documented user or admin consent flow; or
+- complete the documented user or admin consent flow (application permissions used by client-credentials workloads require administrator consent); or
 - have an administrator create the enterprise application/service principal from the multitenant application's client ID where appropriate.
 
 Do not create a duplicate application registration in the customer tenant merely to make the error disappear. That creates a different client ID and separates the customer from the publisher's intended configuration.
@@ -155,7 +157,7 @@ Also distinguish:
 
 - `AADSTS7000215`: the client was found, but the supplied secret is invalid;
 - `AADSTS7000222`: supplied client-secret credentials are expired; and
-- `AADSTS7000112`: the client application is disabled.
+- `AADSTS7000112`: the service principal is disabled in the resource tenant, or its backing application was disabled globally.
 
 Preserve the exact numeric code in incident notes.
 
@@ -187,10 +189,10 @@ After a correction, restart or redeploy the affected instance, acquire a fresh t
 - Store client ID and tenant ID as separate, explicitly named settings.
 - Include the expected tenant and client ID in nonsecret startup diagnostics.
 - Use deployment tests that query the service principal before enabling traffic.
-- Treat customer-tenant consent as an onboarding prerequisite for multitenant workloads.
+- Treat customer-tenant service-principal provisioning and any required consent as onboarding prerequisites for multitenant workloads.
 - Inventory app/service-principal relationships by `appId`.
 - Monitor service-principal sign-in logs and alert on unexpected tenant/client combinations.
-- Prefer managed identity for suitable Azure-hosted workloads, avoiding a manually configured app client ID and secret.
+- Prefer managed identity for suitable Azure-hosted workloads, avoiding a manually managed client secret and, with a system-assigned identity, a client ID setting.
 
 ## Official Documentation
 

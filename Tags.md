@@ -4,6 +4,7 @@
 - -var flag
 - ::
 - ::1
+- .default
 - .env
 - .env Files
 - .htaccess
@@ -262,6 +263,9 @@
 - AAA
 - AAAA
 - AAAA Records
+- AADSTS
+- AADSTS700016
+- AADSTS7000215
 - AArch64
 - Ab testing
 - Ab-Testing
@@ -473,6 +477,7 @@
 - Admin Activity
 - Admin API
 - Admin Client
+- Admin Consent
 - Admin Console
 - Admin Dashboard
 - Admin Interface
@@ -962,6 +967,7 @@
 - App Platform
 - App Protection
 - App Registration
+- App Roles
 - App Router
 - App Runner
 - App Service
@@ -1017,6 +1023,7 @@
 - Application Monitoring
 - Application Performance
 - Application Performance Monitoring
+- Application Permissions
 - Application Proxy
 - Application Repository
 - Application Rules
@@ -1342,6 +1349,7 @@
 - Attributes Processor
 - Attribution
 - Auction
+- Audience
 - Audience Segmentation
 - Audio
 - Audio Control
@@ -2365,6 +2373,7 @@
 - Browser Instrumentation
 - Browser Monitoring
 - Browser SDK
+- Browser Security
 - Browser Testing
 - Browser Tracing
 - Browser Uploads
@@ -3083,8 +3092,9 @@
 - Client Buffer
 - Client Certificate
 - Client Configuration
-- Client Credential
+- Client Credentials
 - Client Development
+- Client ID
 - Client IO
 - Client IP
 - Client Libraries
@@ -3093,6 +3103,7 @@
 - Client Metrics
 - Client Networking
 - Client Options
+- Client Secrets
 - CLIENT SETINFO
 - Client Tracking
 - Client VPN
@@ -3149,6 +3160,7 @@
 - Cloud Computing
 - Cloud Configuration
 - Cloud Console
+- Cloud Controller Manager
 - Cloud Cost
 - Cloud Cost Allocation
 - Cloud Cost Controls
@@ -3232,6 +3244,7 @@
 - Cloud Resource
 - Cloud Resource Manager
 - Cloud Router
+- Cloud Routes
 - Cloud Run
 - Cloud Run Jobs
 - Cloud Save
@@ -3838,6 +3851,7 @@
 - Consecutive Values
 - Consensus
 - Consensus Protocols
+- Consent
 - Conservation
 - Consistency
 - Consistency Levels
@@ -6733,6 +6747,7 @@
 - External DNS
 - External etcd
 - External Event
+- External ID
 - External Identities
 - External Identity
 - External Integration
@@ -7928,6 +7943,7 @@
 - Group Accumulators
 - GROUP BY
 - GROUP BY ALL
+- Group Claims
 - Group Commit
 - Group Communication
 - Group Management
@@ -7992,7 +8008,7 @@
 - Guest Network
 - Guest OS
 - Guest Share
-- Guest Users
+- Guest User
 - Guest WiFi
 - GUI
 - GUI Applications
@@ -8818,6 +8834,7 @@
 - In-Memory Volume
 - In-Place Upgrade
 - In-Toto
+- In-Tree Cloud Provider
 - In-Tree Volume
 - Inbound Forwarding
 - Inbound NAT
@@ -9176,6 +9193,7 @@
 - Internal Tool
 - Internal Traffic
 - internal_replication
+- InternalIP
 - International
 - International Logistics
 - Internationalization
@@ -9838,7 +9856,7 @@
 - Kube Play
 - Kube-apiserver
 - Kube-bench
-- Kube-controller-manager
+- kube-controller-manager
 - Kube-dns
 - Kube-linter
 - Kube-prometheus-stack
@@ -10084,6 +10102,7 @@
 - LEAD
 - Lead Time
 - Leader Election
+- Leader Migration
 - Leader Placement
 - Leaderboard
 - Leadership
@@ -10916,6 +10935,7 @@
 - Meeting Management
 - Meeting Transcription
 - Meilisearch
+- Member User
 - Memberlist
 - Membership
 - Membership Query
@@ -11461,6 +11481,7 @@
 - MQTT
 - MRC Standard
 - MRTG
+- MSAL
 - MSAL.js
 - MSET
 - MSETNX
@@ -12184,6 +12205,7 @@
 - Node Conditions
 - Node Configuration
 - Node Customization
+- Node Deletion
 - Node Discovery
 - Node Drain
 - Node Draining
@@ -12198,6 +12220,7 @@
 - Node ID
 - Node Identity
 - Node Information
+- Node IP
 - Node Labels
 - Node Lifecycle
 - Node Local DNS Cache
@@ -12432,6 +12455,7 @@
 - OBJECT FREQ
 - OBJECT HELP
 - Object Hold
+- Object ID
 - OBJECT IDLETIME
 - Object Lock
 - Object Mapping
@@ -13930,6 +13954,7 @@
 - Primary_reselect
 - Primary-Remote
 - Principal Access Boundary
+- Principal ID
 - Print Server
 - Printer Sharing
 - Printing
@@ -14188,6 +14213,7 @@
 - Provider Versioning
 - Provider Versions
 - Provider-Development
+- ProviderID
 - Provisioned Capacity
 - Provisioned Concurrency
 - Provisioner
@@ -16394,6 +16420,7 @@
 - Service Account Keys
 - Service Account Tokens
 - Service Advertisement
+- Service Annotations
 - Service Authentication
 - Service Binding
 - Service Boundary
@@ -18250,6 +18277,7 @@
 - Tenacity
 - Tenancy
 - Tenant
+- Tenant ID
 - Tenant Isolation
 - Tenant Onboarding
 - Tenant Provisioning
@@ -18593,6 +18621,7 @@
 - Token Blacklist
 - Token Bucket
 - Token Caching
+- Token Claims
 - Token Creator
 - Token Errors
 - Token Expiration
@@ -19241,6 +19270,7 @@
 - User Activity
 - User Agent
 - User Analytics
+- User Assignment
 - User Audit
 - User Behavior
 - User Context
@@ -19289,6 +19319,7 @@
 - Useradd
 - UserDefaults
 - UseRef
+- UserInfo
 - Usermod
 - Username
 - userns
@@ -20070,6 +20101,7 @@
 - Workload Analysis
 - Workload Configuration
 - Workload Disruption
+- Workload Identities
 - Workload Identity
 - Workload Identity Federation
 - Workload Isolation

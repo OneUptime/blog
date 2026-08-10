@@ -1,4 +1,4 @@
-# Validation Summary: Client Secret vs Certificate vs Managed Identity vs Workload Federation: Which Entra Credential Model Fits?
+# Validation Summary: Choosing an Entra Credential: Secret, Certificate, or Managed Identity
 
 ## Status
 validated

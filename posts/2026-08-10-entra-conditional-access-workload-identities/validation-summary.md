@@ -1,4 +1,4 @@
-# Validation Summary: Why Standard Conditional Access Does Not Protect Client-Credential Sign-Ins—and What Workload Identity Policies Cover
+# Validation Summary: Protecting Entra Client-Credential Sign-Ins with Workload Policies
 
 ## Status
 validated

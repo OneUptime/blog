@@ -1,4 +1,4 @@
-# Why a New Entra Client Secret Still Fails After Rotation: Deployment, Caching, and Encoding Checks
+# Why a New Entra Client Secret Still Fails After Rotation
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

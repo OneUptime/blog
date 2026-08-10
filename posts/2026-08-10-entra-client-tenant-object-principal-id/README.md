@@ -1,8 +1,8 @@
-# Client ID, Tenant ID, Object ID, and Principal ID in Entra ID: Which One Does Each API Need?
+# Which Entra ID Should an API Use: Client, Tenant, Object, or Principal?
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Microsoft Entra ID, Client ID, Tenant ID, Object ID, Principal ID, Service Principals, Azure RBAC
+Tags: Microsoft Entra ID, Client ID, Tenant ID, Object ID, Principal ID, Service Principal, Azure RBAC
 
 Description: Choose the correct Entra identifier for token requests, Microsoft Graph lookups, managed identities, and Azure role assignments without swapping unrelated GUIDs.
 

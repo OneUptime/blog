@@ -1,4 +1,4 @@
-# Validation Summary: Why Cloud Routes Are Not Created: `--configure-cloud-routes`, Pod CIDRs, and Provider Support
+# Validation Summary: Why Cloud Routes Are Not Created by cloud-controller-manager
 
 ## Status
 validated

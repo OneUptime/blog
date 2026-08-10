@@ -67,7 +67,7 @@ An application permission lets a workload call an API using its own service prin
 }
 ```
 
-With a standard app registration, the client uses the **client credentials flow** and authenticates with a certificate, federated credential, or—only when necessary—a client secret:
+With a standard app registration, the client uses the **client credentials flow** and authenticates with a certificate, federated credential, or-only when necessary-a client secret:
 
 ```http
 POST https://login.microsoftonline.com/<tenant-id>/oauth2/v2.0/token

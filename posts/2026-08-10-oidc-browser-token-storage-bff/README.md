@@ -1,8 +1,8 @@
-# Where Should a Browser App Store OIDC Tokens? Cookies, Memory, and the BFF Pattern Compared
+# Where Should Browser Apps Store OIDC Tokens? Cookies, Memory, or BFF
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenID Connect, OAuth 2.0, Browser Security, BFF, Token Storage, Cookies
+Tags: OpenID Connect, OAuth 2.0, Browser Security, BFF, Token Storage, Cookie
 
 Description: Compare browser token storage in memory and Web Storage with HttpOnly cookie sessions and the Backend for Frontend pattern.
 
@@ -31,7 +31,7 @@ Choose the architecture from the threat model and operational constraints, not f
 
 The current IETF browser-based-app guidance presents BFF, token-mediating backend, and browser-only client patterns in decreasing order of security. A BFF is strongly recommended for business and sensitive applications, while simpler architectures remain choices with explicit tradeoffs.
 
-## Why `localStorage` Is Attractive—and Dangerous
+## Why `localStorage` Is Attractive-and Dangerous
 
 `localStorage` is synchronous, easy to use, shared by tabs on an origin, and survives browser restarts. Those properties are exactly what make a stolen bearer token persist.
 
@@ -137,8 +137,8 @@ Storage is only one layer. The strongest design minimizes which credentials ente
 
 ## Sources
 
-- [OAuth 2.0 for Browser-Based Applications — IETF Working Group Draft](https://datatracker.ietf.org/doc/html/draft-ietf-oauth-browser-based-apps-27)
-- [RFC 9700 — Best Current Practice for OAuth 2.0 Security](https://datatracker.ietf.org/doc/html/rfc9700)
-- [RFC 7636 — Proof Key for Code Exchange](https://datatracker.ietf.org/doc/html/rfc7636)
-- [RFC 6265 — HTTP State Management Mechanism](https://datatracker.ietf.org/doc/html/rfc6265)
-- [Cookies: HTTP State Management Mechanism — IETF Layered Cookies Draft](https://datatracker.ietf.org/doc/html/draft-ietf-httpbis-layered-cookies-02)
+- [OAuth 2.0 for Browser-Based Applications - IETF Working Group Draft](https://datatracker.ietf.org/doc/html/draft-ietf-oauth-browser-based-apps-27)
+- [RFC 9700 - Best Current Practice for OAuth 2.0 Security](https://datatracker.ietf.org/doc/html/rfc9700)
+- [RFC 7636 - Proof Key for Code Exchange](https://datatracker.ietf.org/doc/html/rfc7636)
+- [RFC 6265 - HTTP State Management Mechanism](https://datatracker.ietf.org/doc/html/rfc6265)
+- [Cookies: HTTP State Management Mechanism - IETF Layered Cookies Draft](https://datatracker.ietf.org/doc/html/draft-ietf-httpbis-layered-cookies-02)

@@ -1,8 +1,8 @@
-# Client Secret vs Certificate vs Managed Identity vs Workload Federation: Which Entra Credential Model Fits?
+# Choosing an Entra Credential: Secret, Certificate, or Managed Identity
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Microsoft Entra ID, Managed Identity, Workload Identity Federation, Certificates, Client Secrets, Workload Security
+Tags: Microsoft Entra ID, Managed Identity, Workload Identity Federation, Certificate, Client Secrets, Workload Security
 
 Description: Choose an Entra workload credential using a practical preference order: managed identity, workload federation, certificate, then client secret only as an exception.
 
@@ -97,7 +97,7 @@ There are two lifecycle models:
 
 Microsoft's current developer guidance recommends user-assigned identities for most scenarios because they decouple identity lifecycle and can reduce object-creation/replication pressure. System-assigned identity remains useful when a one-to-one lifecycle and automatic cleanup are desirable.
 
-Use the managed identity's `clientId` in code when selecting among user-assigned identities. Use its `principalId`—the service principal Object ID—when assigning Azure RBAC.
+Use the managed identity's `clientId` in code when selecting among user-assigned identities. Use its `principalId`-the service principal Object ID-when assigning Azure RBAC.
 
 Managed does not mean ungoverned. Anyone who can attach a powerful user-assigned identity to compute can use its permissions. Protect identity-assignment rights, keep roles narrow, inventory attachments, and separate identities by trust boundary.
 

@@ -1,4 +1,4 @@
-# Can cloud-controller-manager Delete a Kubernetes Node? Understanding Cloud Node Lifecycle Checks
+# Can cloud-controller-manager Delete a Kubernetes Node?
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

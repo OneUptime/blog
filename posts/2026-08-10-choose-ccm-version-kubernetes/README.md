@@ -1,4 +1,4 @@
-# How to Choose a cloud-controller-manager Version That Matches Your Kubernetes Cluster
+# Choosing a cloud-controller-manager Version for Your Kubernetes Cluster
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -8,7 +8,7 @@ Description: Select an external CCM from the provider's compatibility matrix, ap
 
 ---
 
-Choose a cloud-controller-manager (CCM) version from the provider project's compatibility matrix, not from a generic “latest” tag. External providers release independently from Kubernetes, so version numbering often—but not universally—tracks the Kubernetes minor. The provider can impose a stricter compatibility contract than Kubernetes' general component skew policy.
+Choose a cloud-controller-manager (CCM) version from the provider project's compatibility matrix, not from a generic “latest” tag. External providers release independently from Kubernetes, so version numbering often-but not universally-tracks the Kubernetes minor. The provider can impose a stricter compatibility contract than Kubernetes' general component skew policy.
 
 For current upstream Kubernetes, `cloud-controller-manager` must not be newer than any `kube-apiserver` instance it can reach. It is expected to match the API server minor and may be one minor older to permit live upgrades. That rule defines an outer bound; the provider's tested matrix chooses the actual supported release.
 

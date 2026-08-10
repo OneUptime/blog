@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Cloud Provider, Cloud Controller Manager, kubelet, Kubernetes 1.31, Migration
+Tags: Kubernetes, Cloud Provider, Cloud Controller Manager, Kubelet, Kubernetes 1.31, Migration
 
 Description: Use the current Kubernetes cloud-provider flag correctly, distinguish core-component flags from provider CCM flags, and avoid leaving Nodes uninitialized during upgrades.
 

@@ -1,4 +1,4 @@
-# What Happens When cloud-controller-manager Goes Down? New Nodes, Routes, and Load Balancers Explained
+# What Happens When cloud-controller-manager Goes Down?
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

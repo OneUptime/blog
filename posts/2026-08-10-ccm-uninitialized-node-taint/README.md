@@ -1,4 +1,4 @@
-# Why Nodes Stay Tainted `node.cloudprovider.kubernetes.io/uninitialized` After Bootstrap
+# Why Nodes Keep the `node.cloudprovider.kubernetes.io/uninitialized` Taint
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -33,7 +33,7 @@ Record the Node's creation time and relevant Events. The delay matters: a short 
 
 ## 1. Verify External Mode Is Intentional
 
-On Kubernetes v1.31 and later, the kubelet and `kube-controller-manager` accept only an empty `--cloud-provider` value or `external`. If the cluster does not use an external CCM—common on conventional bare metal—then setting the kubelet to `external` creates a waiter with no controller that can satisfy it.
+On Kubernetes v1.31 and later, the kubelet and `kube-controller-manager` accept only an empty `--cloud-provider` value or `external`. If the cluster does not use an external CCM-common on conventional bare metal-then setting the kubelet to `external` creates a waiter with no controller that can satisfy it.
 
 Inspect the live process and the provisioning system's source of truth:
 

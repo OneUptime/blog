@@ -1,4 +1,4 @@
-# How to Implement OIDC Logout When the App Session and Identity-Provider Session Disagree
+# How to Handle OIDC Logout Across App and Identity-Provider Sessions
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -190,4 +190,4 @@ Record the stage and correlation ID, but never log raw tokens or cookies. A usef
 - [OpenID Connect Back-Channel Logout 1.0](https://openid.net/specs/openid-connect-backchannel-1_0.html)
 - [OpenID Connect Front-Channel Logout 1.0](https://openid.net/specs/openid-connect-frontchannel-1_0.html)
 - [OpenID Connect Session Management 1.0](https://openid.net/specs/openid-connect-session-1_0.html)
-- [RFC 7009 — OAuth 2.0 Token Revocation](https://datatracker.ietf.org/doc/html/rfc7009)
+- [RFC 7009 - OAuth 2.0 Token Revocation](https://datatracker.ietf.org/doc/html/rfc7009)

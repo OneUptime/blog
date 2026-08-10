@@ -1,4 +1,4 @@
-# Validation Summary: How to Choose a cloud-controller-manager Version That Matches Your Kubernetes Cluster
+# Validation Summary: Choosing a cloud-controller-manager Version for Your Kubernetes Cluster
 
 ## Status
 

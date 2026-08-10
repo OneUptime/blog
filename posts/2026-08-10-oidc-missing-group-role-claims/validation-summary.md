@@ -1,4 +1,4 @@
-# Validation Summary: Why OIDC Group or Role Claims Are Missing—and Where to Retrieve Authorization Data
+# Validation Summary: Why OIDC Group or Role Claims Are Missing and Where to Find Authorization Data
 
 ## Status
 

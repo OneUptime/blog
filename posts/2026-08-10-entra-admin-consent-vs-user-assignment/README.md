@@ -1,4 +1,4 @@
-# Entra Admin Consent vs User Assignment: How to Control Permissions and Sign-In Separately
+# Entra Admin Consent vs User Assignment: Permissions and Sign-In
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

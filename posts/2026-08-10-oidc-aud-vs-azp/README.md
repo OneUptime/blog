@@ -36,7 +36,7 @@ or, in the general case:
 
 The JSON representation does not weaken the rule. Whether the claim is a string or an array, the current RP's exact, case-sensitive client ID must be present.
 
-An array does not automatically mean that several independent applications can share the token. OIDC Core's current validation language requires the client to reject a token when it contains additional audiences the client does not trust. Trust must come from the deployment profile or extension—not from seeing a syntactically valid string in a signed token.
+An array does not automatically mean that several independent applications can share the token. OIDC Core's current validation language requires the client to reject a token when it contains additional audiences the client does not trust. Trust must come from the deployment profile or extension-not from seeing a syntactically valid string in a signed token.
 
 ## What `azp` Means
 
@@ -201,7 +201,7 @@ The right response to a surprising signed claim is not to weaken validation. Tre
 
 ## Sources
 
-- [OpenID Connect Core 1.0 — ID Token Claims](https://openid.net/specs/openid-connect-core-1_0.html#IDToken)
-- [OpenID Connect Core 1.0 — ID Token Validation](https://openid.net/specs/openid-connect-core-1_0.html#IDTokenValidation)
-- [RFC 9068 — JWT Profile for OAuth 2.0 Access Tokens](https://datatracker.ietf.org/doc/html/rfc9068)
-- [RFC 8725 — JSON Web Token Best Current Practices](https://datatracker.ietf.org/doc/html/rfc8725)
+- [OpenID Connect Core 1.0 - ID Token Claims](https://openid.net/specs/openid-connect-core-1_0.html#IDToken)
+- [OpenID Connect Core 1.0 - ID Token Validation](https://openid.net/specs/openid-connect-core-1_0.html#IDTokenValidation)
+- [RFC 9068 - JWT Profile for OAuth 2.0 Access Tokens](https://datatracker.ietf.org/doc/html/rfc9068)
+- [RFC 8725 - JSON Web Token Best Current Practices](https://datatracker.ietf.org/doc/html/rfc8725)

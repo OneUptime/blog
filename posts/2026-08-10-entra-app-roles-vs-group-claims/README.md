@@ -1,4 +1,4 @@
-# Entra App Roles vs Group Claims: Which Model Scales Better for Application Authorization?
+# Entra App Roles vs Group Claims for Application Authorization
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

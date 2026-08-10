@@ -1,8 +1,8 @@
-# Why Load Balancer Health Checks Fail After CCM Provisioning—and Which Service Annotations to Inspect
+# Why Load Balancer Health Checks Fail After CCM Provisioning
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Cloud Controller Manager, LoadBalancer, Health Checks, Service Annotations, Troubleshooting
+Tags: Kubernetes, Cloud Controller Manager, LoadBalancer, Health Check, Service Annotations, Troubleshooting
 
 Description: Diagnose a provisioned Kubernetes cloud load balancer whose backends stay unhealthy by tracing Service ownership, endpoint readiness, target mode, traffic policy, firewalls, and provider annotations.
 

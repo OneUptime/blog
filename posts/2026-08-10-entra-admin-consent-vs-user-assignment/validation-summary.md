@@ -1,4 +1,4 @@
-# Validation Summary: Entra Admin Consent vs User Assignment: How to Control Permissions and Sign-In Separately
+# Validation Summary: Entra Admin Consent vs User Assignment: Permissions and Sign-In
 
 ## Status
 

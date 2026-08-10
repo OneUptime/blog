@@ -1,4 +1,4 @@
-# Why Entra Group Claims Disappear for Users in Many Groups—and How to Handle Overage
+# Why Entra Group Claims Disappear and How to Handle Overage
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -10,7 +10,7 @@ Description: Detect Entra group-claim overage safely, retrieve membership throug
 
 Microsoft Entra ID limits how many group memberships it emits in a token. Microsoft currently documents limits of **200 groups for JWTs** and **150 groups for SAML assertions**, including nested group memberships. In the OAuth implicit flow, the practical token limit is only five groups.
 
-When a user exceeds the applicable limit, Entra does not send a partial `groups` array. It omits the normal group list and provides an overage indication. An application that interprets “no `groups` claim” as “the user belongs to no groups” will deny legitimate access—or, in poorly designed negative-policy logic, accidentally grant it.
+When a user exceeds the applicable limit, Entra does not send a partial `groups` array. It omits the normal group list and provides an overage indication. An application that interprets “no `groups` claim” as “the user belongs to no groups” will deny legitimate access-or, in poorly designed negative-policy logic, accidentally grant it.
 
 ## What Overage Looks Like
 

@@ -1,4 +1,4 @@
-# Validation Summary: Entra App Roles vs Group Claims: Which Model Scales Better for Application Authorization?
+# Validation Summary: Entra App Roles vs Group Claims for Application Authorization
 
 ## Status
 

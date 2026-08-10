@@ -1,4 +1,4 @@
-# How to Debug OIDC Discovery Failures: Issuer URLs, `/.well-known/openid-configuration`, TLS, and DNS
+# Debugging OIDC Discovery: Issuer URLs, TLS, DNS, and Metadata
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -231,5 +231,5 @@ Discovery's strictness is a security feature. Fix the canonical URL, network pat
 
 - [OpenID Connect Discovery 1.0](https://openid.net/specs/openid-connect-discovery-1_0.html)
 - [OpenID Connect Core 1.0](https://openid.net/specs/openid-connect-core-1_0.html)
-- [RFC 8414 — OAuth 2.0 Authorization Server Metadata](https://datatracker.ietf.org/doc/html/rfc8414)
-- [RFC 9525 — Service Identity in TLS](https://datatracker.ietf.org/doc/html/rfc9525)
+- [RFC 8414 - OAuth 2.0 Authorization Server Metadata](https://datatracker.ietf.org/doc/html/rfc8414)
+- [RFC 9525 - Service Identity in TLS](https://datatracker.ietf.org/doc/html/rfc9525)

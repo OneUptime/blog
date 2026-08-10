@@ -1,4 +1,4 @@
-# Validation Summary: Why Load Balancer Health Checks Fail After CCM Provisioning—and Which Service Annotations to Inspect
+# Validation Summary: Why Load Balancer Health Checks Fail After CCM Provisioning
 
 ## Status
 

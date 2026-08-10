@@ -1,4 +1,4 @@
-# Validation Summary: How to Trace an Entra Sign-In Failure with Correlation IDs, Sign-In Logs, and AADSTS Codes
+# Validation Summary: Tracing Entra Sign-In Failures with Correlation IDs and AADSTS Codes
 
 ## Status
 

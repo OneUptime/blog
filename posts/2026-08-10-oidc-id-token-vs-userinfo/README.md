@@ -1,4 +1,4 @@
-# Should a Backend Trust Claims from the ID Token or Call the OIDC UserInfo Endpoint?
+# Should a Backend Trust ID Token Claims or Call the OIDC UserInfo Endpoint?
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -173,7 +173,7 @@ This approach makes the trust boundary explicit: ID-token validation proves the 
 
 ## Sources
 
-- [OpenID Connect Core 1.0 — ID Token](https://openid.net/specs/openid-connect-core-1_0.html#IDToken)
-- [OpenID Connect Core 1.0 — UserInfo Endpoint](https://openid.net/specs/openid-connect-core-1_0.html#UserInfo)
+- [OpenID Connect Core 1.0 - ID Token](https://openid.net/specs/openid-connect-core-1_0.html#IDToken)
+- [OpenID Connect Core 1.0 - UserInfo Endpoint](https://openid.net/specs/openid-connect-core-1_0.html#UserInfo)
 - [OpenID Connect Discovery 1.0](https://openid.net/specs/openid-connect-discovery-1_0.html)
-- [RFC 6750 — OAuth 2.0 Bearer Token Usage](https://datatracker.ietf.org/doc/html/rfc6750)
+- [RFC 6750 - OAuth 2.0 Bearer Token Usage](https://datatracker.ietf.org/doc/html/rfc6750)

@@ -1,4 +1,4 @@
-# What Does Kubernetes cloud-controller-manager Actually Do—and What Still Belongs to kube-controller-manager?
+# Kubernetes CCM vs kube-controller-manager: Which Component Owns What?
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

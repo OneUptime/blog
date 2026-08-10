@@ -1,4 +1,4 @@
-# Validation Summary: Why cloud-controller-manager Sets the Wrong `InternalIP` or `ExternalIP` on a Node
+# Validation Summary: Why cloud-controller-manager Sets the Wrong Node InternalIP or ExternalIP
 
 ## Status
 

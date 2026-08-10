@@ -1,4 +1,4 @@
-# How to Trace an Entra Sign-In Failure with Correlation IDs, Sign-In Logs, and AADSTS Codes
+# Tracing Entra Sign-In Failures with Correlation IDs and AADSTS Codes
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -172,7 +172,7 @@ The identity provider log explains the Entra side. The application must explain 
 4. Trace the callback, code exchange, token validation, and local session creation as separate stages.
 5. Link the failed request to the deployment version and configuration revision.
 
-Do not log token bodies. If protocol or token validation fails, log the validation category—issuer, audience, signature key, lifetime, nonce, or state mismatch—and only safe identifiers.
+Do not log token bodies. If protocol or token validation fails, log the validation category-issuer, audience, signature key, lifetime, nonce, or state mismatch-and only safe identifiers.
 
 This separation prevents an Entra success followed by an application callback failure from being mislabeled as an identity-provider outage.
 

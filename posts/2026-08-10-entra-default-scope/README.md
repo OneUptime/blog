@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Microsoft Entra ID, OAuth 2.0, Scopes, .default, Client Credentials, Consent
+Tags: Microsoft Entra ID, OAuth 2.0, Scope, .default, Client Credentials, Consent
 
 Description: Understand Entra's resource-specific .default scope, static consent, client-credentials behavior, trailing-slash edge cases, and why it cannot be mixed with dynamic scopes.
 
@@ -60,7 +60,7 @@ client_id=<calling-client-id>
 &grant_type=client_credentials
 ```
 
-Entra includes the application permissions—app roles—that have already been granted to the client for Microsoft Graph. You cannot request an individual application permission like this:
+Entra includes the application permissions-app roles-that have already been granted to the client for Microsoft Graph. You cannot request an individual application permission like this:
 
 ```text
 scope=https://graph.microsoft.com/User.Read.All

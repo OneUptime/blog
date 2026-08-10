@@ -1,4 +1,4 @@
-# How to Migrate from an In-Tree Cloud Provider to an External cloud-controller-manager
+# Migrating to an External Kubernetes cloud-controller-manager
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -10,7 +10,7 @@ Description: Move cloud-specific Node, route, and Service controllers out of Kub
 
 Kubernetes removed its in-tree cloud provider integrations from core. Starting with Kubernetes v1.31, old provider names are no longer valid for the core `--cloud-provider` flag; clusters use an external provider-specific cloud-controller-manager (CCM) or no cloud integration.
 
-This is a control-plane ownership migration, not an image swap. Node initialization, cloud lifecycle checks, routes, and `LoadBalancer` Services must move from cloud-facing logic in `kubelet` and `kube-controller-manager` to the external component without leaving no owner—or two owners. Storage and private-registry credential integrations are separate migrations.
+This is a control-plane ownership migration, not an image swap. Node initialization, cloud lifecycle checks, routes, and `LoadBalancer` Services must move from cloud-facing logic in `kubelet` and `kube-controller-manager` to the external component without leaving no owner-or two owners. Storage and private-registry credential integrations are separate migrations.
 
 ## Start with Provider-Specific Documentation
 

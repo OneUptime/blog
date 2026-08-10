@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, IPv4, Node CIDR, Pod Allocation, Kube-controller-manager, Networking
+Tags: Kubernetes, IPv4, Node CIDR, Pod Allocation, kube-controller-manager, Networking
 
 Description: Adjust the node CIDR mask size in Kubernetes to control how many IPv4 pod addresses are allocated per node from the cluster's Pod CIDR range.
 

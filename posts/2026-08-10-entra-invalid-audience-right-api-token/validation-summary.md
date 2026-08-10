@@ -1,4 +1,4 @@
-# Validation Summary: “Invalid Audience” in an Entra Access Token: How to Request a Token for the Right API
+# Validation Summary: `Invalid Audience` in Entra: Requesting a Token for the Right API
 
 ## Status
 validated

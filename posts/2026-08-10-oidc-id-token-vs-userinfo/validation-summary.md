@@ -1,4 +1,4 @@
-# Validation Summary: Should a Backend Trust Claims from the ID Token or Call the OIDC UserInfo Endpoint?
+# Validation Summary: Should a Backend Trust ID Token Claims or Call the OIDC UserInfo Endpoint?
 
 ## Status
 validated

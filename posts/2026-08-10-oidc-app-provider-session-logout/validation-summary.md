@@ -1,4 +1,4 @@
-# Validation Summary: How to Implement OIDC Logout When the App Session and Identity-Provider Session Disagree
+# Validation Summary: How to Handle OIDC Logout Across App and Identity-Provider Sessions
 
 ## Status
 validated

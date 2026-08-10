@@ -1,8 +1,8 @@
-# “Invalid Audience” in an Entra Access Token: How to Request a Token for the Right API
+# `Invalid Audience` in Entra: Requesting a Token for the Right API
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Microsoft Entra ID, Access Tokens, Audience, OAuth 2.0, Scopes, Web APIs, Token Validation
+Tags: Microsoft Entra ID, Access Tokens, Audience, OAuth 2.0, Scope, Web API, Token Validation
 
 Description: Fix Entra invalid-audience failures by requesting a scope for the target API and validating only the access-token audience defined by that resource.
 
@@ -72,7 +72,7 @@ client_id=<calling-client-id>
 &grant_type=client_credentials
 ```
 
-If the API uses application permissions, the API registration—not the calling client—must expose the corresponding app role. The caller's service principal must be assigned that role in the resource tenant, normally through admin consent.
+If the API uses application permissions, the API registration-not the calling client-must expose the corresponding app role. The caller's service principal must be assigned that role in the resource tenant, normally through admin consent.
 
 For delegated authorization code, request the exposed delegated scope:
 

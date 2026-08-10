@@ -1,4 +1,4 @@
-# Validation Summary: Client ID, Tenant ID, Object ID, and Principal ID in Entra ID: Which One Does Each API Need?
+# Validation Summary: Which Entra ID Should an API Use: Client, Tenant, Object, or Principal?
 
 ## Status
 

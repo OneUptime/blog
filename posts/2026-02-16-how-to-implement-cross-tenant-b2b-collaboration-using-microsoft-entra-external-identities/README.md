@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Microsoft Entra ID, B2B Collaboration, External Identities, Cross-Tenant, Guest Users, Identity Federation
+Tags: Azure, Microsoft Entra ID, B2B Collaboration, External Identities, Cross-Tenant, Guest User, Identity Federation
 
 Description: A complete guide to configuring Microsoft Entra External Identities for cross-tenant B2B collaboration, including invitation flows, access controls, and security settings.
 

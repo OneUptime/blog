@@ -1,4 +1,4 @@
-# Cloud Controller Manager vs CSI Driver vs Load Balancer Controller: Which Component Owns What?
+# Cloud Controller Manager vs CSI vs Load Balancer Controller
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

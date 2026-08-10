@@ -599,6 +599,7 @@
   "kpatch",
   "ksqlDB",
   "kube-bench",
+  "kube-controller-manager",
   "kube-dns",
   "kube-linter",
   "kube-prometheus-stack",

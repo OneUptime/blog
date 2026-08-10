@@ -1,4 +1,4 @@
-# Validation Summary: How to Migrate from an In-Tree Cloud Provider to an External cloud-controller-manager
+# Validation Summary: Migrating to an External Kubernetes cloud-controller-manager
 
 ## Status
 validated

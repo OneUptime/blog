@@ -1,8 +1,8 @@
-# Cloud Controller Manager as a Deployment, DaemonSet, or Static Pod: Which Topology Fits?
+# Choosing a Cloud Controller Manager Deployment Topology
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Cloud Controller Manager, Deployment, DaemonSet, Static Pod, High Availability
+Tags: Kubernetes, Cloud Controller Manager, Deployment, DaemonSet, Static Pods, High Availability
 
 Description: Choose a cloud-controller-manager topology by comparing scheduling dependencies, high availability, updates, credentials, and control-plane failure modes.
 
@@ -77,7 +77,7 @@ spec:
 
 This is a topology sketch, not a complete provider manifest. Add pod anti-affinity or topology spread constraints so replicas do not all land on one host, choose a safe rollout strategy, and include the provider's credential mounts, probes, priority class, security context, flags, and API authorization rules.
 
-The Deployment's biggest weakness is dependency. The API server, relevant workload controllers, scheduler, eligible Nodes, and—unless the provider manifest uses `hostNetwork: true`—the CNI must function well enough to create, schedule, and run a replacement Pod. If every Node starts with `node.cloudprovider.kubernetes.io/uninitialized:NoSchedule` and the CCM Pod does not tolerate that taint, the controller required to remove the taint can never schedule. Kubernetes calls out this CCM “chicken and egg” failure explicitly.
+The Deployment's biggest weakness is dependency. The API server, relevant workload controllers, scheduler, eligible Nodes, and-unless the provider manifest uses `hostNetwork: true`-the CNI must function well enough to create, schedule, and run a replacement Pod. If every Node starts with `node.cloudprovider.kubernetes.io/uninitialized:NoSchedule` and the CCM Pod does not tolerate that taint, the controller required to remove the taint can never schedule. Kubernetes calls out this CCM “chicken and egg” failure explicitly.
 
 ## DaemonSet: Follow the Eligible Control-Plane Nodes
 
@@ -124,7 +124,7 @@ Those properties make static Pods appropriate for infrastructure-controlled cont
 
 Before choosing an object kind, answer these operational questions:
 
-1. Can the chosen topology start a CCM before cloud Node initialization finishes—and, for a workload-managed Pod, can the scheduler place it?
+1. Can the chosen topology start a CCM before cloud Node initialization finishes-and, for a workload-managed Pod, can the scheduler place it?
 2. Can every candidate reach the API server and provider APIs?
 3. Are candidates spread across hosts and, where useful, zones?
 4. Where do credentials come from, and does that mechanism work during bootstrap?
@@ -167,4 +167,4 @@ In all cases, keep the candidates few, deliberately placed, identically configur
 
 ## Conclusion
 
-Deployment, DaemonSet, and static Pod are three lifecycle choices around the same singleton-by-leader-election controller set. Deployment offers a fixed replica count and rich rollouts, a selected DaemonSet follows control-plane hosts, and static Pods remove the scheduler and API server from Pod creation and restart, not from CCM operation. Let provider support, bootstrap dependencies, credentials, placement, and upgrade operations decide—not the object kind's familiarity alone.
+Deployment, DaemonSet, and static Pod are three lifecycle choices around the same singleton-by-leader-election controller set. Deployment offers a fixed replica count and rich rollouts, a selected DaemonSet follows control-plane hosts, and static Pods remove the scheduler and API server from Pod creation and restart, not from CCM operation. Let provider support, bootstrap dependencies, credentials, placement, and upgrade operations decide-not the object kind's familiarity alone.

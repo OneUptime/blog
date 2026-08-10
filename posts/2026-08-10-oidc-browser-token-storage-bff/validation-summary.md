@@ -1,4 +1,4 @@
-# Validation Summary: Where Should a Browser App Store OIDC Tokens? Cookies, Memory, and the BFF Pattern Compared
+# Validation Summary: Where Should Browser Apps Store OIDC Tokens? Cookies, Memory, or BFF
 
 ## Status
 
