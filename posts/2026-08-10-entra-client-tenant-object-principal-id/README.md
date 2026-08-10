@@ -8,13 +8,13 @@ Description: Choose the correct Entra identifier for token requests, Microsoft G
 
 ---
 
-Microsoft Entra ID and Azure expose several GUIDs for the same application or managed identity. They are not interchangeable. A client ID identifies an application definition, a tenant ID identifies a directory, and an Object ID identifies one object inside one directory. “Principal ID” normally means the Object ID of the security principal that receives access.
+Microsoft Entra ID and Azure expose several GUIDs for the same application or managed identity. They are not interchangeable. For an app registration, a client ID identifies the application definition; for a user-assigned managed identity, it identifies the identity used for token acquisition. A tenant ID identifies a directory, and an Object ID identifies one object inside one directory. “Principal ID” normally means the Object ID of the security principal that receives access.
 
 Use this short mapping first:
 
 | Identifier | Meaning | Typical use |
 | --- | --- | --- |
-| Application (client) ID | The application's global `appId` | OAuth `client_id`, finding every tenant instance of an app |
+| Application (client) ID | An app registration's global `appId`; for a user-assigned managed identity, the `clientId` used to select it | OAuth `client_id`; finding an app's service-principal instance in a tenant; selecting a user-assigned managed identity |
 | Directory (tenant) ID | The directory's object identifier | Selecting a tenant-specific authority or recording token tenant |
 | Object ID | The `id` of one directory object | Microsoft Graph object operations |
 | Principal ID | Usually the Object ID of a user, group, service principal, or managed identity service principal | Azure RBAC and access-policy assignments |
@@ -32,10 +32,7 @@ For OAuth, it is normally sent as `client_id`:
 POST https://login.microsoftonline.com/<tenant-id>/oauth2/v2.0/token
 Content-Type: application/x-www-form-urlencoded
 
-client_id=00001111-aaaa-2222-bbbb-3333cccc4444
-&scope=https%3A%2F%2Fgraph.microsoft.com%2F.default
-&client_secret=<encoded-secret-value>
-&grant_type=client_credentials
+client_id=00001111-aaaa-2222-bbbb-3333cccc4444&scope=https%3A%2F%2Fgraph.microsoft.com%2F.default&client_secret=<encoded-secret-value>&grant_type=client_credentials
 ```
 
 A multitenant application's service principals in the publisher and customer tenants share this `appId`. It is therefore a useful join key, but it is not the identifier Azure RBAC uses to assign a role to a particular tenant-local principal.
@@ -57,7 +54,7 @@ It is not:
 - the Object ID of the application;
 - the tenant's verified domain name, although some endpoints accept a verified domain as a tenant selector.
 
-Use a tenant-specific authority for noninteractive workloads unless the flow explicitly requires a tenant-independent endpoint. After receiving a token, the `tid` claim identifies the tenant that issued it under Microsoft's token contract. An API still needs to validate the issuer and audience; checking `tid` alone is not token validation.
+Use a tenant-specific authority for noninteractive workloads unless the flow explicitly requires a tenant-independent endpoint. In an ID token issued to your app, or in an access token being validated by its intended API, the `tid` claim identifies the tenant in which the subject was authenticated. Client applications should treat access tokens as opaque, including tokens for Microsoft Graph. An API still needs to validate the issuer and audience; checking `tid` alone is not token validation.
 
 You can confirm the Azure CLI's active tenant with:
 
@@ -85,18 +82,18 @@ That means “the Object ID for this app” is incomplete. Ask:
 - an app-role assignment's ID?
 - a managed identity service principal's ID?
 
-Microsoft Graph URLs use the Object ID of the resource being addressed:
+Microsoft Graph paths of the form `/applications/{id}` and `/servicePrincipals/{id}` use the Object ID of the resource being addressed:
 
 ```http
 GET https://graph.microsoft.com/v1.0/applications/<application-object-id>
 GET https://graph.microsoft.com/v1.0/servicePrincipals/<service-principal-object-id>
 ```
 
-If you only know the client ID, filter by `appId` first:
+If you only know the client ID, the same get APIs also support the `appId` alternate key:
 
 ```http
-GET https://graph.microsoft.com/v1.0/applications?$filter=appId eq '00001111-aaaa-2222-bbbb-3333cccc4444'
-GET https://graph.microsoft.com/v1.0/servicePrincipals?$filter=appId eq '00001111-aaaa-2222-bbbb-3333cccc4444'
+GET https://graph.microsoft.com/v1.0/applications(appId='00001111-aaaa-2222-bbbb-3333cccc4444')
+GET https://graph.microsoft.com/v1.0/servicePrincipals(appId='00001111-aaaa-2222-bbbb-3333cccc4444')
 ```
 
 ## Principal ID
@@ -118,7 +115,7 @@ az role assignment create \
   --scope <azure-resource-id>
 ```
 
-The `--scope` value is an Azure resource ID. The `--assignee-object-id` value is an Entra principal/Object ID. Supplying the client ID or application-object ID in the latter position is a common cause of “principal not found” or an assignment to the wrong identity.
+The `--scope` value is an Azure resource ID. The `--assignee-object-id` value is an Entra principal/Object ID. Supplying the client ID or application-object ID in the latter position can cause `PrincipalNotFound` or leave the role assignment referring to an unresolved principal.
 
 Some tools accept a client ID and perform a lookup for convenience. That does not change what the underlying role assignment stores. For deterministic automation, resolve and pass the expected principal Object ID, specify the principal type where supported, and verify the tenant.
 
@@ -173,7 +170,7 @@ The application object is a definition, not the runtime principal receiving the 
 
 ### Principal ID copied from the wrong tenant
 
-Service-principal Object IDs are tenant-local. Resolve the principal in the same tenant that owns the Azure role assignment or directory permission.
+Service-principal Object IDs are tenant-local. For Azure RBAC, resolve the principal in the Entra tenant associated with the assignment's scope; for subscription, resource-group, and resource scopes, this is the tenant trusted by the subscription. For a directory permission, resolve it in that directory.
 
 ### Tenant ID confused with subscription ID
 
