@@ -42,7 +42,6 @@
 
 ## Entra ID
 
-4. Why “Grant Admin Consent” Does Not Limit an Entra App to One User
 5. Entra Admin Consent vs User Assignment: How to Control Permissions and Sign-In Separately
 6. How to Fix AADSTS50011 When the Entra Redirect URI Looks Correct
 14. Single-Tenant vs Multi-Tenant Entra Apps: How `common`, `organizations`, and Tenant Endpoints Change Validation
