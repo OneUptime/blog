@@ -59,7 +59,6 @@
 15. Client Secret vs Certificate vs Managed Identity vs Workload Federation: Which Entra Credential Model Fits?
 16. Why a New Entra Client Secret Still Fails After Rotation: Deployment, Caching, and Encoding Checks
 17. Why Standard Conditional Access Does Not Protect Client-Credential Sign-Ins—and What Workload Identity Policies Cover
-18. Why an Entra App Registration Does Not Appear Under Enterprise Applications
 19. Entra ID B2B Guest vs Member: What Changes for Access, Claims, and Lifecycle?
 20. How to Trace an Entra Sign-In Failure with Correlation IDs, Sign-In Logs, and AADSTS Codes
 
