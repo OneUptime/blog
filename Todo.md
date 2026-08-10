@@ -39,7 +39,6 @@
 
 ## Cloud Controller
 
-6. How to Break the Cloud Controller Manager Bootstrap Deadlock When Its Own Pods Cannot Schedule
 7. Why a `LoadBalancer` Service Stays Pending Even Though cloud-controller-manager Is Running
 8. Cloud Controller Manager vs CSI Driver vs Load Balancer Controller: Which Component Owns What?
 9. Why cloud-controller-manager Sets the Wrong `InternalIP` or `ExternalIP` on a Node
