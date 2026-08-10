@@ -8,7 +8,7 @@ Description: Troubleshoot post-rotation Entra authentication by proving the secr
 
 ---
 
-Creating a new Microsoft Entra client secret changes only the app registration. It does not update a secret manager, restart applications, replace pipeline variables, invalidate token caches, or correct a hand-built form request.
+Creating a new client secret in Microsoft Entra App registrations changes only that app registration. It does not update a secret manager, restart applications, replace pipeline variables, invalidate token caches, or correct a hand-built form request.
 
 When the new secret “still fails,” separate four systems:
 
@@ -58,7 +58,7 @@ If the value was not captured, create one new credential and store it securely. 
 
 ## Check 2: Same Application and Tenant
 
-A secret belongs to the application object under which it was created. Confirm:
+An app-registration client secret belongs to the application object under which it was created. Confirm:
 
 - runtime client ID matches that app's Application ID;
 - authority tenant is the app's intended tenant;
@@ -138,18 +138,18 @@ If this request succeeds while the application fails, focus on the SDK's credent
 
 ## Check 5: Force a New Token
 
-Confidential-client libraries normally cache app-only access tokens. The cache is good for reliability, but it can hide both success and failure during rotation:
+MSAL confidential clients cache app-only access tokens in an application token cache. The cache is good for reliability, but it can hide both success and failure during rotation:
 
 - an old cached access token can make a workload appear healthy even though new authentication would fail;
 - different replicas can hold tokens acquired with different credentials;
 - an API call can fail for authorization/audience reasons unrelated to secret validation; and
 - a test that repeatedly returns the same token never exercises the new secret.
 
-Use a controlled canary that forces a fresh client-credentials acquisition through a new process or an approved cache-bypass technique. Then call the intended API and verify:
+Use a controlled canary with an isolated, empty application token cache or a supported force-refresh technique. Then call the intended API and verify:
 
 - token endpoint succeeded;
-- token audience is the intended resource;
-- expected app role is granted; and
+- the request targeted the intended resource's `/.default` scope;
+- the expected application permission, app-role assignment, or resource ACL authorization is configured; and
 - API request succeeds.
 
 Never delete the production token cache indiscriminately during an incident. Isolate the test so it does not create a thundering herd at Entra.
@@ -161,8 +161,7 @@ Compare the secret's start and end timestamps in UTC. A credential can fail beca
 - its start time has not arrived;
 - it expired;
 - it was deleted during an overlapping deployment;
-- administrators rotated a different app registration; or
-- the workload clock/proxy behavior obscures another assertion-related problem.
+- administrators rotated a different app registration.
 
 Do not assume an arbitrary “propagation delay” is the cause before proving the tenant, client ID, key ID, and runtime version. Retry with bounded backoff for transient transport/service failures, but an invalid-secret response is not fixed by an endless retry loop.
 
@@ -199,7 +198,7 @@ Do not remove the old secret immediately after updating the store. Overlap is wh
 
 ## If the Old Secret Was Exposed
 
-An incident changes priorities. Reduce the overlap window, revoke/delete the credential, disable or restrict the service principal if necessary, review service-principal sign-ins, examine downstream resource activity, and rotate any dependent credentials.
+An incident changes priorities. Reduce the overlap window, remove the credential, disable or restrict the service principal if necessary, review service-principal sign-ins, examine downstream resource activity, and rotate any dependent credentials.
 
 Assume a copied client secret can be replayed until removed or expired. Access tokens already issued can remain valid according to their lifetime and resource revocation behavior. Coordinate containment with owners of the resources the app can access.
 
@@ -220,7 +219,7 @@ Microsoft's app-registration security guidance strongly prefers managed identity
 | --- | --- |
 | Raw encoded test succeeds, app fails | Runtime configuration or SDK credential source |
 | One region fails | Partial deployment or stale process |
-| API works until token expires | New secret is bad but old token is cached |
+| API works until token expires | Fresh acquisition with the new credential/configuration fails while a prior token is cached |
 | AADSTS700016 | Client ID/tenant/service principal, not rotation value |
 | AADSTS7000215 after copy | Value vs Secret ID, pairing, or encoding |
 | AADSTS7000222 | Expired credential still being sent |
@@ -231,7 +230,7 @@ Microsoft's app-registration security guidance strongly prefers managed identity
 
 - [Microsoft Entra authentication and authorization error codes](https://learn.microsoft.com/en-us/entra/identity-platform/reference-error-codes)
 - [passwordCredential resource type](https://learn.microsoft.com/en-us/graph/api/resources/passwordcredential)
-- [Microsoft identity platform and OAuth 2.0 authorization code flow](https://learn.microsoft.com/en-us/entra/identity-platform/v2-oauth2-auth-code-flow)
+- [Microsoft identity platform and the OAuth 2.0 client credentials flow](https://learn.microsoft.com/en-us/entra/identity-platform/v2-oauth2-client-creds-grant-flow)
 - [Acquire tokens to call a web API using a daemon application](https://learn.microsoft.com/en-us/entra/identity-platform/scenario-daemon-acquire-token)
 - [Security best practices for application properties](https://learn.microsoft.com/en-us/entra/identity-platform/security-best-practices-for-app-registration)
 - [OAuth 2.0 Authorization Framework](https://www.rfc-editor.org/rfc/rfc6749.html)
