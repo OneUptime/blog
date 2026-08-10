@@ -58,9 +58,24 @@ A minimal constructor is:
 
 ```javascript
 function oidcDiscoveryUrl(issuer) {
+  if (typeof issuer !== "string") {
+    throw new Error("OIDC issuer must be a string");
+  }
+
   const parsed = new URL(issuer);
-  if (parsed.protocol !== "https:" || parsed.search || parsed.hash) {
-    throw new Error("OIDC issuer must be HTTPS without query or fragment");
+  const hasUserinfo = /^https:\/\/[^/?#]*@/i.test(issuer);
+  if (
+    !/^https:\/\//i.test(issuer) ||
+    parsed.protocol !== "https:" ||
+    !parsed.hostname ||
+    hasUserinfo ||
+    /[\s\\]/u.test(issuer) ||
+    issuer.includes("?") ||
+    issuer.includes("#")
+  ) {
+    throw new Error(
+      "OIDC issuer must be an absolute HTTPS URL without credentials, whitespace, query, or fragment",
+    );
   }
   return `${issuer.replace(/\/$/, "")}/.well-known/openid-configuration`;
 }
@@ -101,8 +116,8 @@ Some libraries follow redirects and some reject them. Even when a redirect is fo
 Resolve both IPv4 and IPv6 from the workload:
 
 ```bash
-dig +short A id.example.com
-dig +short AAAA id.example.com
+dig +search +showsearch id.example.com A
+dig +search +showsearch id.example.com AAAA
 ```
 
 Check for split-horizon differences, stale records, search-domain expansion, an unexpected private address, or an IPv6 record on a network without working IPv6 egress. Containers can use different DNS servers and policies from their host.
@@ -113,6 +128,8 @@ Then inspect TLS with the correct Server Name Indication value:
 openssl s_client \
   -connect id.example.com:443 \
   -servername id.example.com \
+  -verify_hostname id.example.com \
+  -verify_return_error \
   -showcerts </dev/null
 ```
 
@@ -121,7 +138,7 @@ Look for:
 - certificate names that do not cover the issuer host;
 - a missing intermediate certificate;
 - an expired or not-yet-valid certificate;
-- an application clock far from UTC;
+- a materially skewed system clock;
 - a corporate TLS-inspection issuer absent from the workload trust store;
 - an old protocol/cipher policy mismatch; and
 - an ingress serving its default certificate because SNI or routing is wrong.
@@ -133,7 +150,9 @@ Use the production trust store. Adding a private CA is appropriate when that CA 
 Pretty-printing the document is useful:
 
 ```bash
-curl --fail --silent --show-error "$DISCOVERY" | jq .
+set -o pipefail
+curl --fail --silent --show-error "$DISCOVERY" | \
+  jq -e 'select(type == "object")'
 ```
 
 At minimum, inspect:
@@ -159,12 +178,18 @@ Also reject metadata that lacks required members, uses endpoints your client can
 Discovery can succeed while token validation fails because `jwks_uri` is unreachable. Extract and test it from the same runtime:
 
 ```bash
-JWKS_URI="$(curl --fail --silent --show-error "$DISCOVERY" | jq -r '.jwks_uri')"
-test -n "$JWKS_URI" && test "$JWKS_URI" != null
-curl --fail-with-body --silent --show-error "$JWKS_URI" | jq .
+set -o pipefail
+JWKS_URI="$(
+  curl --fail --silent --show-error "$DISCOVERY" |
+    jq -er '.jwks_uri | select(type == "string" and length > 0)'
+)" &&
+  curl --proto '=https' \
+    --fail-with-body --silent --show-error \
+    -- "$JWKS_URI" |
+    jq -e 'select(type == "object" and (.keys | type == "array"))'
 ```
 
-The JWKS response should be valid JSON with a `keys` array. An unknown `kid` is a key-cache or rotation problem, not necessarily a discovery failure. Keep metadata and JWKS caches distinct, respect HTTP cache behavior where supported, retain known-good keys for a bounded overlap, and refresh on an unknown key without creating an unbounded fetch loop.
+The JWKS response should be valid JSON with a `keys` array. An unknown `kid` can indicate stale JWKS data or key rotation, but it can also indicate an invalid token; it is not necessarily a discovery failure. Keep metadata and JWKS caches distinct, respect HTTP cache behavior where supported, and refresh the JWKS on an unknown key without creating an unbounded fetch loop. The provider should retain recently decommissioned signing keys in its published JWKS for a bounded overlap.
 
 Likewise, a successful well-known request does not prove that the token endpoint is reachable through firewall rules or that browser-facing authorization endpoints have the right public hostname. Test each endpoint through the actor that uses it: server-to-server endpoints from the backend, and browser redirects through the public route.
 
