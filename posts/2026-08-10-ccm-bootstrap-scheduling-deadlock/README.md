@@ -27,17 +27,17 @@ kubectl describe pod -n kube-system CCM_POD
 kubectl get nodes -o custom-columns=NAME:.metadata.name,TAINTS:.spec.taints
 ```
 
-The scheduler event should explicitly mention an untolerated taint, affinity or selector mismatch, insufficient resources, or another scheduling predicate. Do not assume the uninitialized taint is the only blocker. A Pod can tolerate it and still remain Pending because:
+The scheduler event should explicitly mention an untolerated taint, affinity or selector mismatch, insufficient resources, or another scheduling or binding failure. Do not assume the uninitialized taint is the only blocker. Even after that taint is tolerated, the CCM workload can still fail to start because:
 
 - the control-plane selector matches no current label;
 - it does not tolerate `node-role.kubernetes.io/control-plane:NoSchedule`;
 - required anti-affinity is impossible in a one-node bootstrap cluster;
-- its image pull Secret, ConfigMap, or ServiceAccount is missing;
-- admission policy rejects the Pod;
+- credentials for a private image are unavailable, or a required non-optional Secret or ConfigMap cannot be loaded after assignment;
+- its ServiceAccount is missing or admission policy rejects Pod creation;
 - CPU or memory requests exceed bootstrap capacity; or
 - a required PVC cannot bind before topology exists.
 
-Only scheduling predicates appear under `FailedScheduling`; image and runtime failures appear after assignment. Follow the event, not the expected story.
+If the ServiceAccount is missing or admission rejects creation, no Pod is created; inspect the owning ReplicaSet or DaemonSet events for `FailedCreate`. `FailedScheduling` is emitted by the scheduler for scheduling or binding failures; image-pull, configuration or volume setup, and runtime failures appear after assignment. Follow the event, not the expected story.
 
 ## Use the Provider's Maintained Manifest
 
@@ -45,6 +45,7 @@ Provider charts and cluster lifecycle tools should already encode the required R
 
 ```bash
 helm template ccm PROVIDER_REPOSITORY/PROVIDER_CHART \
+  --version PROVIDER_CHART_VERSION \
   --namespace kube-system -f values.yaml > rendered-ccm.yaml
 
 grep -n -A25 -B5 'tolerations:' rendered-ccm.yaml
@@ -88,8 +89,8 @@ The CCM should have as few circular dependencies as possible:
 - It must reach the Kubernetes API before cluster Service networking is necessarily healthy. Some provider manifests use `hostNetwork: true` and control-plane API addressing for this reason; follow the provider design rather than adding it generically.
 - Its cloud credentials must be available before Node initialization. If they depend on workload identity, confirm that the identity webhook, projected token, DNS, and provider token endpoint work during bootstrap.
 - Avoid a storage-backed volume for essential CCM configuration unless that storage path is independently available before the CCM.
-- Use a system priority class so user workloads cannot displace the controller during recovery.
-- Ensure the image registry is reachable or pre-pull the pinned image through the node provisioning process.
+- Use a system priority class so the scheduler ranks the controller ahead of ordinary lower-priority workloads during recovery.
+- Ensure the image registry is reachable, or pre-pull the pinned image through the node provisioning process and use a compatible image pull policy.
 
 If the CNI is not ready, ordinary Pod networking may also be unavailable. A DaemonSet receives several automatic tolerations, but it does not automatically receive the cloud-provider uninitialized toleration. Deployment and DaemonSet behavior differ; inspect the rendered Pod template.
 
@@ -97,9 +98,9 @@ If the CNI is not ready, ordinary Pod networking may also be unavailable. A Daem
 
 Use the topology the provider and cluster lifecycle tool support.
 
-A Deployment gives a fixed replica count and flexible zone spreading. It requires the scheduler to be operational. A DaemonSet commonly places one replica on each control-plane Node and automatically tracks added control-plane Nodes, but replicas still need explicit cloud and role tolerations. A static Pod starts directly from a kubelet manifest and can break a scheduler dependency, but makes rollout, secret distribution, and lifecycle management more tightly coupled to node configuration.
+A Deployment gives a fixed replica count and flexible zone spreading. A DaemonSet commonly places one replica on each control-plane Node and automatically tracks added control-plane Nodes, but replicas still need explicit cloud and role tolerations. Deployments and DaemonSets both normally require the scheduler to be operational. A static Pod starts directly from a kubelet manifest and can break a scheduler dependency, but makes rollout, secret distribution, and lifecycle management more tightly coupled to node configuration.
 
-Changing workload kind during an incident can introduce a second set of controllers with a different leader-election identity. Prefer a minimal patch to the supported manifest, persist it in the real configuration source, and let the owning tool reconcile it.
+Changing workload kind during an incident can leave a second set of CCM processes running. If the old and new workloads do not use the same leader-election lock, both can reconcile concurrently. Prefer a minimal patch to the supported manifest, persist it in the real configuration source, and let the owning tool reconcile it.
 
 ## Make High Availability Real
 
@@ -108,7 +109,7 @@ Multiple CCM replicas usually use leader election. Only the leader performs the 
 - spread replicas across control-plane Nodes or failure zones when the topology supports it;
 - use preferred anti-affinity for a cluster that may temporarily have fewer Nodes than replicas;
 - do not require three distinct zones in a one-zone development cluster;
-- verify all replicas use the same leader-election namespace and resource name; and
+- verify all replicas use the same leader-election lock type, namespace, and resource name; and
 - grant the ServiceAccount permissions on `coordination.k8s.io` Leases.
 
 ```bash
@@ -116,7 +117,7 @@ kubectl get leases -A | grep -i cloud
 kubectl get lease -n kube-system CCM_LEASE -o yaml
 ```
 
-A Running standby is healthy. A stale `renewTime`, no holder, or repeated leadership loss requires API connectivity, RBAC, latency, and process investigation.
+A Running standby is healthy. A persistently stale `renewTime`, no holder while replicas are expected to be active, or repeated leadership loss requires API connectivity, RBAC, latency, and process investigation.
 
 ## Recover in a Controlled Order
 
@@ -130,8 +131,8 @@ A Running standby is healthy. A stale `renewTime`, no holder, or repeated leader
 
 ```bash
 kubectl get pods -n kube-system -w
-kubectl get nodes -w
-kubectl get nodes -o custom-columns=NAME:.metadata.name,PROVIDER_ID:.spec.providerID,TAINTS:.spec.taints
+kubectl get nodes -w -o \
+  'custom-columns=NAME:.metadata.name,PROVIDER_ID:.spec.providerID,REGION:.metadata.labels.topology\.kubernetes\.io/region,ZONE:.metadata.labels.topology\.kubernetes\.io/zone,ADDRESSES:.status.addresses,TAINTS:.spec.taints'
 ```
 
 If emergency access requires a temporary manifest patch, record it and immediately update the declarative owner. Otherwise the next reconciliation or control-plane replacement can restore the deadlock.
