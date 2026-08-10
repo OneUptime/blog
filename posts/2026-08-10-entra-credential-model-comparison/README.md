@@ -114,14 +114,20 @@ The trust normally matches:
 Examples include:
 
 ```text
-GitHub Actions:
+GitHub Actions (name-based subject):
   issuer  = https://token.actions.githubusercontent.com
   subject = repo:octo-org/orders:environment:Production
+
+GitHub Actions (immutable subject):
+  issuer  = https://token.actions.githubusercontent.com
+  subject = repo:octo-org@<owner-id>/orders@<repository-id>:environment:Production
 
 Kubernetes:
   issuer  = <cluster OIDC issuer>
   subject = system:serviceaccount:orders:deployer
 ```
+
+GitHub.com repositories created after July 15, 2026 use immutable default subjects containing the owner and repository IDs. Repositories created earlier retain the name-based format unless they opt in, while repositories renamed or transferred after that date move to the immutable format. GitHub Enterprise Server does not support immutable subjects. Configure Entra with the exact `sub` value that GitHub emits for the repository.
 
 Entra validates the external token and, on a match, issues a token for the Entra workload identity. There is no long-lived Entra client secret in CI or the cluster.
 
