@@ -14,7 +14,7 @@ The word “cloud” can be misleading. A private virtualization platform or bar
 
 ## What Works Without a CCM
 
-The Kubernetes control plane, scheduler, kubelet, workload controllers, Services, DNS, and a CNI can all work without cloud integration. A cluster can run Deployments, StatefulSets, Jobs, ClusterIP and NodePort Services, NetworkPolicies, and persistent storage provided by a suitable CSI driver.
+The Kubernetes control plane, scheduler, kubelet, workload controllers, Services, DNS, and a CNI can all work without cloud integration. A cluster can run Deployments, StatefulSets, Jobs, ClusterIP and NodePort Services, NetworkPolicies when the selected network implementation enforces them, and persistent storage provided by a suitable CSI driver.
 
 What is not automatic is infrastructure that Kubernetes core deliberately does not implement:
 
@@ -31,14 +31,14 @@ If no installed controller watches a `LoadBalancer` Service, its external addres
 For current Kubernetes releases, `external` tells the kubelet and `kube-controller-manager` that a separate CCM will perform cloud initialization. A kubelet using this mode adds the following taint while it waits:
 
 ```text
-node.cloudprovider.kubernetes.io/uninitialized:NoSchedule
+node.cloudprovider.kubernetes.io/uninitialized=true:NoSchedule
 ```
 
 If you set the flag but deploy no compatible CCM, new Nodes can remain unschedulable indefinitely. Check before changing anything:
 
 ```bash
 kubectl get nodes -o custom-columns=NAME:.metadata.name,TAINTS:.spec.taints,PROVIDER_ID:.spec.providerID
-kubectl get pods -n kube-system -o wide
+kubectl get pods -A -o wide
 ```
 
 For a conventional bare-metal cluster with no provider integration, leave `--cloud-provider` empty or unset. In Kubernetes v1.31 and later, the valid values are the empty string and `external`; historical in-tree provider names are no longer valid.
@@ -58,7 +58,7 @@ You do not need one monolithic bare-metal CCM. Use the extension that owns each 
 | Server provisioning and replacement | Cluster API infrastructure provider, Metal3, an Ironic-based system, or external automation |
 | Region and zone topology | Static or automated Node labels, or a compatible infrastructure provider that supplies them |
 
-These components are independent. Installing a Service load-balancer controller does not populate `.spec.providerID`. Installing a CSI driver does not make `LoadBalancer` Services work. Installing a CNI does not provision disks.
+These components have distinct responsibilities, although provider-specific integrations can have documented dependencies. Installing a Service load-balancer controller does not populate `.spec.providerID`. Installing a CSI driver does not make `LoadBalancer` Services work. Installing a CNI does not provision disks.
 
 ## When a Bare-Metal Environment Does Have a CCM
 
@@ -81,12 +81,12 @@ Install the provider manifest as a system component, including its tolerations f
 A provider-free bare-metal cluster can have a clean division of responsibility:
 
 ```text
-kube-controller-manager  -> Kubernetes workload and core control loops
-CNI                      -> Pod connectivity and network policy
-MetalLB or kube-vip      -> LoadBalancer address allocation/advertisement
-Ingress or Gateway       -> Layer 7 routing
-CSI driver               -> storage provisioning, attachment, and mount
-external automation      -> server lifecycle and inventory
+kube-controller-manager -> Kubernetes workload and core control loops
+network implementation  -> Pod connectivity and, if supported, NetworkPolicy enforcement
+MetalLB                 -> LoadBalancer address allocation/advertisement
+Ingress or Gateway      -> Layer 7 routing
+CSI driver              -> storage provisioning (if supported), attachment (if required), and mount
+external automation     -> server lifecycle and inventory
 ```
 
 A simple verification flow is:
@@ -95,17 +95,17 @@ A simple verification flow is:
 # Nodes should not wait for external cloud initialization
 kubectl get nodes -o custom-columns=NAME:.metadata.name,TAINTS:.spec.taints
 
-# Confirm the networking implementation
-kubectl get pods -n kube-system -o wide
+# Inspect cluster add-ons, including the networking implementation
+kubectl get pods -A -o wide
 
-# Confirm a load-balancer controller owns the test Service
+# Inspect load-balancer status and controller events for the test Service
 kubectl describe service test-lb
 
-# Confirm CSI rather than CCM owns storage
+# Inspect registered CSI drivers and StorageClass provisioners
 kubectl get csidrivers,storageclasses
 ```
 
-For topology-aware scheduling, apply well-governed labels such as `topology.kubernetes.io/zone` through provisioning automation. Do not let arbitrary node credentials self-label into security-sensitive pools; the NodeRestriction admission plugin protects labels in the reserved `node-restriction.kubernetes.io/` namespace for isolation use cases.
+For topology-aware scheduling, apply well-governed labels such as `topology.kubernetes.io/zone` through provisioning automation. Do not let kubelets self-label into security-sensitive pools; when used with the Node authorizer, the enabled NodeRestriction admission plugin prevents kubelets from setting or modifying labels with the `node-restriction.kubernetes.io/` prefix.
 
 ## Avoid Two Owners
 

@@ -8,9 +8,9 @@ Description: Trace an uninitialized Node from kubelet external-cloud mode throug
 
 ---
 
-The taint `node.cloudprovider.kubernetes.io/uninitialized:NoSchedule` means Kubernetes is waiting for an external cloud-controller-manager (CCM) to finish the Node's cloud-specific initialization. It is a safety mechanism, not a generic Node readiness error.
+The taint `node.cloudprovider.kubernetes.io/uninitialized=true:NoSchedule` means Kubernetes is waiting for an external cloud-controller-manager (CCM) to finish the Node's cloud-specific initialization. It is a safety mechanism, not a generic Node readiness error.
 
-A kubelet configured with `--cloud-provider=external` registers without asserting cloud facts it cannot authoritatively know. The CCM must match the Node to an infrastructure instance, populate the provider ID and cloud-derived metadata, and remove the taint. If any part of that path fails, ordinary Pods remain unschedulable on the Node even when the kubelet reports `Ready`.
+A kubelet configured with `--cloud-provider=external` registers without asserting cloud facts it cannot authoritatively know. The CCM's cloud node controller must resolve the Node through the provider, apply or validate its provider-specific identity and supported initialization labels, and remove the taint. Cloud-provided addresses are reconciled separately. If provider initialization fails before the Node update removes the taint, ordinary Pods remain unschedulable on the Node even when the kubelet reports `Ready`.
 
 ## Confirm the Exact State
 
@@ -33,7 +33,7 @@ Record the Node's creation time and relevant Events. The delay matters: a short 
 
 ## 1. Verify External Mode Is Intentional
 
-On Kubernetes v1.31 and later, core components accept an empty cloud-provider value or `external`. If the cluster does not use an external CCM—common on conventional bare metal—then setting the kubelet to `external` creates a waiter with no controller that can satisfy it.
+On Kubernetes v1.31 and later, the kubelet and `kube-controller-manager` accept only an empty `--cloud-provider` value or `external`. If the cluster does not use an external CCM—common on conventional bare metal—then setting the kubelet to `external` creates a waiter with no controller that can satisfy it.
 
 Inspect the live process and the provisioning system's source of truth:
 
@@ -42,7 +42,7 @@ systemctl cat kubelet
 ps -ef | grep '[k]ubelet'
 
 kubectl -n kube-system get pod -l component=kube-controller-manager \
-  -o jsonpath='{range .items[*].spec.containers[*].command}{.}{"\n"}{end}'
+  -o jsonpath='{range .items[*].spec.containers[*]}{.command[*]}{" "}{.args[*]}{"\n"}{end}'
 ```
 
 For an external CCM, kubelet and `kube-controller-manager` should use the provider's documented external configuration. For no provider, remove external mode through kubeadm, the machine configuration, distribution settings, or other tool that generated the unit. Restart components only through that managed path.
@@ -54,21 +54,21 @@ Pod phase `Running` is not enough. A replica can be a healthy standby while the 
 ```bash
 kubectl get pods -A -o wide | grep -i cloud-controller
 kubectl get leases -A | grep -i cloud
-kubectl get events -A --sort-by=.lastTimestamp | grep -iE 'cloud|initialize|provider'
+kubectl get events -A --sort-by=.metadata.creationTimestamp | grep -iE 'cloud|initialize|provider'
 ```
 
 Use labels from the installed provider manifest rather than assuming a universal label:
 
 ```bash
 kubectl logs -n kube-system -l app.kubernetes.io/name=cloud-controller-manager \
-  --all-containers --since=30m --prefix
+  --all-containers --since=30m --tail=-1 --prefix
 ```
 
 Look for leader acquisition, failure to get or update Nodes, unknown instance, instance-not-found, unauthorized, forbidden, timeout, rate-limit, or provider-configuration errors. If the provider uses a separate cloud-node-manager, include that component in the inspection.
 
 ## 3. Check the Bootstrap Scheduling Trap
 
-The CCM may itself be unable to schedule because every Node has the taint that only the CCM can remove. A provider manifest should tolerate at least the uninitialized taint and, when scheduled on control-plane Nodes, their control-plane taint.
+The CCM may itself be unable to schedule because every Node has the taint that only the CCM can remove. At minimum, a provider manifest should tolerate the uninitialized taint. When targeting control-plane Nodes, it must also tolerate their control-plane taint; depending on the bootstrap state, it may need provider-supported tolerations for `node.kubernetes.io/not-ready` or other taints shown in Pending Pod events.
 
 ```yaml
 tolerations:
@@ -92,7 +92,7 @@ Also verify its node selector or affinity actually matches a Node, its image can
 
 Initialization crosses two authorization boundaries:
 
-- Kubernetes RBAC lets the CCM read and patch Nodes, update Node status as required, create Events, and use leader-election Leases.
+- Kubernetes RBAC lets the CCM read and modify Nodes, patch Node status as required, create Events, and use leader-election Leases.
 - Cloud IAM lets the provider component describe instances, networks, addresses, zones, and any other provider resources it implements.
 
 Check the Kubernetes side without guessing:
@@ -100,13 +100,16 @@ Check the Kubernetes side without guessing:
 ```bash
 SA=system:serviceaccount:kube-system:cloud-controller-manager
 kubectl auth can-i get nodes --as="$SA"
-kubectl auth can-i patch nodes --as="$SA"
-kubectl auth can-i update nodes/status --as="$SA"
+kubectl auth can-i list nodes --as="$SA"
+kubectl auth can-i watch nodes --as="$SA"
+kubectl auth can-i update nodes --as="$SA"
+kubectl auth can-i patch nodes --subresource=status --as="$SA"
 kubectl auth can-i get leases.coordination.k8s.io -n kube-system --as="$SA"
+kubectl auth can-i create leases.coordination.k8s.io -n kube-system --as="$SA"
 kubectl auth can-i update leases.coordination.k8s.io -n kube-system --as="$SA"
 ```
 
-Use the actual ServiceAccount name and namespace from the Pod. Then inspect cloud audit logs and the provider's documented identity mechanism. A valid Kubernetes token does not grant cloud API access, and a valid instance role does not grant Kubernetes RBAC.
+Use the actual ServiceAccount name and namespace from the Pod, and the provider's configured leader-election Lease namespace. The caller running the `--as` checks must be allowed to impersonate that ServiceAccount. Then inspect cloud audit logs and the provider's documented identity mechanism. A valid Kubernetes token does not grant cloud API access, and a valid instance role does not grant Kubernetes RBAC.
 
 ## 5. Prove Node-to-Instance Matching
 
@@ -150,7 +153,7 @@ kubectl taint node "$NODE" node.cloudprovider.kubernetes.io/uninitialized-
 
 It can allow Pods to schedule without correct topology, addresses, or identity, and may conceal a provider-wide bootstrap failure. It is defensible only as a controlled recovery decision after determining that external cloud initialization is not required, correcting the component configuration, and assessing workloads that may depend on cloud metadata. Record the intervention and verify that the taint does not return on replacement Nodes.
 
-The durable success criteria are:
+Confirm that the initialization taint is absent and that all metadata promised by your provider is present:
 
 ```bash
 kubectl get node "$NODE" -o jsonpath='{.spec.providerID}{"\n"}'
