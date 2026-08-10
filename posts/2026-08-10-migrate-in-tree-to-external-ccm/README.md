@@ -10,7 +10,7 @@ Description: Move cloud-specific Node, route, and Service controllers out of Kub
 
 Kubernetes removed its in-tree cloud provider integrations from core. Starting with Kubernetes v1.31, old provider names are no longer valid for the core `--cloud-provider` flag; clusters use an external provider-specific cloud-controller-manager (CCM) or no cloud integration.
 
-This is a control-plane ownership migration, not an image swap. Node initialization, cloud lifecycle checks, routes, and `LoadBalancer` Services must move from cloud loops inside `kube-controller-manager` to the external component without leaving no owner—or two owners. Storage and private-registry credential integrations are separate migrations.
+This is a control-plane ownership migration, not an image swap. Node initialization, cloud lifecycle checks, routes, and `LoadBalancer` Services must move from cloud-facing logic in `kubelet` and `kube-controller-manager` to the external component without leaving no owner—or two owners. Storage and private-registry credential integrations are separate migrations.
 
 ## Start with Provider-Specific Documentation
 
@@ -84,7 +84,7 @@ Install or stage CSI, credential plugins, provider configuration, certificates, 
 
 ### 3. Configure Leader Migration when required
 
-For the supported N-to-N+1 HA procedure, create the provider-approved `LeaderMigrationConfiguration`. It assigns controllers such as route, service, and cloud-node-lifecycle to the correct component and uses a shared migration Lease. Configure `--enable-leader-migration` and the config path exactly as the Kubernetes and provider procedure describe.
+For the supported N-to-N+1 HA procedure, create the provider-approved `LeaderMigrationConfiguration`. It identifies the exact provider- and version-specific controller IDs for routes, Services, and cloud node lifecycle, the shared migration `leaderName`, and each component's eligibility, and it uses a shared migration Lease. Before deploying the first target replica, enable Leader Migration on every source-version `kube-controller-manager` as documented. On target replicas, enable it only on the external CCM; the target `kube-controller-manager` running with `--cloud-provider=external` must not enable Leader Migration. Ensure the source controller managers and target CCM have RBAC access to the migration Lease, and configure `--enable-leader-migration` and the config path exactly as the Kubernetes and provider procedure describe.
 
 Do not improvise controller names. A wrong name may not coordinate the controller you think it does.
 
@@ -92,18 +92,18 @@ Do not improvise controller names. A wrong name may not coordinate the controlle
 
 During a Leader Migration upgrade, old replicas can run `kube-controller-manager` with in-tree cloud controllers while new replicas run the external CCM and a `kube-controller-manager` configured for external mode. The shared migration lock ensures a migrated controller is active in one manager, not both.
 
-Kubernetes' generic guide explains an N to N+1 replicated-control-plane rollout. Use the provider tool to create or replace one control-plane replica at a time, observe the migration Lease, and stop on unexpected infrastructure changes.
+Kubernetes' generic guide explains an N to N+1 replicated-control-plane rollout. Use the provider tool to create or replace one control-plane replica at a time, observe the migration Lease named by the configured `leaderName`, and stop on unexpected infrastructure changes.
 
 ### 5. Change kubelets to external mode safely
 
-Roll worker pools according to the provider procedure. A kubelet using `--cloud-provider=external` creates the uninitialized taint and waits for CCM. Ensure the CCM is healthy before the first canary worker and keep capacity for workloads while Nodes drain and replace.
+Roll worker pools according to the provider procedure. A kubelet using `--cloud-provider=external` registers its Node with the uninitialized taint; the Node remains unschedulable until CCM initializes it and removes the taint. Ensure the CCM is healthy before the first canary worker and keep capacity for workloads while Nodes drain and replace.
 
 ### 6. Prove all controllers before removing legacy state
 
 ```bash
 kubectl get nodes -o custom-columns=NAME:.metadata.name,PROVIDER_ID:.spec.providerID,TAINTS:.spec.taints
-kubectl get leases -A | grep -iE 'cloud|migration'
-kubectl get events -A --sort-by=.lastTimestamp | tail -100
+kubectl get leases -A
+kubectl get events -A --sort-by=.metadata.creationTimestamp | tail -n 100
 kubectl get service -A -o json | jq -r '.items[] |
   select(.spec.type=="LoadBalancer") |
   [.metadata.namespace, .metadata.name, (.status.loadBalancer // {})] | @json'
@@ -117,7 +117,7 @@ Once every control-plane and worker component uses the external design, remove l
 
 ## Current-Version Reality
 
-If the cluster is already at Kubernetes v1.31 or later, it cannot still run the removed in-tree provider code in unmodified core binaries. A configuration containing a historical provider name is a startup failure or evidence of a distribution-specific fork. Do not use the old overlap procedure blindly on a current cluster. Identify the actual binary and fork, then migrate from a supported source release with the vendor.
+If the cluster is already at Kubernetes v1.31 or later, it cannot still run the removed in-tree provider code in unmodified core binaries. An effective core-component `--cloud-provider` setting containing a historical provider name causes a startup failure; a running binary that accepts it is evidence of a distribution-specific fork. Do not use the old overlap procedure blindly on a current cluster. Identify the actual binary and fork, then migrate from a supported source release with the vendor.
 
 Kubernetes v1.29 allowed a temporary opt-back through feature gates for some remaining in-tree providers. That was a transition mechanism, not a supported path in v1.31+. The durable target is external CCM or no provider.
 
