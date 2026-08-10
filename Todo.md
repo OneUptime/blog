@@ -40,7 +40,6 @@
 ## Cloud Controller
 
 7. Why a `LoadBalancer` Service Stays Pending Even Though cloud-controller-manager Is Running
-12. Cloud Controller Manager as a Deployment, DaemonSet, or Static Pod: Which Topology Fits?
 13. How Leader Election Prevents Multiple Cloud Controller Manager Replicas from Duplicating Resources
 14. Why Cloud Routes Are Not Created: `--configure-cloud-routes`, Pod CIDRs, and Provider Support
 15. Can cloud-controller-manager Delete a Kubernetes Node? Understanding Cloud Node Lifecycle Checks
