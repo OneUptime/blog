@@ -39,7 +39,6 @@
 
 ## Cloud Controller
 
-1. What Does Kubernetes cloud-controller-manager Actually Do—and What Still Belongs to kube-controller-manager?
 2. Do You Need a Cloud Controller Manager on Bare-Metal Kubernetes?
 3. `--cloud-provider=external` vs a Provider Name: What Kubernetes Accepts Now
 4. Why Nodes Stay Tainted `node.cloudprovider.kubernetes.io/uninitialized` After Bootstrap
