@@ -16,7 +16,7 @@ For an ordinary relying party, the safe validation rule is:
 2. require `aud` to contain this issuer-specific client ID;
 3. reject additional audiences that the client does not trust;
 4. apply the extension's `azp` rules when an extension is in use; and
-5. when `azp` is present, normally require it to equal this client ID unless the governing extension explicitly defines another trusted relationship.
+5. without such an extension, follow Core's guidance to ignore `azp`, or deliberately document a stricter local policy requiring it to equal this client ID.
 
 Audience processing happens alongside signature, algorithm, expiration, nonce, and other ID-token checks. Passing `aud` and `azp` alone never makes a token valid.
 
@@ -51,13 +51,13 @@ An array does not automatically mean that several independent applications can s
 
 OIDC Core notes that `azp` occurs in practice when extensions beyond the core specification are used. Those extensions define when it appears and what additional semantics apply. This matters because a simplified rule such as "arrays always require `azp`" can miss the actual trust model.
 
-For a client not implementing a special extension, a conservative policy is:
+For a client not implementing a special extension, OIDC Core encourages ignoring `azp` when it occurs. A deployment that deliberately chooses a stricter local policy can still use these checks:
 
 - the expected client ID must still be in `aud`;
 - any additional audience must be explicitly trusted or the token is rejected; and
-- if `azp` is present, it must equal the expected client ID.
+- if `azp` is present, require it to equal the expected client ID as a local hardening rule.
 
-If an ecosystem specification deliberately authorizes another presenter, implement that specification exactly and configure the trusted client relationship. Do not invent an exception at runtime based on token contents.
+If an ecosystem specification deliberately names another authorized party/client, implement that specification exactly and configure the trusted client relationship. Do not invent an exception at runtime based on token contents.
 
 ## The Claims Are Not Alternatives
 
@@ -79,18 +79,29 @@ The first pattern accepts a token that was not intended for this RP. The second 
 Use exact membership:
 
 ```javascript
-function validateIdTokenAudience(claims, expectedClientId, trustedAudiences) {
+function validateIdTokenAudience(
+  claims,
+  expectedClientId,
+  trustedAdditionalAudiences
+) {
   const audiences = typeof claims.aud === "string"
     ? [claims.aud]
     : Array.isArray(claims.aud)
       ? claims.aud
       : [];
 
+  if (audiences.some((value) => typeof value !== "string")) {
+    throw new Error("ID token audience contains a non-string value");
+  }
+
   if (!audiences.includes(expectedClientId)) {
     throw new Error("ID token audience does not include this client");
   }
 
-  const untrusted = audiences.filter((value) => !trustedAudiences.has(value));
+  const untrusted = audiences.filter(
+    (value) =>
+      value !== expectedClientId && !trustedAdditionalAudiences.has(value)
+  );
   if (untrusted.length > 0) {
     throw new Error("ID token contains an untrusted additional audience");
   }
@@ -101,7 +112,7 @@ function validateIdTokenAudience(claims, expectedClientId, trustedAudiences) {
 }
 ```
 
-This helper is only illustrative. A maintained OIDC library should perform the protocol validation, and the library must be configured with the correct issuer, client ID, extension/profile, and allowed algorithms. Do not decode first and then choose which client configuration to trust from unverified claims.
+This helper is only illustrative and implements the stricter local `azp` policy described above. A maintained OIDC library should perform the protocol validation, and the library must be configured with the correct issuer, client ID, extension/profile, and allowed algorithms. Do not decode first and then choose which client configuration to trust from unverified claims.
 
 ## Validate Client IDs in Issuer Context
 
@@ -111,7 +122,7 @@ OAuth client IDs are identifiers assigned by an authorization server; they are n
 (issuer, client_id)
 ```
 
-A token from `https://issuer-a.example` with `aud: "web-client-123"` must not be accepted under the configuration for `https://issuer-b.example`, even if that second issuer assigned the same text to a client. Select a trusted issuer configuration from application routing or an allowlist, validate the issuer and signature with that issuer's keys, and then validate its audience policy.
+A token from `https://issuer-a.example` with `aud: "web-client-123"` must not be accepted under the configuration for `https://issuer-b.example`, even if that second issuer assigned the same text to a client. Select a trusted issuer configuration from application routing or an allowlist, validate the issuer and signature using the verification material configured for that issuer and client registration, and then validate its audience policy.
 
 This becomes especially important in multi-tenant and multi-provider applications. Keep separate metadata, key sets, client IDs, algorithms, audiences, and claim rules per issuer. A shared global JWKS cache keyed only by `kid` can select the wrong key because key IDs are not globally unique.
 
@@ -131,7 +142,7 @@ Accept the audience portion when the expected client ID is exactly `web-client-1
 { "aud": "web-client-123", "azp": "web-client-123" }
 ```
 
-The values are consistent. Still apply the extension/profile that caused `azp` to appear and complete all other validation.
+The values are consistent. If an extension/profile caused `azp` to appear, apply its rules and complete all other validation. Without such an extension, Core encourages ignoring the claim unless the deployment has deliberately adopted the stricter local policy described above.
 
 ### Expected client is present with an untrusted extra audience
 
@@ -150,7 +161,7 @@ Do not accept merely because the expected value is present. The current OIDC Cor
 }
 ```
 
-A regular `web-client-123` deployment should reject this. Only a deliberately implemented extension with a configured trusted relationship could change the result.
+Process this according to the applicable extension/profile. Without one, Core encourages ignoring `azp`; a deployment that adopted the stricter local equality policy above would reject it. The `aud` array must independently satisfy the client's audience trust policy.
 
 ### Client ID appears only in `azp`
 
@@ -172,7 +183,7 @@ An API should therefore validate:
 - token time claims; and
 - the resource-specific scopes, roles, or other authorization claims.
 
-If a provider puts `azp` in access tokens, that is provider-specific behavior. Follow the provider's access-token contract; do not apply OIDC ID-token validation text as if every JWT were an ID token.
+If an access-token profile or provider uses `azp`, that behavior is profile- or provider-specific. Follow the governing access-token contract; do not apply OIDC ID-token validation text as if every JWT were an ID token.
 
 ## Debugging Checklist
 
@@ -184,7 +195,7 @@ When a library reports an audience or authorized-party error:
 4. Check whether a documented extension/profile explains multiple audiences and `azp`.
 5. Look for a wrong client registration, token exchange, broker, gateway, or mobile/web client mix-up.
 6. Ensure the OIDC library performs exact membership, not substring or case-insensitive matching.
-7. Test negative cases: missing audience, unknown extra audience, mismatched `azp`, wrong issuer, and an access token presented as an ID token.
+7. Test negative cases: missing audience, unknown extra audience, `azp` that violates the applicable extension or local policy, wrong issuer, and an access token presented as an ID token.
 
 The right response to a surprising signed claim is not to weaken validation. Treat it as evidence that the application received the wrong token or that its configured trust relationship is incomplete.
 
