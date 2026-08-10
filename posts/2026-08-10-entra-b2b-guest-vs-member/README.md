@@ -15,7 +15,7 @@ Microsoft describes `userType` as the user's relationship to the resource tenant
 - `Guest` normally represents an external collaborator and receives restricted directory permissions by default.
 - `Member` normally represents a worker or other person treated as internal and receives member-level directory permissions by default.
 
-Authentication source is a separate property. An external Member can still authenticate in a partner tenant, and an internal account can be marked Guest. Application assignments, groups, app roles, Azure RBAC, entitlement packages, licenses, Conditional Access, and cross-tenant settings remain separate decisions.
+Authentication source is a separate property. An external Member can still authenticate in a partner tenant, and an internal account can be marked Guest. Application assignments, groups, app roles, Azure RBAC, access packages, licenses, Conditional Access, and cross-tenant settings remain separate decisions.
 
 ## Separate Four Independent Questions
 
@@ -28,7 +28,7 @@ Many access reviews go wrong because they collapse these questions into one “g
 | What resources can they use? | Groups, app assignments, app roles, Azure RBAC, SharePoint/Teams policies | Their actual authorization |
 | Who manages their lifecycle? | Sponsor, access package, cross-tenant sync, access review, HR process | How access is granted, reviewed, and removed |
 
-Changing `userType` answers only the second question. It does not move the account to another identity provider, redeem an invitation, assign an application, or revoke existing resource permissions.
+Changing `userType` directly changes the classification and its baseline directory-permission consequences. It does not move the account to another identity provider, redeem an invitation, or alter static assignments. However, dynamic groups and product policies that evaluate `userType` can add or remove access.
 
 ## The Four Combinations Entra Can Represent
 
@@ -41,7 +41,7 @@ Microsoft's B2B properties documentation distinguishes four useful combinations:
 | Internal identity | Guest | Locally authenticated account intentionally restricted as a guest |
 | Internal identity | Member | Conventional employee or internal workforce account |
 
-This is why a `#EXT#` user principal name, an email domain, or `userType` alone cannot prove how the user authenticated. Inspect the resource-tenant user object's `identities` collection. An Entra-homed external identity commonly shows `ExternalAzureAD`; other federation or email one-time-passcode identities use different issuer values.
+This is why a `#EXT#` user principal name, an email domain, or `userType` alone cannot prove how the user authenticated. Inspect the **Identities** value in the Microsoft Entra admin center or query the resource-tenant user object's `identities` collection through Microsoft Graph. For an Entra-homed external identity, the admin center commonly displays `ExternalAzureAD`; raw Microsoft Graph `objectIdentity` entries expose `signInType`, `issuer`, and `issuerAssignedId`. Federated and email one-time-passcode identities use other provider or issuer values.
 
 ## What Changes When UserType Is Guest
 
@@ -51,7 +51,7 @@ By default, Guest users have limited ability to enumerate directory data. The ex
 - guests can have limited access to directory object properties and memberships; or
 - guests can be restricted largely to their own directory object.
 
-Those settings govern Microsoft Entra directory visibility. They do not automatically deny access to every application. A Guest can still receive an application assignment, an app role, group membership, an Azure role, or access to a collaboration resource when policy permits it.
+Those settings govern guests' default Microsoft Entra directory permissions and visibility. They do not automatically deny access to every application. A Guest can still receive an application assignment, an app role, group membership, an Azure role, or access to a collaboration resource when policy permits it.
 
 Likewise, setting **Assignment required** on an Enterprise application is separate from `userType`. If assignment is required, assign the external user or an eligible group. If it is not required, other consent and authorization rules determine whether sign-in is allowed.
 
@@ -77,21 +77,21 @@ Some Microsoft services have their own limitations or preview behavior for exter
 
 For tokens issued in a B2B scenario, distinguish these identifiers:
 
-- `tid` identifies the tenant associated with the token's issuer and validation context;
+- `tid` identifies the tenant the user is signing in to, which in a resource-tenant B2B token is the resource tenant;
 - `oid` identifies the user object in that tenant and can differ for the same human across tenants;
 - `idp`, when present, can identify an external identity provider; and
-- `sub` is scoped to the issuer/client context and should be treated according to the token specification.
+- `sub` is locally unique within its issuer and, in Microsoft Entra, is an immutable pairwise identifier unique to a particular application ID (the token recipient).
 
 Do not use email or UPN as the durable authorization key. They can change, and B2B user principal names often contain the `#EXT#` convention.
 
-Also do not assume every token contains `userType`. Claims differ by token type, endpoint version, resource, and optional-claims configuration. For a custom application:
+Also do not assume tokens contain a literal `userType` claim. It is not part of Microsoft Entra's standard token claim set. The optional `acct` claim represents Member (`0`) versus Guest (`1`); a literal user-type claim requires custom claims mapping. Claim sets vary by token type and configuration: ID-token version follows the endpoint used, while access-token version and contents are controlled by the target resource. For a custom application:
 
-1. validate the token's signature, issuer, audience, and lifetime;
+1. have the web app validate ID tokens it consumes, and have the resource API validate access tokens whose `aud` identifies that API, including signature, issuer, audience, and time validity;
 2. key the local identity with stable tenant and subject/object identifiers appropriate to the token;
 3. use app roles, scopes, or a server-side authorization store for access decisions; and
 4. query Microsoft Graph in the resource tenant when lifecycle logic genuinely requires current `userType` or `identities`.
 
-An access token is issued for its resource. A client application should not decode a token intended for another API and turn incidental claims into its authorization model.
+Access tokens are issued for a resource. Client applications should treat them as opaque; only the target API should validate and use their claims for authorization.
 
 ## Invitation and Redemption State Is Separate
 
@@ -126,12 +126,12 @@ Document both sides of the relationship:
 
 The resource tenant owns the B2B user object even though another organization may own the credential. This creates two lifecycle planes.
 
-If the home organization disables the account, authentication should stop, but the resource-tenant object and its assignments can remain until governance removes them. Conversely, deleting the resource-tenant B2B object removes local access even if the home identity still exists.
+If the home organization disables the account, new authentication and token issuance should stop, but the resource-tenant object and its assignments can remain until governance removes them. Conversely, deleting the resource-tenant B2B object prevents future local sign-ins even if the home identity still exists. In either case, already-issued access tokens or application sessions can remain effective until expiry or revocation.
 
 Build an explicit lifecycle:
 
 1. require a sponsor or business owner;
-2. grant access through groups, app roles, or entitlement packages rather than one-off assignments where possible;
+2. grant access through groups, app roles, or access packages rather than one-off assignments where possible;
 3. set an expiry or recurring access review;
 4. monitor invitation redemption and stale sign-ins;
 5. remove resource assignments and the B2B object when the relationship ends; and
@@ -154,7 +154,7 @@ This preserves the ability to support external Guests and Members without making
 
 ## Do Not Confuse B2B Collaboration with B2B Direct Connect
 
-B2B direct connect is a separate cross-tenant collaboration mechanism used for scenarios such as Teams shared channels. It does not behave like a conventional B2B collaboration user object in the resource tenant. Confirm which External ID model the product uses before troubleshooting a missing Guest or attempting to convert `userType`.
+B2B direct connect is a separate cross-tenant collaboration mechanism currently used for Microsoft Teams Connect shared channels. Unlike B2B collaboration users, B2B direct connect users do not have a presence in the resource tenant and are managed from within the application. Confirm which External ID model the product uses before troubleshooting a missing Guest or attempting to convert `userType`.
 
 ## Official Documentation
 
