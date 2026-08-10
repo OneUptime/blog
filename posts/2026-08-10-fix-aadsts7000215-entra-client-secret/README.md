@@ -8,7 +8,7 @@ Description: Resolve AADSTS7000215 by using the one-time client secret value, pr
 
 ---
 
-`AADSTS7000215` means Microsoft Entra found the client application but rejected the client secret or authentication parameters. The most common cause is copying the credential's **Secret ID** instead of its **Value**.
+`AADSTS7000215` means Microsoft Entra rejected client authentication because the supplied client secret was invalid or the authentication parameters were incorrect. A common cause is copying the credential's **Secret ID** instead of its **Value**.
 
 The distinction is fundamental:
 
@@ -42,7 +42,7 @@ Related codes narrow the problem:
 - `AADSTS7000222` means the supplied client-secret credentials are expired.
 - `AADSTS7000218` means the request did not contain the required secret or client assertion.
 
-Always use the exact number, not the generic `invalid_client` label alone.
+For diagnosis, preserve the exact AADSTS number in addition to the generic `invalid_client` value. In application logic, react to the OAuth `error` field rather than depending on an AADSTS number.
 
 ## Step 1: Confirm You Have the Secret Value
 
@@ -73,23 +73,23 @@ Microsoft Graph also supports password credentials created directly on `serviceP
 Confirm that the runtime values form one consistent set:
 
 ```text
-authority tenant -> tenant containing the app registration
-client_id        -> Application (client) ID of that registration
-client_secret    -> Value created under that registration
+authority tenant -> tenant where the app plans to operate and that contains its service principal
+client_id        -> Application (client) ID of the registration
+client_secret    -> Value for the credential on its owning application or exact service principal
 ```
 
-Query the application by client ID in the expected home tenant:
+For an app-registration-owned credential, query the application by client ID in the expected home tenant:
 
 ```bash
 az account show --query tenantId -o tsv
 az ad app show --id <application-client-id>
 ```
 
-For multitenant applications, app-registration credentials remain on the publisher's application object. A customer tenant's enterprise application does not receive a copy of the publisher's secret. The workload authenticates as the registered client while requesting access in an authorized tenant.
+For multitenant applications, app-registration credentials remain on the publisher's application object. A customer tenant's enterprise application does not receive a copy of the publisher's secret. The target tenant must contain a service principal for the client; since March 2026, Microsoft Entra blocks non-Microsoft multitenant app-only authentication without one. The workload authenticates as the registered client while requesting access in that authorized tenant.
 
 ## Step 3: Encode the Request Correctly
 
-The token endpoint expects `application/x-www-form-urlencoded`. Microsoft documents that a client secret in a raw authorization-code request must be URL-encoded. The same form-encoding requirement applies when constructing client-credentials bodies.
+The token endpoint expects `application/x-www-form-urlencoded`. Microsoft documents that `client_secret` in the token request that redeems an authorization code must be URL-encoded. The same form-encoding requirement applies when constructing client-credentials bodies.
 
 Avoid string concatenation:
 
@@ -97,7 +97,7 @@ Avoid string concatenation:
 client_secret=<raw value pasted into a hand-built query string>
 ```
 
-Characters such as `+`, `&`, `%`, and `=` can be misinterpreted if the form body is assembled incorrectly. A `+` in form data can become a space.
+Characters such as `+`, `&`, and `%` can change form parsing if left raw. A `+` in form data becomes a space. Let the form encoder handle the complete value, including any `=` characters.
 
 Use an authentication SDK when possible. For a controlled protocol test, let the HTTP client encode each field:
 
@@ -116,6 +116,8 @@ printf '%s' "$ENTRA_CLIENT_SECRET_VALUE" |
 
 unset ENTRA_CLIENT_SECRET_VALUE
 ```
+
+Run this test only in a secure interactive environment. A successful response contains an access token, so do not send its standard output to shared logs or publish the output.
 
 Do not place a real secret directly on the command line, where shell history and process inspection can expose it. In this diagnostic pattern, `curl` reads the value from standard input rather than receiving the expanded secret in its argument list. A production workload should read from its approved secret provider and use a maintained identity library.
 
@@ -201,7 +203,7 @@ Client secrets are still supported, but they create copying, storage, expiry, an
 
 - [ ] Runtime `client_id` is the Application ID.
 - [ ] Runtime authority targets the expected tenant.
-- [ ] Secret came from the same app registration.
+- [ ] Secret came from the credential-owning application or exact service principal for this client ID.
 - [ ] Configuration contains the secret Value, not Secret ID.
 - [ ] Credential is active and unexpired.
 - [ ] Raw form data is encoded once, preferably by an SDK.
@@ -214,6 +216,8 @@ Client secrets are still supported, but they create copying, storage, expiry, an
 
 - [Microsoft Entra authentication and authorization error codes](https://learn.microsoft.com/en-us/entra/identity-platform/reference-error-codes)
 - [passwordCredential resource type](https://learn.microsoft.com/en-us/graph/api/resources/passwordcredential)
+- [Application and service principal objects in Microsoft Entra ID](https://learn.microsoft.com/en-us/entra/identity-platform/app-objects-and-service-principals)
+- [Retirement of service principal-less authentication](https://learn.microsoft.com/en-us/entra/identity-platform/retire-service-principal-less-authentication)
 - [Microsoft identity platform and OAuth 2.0 authorization code flow](https://learn.microsoft.com/en-us/entra/identity-platform/v2-oauth2-auth-code-flow)
 - [OAuth 2.0 client credentials flow on the Microsoft identity platform](https://learn.microsoft.com/en-us/entra/identity-platform/v2-oauth2-client-creds-grant-flow)
 - [Security best practices for application properties](https://learn.microsoft.com/en-us/entra/identity-platform/security-best-practices-for-app-registration)
@@ -221,4 +225,4 @@ Client secrets are still supported, but they create copying, storage, expiry, an
 
 ## Conclusion
 
-AADSTS7000215 is usually a credential-value, pairing, encoding, or rollout problem. Use the one-time Secret Value, never the Secret ID; confirm it belongs to the configured client and tenant; let a library form-encode it; and force a new token during testing. Rotate with overlapping credentials, then move toward managed identity, federation, or certificates to eliminate shared-secret handling.
+AADSTS7000215 is usually a credential-value, pairing, encoding, or rollout problem. Use the one-time Secret Value, never the Secret ID; confirm it belongs to the configured client and credential-owning object; target the correct authority tenant; let a library form-encode the secret; and force a new token during testing. Rotate with overlapping credentials, then move toward managed identity, federation, or certificates to eliminate shared-secret handling.
