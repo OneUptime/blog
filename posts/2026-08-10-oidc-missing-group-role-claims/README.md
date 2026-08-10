@@ -22,7 +22,7 @@ The distinction becomes clearer when the artifacts are separated:
 | --- | --- | --- | --- |
 | ID token | The OIDC client identified by `aud` | Prove an authentication event and identify its subject | No |
 | UserInfo response | The OIDC client holding the corresponding access token | Return authorized claims about that subject | No |
-| Access token | The resource server identified by its audience | Authorize API access | Only when the authorization server's token profile promises them |
+| Access token | The target resource server(s); identified by `aud` when the token profile defines that claim | Authorize API access | Only when the authorization server's token profile promises them |
 | Directory or SCIM API | An authorized administrative or application client | Retrieve or provision identity resources and memberships | Provider and permission dependent |
 | Application database or policy service | The application | Enforce application-owned permissions | Defined by the application |
 
@@ -98,7 +98,7 @@ For a resource server, a JWT access token can carry `groups`, `roles`, `entitlem
 
 This works well for low-latency decisions whose acceptable staleness is the access-token lifetime. Keep the claims resource-specific and small. A global directory dump in every token increases disclosure, header size, and stale-privilege risk.
 
-### Use a directory, SCIM, or application policy store for current data
+### Use a directory, SCIM, or application policy store for lookup-based authorization data
 
 SCIM defines APIs and schemas for retrieving and provisioning Users and Groups, but an OIDC login does not automatically grant SCIM access. Use a separately authorized directory or provider API when the application genuinely needs directory membership and the provider supports that access model.
 
@@ -119,7 +119,7 @@ Fail closed when a required authorization claim is absent. "Missing" must not me
 
 ## Design for Freshness and Revocation
 
-Every embedded authorization claim has a staleness window. Document whether changes take effect at access-token renewal, at the next OIDC login, at application-session refresh, or after a live policy lookup. Shorter access-token lifetimes reduce stale decisions but increase renewal traffic; live lookups improve freshness but add latency and availability dependencies.
+Every embedded authorization claim has a staleness window. Document whether changes take effect at access-token renewal, at the next OIDC login, at application-session refresh, or after a live policy lookup. Shorter access-token lifetimes can reduce stale decisions but increase renewal traffic; live lookups can improve freshness but add latency and availability dependencies.
 
 For high-impact operations, combine a validated token identity with a current application-side decision. For ordinary operations, a short-lived, resource-specific access-token claim may be enough. The correct answer depends on the consequence of a revoked role remaining effective until the next refresh—not on which token is easiest to decode.
 
