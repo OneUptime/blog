@@ -53,7 +53,6 @@
 9. “Invalid Audience” in an Entra Access Token: How to Request a Token for the Right API
 10. Why Entra Group Claims Disappear for Users in Many Groups—and How to Handle Overage
 11. Entra App Roles vs Group Claims: Which Model Scales Better for Application Authorization?
-13. What Does the `.default` Scope Mean in Microsoft Entra ID?
 14. Single-Tenant vs Multi-Tenant Entra Apps: How `common`, `organizations`, and Tenant Endpoints Change Validation
 15. Client Secret vs Certificate vs Managed Identity vs Workload Federation: Which Entra Credential Model Fits?
 16. Why a New Entra Client Secret Still Fails After Rotation: Deployment, Caching, and Encoding Checks
