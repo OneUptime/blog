@@ -37,7 +37,6 @@
 ## OIDC
 
 12. OIDC Authorization Code Flow for SPAs: Where PKCE Helps and Where It Does Not
-14. How to Implement OIDC Logout When the App Session and Identity-Provider Session Disagree
 15. Why an OIDC Token Is “Not Yet Valid” or Already Expired: Clock Skew and Time-Sync Troubleshooting
 16. How to Validate Tokens from Multiple OIDC Issuers Without Creating an Issuer-Confusion Bug
 17. Why Your OIDC Redirect URI Matches Visually but Is Still Rejected
