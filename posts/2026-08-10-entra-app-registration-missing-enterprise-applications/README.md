@@ -30,7 +30,7 @@ The application/client ID is the join key. Object IDs are not interchangeable:
 - every service principal has its own object ID in the tenant where it exists; and
 - an Azure role assignment expects the principal ID, which is the service principal's object ID, not the client ID.
 
-Searching Enterprise applications with an application **object ID** from App registrations often returns nothing even when the service principal exists. Search with the application/client ID or follow **Managed application in local directory** from the app registration overview.
+Filtering Enterprise applications with an application **object ID** from App registrations often returns nothing even when the service principal exists. Filter with the application/client ID or follow **Managed application in local directory** from the app registration overview.
 
 ## What Normal Creation Does
 
@@ -57,9 +57,9 @@ For a multitenant app, decide which view you intend:
 
 ### 2. Remove Enterprise Applications Filters
 
-The Enterprise applications list can retain filters such as application type, assignment status, visibility, owner, or creation source. Clear the filters and search by the application/client ID. Display names are mutable and need not be unique.
+The Enterprise applications list can retain filters such as **Application Type**, **Application Status**, **Application Visibility**, **Created on**, **Assignment required**, or **Owner**. Set **Application Type** to **All Applications**, clear the other filters, and use **Application ID starts with** to filter by the application/client ID. Display names are mutable and need not be unique.
 
-Also check that you are not filtering only for Microsoft applications, managed identities, or a gallery category. A normal app registration is represented by an application-type service principal.
+Also check that you are not filtering only for Microsoft applications or managed identities. A normal app registration is represented by an application-type service principal.
 
 ### 3. Compare Both Objects Through Microsoft Graph
 
@@ -90,7 +90,7 @@ Azure CLI can perform the same service-principal check:
 az ad sp show --id 00000000-0000-0000-0000-000000000000
 ```
 
-Use an authenticated session for the target tenant. Do not infer the tenant from the active Azure subscription.
+Verify Azure CLI's active tenant with `az account show --query tenantId -o tsv`. Changing to a subscription in another tenant also changes the active tenant; if necessary, sign in to the target tenant with `az login --tenant <tenant-id>`.
 
 ### 4. Check Deletion and Restoration History
 
