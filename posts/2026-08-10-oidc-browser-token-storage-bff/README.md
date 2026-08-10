@@ -13,9 +13,9 @@ For a sensitive browser application, prefer a Backend for Frontend (BFF): keep O
 There is no browser storage choice that neutralizes a fully compromised origin. The architecture changes what malicious JavaScript can extract and reuse after it stops running:
 
 - persistent Web Storage makes bearer tokens easy to copy;
-- memory reduces persistence but live malicious code can read variables or invoke APIs;
+- memory reduces persistence, but live malicious code can intercept token use or invoke exposed authorized APIs;
 - an `HttpOnly` BFF cookie hides tokens from JavaScript, but injected code can still issue requests through the user's active session; and
-- cookies introduce CSRF considerations that bearer headers do not solve for you.
+- automatically attached cookies require CSRF defenses that explicitly supplied bearer headers generally avoid.
 
 Choose the architecture from the threat model and operational constraints, not from a slogan such as "cookies are always safe" or "memory prevents XSS."
 
@@ -24,10 +24,10 @@ Choose the architecture from the threat model and operational constraints, not f
 | Pattern | What the browser holds | Token readable by JavaScript? | Main advantages | Main costs and residual risks |
 | --- | --- | --- | --- | --- |
 | `localStorage` | Access and possibly refresh token | Yes | Simple; survives reload and restart | Persistent theft through XSS, compromised dependency, extension, or devtools access |
-| `sessionStorage` | Access and possibly refresh token | Yes | Tab-scoped; cleared when tab closes | Still readable by same-origin JavaScript; copied token remains reusable until expiry/revocation |
-| Memory | Access token in runtime state | Yes | Shorter persistence; naturally cleared by reload | XSS can read/use it while active; reload and multi-tab renewal become harder |
-| JavaScript-readable cookie | Token in cookie without `HttpOnly` | Yes | Automatic browser persistence | Combines token theft exposure with automatic cookie transmission and CSRF concerns |
-| BFF session cookie | Opaque or protected session reference; tokens remain server-side | No, with `HttpOnly` | Tokens are not directly exposed to browser code; confidential client possible | Server component, proxy/latency cost, CSRF defense, session security, compromised JS can still act through BFF |
+| `sessionStorage` | Access and possibly refresh token | Yes | Tab-scoped; cleared when tab closes | Still readable by same-origin JavaScript; a copied bearer token remains reusable until expiry/revocation |
+| Memory | Access token in runtime state | Not necessarily directly | Shorter persistence; naturally cleared by reload | Malicious JavaScript can use or intercept it while active; reload and multi-tab renewal become harder |
+| JavaScript-readable cookie | Token in cookie without `HttpOnly` | Yes | Browser-managed storage; can survive reloads | Token theft and automatic cookie transmission; CSRF if the server accepts the cookie for authentication |
+| BFF session cookie | Opaque server-side session identifier, or signed/encrypted client-side session state | No, with `HttpOnly` | Tokens are not directly exposed to browser code; BFF acts as a confidential client | Server component, proxy/latency cost, CSRF defense, session security, compromised JS can still act through BFF |
 
 The current IETF browser-based-app guidance presents BFF, token-mediating backend, and browser-only client patterns in decreasing order of security. A BFF is strongly recommended for business and sensitive applications, while simpler architectures remain choices with explicit tradeoffs.
 
@@ -40,11 +40,11 @@ The current IETF browser-based-app guidance presents BFF, token-mediating backen
 localStorage.setItem("access_token", tokens.access_token);
 ```
 
-A script injected through XSS, a compromised analytics package, or a malicious dependency can read the value and exfiltrate it. The attacker can then use a bearer token from another machine until it expires, is revoked, or a sender-constraining mechanism prevents replay.
+A script injected through XSS, a compromised analytics package, or a malicious dependency can read the value and exfiltrate it. The attacker can then use a stolen bearer token from another machine until it expires or is revoked. A sender-constrained access token can prevent that replay unless the attacker also obtains or can use the bound key.
 
 `sessionStorage` limits persistence to a tab, but it is not an XSS boundary. The storage API remains accessible to scripts running in that document's origin. Reducing the theft window is useful; describing the value as "secure" is not.
 
-Never store tokens in URLs. Query strings and fragments can leak into history, screenshots, logs, crash reports, copied links, and other browser surfaces. Use Authorization Code flow with PKCE rather than an implicit response that returns access tokens through the authorization endpoint.
+Never store tokens in URLs. Query strings can reach server and intermediary logs; both query strings and fragments can leak through browser history, screenshots, client-side logs and crash reports, copied links, and other browser surfaces. Use Authorization Code flow with PKCE rather than an implicit response that returns access tokens through the authorization endpoint.
 
 ## What In-Memory Storage Improves
 
@@ -64,15 +64,15 @@ export async function callApi(path) {
 }
 ```
 
-This can reduce persistent exfiltration. It does not prevent malicious JavaScript from reading the variable through reachable application APIs, intercepting fetch calls, making its own authorized requests, or initiating an authorization flow to acquire fresh tokens.
+This can reduce persistent exfiltration. It does not prevent malicious JavaScript from intercepting token use through reachable application or platform APIs, invoking exposed authorized functions, or initiating an authorization flow to acquire fresh tokens.
 
 Memory also complicates user experience. Reloads, browser restoration, multiple tabs, and background renewal need an explicit design. Do not fix that by quietly copying a long-lived refresh token into persistent Web Storage.
 
-If a public browser client receives refresh tokens, follow current OAuth requirements for public clients: use refresh-token rotation or sender-constrained refresh tokens, keep privileges narrow, and handle reuse as a security event. PKCE protects the authorization-code exchange; it does not bind every later bearer token to a clean JavaScript runtime.
+If a public browser client receives refresh tokens, the authorization server must rotate them on every use or sender-constrain them, and must set a maximum lifetime or expire them after inactivity. It must bind them to the consented scopes and resource servers and must not let rotation extend a pre-established absolute lifetime; detected reuse should revoke the active refresh token and be handled as a security event. PKCE protects the authorization-code exchange; it does not bind every later bearer token to a clean JavaScript runtime.
 
 ## How the BFF Changes the Boundary
 
-In the BFF pattern, the server component is the OAuth client. It performs the code exchange, holds access and refresh tokens, and forwards API requests with the correct access token. The browser holds only a session cookie:
+In the server-side-session BFF variant recommended here, the server component is the confidential OAuth client. It performs the code exchange, holds access and refresh tokens, and forwards API requests with the correct access token. The browser holds only a session cookie:
 
 ```text
 Browser --HttpOnly session cookie--> BFF --access token--> Resource API
@@ -82,7 +82,7 @@ The frontend never needs to receive the OAuth tokens. An XSS payload cannot read
 
 It does not make XSS harmless. Malicious code executing in the application can call the BFF while the user is signed in, read non-HttpOnly page data, alter transactions, or trigger application actions. Strong output encoding, Content Security Policy, dependency control, and ordinary web hardening remain necessary.
 
-The BFF also becomes security-critical infrastructure. It must enforce authorization rather than acting as an unrestricted open proxy, remove session cookies before forwarding, constrain upstream hosts and paths, protect tokens at rest, rotate sessions, limit response data, and preserve resource-server identity and audit context.
+The BFF also becomes security-critical infrastructure. It must enforce strict outbound proxy controls and explicit upstream host/path allowlists rather than act as an unrestricted open proxy, remove session cookies before forwarding, protect tokens at rest, rotate sessions, limit response data, and preserve resource-server identity and audit context. The resource server must still enforce authorization.
 
 ## Configure BFF Cookies Deliberately
 
@@ -92,7 +92,7 @@ Current IETF guidance for BFF cookies requires `Secure` and `HttpOnly`, recommen
 Set-Cookie: __Host-Http-app_session=OPAQUE_VALUE; Path=/; Secure; HttpOnly; SameSite=Strict
 ```
 
-Cookie prefixes and support vary across clients, so confirm the exact browser compatibility and server framework behavior for your deployment. The core goals are that JavaScript cannot read the cookie, plaintext HTTP cannot receive it, sibling hosts do not inherit it unnecessarily, and its scope is no wider than needed.
+Cookie prefixes and support vary across clients, so confirm the exact browser compatibility and server framework behavior for your deployment. The core goals are that JavaScript cannot read the cookie, the cookie is not sent over ordinary plaintext HTTP, sibling hosts do not inherit it unnecessarily, and its scope is no wider than needed.
 
 An `HttpOnly` cookie protects confidentiality from JavaScript; it does not stop the browser from attaching the cookie to eligible requests. The BFF must implement CSRF defense for state-changing operations. Depending on topology, that can include `SameSite`, strict Origin checks, a framework anti-forgery mechanism, narrowly configured CORS with a required custom header, and rejecting CORS-safelisted state changes. Do not use GET for actions that mutate state.
 
@@ -126,7 +126,7 @@ For that pattern, prefer memory for access tokens where the user experience perm
 Regardless of architecture:
 
 1. use Authorization Code flow with `S256` PKCE;
-2. validate OIDC state/nonce and tokens with a maintained library;
+2. validate OAuth `state` and OIDC `nonce` when used, and validate ID tokens with a maintained library;
 3. request minimum scopes and audience-restricted access;
 4. keep authorization server and API origins tightly configured;
 5. prevent token logging and URL leakage;
@@ -137,7 +137,8 @@ Storage is only one layer. The strongest design minimizes which credentials ente
 
 ## Sources
 
-- [OAuth 2.0 for Browser-Based Applications — IETF Working Group Draft](https://datatracker.ietf.org/doc/html/draft-ietf-oauth-browser-based-apps-26)
+- [OAuth 2.0 for Browser-Based Applications — IETF Working Group Draft](https://datatracker.ietf.org/doc/html/draft-ietf-oauth-browser-based-apps-27)
 - [RFC 9700 — Best Current Practice for OAuth 2.0 Security](https://datatracker.ietf.org/doc/html/rfc9700)
 - [RFC 7636 — Proof Key for Code Exchange](https://datatracker.ietf.org/doc/html/rfc7636)
 - [RFC 6265 — HTTP State Management Mechanism](https://datatracker.ietf.org/doc/html/rfc6265)
+- [Cookies: HTTP State Management Mechanism — IETF Layered Cookies Draft](https://datatracker.ietf.org/doc/html/draft-ietf-httpbis-layered-cookies-02)
