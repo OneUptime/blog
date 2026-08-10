@@ -39,8 +39,6 @@
 
 ## Cloud Controller
 
-7. Why a `LoadBalancer` Service Stays Pending Even Though cloud-controller-manager Is Running
-13. How Leader Election Prevents Multiple Cloud Controller Manager Replicas from Duplicating Resources
 
 ## Entra ID
 
