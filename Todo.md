@@ -39,7 +39,6 @@
 
 ## Cloud Controller
 
-4. Why Nodes Stay Tainted `node.cloudprovider.kubernetes.io/uninitialized` After Bootstrap
 5. ProviderID Is Empty on Kubernetes Nodes: How to Trace Cloud Node Initialization
 6. How to Break the Cloud Controller Manager Bootstrap Deadlock When Its Own Pods Cannot Schedule
 7. Why a `LoadBalancer` Service Stays Pending Even Though cloud-controller-manager Is Running
