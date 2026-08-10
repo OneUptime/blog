@@ -14,7 +14,7 @@ The safe sequence is:
 
 1. validate the ID token as part of the OIDC transaction;
 2. establish the session identity from its `iss` and `sub`;
-3. call the discovered UserInfo endpoint only if required;
+3. call a trusted UserInfo endpoint, normally obtained from validated discovery metadata, only if required;
 4. require the UserInfo `sub` to equal the ID-token `sub` exactly; and
 5. apply an explicit claim precedence and freshness policy.
 
@@ -23,6 +23,8 @@ The safe sequence is:
 An ID token is a signed authentication assertion issued to an OIDC client. It identifies the issuer and subject and describes the authentication event. The token is intended for the relying party whose client ID appears in `aud`.
 
 UserInfo is an OAuth protected resource. The client presents the access token from the OIDC flow and receives authorized claims about the subject represented by that grant.
+
+For the Authorization Code Flow typically used by a server-side backend:
 
 | Property | ID token | UserInfo response |
 | --- | --- | --- |
@@ -38,13 +40,13 @@ Neither source automatically carries application authorization. Groups and roles
 
 ## Validate the ID Token First
 
-Use a maintained OIDC client library and provide trusted configuration: expected issuer, client ID, allowed algorithms, keys obtained from the issuer's validated metadata, redirect URI, and the transaction's nonce and PKCE values.
+Use a maintained OIDC client library and provide trusted configuration: expected issuer, client ID, allowed algorithms, verification key material bound to that issuer (normally keys from the `jwks_uri` in its validated metadata, or the registered client secret for an explicitly allowed MAC algorithm), redirect URI, and the transaction's nonce and PKCE values.
 
 At minimum, code-flow ID-token validation includes:
 
 - exact issuer matching;
 - signature and allowed-algorithm validation;
-- ensuring `aud` contains this client ID;
+- ensuring `aud` contains this client ID and rejecting untrusted additional audiences;
 - applicable `azp` validation;
 - checking `exp` with only a small, documented clock allowance;
 - checking the expected `nonce` when one was sent; and
@@ -79,13 +81,13 @@ Treat profile values as assertions received during that login, not as live direc
 
 Call UserInfo when all of the following are true:
 
-- discovery advertises a `userinfo_endpoint`;
+- trusted provider configuration, normally validated discovery metadata, supplies a `userinfo_endpoint`;
 - the provider documents the desired claim at UserInfo for the granted scopes;
 - the client has a valid access token intended for that endpoint;
 - the additional latency and availability dependency are acceptable; and
 - the application has a clear reason to retrieve the data.
 
-A server-side request normally looks like this:
+For the default plain JSON UserInfo response, a server-side request normally looks like this:
 
 ```http
 GET /userinfo HTTP/1.1
@@ -127,11 +129,11 @@ async function loadUserInfo({ endpoint, accessToken, idTokenClaims }) {
 }
 ```
 
-The snippet assumes `idTokenClaims` came from full OIDC validation and `endpoint` came from metadata whose issuer was validated. Never derive the UserInfo URL from an untrusted token claim.
+The snippet assumes `idTokenClaims` came from full OIDC validation, `endpoint` came from trusted provider configuration such as metadata whose issuer was validated, and the client uses the default plain JSON UserInfo response. A client registered for a signed or encrypted UserInfo response must instead process the `application/jwt` JWS/JWE, validate the registered protections and, for a signed response, its required `iss` and `aud`, then apply the same `sub` check. Never derive the UserInfo URL from an untrusted token claim.
 
 ## Decide Which Claim Wins
 
-The ID token and UserInfo can contain the same claim with different values. That is not necessarily a protocol failure: one may be an older snapshot, a scope may affect release, or provider processing may differ.
+The ID token and UserInfo can contain the same claim with different values. That is not necessarily a protocol failure: one may be an older snapshot or provider processing may differ. Scope and release policy can also affect whether a claim appears at all.
 
 Define claim classes rather than blindly merging objects:
 
@@ -149,7 +151,7 @@ For a plain JSON UserInfo response, TLS authenticates the endpoint connection. U
 
 UserInfo returns claims about an authenticated end-user. OAuth token introspection reports metadata about a token, such as whether it is active, when the authorization server supports that endpoint and the caller is authorized. Calling UserInfo is not a general test that an arbitrary API access token remains valid, and it does not revoke or refresh a token.
 
-Similarly, a successful UserInfo call does not make the ID token suitable for an API. The resource server must validate the access token according to the API's token format, issuer, audience, lifetime, scopes, and authorization policy.
+Similarly, a successful UserInfo call does not make the ID token suitable for an API. The resource server must validate the access token according to the API's token contract, checking issuer, audience, lifetime, and scopes where applicable, and then enforce authorization policy.
 
 ## Build a Failure Policy
 
