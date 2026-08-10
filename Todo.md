@@ -45,7 +45,6 @@
 13. How Leader Election Prevents Multiple Cloud Controller Manager Replicas from Duplicating Resources
 14. Why Cloud Routes Are Not Created: `--configure-cloud-routes`, Pod CIDRs, and Provider Support
 15. Can cloud-controller-manager Delete a Kubernetes Node? Understanding Cloud Node Lifecycle Checks
-18. How to Choose a cloud-controller-manager Version That Matches Your Kubernetes Cluster
 19. How to Monitor cloud-controller-manager Health: Leader Leases, Reconcile Errors, and API Throttling
 20. Why Load Balancer Health Checks Fail After CCM Provisioning—and Which Service Annotations to Inspect
 
