@@ -36,7 +36,6 @@
 
 ## OIDC
 
-11. Why OIDC Group or Role Claims Are Missing—and Where to Retrieve Authorization Data
 12. OIDC Authorization Code Flow for SPAs: Where PKCE Helps and Where It Does Not
 13. Should a Backend Trust Claims from the ID Token or Call the OIDC UserInfo Endpoint?
 14. How to Implement OIDC Logout When the App Session and Identity-Provider Session Disagree
