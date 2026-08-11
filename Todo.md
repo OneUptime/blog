@@ -45,7 +45,6 @@
 
 ## Image Signing
 
-12. How to Verify Cosign Signatures in an Air-Gapped Environment with Sigstore Bundles
 13. What Happens to Keyless Cosign Signatures After the Fulcio Certificate Expires?
 14. How to Rotate a Cosign Signing Key Without Breaking Verification of Older Images
 15. Cosign vs Notation: Which Container Image Signing Workflow Fits Your Registry and Policy Engine?
