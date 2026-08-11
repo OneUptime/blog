@@ -12,7 +12,7 @@ The Woodpecker agent does not connect to the server's normal web port. It opens 
 
 Troubleshoot in layers: address and route, TCP reachability, TLS mode and certificate, agent registration token, then Woodpecker identity and version. Change one layer at a time and correlate agent, server, and proxy logs by timestamp.
 
-This guide targets the current stable Woodpecker 3.17 configuration names. The project's `next` migration notes announce a TLS verification variable rename and inverted meaning; that distinction is called out below so stable and development examples are not mixed.
+This guide targets the current stable Woodpecker 3.17 configuration names. The project's `next` migration notes announce a TLS verification variable rename that corrects a misleading stable name; that distinction is called out below so stable and development examples are not mixed.
 
 ## Know the Two Server Ports
 
@@ -76,7 +76,7 @@ Binding it to `localhost:9000` prevents remote agents from reaching it. Publishi
 
 ## Test DNS and TCP from the Agent
 
-Run checks from the agent host or its network namespace:
+Run these from the agent's network namespace, typically with a Linux diagnostic container attached to the same Compose or Kubernetes network. The stock Woodpecker agent image has no shell or these diagnostic utilities:
 
 ~~~bash
 getent hosts woodpecker-server
@@ -119,10 +119,10 @@ Remote agents commonly connect to a public gRPC hostname on port 443:
 ~~~ini
 WOODPECKER_SERVER=woodpecker-grpc.example.com:443
 WOODPECKER_GRPC_SECURE=true
-WOODPECKER_GRPC_VERIFY=true
+WOODPECKER_GRPC_VERIFY=false
 ~~~
 
-The last setting is the stable 3.17 name and default: `true` verifies the server certificate. The proxy terminates TLS and forwards gRPC over HTTP/2 cleartext, or h2c, to `woodpecker-server:9000`.
+The last setting is the stable 3.17 name, but its behavior is inverted relative to that name. The tagged implementation passes the value directly to Go's `tls.Config.InsecureSkipVerify`: `false` verifies the server certificate, while `true` skips verification. The 3.17 default is `true`, so set it explicitly to `false` for verified TLS. The proxy terminates TLS and forwards gRPC over cleartext HTTP/2 (h2c) to `woodpecker-server:9000`.
 
 The server's documented Caddy example uses:
 
@@ -134,18 +134,20 @@ Its Traefik example sets the upstream service port to 9000 and the scheme to `h2
 
 ## Verify the Certificate and HTTP/2
 
-From the agent network:
+From the agent network, using the same CA trust store as the agent:
 
 ~~~bash
 openssl s_client \
   -connect woodpecker-grpc.example.com:443 \
   -servername woodpecker-grpc.example.com \
+  -verify_hostname woodpecker-grpc.example.com \
+  -verify_return_error \
   -alpn h2 </dev/null
 ~~~
 
 Check:
 
-- certificate subject/SAN includes the configured hostname;
+- certificate DNS SAN matches the configured hostname;
 - chain terminates at a CA trusted in the agent image/host;
 - certificate is within its validity period;
 - ALPN negotiates `h2`;
@@ -158,8 +160,10 @@ If an internal CA is used, mount or install that CA into the agent's system trus
 Stable 3.17 uses:
 
 ~~~ini
-WOODPECKER_GRPC_VERIFY=true
+WOODPECKER_GRPC_VERIFY=false
 ~~~
+
+Despite the name and the wording in the 3.17 reference page, the tagged implementation treats `true` as "skip verification." Use `false` to verify the chain and hostname.
 
 The current `next` migration notes announce:
 
@@ -167,7 +171,7 @@ The current `next` migration notes announce:
 WOODPECKER_GRPC_SKIP_VERIFY=false
 ~~~
 
-The name and truth value are intentionally inverted: under the upcoming form, `true` disables verification. Verify your exact agent version before changing the key. Setting an unknown variable can silently leave the default in place, while copying the boolean without noticing the inversion can weaken TLS.
+The rename makes the name match the existing behavior; it does not invert the boolean. `false` verifies under both forms, while `true` disables verification. Verify your exact agent version before changing the key. On 3.17, setting only the unknown `WOODPECKER_GRPC_SKIP_VERIFY` key leaves the insecure `WOODPECKER_GRPC_VERIFY=true` default in place.
 
 Version-pin server and agent images, and use the documentation page for that version during upgrades.
 
@@ -190,7 +194,7 @@ The secret value must come from the same secret-manager record on server and age
 - two independently generated random values;
 - a stale Compose `.env`;
 - quoting accidentally included by a templating system;
-- the environment variable overriding a corrected `*_FILE` value;
+- assuming the direct environment variable overrides `*_FILE`; in 3.17 a readable secret file wins, while an unreadable path falls back to the direct value;
 - a secret mounted at the wrong path;
 - different Kubernetes namespaces or Secret keys.
 
@@ -211,7 +215,7 @@ volumes:
   - woodpecker-agent-config:/etc/woodpecker
 ~~~
 
-This lets the agent present its registered ID after restart. Losing the file should cause re-registration with a valid system token, but can create confusing duplicate records and label/identity drift. A read-only or unwritable config mount can also prevent registration from completing.
+This lets the agent present its registered ID after restart. Losing the file should cause re-registration with a valid system token, but can create confusing duplicate records and label/identity drift. A read-only or unwritable config mount prevents the registered ID from being persisted even though the current registration can succeed.
 
 Check the agent log for a failure to write the config file and verify its ownership.
 
@@ -229,7 +233,7 @@ For a TLS proxy:
 
 - route the gRPC hostname to server port 9000;
 - enable HTTP/2 from client and h2c or documented gRPC upstream mode;
-- preserve long-lived streaming connections;
+- preserve long-lived gRPC requests and HTTP/2 connections;
 - avoid an interactive auth middleware on the agent endpoint;
 - set timeouts appropriate for gRPC;
 - pass the correct SNI/certificate;
@@ -267,9 +271,9 @@ Current agent settings include:
 - `WOODPECKER_CONNECT_RETRY_COUNT`;
 - `WOODPECKER_CONNECT_RETRY_DELAY`;
 - `WOODPECKER_RETRY_TIMEOUT`;
-- gRPC keepalive settings.
+- `WOODPECKER_KEEPALIVE_TIME` and `WOODPECKER_KEEPALIVE_TIMEOUT` are documented, but a 3.17 wiring bug reads different internal flag names, so that release does not apply them.
 
-Do not hide a permanent address or token error with infinite retry. Fix the root cause, then tune retries for expected brief server or network interruptions.
+Do not hide a permanent address or token error with infinite retry. Fix the root cause, then tune retries for expected brief server or network interruptions. Do not rely on the keepalive settings until your exact release has fixed their wiring.
 
 ## End-to-End Checklist
 
@@ -280,7 +284,7 @@ Do not hide a permanent address or token error with infinite retry. Fix the root
 5. Set secure false only for a trusted plaintext path.
 6. For TLS, negotiate h2 and verify the hostname and CA.
 7. Configure the proxy for gRPC/h2c upstream to port 9000.
-8. Use stable 3.17 `GRPC_VERIFY` or the version-appropriate renamed setting.
+8. Use stable 3.17 `GRPC_VERIFY=false` or the version-appropriate `GRPC_SKIP_VERIFY=false` to keep certificate verification enabled.
 9. Confirm the same system token or correct per-agent token.
 10. Persist and make writable the agent config file.
 11. In HA, persist one shared server `GRPC_SECRET`.
@@ -299,4 +303,4 @@ Do not hide a permanent address or token error with infinite retry. Fix the root
 
 ## Conclusion
 
-An agent connection needs the correct gRPC address, a reachable HTTP/2 path, matching TLS expectations, and the correct agent registration token. Prove those layers in that order. Keep the stable 3.17 `GRPC_VERIFY` name distinct from the announced inverted `GRPC_SKIP_VERIFY` form, persist agent identity, and share the server-only gRPC signing secret across HA replicas. Once the UI reports the agent connected, scheduling problems belong to labels and capacity—not the transport.
+An agent connection needs the correct gRPC address, a reachable HTTP/2 path, matching TLS expectations, and the correct agent registration token. Prove those layers in that order. On stable 3.17, explicitly use the misleading `GRPC_VERIFY=false`; on `next`, use `GRPC_SKIP_VERIFY=false`. Persist agent identity, and share the server-only gRPC signing secret across HA replicas. Once the UI reports the agent connected, scheduling problems belong to labels and capacity—not the transport.
