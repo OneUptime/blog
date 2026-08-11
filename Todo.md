@@ -86,7 +86,6 @@
 
 ## Browser Monitoring
 
-2. Why Is Lighthouse Fast While Real Users Are Slow? Segment RUM by Device, Network, Region, and Cache State
 3. Which Browser Metrics Matter After Page Load? LCP, INP, CLS, Long Tasks, and Custom Actions
 4. How to Alert on the 75th Percentile of Core Web Vitals Without Paging on Traffic-Mix Noise
 5. Why Does Browser Monitoring Miss SPA Route Changes? Instrumenting Virtual Navigations and Route Timings
