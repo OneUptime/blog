@@ -53,7 +53,6 @@
 
 ## Woodpecker CI
 
-10. How to Cache npm, Maven, and Go Dependencies in Woodpecker Without Cross-Branch Contamination
 11. Docker-in-Docker or Host Socket in Woodpecker: Which Image-Build Pattern Is Safer?
 12. Woodpecker Says “No Basic Auth Credentials”: Fixing Private Registry Hostnames and Pull Secrets
 13. Why Can Woodpecker Clone the Repository but Not Its Private Git Submodules?
