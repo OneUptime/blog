@@ -86,7 +86,6 @@
 
 ## Browser Monitoring
 
-3. Which Browser Metrics Matter After Page Load? LCP, INP, CLS, Long Tasks, and Custom Actions
 4. How to Alert on the 75th Percentile of Core Web Vitals Without Paging on Traffic-Mix Noise
 5. Why Does Browser Monitoring Miss SPA Route Changes? Instrumenting Virtual Navigations and Route Timings
 6. How to Measure Hydration Delay When Content Appears Before the Page Becomes Interactive
