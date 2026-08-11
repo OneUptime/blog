@@ -48,7 +48,6 @@
 
 ## Woodpecker CI
 
-11. Docker-in-Docker or Host Socket in Woodpecker: Which Image-Build Pattern Is Safer?
 12. Woodpecker Says “No Basic Auth Credentials”: Fixing Private Registry Hostnames and Pull Secrets
 13. Why Can Woodpecker Clone the Repository but Not Its Private Git Submodules?
 14. Why Is a Woodpecker Workflow Stuck in “Pending”? Match Agent Labels, Platform, and Backend
