@@ -45,7 +45,6 @@
 
 ## Image Signing
 
-19. How to Secure Keyless Cosign Signing in GitHub Actions Against Untrusted Pull Requests
 20. How to Verify an Image Has More Than One Valid Signature with Cosign
 
 ## Woodpecker CI
