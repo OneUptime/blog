@@ -8,7 +8,7 @@ Description: Fix Woodpecker private submodule clones by aligning URLs, forge per
 
 ---
 
-Woodpecker's default clone plugin receives forge credentials for the parent repository through a protected netrc mechanism. Those credentials work for compatible HTTPS URLs on the correct forge host and only for repositories the authenticated identity may read. A private submodule can fail even when the parent clone succeeds because its URL uses SSH, points to another host, or names a repository outside that identity's permissions.
+When Woodpecker authenticates the parent clone, its default clone plugin receives forge credentials through a protected netrc mechanism. Public repositories are cloned without authentication by default; if a public parent needs a private same-forge submodule, an administrator must enable `WOODPECKER_AUTHENTICATE_PUBLIC_REPOS=true` or use a separate credential design. Injected credentials work for compatible HTTPS URLs on the correct forge host and only for repositories the authenticated identity may read. A private submodule can fail even when the parent clone succeeds because its URL uses SSH, points to another host, or names a repository outside that identity's permissions.
 
 Current `woodpeckerci/plugin-git` enables recursive submodule cloning by default. The first task is therefore not blindly adding `recursive: true`; it is reading the failed submodule URL and deciding which credential should legitimately access it.
 
@@ -40,7 +40,7 @@ Do not replace every URL or broaden every token until those facts are known.
 
 ## Why HTTPS on the Same Forge Usually Works
 
-Woodpecker injects parent clone credentials for the trusted clone plugin. Its workflow documentation recommends HTTPS submodule URLs when the same credentials should clone the submodule:
+When Woodpecker authenticates the parent clone, it injects those credentials into the trusted clone plugin. Its workflow documentation recommends HTTPS submodule URLs when the same credentials should clone the submodule:
 
 ~~~diff
  [submodule "shared"]
@@ -56,7 +56,7 @@ git add .gitmodules
 git commit -m "Use HTTPS for CI submodule clone"
 ~~~
 
-This keeps credential handling inside the trusted clone step. It succeeds only if the forge token used for the parent also has read access to `platform/shared`.
+This keeps credential handling inside the trusted clone step. It succeeds only if Woodpecker supplied credentials for the parent clone and that forge identity also has read access to `platform/shared`.
 
 Relative HTTPS-compatible submodule URLs can also preserve the same forge host, but verify how Git resolves them after repository moves. An explicit canonical HTTPS URL is often easier to audit.
 
@@ -81,9 +81,9 @@ steps:
       - ./test.sh
 ~~~
 
-The mapping key is the submodule name from `.gitmodules`, not necessarily its directory. Pin the clone plugin to a reviewed current tag and confirm that tag against Woodpecker's official plugin page.
+The mapping key is the submodule name from `.gitmodules`, not necessarily its directory. Pin the clone plugin to a reviewed tag compatible with your Woodpecker release and confirm it against the official plugin releases.
 
-An override is preferable to embedding a token in the URL. The default trusted clone mechanism supplies credentials without committing them to the repository.
+An override is preferable to embedding a token in the URL. When the parent clone is authenticated, the default trusted clone mechanism supplies credentials without committing them to the repository.
 
 ## Confirm recursive and partial Settings
 
@@ -105,7 +105,7 @@ clone:
       submodule_partial: false
 ~~~
 
-Disabling partial submodule cloning downloads more data but can distinguish an authentication problem from a server that will not serve the pinned object through the shallow/partial path. Restore partial cloning after diagnosis if it is supported and beneficial.
+Despite its name, `submodule_partial` makes the plugin add `--depth=1 --recommend-shallow` to `git submodule update`; it is depth-one shallow cloning, not Git's `--filter`-based partial-clone feature. Disabling it stops the plugin from forcing depth one and may download more history, although `.gitmodules` can still recommend a shallow clone with `submodule.<name>.shallow=true`. Comparing the modes can help distinguish an authentication problem from a server that will not serve the pinned object through the shallow update path. Restore `submodule_partial` after diagnosis if the depth-one behavior is supported and beneficial.
 
 Do not set `submodule_update_remote: true` to fix a missing pinned commit. That option asks Git to follow the submodule branch's remote tip rather than simply checking out the commit recorded by the parent, changing reproducibility.
 
@@ -170,7 +170,7 @@ Restrict the secret to trusted events. A pull request can change the checkout sc
 
 ## Trusted Clone Plugins Protect netrc
 
-Git credentials are intentionally injected only into clone images allowlisted through the server's `WOODPECKER_PLUGINS_TRUSTED_CLONE` setting or the repository's custom trusted clone-plugin setting. Replacing the default image with an unlisted custom plugin can make a private parent or submodule suddenly lose credentials.
+For repositories that are not marked Trusted, Git credentials are intentionally injected only into clone images allowlisted through the server's `WOODPECKER_PLUGINS_TRUSTED_CLONE` setting or the repository's custom trusted clone-plugin setting. Overriding the clone image in a workflow with an unlisted custom plugin can make a private parent or submodule suddenly lose credentials.
 
 Administrators should allow exact image tags where possible:
 
@@ -202,35 +202,37 @@ The tree entry records the pinned submodule commit. Confirm that commit still ex
 
 ## TLS, DNS, and Proxy Errors
 
-Once credentials are correct, verify the clone container can reach every submodule host:
+Once credentials are correct, use a diagnostic image with the required tools on the same network path as the clone step to test direct DNS and TLS connectivity to every submodule host:
 
 ~~~bash
 getent hosts git.example.com
 openssl s_client -connect git.example.com:443 -servername git.example.com </dev/null
 ~~~
 
-For a private CA, use the clone plugin's documented custom certificate settings or install the CA through the supported agent image configuration. Avoid permanent `skip_verify: true`; it exposes source credentials to interception.
+The `openssl s_client` command tests a direct connection. If the clone uses an HTTP proxy, test with Git or curl under the same proxy environment instead.
+
+For a private CA, use the clone plugin's documented `custom_ssl_path` or `custom_ssl_url` setting. On the Docker backend, another supported option is mounting the host CA bundle into pipeline containers through `WOODPECKER_BACKEND_DOCKER_VOLUMES`. Avoid permanent `skip_verify: true`; it exposes source credentials to interception.
 
 An HTTP redirect can also change the credential host. The canonical submodule URL should point directly to the authenticated Git endpoint. Check reverse-proxy logs for stripped `Authorization` headers or redirects to a login page.
 
 ## Nested Submodules and Git LFS
 
-`recursive` follows nested submodules, so every nested URL and permission must satisfy the same rules. Print them without credentials:
+`recursive` follows nested submodules, so every nested URL and permission must satisfy the same rules. The following commands show top-level declarations and initialized submodule remotes. They print configured URLs verbatim, so run them only in a safe shell and redact embedded credentials before sharing the output:
 
 ~~~bash
-git config --file .gitmodules --get-regexp 'submodule\..*\.url'
+git config get --file .gitmodules --all --show-names --regexp 'submodule\..*\.url'
 git submodule foreach --recursive 'git remote -v'
 ~~~
 
-Git LFS is a separate transfer mechanism. The current clone plugin enables LFS by default. A successful submodule checkout followed by an LFS `401` requires LFS endpoint authorization, not another `submodule_override`.
+Git LFS is a separate transfer mechanism. The current clone plugin enables LFS for the parent repository by default, but its LFS fetch and checkout do not recurse into independent submodule repositories. Fetch LFS objects explicitly inside each submodule that uses them, with credentials authorized for that submodule's LFS endpoint. An LFS `401` requires LFS endpoint authorization, not another `submodule_override` alone.
 
 ## A Safe Diagnostic Sequence
 
 1. Copy the first failing submodule URL from the clone log.
 2. Compare scheme and host with the parent clone URL.
-3. For same-forge credentials, use HTTPS or `submodule_override`.
+3. For same-forge credentials, confirm Woodpecker authenticated the parent clone, then use HTTPS or `submodule_override`.
 4. Confirm the Woodpecker forge identity can read the submodule.
-5. Confirm the configured clone image is trusted to receive netrc.
+5. Confirm the clone step is eligible to receive netrc: an allowlisted image or a Trusted repository.
 6. Retry with recursive explicit and partial disabled.
 7. Verify the pinned commit exists.
 8. Test DNS, TLS, and proxy routing from the clone network.
@@ -249,4 +251,4 @@ Git LFS is a separate transfer mechanism. The current clone plugin enables LFS b
 
 ## Conclusion
 
-A successful parent clone proves only that the trusted clone plugin can authenticate to that parent URL. Make same-forge submodules use compatible HTTPS URLs or a credential-free `submodule_override`, and confirm the forge identity can read every dependency. For another host, use a dedicated read-only credential in a tightly controlled step or replace the submodule with a packaged dependency. Never embed tokens in `.gitmodules`, URLs, or logs.
+A successful parent clone proves only that the parent was reachable and, when authentication was used, that those credentials could read that repository. When the same forge credentials are available, make submodules use compatible HTTPS URLs or a credential-free `submodule_override`, and confirm the forge identity can read every dependency. For another host, use a dedicated read-only credential in a tightly controlled step or replace the submodule with a packaged dependency. Never embed tokens in `.gitmodules`, URLs, or logs.
