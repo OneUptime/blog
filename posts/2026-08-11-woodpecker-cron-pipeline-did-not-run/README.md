@@ -8,13 +8,13 @@ Description: Diagnose a missing Woodpecker cron run by checking the stored sched
 
 ---
 
-A missing scheduled Woodpecker pipeline can fail at two distinct boundaries. The server may never create a `cron` pipeline, or the server may create one whose workflows and steps are filtered out. Establish which happened before editing the cron expression.
+A missing scheduled Woodpecker pipeline can fail at two distinct boundaries. The scheduler may never claim the due cron entry, or it may claim it but pipeline creation can fail or filter out the expected workflows and steps. If global conditions filter out every workflow, Woodpecker deletes the empty pipeline, so pipeline history alone cannot prove whether the scheduler fired. Establish what happened before editing the cron expression.
 
 Woodpecker cron jobs are repository settings stored by the server. They select a schedule, time zone, branch, and name. Pipeline YAML does not create the scheduler entry; it declares which workflows and steps accept the resulting `cron` event.
 
 ## First Ask Whether a Pipeline Was Created
 
-Open the repository's pipeline history around the expected time and filter for the `cron` event. The CLI can also list pipelines and cron definitions:
+Open the repository's pipeline history around the expected time and look for the `cron` event. Use the CLI to filter pipeline history and list cron definitions:
 
 ~~~bash
 export WOODPECKER_SERVER=https://ci.example.com
@@ -33,7 +33,7 @@ Handle the token as a secret and avoid placing it in shared shell history or dia
 
 Classify the outcome:
 
-- No pipeline at the scheduled time: inspect the cron record, enabled state, next execution, server clock, and selected branch.
+- No visible pipeline at the scheduled time: inspect the cron record, enabled state, next execution, server clock, selected branch, server logs, and global workflow `when` conditions.
 - A pipeline exists but the expected workflow is absent: inspect global workflow `when` conditions.
 - The workflow exists but a step is skipped: inspect that step's `when.event` and `when.cron` conditions.
 - The step starts and fails: the scheduler worked; investigate the command, image, secrets, or backend separately.
@@ -51,11 +51,11 @@ In **Repository settings → Cron**, check all of these fields rather than only 
 - branch;
 - displayed next execution.
 
-The Woodpecker CLI's cron list and show commands report fields including the branch, schedule, and `NextExec`. A next-execution value in the past, an empty list, or a disabled entry gives the investigation a concrete direction.
+The Woodpecker CLI's cron list and show commands report fields including the branch, schedule, and `NextExec`. A next-execution value that remains in the past beyond the normal scheduler polling delay, an empty list, or a disabled entry gives the investigation a concrete direction.
 
-To isolate the scheduler, temporarily use a frequent but reasonable test definition such as `@every 5m`, save it, and observe whether `NextExec` advances. Delete or restore the test after diagnosis so it does not consume build capacity indefinitely.
+To isolate the scheduler, temporarily use a frequent but reasonable test definition such as `@every 5m`, save it, and observe whether `NextExec` advances after it becomes due. An advance without a visible pipeline means the server claimed the entry; inspect its logs for branch or configuration errors and global workflow filtering. Delete or restore the test after diagnosis so it does not consume build capacity indefinitely.
 
-Repository cron management requires at least push access. If a user can view pipelines but cannot save a cron change, verify forge permissions and the repository's synchronized ownership rather than assuming the UI stored the edit.
+Repository cron management requires at least push access. If a user can view pipelines but cannot save a cron change, verify forge permissions and Woodpecker's synchronized repository permission record rather than assuming the UI stored the edit.
 
 ## 2. Validate Five-Field Schedule Syntax
 
@@ -79,7 +79,7 @@ Also distinguish “every N minutes” from fixed wall-clock times. `@every 24h`
 
 ## 3. Check the Time Zone and Daylight Saving Time
 
-Woodpecker 3.17 stores an IANA time-zone name with each cron entry and defaults an omitted zone to `UTC`. The web interface displays the selected zone and both local and zoned next-execution information. Examples of IANA names are `Europe/London`, `America/New_York`, and `Asia/Singapore`.
+Woodpecker 3.15 and later store an IANA time-zone name with each cron entry and default an omitted zone to `UTC`. The web interface displays the selected zone and both local and zoned next-execution information. Examples of IANA names are `Europe/London`, `America/New_York`, and `Asia/Singapore`.
 
 A schedule of `0 8 * * *` means 08:00 in the cron entry's configured zone, not necessarily the server host's `/etc/localtime` and not necessarily the browser's zone. Check the displayed next execution rather than mentally converting the expression.
 
@@ -90,7 +90,7 @@ Daylight-saving transitions create two edge cases:
 
 For globally coordinated work, UTC is usually easier to operate. For a task that must align with a local business day, choose the appropriate IANA zone and accept its daylight-saving behavior. Avoid fixed abbreviations such as `BST` or `EST`, which are ambiguous and do not fully describe transition rules.
 
-Make sure the Woodpecker server and database host have reliable time synchronization. A browser clock does not drive the scheduler. Correlate server logs and pipeline timestamps in UTC during diagnosis:
+Make sure every Woodpecker server host has reliable time synchronization; server process clocks drive due checks. Keep database hosts synchronized for log correlation, but their clocks do not calculate `NextExec`. A browser clock does not drive the scheduler. Correlate server logs and pipeline timestamps in UTC during diagnosis:
 
 ~~~bash
 date -u
@@ -104,9 +104,9 @@ For Kubernetes, use the server Pod logs and inspect the node's time service thro
 A cron job resolves the head of its configured branch when creating the pipeline. Confirm the stored branch exists on the forge and contains the expected Woodpecker configuration:
 
 ~~~bash
-git ls-remote --heads origin refs/heads/main
+git ls-remote --exit-code origin refs/heads/main
 git fetch origin main
-git show origin/main:.woodpecker/nightly.yaml
+git show FETCH_HEAD:.woodpecker/nightly.yaml
 ~~~
 
 Common branch failures include:
@@ -117,7 +117,7 @@ Common branch failures include:
 - the workflow file exists on another branch but not the selected one;
 - the repository's custom pipeline path points somewhere absent on that branch.
 
-Creating or updating a cron with a nonempty invalid branch is rejected, but a branch can disappear later. Check server logs at the expected run time for forge branch-resolution failures.
+Creating a cron with a nonempty invalid branch, or changing a cron's branch to one, is rejected, but a previously valid branch can disappear later. Check server logs at the expected run time for forge branch-resolution failures.
 
 Do not confuse the cron branch with a workflow's branch filter. The cron record chooses which revision to run; a `when.branch` condition can then decide whether a workflow or step is included for that metadata.
 
@@ -176,7 +176,7 @@ Run the cron entry on demand from the repository cron settings or the correspond
 
 - If **Run now** creates and executes the expected pipeline, the branch and workflow are usable; focus on schedule, time zone, enabled state, and server scheduling.
 - If it creates a pipeline with no expected workflow, focus on `when` conditions and the cron name.
-- If it cannot create a pipeline, check branch resolution, forge connectivity, and server logs.
+- If it produces no visible pipeline, inspect the API or browser network response and server logs. In Woodpecker 3.17, `204 No Content` with a `Pipeline-Filtered: true` response header can mean that no configuration was found on the branch or that every workflow was excluded. An error response can instead point to branch resolution, forge connectivity, or another creation failure.
 - If it starts but a step fails, scheduling is no longer the issue.
 
 After a manual cron run, inspect the pipeline metadata. Its event must be `cron`; a regular **Run pipeline** action produces the separate `manual` event and is not an equivalent test.
@@ -187,7 +187,7 @@ After moving from Woodpecker 2.x to 3.x:
 
 1. Confirm every expression has five fields rather than six.
 2. Confirm each entry is enabled and has a future `NextExec`.
-3. Set or verify its IANA time zone; omitted values use UTC.
+3. On Woodpecker 3.15 or later, set or verify its IANA time zone; omitted values use UTC.
 4. Confirm its branch exists and contains 3.x-compatible workflow YAML.
 5. Replace old CLI usage with `woodpecker-cli repo cron` commands.
 6. Ensure workflow and step conditions accept `event: cron`.
@@ -208,4 +208,4 @@ If the job runs but lacks a secret, inspect that secret's permitted events and p
 
 ## Conclusion
 
-Diagnose a missing cron pipeline from the outside in: confirm whether a pipeline exists, inspect the stored cron and its next execution, validate five-field syntax and the selected IANA time zone, verify the branch, and then audit workflow and step event filters. “Run now” cleanly separates schedule calculation from pipeline compilation. Once that manual cron succeeds, observe one natural scheduled run to verify the entire path.
+Diagnose a missing cron pipeline from the outside in: confirm whether a pipeline exists, inspect the stored cron and its next execution, validate five-field syntax and the selected IANA time zone, verify the branch, and then audit workflow and step event filters. “Run now” bypasses schedule calculation and directly tests branch resolution, configuration loading, and pipeline compilation. Once that manual cron succeeds, observe one natural scheduled run to verify the entire path.
