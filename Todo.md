@@ -76,7 +76,6 @@
 
 ## Browser Monitoring
 
-7. How to Monitor Failed Fetch Calls When the Browser Exposes Only `TypeError: Failed to fetch`
 8. Why Does Browser Monitoring Report Status 0? Distinguishing CORS, Offline, Abort, and Ad-Blocker Failures
 9. Browser Telemetry Disappears Behind Ad Blockers and CSP: How Much Data Are You Missing?
 10. Why Are Browser Beacons Lost During Navigation? Making `sendBeacon` and `fetch(keepalive)` More Reliable
