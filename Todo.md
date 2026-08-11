@@ -63,7 +63,6 @@
 
 ## Woodpecker CI
 
-4. Woodpecker `when` Filters Not Matching? Debug Branch, Ref, Event, Path, and Status Conditions
 5. How to Run Only the Changed Service in a Woodpecker Monorepo
 6. Why Did `depends_on` Make Every Woodpecker Step Run in Parallel? Building the DAG You Intended
 7. How to Share Environment Variables Across Woodpecker Steps Without Repeating YAML
