@@ -45,7 +45,6 @@
 
 ## Image Signing
 
-3. How to Choose Safe `--certificate-identity` and `--certificate-oidc-issuer` Values for Cosign Verification
 4. Where Does Cosign Store Container Image Signatures? OCI Referrers and Separate Repositories Explained
 5. Why a Cosign Signature Disappears After Mirroring an Image to Another Registry
 6. How to Copy Container Images Without Losing Cosign Signatures, SBOMs, or Attestations
