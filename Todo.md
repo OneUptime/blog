@@ -48,7 +48,6 @@
 
 ## Woodpecker CI
 
-14. Why Is a Woodpecker Workflow Stuck in “Pending”? Match Agent Labels, Platform, and Backend
 15. Woodpecker Agent Cannot Connect to the Server: A gRPC Address, Token, and TLS Checklist
 16. Woodpecker Breaks After Docker Engine 29: Fixing the “Client Version Is Too Old” API Error
 17. Why Is a Woodpecker Kubernetes Job Stuck Pending? Check PVCs, Storage Classes, Resources, and Service Accounts
