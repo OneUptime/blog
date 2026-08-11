@@ -76,7 +76,6 @@
 
 ## Browser Monitoring
 
-9. Browser Telemetry Disappears Behind Ad Blockers and CSP: How Much Data Are You Missing?
 10. Why Are Browser Beacons Lost During Navigation? Making `sendBeacon` and `fetch(keepalive)` More Reliable
 11. How Should You Sample Browser Sessions Without Losing Rare Errors and Slow Outliers?
 12. How to Control High-Cardinality Browser Telemetry from URLs, User IDs, and Session Attributes
