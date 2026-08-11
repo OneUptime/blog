@@ -86,7 +86,6 @@
 
 ## Browser Monitoring
 
-4. How to Alert on the 75th Percentile of Core Web Vitals Without Paging on Traffic-Mix Noise
 5. Why Does Browser Monitoring Miss SPA Route Changes? Instrumenting Virtual Navigations and Route Timings
 6. How to Measure Hydration Delay When Content Appears Before the Page Becomes Interactive
 7. How to Monitor Failed Fetch Calls When the Browser Exposes Only `TypeError: Failed to fetch`
