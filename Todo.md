@@ -45,7 +45,6 @@
 
 ## Image Signing
 
-14. How to Rotate a Cosign Signing Key Without Breaking Verification of Older Images
 15. Cosign vs Notation: Which Container Image Signing Workflow Fits Your Registry and Policy Engine?
 16. Why Kyverno `verifyImages` Blocks Signed Images: Digest Mutation, Credentials, and Identity Checks
 17. How to Roll Out Image-Signature Enforcement in Kubernetes Without Blocking System and Sidecar Images
