@@ -19,7 +19,7 @@ Look at the pipeline and backend logs:
 - Failure while preparing a step or service image: configure Woodpecker registry pull credentials.
 - Kubernetes `ErrImagePull` or `ImagePullBackOff`: inspect Pod events and image pull secrets.
 - Failure inside a running `docker push`, Buildx plugin, or release step: inject push credentials into that step or plugin.
-- Failure cloning Git: registry settings are unrelated; inspect forge clone credentials.
+- A Git failure inside an already-running clone step: registry settings are unrelated; inspect forge clone credentials.
 
 Do not add a registry password to the step environment when the container never started. The process cannot use a variable inside an image that the backend failed to pull.
 
@@ -84,13 +84,13 @@ WOODPECKER_DOCKER_CONFIG=/run/secrets/docker-config.json
 
 Use global credentials only when every intended repository may pull from that registry. Prefer robot accounts with read-only access to a limited namespace. Persist the file securely, keep it outside workflow workspaces, and rotate it.
 
-Woodpecker also supports registry credentials at repository and organization/global management levels and a registry extension. When several sources can return credentials, document precedence and inspect the repository's effective registry list instead of assuming the closest-looking entry won.
+Woodpecker also supports registry credentials at repository, user/organization, and global management levels and through a registry extension. For duplicate registry addresses, repository-extension results override global-extension results, extension results override directly configured credentials, and repository entries override user/organization entries, then database global entries, then `WOODPECKER_DOCKER_CONFIG`. The repository registry view cannot show credentials returned dynamically by an extension, so inspect that source separately.
 
 ## Kubernetes: Create an Image Pull Secret
 
 The Kubernetes backend can use registries configured in Woodpecker. It can also use Kubernetes Secrets named by the agent.
 
-Create the secret in the same namespace configured by `WOODPECKER_BACKEND_K8S_NAMESPACE`:
+Create the secret in the workflow Pod's namespace. With the default namespace configuration, this is the namespace configured by `WOODPECKER_BACKEND_K8S_NAMESPACE`:
 
 ~~~bash
 kubectl -n woodpecker create secret docker-registry private-registry \
@@ -113,9 +113,9 @@ kubectl -n woodpecker get pod <pod-name> -o jsonpath='{.spec.imagePullSecrets}'
 kubectl -n woodpecker describe pod <pod-name>
 ~~~
 
-The events at the end of `describe` show the image name, registry response, and whether the secret was considered.
+The events at the end of `describe` show the image reference and pull error. A `FailedToRetrieveImagePullSecret` event means Kubernetes could not retrieve a named Secret; events do not reliably identify which matching credential was tried.
 
-Woodpecker 3.0 removed the old Kubernetes backend's hard-coded `regcred` default. Current 3.x installations must set `WOODPECKER_BACKEND_K8S_PULL_SECRET_NAMES` explicitly when relying on Kubernetes pull secrets. An existing Secret named `regcred` does nothing unless the agent is configured to use it.
+Woodpecker 3.0 removed the old Kubernetes backend's hard-coded `regcred` default. Current 3.x installations must set `WOODPECKER_BACKEND_K8S_PULL_SECRET_NAMES` explicitly when referencing Kubernetes pull Secrets through agent configuration. An existing Secret named `regcred` is no longer referenced automatically by Woodpecker; configure the agent to use it or attach it through the workflow Pod's ServiceAccount.
 
 ## Namespace-per-Organization Changes the Secret Location
 
@@ -165,12 +165,14 @@ For cloud registries, tokens may be short-lived or require a specific username c
 
 A certificate error is not basic authentication, but proxies and registry front ends sometimes turn upstream TLS or routing problems into a generic authorization response.
 
-From the agent or Kubernetes node network, verify:
+From the agent or Kubernetes node network, verify DNS and test the TLS chain and hostname against that host's OpenSSL trust store:
 
 ~~~bash
 getent hosts registry.example.com
 openssl s_client -connect registry.example.com:5443 \
-  -servername registry.example.com </dev/null
+  -servername registry.example.com \
+  -verify_hostname registry.example.com \
+  -verify_return_error </dev/null
 ~~~
 
 For Docker, install the private CA where the Docker daemon trusts registries, not only inside the Woodpecker agent container. For Kubernetes, the node container runtime needs the CA. Do not set insecure-registry or skip verification as a permanent substitute for a valid trust chain.
@@ -192,14 +194,17 @@ It does not let a running Docker client push `registry.example.com/acme/output`.
 ~~~yaml
 steps:
   - name: publish
-    image: woodpeckerci/plugin-docker-buildx
+    image: woodpeckerci/plugin-docker-buildx:6.1.1
     settings:
       repo: registry.example.com/acme/output
+      registry: registry.example.com
       username:
         from_secret: registry_push_username
       password:
         from_secret: registry_push_password
 ~~~
+
+On Woodpecker 3.x, an administrator must also allow this exact tagged plugin image through `WOODPECKER_PLUGINS_PRIVILEGED`.
 
 Use separate read-only pull and scoped push identities. Keep push secrets out of pull-request events.
 
@@ -212,7 +217,7 @@ Use separate read-only pull and scoped push identities. Keep push secrets out of
 5. Distinguish repository, organization, global, and extension credentials.
 6. On Kubernetes, inspect `imagePullSecrets` and Pod events.
 7. Confirm the Secret exists in the worker Pod's namespace.
-8. On 3.x, set `WOODPECKER_BACKEND_K8S_PULL_SECRET_NAMES` explicitly.
+8. On 3.x, when referencing Kubernetes pull Secrets through agent configuration, set `WOODPECKER_BACKEND_K8S_PULL_SECRET_NAMES` explicitly.
 9. Verify node/daemon DNS and CA trust.
 10. Configure separate step secrets if the failing operation is a push.
 
@@ -227,4 +232,4 @@ Use separate read-only pull and scoped push identities. Keep push secrets out of
 
 ## Conclusion
 
-Fix a private-image pull at the layer performing it. Match the registry credential to the exact image hostname and port, without a scheme or path. On Kubernetes, name the pull secret explicitly and place it in the worker Pod's namespace—especially after the Woodpecker 3.x migration. Keep backend pull credentials separate from narrowly scoped push secrets inside publishing steps.
+Fix a private-image pull at the layer performing it. Match the registry credential to the exact image hostname and port, without a scheme or path. On Kubernetes, when referencing pull Secrets through agent configuration, name them explicitly and place them in the worker Pod's namespace—especially after the Woodpecker 3.x migration. Keep backend pull credentials separate from narrowly scoped push secrets inside publishing steps.
