@@ -41,12 +41,22 @@ This is useful when you want to retry with a different row or a different strate
 ```sql
 -- Transaction 1 locks job #1
 START TRANSACTION;
-SELECT * FROM jobs WHERE status = 'pending' LIMIT 1 FOR UPDATE;
+SELECT *
+FROM jobs FORCE INDEX (idx_jobs_claim)
+WHERE status = 'pending'
+ORDER BY created_at, id
+LIMIT 1
+FOR UPDATE;
 -- Returns job #1, holds lock
 
 -- Transaction 2 - skips job #1 and picks the next available job
 START TRANSACTION;
-SELECT * FROM jobs WHERE status = 'pending' LIMIT 1 FOR UPDATE SKIP LOCKED;
+SELECT *
+FROM jobs FORCE INDEX (idx_jobs_claim)
+WHERE status = 'pending'
+ORDER BY created_at, id
+LIMIT 1
+FOR UPDATE SKIP LOCKED;
 -- Returns job #2 (skips locked job #1)
 ```
 
@@ -60,7 +70,7 @@ CREATE TABLE jobs (
     payload JSON NOT NULL,
     status ENUM('pending', 'processing', 'done', 'failed') DEFAULT 'pending',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    INDEX idx_status (status)
+    INDEX idx_jobs_claim (status, created_at, id)
 );
 
 INSERT INTO jobs (payload, status) VALUES
@@ -68,6 +78,34 @@ INSERT INTO jobs (payload, status) VALUES
     ('{"task": "send_email", "to": "user2@example.com"}', 'pending'),
     ('{"task": "resize_image", "file": "photo.jpg"}', 'pending');
 ```
+
+The index order is part of the concurrency design. An InnoDB locking read [generally locks every index record it scans](https://dev.mysql.com/doc/refman/8.0/en/innodb-locks-set.html). An index on `status` alone can find pending jobs, but it cannot return them in `created_at` order. The locking scan feeding the filesort must [read all pending matches before it can return `LIMIT 1`](https://dev.mysql.com/doc/refman/8.0/en/limit-optimization.html), allowing one worker to lock every candidate and leaving other workers nothing to claim.
+
+When the plan uses `idx_jobs_claim`, MySQL can read pending jobs in claim order and stop after the first unlocked row. The `id` column provides deterministic ordering when multiple jobs have the same timestamp. Because `status` is the leftmost column, the composite index can also serve queries that filter only by status.
+
+Defining the index does not guarantee that the optimizer will select it, especially when most rows have the same status. The claim queries use `FORCE INDEX (idx_jobs_claim)` so this concurrency-sensitive access path cannot fall back to a table scan and filesort.
+
+For an existing table that uses the original status-only index, replace it:
+
+```sql
+ALTER TABLE jobs
+    DROP INDEX idx_status,
+    ADD INDEX idx_jobs_claim (status, created_at, id);
+```
+
+Check the access plan with production-like data:
+
+```sql
+EXPLAIN
+SELECT id, payload
+FROM jobs FORCE INDEX (idx_jobs_claim)
+WHERE status = 'pending'
+ORDER BY created_at, id
+LIMIT 1
+FOR UPDATE SKIP LOCKED;
+```
+
+The plan should use `idx_jobs_claim`, and its `Extra` column should not contain `Using filesort`. MySQL documents how a [composite index can satisfy `ORDER BY`](https://dev.mysql.com/doc/refman/8.0/en/order-by-optimization.html) when its first column is fixed by the `WHERE` clause. Recheck this plan after MySQL upgrades or schema changes; do not rely on the queue's concurrency behavior if `Using filesort` appears.
 
 Worker process:
 
@@ -77,9 +115,9 @@ START TRANSACTION;
 
 -- Claim the next available job, skipping any locked by other workers
 SELECT id, payload
-FROM jobs
+FROM jobs FORCE INDEX (idx_jobs_claim)
 WHERE status = 'pending'
-ORDER BY created_at
+ORDER BY created_at, id
 LIMIT 1
 FOR UPDATE SKIP LOCKED;
 
@@ -102,9 +140,9 @@ def claim_next_job(conn):
     conn.start_transaction()
 
     cursor.execute("""
-        SELECT id, payload FROM jobs
+        SELECT id, payload FROM jobs FORCE INDEX (idx_jobs_claim)
         WHERE status = 'pending'
-        ORDER BY created_at
+        ORDER BY created_at, id
         LIMIT 1
         FOR UPDATE SKIP LOCKED
     """)
@@ -144,4 +182,4 @@ DELIMITER ;
 
 ## Summary
 
-`SKIP LOCKED` and `NOWAIT` in MySQL 8.0 are essential tools for building concurrent job queues and worker pools. `SKIP LOCKED` enables multiple workers to efficiently pull work items without blocking each other, while `NOWAIT` provides immediate feedback when a row is contended. Together, they eliminate lock wait bottlenecks and enable scalable producer-consumer patterns directly in MySQL.
+`SKIP LOCKED` and `NOWAIT` in MySQL 8.0 are useful tools for building concurrent job queues and worker pools. With a claim access path that matches the filter and order, plus short claim transactions, `SKIP LOCKED` reduces row-lock waits and lets workers claim different jobs concurrently. `NOWAIT` provides immediate feedback when a row is contended. Both clauses complement careful query-plan and transaction design rather than replacing it.
