@@ -48,7 +48,6 @@
 
 ## Woodpecker CI
 
-16. Woodpecker Breaks After Docker Engine 29: Fixing the “Client Version Is Too Old” API Error
 17. Why Is a Woodpecker Kubernetes Job Stuck Pending? Check PVCs, Storage Classes, Resources, and Service Accounts
 18. How to Reproduce a Woodpecker Failure Locally with `woodpecker-cli exec`
 19. Why Didn’t a Woodpecker Cron Pipeline Run? Schedule, Time Zone, Branch, and Event Checks
