@@ -53,7 +53,6 @@
 
 ## Woodpecker CI
 
-7. How to Share Environment Variables Across Woodpecker Steps Without Repeating YAML
 8. Why Are Woodpecker Secrets Missing on Pull Requests and Forks?
 9. How Do Files Persist Between Woodpecker Steps? Workspace, Volumes, and Artifacts Explained
 10. How to Cache npm, Maven, and Go Dependencies in Woodpecker Without Cross-Branch Contamination
