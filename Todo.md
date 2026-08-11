@@ -45,7 +45,6 @@
 
 ## Image Signing
 
-1. Why You Should Sign Container Images by Digest Instead of by Tag
 2. Cosign Keyless Signing Explained: What “Keyless” Means and Which Identity Gets Recorded
 3. How to Choose Safe `--certificate-identity` and `--certificate-oidc-issuer` Values for Cosign Verification
 4. Where Does Cosign Store Container Image Signatures? OCI Referrers and Separate Repositories Explained
