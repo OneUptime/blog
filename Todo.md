@@ -48,7 +48,6 @@
 
 ## Woodpecker CI
 
-20. How to Upgrade Woodpecker 2.x to 3.x Without Breaking Secrets, Cron Schedules, Privileged Plugins, or Webhooks
 
 ## Browser Monitoring
 
