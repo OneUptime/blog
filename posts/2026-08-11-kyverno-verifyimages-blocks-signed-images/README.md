@@ -14,7 +14,7 @@ Debug the admission decision as four linked questions: did the rule match, which
 
 ## Check the Kyverno policy generation first
 
-Current Kyverno 1.18 documentation marks `ClusterPolicy` and its `verifyImages` rules as a legacy, deprecated policy type, while `ImageValidatingPolicy` is stable. If you already operate `verifyImages`, use documentation for your installed version and plan migration separately. Do not mix fields from `ImageValidatingPolicy` into a legacy `ClusterPolicy` while troubleshooting.
+Current Kyverno 1.18 documentation marks `ClusterPolicy`—the legacy policy type that contains `verifyImages` rules—as deprecated, while `ImageValidatingPolicy` is stable. If you already operate `verifyImages`, use documentation for your installed version and plan migration separately. Do not mix fields from `ImageValidatingPolicy` into a legacy `ClusterPolicy` while troubleshooting.
 
 Record versions:
 
@@ -28,17 +28,17 @@ Read the installed CRD schema with `kubectl explain`; web examples may target an
 
 ## 1. Prove the rule matched the image
 
-Inspect `imageReferences`, `skipImageReferences`, resource kinds, namespace selectors, preconditions, and auto-generation behavior. A pattern for `registry.example.com/team/*` does not match a mirror hostname or an image injected from another registry.
+Inspect `imageReferences`, `skipImageReferences`, `imageExtractors`, resource kinds, namespace selectors, preconditions, and auto-generation behavior. A pattern for `registry.example.com/team/*` does not match a mirror hostname or an image injected from another registry.
 
-Pod specs may contain:
+Relevant image locations include:
 
 - `spec.containers`;
 - `spec.initContainers`;
 - `spec.ephemeralContainers`;
 - sidecars inserted by another mutating webhook;
-- image fields extracted from custom resources.
+- image or OCI-artifact fields declared through `imageExtractors` for custom resources.
 
-Read the admission error, Kyverno controller logs, Kubernetes Events, and PolicyReports. A skipped rule, an evaluation error, and a failed signature are different outcomes.
+Read the admission error, Kyverno admission-controller logs, and Kubernetes Events. Use PolicyReports for admitted or existing resources; an Enforce-blocked resource is not persisted as a failed PolicyReport entry. A skipped rule, an evaluation error, and a failed signature are different outcomes.
 
 ## 2. Trace digest mutation
 
@@ -66,13 +66,13 @@ Compare that digest with:
 
 If the tag moved after signing, Kyverno correctly verifies the new target and rejects it. Fix the release reference; do not disable digest checking. Prefer deploying the digest emitted by the build.
 
-An external sidecar injector may run in another webhook. Kubernetes webhook ordering and reinvocation can affect which final images Kyverno sees. Inspect the actual rejected admission object and test the complete mutation chain in a canary namespace.
+An external sidecar injector may run in another webhook. Mutating webhook ordering and reinvocation can affect which images Kyverno processes during mutation-phase verification; its validating webhook then checks the final mutated object. Inspect the actual rejected admission object and test the complete mutation chain in a canary namespace.
 
 ## 3. Test registry access as Kyverno
 
-The Kyverno controller—not your laptop—must resolve the subject and pull signature referrers. Check DNS, network policy, proxy settings, registry TLS trust, authorization, and repository scope from the Kyverno namespace.
+The Kyverno admission controller—not your laptop—must resolve the subject and retrieve signatures and other OCI artifacts. Check DNS, network policy, proxy settings, registry TLS trust, authorization, and repository scope from a debug context that matches the controller's network path and runtime configuration; sharing only its namespace does not guarantee the same access.
 
-Current Kyverno documentation supports policy-specific `imageRegistryCredentials`, global helpers, and Pod `imagePullSecrets`. Starting with Kyverno 1.18, it can use Pod pull secrets automatically, but the admission/background controllers need RBAC to read those Secrets.
+Current Kyverno documentation supports policy-specific `imageRegistryCredentials`, global helpers, and Pod `imagePullSecrets`. Starting with Kyverno 1.18, it can use Pod pull secrets automatically, but every controller that evaluates images needs RBAC to read those Secrets.
 
 A legacy policy can name credentials:
 
@@ -87,7 +87,7 @@ verifyImages:
 
 The `namespace/name` form is documented for 1.18+. Older releases require Secrets in the Kyverno namespace. Confirm against the installed version.
 
-The Secret must authorize pulls of both the image and signature location. If the signer used `COSIGN_REPOSITORY`, set the policy's documented `repository` override consistently and grant access there.
+Configured credentials must cover every private repository Kyverno reads, including the image repository and any separate signature repository. If the signer used `COSIGN_REPOSITORY`, set the policy's documented `repository` override consistently and grant access there.
 
 For an internal registry CA, add trust to the Kyverno controller runtime according to the Kyverno deployment and platform documentation. Never set insecure registry behavior merely because a CA was omitted.
 
@@ -101,7 +101,7 @@ For a public key:
 cosign verify --key=release.pub "$IMAGE_DIGEST"
 ```
 
-For keyless signing, verify the exact subject and issuer configured in Kyverno:
+For a keyless attestor with literal, non-wildcard `subject` and `issuer` values, verify those exact values:
 
 ```bash
 cosign verify \
@@ -110,18 +110,20 @@ cosign verify \
   "$IMAGE_DIGEST"
 ```
 
-GitHub workflow path, repository, and ref changes can change the certificate identity. Do not broaden the subject to `.*`. Update policy only after confirming the new release identity is intended and protected.
+If the policy uses wildcard `subject` or `issuer` values, translate each glob to a bounded Cosign regular expression and use the corresponding regexp flag. For `subjectRegExp` or `issuerRegExp`, use Cosign's `--certificate-identity-regexp` or `--certificate-oidc-issuer-regexp`; reproduce any configured `additionalExtensions` with the corresponding `--certificate-github-workflow-*` flags.
 
-Kyverno fails a rule when required signatures are absent or none match its attestors. If an `attestors.count` threshold is set, prove each distinct entry succeeds. “There is one valid signature” does not satisfy a two-authority policy.
+GitHub workflow path, repository, and ref changes can change the certificate identity. Do not set `subjectRegExp` or Cosign's identity regexp to `.*`. Update policy only after confirming the new release identity is intended and protected.
+
+Kyverno fails a rule when required signatures are absent or none match its attestors. For each attestor set, prove enough entries succeed to meet `count`; if `count` is omitted, all entries must succeed. One matching entry does not satisfy `count: 2`, and `count` alone does not guarantee distinct signatures or authorities if entries overlap.
 
 ## Distinguish verification failure from dependency failure
 
 Two controls have different purposes:
 
 - `verifyImages[].failureAction` determines Audit versus Enforce behavior for policy violations.
-- policy/webhook `failurePolicy` determines behavior for processing errors or unavailable dependencies, including documented offline-registry behavior.
+- `spec.webhookConfiguration.failurePolicy` determines behavior for processing errors or unavailable dependencies, including documented offline-registry behavior. The older top-level `spec.failurePolicy` field is deprecated.
 
-Do not change both at once during diagnosis. Capture the precise error first. A temporary Audit rollout can observe violations, but silently ignoring registry failures is a separate availability decision and can admit images that were never verified.
+Do not change both at once during diagnosis. Capture the precise error first. Kyverno requires `mutateDigest: false` when `failureAction: Audit`; with that required setting, a temporary Audit rollout can observe violations while `verifyDigest` remains enabled. Silently ignoring registry failures is a separate availability decision and can admit images that were never verified.
 
 ## Minimal known-good comparison
 
