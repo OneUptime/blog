@@ -54,6 +54,7 @@ steps:
     volumes:
       - /opt/woodpeckerci/dind-certs:/dind-certs
     commands:
+      - i=0; until docker info >/dev/null 2>&1; do i=$((i + 1)); [ "$i" -ge 30 ] && exit 1; sleep 1; done
       - docker version
       - docker build -t registry.example.com/acme/api:$CI_COMMIT_SHA .
 
@@ -73,7 +74,7 @@ The images, containers, and networks created by the client belong to the DinD da
 
 However, the daemon service is privileged. A privileged container has broad kernel and device access and may escape intended container boundaries, especially on a long-lived, multi-tenant host. DinD separates daemon state; it does not make hostile build code safe.
 
-The certificate directory in the official Docker-backend example is an agent host volume used by the service and client. Scope it carefully and clean it; do not reuse one writable certificate directory across unrelated concurrent workflows. An ephemeral agent per workflow removes many cross-run concerns.
+The certificate directory in the official Docker-backend example is an agent host volume used by the service and client. Scope it per workflow and clean it; do not reuse one writable certificate directory across unrelated workflows, whether concurrent or sequential. An ephemeral agent per workflow removes many cross-run concerns.
 
 ## Use TLS, Not an Unauthenticated TCP Daemon
 
@@ -106,6 +107,7 @@ steps:
   - name: publish
     image: woodpeckerci/plugin-docker-buildx:6.1.1
     settings:
+      registry: registry.example.com
       repo: registry.example.com/acme/api
       tags:
         - ${CI_COMMIT_SHA}
@@ -113,6 +115,9 @@ steps:
         from_secret: registry_username
       password:
         from_secret: registry_password
+    when:
+      - event: push
+        branch: ${CI_REPO_DEFAULT_BRANCH}
 ~~~
 
 Pin the plugin to a reviewed version or digest and follow its current plugin documentation for settings. Woodpecker 3.x no longer grants official plugins privileged mode automatically. Administrators must explicitly allow images requiring privilege through `WOODPECKER_PLUGINS_PRIVILEGED`, preferably with exact tags. That allowlist is a security control: a similarly named or unpinned image should not inherit privilege.
