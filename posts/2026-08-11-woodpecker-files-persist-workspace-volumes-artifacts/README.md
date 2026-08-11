@@ -8,7 +8,7 @@ Description: Choose the correct Woodpecker storage boundary for files shared bet
 
 ---
 
-Woodpecker gives each workflow a workspace volume mounted into all of that workflow's steps. A file written there by one step is visible to later steps. Files elsewhere in a step container usually disappear with that container. Separate workflows do not share a workspace, and a new pipeline gets a new workspace.
+Woodpecker gives each workflow a shared workspace. On the Docker and Kubernetes backends, that workspace is a volume mounted into all of the workflow's steps. A file written there by one step is visible to later steps. Files elsewhere in a step container usually disappear with that container. Separate workflows do not share a workspace, and a new pipeline gets a new workspace.
 
 Volumes and artifacts solve different problems. A host volume or Kubernetes PVC can persist data outside one workflow but expands the trust and portability boundary. An artifact or storage plugin deliberately uploads outputs so another workflow, pipeline, or person can retrieve them. Start by identifying how long the file must live and who must read it.
 
@@ -27,7 +27,7 @@ Using a longer-lived mechanism than necessary creates cleanup and security work.
 
 ## Workspace: Shared Within One Workflow
 
-Woodpecker clones the selected commit into the workspace before normal steps. The same volume is mounted into each step and used as its default working directory.
+By default, Woodpecker clones the selected commit into the workspace before normal steps. The workspace is used as each step's default working directory; on container backends, the same volume is mounted into each step.
 
 ~~~yaml
 steps:
@@ -47,7 +47,7 @@ steps:
   - name: package
     image: alpine:3.22
     commands:
-      - tar -czf dist/api-linux-amd64.tar.gz -C dist api api.sha256
+      - tar -czf dist/api.tar.gz -C dist api api.sha256
 ~~~
 
 `dist/api` persists because it is under the workspace. File changes are incremental: later steps see modifications and generated output from earlier steps.
@@ -62,7 +62,7 @@ The temporary file itself would disappear with the container; the copy under the
 
 ## What Does Not Persist Automatically
 
-Each step uses a new container or backend execution context. These are not shared by default:
+On the Docker and Kubernetes backends, each step uses a separate container or Pod. These are not shared by default:
 
 - exported shell environment variables;
 - processes started in a normal, non-detached step;
@@ -76,7 +76,7 @@ If a later step needs a computed environment value, write a non-secret environme
 
 ## Workspace Customization
 
-The default workspace base is `/woodpecker`, with a repository-derived path under it. It can be customized:
+On container backends, the default workspace base is `/woodpecker`, with a repository-derived path under it. It can be customized:
 
 ~~~yaml
 workspace:
@@ -91,7 +91,7 @@ steps:
       - go test ./...
 ~~~
 
-`base` is the shared volume mount, and `path` is the relative working directory where the code is cloned. The path must be relative. The official syntax documentation also notes that plugins always see the workspace base at `/woodpecker`, so unnecessary customization can break assumptions when a normal step and a plugin refer to different absolute paths.
+`base` is the shared volume mount, and `path` is the relative working directory where the code is cloned. The path must be relative. The official syntax documentation also notes that containerized plugins always see the workspace base at `/woodpecker`, so unnecessary customization can break assumptions when a normal step and a plugin refer to different absolute paths.
 
 Prefer paths relative to the working directory. Use custom workspace settings only for tools that require a specific layout.
 
@@ -107,7 +107,7 @@ This does not work:
 .woodpecker/deploy.yaml reads dist/api.tar.gz
 ~~~
 
-Workflow-level `depends_on` carries ordering and status, not a filesystem. The deploy workflow gets its own clone and workspace.
+Workflow-level `depends_on` controls ordering and, by default, requires dependencies to finish successfully; it does not provide a shared filesystem. The deploy workflow gets its own clone and workspace.
 
 Choose one of these fixes:
 
@@ -149,9 +149,9 @@ Use a dedicated cache directory, never a broad host path such as the Docker data
 
 ## Kubernetes Volumes
 
-The Kubernetes backend creates a temporary PVC for the pipeline workspace. Its size and storage class are controlled by agent settings such as `WOODPECKER_BACKEND_K8S_VOLUME_SIZE`, `WOODPECKER_BACKEND_K8S_STORAGE_CLASS`, and `WOODPECKER_BACKEND_K8S_STORAGE_RWX`.
+The Kubernetes backend creates a temporary PVC for each workflow's workspace. Its size, storage class, and access mode are controlled by agent settings such as `WOODPECKER_BACKEND_K8S_VOLUME_SIZE`, `WOODPECKER_BACKEND_K8S_STORAGE_CLASS`, and `WOODPECKER_BACKEND_K8S_STORAGE_RWX`.
 
-For an additional persistent volume, create a PV/PVC separately and reference the claim by name:
+For an additional persistent volume, create a PVC separately, with either a pre-created or dynamically provisioned backing PV, and reference the claim by name:
 
 ~~~yaml
 steps:
@@ -165,7 +165,7 @@ steps:
 
 The official backend documentation warns that concurrent workflow use requires storage that supports `ReadWriteMany`. A node-local or `ReadWriteOnce` claim can require affinity so every relevant Pod reaches the correct node. Persistent-volume scheduling, access modes, quotas, and reclaim policy all belong to the cluster storage layer, not Woodpecker YAML alone.
 
-When a Kubernetes job is pending, inspect its PVC and StorageClass before blaming the step command.
+When a Kubernetes step Pod is pending, inspect its PVC and StorageClass before blaming the step command.
 
 ## Artifacts: Explicit Cross-Boundary Handoff
 
@@ -187,11 +187,12 @@ steps:
   - name: package
     image: alpine:3.22
     commands:
+      - mkdir -p dist
       - tar -czf dist/api.tar.gz bin/api
       - sha256sum dist/api.tar.gz > dist/api.tar.gz.sha256
 
   - name: upload
-    image: woodpeckerci/plugin-s3
+    image: woodpeckerci/plugin-s3:1.5.4
     settings:
       source: dist/**
       target: releases/${CI_REPO}/${CI_COMMIT_SHA}
@@ -202,7 +203,7 @@ steps:
         from_secret: artifact_secret_key
 ~~~
 
-Plugin settings vary by plugin version; verify them against that plugin's official page and pin the image. The architecture—not any unpinned example—is the important part.
+Plugin settings vary by plugin version; verify them against that plugin's official page and pin the image. The architecture—not this version-specific example—is the important part.
 
 Do not upload `.git`, environment dumps, secret files, or an entire workspace without an allowlist.
 
@@ -229,12 +230,12 @@ Diagnose with:
 ~~~sh
 id
 pwd
-find . -maxdepth 2 -printf '%u:%g %m %p\n' | head -100
+find . -maxdepth 2 -exec stat -c '%u:%g %a %n' {} + | head -n 100
 ~~~
 
 Prefer consistent non-root UIDs, use step backend user settings where appropriate, and create shared directories with intentional permissions. Avoid recursive `chmod 777` because it hides the ownership model and can expose executable content.
 
-On a custom `skip_clone` workflow, the official syntax documentation warns that a rootless container must receive a writable workspace explicitly.
+With `skip_clone: true`, the official syntax documentation warns that users of rootless step containers must ensure the configured workspace directory is writable by the unprivileged user, for example by locating it under `/tmp`.
 
 ## Cleanup and Integrity
 
@@ -249,7 +250,7 @@ For every persistent mechanism, define:
 - checksum or signature verification;
 - secret exclusion rules.
 
-Workspace cleanup is Woodpecker's pipeline concern. Host volumes, PVCs, buckets, and registries need their own lifecycle policies. Monitor usage so an unbounded cache does not fill the agent disk or cluster storage.
+Temporary workspaces are scoped to a workflow, but Docker agents can still accumulate dangling Woodpecker volumes that require host cleanup. Persistent host volumes, PVCs, buckets, and registries need their own lifecycle policies. Monitor usage so an unbounded cache does not fill the agent disk or cluster storage.
 
 ## Diagnostic Checklist
 
