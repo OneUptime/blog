@@ -48,7 +48,6 @@
 
 ## Woodpecker CI
 
-12. Woodpecker Says “No Basic Auth Credentials”: Fixing Private Registry Hostnames and Pull Secrets
 13. Why Can Woodpecker Clone the Repository but Not Its Private Git Submodules?
 14. Why Is a Woodpecker Workflow Stuck in “Pending”? Match Agent Labels, Platform, and Backend
 15. Woodpecker Agent Cannot Connect to the Server: A gRPC Address, Token, and TLS Checklist
