@@ -53,7 +53,6 @@
 
 ## Woodpecker CI
 
-6. Why Did `depends_on` Make Every Woodpecker Step Run in Parallel? Building the DAG You Intended
 7. How to Share Environment Variables Across Woodpecker Steps Without Repeating YAML
 8. Why Are Woodpecker Secrets Missing on Pull Requests and Forks?
 9. How Do Files Persist Between Woodpecker Steps? Workspace, Volumes, and Artifacts Explained
