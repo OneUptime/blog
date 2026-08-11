@@ -45,7 +45,6 @@
 
 ## Image Signing
 
-8. How Rekor Fits into Cosign Verification—and What Changes During a Transparency-Log Outage
 9. Cosign Signature vs Attestation vs SBOM: What Does Each One Prove?
 10. Why Image Signing Does Not Prove the Image Is Vulnerability-Free
 11. How to Verify Cosign Signatures from a Private Registry with Custom CAs and Credentials
