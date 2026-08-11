@@ -45,7 +45,6 @@
 
 ## Image Signing
 
-5. Why a Cosign Signature Disappears After Mirroring an Image to Another Registry
 6. How to Copy Container Images Without Losing Cosign Signatures, SBOMs, or Attestations
 7. How to Sign and Verify Multi-Architecture Container Images with Cosign
 8. How Rekor Fits into Cosign Verification—and What Changes During a Transparency-Log Outage
