@@ -45,7 +45,6 @@
 
 ## Image Signing
 
-16. Why Kyverno `verifyImages` Blocks Signed Images: Digest Mutation, Credentials, and Identity Checks
 17. How to Roll Out Image-Signature Enforcement in Kubernetes Without Blocking System and Sidecar Images
 18. Should a Registry Reject Unsigned Pushes or Should Kubernetes Verify Images at Admission?
 19. How to Secure Keyless Cosign Signing in GitHub Actions Against Untrusted Pull Requests
