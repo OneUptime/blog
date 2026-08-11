@@ -63,7 +63,7 @@ You can pass a directory to execute every `.yaml` and `.yml` file recursively be
 woodpecker-cli exec --backend-engine docker .woodpecker/
 ~~~
 
-For diagnosis, start with one file. Running the directory can introduce unrelated workflow failures and parallel activity.
+For diagnosis, start with one file. Running the directory can introduce unrelated workflow failures and additional activity.
 
 The Docker backend needs access to a Docker daemon. Confirm the same user can use it before blaming Woodpecker:
 
@@ -75,7 +75,7 @@ woodpecker-cli --log-level debug exec \
   .woodpecker/test.yaml
 ~~~
 
-Docker is normally the closest local match for a Docker-backed Woodpecker agent because each step still runs in its declared image. Selecting `--backend-engine local` runs commands directly on the host and does not recreate the image environment. The local backend also has no container isolation; use it only for trusted code. In local-backend workflows, the `image` value identifies the shell. For a required clone, `git` must be in `PATH`. The backend reuses a `plugin-git` binary from `PATH` when available and otherwise downloads a matching one, so offline use should preinstall it.
+Docker is normally the closest local match for a Docker-backed Woodpecker agent because each step still runs in its declared image. Selecting `--backend-engine local` runs commands directly on the host and does not recreate the image environment. The local backend also has no container isolation; use it only for trusted code. For command steps in local-backend workflows, the `image` value identifies the shell; for plugin steps, it identifies the executable. If a clone step is enabled, `git` must be in `PATH`. The backend reuses a `plugin-git` binary from `PATH` when available and otherwise downloads the latest release asset matching the host OS and architecture, so offline use should preinstall it.
 
 ## 3. Reproduce Event and Branch Metadata
 
@@ -90,7 +90,6 @@ woodpecker-cli exec \
   --commit-branch main \
   --commit-ref refs/heads/main \
   --commit-sha "$(git rev-parse HEAD)" \
-  --repo octocat/hello-world \
   --repo-default-branch main \
   .woodpecker/test.yaml
 ~~~
@@ -105,11 +104,12 @@ woodpecker-cli exec \
   --commit-ref refs/pull/42/head \
   --commit-sha "$(git rev-parse HEAD)" \
   --pipeline-changed-files 'src/api/server.go,go.mod,go.sum' \
-  --repo octocat/hello-world \
   .woodpecker/test.yaml
 ~~~
 
 For pull requests, Woodpecker's branch condition refers to the target branch. Avoid guessing the full PR metadata when the real values are available.
+
+Woodpecker 3.17.0 exposes a `--repo` flag, but this release does not apply it to the pipeline metadata used by `exec`. If repository identity or a `repo` condition matters, use downloaded metadata as described in the next section; `--repo` cannot override it in 3.17.0.
 
 ## 4. Replay Downloaded Pipeline Metadata
 
@@ -134,6 +134,8 @@ woodpecker-cli exec \
 
 The metadata file is not a stable interchange format. Woodpecker's 3.17 documentation guarantees it only for the same server and CLI version it came from. Re-download it after an upgrade rather than storing it as a permanent fixture. It may also contain repository and user context, so inspect it before sharing and keep it out of Git.
 
+`exec` does not preserve platform metadata from the file: it uses `--system-platform` when set and otherwise uses the CLI host's OS and architecture. If a platform condition or `CI_SYSTEM_PLATFORM` matters, pass the hosted agent's value explicitly. This changes metadata only; it does not emulate that platform.
+
 Metadata is especially useful for cron and complex pull-request failures because not every metadata field has a convenient command-line flag.
 
 ## 5. Supply Environment Variables and Secrets Safely
@@ -148,25 +150,25 @@ woodpecker-cli exec \
   .woodpecker/test.yaml
 ~~~
 
-Server-stored secrets are not downloaded automatically. For a single value, the CLI supports `--secrets`. For repeated work, use a local YAML file that is ignored by Git:
+Server-stored secrets are not downloaded automatically. For a single value, the CLI supports `--secrets`. For repeated work, use a local YAML file that is ignored by Git. Keep it outside `.woodpecker/`, because a directory invocation recursively treats every `.yaml` and `.yml` file there as a workflow:
 
 ~~~yaml
-# .woodpecker/local-secrets.yaml
+# .woodpecker-local-secrets.yaml
 registry_username: local-debug-user
 registry_password: replace-with-a-temporary-token
 ~~~
 
 ~~~bash
-chmod 600 .woodpecker/local-secrets.yaml
-printf '%s\n' '.woodpecker/local-secrets.yaml' >> "$(git rev-parse --git-path info/exclude)"
+chmod 600 .woodpecker-local-secrets.yaml
+printf '%s\n' '.woodpecker-local-secrets.yaml' >> "$(git rev-parse --git-path info/exclude)"
 
 woodpecker-cli exec \
   --backend-engine docker \
-  --secrets-file .woodpecker/local-secrets.yaml \
+  --secrets-file .woodpecker-local-secrets.yaml \
   .woodpecker/test.yaml
 ~~~
 
-Use a short-lived, least-privileged test credential where possible. Do not paste production tokens into terminal history, commit them, or upload them with a bug report. A failure caused by a secret's event or image restrictions may not reproduce locally because the local file bypasses the server-side eligibility decision. Record that difference.
+Use a short-lived, least-privileged test credential where possible. Do not paste production tokens into terminal history, commit them, or upload them with a bug report. A failure caused by a secret's event or plugin-image restrictions may not reproduce locally because the local file bypasses the server-side eligibility decision. Record that difference.
 
 ## 6. Match Volumes, Networks, Privileged Plugins, and Platform
 
@@ -182,7 +184,9 @@ woodpecker-cli exec \
 
 Review every mount before running untrusted pipeline code. A writable host mount gives the step access to host data.
 
-Privileged plugins are not silently enabled. The CLI provides `--plugins-privileged` to mirror the administrator's allowlist. Pass the exact tagged image only when the production agent intentionally grants it:
+Downloaded metadata does not authorize trust-gated YAML fields. If the production repository is trusted, pass only the corresponding local flags: `--repo-trusted-security` for `privileged`, `--repo-trusted-network` for custom DNS, hosts, or network mode, and `--repo-trusted-volumes` for volumes, devices, or `tmpfs`.
+
+Privileged plugins are not silently enabled. The CLI provides `--plugins-privileged` to mirror the administrator's allowlist. Mirror the production entry exactly, and grant a tagged image only when the production Woodpecker instance is configured to grant it:
 
 ~~~bash
 woodpecker-cli exec \
@@ -202,7 +206,7 @@ Once the full run fails locally, reduce it systematically:
 3. Keep the same step image digest, metadata, and backend.
 4. Remove unrelated later steps.
 5. Replace secrets with temporary test credentials, preserving their names.
-6. Add diagnostics such as `pwd`, `id`, `env | sort`, tool versions, and directory listings, but never print secret values.
+6. Add diagnostics such as `pwd`, `id`, `env | cut -d= -f1 | sort`, tool versions, and directory listings, but never print secret values.
 7. Change one input at a time and record the first passing run.
 
 If the original pipeline fails only on Woodpecker, compare the two environments rather than declaring the bug unreproducible. Check for server extensions, injected global environment, agent default volumes, trusted-repository settings, network policy, and external service reachability.
@@ -215,7 +219,7 @@ For a typical push failure, this is a useful starting template:
 woodpecker-cli --log-level debug exec \
   --backend-engine docker \
   --metadata-file ./pipeline-metadata.json \
-  --secrets-file .woodpecker/local-secrets.yaml \
+  --secrets-file .woodpecker-local-secrets.yaml \
   --commit-sha "$(git rev-parse HEAD)" \
   --timeout 20m \
   .woodpecker/test.yaml
