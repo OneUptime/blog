@@ -63,7 +63,6 @@
 
 ## Woodpecker CI
 
-1. Woodpecker Pipeline Never Starts After a Push: Trace the Forge Webhook, Repository Sync, and Config Path
 2. Why Does “Run Pipeline” Spin Forever in Woodpecker? Add the `manual` Event and Check Forge Connectivity
 3. Why Does One Pull Request Trigger Two Woodpecker Pipelines? Separating `push` and `pull_request` Events
 4. Woodpecker `when` Filters Not Matching? Debug Branch, Ref, Event, Path, and Status Conditions
