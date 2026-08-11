@@ -14,17 +14,19 @@ For Woodpecker 3.17's Kubernetes backend, each step runs in a standalone Pod and
 
 ## First Find the Object That Is Pending
 
-Start in the namespace configured by `WOODPECKER_BACKEND_K8S_NAMESPACE`, which defaults to `woodpecker`:
+Start in the execution namespace. `WOODPECKER_BACKEND_K8S_NAMESPACE` defaults to `woodpecker`; with `WOODPECKER_BACKEND_K8S_NAMESPACE_PER_ORGANIZATION=true`, it is a prefix and the actual namespace is `<prefix>-<organization-id>`. The agent StatefulSet can live in a different Helm release namespace, and its name depends on the Helm release, so set all three values for your installation:
 
 ~~~bash
 WP_NAMESPACE=woodpecker
+AGENT_NAMESPACE=woodpecker
+AGENT_STATEFULSET=woodpecker-agent
 
 kubectl -n "$WP_NAMESPACE" get pods,pvc,events \
   --sort-by=.metadata.creationTimestamp
 kubectl -n "$WP_NAMESPACE" get pods \
   -l woodpecker-ci.org/task-uuid --show-labels
-kubectl -n "$WP_NAMESPACE" logs statefulset/woodpecker-agent \
-  --all-containers --tail=200
+kubectl -n "$AGENT_NAMESPACE" logs "statefulset/$AGENT_STATEFULSET" \
+  --all-pods=true --all-containers=true --tail=200
 ~~~
 
 Interpret the result before changing anything:
@@ -47,11 +49,10 @@ kubectl -n "$WP_NAMESPACE" describe pod <woodpecker-step-pod>
 kubectl -n "$WP_NAMESPACE" get pvc
 kubectl -n "$WP_NAMESPACE" describe pvc <woodpecker-workspace-pvc>
 
-kubectl -n "$WP_NAMESPACE" get events \
-  --sort-by=.lastTimestamp | tail -n 60
+kubectl -n "$WP_NAMESPACE" events | tail -n 60
 ~~~
 
-Look at the **Events** section for exact reasons such as `FailedScheduling`, `FailedBinding`, `ProvisioningFailed`, `FailedMount`, `FailedCreatePodSandBox`, or `ErrImagePull`. Do not delete the Pod immediately: short-lived events are often the most valuable evidence.
+Look at the **Events** sections and container status for indicators such as `FailedScheduling`, `FailedBinding`, `ProvisioningFailed`, `FailedMount`, `FailedCreatePodSandBox`, or `ErrImagePull`. Do not delete the Pod immediately: short-lived events are often the most valuable evidence.
 
 ## 1. Check the Temporary Workspace PVC
 
@@ -61,7 +62,7 @@ The Kubernetes backend creates a pipeline volume with these agent settings:
 - `WOODPECKER_BACKEND_K8S_STORAGE_CLASS`, default unset;
 - `WOODPECKER_BACKEND_K8S_STORAGE_RWX`, default `true`, meaning `ReadWriteMany`; set it to `false` to request `ReadWriteOnce`.
 
-List the available classes and their capabilities:
+List the available classes, provisioners, and binding modes:
 
 ~~~bash
 kubectl get storageclass
@@ -70,13 +71,15 @@ kubectl get storageclass -o custom-columns=\
 kubectl -n "$WP_NAMESPACE" get pvc <claim> -o yaml
 ~~~
 
+A StorageClass does not advertise its supported access modes. Check the CSI driver or storage-provider documentation to confirm whether it supports `ReadWriteMany` or `ReadWriteOnce`.
+
 Common failures are:
 
-- there is no default StorageClass while Woodpecker leaves the class unset;
+- there is no default StorageClass and no suitable pre-provisioned classless PV while Woodpecker leaves the class unset;
 - the configured class name was renamed or does not exist;
 - its CSI provisioner is absent, unhealthy, or unauthorized;
 - the provisioner cannot supply `ReadWriteMany` volumes;
-- the 10 GB request exceeds quota or the backend's capacity;
+- the 10 GB request exceeds namespace storage quota, causing the API to reject the claim, or exceeds the backend's capacity, causing provisioning to fail or remain pending;
 - an `Immediate`-binding volume was provisioned in a zone that conflicts with the Pod's node constraints.
 
 Choose a class that the cluster actually provides and an access mode it supports:
@@ -94,7 +97,7 @@ A claim using a StorageClass with `WaitForFirstConsumer` can legitimately remain
 
 ## 2. Check CPU, Memory, Quotas, and Limits
 
-A Pod remains unscheduled if no node can satisfy the sum of its container resource requests. Woodpecker 3.17 supports per-step requests and limits:
+An admitted Pod remains unscheduled if no eligible node can satisfy its effective resource requests. For regular containers this includes the sum of their requests; init containers, Pod-level resources, and RuntimeClass overhead can change the total. Woodpecker 3.17 supports per-step requests and limits:
 
 ~~~yaml
 steps:
@@ -117,18 +120,18 @@ Inspect what admission produced rather than assuming it matches the source file:
 
 ~~~bash
 kubectl -n "$WP_NAMESPACE" get pod <pod> \
-  -o jsonpath='{range .spec.containers[*]}{.name}{" requests="}{.resources.requests}{" limits="}{.resources.limits}{"\n"}{end}'
+  -o jsonpath='{range .spec.initContainers[*]}init/{.name}{" requests="}{.resources.requests}{" limits="}{.resources.limits}{"\n"}{end}{range .spec.containers[*]}{.name}{" requests="}{.resources.requests}{" limits="}{.resources.limits}{"\n"}{end}{"pod resources="}{.spec.resources}{" overhead="}{.spec.overhead}{"\n"}'
 kubectl -n "$WP_NAMESPACE" get resourcequota,limitrange
 kubectl describe nodes | grep -E 'Name:|Allocatable:|Allocated resources:' -A 12
 ~~~
 
-`0/N nodes are available: insufficient cpu` means requested CPU, not observed CPU usage, cannot fit. The remedies are to reduce an oversized request, free requested capacity, add suitable nodes, or adjust an incorrect namespace default. Also inspect GPU and ephemeral-storage requests, pod-count limits, and namespace quotas.
+`0/N nodes are available: insufficient cpu` means requested CPU, not observed CPU usage, cannot fit. The remedies are to reduce an oversized request, free requested capacity, add suitable nodes, or adjust an incorrect namespace default. Also inspect GPU and ephemeral-storage requests, pod-count limits, and namespace quotas. Quota violations reject admission rather than producing `FailedScheduling`, so look for them in the agent or API error.
 
 Do not remove all requests just to make the warning disappear. Woodpecker's documentation recommends defining resources for efficient scheduling. Use measurements and realistic requests so the scheduler can make a truthful placement decision.
 
 ## 3. Check Selectors, Architecture, Taints, and Volume Topology
 
-Woodpecker adds `kubernetes.io/arch` based on the agent platform and can add agent-wide or per-step node selectors, affinity, and tolerations. A perfectly healthy cluster may have no node that satisfies their intersection.
+Woodpecker adds `kubernetes.io/arch` based on the agent platform and can add agent-wide placement rules. Per-step node selectors and affinity are honored only when `WOODPECKER_BACKEND_K8S_POD_NODE_SELECTOR_ALLOW_FROM_STEP` and `WOODPECKER_BACKEND_K8S_POD_AFFINITY_ALLOW_FROM_STEP`, respectively, are enabled; both default to `false` in 3.17, while per-step tolerations default to allowed. A perfectly healthy cluster may have no node that satisfies the resulting constraints.
 
 ~~~bash
 kubectl -n "$WP_NAMESPACE" get pod <pod> \
@@ -150,28 +153,28 @@ Avoid weakening every taint and selector at once. They often encode real isolati
 
 Two Kubernetes identities matter:
 
-1. The Woodpecker agent Pod's ServiceAccount calls the Kubernetes API. The official Helm chart grants it create/delete access to PVCs, Services, and Secrets; create/delete/get/list/watch access to Pods; and get access to Pod logs in the execution namespace.
-2. A pipeline step Pod can run as a ServiceAccount selected through `backend_options.kubernetes.serviceAccountName`. That account is mounted into the step and governs what the step itself may do through the API.
+1. The Woodpecker agent Pod's ServiceAccount calls the Kubernetes API. With the default chart-created ServiceAccount and RBAC, the official Helm chart grants it create/delete access to PVCs, Services, and Secrets; create/delete/get/list/watch access to Pods; and get access to Pod logs in the execution namespace.
+2. A pipeline step Pod can run as a ServiceAccount selected through `backend_options.kubernetes.serviceAccountName`. By default, Kubernetes mounts credentials for that account into the step, and those credentials govern what the step itself may do through the API.
 
 Check the agent identity and its permissions:
 
 ~~~bash
-AGENT_SA=$(kubectl -n "$WP_NAMESPACE" get statefulset woodpecker-agent \
+AGENT_SA=$(kubectl -n "$AGENT_NAMESPACE" get statefulset "$AGENT_STATEFULSET" \
   -o jsonpath='{.spec.template.spec.serviceAccountName}')
 printf 'agent service account: %s\n' "$AGENT_SA"
 
 kubectl auth can-i create pods \
-  --as="system:serviceaccount:${WP_NAMESPACE}:${AGENT_SA}" \
+  --as="system:serviceaccount:${AGENT_NAMESPACE}:${AGENT_SA}" \
   -n "$WP_NAMESPACE"
 kubectl auth can-i create persistentvolumeclaims \
-  --as="system:serviceaccount:${WP_NAMESPACE}:${AGENT_SA}" \
+  --as="system:serviceaccount:${AGENT_NAMESPACE}:${AGENT_SA}" \
   -n "$WP_NAMESPACE"
 kubectl auth can-i delete secrets \
-  --as="system:serviceaccount:${WP_NAMESPACE}:${AGENT_SA}" \
+  --as="system:serviceaccount:${AGENT_NAMESPACE}:${AGENT_SA}" \
   -n "$WP_NAMESPACE"
 ~~~
 
-If Woodpecker logs `forbidden`, repair the Role and RoleBinding or reconcile the official Helm release. With per-organization namespaces enabled, the chart uses cluster-scoped permissions so the agent can create and work in those namespaces; a namespace-only Role is insufficient for that mode.
+These impersonation checks require the caller to have permission to impersonate ServiceAccounts. If Woodpecker logs `forbidden`, repair the Role and RoleBinding, or the ClusterRole and ClusterRoleBinding in per-organization mode, or reconcile the official Helm release. With per-organization namespaces enabled, the chart uses cluster-scoped permissions so the agent can create and work in those namespaces; a namespace-only Role is insufficient for that mode.
 
 For a step-specific account, confirm it exists in the execution namespace:
 
@@ -206,10 +209,16 @@ steps:
             memory: 128Mi
 ~~~
 
-Watch it in real time:
+Watch the Pods in real time:
 
 ~~~bash
-kubectl -n "$WP_NAMESPACE" get pods,pvc --watch
+kubectl -n "$WP_NAMESPACE" get pods --watch
+~~~
+
+In another terminal, watch the claims:
+
+~~~bash
+kubectl -n "$WP_NAMESPACE" get pvc --watch
 ~~~
 
 Once this passes, restore the custom StorageClass, resource size, ServiceAccount, node selector, and affinity one at a time. That turns a vague pending state into a controlled comparison.
