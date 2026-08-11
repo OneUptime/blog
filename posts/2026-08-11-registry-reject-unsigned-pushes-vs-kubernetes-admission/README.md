@@ -14,17 +14,17 @@ For most production systems, the strongest design uses both: a staging-to-produc
 
 ## Why “reject every unsigned push” is structurally awkward
 
-An OCI signature is normally a separate manifest that refers to an existing subject digest. The image manifest must exist in the repository before a client can attach a signature to it. At the instant of the first subject push, the signature often cannot exist there yet.
+A signature stored as an OCI referrer is a separate manifest that refers to a subject digest. Many signing workflows push the image first so the client can resolve that digest before attaching the signature. OCI Distribution 1.1 requires a conforming registry to initially accept an otherwise-valid referrer manifest even when its subject is absent, but product policy layers and client workflows do not always support that ordering. At the instant of the first subject push, the signature often is not present yet.
 
 The OCI Distribution Specification defines push, pull, content discovery, subjects, and referrers. It does not define a universal rule that a registry must reject an image manifest lacking a signature. Product-specific policy systems may add quarantine, promotion, webhook, or admission behavior, but their transaction semantics differ.
 
-A naive synchronous rule can deadlock the workflow:
+A naive synchronous rule can block a common subject-first workflow:
 
 1. registry rejects the unsigned subject;
-2. signer cannot sign because the subject digest is not in the registry;
-3. neither object can be uploaded first.
+2. the signing workflow cannot attach the signature because it expects the subject to be present in the registry;
+3. publication stalls unless the signature can be precomputed and pushed first or the registry provides a lifecycle state.
 
-Solve this with lifecycle states rather than assuming an atomic image-plus-signature push.
+Where referrer-first publication is not supported end to end, solve this with lifecycle states rather than assuming an atomic image-plus-signature push.
 
 ## A registry promotion pattern
 
@@ -62,7 +62,7 @@ A verifying admission controller sees the workload request and can apply context
 - a namespace trusts only its team's repository and release workflow;
 - privileged workloads require additional provenance;
 - specific ServiceAccounts may use a migration image;
-- init, ephemeral, or injected sidecar images need separate rules;
+- init containers and injected sidecars need explicit image coverage, and ephemeral-container updates require matching the `pods/ephemeralcontainers` subresource;
 - digests and attestation predicates can be checked before admission.
 
 Admission also protects the cluster when a user references an external registry, an old mirror, or a repository outside the organization's production promotion boundary.
@@ -86,13 +86,13 @@ Copying the image alone defeats the production design. The promotion service sho
 
 1. verify the staging subject by digest;
 2. validate required attestation contents;
-3. inventory signature, SBOM, and attestation referrers;
-4. copy the subject and referrer graph to production;
+3. inventory signature, SBOM, and attestation artifacts and their discovery locations;
+4. copy the subject, its referrer graph, and any required out-of-graph artifacts to production;
 5. assert that the destination subject digest matches;
 6. verify again at the destination;
 7. move the production tag only after success.
 
-ORAS documents recursive referrer copying, though its current `--recursive` option is marked preview. Pin and qualify the tool. Also test the registry's native referrers API versus tag fallback and its garbage collection.
+ORAS documents recursive referrer copying, though its current `--recursive` option is marked preview. It follows OCI referrer discovery; it does not discover legacy Cosign digest-derived tags such as `.sig` or referrers stored in a separate signature repository, so inventory and copy those explicitly. Pin and qualify the tool. Also test the registry's native referrers API versus the OCI referrers-tag fallback and its garbage collection.
 
 ## Make admission verify the destination
 
@@ -104,13 +104,13 @@ containers:
     image: prod.example.net/team/api@sha256:REPLACE_WITH_PROMOTED_DIGEST
 ```
 
-Admission verifies signatures at the destination because that is the graph the runtime can access. A successful source verification cannot prove the mirror contains its signature referrers.
+Admission should verify the production image reference and digest, fetching signatures from the destination repository or an explicitly configured signature repository. A successful source verification cannot prove the mirror contains its signature referrers.
 
-Scope policy to every relevant image location, including init containers and injected sidecars. Configure private registry credentials and CAs for the admission controller, not only the node runtime.
+Scope policy to every relevant image location, including init containers, ephemeral containers, and injected sidecars. Configure private registry credentials and CAs for the admission controller, not only the node runtime.
 
 ## When one layer may be enough
 
-A small non-Kubernetes environment may use a strict registry promotion boundary plus verification in its deployment tool. A development cluster might begin with admission Audit while registry promotion is already enforced. An isolated cluster may verify imported bundles without a network registry.
+A small non-Kubernetes environment may use a strict registry promotion boundary plus verification in its deployment tool. A development cluster might begin with image verification in an audit or report-only mode while registry promotion is already enforced. An isolated cluster may verify imported bundles without a network registry.
 
 These are conscious scope decisions, not evidence that the controls are interchangeable. Document which consumers are outside Kubernetes and which registries are outside the promotion boundary.
 
@@ -119,10 +119,10 @@ These are conscious scope decisions, not evidence that the controls are intercha
 - [ ] Push builds to staging, never directly from CI to production.
 - [ ] Sign and attest immutable digests in a trusted job.
 - [ ] Give only the promotion service production push/tag permission.
-- [ ] Copy and verify the complete referrer graph.
+- [ ] Copy and verify the complete referrer graph and any separately stored signature artifacts.
 - [ ] Deploy the verified destination digest.
 - [ ] Enforce contextual signature policy at Kubernetes admission.
-- [ ] Cover internal, external, system, init, and injected images explicitly.
+- [ ] Cover internal, external, system, init, ephemeral, and injected images explicitly.
 - [ ] Keep registry and admission audit logs correlated by digest.
 - [ ] Test retention, replication, webhook outages, and credential compromise.
 - [ ] Use narrow, time-limited digest exceptions for emergencies.
@@ -133,9 +133,9 @@ These are conscious scope decisions, not evidence that the controls are intercha
 - [OCI Image Manifest subject field](https://github.com/opencontainers/image-spec/blob/main/manifest.md)
 - [Kubernetes dynamic admission control](https://kubernetes.io/docs/reference/access-authn-authz/extensible-admission-controllers/)
 - [Kubernetes admission webhook good practices](https://kubernetes.io/docs/concepts/cluster-administration/admission-webhooks-good-practices/)
-- [Kyverno image verification overview](https://kyverno.io/docs/policy-types/cluster-policy/verify-images/overview/)
+- [Kyverno ImageValidatingPolicy](https://kyverno.io/docs/policy-types/image-validating-policy/)
 - [ORAS recursive copy](https://oras.land/docs/commands/oras_cp/)
 
 ## Conclusion
 
-Use registry policy to control publication and promotion, and Kubernetes admission to make workload-aware deployment decisions. A staged registry avoids the subject-before-signature problem; destination-side admission catches external and contextual risks. Together, with immutable digests and referrer-aware copying, they close gaps neither layer can cover alone.
+Use registry policy to control publication and promotion, and Kubernetes admission to make workload-aware deployment decisions. A staged registry accommodates subject-first signing tools without requiring an atomic subject-plus-signature upload; destination-side admission catches external and contextual risks. Together, with immutable digests and referrer-aware copying, they close gaps neither layer can cover alone.
