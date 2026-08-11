@@ -76,7 +76,6 @@
 
 ## Browser Monitoring
 
-10. Why Are Browser Beacons Lost During Navigation? Making `sendBeacon` and `fetch(keepalive)` More Reliable
 11. How Should You Sample Browser Sessions Without Losing Rare Errors and Slow Outliers?
 12. How to Control High-Cardinality Browser Telemetry from URLs, User IDs, and Session Attributes
 13. Why Are Production JavaScript Stack Traces Still Minified? Matching Source Maps to the Exact Release
