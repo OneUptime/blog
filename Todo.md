@@ -45,7 +45,6 @@
 
 ## Image Signing
 
-7. How to Sign and Verify Multi-Architecture Container Images with Cosign
 8. How Rekor Fits into Cosign Verification—and What Changes During a Transparency-Log Outage
 9. Cosign Signature vs Attestation vs SBOM: What Does Each One Prove?
 10. Why Image Signing Does Not Prove the Image Is Vulnerability-Free
