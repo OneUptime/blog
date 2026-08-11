@@ -89,21 +89,24 @@ Pin reusable image values to deliberate tags or digests. An anchor magnifies a v
 
 ## Dynamic Values: Persist a File in the Workspace
 
-The repository workspace is mounted into every step of one workflow. Files created there persist to later steps, even though environment processes do not.
+Woodpecker shares one repository workspace among all steps in a workflow; container backends mount it into every step. Files created there persist to later steps, even though environment processes do not.
 
-Use an initialization step:
+Use an initialization step. This example targets container backends; the local backend uses `image` to select a host shell rather than a container image:
 
 ~~~yaml
 steps:
   - name: derive-version
     image: bash:5.3
+    entrypoint: [/bin/sh, -c, 'echo "$CI_SCRIPT" | base64 -d | /usr/local/bin/bash -e']
     commands:
+      - apk add --no-cache git
       - version="$(git describe --tags --always --dirty)"
-      - printf 'BUILD_VERSION=%q\n' "$version" > .woodpecker.env
-      - printf 'SOURCE_SHA=%q\n' "$CI_COMMIT_SHA" >> .woodpecker.env
+      - printf 'export BUILD_VERSION=%q\n' "$version" > .woodpecker.env
+      - printf 'export SOURCE_SHA=%q\n' "$CI_COMMIT_SHA" >> .woodpecker.env
 
   - name: package
     image: bash:5.3
+    entrypoint: [/bin/sh, -c, 'echo "$CI_SCRIPT" | base64 -d | /usr/local/bin/bash -e']
     commands:
       - source ./.woodpecker.env
       - printf 'building %s from %s\n' "$BUILD_VERSION" "$SOURCE_SHA"
@@ -111,12 +114,13 @@ steps:
 
   - name: publish-metadata
     image: bash:5.3
+    entrypoint: [/bin/sh, -c, 'echo "$CI_SCRIPT" | base64 -d | /usr/local/bin/bash -e']
     commands:
       - source ./.woodpecker.env
       - ./scripts/publish-metadata.sh "$BUILD_VERSION"
 ~~~
 
-`printf %q` and `source` are Bash features, so the example pins Bash for both producer and consumers. If steps use POSIX `sh`, choose a strict portable file format and validate allowed characters before sourcing. Never source an untrusted file supplied by a pull request without controlling its contents.
+`printf %q` and `source` are Bash features. Woodpecker uses `/bin/sh` for `commands` by default, so each step explicitly executes the decoded `CI_SCRIPT` with Bash; the producer also installs Git because the minimal Bash image omits it. The file contains `export` assignments so child processes receive the values. If steps use POSIX `sh`, choose a strict portable file format and validate allowed characters before sourcing. Never source an untrusted file supplied by a pull request without controlling its contents.
 
 Write the file under the repository workspace, not `/tmp` or an image-specific home directory. Container-local files disappear when that step exits.
 
@@ -130,7 +134,7 @@ steps:
     image: alpine:3.22
     commands:
       - apk add --no-cache jq
-      - jq -n --arg sha "$CI_COMMIT_SHA" --arg branch "$CI_COMMIT_BRANCH" '{sha: $sha, branch: $branch}' > build-metadata.json
+      - jq -n --arg sha "$CI_COMMIT_SHA" --arg branch "$CI_COMMIT_BRANCH" '{sha:$sha,branch:$branch}' > build-metadata.json
 
   - name: consume
     image: alpine:3.22
@@ -184,7 +188,7 @@ steps:
       - ./upload-provenance.sh
 ~~~
 
-The secret is still injected separately into each step. Apply secret event and plugin-image filters in Woodpecker settings, and do not enable pull-request access merely to make a convenience pattern work.
+The secret is still injected separately into each step. Apply secret event filters in Woodpecker settings. Plugin-image filters apply only to plugin steps without `commands`, `entrypoint`, or `environment`; for those steps, inject the secret through `settings` and restrict it to the plugin image. Do not enable pull-request access merely to make a convenience pattern work.
 
 When using brace-form shell expansion for a secret, Woodpecker's preprocessing requires escaping with an extra dollar sign so the step receives the expression:
 
