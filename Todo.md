@@ -3899,3 +3899,233 @@
 18. How to Connect Value Stream Metrics to DORA Without Confusing Lead Time Definitions
 19. How to Prove a Value Stream Change Worked Without Encouraging Metric Gaming
 20. How to Keep a Value Stream Map Current with Ownership, Review Cadence, and Automated Evidence
+
+## Image Vulnerabilities
+
+1. How to Determine Whether a Container CVE Is Reachable from the Processes, Ports, Capabilities, and Code Paths You Actually Run
+2. Why Do Trivy, Grype, Docker Scout, and Cloud Registries Report Different CVEs for the Same Image?
+3. How to Trace a Container CVE Back to the Dockerfile Layer and Package That Introduced It
+4. How to Handle Container CVEs with No Fixed Version Without Creating Permanent Waivers
+5. Why Does a Patched Container Image Still Scan as Vulnerable? Distro Backports, Feed Lag, and Cached Results
+6. How to Inventory Every Application Image That Inherits a Vulnerable Base-Image Digest
+7. Why Do Scanners Still Find a Package Removed in a Later Docker Layer—and How Do You Remove It from Image History?
+8. How to Scan Distroless and `scratch` Images Without a Package Manager or Shell
+9. How to Reconcile an SBOM with a Scanner When They Disagree About What Is Installed
+10. How to Publish a Time-Bound VEX `not_affected` Statement for a Non-Exploitable Container Finding
+11. How to Quarantine a Newly Vulnerable Image Digest After It Has Already Passed CI and Reached Production
+12. How to Rescan Immutable Container Digests When New Vulnerabilities Are Disclosed
+13. How to Map a Vulnerable Production Pod to Its Exact Image Digest, SBOM, and Build
+14. How to Prioritize Container Patches with CISA KEV and EPSS Instead of CVSS Alone
+15. How to Detect Secrets and Deleted Files Still Recoverable from Container Image Layers
+16. How to Scan Private-Registry Images in CI Without Exposing Long-Lived Registry Credentials
+17. How to Verify That Your Image Scanner Finds Dependencies Installed from Source, Wheels, JARs, and Binaries
+18. How to Distinguish an OS-Package CVE from a Bundled Application Dependency in a Container Scan
+19. How to Scope a Vulnerability Exception to One Image Digest Instead of Muting the CVE Everywhere
+20. How to Validate a Container Scanner with Known-Vulnerable Test Images Before Enforcing It
+
+## Replication
+
+1. PostgreSQL `remote_flush` Acknowledged the Commit but the Standby Read Is Stale: When to Require `remote_apply`
+2. How to Select Synchronous Standbys with Priority, Quorum, and Failure-Domain Rules
+3. A Fenced Primary Came Back Online: How to Verify Storage, DNS, and Client Routing Cannot Restore Its Write Path
+4. How to Rejoin a Former Database Primary After Failover Without Losing Divergent Writes
+5. How to Reparent Cascading Replicas After Primary Promotion Without Rebuilding the Entire Chain
+6. How to Localize Replication Lag to Log Generation, Network Transfer, Disk Flush, or Replay
+7. How to Stop an Abandoned PostgreSQL Replication Slot from Filling the Primary Disk
+8. How to Size WAL or Binlog Retention So a Lagging Replica Can Catch Up Without a Full Rebuild
+9. A Replica Stopped on One Bad Transaction: When to Repair, Skip, or Re-seed It
+10. How to Verify Source and Replica Consistency with Chunked Checksums Without Locking or Row-by-Row Comparisons
+11. How to Keep Sequence and Identity Values Collision-Free in Logical Replication
+12. How to Preserve Cross-Table Transaction Order in a CDC Replication Pipeline
+13. How to Make CDC Replication Idempotent When a Connector Redelivers Events After a Crash
+14. How to Run an Initial CDC Snapshot Without Missing or Reordering Concurrent Writes
+15. How to Propagate Deletes and Tombstones Without Resurrecting Stale Records at the Sink
+16. A Column Change Broke Logical Replication: How to Repair the Subscriber Without Recopying Every Table
+17. How to Resolve Conflicting Writes in Active-Active Replication with Deterministic Ownership
+18. How to Preserve Monotonic Reads When a Load Balancer Sends One Session Across Replicas at Different Replay Positions
+19. How to Quantify Potential Data Loss from LSN, GTID, or Stream-Offset Gaps and Map It to an RPO
+20. How to Throttle a Replica Re-seed or Initial Backfill Without Saturating the Primary
+
+## Platform Security
+
+1. When Is a Kubernetes Namespace Not Enough as a Security Boundary? Choosing vClusters, Dedicated Nodes, or Separate Clusters
+2. How to Delegate Namespace Operations Without Allowing NetworkPolicy or ResourceQuota Deletion—or Namespace Security-Label Changes
+3. How to Audit Kubernetes Privilege-Escalation Paths Through `bind`, `escalate`, `impersonate`, and Pod Creation
+4. How to Scope Projected Service Account Tokens by Audience and TTL—and Ensure Clients Reload Rotated Token Files
+5. How to Disable Automatic Service Account Token Mounts and Issue Credentials Only to Containers That Need Them
+6. How to Test a Multi-Tenant Kubernetes Platform for Cross-Namespace Lateral Movement
+7. How to Stop One Kubernetes Tenant from Mounting Another Tenant’s PVC or Cloud Storage
+8. How to Prevent Privileged Pods, `hostPath`, and DaemonSets from Turning Namespace Admin into Node Root
+9. How to Create Time-Bound, Auditable Pod Security Exceptions for Privileged Platform Agents
+10. Should Admission Policies Fail Open or Fail Closed? Designing Enforcement Without a Cluster-Wide Outage
+11. How to Test Admission Policies Against Existing Workloads Before Moving from Audit to Enforce
+12. How to Protect Admission Controllers and Their Webhook Configurations from Tenant Tampering or Denial of Service
+13. How to Scope Argo CD Repository Credentials to One AppProject Without Exposing Them to Other Tenants
+14. Your GitOps Controller Has Cluster-Admin: How to Reduce Its RBAC, Credential, and Network Blast Radius
+15. How to Prevent Cluster-Scoped Read Permissions from Leaking Other Tenants’ Workload and Node Metadata
+16. How to Detect Kubernetes RBAC Drift, Wildcard Grants, and Stale RoleBindings Continuously
+17. How to Separate Human SSO Groups from Workload Service Accounts in Platform RBAC
+18. External Secrets or CSI Mounts for Application Secrets—and When Workload Identity Eliminates the Secret Entirely
+19. How to Stop a Namespace User from Reading Any Secret by Creating a Pod That Mounts It
+20. How to Secure `kubectl debug` and Ephemeral Containers Without Blocking Incident Response
+
+## OLAP
+
+1. How to Choose the Grain of an OLAP Fact Table Before Defining Dimensions and Measures
+2. How to Preserve Transaction Grain and Degenerate Dimensions When Converting OLTP Tables to a Star Schema
+3. How to Allocate a Shared Measure Across Multiple OLAP Dimension Members Without Inflating Totals
+4. How to Handle Late-Arriving Dimensions and Re-key Existing Facts in an OLAP Warehouse
+5. How to Load Type 2 Slowly Changing Dimensions When Historical Corrections Arrive Out of Order
+6. How to Model Multiple Business Processes with Conformed Dimensions Without Fact-to-Fact Joins
+7. How to Model Inventory Balances and Other Semi-Additive Measures Across Time
+8. How to Calculate Distinct Counts in OLAP Without Building Hundreds of Aggregate Tables
+9. How to Choose Date, Month, or Year Partitions for Incremental OLAP Cube Processing
+10. How to Refresh an OLAP Cube Incrementally Without Missing Updates to Old Facts
+11. How to Propagate CDC Inserts, Updates, and Deletes into an OLAP Store Idempotently
+12. How to Micro-Batch Kafka or Debezium Events into an OLAP Database Without Row-at-a-Time Writes
+13. How to Keep OLTP and OLAP Consistent Without Fragile Dual Writes
+14. How to Deduplicate Replayed CDC Events Before They Corrupt OLAP Aggregates
+15. How to Choose Partition, Sort, and Distribution Keys from Real OLAP Query Patterns
+16. How to Diagnose an OLAP Query That Scans Every Partition Despite Selective Filters
+17. How to Model High-Cardinality Dimensions Without Sacrificing Subsecond Queries
+18. How to Design Aggregate Tables and Materialized Views Without Returning Stale or Double-Counted Results
+19. How to Enforce Per-Tenant Query Budgets, Concurrency Limits, and Workload Isolation in OLAP
+20. How to Benchmark OLAP Engines for Joins, Concurrency, Ingestion Lag, and Tail Latency
+
+## MongoDB Atlas
+
+1. How to Trace Atlas `MongoServerSelectionError` Across DNS, IP Access Lists, Firewalls, and Port 27017
+2. How to Fix `querySrv ECONNREFUSED` When `mongodb+srv` Cannot Resolve an Atlas Cluster
+3. How to Diagnose an Atlas Connection That Works in Compass but Fails from a VPS or Container
+4. How to Connect AWS Fargate to Atlas over PrivateLink When SRV Records Do Not Resolve
+5. How to Prove an Atlas Client Is Using a Private Endpoint Instead of the Public Seed List
+6. How to Reach Atlas from Kubernetes Without Adding Every Ephemeral Pod IP to the Access List
+7. How to Size Atlas Driver Connection Pools Without Exhausting Cluster Connections
+8. How to Reuse Atlas Connections in AWS Lambda Without Creating a Pool per Invocation
+9. How to Fix Atlas `bad auth` Errors Caused by URI Encoding, `authSource`, or the Wrong Database User
+10. How to Read Atlas Query Profiler Fields: `keysExamined`, `docsExamined`, `numYields`, and Sort Stages
+11. How to Fix an Atlas Query That Uses `IXSCAN` but Still Examines Thousands of Keys
+12. How to Diagnose Cold-Cache Query Spikes After an Atlas Failover or Cluster Resize
+13. How to Load-Test Atlas Search When Search Tester Is Fast but Concurrent Requests Time Out
+14. How to Resume Atlas Change Streams After Disconnects and Handle Duplicate Delivery Safely
+15. How to Recover an Atlas Change Stream That Goes Silent Without Raising an Error
+16. How to Restore One Atlas Collection from a Cluster Snapshot Without Overwriting Production
+17. How to Verify Atlas Backups with Automated Restore Drills and Data-Integrity Checks
+18. How to Run `mongodump` and `mongorestore` Against Atlas When SRV URIs, TLS, or Special Characters Fail
+19. How to Prevent Stale DNS Caches from Pinning Atlas Clients to Replaced Nodes
+20. How to Survive Atlas Primary Elections with Retryable Writes, Idempotency, and Backoff
+
+## GPUs
+
+1. How to Read `nvidia-smi` GPU-Util and Memory-Util Without Mistaking Busy Time for Capacity
+2. How to Find a GPU Training Bottleneck with PyTorch Profiler, Nsight Systems, and `nvidia-smi`
+3. How to Fix Sawtooth GPU Utilization Caused by Slow DataLoaders, Synchronous Copies, or Tiny Batches
+4. How to Tell Whether a GPU Kernel Is Compute-Bound, Memory-Bound, or Launch-Bound
+5. How to Resolve “CUDA Driver Version Is Insufficient for CUDA Runtime Version” Without Reinstalling Everything
+6. How to Diagnose a GPU That Appears in `lspci` but Not in `nvidia-smi`
+7. How to Reclaim VRAM Held by Stale CUDA Contexts or Processes Hidden by PID Namespaces
+8. When Can You Reset One NVIDIA GPU Without Resetting Its Peers or Interrupting Other Jobs?
+9. How to Map `CUDA_VISIBLE_DEVICES` Logical Ordinals to `nvidia-smi` GPUs Using PCI Bus IDs
+10. How to Pin One Process per GPU Without Accidentally Renumbering Devices Inside Containers
+11. How to Test Whether GPU-to-GPU Transfers Use NVLink, PCIe P2P, or Host Staging
+12. How to Measure GPU Interconnect Bandwidth and Latency Before Blaming NCCL
+13. How to Diagnose Multi-GPU Scaling Loss from Data Loading, Rank Imbalance, or All-Reduce
+14. How to Fit a Larger LLM in VRAM with Quantization, KV-Cache Limits, and CPU Offload
+15. How to Estimate LLM VRAM Before Downloading a Model: Weights, Context, KV Cache, and Concurrency
+16. How to Fix CUDA Out of Memory When `nvidia-smi` Still Shows Free VRAM
+17. How to Stop VRAM Growth Across Repeated Inference Requests and Separate Caching from a Leak
+18. How to Diagnose GPU Thermal or Power Throttling from Clocks, Temperatures, and PerfCap Reasons
+19. How to Triage NVIDIA Xid Errors and Decide Between Process Restart, GPU Reset, and Node Drain
+20. How to Detect and Respond to Correctable vs. Uncorrectable GPU ECC Errors
+
+## Azure DevOps
+
+1. An Azure Repos PR Queues Two Pipeline Runs: Separate Build Validation from CI Trigger Scope
+2. A Pipeline Resource Trigger Never Fires: Fix `trigger` Branch Filters and the Default Branch `refs/heads` Prefix
+3. Scheduled Azure Pipeline Runs the Wrong YAML: Understand Default-Branch Evaluation and UTC Cron Times
+4. `${{ }}`, `$[]`, or `$()`? Choosing Compile-Time, Runtime, and Macro Expressions in Azure Pipelines
+5. Output Variable Is Empty in the Next Stage: Map `dependencies` and `stageDependencies` Correctly
+6. “Unexpected Value” in a YAML Template: Match Step, Job, Stage, and Variable Templates to the Right Schema
+7. How to Build a Typed Azure Pipelines Template with `object`, `each`, and Conditional Insertion
+8. A Central Pipeline Template Cannot Check Out the Calling Repository: Fix Cross-Project Repository Authorization
+9. Multi-Repo Checkout Moved Your Files: Predict `Build.SourcesDirectory`, Workspace Paths, and Custom `path`
+10. How to Build Only Changed Services in an Azure DevOps Monorepo Without Trusting a Missing “Changed Files” Variable
+11. `Cache@2` Restores the Wrong Dependencies: Design Exact Keys, `restoreKeys`, and Post-Job Saves
+12. Pipeline Cache or Pipeline Artifact? Choosing Reuse Across Runs vs. Handoff Between Stages
+13. How to Run Ephemeral Self-Hosted Azure DevOps Agents Without Reusing Workspaces, Credentials, or Docker State
+14. Azure DevOps Warns About a Deprecated Workload Identity Issuer: Convert the Service Connection to the Microsoft Entra Issuer
+15. How to Restrict an Azure DevOps Service Connection to One Resource Group, Pipeline, and Approval Check
+16. Secret Variable Is Masked—or Leaked: Pass Key Vault Values to Tasks Without Echoing or Re-Exporting Them
+17. Environment Approval Never Appears: Put Checks on the Azure DevOps Environment Used by a Deployment Job
+18. Manual Validation Times Out Before Anyone Approves: Configure Agentless Jobs, Job Timeouts, and `onTimeout`
+19. How to Trigger a Test Pipeline, Pass Parameters, and Wait for It Before Continuing a Release Pipeline
+20. A Stage Runs After Failure or Cancellation: Compose `succeeded()`, Branch Tests, and Dependency Conditions Safely
+
+## OpenKruise
+
+1. How to Install or Upgrade OpenKruise Without Orphaning CRDs, Missing Feature Gates, or Breaking the Webhook
+2. OpenKruise Pods Are Rejected by the Admission Webhook: Diagnose CA Bundles, Certificates, and Port 9443
+3. `kruise-daemon` Is Not Ready: Match the CRI Socket and Disable Features Your Runtime Cannot Support
+4. `ReCreate`, `InPlaceIfPossible`, `InPlaceOnly`, or `OnDelete`: Choosing a CloneSet Update Strategy
+5. Why Did a CloneSet Recreate the Pod? Check Which Pod Template Fields Support In-Place Update
+6. How to Batch and Pause a CloneSet Rollout with `partition`, `maxUnavailable`, and `maxSurge`
+7. How to Keep a CloneSet Pod Out of Service During an In-Place Image Update with Readiness Gates and Lifecycle Hooks
+8. CloneSet `volumeClaimTemplates` Changed but the PVC Did Not: Enable `RecreatePodWhenChangeVCTInCloneSetGate` and Trigger a Rollout
+9. How to Choose Which CloneSet Pods Scale In with Explicit Deletion and Pod Deletion Cost
+10. How to Pre-Pull a New Image to Every Target Node with `ImagePullJob` Before an In-Place Rollout
+11. SidecarSet Did Not Inject a Container: Debug Namespace Selection, Pod Selectors, and the `PodWebhook` Feature Gate
+12. How to Upgrade a Logging Sidecar In Place Without Restarting the Application Container
+13. How to Hot-Upgrade an Envoy-Style Sidecar with Dual Containers and `hotUpgradeEmptyImage`
+14. How to Pin New Pods to a Tested SidecarSet `ControllerRevision` and Roll Back a Bad Sidecar
+15. How to Distribute Sidecar Image-Pull Secrets Across Namespaces with OpenKruise `ResourceDistribution`
+16. `PodUnavailableBudget` or Kubernetes `PodDisruptionBudget`? Protecting Against Updates, Deletes, and Evictions
+17. How to Spread One UnitedDeployment Across Zones and Architectures with Ordered Subsets and Replica Percentages
+18. `WorkloadSpread` or `UnitedDeployment`? Choosing Injection-Based vs. Multi-Workload Multi-Domain Placement
+19. How to Preserve a Pod’s IP, Node, or Topology Placement Across Recreation with `PersistentPodState`
+20. How to Route and Promote a Multi-Step Canary with Kruise Rollouts, NGINX Ingress, and Gateway API
+
+## wasmCloud
+
+1. How to Install wasmCloud v2 on Kubernetes—and Resolve Helm Ownership Conflicts from an Older Operator
+2. Your First wasmCloud HTTP Workload: Connect a `WorkloadDeployment`, Kubernetes `Service`, and Managed `EndpointSlice`
+3. How to Build a Rust wasmCloud Component for `wasm32-wasip2` and Verify Its WIT World
+4. A TypeScript wasmCloud Component Will Not Build: Align `jco`, WIT Versions, Bundling, and Supported Web APIs
+5. “Missing Host Interface Implementation in the Linker”: Inspect Component Imports and Declare `hostInterfaces`
+6. How to Pin and Fetch WIT Packages from OCI Registries with `wash wit` Without Legacy `deps.toml`
+7. How to Push a wasmCloud Component to a Private OCI Registry and Supply the Right `imagePullSecret`
+8. A wasmCloud `Artifact` Will Not Resolve: Trace Registry Authentication, Tags, Media Types, and Artifact Status
+9. A `WorkloadDeployment` Has Zero Ready Replicas: Debug `hostSelector`, Host Capacity, and Status Conditions
+10. How to Tune wasmCloud Component Concurrency with `poolSize`, `maxInvocations`, and Deployment Replicas
+11. How to Feed Kubernetes ConfigMaps and Secrets into a wasmCloud v2 Component through `wasi:config`
+12. How to Restrict a wasmCloud Component’s Outbound HTTP with `allowedHosts` and Kubernetes NetworkPolicy
+13. Host Plugin or Wasm Service? Choosing a wasmCloud v2 Capability Pattern
+14. How to Migrate a wasmCloud v1 `wadm.yaml` Application and Capability Providers to v2 CRDs, Host Plugins, and Services
+15. A wasmCloud Service Has No Reachable Backends: Debug Operator-Managed EndpointSlices and Host Pod Routing
+16. How to Roll Out a New wasmCloud Component Image with `RollingUpdate`—and When to Use `Recreate`
+17. How to Autoscale a wasmCloud `WorkloadDeployment` with HPA or KEDA through the `/scale` Subresource
+18. How to Export wasmCloud Runtime Logs, Metrics, and Traces with OpenTelemetry over OTLP
+19. How to Keep wasmCloud Workloads Available Through NATS Restarts and Configure an External NATS Control Plane
+20. How to Combine Multiple Components in One wasmCloud Workload Without Incompatible WIT Imports and Exports
+
+## Caching
+
+1. A Slow Cache Fill Overwrote Fresh Data: Prevent the Cache-Aside Race with Version Tokens or Compare-and-Set
+2. Delete or Update the Cache After a Database Write? Choosing for Read-Heavy and Write-Heavy Keys
+3. The Database Commit Succeeded but Cache Invalidation Failed: Repair Dual Writes with an Outbox and Idempotent Consumers
+4. How to Add TTL Jitter Without Violating the Maximum Staleness Your API Promises
+5. Should You Cache 404s but Not 500s? Designing Negative-Cache Keys and Error-Specific TTLs
+6. A Cache Lock Holder Crashed Mid-Refresh: Design Leases with Expiry, Fencing Tokens, and Stale Fallback
+7. How to Scope Cache Keys by Tenant, User, Locale, Encoding, and Authorization Without Leaking Responses
+8. Search Filters Created Millions of Cache Entries: Canonicalize Parameters and Bound Key Cardinality
+9. How to Invalidate a Family of Derived Cache Keys Without Blocking Production on `SCAN`
+10. How to Roll Out a New Cache Schema with Versioned Key Namespaces and a Controlled Cold Start
+11. L1 Cache Is Stale While L2 Is Fresh: Coordinate Local and Distributed Caches with Invalidations and Version Checks
+12. What Should the Application Do When Redis Is Down? Choose Bypass, Stale Data, Backpressure, or Fail-Closed
+13. A 95% Cache Hit Rate Still Overloads the Origin: Measure Byte Hits, Miss Cost, Tail Latency, and Request Skew
+14. How to Prove a Cache Is Thrashing: Compare Working-Set Size, Evictions, Refills, and Reuse Distance
+15. LRU Collapses Under a Full-Keyspace Scan: When Admission Control or TinyLFU Beats Recency Alone
+16. `no-cache`, `no-store`, `private`, or `s-maxage`? Set HTTP Cache-Control Without Caching User Data Publicly
+17. How to Bound Cache Memory When One Tenant’s Large Objects Evict Everyone Else’s Hot Keys
+18. How to Prevent Cache Poisoning When the Origin Reflects Unkeyed Headers or Query Parameters
+19. How to Cache Hashed JavaScript and CSS for a Year While Keeping HTML Deployments Fresh
+20. Browser, Service Worker, CDN, or Origin? Locate a Stale Response with `Age`, `Via`, `X-Cache`, and DevTools
