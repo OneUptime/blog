@@ -45,7 +45,6 @@
 
 ## Image Signing
 
-20. How to Verify an Image Has More Than One Valid Signature with Cosign
 
 ## Woodpecker CI
 
