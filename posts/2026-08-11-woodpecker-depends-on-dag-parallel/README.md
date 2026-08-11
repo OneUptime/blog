@@ -8,7 +8,7 @@ Description: Build an explicit Woodpecker dependency graph after depends_on swit
 
 ---
 
-Woodpecker steps run serially in their YAML order by default. The moment any step in that workflow uses `depends_on`, Woodpecker switches the entire step set to directed-acyclic-graph scheduling. Every step without an explicit dependency becomes a root and can start immediately. That global mode switch is why adding one dependency can make several previously serial steps run together.
+Woodpecker steps run serially in their YAML order by default. The moment any step in that workflow uses `depends_on`, Woodpecker switches the entire step set to directed-acyclic-graph scheduling. Every step without an explicit dependency becomes a root, and all roots can start immediately. Woodpecker compiles the graph into topological stages: steps in one stage run in parallel, while stages run sequentially. That global mode switch is why adding one dependency can make several previously serial steps run together.
 
 This behavior is deliberate in Woodpecker 3.x. The fix is not to rearrange YAML. Draw the graph you intend, give every non-root step the correct predecessors, and let only genuinely independent roots run in parallel.
 
@@ -64,9 +64,9 @@ Woodpecker now builds a DAG for all steps:
 
 - `lint` has no predecessor, so it is ready immediately.
 - `unit-test` has no predecessor, so it is ready immediately.
-- `package` waits only for `unit-test`.
+- `package` is assigned to the next stage because it depends on `unit-test`.
 
-`package` does not wait for `lint`, despite appearing below it. Once DAG mode is active, source order does not create hidden edges.
+Woodpecker executes topological stages sequentially, so in this exact graph the `package` stage is not considered until both `lint` and `unit-test` finish. Even so, `lint` is not a graph predecessor of `package`: that extra wait comes from the stage barrier, not from YAML source order. If the graph later changes, a check that depends on `lint` can occupy the same stage as `package` and run alongside it. Encode intended prerequisites instead of relying on incidental stage boundaries.
 
 An explicit empty list, `depends_on: []`, also marks a step as a root and enables parallel execution. Use it to document intentional parallelism, not as decoration.
 
@@ -129,7 +129,7 @@ Before adding an edge, state the invariant it protects:
 - `deploy` must not start before all release checks pass.
 - A notification may need to wait for several branches of the graph.
 
-An unnecessary dependency removes useful parallelism. A missing dependency creates a race or allows a release before a check finishes. Treat the graph as build logic, not formatting.
+An unnecessary dependency can push a step into a later stage and remove useful parallelism, including for unrelated work behind that stage barrier. A missing dependency can put two steps in the same stage and create a race; a stage barrier may also mask a missing logical edge. Treat the graph as build logic, not formatting.
 
 Steps in one workflow share the same workspace. Parallel roots can therefore write to the same files at the same time. Even if their logical checks are independent, commands such as two simultaneous `npm ci` operations in the repository root can race over `node_modules`. Give parallel steps separate directories, make setup a shared predecessor, or use tools that safely share their output.
 
@@ -177,11 +177,12 @@ Suppose a security scan runs only when dependency files change:
     commands:
       - scan .
     when:
-      - path:
+      - event: [push, pull_request]
+        path:
           include: [package.json, package-lock.json]
 ~~~
 
-A packaging step that always names it as a required dependency can be excluded or unable to proceed when the scan is not part of the workflow. Current Woodpecker supports optional dependency objects:
+A packaging step that always names it as a required dependency can be excluded or unable to proceed when the scan is not part of the workflow. Woodpecker 3.15 and later support optional dependency objects:
 
 ~~~yaml
   - name: package
@@ -208,7 +209,7 @@ By default, downstream work requires successful progress. A notification or clea
       - status: [success, failure]
 ~~~
 
-The `status` filter controls whether the step may run under success or failure. `depends_on` controls which predecessors must reach a terminal point first. Use both when a finalizer must wait for parallel branches and then run even if one failed.
+The `status` filter controls whether the step may run under success or failure. `depends_on` supplies the graph edges used to place the step in a later stage; the stage barrier means every step in earlier stages reaches a terminal point first. Use both when a finalizer must wait for parallel branches and then run even if one failed.
 
 Do not use `failure: ignore` merely to make a graph continue. That setting changes the workflow result semantics. Use it only when a failed check is genuinely advisory.
 
@@ -267,13 +268,13 @@ Check for:
 - joins missing one predecessor;
 - deploy steps that can bypass a check.
 
-Then inspect a real pipeline timeline. Roots should overlap; each join should start only after all required predecessors finish.
+Then inspect a real pipeline timeline. Steps in each stage should overlap, and the next stage should start only after every step in the current stage finishes. Confirm that joins appear in the expected stages and name every required predecessor.
 
 ## A Conversion Checklist
 
 When the first `depends_on` is added:
 
-1. Assume every former implicit ordering edge has disappeared.
+1. Assume source order no longer controls execution, then map the topological stages Woodpecker will create.
 2. Mark intentional roots with `depends_on: []`.
 3. Add an explicit predecessor to every non-root.
 4. Give join steps all required incoming edges.
@@ -295,4 +296,4 @@ That review is necessary even if only one step originally needed parallelism.
 
 ## Conclusion
 
-Adding `depends_on` changes the entire workflow from serial ordering to explicit DAG scheduling. All steps without dependencies become immediately runnable, regardless of YAML position. Preserve only real parallelism: declare roots, encode every required edge and join, handle conditional predecessors explicitly, and verify that parallel steps do not race over the shared workspace.
+Adding `depends_on` changes the entire workflow from serial ordering to explicit DAG scheduling. All steps without dependencies become immediately runnable, regardless of YAML position, and dependent steps are grouped into later topological stages that run sequentially. Preserve only real parallelism: declare roots, encode every required edge and join, handle conditional predecessors explicitly, and verify that parallel steps do not race over the shared workspace.
