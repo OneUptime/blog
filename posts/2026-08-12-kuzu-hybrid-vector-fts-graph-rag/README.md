@@ -8,9 +8,9 @@ Description: Build a Kuzu Graph RAG retriever that fuses semantic and lexical ca
 
 ---
 
-A robust Graph RAG retriever should not force vector search, full-text search, and graph traversal into one undifferentiated ranking score. Use Kuzu's vector index for semantic candidates, its FTS index for exact terms and rare names, fuse the ranked lists with a rank-based method, then traverse from the fused entities under strict relation, depth, permission, and size bounds. The generator should receive compact evidence with stable IDs and provenance, not an arbitrary graph dump.
+A robust Graph RAG retriever should not force vector search, full-text search, and graph traversal into one undifferentiated ranking score. Use Kuzu's vector index for semantic candidates, its FTS index for lexical keywords and rare names, fuse the ranked lists with a rank-based method, then traverse from the fused entities under strict relation, depth, permission, and size bounds. The generator should receive compact evidence with stable IDs and provenance, not an arbitrary graph dump.
 
-Kuzu 0.11.3 is archived but bundles the `vector` and `fts` extensions, making this design self-contained for pinned deployments. Load the bundled extensions locally; do not depend on the retired public extension server. LadybugDB is the maintained successor, but package names, database compatibility, and current capabilities should be evaluated as a migration rather than assumed.
+The Kuzu project was archived at v0.11.3. That release statically bundles the `vector` and `fts` extensions, making this design self-contained in extension availability for pinned deployments, but it receives no upstream fixes. Do not depend on the retired public extension server. LadybugDB is an actively maintained Kuzu fork and self-described successor, but package names, database compatibility, and current capabilities should be evaluated as a migration rather than assumed.
 
 ## Model Retrieval Units Explicitly
 
@@ -28,7 +28,8 @@ CREATE NODE TABLE Chunk(
     chunk_id STRING PRIMARY KEY,
     text STRING,
     embedding FLOAT[384],
-    tenant_id STRING
+    tenant_id STRING,
+    ingestion_version STRING
 );
 
 CREATE NODE TABLE Entity(
@@ -49,12 +50,9 @@ Chunk size and overlap affect both embedding relevance and lexical matches. Pres
 
 ## Build Both Indexes
 
-Kuzu 0.11.3 ships the vector and FTS extension binaries. Load them, then build indexes after the bulk data is present:
+Kuzu 0.11.3 statically bundles and loads the vector and FTS extensions, so no `INSTALL` or `LOAD` statement is needed. Build the indexes after the bulk data is present:
 
 ~~~cypher
-LOAD vector;
-LOAD fts;
-
 CALL CREATE_VECTOR_INDEX(
     'Chunk',
     'chunk_embedding_idx',
@@ -81,11 +79,11 @@ Use the HNSW index to retrieve more than the final answer count:
 ~~~python
 VECTOR_QUERY = """
 CALL QUERY_VECTOR_INDEX(
-    'Chunk',
+    'eligible_chunks',
     'chunk_embedding_idx',
     $embedding,
     $candidate_k,
-    efs := $efs
+    efs := 400
 )
 RETURN node.chunk_id AS chunk_id,
        node.tenant_id AS tenant_id,
@@ -98,42 +96,44 @@ vector_rows = conn.execute(
     {
         "embedding": query_embedding.tolist(),
         "candidate_k": 80,
-        "efs": 400,
     },
 )
 ~~~
 
-Tune `candidate_k` and `efs` with an exact-neighbor and end-to-end retrieval evaluation. Larger candidate lists improve fusion opportunities but increase downstream work.
+Tune `candidate_k` and `efs` with an exact-neighbor and end-to-end retrieval evaluation. In Kuzu 0.11.3, optional vector-search arguments such as `efs` must be literals in the query; a parameter such as `efs := $efs` is not applied. Larger candidate lists improve fusion opportunities but increase downstream work.
 
-For tenant or permission filtering, do not retrieve globally and merely hide forbidden text at rendering time. Kuzu's vector guide documents projected graphs for filtered search. Construct the eligible node set first and query the vector index through that projection. Treat authorization as a hard filter, not a ranking feature.
+The query above assumes `eligible_chunks` is a projected graph containing only authorized `Chunk` nodes. For tenant or permission filtering, do not retrieve globally and merely hide forbidden text at rendering time. Kuzu's vector guide documents projected graphs for filtered search. Construct the eligible node set first and query the vector index through that projection. Projected graphs are connection-scoped, so create, query, and drop the projection on the same connection. Treat authorization as a hard filter, not a ranking feature.
 
 ## Stage 2: Lexical Candidate Generation
 
-FTS catches identifiers, product names, error codes, quoted phrases, and rare terms that embeddings may blur:
+FTS catches lexical keywords and rare names that embeddings may blur. Kuzu 0.11.3 does not give quotes phrase-search semantics. By default, it uses an English stemmer and built-in English stopwords, while its `ignore_pattern` replaces digits and many punctuation characters with spaces. If identifiers or error codes matter, configure and evaluate those FTS options for the corpus rather than assuming an exact match:
 
 ~~~python
 FTS_QUERY = """
 CALL QUERY_FTS_INDEX(
     'Chunk',
     'chunk_text_idx',
-    $query,
-    top := $candidate_k
+    $query
 )
+WHERE node.tenant_id = $tenant_id
 RETURN node.chunk_id AS chunk_id,
        node.tenant_id AS tenant_id,
        score
-ORDER BY score DESC;
+ORDER BY score DESC
+LIMIT $candidate_k;
 """
 
 fts_rows = conn.execute(
     FTS_QUERY,
-    {"query": user_query, "candidate_k": 80},
+    {"query": user_query, "tenant_id": tenant_id, "candidate_k": 80},
 )
 ~~~
 
-The function returns a BM25 score where higher ranks are better, while vector search returns a distance where lower is better. Raw values are not commensurate. Adding `0.7 * bm25 + 0.3 * cosine_distance` without calibrated transformations is mathematically arbitrary and can shift when corpus statistics or metrics change.
+The function returns a BM25 score where higher scores are better, while vector search returns a distance where lower is better. Raw values are not commensurate. Adding `0.7 * bm25 + 0.3 * cosine_distance` without calibrated transformations is mathematically arbitrary and can shift when corpus statistics or metrics change.
 
-Use `conjunctive := true` only when all lexical terms must occur. Natural-language questions often benefit from the default disjunctive behavior; structured codes or multi-token names may not. Evaluate both on labeled queries.
+Kuzu 0.11.3 does not support querying an FTS index through a projected graph. Apply the authorization predicate before the outer `LIMIT`, as above; putting `top := $candidate_k` inside `QUERY_FTS_INDEX` first can let forbidden rows consume the candidate slots. For isolation of index contents and BM25 corpus statistics, use tenant- or ACL-partitioned tables and indexes.
+
+Use `conjunctive := true` only when all lexical terms must occur. Natural-language questions often benefit from the default disjunctive behavior; multi-token names may not. Evaluate both on labeled queries.
 
 ## Stage 3: Fuse by Rank
 
@@ -158,7 +158,7 @@ def reciprocal_rank_fusion(rankings, constant=60):
 
 Deduplicate by stable chunk ID. Preserve the vector rank, FTS rank, distance, BM25 score, and fusion contribution for debugging. The RRF constant and channel candidate counts are hyperparameters; evaluate rather than inheriting 60 as a law.
 
-You may give different channels different weights after offline evaluation, but retain rank-based normalization. Include lexical-only and semantic-only fallbacks: a missing query embedding should not disable exact-term retrieval, and a stopword-only FTS query should not erase useful semantic candidates.
+You may give different channels different weights after offline evaluation, but retain rank-based normalization. Include lexical-only and semantic-only fallbacks: a missing query embedding should not disable lexical retrieval, and a stopword-only FTS query should not erase useful semantic candidates.
 
 ## Stage 4: Traverse From Fused Seeds
 
@@ -166,16 +166,20 @@ Pass only the top fused chunk IDs back into a parameterized graph query:
 
 ~~~cypher
 UNWIND $chunk_ids AS chunk_id
-MATCH (c:Chunk)-[:PART_OF]->(d:Document)
+MATCH (c:Chunk)-[part:PART_OF]->(d:Document)
 WHERE c.chunk_id = chunk_id
   AND c.tenant_id = $tenant_id
+  AND d.tenant_id = $tenant_id
 OPTIONAL MATCH (c)-[:MENTIONS]->(e:Entity)
+WHERE e.tenant_id = $tenant_id
 RETURN c.chunk_id,
        c.text,
+       c.ingestion_version,
        d.document_id,
        d.title,
        d.source_uri,
-       collect(DISTINCT e.entity_id) AS entities;
+       part.ordinal AS ordinal,
+       coalesce(collect(DISTINCT e.entity_id), []) AS entities;
 ~~~
 
 Then, if the use case benefits from graph expansion, issue a bounded entity query:
@@ -185,18 +189,23 @@ UNWIND $entity_ids AS entity_id
 MATCH (seed:Entity)
 WHERE seed.entity_id = entity_id
   AND seed.tenant_id = $tenant_id
-OPTIONAL MATCH (seed)-[path:RELATED_TO* TRAIL 1..2]->(neighbor:Entity)
+MATCH (seed)-[path:RELATED_TO* TRAIL 1..2
+    (rel, intermediate |
+     WHERE rel.relation IN $allowed_relations
+       AND intermediate.tenant_id = $tenant_id)]->(neighbor:Entity)
 WHERE neighbor.tenant_id = $tenant_id
 RETURN seed.entity_id,
        neighbor.entity_id,
        neighbor.name,
+       properties(nodes(path), 'entity_id') AS intermediate_entity_ids,
+       properties(rels(path), 'relation') AS relations,
        length(path) AS hops
 LIMIT $graph_row_limit;
 ~~~
 
-The relationship label, direction, `TRAIL` semantic, and two-hop bound are deliberate. Kuzu defaults recursive relationships to `WALK`, which can revisit edges and explode in cyclic graphs. A final limit is not a substitute for a small traversal space; keep the seed count and depth bounded before execution.
+The relationship label, direction, `TRAIL` semantic, relation allowlist, intermediate-node tenant predicate, and two-hop bound are deliberate. The separate endpoint predicate is still required because the recursive `intermediate` variable does not represent the final `neighbor`. Kuzu defaults recursive relationships to `WALK`, which can revisit edges and explode in cyclic graphs. A final limit is not a substitute for a small traversal space; keep the seed count and depth bounded before execution.
 
-Not every neighbor deserves context. Allowlist relation types relevant to the question, filter retired or low-confidence entities, and consider shortest paths when only connectivity distance matters.
+Not every neighbor deserves context. Allowlist `relation` property values relevant to the question, filter retired or low-confidence entities, and consider shortest paths when only connectivity distance matters. The returned intermediate IDs and ordered relation values let the application reconstruct each authorized edge without exposing entire node or relationship objects.
 
 ## Stage 5: Assemble Evidence, Not a Graph Dump
 
@@ -206,10 +215,12 @@ Give the generator a compact structure such as:
 {
   "chunk_id": "chunk-1042",
   "text": "...",
+  "ingestion_version": "ingest-2026-08-12",
   "source": {
     "document_id": "doc-18",
     "title": "Runbook",
-    "uri": "https://docs.example/runbook"
+    "uri": "https://docs.example/runbook",
+    "ordinal": 7
   },
   "retrieval": {
     "vector_rank": 3,
