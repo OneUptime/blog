@@ -8,7 +8,7 @@ Description: Keep browser telemetry queryable and affordable by normalizing URLs
 
 ---
 
-Browser telemetry begins with harmless-looking strings: the current URL, a user ID, a session ID, a component name, and a few feature flags. If those values become metric labels or indexed tags, every unique combination can create another time series or index partition. A URL containing an order UUID multiplied by a user ID and session ID is effectively unique per event. Storage grows, dashboards slow down, and the dimensions operators actually need are buried in noise.
+Browser telemetry begins with harmless-looking strings: the current URL, a user ID, a session ID, a component name, and a few feature flags. If those values become metric labels or indexed tags, each new metric label set can create another time series, while unique indexed values enlarge backend index structures. A URL containing an order UUID combined with a user ID and observability session ID is often near-unique across the event population. Storage grows, dashboards slow down, and the dimensions operators actually need are buried in noise.
 
 Cardinality control is a schema-design problem, not a cleanup job for the billing dashboard. Decide which fields are aggregatable dimensions, which are high-cardinality correlation keys, and which must never leave the browser. Normalize before the telemetry SDK observes a value, enforce limits again at the collector or intake service, and measure what is dropped.
 
@@ -23,11 +23,13 @@ The same risk exists outside metrics. A tracing or RUM backend may permit high-c
 | route template | label | indexed attribute | metadata |
 | release ID | label if bounded | indexed attribute | metadata |
 | raw user ID | never | restricted correlation field, if justified | normally omit |
-| random session ID | never | correlation field with retention limit | replay key |
+| random observability session ID | never | correlation field with retention limit | replay key |
 | full URL | never | scrubbed, non-indexed detail if needed | sanitized navigation event |
 | query or fragment | never | allowlisted and scrubbed only | normally remove |
 
-“High cardinality” and “sensitive” are separate properties. A country code is low-cardinality but may still be sensitive in context. A random cache-buster is not personal, yet it is disastrous as a metric label.
+Here, an observability session ID is a dedicated correlation identifier, never an authentication session token.
+
+“High cardinality” and “sensitive” are separate properties. A country code is low-cardinality but may still be sensitive in context. A random cache-buster need not be personal, yet it is disastrous as a metric label.
 
 ## Normalize URLs to Route Templates
 
@@ -48,9 +50,9 @@ function routeTemplate(input = location.href) {
 }
 ~~~
 
-Do not replace every numeric or UUID-looking segment with a wildcard blindly. `/v2`, `/2026/08`, and product slugs may be meaningful bounded routes. An allowlisted route table is safer, and `/__unmatched__` makes schema drift observable without exporting the unknown path as a new label.
+Do not replace every numeric or UUID-looking segment with a wildcard blindly. `/v2` and `/2026/08` may be meaningful bounded routes, while product slugs should be treated as variables unless they come from a reviewed bounded set. An allowlisted route table is safer, and `/__unmatched__` makes schema drift observable without exporting the unknown path as a new label.
 
-Normalize network destinations separately. Keep an operation such as `GET api.example.com /orders/{id}` rather than the entire URL. OpenTelemetry's URL conventions say `url.full` must not contain URL credentials and that identifiable sensitive content in full URLs, paths, and queries should be scrubbed. They also define a default list of signed-URL query values that should be redacted, but that short list is not a complete policy for an application.
+Normalize network destinations separately. Keep bounded fields such as `http.request.method=GET`, `server.address=api.example.com`, and `url.template=/orders/{id}` rather than grouping by the entire URL. OpenTelemetry's URL conventions say `url.full` must not contain URL credentials and that identifiable sensitive content in full URLs, paths, and queries should be scrubbed. They also define a default list of signed-URL query values that should be redacted, but that short list is not a complete policy for an application.
 
 ## Strip Queries and Fragments by Default
 
@@ -86,16 +88,16 @@ Never send a redacted secret's length, prefix, or stable digest unless there is 
 A user ID can help support investigate one reported session, but it should not be a metric label or a default dashboard facet. Use three distinct concepts:
 
 - **cohort dimensions:** bounded values such as `plan_tier=free|team|enterprise`;
-- **correlation identifiers:** random session, trace, and request IDs stored in controlled fields;
+- **correlation identifiers:** random observability session, trace, and request IDs stored in controlled fields;
 - **business identity:** account or user keys held in the application system of record.
 
-If support needs a lookup from a known account to telemetry, perform it through an access-controlled service that returns short-lived correlation IDs. Do not make the observability index a shadow customer database. A one-way hash of a user ID still has the same cardinality and is usually pseudonymous rather than anonymous; if the input space is guessable, an unsalted hash can also be reversed by enumeration.
+If support needs a lookup from a known account to telemetry, perform it through an access-controlled service that returns short-lived correlation IDs. Do not make the observability index a shadow customer database. A one-way hash of a user ID does not materially reduce cardinality and is usually pseudonymous rather than anonymous; if the input space is guessable, an unkeyed hash can be matched by enumeration.
 
 When a stable pseudonym is justified, create it server-side using a keyed construction, rotate the key according to policy, scope it to a tenant or purpose, and keep it out of metric dimensions. Browser bundles cannot safely hold a secret HMAC key.
 
 ## Put a Budget on Attributes
 
-OpenTelemetry's common specification recommends limits because erroneous instrumentation can exhaust memory. It defines a default general attribute-count limit of 128 and an infinite default value-length limit, while allowing model-specific limits. Those are safety ceilings, not good browser defaults.
+OpenTelemetry's common specification recommends limits because erroneous instrumentation can exhaust memory. For attribute collections covered by those limits, it defines a default general attribute-count limit of 128 and an unlimited default value-length limit, while allowing model-specific limits. Resource attributes should be exempt, and metric attributes are exempt; the Metrics SDK specification instead defines a separate aggregation cardinality limit and recommends a default of 2,000 data points per metric per collection cycle when neither a View nor MetricReader supplies one. These are specification defaults and safeguards, not good browser application defaults.
 
 Create a much smaller application contract, for example:
 
@@ -120,7 +122,7 @@ function sanitizeAttributes(candidate) {
 
 An allowlist prevents arbitrary component props, `data-*` attributes, and experiment parameters from becoming telemetry. Truncation controls size but not cardinality: the first 64 characters of a UUID-bearing URL are still likely unique. Apply value-set checks to bounded dimensions and route normalization before length limits.
 
-Also cap event counts, breadcrumbs, stack frames, and replay metadata according to the SDK's supported options. Emit counters such as `browser_telemetry_attributes_dropped_total{reason="unknown_key"}` using only bounded reason values.
+Also cap event counts, breadcrumbs, stack frames, and replay metadata according to the SDK's supported options. For Prometheus, emit a counter such as `browser_telemetry_attributes_dropped_total{reason="unknown_key"}` using only bounded reason values.
 
 ## Enforce the Contract Twice
 
@@ -136,7 +138,7 @@ Client-side control reduces CPU and bandwidth, but a browser is an untrusted sou
 
 Collector processors can transform or redact telemetry, but do not postpone obvious secret removal until after data has crossed the network. A backend rule is defense in depth, not permission for the browser to send everything.
 
-Version the schema with `telemetry.schema_version`. Roll out new keys through review, document their purpose, owner, allowed values, sensitivity, indexing status, and retention. Remove stale dimensions; a bounded flag that changes name every week becomes high-cardinality over time.
+Version the schema with an application-owned attribute such as `myapp.telemetry.schema_version`. Roll out new keys through review, document their purpose, owner, allowed values, sensitivity, indexing status, and retention. Remove stale dimensions; giving a bounded flag a new attribute name every week creates schema and series churn and increases the number of retained label sets over time.
 
 ## Detect a Cardinality Incident Early
 
@@ -156,6 +158,7 @@ Set budgets based on expected bounded sets. A browser-family field with 4,000 ne
 
 - [OpenTelemetry URL semantic-convention attributes](https://opentelemetry.io/docs/specs/semconv/registry/attributes/url/)
 - [OpenTelemetry common attribute limits](https://opentelemetry.io/docs/specs/otel/common/#attribute-limits)
+- [OpenTelemetry Metrics SDK cardinality limits](https://opentelemetry.io/docs/specs/otel/metrics/sdk/#cardinality-limits)
 - [OpenTelemetry browser resource semantic conventions](https://opentelemetry.io/docs/specs/semconv/resource/browser/)
 - [OpenTelemetry guidance for handling sensitive data](https://opentelemetry.io/docs/security/handling-sensitive-data/)
 - [Prometheus metric and label naming](https://prometheus.io/docs/practices/naming/)
