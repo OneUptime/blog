@@ -78,7 +78,7 @@ Bureaucracy grows when every sentence has the force of policy. Label content by 
 
 This separation lets a team change an example without reopening a security policy. It also stops reviewers from treating stylistic preferences as mandatory controls.
 
-Google’s Site Reliability Engineering material on release engineering describes consistent, repeatable release methods and tooling that is “correct by default.” That idea is stronger than adding more sign-offs: put reliable defaults into templates, automation, tests, and deployment systems so the safe path is also the easy path. Retain human approval for decisions whose context cannot be encoded and whose consequences justify the wait.
+Google’s Site Reliability Engineering material on release engineering describes consistent, repeatable release methods and tools that “behave correctly by default.” That idea is stronger than adding more sign-offs: put reliable defaults into templates, automation, tests, and deployment systems so the safe path is also the easy path. Retain human approval for decisions whose context cannot be encoded and whose consequences justify the wait.
 
 ## Recognize When the Standard Has Become Bureaucracy
 
@@ -101,10 +101,10 @@ The UK government’s agile governance principles offer a useful test: governanc
 
 A standard creates a stable reference for Plan-Do-Check-Act:
 
-1. **Plan:** state the problem and expected improvement. Change one understandable part of the standard.
+1. **Plan:** state the problem and expected improvement. Define one understandable change to the standard.
 2. **Do:** pilot it with a defined population and duration.
 3. **Check:** compare outcome and guardrail measures with the baseline. Also ask operators what new workarounds appeared.
-4. **Act:** adopt, adjust, or abandon the change. Update the working standard and its revision record immediately.
+4. **Act:** adopt the change and update the working standard and its revision record when evidence supports it; otherwise adjust or abandon it and begin another cycle.
 
 The Scrum Sprint Retrospective can feed this loop. The Scrum Guide says the team inspects how the Sprint went, identifies the most helpful changes, and addresses the most impactful improvements as soon as possible. A retrospective action should alter the real working system—automation, checklist, Definition of Done, queue policy, or documentation—not disappear into meeting notes.
 
