@@ -57,7 +57,6 @@
 
 ## Continuous Improvement
 
-16. Why Won’t People Raise Process Problems? Building Psychological Safety Without Empty Slogans
 17. How to Run a Remote Retrospective Where Quiet Team Members Shape the Actions
 18. Improvement Fatigue Is Real: How Many Process Experiments Can a Team Run at Once?
 19. Did the Change Help Customers or Just Move an Internal Metric?
