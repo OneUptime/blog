@@ -51,7 +51,6 @@
 
 ## Browser Monitoring
 
-19. INP Is Poor but LCP Is Fine: Finding the Long Task or Event Handler Behind Slow Interactions
 20. How to Detect a Frontend Regression Without Confusing It with Bot Traffic, Extensions, or a Changing User Mix
 
 ## Kuzu
