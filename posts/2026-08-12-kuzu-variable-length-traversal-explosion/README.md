@@ -14,7 +14,7 @@ The fix is to define the real question precisely: maximum depth, allowed edge la
 
 ## Why the Row Count Grows So Fast
 
-Consider a service dependency graph with an average outward degree of 10. A rough upper-bound intuition for unconstrained walk candidates is:
+As a rough branching-factor illustration, suppose every reached service offers 10 matching outgoing dependencies. The number of unconstrained walk candidates is then:
 
 ~~~text
 depth 1:       10
@@ -24,7 +24,7 @@ depth 4:   10,000
 depth 5:  100,000
 ~~~
 
-Real graphs have overlap and skew, so this is not an exact estimator. It shows why “just two more hops” is not a small change. A hub can be worse than the average, and cycles let later depths revisit earlier graph regions.
+Real graphs have varying degrees and direction or label constraints, so this is not an exact estimator. Overlap can make many walks converge on the same endpoint, while a hub can offer more than 10 choices and cycles let later depths revisit earlier graph regions. It shows why “just two more hops” is not a small change.
 
 This query asks Kuzu to enumerate every matching walk from one service through one to eight dependencies:
 
@@ -59,7 +59,7 @@ The connection setting can add a defense-in-depth ceiling:
 CALL var_length_extend_max_depth=8;
 ~~~
 
-Do not use the global setting as a substitute for query intent. A reviewer should see that an impact analysis is four hops because the domain says so.
+Do not use the connection-wide setting as a substitute for query intent. A reviewer should see that an impact analysis is four hops because the domain says so.
 
 ## Choose `WALK`, `TRAIL`, or `ACYCLIC`
 
@@ -67,7 +67,7 @@ Kuzu supports three relevant recursive semantics:
 
 - `WALK`, the default, allows repeated nodes and relationships.
 - `TRAIL` requires relationships in the recursive relationship to be distinct.
-- `ACYCLIC` requires its nodes to be distinct.
+- `ACYCLIC` requires the intermediate nodes in the recursive relationship to be distinct; it does not include the source and destination nodes in that check.
 
 If revisiting the same dependency edge is meaningless, make that explicit:
 
@@ -77,7 +77,7 @@ WHERE a.service_id = $service_id
 RETURN b.service_id, length(r);
 ~~~
 
-If no service may appear twice within a route:
+If no intermediate service may appear twice within the recursive relationship:
 
 ~~~cypher
 MATCH (a:Service)-[r:DEPENDS_ON* ACYCLIC 1..6]->(b:Service)
@@ -108,7 +108,7 @@ WHERE a.service_id = $source
 RETURN length(r) AS hops;
 ~~~
 
-Typed primary-key predicates give the optimizer selective anchors and avoid scanning every possible start.
+When `service_id` is the declared `Service` primary key, correctly typed predicates give the optimizer selective anchors and avoid scanning every possible start.
 
 ## Prune Inside the Recursive Expansion
 
@@ -155,7 +155,7 @@ Validate the exact syntax with 0.11.3 and project only what downstream code read
 This looks safe but may remain expensive:
 
 ~~~cypher
-MATCH (a:Service)-[:DEPENDS_ON*1..10]->(b:Service)
+MATCH (a:Service)-[:DEPENDS_ON*1..8]->(b:Service)
 WHERE a.service_id = $service_id
 RETURN DISTINCT b.service_id
 LIMIT 100;
@@ -183,7 +183,7 @@ Then test semantic variants using the same fixture:
 
 | Variant | What it answers |
 | --- | --- |
-| `WALK` | Edge sequences with repetition allowed |
+| `WALK` (default; omit the modifier) | Edge sequences with repetition allowed |
 | `TRAIL` | Routes without a repeated relationship |
 | `ACYCLIC` | Routes without a repeated intermediate node |
 | `SHORTEST` | A shortest route to each matching endpoint |
@@ -193,7 +193,7 @@ Compare correctness before performance. Fewer rows are only an improvement when 
 
 ## Put Guardrails Around User-Driven Traversal
 
-If an API accepts traversal depth, validate it outside Cypher and pass it only through a supported parameter position. Enforce a server-side maximum, query timeout, and result-size limit. Separate an interactive “nearby graph” endpoint from an offline exhaustive path-analysis job.
+If an API accepts traversal depth, validate it outside Cypher. Kuzu 0.11.3 requires integer literals for recursive bounds, so select a prewritten bounded query or render only the validated integer into the query text; continue parameterizing data values. Enforce a server-side maximum, query timeout, and application-level result-size limit. Separate an interactive “nearby graph” endpoint from an offline exhaustive path-analysis job.
 
 Monitor execution time, returned rows, timeouts, and the source node's observed degree. Include cyclic and hub-heavy fixtures in regression tests. A tiny tree-shaped development graph cannot expose walk explosion.
 
