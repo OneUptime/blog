@@ -1,4 +1,4 @@
-# Validation Summary: Why Are Production JavaScript Stack Traces Still Minified? Matching Source Maps to the Exact Release
+# Validation Summary: Match Source Maps to the Exact Production Release
 
 ## Status
 validated

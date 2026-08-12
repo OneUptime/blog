@@ -1,4 +1,4 @@
-# Kuzu HNSW Search Is Fast but Misses Neighbors: Tuning `efs` for Recall and Latency
+# Tune Kuzu HNSW `efs` for Recall and Latency
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -190,7 +190,7 @@ ORDER BY distance;
 
 Ground truth must apply the identical filter before exact top-k selection. Comparing a filtered approximate result to the full corpus makes valid results look wrong.
 
-The archived guide also documents `PROJECT_GRAPH_CYPHER` for filters expressed by arbitrary Cypher patterns, with restrictions on its returned node label and supported use. Treat every important filter shape—tenant, permissions, date, graph neighborhood—as a separate benchmark stratum.
+The archived guide also documents `PROJECT_GRAPH_CYPHER` for filters expressed by arbitrary Cypher patterns, with restrictions on its returned node label and supported use. Treat every important filter shape-tenant, permissions, date, graph neighborhood-as a separate benchmark stratum.
 
 ## If High `efs` Still Misses
 

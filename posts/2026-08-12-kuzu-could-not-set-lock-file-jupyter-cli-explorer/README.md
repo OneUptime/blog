@@ -1,4 +1,4 @@
-# Kuzu Says “Could Not Set Lock on File”: Safely Using Jupyter, the CLI, and Explorer
+# Fix Kuzu “Could Not Set Lock on File” Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

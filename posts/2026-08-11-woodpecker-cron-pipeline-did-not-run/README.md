@@ -1,4 +1,4 @@
-# Why Didn’t a Woodpecker Cron Pipeline Run? Schedule, Time Zone, Branch, and Event Checks
+# Why Woodpecker Cron Pipelines Do Not Run
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

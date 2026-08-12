@@ -1,4 +1,4 @@
-# Why Does “Run Pipeline” Spin Forever in Woodpecker? Add the `manual` Event and Check Forge Connectivity
+# Why Woodpecker “Run Pipeline” Spins Forever
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

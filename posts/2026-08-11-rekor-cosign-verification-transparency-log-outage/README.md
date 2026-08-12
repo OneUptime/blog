@@ -1,4 +1,4 @@
-# How Rekor Fits into Cosign Verification—and What Changes During a Transparency-Log Outage
+# Rekor in Cosign Verification During a Transparency-Log Outage
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# Woodpecker Breaks After Docker Engine 29: Fixing the “Client Version Is Too Old” API Error
+# Fix Woodpecker with Docker Engine 29
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -177,4 +177,4 @@ Verify that:
 
 ## Conclusion
 
-The error is a protocol-range failure between the Woodpecker agent and Docker daemon. Confirm the actual agent image and the daemon's minimum API, then remove an obsolete forced version or upgrade an affected agent to a current supported 3.x release—3.17 at the time of writing—and patch Docker beyond the early 29.x releases. A forced API version is useful for a controlled diagnosis, but automatic negotiation between maintained components is the durable fix.
+The error is a protocol-range failure between the Woodpecker agent and Docker daemon. Confirm the actual agent image and the daemon's minimum API, then remove an obsolete forced version or upgrade an affected agent to a current supported 3.x release-3.17 at the time of writing-and patch Docker beyond the early 29.x releases. A forced API version is useful for a controlled diagnosis, but automatic negotiation between maintained components is the durable fix.

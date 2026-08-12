@@ -1,8 +1,8 @@
-# How to Share Environment Variables Across Woodpecker Steps Without Repeating YAML
+# Share Environment Variables Across Woodpecker Steps
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Woodpecker CI, CI/CD, Environment Variables, YAML Anchors, Secrets
+Tags: Woodpecker CI, CI/CD, Environment Variable, YAML Anchors, Secret
 
 Description: Share static and computed values across Woodpecker steps with YAML anchors, workspace files, and carefully scoped server-wide variables.
 

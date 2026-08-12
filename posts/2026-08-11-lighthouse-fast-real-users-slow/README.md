@@ -1,4 +1,4 @@
-# Why Is Lighthouse Fast While Real Users Are Slow? Segment RUM by Device, Network, Region, and Cache State
+# Why Lighthouse Is Fast While Real Users Are Slow
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -8,7 +8,7 @@ Description: Diagnose fast Lighthouse runs and slow production users by aligning
 
 ---
 
-A fast Lighthouse result and slow real-user monitoring (RUM) are not contradictory. A standard Lighthouse navigation audit measures one page load in a configured lab environment. RUM measures a distribution of visits across the devices, networks, regions, cache states, page variants, and behaviors that production actually receives. The two results should only converge when those conditions converge—and they rarely do by accident.
+A fast Lighthouse result and slow real-user monitoring (RUM) are not contradictory. A standard Lighthouse navigation audit measures one page load in a configured lab environment. RUM measures a distribution of visits across the devices, networks, regions, cache states, page variants, and behaviors that production actually receives. The two results should only converge when those conditions converge-and they rarely do by accident.
 
 The right response is not to average more Lighthouse runs until the field problem disappears. Preserve the field distribution, segment it along plausible causes, and then configure a lab run that represents the affected segment closely enough to reproduce and diagnose it.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Vue, DevTools, Debugging, Development, Browser Extension, Performance
+Tags: Vue, DevTools, Debugging, Development, Browser Extensions, Performance
 
 Description: A complete guide to installing, configuring, and using Vue DevTools for debugging Vue 3 applications, including component inspection, state management, and performance profiling.
 

@@ -1,4 +1,4 @@
-# Validation Summary: Kuzu to LadybugDB: What Actually Changes in Packages, APIs, Extensions, and Database Files?
+# Validation Summary: Kuzu to LadybugDB: Packages, APIs, Extensions, and Database Files
 
 ## Status
 

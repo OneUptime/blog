@@ -1,4 +1,4 @@
-# Validation Summary: Why Did `depends_on` Make Every Woodpecker Step Run in Parallel? Building the DAG You Intended
+# Validation Summary: Build the Intended Woodpecker DAG with `depends_on`
 
 ## Status
 validated

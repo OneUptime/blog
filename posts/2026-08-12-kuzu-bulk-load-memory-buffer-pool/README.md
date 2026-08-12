@@ -1,4 +1,4 @@
-# Kuzu Crashes or Exhausts Memory During Bulk Load: Tuning the Buffer Pool and Import Batch
+# Tune Kuzu Bulk Loads to Prevent Memory Exhaustion
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

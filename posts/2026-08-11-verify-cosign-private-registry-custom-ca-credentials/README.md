@@ -1,4 +1,4 @@
-# How to Verify Cosign Signatures from a Private Registry with Custom CAs and Credentials
+# Verify Cosign Signatures in Private Registries
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

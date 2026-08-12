@@ -1,4 +1,4 @@
-# Which Browser Metrics Matter After Page Load? LCP, INP, CLS, Long Tasks, and Custom Actions
+# Browser Metrics After Page Load: LCP, INP, CLS, and Long Tasks
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -145,7 +145,7 @@ Core Web Vitals cannot know when a search result is useful, a cart has updated, 
 A strong custom action has:
 
 - a clear start based on user intent or a programmatic trigger;
-- a success end at visible, usable completion—not merely when a fetch promise resolves;
+- a success end at visible, usable completion-not merely when a fetch promise resolves;
 - separate failure, cancellation, and timeout outcomes;
 - a stable low-cardinality action name;
 - route, release, and coarse environment context;

@@ -1,4 +1,4 @@
-# Validation Summary: Why Is a Woodpecker Workflow Stuck in “Pending”? Match Agent Labels, Platform, and Backend
+# Validation Summary: Fix Woodpecker Workflows Stuck in Pending
 
 ## Status
 

@@ -1,4 +1,4 @@
-# How to Make an Improvement Stick: Ownership, Automation, Documentation, and Drift Checks
+# Make Improvements Stick with Ownership and Drift Checks
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -186,17 +186,17 @@ Finally, keep capacity for later iteration. The GOV.UK Service Standard states t
 
 ## Official Documentation
 
-- [IHI — Sustaining Improvement](https://www.ihi.org/library/white-papers/sustaining-improvement)
-- [IHI — Sustainability Planning Worksheet](https://www.ihi.org/library/tools/sustainability-planning-worksheet)
-- [Google SRE — Postmortem Culture](https://sre.google/workbook/postmortem-culture/)
-- [Google SRE — The Evolution of Automation at Google](https://sre.google/sre-book/automation-at-google/)
-- [Google SRE — Eliminating Toil](https://sre.google/sre-book/eliminating-toil/)
-- [GitHub Docs — About Code Owners](https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners)
-- [GitHub Docs — About Protected Branches](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-protected-branches/about-protected-branches)
-- [GitHub Docs — Workflow Syntax for GitHub Actions](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax)
-- [HashiCorp — Health Assessments in HCP Terraform](https://developer.hashicorp.com/terraform/cloud-docs/workspaces/health)
-- [Prometheus — Alerting Rules](https://prometheus.io/docs/prometheus/latest/configuration/alerting_rules/)
-- [GOV.UK Service Standard — Iterate and Improve Frequently](https://www.gov.uk/service-manual/service-standard/point-8-iterate-and-improve-frequently)
+- [IHI - Sustaining Improvement](https://www.ihi.org/library/white-papers/sustaining-improvement)
+- [IHI - Sustainability Planning Worksheet](https://www.ihi.org/library/tools/sustainability-planning-worksheet)
+- [Google SRE - Postmortem Culture](https://sre.google/workbook/postmortem-culture/)
+- [Google SRE - The Evolution of Automation at Google](https://sre.google/sre-book/automation-at-google/)
+- [Google SRE - Eliminating Toil](https://sre.google/sre-book/eliminating-toil/)
+- [GitHub Docs - About Code Owners](https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners)
+- [GitHub Docs - About Protected Branches](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-protected-branches/about-protected-branches)
+- [GitHub Docs - Workflow Syntax for GitHub Actions](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax)
+- [HashiCorp - Health Assessments in HCP Terraform](https://developer.hashicorp.com/terraform/cloud-docs/workspaces/health)
+- [Prometheus - Alerting Rules](https://prometheus.io/docs/prometheus/latest/configuration/alerting_rules/)
+- [GOV.UK Service Standard - Iterate and Improve Frequently](https://www.gov.uk/service-manual/service-standard/point-8-iterate-and-improve-frequently)
 
 ## Conclusion
 

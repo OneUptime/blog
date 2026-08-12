@@ -1,4 +1,4 @@
-# Validation Summary: How to Control High-Cardinality Browser Telemetry from URLs, User IDs, and Session Attributes
+# Validation Summary: Control High-Cardinality Browser Telemetry
 
 ## Status
 validated

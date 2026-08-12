@@ -1,4 +1,4 @@
-# How Much Sprint Capacity Should You Reserve for Improvement Work and Technical Debt?
+# Reserve Sprint Capacity for Improvement and Technical Debt
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -8,7 +8,7 @@ Description: Choose an evidence-based improvement capacity policy from demand, r
 
 ---
 
-There is no authoritative Scrum percentage for improvement work or technical debt. Ten, 15, and 20 percent are common organizational policies, not rules in the Scrum Guide. The right reservation is the smallest sustained investment that prevents important improvement demand from aging faster than the team can resolve it—and that level changes with risk, operational load, and the health of the delivery system.
+There is no authoritative Scrum percentage for improvement work or technical debt. Ten, 15, and 20 percent are common organizational policies, not rules in the Scrum Guide. The right reservation is the smallest sustained investment that prevents important improvement demand from aging faster than the team can resolve it-and that level changes with risk, operational load, and the health of the delivery system.
 
 This is why “What percentage should we use?” is the second question. The first is “What demand must this team absorb, and what happens when it does not?”
 
@@ -104,7 +104,7 @@ The numbers are illustrative. Your baseline, risk tolerance, and work-item shape
 
 Google's SRE material places an upper bound of 50% on operational work so at least half of SRE time remains for engineering project work. That is a deliberate rule for the SRE operating model, designed to prevent operational load from consuming the function. The SRE Workbook explicitly notes that this target may not suit every organization.
 
-It is useful evidence that capacity boundaries can protect long-term engineering, but it is not a recommendation that every product team reserve 50% for a technical-debt backlog. Product development, on-call structure, service maturity, staffing, and the definition of “engineering work” all differ. Borrow the principle—bound work that expands without limit—not the number without its context.
+It is useful evidence that capacity boundaries can protect long-term engineering, but it is not a recommendation that every product team reserve 50% for a technical-debt backlog. Product development, on-call structure, service maturity, staffing, and the definition of “engineering work” all differ. Borrow the principle-bound work that expands without limit-not the number without its context.
 
 ## Integrate Improvement with the Product Goal
 
@@ -123,7 +123,7 @@ Some improvement belongs inside the Definition of Done rather than a capacity po
 
 Capacity does not need to be preassigned to named tasks. The Open Guide to Kanban describes slack as intentionally unused capacity that absorbs variability and urgent demand or enables continuous improvement. A team might control work in progress below theoretical capacity, then use available time to improve the system.
 
-This is different from planning every engineer to 100% and labeling contingency work “stretch.” Slack loses its purpose when managers immediately fill every open slot. Use pull policies: when an engineer finishes current work, they help complete existing items, address an eligible improvement, or learn—not automatically start another feature.
+This is different from planning every engineer to 100% and labeling contingency work “stretch.” Slack loses its purpose when managers immediately fill every open slot. Use pull policies: when an engineer finishes current work, they help complete existing items, address an eligible improvement, or learn-not automatically start another feature.
 
 Track work in progress, throughput, work item age, and cycle time. If the reservation starts more improvement items but completion and age worsen, reduce simultaneous work and slice items smaller. Utilization is not the objective; faster, safer value flow is.
 

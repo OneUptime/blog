@@ -1278,5 +1278,7 @@
   "zswap",
   "ztunnel",
   "kOps",
-  "etcd Backup"
+  "etcd Backup",
+  "woodpecker-cli",
+  "bfcache"
 ]

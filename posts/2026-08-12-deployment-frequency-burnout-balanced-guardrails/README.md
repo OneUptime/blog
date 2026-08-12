@@ -1,4 +1,4 @@
-# Deployment Frequency Improved but Burnout Got Worse: Choosing Balanced Guardrail Metrics
+# Balance Deployment Frequency Against Burnout
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -237,4 +237,4 @@ Use a fixed review cadence and a named owner who can change priorities. If the o
 
 ## Conclusion
 
-When deployment frequency rises and burnout risk rises with it, the metric has exposed only one part of the system. Keep throughput, but pair it with instability, rework, customer outcomes, after-hours load, interruptions, toil, knowledge concentration, and confidential well-being evidence. Give every guardrail an action threshold and decision owner. Sustainable continuous delivery means the organization can release safely on demand during normal work—not that people must absorb unlimited coordination and recovery cost to make one chart go up.
+When deployment frequency rises and burnout risk rises with it, the metric has exposed only one part of the system. Keep throughput, but pair it with instability, rework, customer outcomes, after-hours load, interruptions, toil, knowledge concentration, and confidential well-being evidence. Give every guardrail an action threshold and decision owner. Sustainable continuous delivery means the organization can release safely on demand during normal work-not that people must absorb unlimited coordination and recovery cost to make one chart go up.

@@ -1,4 +1,4 @@
-# Why Is Session Replay Blank or Incomplete? Iframes, Canvas, Shadow DOM, and Browser Compatibility
+# Why Session Replay Is Blank or Incomplete
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

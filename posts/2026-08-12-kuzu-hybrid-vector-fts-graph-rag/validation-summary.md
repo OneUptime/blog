@@ -1,4 +1,4 @@
-# Validation Summary: How to Combine Kuzu Vector Search, Full-Text Search, and Graph Traversal for Graph RAG
+# Validation Summary: Combine Kuzu Vector, Full-Text, and Graph Search for RAG
 
 ## Status
 validated

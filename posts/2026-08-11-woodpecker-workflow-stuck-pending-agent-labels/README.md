@@ -1,8 +1,8 @@
-# Why Is a Woodpecker Workflow Stuck in “Pending”? Match Agent Labels, Platform, and Backend
+# Fix Woodpecker Workflows Stuck in Pending
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Woodpecker CI, CI/CD, Agents, Scheduling, Troubleshooting
+Tags: Woodpecker CI, CI/CD, Agent, Scheduling, Troubleshooting
 
 Description: Diagnose pending Woodpecker workflows by comparing required workflow labels with connected agent labels, capacity, and backend.
 

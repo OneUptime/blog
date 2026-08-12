@@ -1,4 +1,4 @@
-# How to Monitor Failed Fetch Calls When the Browser Exposes Only `TypeError: Failed to fetch`
+# Monitor Fetch Failures Exposed as `TypeError: Failed to fetch`
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -16,7 +16,7 @@ It can still make the failure operationally useful. The goal is to classify what
 
 ## First Separate HTTP Errors from Fetch Rejections
 
-`fetch()` resolves its promise once the response status and headers are available—even when the status is `404`, `429`, or `503`. It rejects when request construction is invalid, when Fetch produces a network error instead of an exposed response, or when the operation is aborted before the promise fulfills. If the signal is aborted after fulfillment, a later read of an unread response body can reject instead.
+`fetch()` resolves its promise once the response status and headers are available-even when the status is `404`, `429`, or `503`. It rejects when request construction is invalid, when Fetch produces a network error instead of an exposed response, or when the operation is aborted before the promise fulfills. If the signal is aborted after fulfillment, a later read of an unread response body can reject instead.
 
 ```js
 const response = await fetch("/api/orders");
@@ -151,7 +151,7 @@ When an abort causes the pending `fetch()` promise to reject, the platform may r
 
 `monitoredFetch()` observes only the `fetch()` promise. If the signal is aborted after response headers make that promise fulfill, a later response-body read can reject; instrument body consumption separately if it is part of the operation.
 
-## What `navigator.onLine` Can—and Cannot—Tell You
+## What `navigator.onLine` Can-and Cannot-Tell You
 
 `navigator.onLine` is a hint based on browser and operating-system heuristics. A device can report online while captive portal, DNS, routing, VPN, or the destination is failing. It can report a network connection even when the internet is unreachable.
 

@@ -1,4 +1,4 @@
-# Validation Summary: Deployment Frequency Improved but Burnout Got Worse: Choosing Balanced Guardrail Metrics
+# Validation Summary: Balance Deployment Frequency Against Burnout
 
 ## Status
 

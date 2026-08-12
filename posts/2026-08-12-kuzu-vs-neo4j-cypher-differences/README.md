@@ -1,4 +1,4 @@
-# Why Doesn’t Neo4j Cypher Run Unchanged in Kuzu? Finding Dialect and Schema Assumptions
+# Why Neo4j Cypher Does Not Run Unchanged in Kuzu
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -8,7 +8,7 @@ Description: Port Neo4j Cypher to Kuzu by surfacing schema, path-semantic, claus
 
 ---
 
-Neo4j and Kuzu both speak Cypher, but “Cypher” is not a promise that every query, data model, function, or path result is interchangeable. Kuzu 0.11.3 follows openCypher where possible while making different choices around typed schemas, path semantics, loading syntax, supported clauses, and functions. A query can therefore fail at parse or bind time—or, more dangerously, run and return a different number of rows.
+Neo4j and Kuzu both speak Cypher, but “Cypher” is not a promise that every query, data model, function, or path result is interchangeable. Kuzu 0.11.3 follows openCypher where possible while making different choices around typed schemas, path semantics, loading syntax, supported clauses, and functions. A query can therefore fail at parse or bind time-or, more dangerously, run and return a different number of rows.
 
 The productive migration strategy is to inventory assumptions instead of patching syntax errors one at a time. Freeze a representative Neo4j query suite, create an explicit Kuzu schema, port by difference category, and compare result invariants. Kuzu was archived in October 2025, so validate against the pinned 0.11.3 documentation and binary rather than assuming future convergence. LadybugDB is the maintained successor; its current compatibility surface has evolved and must not be silently treated as identical to frozen Kuzu.
 
@@ -98,7 +98,7 @@ RETURN b.id;
 
 For no repeated intermediate nodes, use `ACYCLIC`. Kuzu does not include the source and destination nodes in that recursive-relationship check; for no repeated nodes across the complete path, bind a named path and filter with `is_acyclic(p)`. The `is_trail(p)` predicate likewise checks a complete named path. Selecting the recursive semantic in the pattern can still avoid generating many unwanted walks in the first place.
 
-Kuzu assigns a configured default maximum depth—30 in the archived documentation—if an upper bound is omitted. That prevents nontermination; it does not make an unbounded-looking production query selective or cheap. Express the business bound.
+Kuzu assigns a configured default maximum depth-30 in the archived documentation-if an upper bound is omitted. That prevents nontermination; it does not make an unbounded-looking production query selective or cheap. Express the business bound.
 
 ## Difference 4: Loading Is Not `LOAD CSV FROM`
 

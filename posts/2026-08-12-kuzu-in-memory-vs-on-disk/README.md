@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kuzu, In-Memory Database, Persistent Storage, Testing, Graph Analytics
 
-Description: Choose Kuzu's in-memory or on-disk mode from durability, working-set size, concurrency, and reproducibility—not filename folklore.
+Description: Choose Kuzu's in-memory or on-disk mode from durability, working-set size, concurrency, and reproducibility-not filename folklore.
 
 ---
 

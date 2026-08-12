@@ -1,4 +1,4 @@
-# A Kuzu Query Is Slow: Reading `EXPLAIN`/`PROFILE`, Bounding Paths, and Checking Join Order
+# Diagnose Slow Kuzu Queries with `EXPLAIN` and `PROFILE`
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -43,7 +43,7 @@ LIMIT 20;
 
 `EXPLAIN` compiles and prints the plan but does not execute it; timing fields are therefore zero. Read from the leaves toward the result collector and ask:
 
-1. Where does the plan begin—at the selective person key, all people, recent orders, or items?
+1. Where does the plan begin-at the selective person key, all people, recent orders, or items?
 2. Are labels and relationship directions specific enough to select the intended tables?
 3. When are predicates applied?
 4. Which operators expand relationships or join intermediate records?
@@ -212,4 +212,4 @@ Correctness comes before speed: compare row counts, uniqueness, aggregates, and 
 
 ## Conclusion
 
-Treat a slow Kuzu query as a dataflow problem. `EXPLAIN` shows the intended work; `PROFILE` reveals where operator-local work and time accumulate. Bound recursive patterns, select `WALK`, `TRAIL`, `ACYCLIC`, or shortest-path semantics intentionally, anchor from selective schema-backed identities, and keep result projections small. Only then consider a join-order hint—and preserve the profile that proves why it exists.
+Treat a slow Kuzu query as a dataflow problem. `EXPLAIN` shows the intended work; `PROFILE` reveals where operator-local work and time accumulate. Bound recursive patterns, select `WALK`, `TRAIL`, `ACYCLIC`, or shortest-path semantics intentionally, anchor from selective schema-backed identities, and keep result projections small. Only then consider a join-order hint-and preserve the profile that proves why it exists.

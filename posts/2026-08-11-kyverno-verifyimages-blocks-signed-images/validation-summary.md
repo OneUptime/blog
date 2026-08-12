@@ -1,4 +1,4 @@
-# Validation Summary: Why Kyverno `verifyImages` Blocks Signed Images: Digest Mutation, Credentials, and Identity Checks
+# Validation Summary: Why Kyverno `verifyImages` Blocks Signed Images
 
 ## Status
 validated

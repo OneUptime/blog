@@ -1,4 +1,4 @@
-# Validation Summary: Should a Registry Reject Unsigned Pushes or Should Kubernetes Verify Images at Admission?
+# Validation Summary: Registry Push Rejection vs Kubernetes Image Admission
 
 ## Status
 validated

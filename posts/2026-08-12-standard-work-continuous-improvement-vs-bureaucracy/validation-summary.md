@@ -1,4 +1,4 @@
-# Validation Summary: When Does Standard Work Help Continuous Improvement—and When Does It Become Bureaucracy?
+# Validation Summary: When Standard Work Becomes Bureaucracy
 
 ## Status
 

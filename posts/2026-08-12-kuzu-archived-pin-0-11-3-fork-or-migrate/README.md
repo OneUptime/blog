@@ -2,13 +2,13 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kuzu, LadybugDB, Graph Databases, Migration, Software Lifecycle
+Tags: Kuzu, LadybugDB, Graph Database, Migration, Software Lifecycle
 
 Description: Choose a defensible path after Kuzu's archive: pin 0.11.3 briefly, maintain a fork deliberately, or migrate to active LadybugDB releases.
 
 ---
 
-Kuzu is no longer merely a slow-moving dependency. Its official repository was archived on October 10, 2025, is read-only, and lists `v0.11.3` as its latest—and last published—release. The project announcement says existing releases remain usable, but that is a statement about continued availability—not a promise of future security fixes, platform builds, compatibility work, or support.
+Kuzu is no longer merely a slow-moving dependency. Its official repository was archived on October 10, 2025, is read-only, and lists `v0.11.3` as its latest-and last published-release. The project announcement says existing releases remain usable, but that is a statement about continued availability-not a promise of future security fixes, platform builds, compatibility work, or support.
 
 The right response is therefore not “upgrade at once” or “it still runs, so do nothing.” Treat the archive as a lifecycle event. Pinning, forking, and migrating are all reasonable in different circumstances, but each transfers risk to a different place.
 
@@ -31,7 +31,7 @@ Kuzu `0.11.3` bundles the `0.11.2` release with four extensions:
 - `json`
 - `vector`
 
-Those four no longer need a network `INSTALL` step in `0.11.3`. This matters because Kuzu's public extension server was retired with the archive. Other official extensions—and official extensions used with an older Kuzu release—require a locally hosted extension server.
+Those four no longer need a network `INSTALL` step in `0.11.3`. This matters because Kuzu's public extension server was retired with the archive. Other official extensions-and official extensions used with an older Kuzu release-require a locally hosted extension server.
 
 Moving from an earlier Kuzu version to `0.11.3` can therefore remove an immediate deployment dependency and put every environment on the last known upstream bits. Test the upgrade through Kuzu's documented export/import route; do not replace a database binary under a live process or assume every historical on-disk format can be opened directly.
 

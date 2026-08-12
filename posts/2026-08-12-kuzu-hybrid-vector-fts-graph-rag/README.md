@@ -1,4 +1,4 @@
-# How to Combine Kuzu Vector Search, Full-Text Search, and Graph Traversal for Graph RAG
+# Combine Kuzu Vector, Full-Text, and Graph Search for RAG
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -272,4 +272,4 @@ Set limits on vector `k`, `efs`, FTS `top`, fused seeds, entity seeds, traversal
 
 ## Conclusion
 
-Graph RAG works best as a staged retriever. Generate semantic and lexical candidates independently, fuse ranks while preserving provenance, expand only top entities through bounded and authorized graph patterns, and package traceable evidence for generation. Kuzu provides all three primitives in 0.11.3, but relevance comes from disciplined modeling, score handling, limits, and evaluation—not from concatenating every result into a prompt.
+Graph RAG works best as a staged retriever. Generate semantic and lexical candidates independently, fuse ranks while preserving provenance, expand only top entities through bounded and authorized graph patterns, and package traceable evidence for generation. Kuzu provides all three primitives in 0.11.3, but relevance comes from disciplined modeling, score handling, limits, and evaluation-not from concatenating every result into a prompt.

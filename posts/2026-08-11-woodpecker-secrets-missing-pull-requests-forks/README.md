@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Woodpecker CI, CI/CD, Secrets, Pull Requests, Security
+Tags: Woodpecker CI, CI/CD, Secret, Pull Requests, Security
 
 Description: Diagnose missing Woodpecker secrets on pull requests and preserve the default security boundary for untrusted code and forks.
 
@@ -232,4 +232,4 @@ Document why post-merge execution or a local substitute was insufficient.
 
 ## Conclusion
 
-Missing PR secrets are normally Woodpecker enforcing the correct default. Verify that the value is a Woodpecker secret, inspect the actual pipeline event and image restrictions, and use current `from_secret` syntax. Prefer secret-free PR validation followed by a protected-branch publish when everyone with push access to the main repository is trusted; otherwise remove that access or keep the credential unavailable to `push`. If an exception is essential, issue a dedicated, short-lived, read-only credential and retain approval for every untrusted pull request only when its author lacks push permission and everyone able to approve is trusted; approval is an additional—not replacement—control.
+Missing PR secrets are normally Woodpecker enforcing the correct default. Verify that the value is a Woodpecker secret, inspect the actual pipeline event and image restrictions, and use current `from_secret` syntax. Prefer secret-free PR validation followed by a protected-branch publish when everyone with push access to the main repository is trusted; otherwise remove that access or keep the credential unavailable to `push`. If an exception is essential, issue a dedicated, short-lived, read-only credential and retain approval for every untrusted pull request only when its author lacks push permission and everyone able to approve is trusted; approval is an additional-not replacement-control.

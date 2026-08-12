@@ -1,4 +1,4 @@
-# `COPY FROM`, `CREATE`, or `MERGE`: Which Kuzu Ingestion Path Scales to Millions of Nodes and Edges?
+# Choose a Kuzu Ingestion Path for Millions of Nodes and Edges
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -10,14 +10,14 @@ Description: Choose the right Kuzu ingestion primitive for bulk loads, one-off i
 
 For Kuzu, the practical dividing line is simple: use `COPY FROM` to build or append large tables, `CREATE` for known-new records arriving occasionally, and `MERGE` when a small write must match-or-create. Kuzu's archived import guide explicitly positions `CREATE` and `MERGE` for graphs of a few thousand nodes and `COPY FROM` for millions of nodes and beyond.
 
-That guidance matters even more now that Kuzu is frozen at 0.11.3. There will be no later Kuzu optimizer release to rescue an application that sends millions of individual Cypher writes. Make ingestion architecture explicit, pin the Kuzu version, and validate the exact workflow against a copy of the production schema. LadybugDB, the maintained successor, preserves the same broad recommendation, but this article uses Kuzu 0.11.3 names and paths.
+That guidance matters even more now that Kuzu is frozen at 0.11.3. With Kuzu's repository archived and read-only, applications should not expect a later Kuzu optimizer release to rescue a design that sends millions of individual Cypher writes. Make ingestion architecture explicit, pin the Kuzu version, and validate the exact workflow against a copy of the production schema. LadybugDB, the maintained successor, preserves the same broad recommendation, but this article uses Kuzu 0.11.3 names and paths.
 
 ## The Decision in One Table
 
 | Path | Best use | Duplicate behavior | Scaling shape |
 | --- | --- | --- | --- |
-| `COPY FROM` | Initial loads, rebuilds, large append batches | Primary-key violations fail unless supported errors are ignored | Parallel, column-oriented bulk pipeline |
-| `CREATE` | A small number of records known to be new | A duplicate node primary key is an error | One Cypher mutation at a time |
+| `COPY FROM` | Initial loads, rebuilds, large append batches | Primary-key violations fail unless supported errors are ignored | Bulk insertion pipeline; parallel source reads where supported |
+| `CREATE` | A small number of records known to be new | A duplicate node primary key is an error | Per-input-tuple Cypher mutation; not bulk-optimized |
 | `MERGE` | Sparse idempotent writes or upserts | Matches the whole supplied pattern or creates it | Pays matching and mutation cost per operation |
 
 Do not interpret this as a row-count law. A 5,000-row maintenance job may still be easier with `COPY FROM`; a single user registration should not require generating a file. The important distinction is whether the work is a bulk data movement job or an online graph mutation.
@@ -137,6 +137,8 @@ MERGE (a)-[m:MEMBER_OF]->(p)
 ON CREATE SET m.role = $role, m.joined_at = $joined_at
 ON MATCH SET m.role = $role;
 ~~~
+
+Kuzu relationship tables have no user-defined primary key and allow parallel relationships by default. This `MERGE` avoids creating another edge once the endpoint-pair pattern matches, but it does not deduplicate existing parallel edges; `ON MATCH SET` applies to every matching edge.
 
 For a node upsert, match on the stable identity and set mutable fields separately:
 

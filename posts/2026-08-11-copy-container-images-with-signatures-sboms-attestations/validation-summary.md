@@ -1,4 +1,4 @@
-# Validation Summary: How to Copy Container Images Without Losing Cosign Signatures, SBOMs, or Attestations
+# Validation Summary: Copy Container Images with Cosign Signatures, SBOMs, and Attestations
 
 ## Status
 validated

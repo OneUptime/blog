@@ -1,4 +1,4 @@
-# Validation Summary: How to Verify Cosign Signatures from a Private Registry with Custom CAs and Credentials
+# Validation Summary: Verify Cosign Signatures in Private Registries
 
 ## Status
 

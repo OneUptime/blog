@@ -1,4 +1,4 @@
-# Validation Summary: Woodpecker Pipeline Never Starts After a Push: Trace the Forge Webhook, Repository Sync, and Config Path
+# Validation Summary: Woodpecker Pipeline Never Starts After a Push
 
 ## Status
 validated

@@ -1,4 +1,4 @@
-# Validation Summary: How to Prevent Local Optimization from Making the End-to-End Delivery System Slower
+# Validation Summary: Prevent Local Optimization from Slowing Delivery
 
 ## Status
 

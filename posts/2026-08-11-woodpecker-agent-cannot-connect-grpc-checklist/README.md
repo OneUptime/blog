@@ -1,8 +1,8 @@
-# Woodpecker Agent Cannot Connect to the Server: A gRPC Address, Token, and TLS Checklist
+# Fix Woodpecker Agent gRPC Connection Failures
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Woodpecker CI, CI/CD, gRPC, Agents, TLS
+Tags: Woodpecker CI, CI/CD, gRPC, Agent, TLS
 
 Description: Restore a Woodpecker agent connection by validating its gRPC endpoint, registration token, HTTP/2 proxy, and TLS mode.
 
@@ -303,4 +303,4 @@ Do not hide a permanent address or token error with infinite retry. Fix the root
 
 ## Conclusion
 
-An agent connection needs the correct gRPC address, a reachable HTTP/2 path, matching TLS expectations, and the correct agent registration token. Prove those layers in that order. On stable 3.17, explicitly use the misleading `GRPC_VERIFY=false`; on `next`, use `GRPC_SKIP_VERIFY=false`. Persist agent identity, and share the server-only gRPC signing secret across HA replicas. Once the UI reports the agent connected, scheduling problems belong to labels and capacity—not the transport.
+An agent connection needs the correct gRPC address, a reachable HTTP/2 path, matching TLS expectations, and the correct agent registration token. Prove those layers in that order. On stable 3.17, explicitly use the misleading `GRPC_VERIFY=false`; on `next`, use `GRPC_SKIP_VERIFY=false`. Persist agent identity, and share the server-only gRPC signing secret across HA replicas. Once the UI reports the agent connected, scheduling problems belong to labels and capacity-not the transport.

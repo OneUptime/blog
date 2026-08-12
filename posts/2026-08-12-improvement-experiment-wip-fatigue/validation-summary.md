@@ -1,4 +1,4 @@
-# Validation Summary: Improvement Fatigue Is Real: How Many Process Experiments Can a Team Run at Once?
+# Validation Summary: Limit Process Experiments to Prevent Improvement Fatigue
 
 ## Status
 

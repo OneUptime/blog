@@ -1,4 +1,4 @@
-# Validation Summary: Why Doesn’t Neo4j Cypher Run Unchanged in Kuzu? Finding Dialect and Schema Assumptions
+# Validation Summary: Why Neo4j Cypher Does Not Run Unchanged in Kuzu
 
 ## Status
 validated

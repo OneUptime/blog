@@ -1,4 +1,4 @@
-# Validation Summary: How to Cache npm, Maven, and Go Dependencies in Woodpecker Without Cross-Branch Contamination
+# Validation Summary: Cache Dependencies in Woodpecker Without Cross-Branch Contamination
 
 ## Status
 

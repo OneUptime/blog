@@ -1,8 +1,8 @@
-# How Do Files Persist Between Woodpecker Steps? Workspace, Volumes, and Artifacts Explained
+# How Files Persist Between Woodpecker Steps
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Woodpecker CI, CI/CD, Workspace, Volumes, Artifacts
+Tags: Woodpecker CI, CI/CD, Workspaces, Volumes, Artifact
 
 Description: Choose the correct Woodpecker storage boundary for files shared between steps, workflows, pipelines, and agents.
 
@@ -203,7 +203,7 @@ steps:
         from_secret: artifact_secret_key
 ~~~
 
-Plugin settings vary by plugin version; verify them against that plugin's official page and pin the image. The architecture—not this version-specific example—is the important part.
+Plugin settings vary by plugin version; verify them against that plugin's official page and pin the image. The architecture-not this version-specific example-is the important part.
 
 Do not upload `.git`, environment dumps, secret files, or an entire workspace without an allowlist.
 

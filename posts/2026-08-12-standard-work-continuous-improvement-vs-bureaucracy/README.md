@@ -1,10 +1,10 @@
-# When Does Standard Work Help Continuous Improvement—and When Does It Become Bureaucracy?
+# When Standard Work Becomes Bureaucracy
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Continuous Improvement, Standard Work, Lean, Process Design, Bureaucracy
 
-Description: Use standard work as a team-owned, evidence-based baseline for quality and learning—and remove controls that add delay without reducing risk.
+Description: Use standard work as a team-owned, evidence-based baseline for quality and learning-and remove controls that add delay without reducing risk.
 
 ---
 
@@ -35,7 +35,7 @@ Before adding a standard, ask six questions.
 1. **Is the work repeated?** A reusable standard earns back its creation and maintenance cost. A one-off decision record probably does not.
 2. **Is unwanted variation costly?** Incidents, data loss, compliance failures, rework, and confusing handoffs justify more consistency than low-risk exploration.
 3. **Can the desired outcome be observed?** “Use good judgment” is not an operable standard. “Verify the new version is serving healthy requests before increasing traffic” is.
-4. **Does evidence support this method?** Use incident findings, defect data, customer feedback, tests, or regulatory obligations—not preference or seniority alone.
+4. **Does evidence support this method?** Use incident findings, defect data, customer feedback, tests, or regulatory obligations-not preference or seniority alone.
 5. **Can the people doing the work improve it?** If every edit needs an executive committee, the document will drift away from reality.
 6. **Is the control proportional to the risk?** A hard automated gate, a human checklist, optional guidance, and an example are different instruments. Choose the least restrictive one that controls the risk.
 
@@ -95,7 +95,7 @@ A standard is suspect when one or more of these signals persist:
 
 Do not answer these signals by ordering stricter compliance. Run a deletion test. For each step, record its user, protected risk, supporting evidence, cost, and what would reveal harm if it vanished. Remove or trial the removal of steps whose purpose cannot be demonstrated. Where a control is legally required, confirm the actual requirement with the responsible specialist; inherited folklore is not a substitute for the source.
 
-The UK government’s agile governance principles offer a useful test: governance should add value, be light-touch, and not slow delivery unnecessarily. “Trust and verify” can mean granting the team authority while using observable results, audit trails, and periodic checks—not routing every ordinary choice through a board.
+The UK government’s agile governance principles offer a useful test: governance should add value, be light-touch, and not slow delivery unnecessarily. “Trust and verify” can mean granting the team authority while using observable results, audit trails, and periodic checks-not routing every ordinary choice through a board.
 
 ## Operate Standard Work as a PDCA Loop
 
@@ -106,7 +106,7 @@ A standard creates a stable reference for Plan-Do-Check-Act:
 3. **Check:** compare outcome and guardrail measures with the baseline. Also ask operators what new workarounds appeared.
 4. **Act:** adopt the change and update the working standard and its revision record when evidence supports it; otherwise adjust or abandon it and begin another cycle.
 
-The Scrum Sprint Retrospective can feed this loop. The Scrum Guide says the team inspects how the Sprint went, identifies the most helpful changes, and addresses the most impactful improvements as soon as possible. A retrospective action should alter the real working system—automation, checklist, Definition of Done, queue policy, or documentation—not disappear into meeting notes.
+The Scrum Sprint Retrospective can feed this loop. The Scrum Guide says the team inspects how the Sprint went, identifies the most helpful changes, and addresses the most impactful improvements as soon as possible. A retrospective action should alter the real working system-automation, checklist, Definition of Done, queue policy, or documentation-not disappear into meeting notes.
 
 Use a small set of balanced measures:
 

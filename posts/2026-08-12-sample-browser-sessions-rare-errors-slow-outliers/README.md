@@ -1,4 +1,4 @@
-# How Should You Sample Browser Sessions Without Losing Rare Errors and Slow Outliers?
+# Sample Browser Sessions Without Losing Rare Outliers
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

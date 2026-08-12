@@ -1,4 +1,4 @@
-# Kuzu CSV Import Put the Header in Your Data—or Rejected Valid Rows: Fixing Auto-Detection, Nulls, and Delimiters
+# Fix Kuzu CSV Headers, Nulls, Delimiters, and Rejected Rows
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -10,11 +10,13 @@ Description: Make Kuzu CSV imports deterministic by pinning header, delimiter, q
 
 Kuzu auto-detects several CSV settings when `COPY FROM` or `LOAD FROM` does not specify them. That convenience can misclassify a header as data, treat the first data row as a header, choose the wrong delimiter, or interpret a source null marker as an ordinary string. The fix is to inspect the bytes, declare the dialect explicitly, and treat ignored rows as a measured data-quality decision.
 
+The behavior below is pinned to Kuzu 0.11.3, the final archived release. Older versions may differ.
+
 For repeatable ingestion, do not let production infer a format you already know.
 
 ## Why Header Detection Can Be Wrong
 
-Kuzu's documented header detector parses the first line and asks whether every value can be cast to the corresponding target column type. If it can, Kuzu treats that line as data. If it cannot, Kuzu assumes the line is a header and skips it.
+For `COPY FROM`, Kuzu's documented header detector parses the first line and compares each value with the corresponding target column type. `LOAD FROM` has no target schema, so it compares the first row's inferred types with types inferred from the sampled rows. In final Kuzu 0.11.3, a first-row value inferred as `STRING` where a non-string type is expected can make the detector treat the line as a header; otherwise it treats the line as data.
 
 That heuristic has two obvious ambiguous cases.
 
@@ -41,7 +43,7 @@ COPY Customer FROM 'customers.csv'
   (HEADER=true, DELIM=',');
 ~~~
 
-Second, a headerless file's first real row may not cast under the chosen dialect or target schema. Kuzu can then treat that row as a header and skip it. A date in an unexpected format, whitespace around a number, or a comma parsed under the wrong delimiter can trigger the misclassification.
+Second, a headerless file's first real row may not match the target schema. Kuzu can then treat that row as a header and skip it. A date in an unexpected format, or another value inferred as `STRING` where the target expects a non-string type, can trigger the misclassification.
 
 For a headerless file, say so:
 
@@ -57,14 +59,18 @@ Explicit `HEADER` removes the guess but does not fix incompatible values. Valida
 Kuzu auto-detects unspecified `HEADER`, `DELIM`, `QUOTE`, and `ESCAPE` settings by default. Specifying only two leaves the other two inferred:
 
 ~~~cypher
-COPY Customer FROM 'customers.psv'
-  (HEADER=true, DELIM='|');
+COPY Customer FROM 'customers.psv' (
+    FILE_FORMAT='csv',
+    HEADER=true,
+    DELIM='|'
+);
 ~~~
 
 Kuzu still detects quote and escape behavior. If the producer has a contract, pin the whole dialect:
 
 ~~~cypher
 COPY Customer FROM 'customers.psv' (
+    FILE_FORMAT='csv',
     HEADER=true,
     DELIM='|',
     QUOTE='"',
@@ -73,7 +79,7 @@ COPY Customer FROM 'customers.psv' (
 );
 ~~~
 
-With auto-detection off, unspecified fields use documented defaults: no header, comma delimiter, double quote, backslash escape, and no skipped rows. State every meaningful choice anyway so a reviewer does not need to reconstruct defaults.
+With auto-detection off, unspecified fields use the final Kuzu 0.11.3 implementation defaults: `HEADER=false`, `DELIM=','`, `QUOTE='"'`, `ESCAPE='"'`, `SKIP=0`, and `IGNORE_ERRORS=false`. State every meaningful choice anyway so a reviewer does not need to reconstruct defaults.
 
 Kuzu's detector samples the first 256 lines by default and considers delimiters comma, pipe, semicolon, and tab; quote candidates double quote, single quote, or none; and several escape candidates. `sample_size` changes how much it examines, but a larger sample does not resolve a genuinely ambiguous file. An explicit contract does.
 
@@ -88,11 +94,20 @@ python - <<'PY'
 import csv
 
 with open('customers.psv', newline='', encoding='utf-8') as stream:
-    reader = csv.reader(stream, delimiter='|', quotechar='"', escapechar='\\')
+    reader = csv.reader(
+        stream,
+        delimiter='|',
+        quotechar='"',
+        escapechar='\\',
+        doublequote=False,
+        strict=True,
+    )
     for number, row in zip(range(1, 6), reader):
         print(number, len(row), row)
 PY
 ~~~
+
+Treat this Python parser as a structural preview, not an exact Kuzu validator: Python applies `escapechar` to any following character, whereas Kuzu 0.11.3 recognizes `ESCAPE` only before `QUOTE` or `ESCAPE` inside quoted fields. Inspect null sentinels such as `\N` in the raw file, and use the staging `COPY` as authoritative.
 
 Run this inside the same container or environment so the path and bytes match production. Check:
 
@@ -114,6 +129,7 @@ Do not “fix” a producer contract by editing a one-off production file manual
 
 ~~~cypher
 LOAD FROM 'customers.psv' (
+    FILE_FORMAT='csv',
     HEADER=true,
     DELIM='|',
     QUOTE='"',
@@ -128,20 +144,23 @@ Confirm column names, inferred types, nulls, and values. A preview is not full v
 
 ## Define Null Semantics Explicitly
 
-Kuzu treats the empty string as `NULL` by default. Producers commonly use `NULL`, `null`, `N/A`, or `\N` instead. Without configuration, a text column may receive the literal marker while a numeric or date column fails to cast.
+Kuzu's default `NULL_STRINGS` list contains only the empty string. For `STRING` columns, that means an empty value becomes `NULL` while nonempty markers such as `NULL`, `null`, `N/A`, or `\N` remain ordinary strings unless configured. Final Kuzu 0.11.3 handles non-string targets differently: empty or whitespace-only values and case-insensitive `NULL` become null, while custom markers such as `N/A` or `\N` fail to cast.
 
-Set `NULL_STRINGS` to the source contract:
+For `STRING` columns, set `NULL_STRINGS` to the source contract:
 
 ~~~cypher
 COPY Customer FROM 'customers.psv' (
+    FILE_FORMAT='csv',
     HEADER=true,
     DELIM='|',
+    QUOTE='"',
+    ESCAPE='\\',
     AUTO_DETECT=false,
     NULL_STRINGS=['', 'NULL', '\\N']
 );
 ~~~
 
-Null matching is data interpretation, so case and whitespace matter. Do not list `N/A` as null if it is a legitimate business value. If an empty string must remain distinct from null, test a dialect configuration that uses a dedicated null sentinel and verify the round trip; never assume the target preserves a distinction the import rule has erased.
+`NULL_STRINGS` matching for `STRING` values is exact, so case and whitespace matter. For non-string targets, final Kuzu 0.11.3 does not use custom `NULL_STRINGS`; normalize custom sentinels before `COPY`. Do not list `N/A` as null if it is a legitimate business value. If an empty string must remain distinct from null in a `STRING` column, test a configuration that uses a dedicated null sentinel and verify the round trip; never assume the target preserves a distinction the import rule has erased.
 
 After import, compare null counts to the source expectation:
 
@@ -155,9 +174,9 @@ The difference is the number with null `region`. Check important properties indi
 
 ## Whitespace Is Data
 
-Kuzu follows CSV behavior that does not discard leading or trailing spaces. The documentation gives a value such as ` 213 ` as a malformed integer rather than silently trimming it. This prevents hidden changes, but it surprises pipelines whose producers align columns visually.
+Whitespace handling is type-dependent. Final Kuzu 0.11.3 preserves leading and trailing spaces in `STRING` fields, while common typed casts such as integers, booleans, and dates trim surrounding whitespace; for example, ` 213 ` is accepted as integer `213`. Validate the exact target types because other types can differ.
 
-Normalize upstream with a parser that understands quotes. Do not run a global whitespace replacement: spaces inside names and quoted text can be meaningful. If the contract permits padding, trim typed fields during a controlled transform and retain the original file and transform version for audit.
+If the producer contract requires normalized whitespace, normalize upstream with a parser that understands quotes. Do not run a global whitespace replacement: spaces inside names and quoted text can be meaningful. Retain the original file and transform version for audit.
 
 ## Treat `IGNORE_ERRORS` as Quarantine, Not Success
 
@@ -165,8 +184,11 @@ The default `IGNORE_ERRORS=false` makes malformed input fail rather than disappe
 
 ~~~cypher
 COPY Customer FROM 'customers.psv' (
+    FILE_FORMAT='csv',
     HEADER=true,
     DELIM='|',
+    QUOTE='"',
+    ESCAPE='\\',
     AUTO_DETECT=false,
     IGNORE_ERRORS=true
 );
@@ -174,7 +196,9 @@ COPY Customer FROM 'customers.psv' (
 CALL SHOW_WARNINGS() RETURN *;
 ~~~
 
-Kuzu documents that ignored malformed rows are exposed through warnings, with `CLEAR_WARNINGS()` available to clear them. Export warning details, count them, and compare the count with an explicit threshold. The default warning storage limit is finite, so configure and monitor it when processing large dirty files.
+Kuzu documents that ignored malformed rows are exposed through warnings, with `CLEAR_WARNINGS()` available to clear them. The warnings table is connection-level and accumulates for the connection's lifetime, so use a fresh connection, preserve and clear earlier warnings before the import, or filter on the current `query_id` when computing a per-import count. Export the details and compare the count with an explicit threshold.
+
+Use a fresh connection for an exact count from the `COPY` result. In final Kuzu 0.11.3, that result reports all warnings counted since the previous completed `COPY`, not necessarily only that import: `CLEAR_WARNINGS()` clears retained warning rows but not the internal counter, so warnings from an earlier `LOAD FROM` can inflate the result. Warning details are retained only up to the connection's `warning_limit`, which defaults to 8192. Additional details are discarded after that limit, so configure it high enough before the import if every rejected row must be retained.
 
 A pipeline that reports “COPY succeeded” while silently dropping 5% of customers has failed. Record attempted, inserted, rejected, and duplicate counts. Repair and replay quarantined rows after fixing the source.
 
@@ -214,21 +238,23 @@ Before importing a full production graph:
 5. copy into an empty disposable Kuzu database;
 6. inspect warnings and reconcile row counts;
 7. validate primary keys, null distributions, ranges, and relationship direction;
-8. rerun the same job to prove inputs and configuration are reproducible;
+8. rerun the same job against a fresh empty database to prove inputs and configuration are reproducible;
 9. promote the exact file and import configuration together.
 
 For multiple files or glob patterns, require the same column layout and dialect in every file. A valid first shard does not validate later shards.
 
 ## Official Documentation
 
+- [Kuzu import overview and explicit file formats](https://kuzudb.github.io/docs/import/)
 - [Kuzu CSV import and all configuration options](https://kuzudb.github.io/docs/import/csv/)
 - [Kuzu `LOAD FROM` scanning](https://kuzudb.github.io/docs/get-started/scan/)
-- [Kuzu warnings table and `SHOW_WARNINGS`](https://kuzudb.github.io/docs/import/csv/#ignore-erroneous-rows)
+- [Kuzu warnings table and `SHOW_WARNINGS`](https://kuzudb.github.io/docs/import/#warnings-table-inspecting-skipped-rows)
 - [Kuzu create-table types and primary keys](https://kuzudb.github.io/docs/cypher/data-definition/create-table/)
 - [Kuzu data types](https://kuzudb.github.io/docs/cypher/data-types/)
 - [Kuzu transactions and `COPY FROM`](https://kuzudb.github.io/docs/cypher/transaction/)
 - [Kuzu configuration and warning limit](https://kuzudb.github.io/docs/cypher/configuration/)
-- [Kuzu final archived documentation](https://github.com/kuzudb/kuzu)
+- [Kuzu final v0.11.3 release](https://github.com/kuzudb/kuzu/releases/tag/v0.11.3)
+- [Kuzu final archived source repository](https://github.com/kuzudb/kuzu)
 
 ## Conclusion
 

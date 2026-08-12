@@ -1,4 +1,4 @@
-# How to Run a Value-Stream Mapping Session That Reveals Wait Time, Rework, and Handoffs
+# Run a Value-Stream Mapping Session
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -78,7 +78,7 @@ DORA's work-visibility guidance suggests roughly five to fifteen process blocks.
 
 ## Map the current state as it actually operates
 
-Start with a recent item and ask, “What happened next?” For every block, record the entry condition, work performed, exit condition, responsible group, supporting system, and destination. Lean value-stream mapping includes both work flow and information flow, so draw how a request, approval, test result, or deployment signal moves—not just the artifact being changed.
+Start with a recent item and ask, “What happened next?” For every block, record the entry condition, work performed, exit condition, responsible group, supporting system, and destination. Lean value-stream mapping includes both work flow and information flow, so draw how a request, approval, test result, or deployment signal moves-not just the artifact being changed.
 
 A structured worksheet helps:
 
@@ -138,7 +138,7 @@ A handoff is not automatically waste; specialized knowledge and independent cont
 For each handoff, capture:
 
 - the exact completion and acceptance policies;
-- the signal used—conversation, ticket, pull request, email, or scheduled meeting;
+- the signal used-conversation, ticket, pull request, email, or scheduled meeting;
 - the information and evidence transferred;
 - queue ownership and expected response;
 - rejection or clarification rate;

@@ -1,4 +1,4 @@
-# Validation Summary: Why Does `INSTALL EXTENSION` Fail in Kuzu Now? Using Bundled Extensions or a Local Extension Server
+# Validation Summary: Fix Kuzu `INSTALL` with Bundled or Local Extensions
 
 ## Status
 

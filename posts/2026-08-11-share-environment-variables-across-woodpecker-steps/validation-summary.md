@@ -1,4 +1,4 @@
-# Validation Summary: How to Share Environment Variables Across Woodpecker Steps Without Repeating YAML
+# Validation Summary: Share Environment Variables Across Woodpecker Steps
 
 ## Status
 validated

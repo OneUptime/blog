@@ -1,8 +1,8 @@
-# Kuzu to LadybugDB: What Actually Changes in Packages, APIs, Extensions, and Database Files?
+# Kuzu to LadybugDB: Packages, APIs, Extensions, and Database Files
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kuzu, LadybugDB, Graph Databases, API Migration, Extensions
+Tags: Kuzu, LadybugDB, Graph Database, API Migration, Extension
 
 Description: Migrate Kuzu deliberately by mapping renamed packages and APIs, retesting extensions, and rebuilding database files through portable exports.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kuzu, Graph Data Modeling, Cypher, Primary Keys, Schema Design
+Tags: Kuzu, Graph Data Modeling, Cypher, Primary Key, Schema Design
 
 Description: Design a Kuzu schema with stable node identities, directed typed relationships, deliberate multiplicities, and import-friendly endpoint keys.
 
@@ -118,7 +118,7 @@ CREATE REL TABLE FOLLOWS(
 );
 ~~~
 
-Direction should read naturally: `(user)-[:PLACED]->(order)` and `(order)-[:CONTAINS]->(product)`. Kuzu's relationship records have a source and destination and can carry properties. Put facts about the connection—quantity, role, timestamp, confidence, or source—on the relationship when they do not describe either endpoint alone.
+Direction should read naturally: `(user)-[:PLACED]->(order)` and `(order)-[:CONTAINS]->(product)`. Kuzu's relationship records have a source and destination and can carry properties. Put facts about the connection-quantity, role, timestamp, confidence, or source-on the relationship when they do not describe either endpoint alone.
 
 Do not duplicate endpoint IDs as ordinary relationship properties merely to make them visible. The graph already binds endpoints; return their primary-key properties in queries.
 
@@ -232,7 +232,7 @@ Validate imports with per-table counts and representative traversals. A file wit
 
 ## Properties Versus Nodes
 
-Keep a value as a property when it has no independent identity and no meaningful relationships—for example a display name, quantity, Boolean flag, or price captured on an order line. Make it a node when it is shared, queried through connections, independently updated, governed, or referenced by many entities.
+Keep a value as a property when it has no independent identity and no meaningful relationships-for example a display name, quantity, Boolean flag, or price captured on an order line. Make it a node when it is shared, queried through connections, independently updated, governed, or referenced by many entities.
 
 For example, a free-form `city_name` property is enough for display. A `City` node is justified when users connect to cities and queries traverse regions, services, or events through them.
 

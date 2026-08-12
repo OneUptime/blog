@@ -260,6 +260,7 @@
 - A100
 - A11y
 - A3 GPU
+- A3 Thinking
 - AAA
 - AAAA
 - AAAA Records
@@ -402,7 +403,7 @@
 - Actor Model
 - Actuarial
 - Actuator
-- Ad Blocker
+- Ad Blockers
 - Ad Blocking
 - Ad Hoc Commands
 - Ad Insertion
@@ -901,7 +902,7 @@
 - API Key Authentication
 - API Lifecycle
 - API Management
-- Api migration
+- API Migration
 - API Mocking
 - API Monitoring
 - API Optimization
@@ -1337,7 +1338,7 @@
 - Attack Surface Reduction
 - Attack Vectors
 - Attacks
-- Attestation
+- Attestations
 - Attestors
 - Attribute
 - Attribute Enrichment
@@ -1988,6 +1989,7 @@
 - BDP
 - BDR
 - BE
+- Beacon API
 - BEAM
 - Bean Configuration
 - Bean Validation
@@ -2024,6 +2026,7 @@
 - Better Uptime
 - BETWEEN
 - BeyondCorp
+- bfcache
 - BFD
 - BFF
 - BFF Pattern
@@ -2369,11 +2372,14 @@
 - Browser
 - Browser Automation
 - Browser Cache
-- Browser Extension
+- Browser Extensions
 - Browser Instrumentation
 - Browser Monitoring
+- Browser Performance
 - Browser SDK
 - Browser Security
+- Browser Storage
+- Browser Telemetry
 - Browser Testing
 - Browser Tracing
 - Browser Uploads
@@ -2515,7 +2521,9 @@
 - Bundler
 - Bundles
 - Bundling
+- Bureaucracy
 - Burn Rate
+- Burnout
 - Burp Suite
 - Burst
 - Bus
@@ -2800,6 +2808,7 @@
 - Certificate Chain
 - Certificate Conversion
 - Certificate Debugging
+- Certificate Expiration
 - Certificate Expiry
 - Certificate Management
 - Certificate Manager
@@ -2835,6 +2844,7 @@
 - Change Data Capture
 - Change Detection
 - Change Failure Rate
+- Change Fatigue
 - Change Feed
 - Change Feed Processor
 - Change Freeze
@@ -2941,6 +2951,7 @@
 - Chrome DevTools
 - Chrome Enterprise Premium
 - Chrome Extension
+- Chrome UX Report
 - Chromebook
 - ChromeDevTools
 - ChromeOS
@@ -2966,6 +2977,7 @@
 - CI CD
 - Ci-cd
 - CI/CD
+- CI/CD Security
 - CIAM
 - CIB
 - CID
@@ -3719,6 +3731,7 @@
 - Conditional Compilation
 - Conditional Deployment
 - Conditional Display
+- Conditional Execution
 - Conditional Expression
 - Conditional Forwarding
 - Conditional Function
@@ -4046,6 +4059,7 @@
 - Continuous Delivery
 - Continuous Deployment
 - Continuous Development
+- Continuous Improvement
 - Continuous Integration
 - Continuous Profiling
 - Continuous Testing
@@ -4124,6 +4138,7 @@
 - COPY
 - COPY Algorithm
 - Copy Blob
+- COPY FROM
 - COPY INTO
 - Copy Module
 - Copy-on-Write
@@ -4595,6 +4610,7 @@
 - Customer Feedback
 - Customer Health Score
 - Customer Lifetime Value
+- Customer Outcomes
 - Customer Profitability
 - Customer Reviews
 - Customer Service
@@ -4616,6 +4632,7 @@
 - Cyber Defense
 - CyberArk
 - Cybersecurity
+- Cycle Time
 - Cyclictest
 - CycloneDX
 - Cypher
@@ -5178,6 +5195,7 @@
 - Deliverability
 - Delivery
 - Delivery Guarantee
+- Delivery Management
 - Delivery Pipeline
 - Delivery Plans
 - Delivery Routing
@@ -5255,6 +5273,7 @@
 - Deployment Orchestration
 - Deployment Order
 - Deployment Ordering
+- Deployment Pain
 - Deployment Patterns
 - Deployment Pipeline
 - Deployment Planning
@@ -5661,6 +5680,7 @@
 - DM-Multipath
 - Dm-writecache
 - DMA
+- DMAIC
 - DMARC
 - DmClock
 - dmcrypt
@@ -6327,6 +6347,7 @@
 - Engineering Culture
 - Engineering Efficiency
 - Engineering Management
+- Engineering Metrics
 - Engineering Standards
 - Enhanced DAD
 - Enhanced Monitoring
@@ -6928,6 +6949,7 @@
 - Feed
 - Feed Ranking
 - Feedback
+- Feedback Loops
 - Feign
 - Felix
 - FelixConfiguration
@@ -6937,6 +6959,7 @@
 - FERPA
 - FerretDB
 - Fetch
+- Fetch API
 - Fetch Stage
 - FFI
 - FFmpeg
@@ -6986,6 +7009,7 @@
 - File Layout
 - File Loading
 - File Lock
+- File Locking
 - File Management
 - File Monitoring
 - File Mount
@@ -7194,6 +7218,7 @@
 - Flow Export
 - Flow Label
 - Flow Logs
+- Flow Metrics
 - Flow Monitoring
 - Flow Producer
 - Flow Programming
@@ -7893,13 +7918,17 @@
 - Granule
 - Grape
 - Graph
+- Graph Analytics
 - Graph API
 - Graph Command
 - Graph Data
+- Graph Data Modeling
 - Graph Database
 - Graph driver
+- Graph Migration
 - Graph Queries
 - Graph Query
+- Graph RAG
 - Graph Structure
 - Graph Traversal
 - Graph-Based
@@ -8000,6 +8029,7 @@
 - Guacamole
 - Guard
 - GuardDuty
+- Guardrail Metrics
 - Guardrails
 - GUE
 - Guest Access
@@ -8630,6 +8660,7 @@
 - ID Generator
 - ID Mapping
 - ID Token
+- IDBFS
 - IDE
 - IDE Configuration
 - IDE Integration
@@ -8681,6 +8712,7 @@
 - ifconfig
 - Ifenslave
 - ifNull
+- Iframes
 - Iftop
 - Ifupdown
 - IGMP
@@ -8735,6 +8767,7 @@
 - Image Metadata
 - Image Migration
 - Image Mirror
+- Image Mirroring
 - Image Optimization
 - Image Policies
 - Image Policy
@@ -8849,6 +8882,7 @@
 - Incident Detection
 - Incident Escalation
 - Incident Investigation
+- Incident Learning
 - Incident Management
 - Incident Metrics
 - Incident Prevention
@@ -8914,6 +8948,7 @@
 - Index Tuning
 - Index Usage
 - index_granularity
+- IndexedDB
 - Indexer
 - Indexer Management
 - Indexer Manager
@@ -9040,6 +9075,7 @@
 - Inodes
 - Inotify
 - Inotifywait
+- INP
 - INPLACE Algorithm
 - Input
 - Input Binding
@@ -9494,6 +9530,8 @@
 - JavaScript
 - JavaScript API
 - JavaScript Engine
+- JavaScript Errors
+- JavaScript Performance
 - JavaScript Policies
 - JavaScript Rendering
 - JAX
@@ -9774,6 +9812,7 @@
 - KeyDB
 - Keyfile
 - Keyless Authentication
+- Keyless Signing
 - Keyless Verification
 - Keyring
 - Keyring Plugin
@@ -9887,6 +9926,7 @@
 - KubeRay
 - Kubernetes
 - Kubernetes 1.31
+- Kubernetes Admission
 - Kubernetes API
 - Kubernetes API Server
 - Kubernetes Auth
@@ -9937,6 +9977,8 @@
 - Kustomize
 - Kustomize Controller
 - Kuttl
+- Kuzu
+- Kuzu Explorer
 - KV
 - KV Secrets
 - KV Store
@@ -9980,8 +10022,10 @@
 - Laboratory
 - LACNIC
 - LACP
+- LadybugDB
 - Lag
 - Lag Metrics
+- Lagging Indicators
 - Lake Formation
 - Lakeflow Jobs
 - Lakehouse
@@ -10106,7 +10150,7 @@
 - Leader Placement
 - Leaderboard
 - Leadership
-- Leading Indicator
+- Leading Indicators
 - Leaf-Spine
 - Leak
 - Leak Detection
@@ -10382,6 +10426,7 @@
 - Local Backend
 - Local chat
 - Local Datastore
+- Local Debugging
 - Local Development
 - Local Environment
 - Local Execution
@@ -10555,6 +10600,7 @@
 - Long Distance
 - Long Polling
 - Long Running Tasks
+- Long Tasks
 - Long-Running
 - Long-Running Connections
 - Long-Running Jobs
@@ -10771,6 +10817,7 @@
 - Manual Control
 - Manual Instrumentation
 - Manual Operations
+- Manual Pipelines
 - Manual Steps
 - Manual Sync
 - Manual Testing
@@ -11680,6 +11727,7 @@
 - Multiple Prefixes
 - Multiple Projects
 - Multiple Providers
+- Multiple Signatures
 - Multiple Stores
 - Multiple Subscriptions
 - Multiple Trigger
@@ -12317,6 +12365,7 @@
 - Not Ready
 - Not Starting
 - Notary
+- Notary Project
 - Notation
 - Note-Taking
 - Notebook
@@ -12502,7 +12551,9 @@
 - OCI
 - OCI Artifacts
 - OCI Compute
+- OCI Image Index
 - OCI Images
+- OCI Referrers
 - OCI Registry
 - Oci vault
 - Oci-Sync
@@ -12537,6 +12588,7 @@
 - Offline Scanning
 - Offline Testing
 - Offline validation
+- Offline Verification
 - offline_access
 - Offline-First
 - Offload
@@ -12786,6 +12838,7 @@
 - Organization Policy
 - Organization Security
 - Organization Settings
+- Organizational Change
 - Organizational Culture
 - Organizational Design
 - Origin
@@ -12992,6 +13045,7 @@
 - Pact
 - Page Cache
 - Page Fault
+- Page Lifecycle
 - Page Load
 - Page Object Pattern
 - Page Objects
@@ -13207,6 +13261,7 @@
 - Pcs
 - PD
 - PDB
+- PDCA
 - PDF
 - PDF Generation
 - PDF OCR
@@ -13216,6 +13271,7 @@
 - Pdns
 - Pdns-recursor
 - PDO
+- PDSA
 - PDTs
 - PDU Session
 - Peak Load
@@ -13264,6 +13320,7 @@
 - Performance
 - Performance Advisor
 - Performance Analysis
+- Performance API
 - Performance Benchmarking
 - Performance Benchmarks
 - Performance Budgets
@@ -13286,6 +13343,7 @@
 - Performance Testing
 - Performance Tuning
 - Performance Validation
+- PerformanceObserver
 - Perftest
 - Period Comparison
 - Periodic Task
@@ -13914,6 +13972,7 @@
 - Prepare
 - Prepared Queries
 - Prepared Statement
+- Prerendering
 - Prerequisites
 - Preseed
 - Presence
@@ -14045,12 +14104,16 @@
 - Process Affinity
 - Process Control
 - Process Customization
+- Process Design
+- Process Improvement
 - Process Isolation
 - Process Limits
 - Process Management
 - Process Manager
+- Process Measurement
 - Process Metrics
 - Process Monitoring
+- Process Ownership
 - Process Security
 - Process Substitution
 - Process Tracing
@@ -14314,6 +14377,7 @@
 - Pull Request Automation
 - Pull Request Testing
 - Pull Requests
+- Pull Systems
 - Pull-Based
 - Pull-Requests
 - Pull-Through Cache
@@ -14490,6 +14554,7 @@
 - Query Routing
 - Query Rule
 - Query Scheduling
+- Query Security
 - Query Settings
 - Query Shape
 - Query Store
@@ -14792,6 +14857,7 @@
 - Rebase
 - Reboot
 - Rebuild
+- Recall
 - ReCAPTCHA Enterprise
 - Receive Side Scaling
 - Receive Window
@@ -15073,6 +15139,7 @@
 - Remote Storage
 - Remote Table
 - Remote Tap
+- Remote Teams
 - Remote URL
 - Remote User
 - Remote Work
@@ -15400,6 +15467,7 @@
 - Retrieval Agent
 - Retrieval Augmented Generation
 - Retrieval-Augmented Generation
+- Retrospectives
 - Retry
 - Retry Logic
 - Retry Options
@@ -15991,6 +16059,7 @@
 - Scheduled Maintenance
 - Scheduled Messages
 - Scheduled Notifications
+- Scheduled Pipelines
 - Scheduled Processing
 - Scheduled Queries
 - Scheduled Reports
@@ -16590,6 +16659,7 @@
 - Shading
 - Shadow
 - Shadow Deployment
+- Shadow DOM
 - Shadow IT
 - Shadow Testing
 - Shadow Traffic
@@ -16736,6 +16806,7 @@
 - SIGPIPE
 - SIGSEGV
 - Sigstore
+- Sigstore Bundles
 - SIGTERM
 - SigV4
 - SIIT
@@ -16972,6 +17043,7 @@
 - SOCKS Proxy
 - SOCKS5
 - Soft Delete
+- Soft Navigations
 - Soft Reconfiguration
 - Soft-Delete
 - SoftEther
@@ -16985,10 +17057,12 @@
 - Software Design
 - Software Development
 - Software Engineering
+- Software Lifecycle
 - Software Procurement
 - Software Quality
 - Software Signing
 - Software Supply Chain
+- Software Teams
 - Software Testing
 - Software Watchdog
 - Software-Defined Networking
@@ -17394,6 +17468,7 @@
 - Standard SSD
 - Standard Tier
 - Standard User
+- Standard Work
 - Standardization
 - Standby
 - Star Schema
@@ -17490,12 +17565,14 @@
 - Static-ip
 - Statistical Analysis
 - Statistical Function
+- Statistical Process Control
 - Statistical Query
 - Statistics
 - Stats
 - StatsD
 - StatsHandler
 - Status
+- Status 0
 - Status Checks
 - Status Code
 - Status Conditions
@@ -17829,6 +17906,7 @@
 - Suspend
 - Suspense
 - Sustainability
+- Sustainable Delivery
 - Svelte
 - SvelteKit
 - SVirt
@@ -18006,6 +18084,7 @@
 - Systems Management
 - Systems Manager
 - Systems Programming
+- Systems Thinking
 - SystemTap
 - Sysvinit
 - T-Digest
@@ -18184,9 +18263,11 @@
 - Team Chat
 - Team Collaboration
 - Team Communication
+- Team Culture
 - Team Development
 - Team Directory
 - Team Documentation
+- Team Experimentation
 - Team Fortress 2
 - Team Foundation Server
 - Team Leadership
@@ -18230,6 +18311,7 @@
 - Telemetry Ingestion
 - Telemetry Pipeline
 - Telemetry Processing
+- Telemetry Reliability
 - Telemetry Reprocessing
 - Telemetry Routing
 - Telemetry Sampling
@@ -18430,6 +18512,7 @@
 - Thehive
 - theilsU
 - Themes
+- Theory of Constraints
 - Theta Sketch
 - Thin Pool
 - Thin Provisioning
@@ -18464,6 +18547,7 @@
 - Three-Node
 - Three-Tier
 - Threshold
+- Threshold Policy
 - Threshold Tuning
 - Thrift
 - Throttle
@@ -18860,6 +18944,7 @@
 - Translator
 - Transmission
 - Transparency
+- Transparency Log
 - Transparent Bridge
 - Transparent Data Encryption
 - Transparent Proxy
@@ -19305,6 +19390,7 @@
 - User Session
 - User Setting
 - User Switching
+- User Timing
 - User Tracking
 - User Variable
 - User-Agent
@@ -19384,6 +19470,7 @@
 - Value Mapping
 - Value Receiver
 - Value Stream
+- Value-Stream Mapping
 - Values Files
 - Values Format
 - VALUES Function
@@ -20013,6 +20100,7 @@
 - WinRM
 - Winsock
 - Winston
+- WIP Limits
 - Wire
 - Wire Compression
 - Wire Protocol
@@ -20049,7 +20137,10 @@
 - WooCommerce
 - Woodpecker
 - Woodpecker CI
+- woodpecker-cli
 - WordPress
+- Work in Progress
+- Work Item Age
 - Work Item Tracking
 - Work Items
 - Work Orders
@@ -20245,6 +20336,7 @@
 - xxHash
 - Yacht
 - YAML
+- YAML Anchors
 - YAML Configuration
 - YAML Markers
 - YAML Pipelines

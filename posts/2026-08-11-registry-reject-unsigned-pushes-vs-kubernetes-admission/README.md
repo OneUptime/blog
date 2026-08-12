@@ -1,4 +1,4 @@
-# Should a Registry Reject Unsigned Pushes or Should Kubernetes Verify Images at Admission?
+# Registry Push Rejection vs Kubernetes Image Admission
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -36,7 +36,7 @@ build -> staging repository -> sign/attest/scan -> verify -> production reposito
 
 The build identity may push to staging. A trusted promotion service verifies signatures and attestations by immutable digest, copies the full OCI graph to production, and is the only principal allowed to push production subjects or move production tags.
 
-The production registry is “signed-only” operationally because its authorization policy trusts only the promotion service—not because every blob upload is synchronously aware of future referrers.
+The production registry is “signed-only” operationally because its authorization policy trusts only the promotion service-not because every blob upload is synchronously aware of future referrers.
 
 A registry product with native quarantine or policy evaluation can implement a similar state machine. Validate its official behavior for indexes, referrers, separate signature repositories, replication, retention, and failure recovery.
 

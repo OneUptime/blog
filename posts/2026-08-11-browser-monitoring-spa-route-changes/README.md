@@ -1,8 +1,8 @@
-# Why Does Browser Monitoring Miss SPA Route Changes? Instrumenting Virtual Navigations and Route Timings
+# Why Browser Monitoring Misses SPA Route Changes
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Browser Monitoring, Single Page Applications, Soft Navigations, Performance API, OpenTelemetry, Real User Monitoring
+Tags: Browser Monitoring, Single Page Application, Soft Navigations, Performance API, OpenTelemetry, Real User Monitoring
 
 Description: Capture SPA route transitions with portable router timings today while progressively adopting Chrome's Soft Navigations performance entries.
 
@@ -17,7 +17,7 @@ Fixing this requires two layers:
 1. Instrument route intent, completion, outcome, and context in the application or router for broad browser coverage.
 2. Progressively consume Chrome's Soft Navigations API where it is available, without assuming every browser, RUM SDK, or public field dataset supports it yet.
 
-## What a Route Change Does—and Does Not—Emit
+## What a Route Change Does-and Does Not-Emit
 
 A hard navigation creates a new document and naturally supplies Navigation Timing, paint timing, resource timing, and page lifecycle boundaries. A typical SPA transition instead does something like:
 
@@ -192,7 +192,7 @@ span.end(endTimestamp);
 
 The browser OpenTelemetry semantic conventions are still marked Development in the official specification. Avoid claiming custom route attributes are stable OpenTelemetry conventions. Replace the placeholder `com.example` prefix with a unique company or application namespace, version your own schema, and review the conventions before migrating attribute names.
 
-Browser trace propagation also needs deliberate CORS and security configuration. For cross-origin fetch or XHR propagation, allowlist only trusted destinations—for example, with `propagateTraceHeaderCorsUrls`—and configure each destination's CORS response to allow the caller origin and every injected request header: at least `traceparent`, plus `tracestate` and `baggage` if enabled. Remember that spans may be sampled out and telemetry export may be blocked by CSP, CORS, extensions, or network policy.
+Browser trace propagation also needs deliberate CORS and security configuration. For cross-origin fetch or XHR propagation, allowlist only trusted destinations-for example, with `propagateTraceHeaderCorsUrls`-and configure each destination's CORS response to allow the caller origin and every injected request header: at least `traceparent`, plus `tracestate` and `baggage` if enabled. Remember that spans may be sampled out and telemetry export may be blocked by CSP, CORS, extensions, or network policy.
 
 ## Use the Soft Navigations API Progressively
 

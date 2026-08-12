@@ -1,4 +1,4 @@
-# Validation Summary: Why Is Lighthouse Fast While Real Users Are Slow? Segment RUM by Device, Network, Region, and Cache State
+# Validation Summary: Why Lighthouse Is Fast While Real Users Are Slow
 
 ## Status
 

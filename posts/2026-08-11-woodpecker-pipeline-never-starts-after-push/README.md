@@ -1,8 +1,8 @@
-# Woodpecker Pipeline Never Starts After a Push: Trace the Forge Webhook, Repository Sync, and Config Path
+# Woodpecker Pipeline Never Starts After a Push
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Woodpecker CI, CI/CD, Webhooks, Troubleshooting, Git
+Tags: Woodpecker CI, CI/CD, Webhook, Troubleshooting, Git
 
 Description: Trace a missing Woodpecker pipeline from the forge webhook through repository activation and workflow configuration discovery.
 
@@ -168,4 +168,4 @@ Record the pipeline number, commit SHA, delivery ID, and server version while te
 
 ## Conclusion
 
-A pipeline that never appears is a server-side event-ingestion or configuration-discovery problem, not an agent execution problem. Prove each transition—forge delivery, proxy routing, server acceptance, repository event settings, and config lookup—using one known commit. Once Woodpecker creates a workflow, move downstream to scheduling and agents; until then, keep the investigation at the webhook and server layers.
+A pipeline that never appears is a server-side event-ingestion or configuration-discovery problem, not an agent execution problem. Prove each transition-forge delivery, proxy routing, server acceptance, repository event settings, and config lookup-using one known commit. Once Woodpecker creates a workflow, move downstream to scheduling and agents; until then, keep the investigation at the webhook and server layers.

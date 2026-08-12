@@ -1,4 +1,4 @@
-# Why Did `depends_on` Make Every Woodpecker Step Run in Parallel? Building the DAG You Intended
+# Build the Intended Woodpecker DAG with `depends_on`
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

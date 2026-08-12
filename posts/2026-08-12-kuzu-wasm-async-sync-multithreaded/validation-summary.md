@@ -1,4 +1,4 @@
-# Validation Summary: Kuzu-Wasm Worker Fails to Load or Freezes the UI: Choosing Async, Sync, and Multithreaded Builds
+# Validation Summary: Choose Async, Sync, or Multithreaded Kuzu-Wasm Builds
 
 ## Status
 

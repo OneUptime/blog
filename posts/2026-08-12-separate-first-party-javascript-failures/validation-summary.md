@@ -1,4 +1,4 @@
-# Validation Summary: How to Separate First-Party JavaScript Failures from Extensions, Third-Party Scripts, and “Script Error”
+# Validation Summary: Separate First-Party JavaScript Failures
 
 ## Status
 validated

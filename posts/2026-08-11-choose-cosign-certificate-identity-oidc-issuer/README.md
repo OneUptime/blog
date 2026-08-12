@@ -1,4 +1,4 @@
-# How to Choose Safe `--certificate-identity` and `--certificate-oidc-issuer` Values for Cosign Verification
+# Choosing Safe Cosign Certificate Identity and Issuer Values
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -10,7 +10,7 @@ Description: Build a narrow Cosign keyless-verification policy by deriving the e
 
 A valid keyless signature is not automatically an authorized signature. Fulcio can issue certificates to many identities from several identity providers. Cosign's `--certificate-identity` and `--certificate-oidc-issuer` options turn cryptographic verification into an authorization decision: this artifact must have been signed by this identity, authenticated by this issuer.
 
-Safe values come from the producer's documented release process and an observed, reviewed certificate—not from trial and error until verification passes.
+Safe values come from the producer's documented release process and an observed, reviewed certificate-not from trial and error until verification passes.
 
 ## Understand the two constraints
 

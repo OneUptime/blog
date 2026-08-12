@@ -8,7 +8,7 @@ Description: Design a remote retrospective around asynchronous prework, silent w
 
 ---
 
-A successful remote retrospective does not make every person speak for the same number of minutes. It gives every team member a credible way to contribute evidence, influence priorities, and shape the actions—without requiring fast speech, camera use, or public disclosure of sensitive experiences.
+A successful remote retrospective does not make every person speak for the same number of minutes. It gives every team member a credible way to contribute evidence, influence priorities, and shape the actions-without requiring fast speech, camera use, or public disclosure of sensitive experiences.
 
 The design matters more than telling quiet people to “speak up.” Collect input before opinions anchor the group, separate idea generation from evaluation, structure airtime, and make the path from observation to owned action visible. Then verify at the next retrospective whose concerns actually changed the work.
 
@@ -74,7 +74,7 @@ This agenda works for a team of roughly five to nine people. Larger groups need 
 58–60  Confirm commitments and collect a one-question facilitation check
 ```
 
-Silent writing prevents the first speaker from defining the field. Structured turns can use “one contribution or pass” so nobody is forced to improvise. A chat waterfall—everyone types but sends at the same time—can also reveal independent views. The facilitator then invites clarification without treating the fastest answer as the best one.
+Silent writing prevents the first speaker from defining the field. Structured turns can use “one contribution or pass” so nobody is forced to improvise. A chat waterfall-everyone types but sends at the same time-can also reveal independent views. The facilitator then invites clarification without treating the fastest answer as the best one.
 
 Liberating Structures’ 1-2-4-All offers another pattern: individual reflection, then pairs, groups of four, and the whole group. Its purpose is to involve everyone and reduce power differences. Online, do not use breakouts mechanically. They introduce transition cost and can reduce accessibility. A simpler individual-to-trio-to-all variation, or silent notes followed by a round, may suit the team better.
 
@@ -149,10 +149,10 @@ Atlassian’s retrospective guidance emphasizes setting a tone of improvement ra
 - [GitLab Handbook: Group Retrospectives](https://handbook.gitlab.com/handbook/engineering/careers/management/group-retrospectives/)
 - [GitLab Handbook: Geo Retrospectives](https://handbook.gitlab.com/handbook/engineering/infrastructure-platforms/tenant-scale/geo/retrospectives/)
 - [GitLab Handbook: Asynchronous Communication](https://handbook.gitlab.com/handbook/company/culture/all-remote/asynchronous/)
-- [Google SRE: Postmortem Culture—Learning from Failure](https://sre.google/sre-book/postmortem-culture/)
+- [Google SRE: Postmortem Culture-Learning from Failure](https://sre.google/sre-book/postmortem-culture/)
 
 ## Conclusion
 
 Inclusive remote retrospectives are designed, not announced. Give people preparation time and multiple contribution modes, generate ideas silently before debate, restrain status effects, and preserve the path from each observation to the final decision. Never force disclosure or use the retrospective for matters that require protected handling.
 
-The decisive test comes afterward: actions have owners, capacity, measures, and a review date, and the next session shows what changed. When quiet team members can trace their evidence into those actions, they are shaping improvement—not merely being invited to a call.
+The decisive test comes afterward: actions have owners, capacity, measures, and a review date, and the next session shows what changed. When quiet team members can trace their evidence into those actions, they are shaping improvement-not merely being invited to a call.

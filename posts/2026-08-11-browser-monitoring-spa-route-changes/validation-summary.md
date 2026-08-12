@@ -1,4 +1,4 @@
-# Validation Summary: Why Does Browser Monitoring Miss SPA Route Changes? Instrumenting Virtual Navigations and Route Timings
+# Validation Summary: Why Browser Monitoring Misses SPA Route Changes
 
 ## Status
 validated

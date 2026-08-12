@@ -1,4 +1,4 @@
-# Cosign vs Notation: Which Container Image Signing Workflow Fits Your Registry and Policy Engine?
+# Cosign vs Notation for Container Image Signing
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

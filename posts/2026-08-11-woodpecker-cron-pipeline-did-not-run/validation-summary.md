@@ -1,4 +1,4 @@
-# Validation Summary: Why Didn’t a Woodpecker Cron Pipeline Run? Schedule, Time Zone, Branch, and Event Checks
+# Validation Summary: Why Woodpecker Cron Pipelines Do Not Run
 
 ## Status
 validated

@@ -1,4 +1,4 @@
-# Why Do the Same Problems Reappear Every Retrospective? Closing the Improvement Feedback Loop
+# Close the Continuous Improvement Feedback Loop
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -91,7 +91,7 @@ This does not mean every observation becomes a ticket. Maintain three explicit c
 - **Improvement options:** understood problems that are not selected now;
 - **Active experiments:** the few changes the team has capacity to implement and evaluate.
 
-Limit active experiments. Starting a tenth improvement while nine are waiting for evidence increases work in progress and lengthens feedback. The Kanban Guide's core flow measures—work in progress, throughput, work item age, and cycle time—can be applied to improvement items themselves. An aging experiment is a visible signal that learning has stalled.
+Limit active experiments. Starting a tenth improvement while nine are waiting for evidence increases work in progress and lengthens feedback. The Kanban Guide's core flow measures-work in progress, throughput, work item age, and cycle time-can be applied to improvement items themselves. An aging experiment is a visible signal that learning has stalled.
 
 ## Prioritize the Constraint, Not the Loudest Complaint
 
@@ -170,7 +170,7 @@ Use these measures for diagnosis. A long experiment age might mean oversized sco
 - [The Kanban Guide](https://kanbanguides.org/the-kanban-guide/)
 - [DORA software delivery performance metrics](https://dora.dev/guides/dora-metrics/)
 - [DORA continuous delivery capability](https://dora.dev/capabilities/continuous-delivery/)
-- [Google SRE: Postmortem Culture—Learning from Failure](https://sre.google/sre-book/postmortem-culture/)
+- [Google SRE: Postmortem Culture-Learning from Failure](https://sre.google/sre-book/postmortem-culture/)
 - [Google SRE Workbook: Postmortem Culture](https://sre.google/workbook/postmortem-culture/)
 - [Atlassian Team Culture Retro](https://www.atlassian.com/team-playbook/plays/team-culture-retro)
 

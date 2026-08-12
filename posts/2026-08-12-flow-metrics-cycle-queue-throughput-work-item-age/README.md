@@ -1,4 +1,4 @@
-# Cycle Time, Queue Time, Throughput, and Work Item Age: Which Flow Metric Answers Which Question?
+# Which Flow Metric Answers Which Question?
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -35,7 +35,7 @@ Cycle time answers questions such as:
 - What range should a customer or stakeholder expect for a similar new item?
 - Did a workflow change shift the distribution, not merely the average?
 
-Use a distribution or scatterplot rather than a single mean. A median describes a typical completion; a higher percentile exposes the long tail. The Kanban Guide's service level expectation, or SLE, combines a probability and elapsed time based on historical cycle time—for example, “85 percent of comparable items finish within eight days.” It is a forecast, not a guarantee.
+Use a distribution or scatterplot rather than a single mean. A median describes a typical completion; a higher percentile exposes the long tail. The Kanban Guide's service level expectation, or SLE, combines a probability and elapsed time based on historical cycle time-for example, “85 percent of comparable items finish within eight days.” It is a forecast, not a guarantee.
 
 Cycle time cannot tell you what will finish this week by itself. It also says nothing directly about how many items finish. Ten items can each have a four-day cycle time yet complete at a very different weekly rate from a system completing one four-day item at a time.
 
@@ -67,7 +67,7 @@ Throughput answers capacity and delivery-rate questions:
 
 Choose an interval appropriate to the volume. A high-volume support workflow might use daily counts, while a platform team may use weekly or monthly counts. Show a time series or rolling window so that a holiday, release freeze, or batch does not become a permanent conclusion.
 
-Segment only when the categories describe materially different demand—for example, standard changes, incidents, and fixed-date work. Excessive slicing produces tiny samples. Never encourage teams to split work solely to inflate the count. A stable definition of a work item and checks on customer outcomes and quality are essential guardrails.
+Segment only when the categories describe materially different demand-for example, standard changes, incidents, and fixed-date work. Excessive slicing produces tiny samples. Never encourage teams to split work solely to inflate the count. A stable definition of a work item and checks on customer outcomes and quality are essential guardrails.
 
 ## Work item age: manage today's risk
 
@@ -140,7 +140,7 @@ The goal is not to make every number smaller or larger. It is to understand how 
 
 - [The Kanban Guide](https://kanbanguides.org/the-kanban-guide/)
 - [Open Guide to Kanban](https://kanbanguides.org/open-guide-to-kanban/2025.7/)
-- [The Official Kanban Guide — Kanban University](https://kanban.university/kanban-guide/)
+- [The Official Kanban Guide - Kanban University](https://kanban.university/kanban-guide/)
 - [DORA: Work in process limits](https://dora.dev/capabilities/wip-limits/)
 - [DORA: Visibility of work in the value stream](https://dora.dev/capabilities/work-visibility-in-value-stream/)
 - [DORA: Value stream management](https://dora.dev/guides/value-stream-management/)

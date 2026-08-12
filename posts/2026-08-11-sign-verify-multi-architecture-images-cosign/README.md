@@ -8,7 +8,7 @@ Description: Sign and verify multi-platform image indexes and their architecture
 
 ---
 
-A multi-architecture image is usually an OCI image index—not one runnable image manifest. The index has its own digest and contains descriptors for platform-specific child manifests such as `linux/amd64` and `linux/arm64`. Each child also has its own digest.
+A multi-architecture image is usually an OCI image index-not one runnable image manifest. The index has its own digest and contains descriptors for platform-specific child manifests such as `linux/amd64` and `linux/arm64`. Each child also has its own digest.
 
 Cosign can sign the index, each child, or both. The correct choice depends on what your verifier consumes. A signature on the index protects the selected set of platform descriptors. It is not automatically a separate signature on every child manifest.
 
@@ -68,7 +68,7 @@ cosign sign \
   "$INDEX"
 ```
 
-For KMS signatures, use the same trusted public-key source during verification—for example, `cosign verify --key awskms:///alias/container-release "$INDEX"`—instead of the keyless certificate flags below.
+For KMS signatures, use the same trusted public-key source during verification-for example, `cosign verify --key awskms:///alias/container-release "$INDEX"`-instead of the keyless certificate flags below.
 
 The recursive operation signs the index and additionally signs the discrete images it references. Confirm the exact behavior with the pinned Cosign version used by CI; command behavior and registry representation are versioned dependencies.
 

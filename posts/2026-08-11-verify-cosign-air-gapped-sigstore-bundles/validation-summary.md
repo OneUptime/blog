@@ -1,4 +1,4 @@
-# Validation Summary: How to Verify Cosign Signatures in an Air-Gapped Environment with Sigstore Bundles
+# Validation Summary: Verify Cosign Signatures Offline with Sigstore Bundles
 
 ## Status
 validated

@@ -1,8 +1,8 @@
-# How to Prevent Local Optimization from Making the End-to-End Delivery System Slower
+# Prevent Local Optimization from Slowing Delivery
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Continuous Improvement, Systems Thinking, Flow, Value Streams, Kanban, Software Delivery
+Tags: Continuous Improvement, Systems Thinking, Flow, Value Stream, Kanban, Software Delivery
 
 Description: Prevent team-level efficiency gains from increasing queues and delivery time by aligning boundaries, measures, WIP policies, and experiments around customer outcomes.
 
@@ -10,7 +10,7 @@ Description: Prevent team-level efficiency gains from increasing queues and deli
 
 A development team automates code generation and doubles the rate at which changes reach review. Reviewers receive twice as much work, their queue grows, feedback arrives later, and completed delivery slows. Every local chart can look better while the customer waits longer.
 
-That is local optimization: improving one activity, resource, or team's output without improving—and sometimes while damaging—the performance of the whole value stream. Software organizations are vulnerable because work crosses product, design, development, security, platform, operations, and support boundaries, while dashboards and incentives usually stop at each boundary.
+That is local optimization: improving one activity, resource, or team's output without improving-and sometimes while damaging-the performance of the whole value stream. Software organizations are vulnerable because work crosses product, design, development, security, platform, operations, and support boundaries, while dashboards and incentives usually stop at each boundary.
 
 Preventing it does not mean ignoring local craftsmanship or efficiency. It means evaluating local changes by their effect on the end-to-end system and managing the interfaces, queues, and constraints that connect the parts.
 
@@ -81,7 +81,7 @@ An idle specialist is a local observation. An aging customer item is a system si
 
 ## Find the constraint, then subordinate upstream work
 
-The constraint is the part of the current system that most restricts the rate of valuable completion. It may be a technical environment, scarce expertise, decision policy, rework loop, or demand-selection process—not necessarily the team with the longest active task.
+The constraint is the part of the current system that most restricts the rate of valuable completion. It may be a technical environment, scarce expertise, decision policy, rework loop, or demand-selection process-not necessarily the team with the longest active task.
 
 Use evidence from queues, work item age, cycle-time distributions, blocked time, throughput, and rework. Observe the constraint over multiple items because transient incidents can mislead.
 
@@ -170,7 +170,7 @@ Ask downstream recipients whether inputs became more complete and accurate. Ask 
 
 Imagine a security group introduces a 24-hour review target. To meet it, reviewers quickly mark incomplete requests as rejected. Their local response time improves. Product teams wait for clarification, resubmit work, and lose context. End-to-end cycle time and rework rise.
 
-A system response would not demand that security ignore risk. It would map the return loop, measure complete-and-accurate inputs, and create an explicit standard-change policy. Security could collaborate during design for novel risks while a validated automated path handles common cases. Success would mean shorter total elapsed time with preserved or improved risk outcomes—not simply faster first responses.
+A system response would not demand that security ignore risk. It would map the return loop, measure complete-and-accurate inputs, and create an explicit standard-change policy. Security could collaborate during design for novel risks while a validated automated path handles common cases. Success would mean shorter total elapsed time with preserved or improved risk outcomes-not simply faster first responses.
 
 This pattern applies to quality gates, architecture reviews, platform tickets, and operations approvals. Optimize the decision and feedback path, not the speed with which one inbox transfers responsibility.
 
@@ -189,7 +189,7 @@ Both results can be worthwhile. The distinction prevents overstating benefits an
 - [DORA: Work in process limits](https://dora.dev/capabilities/wip-limits/)
 - [DORA: Continuous delivery](https://dora.dev/capabilities/continuous-delivery/)
 - [The Kanban Guide](https://kanbanguides.org/the-kanban-guide/)
-- [The Official Kanban Guide — Kanban University](https://kanban.university/kanban-guide/)
+- [The Official Kanban Guide - Kanban University](https://kanban.university/kanban-guide/)
 
 ## Conclusion
 

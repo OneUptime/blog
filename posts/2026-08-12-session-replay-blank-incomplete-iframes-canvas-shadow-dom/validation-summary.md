@@ -1,4 +1,4 @@
-# Validation Summary: Why Is Session Replay Blank or Incomplete? Iframes, Canvas, Shadow DOM, and Browser Compatibility
+# Validation Summary: Why Session Replay Is Blank or Incomplete
 
 ## Status
 

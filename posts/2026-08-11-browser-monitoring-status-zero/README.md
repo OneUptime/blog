@@ -1,14 +1,14 @@
-# Why Does Browser Monitoring Report Status 0? Distinguishing CORS, Offline, Abort, and Ad-Blocker Failures
+# Why Browser Monitoring Reports Status 0
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Browser Monitoring, Status 0, CORS, Fetch API, XMLHttpRequest, Ad Blockers, Network Errors
+Tags: Browser Monitoring, Status 0, CORS, Fetch API, XMLHttpRequest, Ad Blockers, Network Error
 
 Description: Understand what browser status 0 means across Fetch and XMLHttpRequest and classify only the causes that browser evidence can actually prove.
 
 ---
 
-HTTP does not define a status code `0`. When browser monitoring shows status 0, it means the monitoring layer did not receive a script-readable HTTP status—or it observed a deliberately opaque response. It does not mean the server returned zero, and it does not identify one root cause.
+HTTP does not define a status code `0`. When browser monitoring shows status 0, it means the monitoring layer did not receive a script-readable HTTP status-or it observed a deliberately opaque response. It does not mean the server returned zero, and it does not identify one root cause.
 
 CORS, offline conditions, DNS/TLS failures, Content Security Policy (CSP), aborts, extensions, and opaque `no-cors` responses can all end up near the same dashboard label. Some are failures, one can be a successful but unreadable response, and some are normal application control flow. The first step is to retain which browser API and event produced the value.
 

@@ -1,4 +1,4 @@
-# Validation Summary: Woodpecker Says “No Basic Auth Credentials”: Fixing Private Registry Hostnames and Pull Secrets
+# Validation Summary: Fix Woodpecker “No Basic Auth Credentials” Errors
 
 ## Status
 

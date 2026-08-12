@@ -1,4 +1,4 @@
-# How to Control High-Cardinality Browser Telemetry from URLs, User IDs, and Session Attributes
+# Control High-Cardinality Browser Telemetry
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

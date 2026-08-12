@@ -1,4 +1,4 @@
-# Validation Summary: Why Is a Woodpecker Kubernetes Job Stuck Pending? Check PVCs, Storage Classes, Resources, and Service Accounts
+# Validation Summary: Fix Woodpecker Kubernetes Jobs Stuck Pending
 
 ## Status
 

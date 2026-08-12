@@ -1,4 +1,4 @@
-# INP Is Poor but LCP Is Fine: Finding the Long Task or Event Handler Behind Slow Interactions
+# Find Long Tasks Behind Poor INP
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -31,7 +31,7 @@ Google's current guidance considers 200 milliseconds or less “good” and reco
 
 ## Capture Actionable Field Evidence
 
-The standard `web-vitals` build reports INP. The attribution build adds the interaction target, type, load state, and—where available—Long Animation Frame script summaries and style/layout totals.
+The standard `web-vitals` build reports INP. The attribution build adds the interaction target, type, load state, and-where available-Long Animation Frame script summaries and style/layout totals.
 
 ~~~javascript
 import { onINP } from 'web-vitals/attribution';

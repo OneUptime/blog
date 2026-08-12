@@ -1,4 +1,4 @@
-# Browser Monitoring, Synthetic Tests, or CrUX: Which View of User Experience Should You Trust?
+# Browser Monitoring, Synthetic Tests, or CrUX: Which Should You Trust?
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -162,4 +162,4 @@ The best operating model is deliberately redundant. Synthetic tests tell you whe
 
 ## Conclusion
 
-There is no universally most trustworthy browser-performance source because each source has a different measurement contract. Trust RUM for your instrumented users and operational dimensions, synthetics for controlled journeys and diagnosis, and CrUX for its public eligible-Chrome population. Label those scopes, compare like with like, and use disagreement as evidence—not as a reason to pick the prettiest number.
+There is no universally most trustworthy browser-performance source because each source has a different measurement contract. Trust RUM for your instrumented users and operational dimensions, synthetics for controlled journeys and diagnosis, and CrUX for its public eligible-Chrome population. Label those scopes, compare like with like, and use disagreement as evidence-not as a reason to pick the prettiest number.

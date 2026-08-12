@@ -1,4 +1,4 @@
-# Validation Summary: Does Your Browser Monitoring SDK Slow the Page? Measuring Bundle, Main-Thread, and Network Overhead
+# Validation Summary: Measure Browser Monitoring SDK Overhead
 
 ## Status
 validated

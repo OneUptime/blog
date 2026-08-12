@@ -1,4 +1,4 @@
-# Why Kyverno `verifyImages` Blocks Signed Images: Digest Mutation, Credentials, and Identity Checks
+# Why Kyverno `verifyImages` Blocks Signed Images
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -14,7 +14,7 @@ Debug the admission decision as four linked questions: did the rule match, which
 
 ## Check the Kyverno policy generation first
 
-Current Kyverno 1.18 documentation marks `ClusterPolicy`—the legacy policy type that contains `verifyImages` rules—as deprecated, while `ImageValidatingPolicy` is stable. If you already operate `verifyImages`, use documentation for your installed version and plan migration separately. Do not mix fields from `ImageValidatingPolicy` into a legacy `ClusterPolicy` while troubleshooting.
+Current Kyverno 1.18 documentation marks `ClusterPolicy`-the legacy policy type that contains `verifyImages` rules-as deprecated, while `ImageValidatingPolicy` is stable. If you already operate `verifyImages`, use documentation for your installed version and plan migration separately. Do not mix fields from `ImageValidatingPolicy` into a legacy `ClusterPolicy` while troubleshooting.
 
 Record versions:
 
@@ -70,7 +70,7 @@ An external sidecar injector may run in another webhook. Mutating webhook orderi
 
 ## 3. Test registry access as Kyverno
 
-The Kyverno admission controller—not your laptop—must resolve the subject and retrieve signatures and other OCI artifacts. Check DNS, network policy, proxy settings, registry TLS trust, authorization, and repository scope from a debug context that matches the controller's network path and runtime configuration; sharing only its namespace does not guarantee the same access.
+The Kyverno admission controller-not your laptop-must resolve the subject and retrieve signatures and other OCI artifacts. Check DNS, network policy, proxy settings, registry TLS trust, authorization, and repository scope from a debug context that matches the controller's network path and runtime configuration; sharing only its namespace does not guarantee the same access.
 
 Current Kyverno documentation supports policy-specific `imageRegistryCredentials`, global helpers, and Pod `imagePullSecrets`. Starting with Kyverno 1.18, it can use Pod pull secrets automatically, but every controller that evaluates images needs RBAC to read those Secrets.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kuzu, Cypher, Prepared Statements, Query Security, Python, Performance
+Tags: Kuzu, Cypher, Prepared Statement, Query Security, Python, Performance
 
 Description: Use typed Kuzu parameters and version-aware prepared statements safely, while measuring rather than assuming what 0.11.3 reuses between executions.
 
@@ -206,7 +206,7 @@ Or let Kuzu read Parquet/CSV directly. Prepared statements optimize the shape of
 
 Kuzu result summaries expose compiling and executing time in supported APIs, and the CLI's default stats output prints both. Benchmark at least these cases:
 
-1. Literal query text changed on every iteration—unsafe baseline, never a deployment choice.
+1. Literal query text changed on every iteration-unsafe baseline, never a deployment choice.
 2. One constant parameterized string through the binding's recommended API.
 3. An explicit reusable prepared object where the binding supports it without deprecation.
 4. `COPY FROM` for a bulk workload.

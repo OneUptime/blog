@@ -1,4 +1,4 @@
-# Why Are Production JavaScript Stack Traces Still Minified? Matching Source Maps to the Exact Release
+# Match Source Maps to the Exact Production Release
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -8,7 +8,7 @@ Description: Fix minified production stack traces by proving that each deployed 
 
 ---
 
-Generating source maps is only half of production symbolication. The error processor must find the map for the exact bytes that produced the stack frame. A map from yesterday's `app.js`, a different canary build, or an asset rewritten after upload can be perfectly valid JSON and still map line 1, column 48291 to the wrong source—or leave the trace minified.
+Generating source maps is only half of production symbolication. The error processor must find the map for the exact bytes that produced the stack frame. A map from yesterday's `app.js`, a different canary build, or an asset rewritten after upload can be perfectly valid JSON and still map line 1, column 48291 to the wrong source-or leave the trace minified.
 
 Treat every generated JavaScript file and its map as an immutable pair. Give the build an immutable release identity, upload artifacts before serving the bundle, and retain a manifest that proves which artifact hashes were deployed. Then diagnose a minified trace from the reported frame URL outward rather than repeatedly toggling the bundler's source-map setting.
 
@@ -112,7 +112,7 @@ shasum -a 256 -c source-artifacts.sha256
 
 Archive that checksum file with the build. At incident time, fetch the reported content-hashed bundle from the CDN, compare its digest with the manifest, and compare the locally retained map digest. A mismatch proves an artifact-identity problem before you inspect mapping internals.
 
-Inspect the bundle, commonly near its end. A bundle linked to a public map often contains a `//# sourceMappingURL=...` directive whose relative URL browsers resolve against the generated code's source origin—normally the bundle URL for an external script. A hidden build omits that comment; unless the server supplies a `SourceMap` response header, DevTools will not discover the map automatically, so an error service needs another association such as uploaded release/path metadata or a debug ID.
+Inspect the bundle, commonly near its end. A bundle linked to a public map often contains a `//# sourceMappingURL=...` directive whose relative URL browsers resolve against the generated code's source origin-normally the bundle URL for an external script. A hidden build omits that comment; unless the server supplies a `SourceMap` response header, DevTools will not discover the map automatically, so an error service needs another association such as uploaded release/path metadata or a debug ID.
 
 ## Diagnose One Raw Frame End to End
 

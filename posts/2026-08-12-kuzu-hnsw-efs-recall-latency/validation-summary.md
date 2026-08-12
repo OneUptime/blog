@@ -1,4 +1,4 @@
-# Validation Summary: Kuzu HNSW Search Is Fast but Misses Neighbors: Tuning `efs` for Recall and Latency
+# Validation Summary: Tune Kuzu HNSW `efs` for Recall and Latency
 
 ## Status
 validated

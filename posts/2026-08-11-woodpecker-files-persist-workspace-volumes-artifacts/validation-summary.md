@@ -1,4 +1,4 @@
-# Validation Summary: How Do Files Persist Between Woodpecker Steps? Workspace, Volumes, and Artifacts Explained
+# Validation Summary: How Files Persist Between Woodpecker Steps
 
 ## Status
 validated

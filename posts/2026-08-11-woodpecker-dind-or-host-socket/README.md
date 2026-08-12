@@ -1,4 +1,4 @@
-# Docker-in-Docker or Host Socket in Woodpecker: Which Image-Build Pattern Is Safer?
+# Docker-in-Docker vs Host Sockets in Woodpecker
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -213,4 +213,4 @@ If Woodpecker rejects `privileged` or `volumes`, that is an admin trust decision
 
 ## Conclusion
 
-A host socket is compact and fast but effectively hands the workflow control of the agent host. DinD isolates Docker daemon state but normally requires a privileged container, so it is only a relative improvement on an isolated, disposable worker. Prefer a pinned, allowlisted builder plugin and keep all image-building privilege out of untrusted pull requests. If either Docker pattern can touch a long-lived multi-tenant host, the architecture—not the YAML—needs to change.
+A host socket is compact and fast but effectively hands the workflow control of the agent host. DinD isolates Docker daemon state but normally requires a privileged container, so it is only a relative improvement on an isolated, disposable worker. Prefer a pinned, allowlisted builder plugin and keep all image-building privilege out of untrusted pull requests. If either Docker pattern can touch a long-lived multi-tenant host, the architecture-not the YAML-needs to change.

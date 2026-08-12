@@ -1,4 +1,4 @@
-# Validation Summary: How to Run a Value-Stream Mapping Session That Reveals Wait Time, Rework, and Handoffs
+# Validation Summary: Run a Value-Stream Mapping Session
 
 ## Status
 

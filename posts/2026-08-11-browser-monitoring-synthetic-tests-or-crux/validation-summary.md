@@ -1,4 +1,4 @@
-# Validation Summary: Browser Monitoring, Synthetic Tests, or CrUX: Which View of User Experience Should You Trust?
+# Validation Summary: Browser Monitoring, Synthetic Tests, or CrUX: Which Should You Trust?
 
 ## Status
 validated

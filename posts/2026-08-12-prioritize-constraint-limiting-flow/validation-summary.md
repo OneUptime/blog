@@ -1,4 +1,4 @@
-# Validation Summary: Too Many Improvement Ideas, Too Little Time: Prioritizing the Constraint That Actually Limits Flow
+# Validation Summary: Prioritize the Constraint That Limits Flow
 
 ## Status
 validated

@@ -1,4 +1,4 @@
-# Validation Summary: INP Is Poor but LCP Is Fine: Finding the Long Task or Event Handler Behind Slow Interactions
+# Validation Summary: Find Long Tasks Behind Poor INP
 
 ## Status
 validated

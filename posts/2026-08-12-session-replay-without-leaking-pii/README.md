@@ -1,4 +1,4 @@
-# Session Replay Without Leaking PII: Masking Inputs, URLs, DOM Text, and Network Payloads
+# Prevent PII Leaks in Session Replay
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -8,7 +8,7 @@ Description: Deploy session replay with deny-by-default capture, tested masking,
 
 ---
 
-Session replay can reconstruct exactly the moment a frontend failed—and exactly the personal data the page displayed at that moment. Form fields are only one source. Account names in static DOM text, tokens in URLs, validation messages, `data-*` attributes, chat transcripts, images, canvases, and request bodies can all enter a recording.
+Session replay can reconstruct exactly the moment a frontend failed-and exactly the personal data the page displayed at that moment. Form fields are only one source. Account names in static DOM text, tokens in URLs, validation messages, `data-*` attributes, chat transcripts, images, canvases, and request bodies can all enter a recording.
 
 Sampling is not a privacy control. Capturing 1% of sessions still captures the complete sensitive value in selected sessions. Build replay as a separate data product with its own threat model, consent gate, capture schema, access policy, retention, and deletion path. Start from a masked or blocked recording and selectively expose reviewed, low-risk content.
 

@@ -1,4 +1,4 @@
-# Why Are Browser Beacons Lost During Navigation? Making `sendBeacon` and `fetch(keepalive)` More Reliable
+# Make Browser Beacons More Reliable During Navigation
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -224,4 +224,4 @@ Emerging deferred-fetch APIs may improve some cases, but support, quotas, and AP
 
 ## Conclusion
 
-Navigation-time beacons are lost because the page and network are not durable infrastructure. Flush throughout the session and when visibility becomes hidden, keep encoded batches far below the shared keepalive limit, use Beacon's Boolean only as a queue result, and choose Beacon or keepalive Fetch according to the request requirements. Idempotent ingestion, explicit CSP/CORS configuration, and end-to-end acceptance counters make the remaining loss measurable. The target is bounded, observable best-effort delivery—not a promise the browser APIs do not make.
+Navigation-time beacons are lost because the page and network are not durable infrastructure. Flush throughout the session and when visibility becomes hidden, keep encoded batches far below the shared keepalive limit, use Beacon's Boolean only as a queue result, and choose Beacon or keepalive Fetch according to the request requirements. Idempotent ingestion, explicit CSP/CORS configuration, and end-to-end acceptance counters make the remaining loss measurable. The target is bounded, observable best-effort delivery-not a promise the browser APIs do not make.

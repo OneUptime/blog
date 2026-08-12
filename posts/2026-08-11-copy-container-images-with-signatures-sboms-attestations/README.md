@@ -1,4 +1,4 @@
-# How to Copy Container Images Without Losing Cosign Signatures, SBOMs, or Attestations
+# Copy Container Images with Cosign Signatures, SBOMs, and Attestations
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

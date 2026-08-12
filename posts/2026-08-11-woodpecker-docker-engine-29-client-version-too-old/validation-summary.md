@@ -1,4 +1,4 @@
-# Validation Summary: Woodpecker Breaks After Docker Engine 29: Fixing the “Client Version Is Too Old” API Error
+# Validation Summary: Fix Woodpecker with Docker Engine 29
 
 ## Status
 validated

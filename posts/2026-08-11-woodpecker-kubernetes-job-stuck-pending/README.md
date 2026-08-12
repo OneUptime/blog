@@ -1,8 +1,8 @@
-# Why Is a Woodpecker Kubernetes Job Stuck Pending? Check PVCs, Storage Classes, Resources, and Service Accounts
+# Fix Woodpecker Kubernetes Jobs Stuck Pending
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Woodpecker CI, Kubernetes, Persistent Volumes, Scheduling, Troubleshooting
+Tags: Woodpecker CI, Kubernetes, Persistent Volume, Scheduling, Troubleshooting
 
 Description: Trace a pending Woodpecker Kubernetes workflow through its temporary PVC, scheduler constraints, resources, and service-account permissions.
 

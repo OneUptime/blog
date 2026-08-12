@@ -1,4 +1,4 @@
-# Validation Summary: Woodpecker Agent Cannot Connect to the Server: A gRPC Address, Token, and TLS Checklist
+# Validation Summary: Fix Woodpecker Agent gRPC Connection Failures
 
 ## Status
 validated

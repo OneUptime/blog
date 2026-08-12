@@ -1,4 +1,4 @@
-# Improvement Fatigue Is Real: How Many Process Experiments Can a Team Run at Once?
+# Limit Process Experiments to Prevent Improvement Fatigue
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -159,13 +159,13 @@ That closeout work is what returns capacity to the portfolio. Until it is comple
 
 ## Official Documentation
 
-- [IHI — Model for Improvement: Testing Changes](https://www.ihi.org/library/model-for-improvement/testing-changes)
-- [IHI — Plan-Do-Study-Act Worksheet](https://www.ihi.org/library/tools/plan-do-study-act-pdsa-worksheet)
-- [DORA — Work in Process Limits](https://dora.dev/capabilities/wip-limits/)
-- [DORA — Team Experimentation](https://dora.dev/capabilities/team-experimentation/)
-- [DORA — Customer Feedback](https://dora.dev/capabilities/customer-feedback/)
-- [Kanban Guides — The Kanban Guide](https://kanbanguides.org/the-kanban-guide/)
-- [Scrum Guides — The Scrum Guide](https://scrumguides.org/scrum-guide.html)
+- [IHI - Model for Improvement: Testing Changes](https://www.ihi.org/library/model-for-improvement/testing-changes)
+- [IHI - Plan-Do-Study-Act Worksheet](https://www.ihi.org/library/tools/plan-do-study-act-pdsa-worksheet)
+- [DORA - Work in Process Limits](https://dora.dev/capabilities/wip-limits/)
+- [DORA - Team Experimentation](https://dora.dev/capabilities/team-experimentation/)
+- [DORA - Customer Feedback](https://dora.dev/capabilities/customer-feedback/)
+- [Kanban Guides - The Kanban Guide](https://kanbanguides.org/the-kanban-guide/)
+- [Scrum Guides - The Scrum Guide](https://scrumguides.org/scrum-guide.html)
 
 ## Conclusion
 

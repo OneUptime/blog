@@ -1,4 +1,4 @@
-# How Do bfcache Restores and Prerendered Pages Distort Browser Performance Metrics?
+# How bfcache and Prerendering Distort Performance Metrics
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

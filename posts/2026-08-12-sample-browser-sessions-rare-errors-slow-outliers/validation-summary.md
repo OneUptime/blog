@@ -1,4 +1,4 @@
-# Validation Summary: How Should You Sample Browser Sessions Without Losing Rare Errors and Slow Outliers?
+# Validation Summary: Sample Browser Sessions Without Losing Rare Outliers
 
 ## Status
 validated

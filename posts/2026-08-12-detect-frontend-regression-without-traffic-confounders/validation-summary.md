@@ -1,4 +1,4 @@
-# Validation Summary: How to Detect a Frontend Regression Without Confusing It with Bot Traffic, Extensions, or a Changing User Mix
+# Validation Summary: Detect Frontend Regressions Without Traffic Confounders
 
 ## Status
 

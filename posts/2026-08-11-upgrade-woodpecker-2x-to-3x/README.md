@@ -1,8 +1,8 @@
-# How to Upgrade Woodpecker 2.x to 3.x Without Breaking Secrets, Cron Schedules, Privileged Plugins, or Webhooks
+# Upgrade Woodpecker 2.x to 3.x Safely
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Woodpecker CI, Upgrade, Migration, Secrets, Webhooks
+Tags: Woodpecker CI, Upgrade, Migration, Secret, Webhook
 
 Description: Upgrade Woodpecker 2.x to 3.x with a staged plan for database backups, workflow syntax, secrets, cron conversion, privileged plugins, and repaired webhooks.
 

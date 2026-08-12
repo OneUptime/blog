@@ -1,8 +1,8 @@
-# How to Alert on the 75th Percentile of Core Web Vitals Without Paging on Traffic-Mix Noise
+# Alert on p75 Core Web Vitals Without Traffic-Mix Noise
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Core Web Vitals, Alerting, Real User Monitoring, Percentiles, Browser Monitoring, SRE
+Tags: Core Web Vitals, Alerting, Real User Monitoring, Percentile, Browser Monitoring, SRE
 
 Description: Design p75 Core Web Vitals alerts with stable cohorts, sample guards, persistence, and telemetry-health checks so population shifts do not masquerade as regressions.
 
@@ -195,7 +195,7 @@ for: 15m
 
 This is a design example, not a universal set of numbers. Derive limits from route traffic, historical variability, business impact, and response time. The baseline must use the same metric definition and cohort. Prefer a concurrent canary/control comparison over a distant historical period when possible because both sides then share current traffic and infrastructure conditions.
 
-For CLS, watch threshold direction and units carefully; CLS is unitless. For LCP and INP, standardize storage units—milliseconds are convenient—and encode the unit in schema or metric name.
+For CLS, watch threshold direction and units carefully; CLS is unitless. For LCP and INP, standardize storage units-milliseconds are convenient-and encode the unit in schema or metric name.
 
 ## Validate the Alert Before Enabling Paging
 

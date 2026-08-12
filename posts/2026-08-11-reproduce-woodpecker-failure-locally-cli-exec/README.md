@@ -8,7 +8,7 @@ Description: Reproduce a Woodpecker workflow locally with matching code, metadat
 
 ---
 
-Re-running a failing Woodpecker pipeline by repeatedly pushing commits is slow and changes several variables at once. `woodpecker-cli exec` runs a workflow from a local checkout, so it can shorten the loop to seconds. A useful reproduction, however, needs more than the same YAML file. It needs the same revision, event metadata, backend, environment, secrets, architecture, and external dependencies—or an explicit record of every difference.
+Re-running a failing Woodpecker pipeline by repeatedly pushing commits is slow and changes several variables at once. `woodpecker-cli exec` runs a workflow from a local checkout, so it can shorten the loop to seconds. A useful reproduction, however, needs more than the same YAML file. It needs the same revision, event metadata, backend, environment, secrets, architecture, and external dependencies-or an explicit record of every difference.
 
 This guide uses Woodpecker 3.17 behavior. Keep the CLI aligned with the server version, especially when replaying downloaded metadata.
 

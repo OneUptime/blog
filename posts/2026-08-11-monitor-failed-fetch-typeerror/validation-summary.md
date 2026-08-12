@@ -1,4 +1,4 @@
-# Validation Summary: How to Monitor Failed Fetch Calls When the Browser Exposes Only `TypeError: Failed to fetch`
+# Validation Summary: Monitor Fetch Failures Exposed as `TypeError: Failed to fetch`
 
 ## Status
 

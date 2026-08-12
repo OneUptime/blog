@@ -1,4 +1,4 @@
-# Too Many Improvement Ideas, Too Little Time: Prioritizing the Constraint That Actually Limits Flow
+# Prioritize the Constraint That Limits Flow
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

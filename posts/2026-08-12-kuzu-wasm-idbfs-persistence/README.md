@@ -1,4 +1,4 @@
-# Kuzu-Wasm Database Vanishes on Refresh: Persisting IDBFS and Synchronizing the Filesystem
+# Persist Kuzu-Wasm with IDBFS Across Refreshes
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -10,7 +10,7 @@ Description: Persist Kuzu-Wasm safely across reloads by mounting IDBFS, populati
 
 A Kuzu-Wasm database disappears on refresh when it lives only in Emscripten's in-memory filesystem or when the application mounts IDBFS but never synchronizes the in-memory tree with IndexedDB. Mounting is only half the persistence protocol. On startup, call `syncfs(true)` before opening Kuzu to populate the virtual filesystem from IndexedDB. After writes, close the connection and database, then call `syncfs(false)` to persist the virtual files back to IndexedDB before unmounting.
 
-That synchronization ordering appears in the `browser_persistent` example retained in Kuzu's v0.11.3 source tree and follows Emscripten's documented `populate` direction. It is not equivalent to putting an “initialized” flag in `localStorage`. The database files—not a flag—are the source of truth.
+That synchronization ordering appears in the `browser_persistent` example retained in Kuzu's v0.11.3 source tree and follows Emscripten's documented `populate` direction. It is not equivalent to putting an “initialized” flag in `localStorage`. The database files-not a flag-are the source of truth.
 
 Kuzu's source repository is archived and `kuzu-wasm` 0.11.3 is deprecated on npm, so pin the exact package and preserve its matching main-module and worker-bundle assets. The maintained LadybugDB successor has since moved its current persistent browser example toward OPFS; that does not retroactively change Kuzu-Wasm's documented IDBFS lifecycle.
 
@@ -139,7 +139,7 @@ await serialize(async () => {
 });
 ~~~
 
-In a larger application, put the Kuzu database, connection, mount state, and queue in one owner—usually the async Kuzu-Wasm worker boundary. Components should send requests to that owner rather than constructing their own `Database` objects.
+In a larger application, put the Kuzu database, connection, mount state, and queue in one owner-usually the async Kuzu-Wasm worker boundary. Components should send requests to that owner rather than constructing their own `Database` objects.
 
 Coordinate browser tabs too. IndexedDB is shared by same-origin pages, but Kuzu's embedded database lifecycle was not designed for independent writers copying separate in-memory filesystem snapshots to one backing store. Prefer one active writer, detect a second tab with `BroadcastChannel` or the Web Locks API, and give it read-only application behavior or block it. Test the chosen coordination mechanism in every supported browser.
 

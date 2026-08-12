@@ -1,4 +1,4 @@
-# Validation Summary: Kuzu Crashes or Exhausts Memory During Bulk Load: Tuning the Buffer Pool and Import Batch
+# Validation Summary: Tune Kuzu Bulk Loads to Prevent Memory Exhaustion
 
 ## Status
 validated

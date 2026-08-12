@@ -1,4 +1,4 @@
-# Validation Summary: Which Browser Metrics Matter After Page Load? LCP, INP, CLS, Long Tasks, and Custom Actions
+# Validation Summary: Browser Metrics After Page Load: LCP, INP, CLS, and Long Tasks
 
 ## Status
 validated

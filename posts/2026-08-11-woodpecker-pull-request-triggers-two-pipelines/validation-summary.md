@@ -1,4 +1,4 @@
-# Validation Summary: Why Does One Pull Request Trigger Two Woodpecker Pipelines? Separating `push` and `pull_request` Events
+# Validation Summary: Why One Pull Request Triggers Two Woodpecker Pipelines
 
 ## Status
 

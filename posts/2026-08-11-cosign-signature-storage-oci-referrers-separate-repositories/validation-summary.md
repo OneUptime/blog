@@ -1,4 +1,4 @@
-# Validation Summary: Where Does Cosign Store Container Image Signatures? OCI Referrers and Separate Repositories Explained
+# Validation Summary: Where Cosign Stores Image Signatures: Referrers and Repositories
 
 ## Status
 validated

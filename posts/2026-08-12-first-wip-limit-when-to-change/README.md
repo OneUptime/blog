@@ -1,4 +1,4 @@
-# What Should Your First WIP Limit Be—and When Should You Change It?
+# What Should Your First WIP Limit Be-and When Should You Change It?
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -12,7 +12,7 @@ A work-in-progress limit is not a target for how much work a team should start. 
 
 There is no universal first number. A limit of five can be loose for a pair and impossible for a team operating five independent services. The right opening limit comes from the real workflow, available collaboration capacity, and a deliberate willingness to expose problems without making service unsafe.
 
-The first limit is therefore a hypothesis. Make it explicit, follow it consistently, observe flow, then change it as a controlled experiment—not whenever the board becomes uncomfortable.
+The first limit is therefore a hypothesis. Make it explicit, follow it consistently, observe flow, then change it as a controlled experiment-not whenever the board becomes uncomfortable.
 
 ## Define the system before choosing a number
 
@@ -31,7 +31,7 @@ Hidden work defeats the policy. If engineers keep personal task lists while the 
 
 ## A practical first-limit method
 
-DORA's WIP-limit guidance starts from team capacity. It gives an example of four programming pairs and a development-column limit of four, then advises accounting for time spent on support, meetings, technical debt, and other responsibilities. It also recommends avoiding more WIP than the number of people—or collaborating units—who can actively work on it.
+DORA's WIP-limit guidance starts from team capacity. It gives an example of four programming pairs and a development-column limit of four, then advises accounting for time spent on support, meetings, technical debt, and other responsibilities. It also recommends avoiding more WIP than the number of people-or collaborating units-who can actively work on it.
 
 Use that as a starting heuristic, not a formula:
 
@@ -160,7 +160,7 @@ Review the policy with the people doing the work. Kanban policies are intended t
 
 - [The Kanban Guide](https://kanbanguides.org/the-kanban-guide/)
 - [Open Guide to Kanban](https://kanbanguides.org/open-guide-to-kanban/2025.7/)
-- [The Official Kanban Guide — Kanban University](https://kanban.university/kanban-guide/)
+- [The Official Kanban Guide - Kanban University](https://kanban.university/kanban-guide/)
 - [DORA: Work in process limits](https://dora.dev/capabilities/wip-limits/)
 - [DORA: Visibility of work in the value stream](https://dora.dev/capabilities/work-visibility-in-value-stream/)
 - [Lean Enterprise Institute: Pull](https://www.lean.org/the-lean-post/articles/lean-roundup-pull/)

@@ -1,4 +1,4 @@
-# Validation Summary: Cosign Keyless Signing Explained: What “Keyless” Means and Which Identity Gets Recorded
+# Validation Summary: Cosign Keyless Signing: Identity and Recorded Claims
 
 ## Status
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: ClickHouse, Churn Analysis, SaaS, Retention, Leading Indicator
+Tags: ClickHouse, Churn Analysis, SaaS, Retention, Leading Indicators
 
 Description: Learn how to identify early churn signals in ClickHouse by analyzing login gaps, feature abandonment, and usage decline patterns.
 

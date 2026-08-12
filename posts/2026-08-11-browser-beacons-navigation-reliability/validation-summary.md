@@ -1,4 +1,4 @@
-# Validation Summary: Why Are Browser Beacons Lost During Navigation? Making `sendBeacon` and `fetch(keepalive)` More Reliable
+# Validation Summary: Make Browser Beacons More Reliable During Navigation
 
 ## Status
 validated

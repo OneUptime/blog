@@ -1,4 +1,4 @@
-# Validation Summary: How to Choose Safe `--certificate-identity` and `--certificate-oidc-issuer` Values for Cosign Verification
+# Validation Summary: Choosing Safe Cosign Certificate Identity and Issuer Values
 
 ## Status
 

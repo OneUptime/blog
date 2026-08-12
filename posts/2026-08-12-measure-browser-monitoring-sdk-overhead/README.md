@@ -1,4 +1,4 @@
-# Does Your Browser Monitoring SDK Slow the Page? Measuring Bundle, Main-Thread, and Network Overhead
+# Measure Browser Monitoring SDK Overhead
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

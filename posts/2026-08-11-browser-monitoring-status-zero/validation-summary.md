@@ -1,4 +1,4 @@
-# Validation Summary: Why Does Browser Monitoring Report Status 0? Distinguishing CORS, Offline, Abort, and Ad-Blocker Failures
+# Validation Summary: Why Browser Monitoring Reports Status 0
 
 ## Status
 validated

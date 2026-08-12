@@ -1,4 +1,4 @@
-# Validation Summary: Kuzu Says “Could Not Set Lock on File”: Safely Using Jupyter, the CLI, and Explorer
+# Validation Summary: Fix Kuzu “Could Not Set Lock on File” Errors
 
 ## Status
 validated

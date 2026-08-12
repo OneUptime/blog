@@ -1,4 +1,4 @@
-# Validation Summary: Cosign vs Notation: Which Container Image Signing Workflow Fits Your Registry and Policy Engine?
+# Validation Summary: Cosign vs Notation for Container Image Signing
 
 ## Status
 validated

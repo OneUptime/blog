@@ -1,8 +1,8 @@
-# Kuzu-Wasm Worker Fails to Load or Freezes the UI: Choosing Async, Sync, and Multithreaded Builds
+# Choose Async, Sync, or Multithreaded Kuzu-Wasm Builds
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kuzu, WebAssembly, Web Worker, JavaScript, Browser Performance, Multithreading
+Tags: Kuzu, WebAssembly, Web Workers, JavaScript, Browser Performance, Multithreading
 
 Description: Choose the correct Kuzu-Wasm package variant, deploy its matching worker assets and isolation headers, and keep graph queries off the browser main thread.
 
@@ -60,7 +60,7 @@ The sync package makes calls synchronously after initialization:
 import kuzu from "kuzu-wasm/sync";
 ~~~
 
-If a 600 ms query runs on the main thread, that thread cannot paint, respond to input, or run other main-thread JavaScript during that interval. A larger import can look like a crashed tab. Kuzu's official guide recommends sync for scripting, CLI-like work, and prototyping—not GUI applications or web servers.
+If a 600 ms query runs on the main thread, that thread cannot paint, respond to input, or run other main-thread JavaScript during that interval. A larger import can look like a crashed tab. Kuzu's official guide recommends sync for scripting, CLI-like work, and prototyping-not GUI applications or web servers.
 
 Sync can be reasonable inside a worker you create and own, because blocking that worker does not block the UI:
 

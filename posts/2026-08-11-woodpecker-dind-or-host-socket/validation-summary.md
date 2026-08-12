@@ -1,4 +1,4 @@
-# Validation Summary: Docker-in-Docker or Host Socket in Woodpecker: Which Image-Build Pattern Is Safer?
+# Validation Summary: Docker-in-Docker vs Host Sockets in Woodpecker
 
 ## Status
 validated

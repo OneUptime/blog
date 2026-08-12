@@ -1,4 +1,4 @@
-# Validation Summary: How to Upgrade Woodpecker 2.x to 3.x Without Breaking Secrets, Cron Schedules, Privileged Plugins, or Webhooks
+# Validation Summary: Upgrade Woodpecker 2.x to 3.x Safely
 
 ## Status
 

@@ -1,4 +1,4 @@
-# Validation Summary: How Rekor Fits into Cosign Verification—and What Changes During a Transparency-Log Outage
+# Validation Summary: Rekor in Cosign Verification During a Transparency-Log Outage
 
 ## Status
 validated

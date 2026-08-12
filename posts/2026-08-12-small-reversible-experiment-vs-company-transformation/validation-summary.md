@@ -1,4 +1,4 @@
-# Validation Summary: Small Reversible Experiment or Company-Wide Transformation: How Big Should an Improvement Be?
+# Validation Summary: Choose Small Experiments or Company-Wide Transformation
 
 ## Status
 

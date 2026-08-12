@@ -1,4 +1,4 @@
-# Validation Summary: A Kuzu Query Is Slow: Reading `EXPLAIN`/`PROFILE`, Bounding Paths, and Checking Join Order
+# Validation Summary: Diagnose Slow Kuzu Queries with `EXPLAIN` and `PROFILE`
 
 ## Status
 

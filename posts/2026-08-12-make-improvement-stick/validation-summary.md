@@ -1,4 +1,4 @@
-# Validation Summary: How to Make an Improvement Stick: Ownership, Automation, Documentation, and Drift Checks
+# Validation Summary: Make Improvements Stick with Ownership and Drift Checks
 
 ## Status
 

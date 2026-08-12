@@ -1,14 +1,14 @@
-# Why Does `INSTALL` Fail in Kuzu Now? Using Bundled Extensions or a Local Extension Server
+# Fix Kuzu `INSTALL` with Bundled or Local Extensions
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kuzu, Extensions, Local Repository, Docker, Troubleshooting
+Tags: Kuzu, Extension, Local Repository, Docker, Troubleshooting
 
 Description: Fix Kuzu extension installation after the public server shutdown by using 0.11.3's bundled extensions or a pinned local extension repository.
 
 ---
 
-Kuzu's public extension server went away when the project was archived. As a result, an `INSTALL` statement that used to download an official extension can now fail even though general network connectivity and the Cypher syntax are fine. The correct fix depends on the engine version and extension name—not on repeatedly retrying the retired endpoint.
+Kuzu's public extension server went away when the project was archived. As a result, an `INSTALL` statement that used to download an official extension can now fail even though general network connectivity and the Cypher syntax are fine. The correct fix depends on the engine version and extension name-not on repeatedly retrying the retired endpoint.
 
 Kuzu `0.11.3` is the special case. Its final release pre-installs and pre-loads four extensions: `algo`, `fts`, `json`, and `vector`. For those four, remove the runtime `INSTALL` and `LOAD` calls. For an older Kuzu version, or for any other official extension on `0.11.3`, run the archived Kuzu extension-repository image locally and use the documented `FROM` URL.
 

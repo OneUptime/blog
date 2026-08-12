@@ -1,4 +1,4 @@
-# Validation Summary: Why Do the Same Problems Reappear Every Retrospective? Closing the Improvement Feedback Loop
+# Validation Summary: Close the Continuous Improvement Feedback Loop
 
 ## Status
 

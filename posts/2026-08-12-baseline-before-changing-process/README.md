@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Continuous Improvement, Baselines, Process Measurement, Experimentation, Flow Metrics, Statistical Process Control
+Tags: Continuous Improvement, Baseline, Process Measurement, Experimentation, Flow Metrics, Statistical Process Control
 
 Description: Build a decision-ready process baseline with frozen definitions, trustworthy event coverage, distributions, segments, and enough history to expose normal variation.
 

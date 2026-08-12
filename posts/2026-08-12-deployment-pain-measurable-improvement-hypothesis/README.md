@@ -218,4 +218,4 @@ When the change succeeds, make it durable: assign ownership, version the workflo
 
 ## Conclusion
 
-Turn deployment pain into a useful hypothesis by defining one deployment population, reconstructing the real flow, and baselining delivery outcomes, process mechanisms, and human experience together. State the intervention, expected result, causal reason, guardrails, and review date before changing the system. The result is not merely a faster pipeline: it is evidence about whether a bounded change made production delivery safer, calmer, and more sustainable—and a clear decision about what to improve next.
+Turn deployment pain into a useful hypothesis by defining one deployment population, reconstructing the real flow, and baselining delivery outcomes, process mechanisms, and human experience together. State the intervention, expected result, causal reason, guardrails, and review date before changing the system. The result is not merely a faster pipeline: it is evidence about whether a bounded change made production delivery safer, calmer, and more sustainable-and a clear decision about what to improve next.

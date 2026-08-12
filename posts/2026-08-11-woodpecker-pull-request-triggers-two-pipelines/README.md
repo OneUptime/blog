@@ -1,8 +1,8 @@
-# Why Does One Pull Request Trigger Two Woodpecker Pipelines? Separating `push` and `pull_request` Events
+# Why One Pull Request Triggers Two Woodpecker Pipelines
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Woodpecker CI, CI/CD, Pull Requests, Webhooks, Workflow Design
+Tags: Woodpecker CI, CI/CD, Pull Requests, Webhook, Workflow Design
 
 Description: Prevent duplicate Woodpecker work by assigning push and pull-request events to distinct workflow responsibilities.
 
@@ -248,4 +248,4 @@ Confirm that the pull request runs validation once, the feature-branch push does
 
 ## Conclusion
 
-A branch update with an open pull request can legitimately create both `push` and `pull_request` pipelines. Confirm the event pair, then assign validation to the pull-request context and post-merge or publishing work to protected-branch pushes. Put those rules at workflow level, preserve the stricter PR secret boundary, and use cancellation only for superseded runs—not as event deduplication.
+A branch update with an open pull request can legitimately create both `push` and `pull_request` pipelines. Confirm the event pair, then assign validation to the pull-request context and post-merge or publishing work to protected-branch pushes. Put those rules at workflow level, preserve the stricter PR secret boundary, and use cancellation only for superseded runs-not as event deduplication.

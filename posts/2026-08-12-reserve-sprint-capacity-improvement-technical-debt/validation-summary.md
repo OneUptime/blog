@@ -1,4 +1,4 @@
-# Validation Summary: How Much Sprint Capacity Should You Reserve for Improvement Work and Technical Debt?
+# Validation Summary: Reserve Sprint Capacity for Improvement and Technical Debt
 
 ## Status
 validated

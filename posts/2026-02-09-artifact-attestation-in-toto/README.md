@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Security, Supply Chain, In-Toto, Attestation
+Tags: Kubernetes, Security, Supply Chain, In-Toto, Attestations
 
 Description: Implement In-Toto artifact attestation to create verifiable supply chain metadata for Kubernetes deployments, tracking every step from source code to production with cryptographic proof.
 

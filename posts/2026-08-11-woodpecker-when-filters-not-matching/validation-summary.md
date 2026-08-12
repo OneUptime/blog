@@ -1,4 +1,4 @@
-# Validation Summary: Woodpecker `when` Filters Not Matching? Debug Branch, Ref, Event, Path, and Status Conditions
+# Validation Summary: Debug Woodpecker `when` Filters That Do Not Match
 
 ## Status
 validated

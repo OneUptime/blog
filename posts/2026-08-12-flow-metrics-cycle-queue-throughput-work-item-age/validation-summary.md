@@ -1,4 +1,4 @@
-# Validation Summary: Cycle Time, Queue Time, Throughput, and Work Item Age: Which Flow Metric Answers Which Question?
+# Validation Summary: Which Flow Metric Answers Which Question?
 
 ## Status
 

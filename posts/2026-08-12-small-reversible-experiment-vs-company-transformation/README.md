@@ -1,8 +1,8 @@
-# Small Reversible Experiment or Company-Wide Transformation: How Big Should an Improvement Be?
+# Choose Small Experiments or Company-Wide Transformation
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Continuous Improvement, Experiments, Organizational Change, PDCA, Change Management
+Tags: Continuous Improvement, Experiment, Organizational Change, PDCA, Change Management
 
 Description: Size improvement work by reversibility, blast radius, dependencies, and learning value, escalating to transformation only when the constraint is systemic.
 
@@ -97,7 +97,7 @@ GOV.UK’s service guidance recommends deploying software little and often becau
 
 Once a systemic change is warranted, preserve experimental discipline:
 
-1. Define the company-level outcome and baseline, such as customer lead time or recovery performance—not “percent trained.”
+1. Define the company-level outcome and baseline, such as customer lead time or recovery performance-not “percent trained.”
 2. Map the system and locate the constraint, critical dependencies, and groups bearing transition cost.
 3. Identify a vertical slice that reaches a real customer or operational outcome.
 4. Create enabling conditions: compatible interfaces, migration tooling, training, support, and decision rights.
@@ -105,7 +105,7 @@ Once a systemic change is warranted, preserve experimental discipline:
 6. Review evidence at a fixed gate and decide whether to expand, revise, pause, or reverse.
 7. Standardize learning for the next wave without pretending every context is identical.
 
-This turns transformation into a portfolio of connected hypotheses. Leadership still owns the systemic decisions—funding, organization design, shared architecture, policy, and capability investment—but does not need to gamble the whole organization on an untested implementation.
+This turns transformation into a portfolio of connected hypotheses. Leadership still owns the systemic decisions-funding, organization design, shared architecture, policy, and capability investment-but does not need to gamble the whole organization on an untested implementation.
 
 ## Use Outcome, Flow, and Guardrail Measures
 

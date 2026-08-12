@@ -1,4 +1,4 @@
-# How to Roll Out Image-Signature Enforcement in Kubernetes Without Blocking System and Sidecar Images
+# Roll Out Kubernetes Image-Signature Enforcement Safely
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -8,7 +8,7 @@ Description: Stage digest and signature policy from inventory through audit and 
 
 ---
 
-Cluster-wide signature enforcement often fails on its first day because the policy sees more images than the application team expected. DNS, storage, CNI, observability agents, init containers, ephemeral debug containers, and service-mesh sidecars all become admission subjects. Some are injected after users submit a workload.
+Cluster-wide signature enforcement often fails on its first day because the policy sees more images than the application team expected. DNS, storage, CNI, observability agents, init containers, ephemeral debug containers, and service-mesh sidecars can all become admission subjects when the corresponding API requests and subresources are matched. Some are injected after users submit a workload.
 
 A safe rollout inventories the final Pod image set, signs or explicitly trusts every required producer, begins in audit, and expands enforcement by repository and namespace. A blanket `*` rule with ad hoc exclusions is difficult to reason about and easy to bypass.
 
@@ -30,9 +30,11 @@ Also decide whether the policy verifies:
 
 Ambiguity here becomes an outage later.
 
+Ephemeral containers are added later through the `pods/ephemeralcontainers` subresource, so a policy that covers debug images must match `UPDATE` requests to that subresource; matching `pods` alone does not include subresources.
+
 ## Inventory the final image set
 
-Query running Pods across all namespaces and normalize image IDs and declared references:
+Query existing Pods across all namespaces and list their declared container image references:
 
 ```bash
 kubectl get pods -A -o json \
@@ -46,7 +48,7 @@ kubectl get pods -A -o json \
   | sort -u
 ```
 
-Also inspect `status.*ContainerStatuses[].imageID` to learn the resolved runtime digests. Declared tags and runtime digests answer different questions; store both during discovery.
+Also inspect `status.containerStatuses[].imageID`, `status.initContainerStatuses[].imageID`, and `status.ephemeralContainerStatuses[].imageID` to collect runtime-reported image identifiers where available. These identifiers are resolved by the runtime but are not guaranteed to be registry digests. Declared references and runtime-reported identifiers answer different questions; store both during discovery.
 
 Create an ownership table for every registry/repository:
 
@@ -75,14 +77,14 @@ If the injector's image is unsigned, the sustainable choices are to use a vendor
 
 ## Start with audit and reports
 
-Kyverno policies can record failures without denying admission. Begin with the policy violation action in Audit, while keeping error behavior deliberate. Current Kyverno reports distinguish `pass`, `skip`, `warn`, `error`, and `fail` results.
+Kyverno policies can record failures without denying admission. For an `ImageValidatingPolicy`, begin with `validationActions: [Audit]`; for a legacy `verifyImages` rule, use `failureAction: Audit`. Keep error behavior deliberate. Current Kyverno reports distinguish `pass`, `skip`, `warn`, `error`, and `fail` results.
 
 During the observation window:
 
 - exercise deployments, rollbacks, Jobs, CronJobs, autoscaling, node replacement, and debug workflows;
-- restart system components so dormant images are evaluated;
+- recreate API-managed system Pods so dormant image references pass through admission; a kubelet restart of a container within the same Pod does not re-admit the Pod spec or re-run image admission checks;
 - test private registry credentials and custom CAs from controller Pods;
-- mirror signatures, attestations, and SBOMs into every deployment registry;
+- make signatures, attestations, and SBOM artifacts reachable from every deployment environment by mirroring them with the images or configuring supported alternate signature and attestation sources;
 - group failures by repository, namespace, controller, and reason;
 - set a deadline and owner for every unresolved image.
 
@@ -97,9 +99,9 @@ matchImageReferences:
   - glob: "registry.example.com/apps/**"
 ```
 
-For new Kyverno 1.18 deployments, use the stable `ImageValidatingPolicy` API and its current schema. Existing installations may still use legacy `ClusterPolicy.verifyImages`; Kyverno marks that type deprecated. Generate policy from the documentation matching the installed CRD.
+Kyverno 1.17 promoted `ImageValidatingPolicy` to the stable `policies.kyverno.io/v1` API. At publication, 1.18.2 is the latest stable release, but it does not include upstream fixes for known gaps in ephemeral-container enforcement or the `mutateDigest`, `verifyDigest`, and `required` validation settings. Do not rely on those paths until you run a release containing the fixes, and test them against the exact installed version. Existing installations may still use legacy `ClusterPolicy` resources with `verifyImages` rules; Kyverno marked `ClusterPolicy` deprecated in 1.17, and it receives critical fixes only in 1.18. Kyverno 1.18 users retaining legacy rules should run at least 1.18.2, which fixes a multi-container early-return bug in required verification. Generate policy from the documentation matching the installed CRD.
 
-Set digest mutation and verification deliberately. Pinning workload manifests to a digest before admission reduces registry lookups and makes GitOps diffs explicit.
+Set digest mutation and verification deliberately. Pinning workload manifests to a digest before admission avoids tag-to-digest resolution and makes GitOps diffs explicit, but signature and attestation verification still queries the registry.
 
 Roll enforcement through:
 
@@ -118,21 +120,24 @@ Avoid a permanent blanket exemption for `kube-system`. Anyone who can create a p
 - verify vendor signatures using values from vendor documentation;
 - mirror and sign approved external digests if the vendor provides no compatible signature;
 - match the exact ServiceAccounts, namespaces, and repositories needed for bootstrap;
+- audit Kyverno's installation-level webhook namespace selectors, `resourceFilters`, and excluded identities before relying on a system-workload policy;
 - review bootstrap components that must run before the admission service is healthy.
 
 Keep the policy engine's own images and dependencies in the bootstrap plan to avoid circular dependency. Kubernetes webhook guidance recommends preventing dependency loops and narrowing webhook scope.
 
+Inventory and govern static Pods separately at the node/bootstrap layer: the kubelet runs them outside API-server management, and rejecting their mirror Pods during admission does not stop the static Pods on the node.
+
 ## Design availability separately from compliance
 
-A rule's Audit/Enforce action controls what happens when an image violates policy. A webhook `failurePolicy` controls what happens when the webhook errors or is unavailable. Treat these as separate risk choices.
+For `ImageValidatingPolicy`, `validationActions` controls validation failures: `Audit` records them and `Deny` blocks them. Its `failurePolicy` controls policy-evaluation failures and is reflected in the generated webhook's `Fail`/`Ignore` behavior. The webhook setting also governs call failures and timeouts; it does not override an explicit denial response. Legacy `verifyImages` rules use `failureAction: Audit` or `Enforce`. Treat these as separate risk choices.
 
-High-assurance application namespaces may fail closed. Critical cluster recovery paths may need a preapproved, digest-scoped bootstrap mechanism. Do not set every verification error to Ignore simply to improve availability; that silently turns a registry outage into an unsigned-image bypass.
+High-assurance application namespaces may fail closed. Critical cluster recovery paths may need a preapproved, digest-scoped bootstrap mechanism. Do not use `failurePolicy: Ignore` broadly simply for availability; it allows requests when the webhook call fails or times out. Test fast registry error responses and registry-induced webhook timeouts separately.
 
-Improve reliability with multiple policy-controller replicas, Pod disruption budgets, resource requests, topology spread, registry availability, credential refresh, CA rotation tests, and latency monitoring.
+Improve reliability with multiple admission-controller replicas, Pod disruption budgets, resource requests, topology spread, registry availability, credential refresh, CA rotation tests, and latency monitoring.
 
 ## Create narrow, governed exceptions
 
-Kyverno supports `PolicyException`, disabled by default and intended to be controlled with RBAC and policy. A safe exception names the exact policy/rule, namespace/workload, and immutable image digest. Add owner, ticket, justification, and expiry metadata, and enforce that metadata through GitOps review or another policy.
+Kyverno supports `PolicyException`, disabled by default and intended to be controlled with RBAC and policy. For `ImageValidatingPolicy`, a safe exception references the exact policy name and kind with `policyRefs` and uses narrowly scoped `matchConditions`; a match skips the referenced policy for the whole resource, not just one image. For a legacy `ClusterPolicy`, it identifies the exact `policyName` and `ruleNames`. The exception's own namespace does not constrain its target resources, so constrain either form to the intended namespace/workload. For an image-policy exception, require the complete image set covered by the skipped policy to consist only of approved immutable digests. Add owner, ticket, justification, and expiry metadata, and enforce that metadata through GitOps review or another policy.
 
 Do not allow wildcard exceptions from application namespaces. Alert before expiry, remove exceptions automatically through the approved controller/process, and report every use.
 
@@ -143,7 +148,7 @@ Do not allow wildcard exceptions from application namespaces. Alert before expir
 - [ ] Test mutation/injection ordering with the final admitted Pod.
 - [ ] Start in Audit and define measurable exit criteria.
 - [ ] Scope first enforcement to an internal controlled repository.
-- [ ] Roll out namespace by namespace with representative restart tests.
+- [ ] Roll out namespace by namespace with representative recreation and rollout tests.
 - [ ] Give system and vendor images separate explicit trust policies.
 - [ ] Protect exceptions with RBAC, review, exact digests, and expiry.
 - [ ] Make policy-service and registry availability observable.

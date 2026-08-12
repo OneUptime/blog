@@ -1,4 +1,4 @@
-# How to Verify Cosign Signatures in an Air-Gapped Environment with Sigstore Bundles
+# Verify Cosign Signatures Offline with Sigstore Bundles
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -157,7 +157,7 @@ Do not present a blob signature over exported bytes as if it were the registry i
 
 ## Why expired Fulcio certificates can still verify
 
-Fulcio certificates are short-lived. A verified RFC 3161 timestamp—or, for Rekor v1, a verified integrated time from the signed log entry—lets Cosign establish an observed time within the certificate chain's validity period. Rekor v2 entries do not provide an integrated time and therefore require signed timestamp material. Offline verification should not compare only the certificate expiration date with the current clock.
+Fulcio certificates are short-lived. A verified RFC 3161 timestamp-or, for Rekor v1, a verified integrated time from the signed log entry-lets Cosign establish an observed time within the certificate chain's validity period. Rekor v2 entries do not provide an integrated time and therefore require signed timestamp material. Offline verification should not compare only the certificate expiration date with the current clock.
 
 Keep the complete bundle/referrer and trusted root. A detached certificate and signature without acceptable trusted-time evidence may be insufficient after certificate expiry.
 

@@ -1,4 +1,4 @@
-# Validation Summary: How to Alert on the 75th Percentile of Core Web Vitals Without Paging on Traffic-Mix Noise
+# Validation Summary: Alert on p75 Core Web Vitals Without Traffic-Mix Noise
 
 ## Status
 

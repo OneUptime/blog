@@ -1,4 +1,4 @@
-# How to Detect a Frontend Regression Without Confusing It with Bot Traffic, Extensions, or a Changing User Mix
+# Detect Frontend Regressions Without Traffic Confounders
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -188,4 +188,4 @@ Keep a small synthetic canary that generates a known navigation, interaction, an
 
 ## Conclusion
 
-A blended frontend metric cannot identify a release regression by itself. Bind every observation to an immutable release, compare simultaneous cohorts, classify bots at a trusted boundary, and treat extension influence as bounded noise rather than something a page can enumerate away. Publish traffic mix and metric availability, compare within stable strata, and recompute standardized distributions against a fixed reference population. With those controls, a rollout decision rests on changed code and user impact—not on whichever visitors happened to arrive that hour.
+A blended frontend metric cannot identify a release regression by itself. Bind every observation to an immutable release, compare simultaneous cohorts, classify bots at a trusted boundary, and treat extension influence as bounded noise rather than something a page can enumerate away. Publish traffic mix and metric availability, compare within stable strata, and recompute standardized distributions against a fixed reference population. With those controls, a rollout decision rests on changed code and user impact-not on whichever visitors happened to arrive that hour.

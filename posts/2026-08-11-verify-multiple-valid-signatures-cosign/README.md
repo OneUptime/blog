@@ -192,7 +192,7 @@ If only one authority verifies, check:
 - a concurrent signing operation did not overwrite legacy signature state;
 - the CEL threshold counts successful named attestors, not signatures returned by one attestor.
 
-When signatures use OCI 1.1 referrer storage, use `oras discover` against the repository where Cosign stored them. It does not list Cosign's legacy digest-derived signature tag. Let cryptographic verification—not presence—decide validity.
+When signatures use OCI 1.1 referrer storage, use `oras discover` against the repository where Cosign stored them. It does not list Cosign's legacy digest-derived signature tag. Let cryptographic verification-not presence-decide validity.
 
 ## Multi-signer checklist
 

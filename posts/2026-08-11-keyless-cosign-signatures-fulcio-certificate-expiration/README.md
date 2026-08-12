@@ -8,7 +8,7 @@ Description: Learn why short-lived Fulcio certificate expiry does not normally i
 
 ---
 
-Fulcio deliberately issues short-lived code-signing certificates. A keyless Cosign signature is expected to remain verifiable long after its certificate's `NotAfter` time. The verifier asks whether the certificate was valid at the trusted observer time bound to the signature—not whether it would be valid for a new signature today.
+Fulcio deliberately issues short-lived code-signing certificates. A keyless Cosign signature is expected to remain verifiable long after its certificate's `NotAfter` time. The verifier asks whether the certificate was valid at the trusted observer time bound to the signature-not whether it would be valid for a new signature today.
 
 That historical decision depends on preserved transparency and timestamp evidence. A certificate and artifact signature alone may not be enough to establish that the signature existed while the certificate was valid.
 

@@ -1,4 +1,4 @@
-# Browser Telemetry Disappears Behind Ad Blockers and CSP: How Much Data Are You Missing?
+# Browser Telemetry Blocked by Ad Blockers and CSP
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

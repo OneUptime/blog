@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GKE, Kubernetes, Binary Authorization, Security, Container Security, Attestation, GCP
+Tags: GKE, Kubernetes, Binary Authorization, Security, Container Security, Attestations, GCP
 
 Description: Troubleshoot and resolve GKE deployment failures caused by Binary Authorization denying images that lack required attestations or violate the admission policy.
 

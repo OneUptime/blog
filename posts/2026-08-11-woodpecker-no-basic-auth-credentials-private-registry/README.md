@@ -1,4 +1,4 @@
-# Woodpecker Says “No Basic Auth Credentials”: Fixing Private Registry Hostnames and Pull Secrets
+# Fix Woodpecker “No Basic Auth Credentials” Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -232,4 +232,4 @@ Use separate read-only pull and scoped push identities. Keep push secrets out of
 
 ## Conclusion
 
-Fix a private-image pull at the layer performing it. Match the registry credential to the exact image hostname and port, without a scheme or path. On Kubernetes, when referencing pull Secrets through agent configuration, name them explicitly and place them in the worker Pod's namespace—especially after the Woodpecker 3.x migration. Keep backend pull credentials separate from narrowly scoped push secrets inside publishing steps.
+Fix a private-image pull at the layer performing it. Match the registry credential to the exact image hostname and port, without a scheme or path. On Kubernetes, when referencing pull Secrets through agent configuration, name them explicitly and place them in the worker Pod's namespace-especially after the Woodpecker 3.x migration. Keep backend pull credentials separate from narrowly scoped push secrets inside publishing steps.

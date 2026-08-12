@@ -178,14 +178,14 @@ Also resist turning a target into the purpose of the system. Once rewards depend
 
 ## Official Documentation
 
-- [IHI — Model for Improvement: Establishing Measures](https://www.ihi.org/library/model-for-improvement/establishing-measures)
-- [IHI — Quality Improvement Project Measures Worksheet](https://www.ihi.org/library/tools/quality-improvement-project-measures-worksheet)
-- [GOV.UK — Measuring Success](https://www.gov.uk/service-manual/measuring-success)
-- [GOV.UK — Measuring the Success of Your Service](https://www.gov.uk/service-manual/measuring-success/measuring-the-success-of-your-service)
-- [GOV.UK Service Standard — Define Success and Publish Performance Data](https://www.gov.uk/service-manual/service-standard/point-10-define-success-publish-performance-data)
-- [GOV.UK — Measuring User Satisfaction](https://www.gov.uk/service-manual/measuring-success/measuring-user-satisfaction)
-- [GOV.UK — Measuring Service Benefits](https://www.gov.uk/service-manual/measuring-success/measuring-service-benefits)
-- [DORA — Customer Feedback](https://dora.dev/capabilities/customer-feedback/)
+- [IHI - Model for Improvement: Establishing Measures](https://www.ihi.org/library/model-for-improvement/establishing-measures)
+- [IHI - Quality Improvement Project Measures Worksheet](https://www.ihi.org/library/tools/quality-improvement-project-measures-worksheet)
+- [GOV.UK - Measuring Success](https://www.gov.uk/service-manual/measuring-success)
+- [GOV.UK - Measuring the Success of Your Service](https://www.gov.uk/service-manual/measuring-success/measuring-the-success-of-your-service)
+- [GOV.UK Service Standard - Define Success and Publish Performance Data](https://www.gov.uk/service-manual/service-standard/point-10-define-success-publish-performance-data)
+- [GOV.UK - Measuring User Satisfaction](https://www.gov.uk/service-manual/measuring-success/measuring-user-satisfaction)
+- [GOV.UK - Measuring Service Benefits](https://www.gov.uk/service-manual/measuring-success/measuring-service-benefits)
+- [DORA - Customer Feedback](https://dora.dev/capabilities/customer-feedback/)
 
 ## Conclusion
 

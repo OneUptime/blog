@@ -1,4 +1,4 @@
-# Validation Summary: Session Replay Without Leaking PII: Masking Inputs, URLs, DOM Text, and Network Payloads
+# Validation Summary: Prevent PII Leaks in Session Replay
 
 ## Status
 validated

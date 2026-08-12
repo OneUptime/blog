@@ -1,4 +1,4 @@
-# Validation Summary: Browser Telemetry Disappears Behind Ad Blockers and CSP: How Much Data Are You Missing?
+# Validation Summary: Browser Telemetry Blocked by Ad Blockers and CSP
 
 ## Status
 validated

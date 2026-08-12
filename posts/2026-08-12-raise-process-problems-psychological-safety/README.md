@@ -1,4 +1,4 @@
-# Why Won’t People Raise Process Problems? Building Psychological Safety Without Empty Slogans
+# Build Psychological Safety for Process Problems
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -10,7 +10,7 @@ Description: Turn process concerns into safe, consequential learning by changing
 
 People usually stop raising process problems for rational reasons. They have watched someone get blamed, seen concerns disappear without action, learned that only polished solutions are welcome, or concluded that challenging the process will hurt their standing. A poster saying “speak up” does not change that calculation.
 
-Psychological safety grows when repeated organizational behavior shows that an interpersonal risk—asking a basic question, admitting an error, challenging a plan, or reporting a near miss—will receive a fair response and can affect the work. Build that evidence through leader behavior, multiple reporting routes, transparent follow-through, and accountable problem solving.
+Psychological safety grows when repeated organizational behavior shows that an interpersonal risk-asking a basic question, admitting an error, challenging a plan, or reporting a near miss-will receive a fair response and can affect the work. Build that evidence through leader behavior, multiple reporting routes, transparent follow-through, and accountable problem solving.
 
 ## Define Psychological Safety Precisely
 
@@ -72,7 +72,7 @@ A single “open door” is not an accessible reporting system. Provide routes w
 
 Publish which route fits which situation and how each is handled. Never require someone to report only to the manager who controls the disputed process. Do not market a tool as anonymous without confirming what identities, IP addresses, and metadata administrators can access.
 
-Sensitive allegations should not be investigated in a retrospective. Move them into the appropriate fair process, protect privacy, and arrange immediate safety support where needed. Psychological safety complements—not replaces—formal worker protection, safeguarding, security, and legal responsibilities.
+Sensitive allegations should not be investigated in a retrospective. Move them into the appropriate fair process, protect privacy, and arrange immediate safety support where needed. Psychological safety complements-not replaces-formal worker protection, safeguarding, security, and legal responsibilities.
 
 ## Close the Loop Without Exposing the Reporter
 
@@ -145,7 +145,7 @@ Trust will lag the announcement. That is reasonable. People update their beliefs
 - [Edmondson: Psychological Safety and Learning Behavior in Work Teams](https://doi.org/10.2307/2666999)
 - [Harvard Business School: Managing the Risk of Learning](https://www.hbs.edu/faculty/Publication%20Files/02-062_0b5726a8-443d-4629-9e75-736679b870fc.pdf)
 - [Google re:Work: Understand Team Effectiveness](https://rework.withgoogle.com/en/guides/understanding-team-effectiveness)
-- [Google SRE: Postmortem Culture—Learning from Failure](https://sre.google/sre-book/postmortem-culture/)
+- [Google SRE: Postmortem Culture-Learning from Failure](https://sre.google/sre-book/postmortem-culture/)
 - [The Scrum Guide](https://scrumguides.org/scrum-guide.html)
 - [Atlassian Team Playbook: Build a Team Culture of Trust](https://www.atlassian.com/team-playbook/plays/team-culture-of-trust)
 - [Atlassian Team Playbook: Team Culture Retro](https://www.atlassian.com/team-playbook/plays/team-culture-retro)

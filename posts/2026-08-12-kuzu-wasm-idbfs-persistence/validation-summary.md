@@ -1,4 +1,4 @@
-# Validation Summary: Kuzu-Wasm Database Vanishes on Refresh: Persisting IDBFS and Synchronizing the Filesystem
+# Validation Summary: Persist Kuzu-Wasm with IDBFS Across Refreshes
 
 ## Status
 validated

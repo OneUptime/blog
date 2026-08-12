@@ -1,4 +1,4 @@
-# Where Does Cosign Store Container Image Signatures? OCI Referrers and Separate Repositories Explained
+# Where Cosign Stores Image Signatures: Referrers and Repositories
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
