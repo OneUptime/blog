@@ -36,7 +36,7 @@ Create two builds from the same dependency lockfile and commit:
 
 A runtime flag that merely disables sending may leave imports, wrappers, and observers active. Elastic's RUM documentation, for example, notes that XHR and Fetch are patched as soon as the agent script executes even if later inactive. The control must omit the package or follow the SDK's documented full-disable path.
 
-Generate a bundle manifest and compare artifacts:
+Build both variants and compare allocated filesystem usage as a rough check:
 
 ~~~bash
 npm ci
@@ -47,7 +47,7 @@ MONITORING_ENABLED=true npm run build
 du -ak dist | sort -n > treatment-sizes.txt
 ~~~
 
-Filesystem size is only a first check. Use the bundler's official stats or manifest to identify which SDK modules and transitive dependencies entered initial and lazy chunks. Measure the actual encoded response sizes served by the CDN, because minification and compression change the transfer cost.
+`MONITORING_ENABLED` is an application-defined build-time switch; parse its string values explicitly and verify that the control output contains no SDK code. Allocated filesystem usage is only a first check. Use the bundler's official stats or manifest to identify which SDK modules and transitive dependencies entered initial and lazy chunks. Measure the actual encoded response sizes served by the CDN, because minification and compression change the transfer cost.
 
 If monitoring is dynamically imported, verify when it loads. Loading after first render can protect startup but miss early errors and timings. Google's official `web-vitals` library uses buffered performance entries and documents that it generally does not need to load early; a full monitoring SDK may have different requirements.
 
@@ -95,7 +95,7 @@ For session replay, profile routes that create many DOM mutations: virtualized t
 
 ## Measure the SDK's Network Work
 
-Resource Timing can expose observed SDK script and intake requests:
+Resource Timing can expose observed SDK script and intake requests, including response-side sizes:
 
 ~~~javascript
 const monitoringHosts = new Set([
@@ -112,13 +112,15 @@ function monitoringResources() {
     .map((entry) => ({
       initiator: entry.initiatorType,
       duration_ms: Math.round(entry.duration),
-      transfer_bytes: entry.transferSize,
-      encoded_bytes: entry.encodedBodySize,
+      response_transfer_bytes: entry.transferSize,
+      response_encoded_body_bytes: entry.encodedBodySize,
     }));
 }
 ~~~
 
-For cross-origin resources, detailed timing and sizes may be restricted unless the response supplies an appropriate `Timing-Allow-Origin` header. Zero can mean unavailable or cache behavior, not necessarily zero bytes. Confirm in the Network panel or intake-side counters.
+These size fields describe the fetched response, not the outgoing telemetry request body, and `transferSize` is not an exact wire-byte counter. For cross-origin resources, detailed timing and response sizes may be restricted unless the response supplies an appropriate `Timing-Allow-Origin` header. Zero can mean unavailable or cache behavior, not necessarily zero bytes. Confirm response behavior in the Network panel. Measure uploads through SDK-supported counters or controlled request instrumentation, then reconcile them with intake-side received-byte counters.
+
+The snapshot above only includes entries retained in the Resource Timing buffer, which defaults to 250. For complete session counts, observe `resource` entries continuously from early startup, deliberately manage the buffer with `performance.setResourceTimingBufferSize()`, or rely on intake-side counters.
 
 Measure:
 
@@ -134,7 +136,7 @@ Avoid reading or storing payload bodies during ordinary overhead measurement. Sy
 
 ## Compare User-Visible Metrics in the Field
 
-Lab traces expose causes; field data tells you whether users experience a meaningful delta. Randomly assign eligible sessions to a stable control or treatment before loading the SDK, and keep application content, release, cache behavior, and traffic allocation the same. If a complete no-SDK control would remove the very metrics you need, use an independent minimal first-party measurement snippet reviewed for its own overhead.
+Lab traces expose causes; field data tells you whether users experience a meaningful delta. Randomly assign eligible sessions to a stable control or treatment before loading the SDK, and keep application content, release, cache behavior, and traffic allocation the same. If a complete no-SDK control would remove the very metrics you need, run the same independent minimal first-party measurement snippet in both cohorts and review it for its own overhead.
 
 Use the official `web-vitals` package for LCP, INP, and CLS where its browser support fits. Its attribution build adds diagnostic information but is larger, so choose deliberately. Compare:
 
@@ -160,7 +162,7 @@ Once a regression is real, run an additive matrix:
 
 Change one feature at a time. Check SDK-supported options for sampling, event throttling, lazy loading, manual replay start, and excluded URLs. Lower sampling can reduce serialization and network volume, but it may not reduce startup cost if all hooks are still installed.
 
-Common remedies include importing a smaller supported build, deferring nonessential integrations, reducing captured attributes and breadcrumbs, excluding noisy endpoints, decreasing replay rate, blocking mutation-heavy nonessential subtrees, batching uploads, and preventing repeated initialization on SPA renders. The `web-vitals` project warns that calling its metric functions repeatedly creates additional observers and can eventually leak memory; apply the same “initialize once” discipline to the monitoring SDK.
+Common remedies include importing a smaller supported build, deferring nonessential integrations, reducing captured attributes and breadcrumbs, excluding noisy endpoints, decreasing replay rate, blocking mutation-heavy nonessential subtrees, batching uploads, and preventing repeated initialization on SPA renders. The `web-vitals` project warns that repeatedly calling its metric functions on the same page creates additional observers and page-lifetime event listeners and may eventually increase memory overhead; apply the same “initialize once” discipline to the monitoring SDK.
 
 ## Make Overhead a Release Gate
 
