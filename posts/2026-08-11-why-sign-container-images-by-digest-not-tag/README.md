@@ -45,7 +45,7 @@ Do not discover the digest by pulling the mutable tag much later if the build sy
 
 ## Keep the digest through verification and deployment
 
-Use the same digest reference for verification:
+For a keyless signature created by the example GitHub Actions workflow on `main` (with `id-token: write` permission), use the same digest reference for verification:
 
 ```bash
 cosign verify \
@@ -79,9 +79,9 @@ Kubernetes records the digest reference as supplied. Policy engines such as Kyve
 
 ## Multi-platform images need a deliberate subject
 
-A multi-platform tag normally points to an OCI image index. The index has its own digest and lists child manifests for platforms such as `linux/amd64` and `linux/arm64`. Signing the index digest says that the signed subject is the complete index descriptor and its current child list. It does not automatically create a separate signature for every child manifest.
+A multi-platform tag normally points to an OCI image index or the analogous Docker manifest list. The top-level index or list has its own digest and lists child manifests for platforms such as `linux/amd64` and `linux/arm64`. Signing that top-level digest binds the signature to the complete index or list document, including its current list of child-manifest descriptors. It does not automatically create a separate signature for every child manifest.
 
-That may be exactly the intended policy: consumers choose a platform from a signed index. If a verifier operates on individual platform manifests, sign those too with Cosign's documented `--recursive` behavior. In either case, record whether the policy trusts the index, the children, or both; do not treat those digests as interchangeable.
+That may be exactly the intended policy: consumers choose a platform from a signed index or manifest list. If a verifier operates on individual platform manifests, sign those too with Cosign's documented `--recursive` behavior. In either case, record whether the policy trusts the top-level index or list, the children, or both; do not treat those digests as interchangeable.
 
 ## A tag is still useful metadata
 
@@ -92,10 +92,13 @@ Digest pinning does not require abandoning tags. Tags remain valuable for browsi
 docker buildx build \
   --platform linux/amd64,linux/arm64 \
   --tag registry.example.com/team/app:1.8.0 \
+  --metadata-file build-metadata.json \
   --push .
 
-# Obtain the digest immediately from the builder's metadata in production.
-# This command is useful for an operator check.
+# Capture the top-level digest from the builder's metadata.
+DIGEST="$(jq -r '.["containerimage.digest"]' build-metadata.json)"
+
+# A fresh registry query is useful as an independent operator check.
 crane digest registry.example.com/team/app:1.8.0
 ```
 
@@ -115,7 +118,7 @@ This is why “verify, then deploy the same tag” is weaker than “verify a di
 
 ## Digest-first release checklist
 
-- [ ] Capture the canonical manifest or index digest from the image push.
+- [ ] Capture the canonical manifest, image-index, or manifest-list digest from the image push.
 - [ ] Construct an `image@sha256:...` reference and treat it as immutable release data.
 - [ ] Sign that exact reference, not a mutable tag.
 - [ ] Verify the same digest with an explicit trusted key or keyless identity and issuer.
@@ -123,7 +126,7 @@ This is why “verify, then deploy the same tag” is weaker than “verify a di
 - [ ] Promote or mirror the digest together with its referrers.
 - [ ] Put the verified digest in Kubernetes manifests or the final rendered GitOps output.
 - [ ] Retain a friendly tag only as a discovery and release-management aid.
-- [ ] For multi-platform images, document whether the index, child manifests, or both must be signed.
+- [ ] For multi-platform images, document whether the top-level index or list, child manifests, or both must be signed.
 
 ## Official Documentation
 
