@@ -1,4 +1,4 @@
-# Why Does `INSTALL EXTENSION` Fail in Kuzu Now? Using Bundled Extensions or a Local Extension Server
+# Why Does `INSTALL` Fail in Kuzu Now? Using Bundled Extensions or a Local Extension Server
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -8,9 +8,9 @@ Description: Fix Kuzu extension installation after the public server shutdown by
 
 ---
 
-Kuzu's public extension server went away when the project was archived. As a result, an `INSTALL` statement that used to download an official extension can now fail even though DNS, TLS, and the Cypher syntax are fine. The correct fix depends on the engine version and extension name—not on repeatedly retrying the retired endpoint.
+Kuzu's public extension server went away when the project was archived. As a result, an `INSTALL` statement that used to download an official extension can now fail even though general network connectivity and the Cypher syntax are fine. The correct fix depends on the engine version and extension name—not on repeatedly retrying the retired endpoint.
 
-Kuzu `0.11.3` is the special case. Its final release pre-installs and pre-loads four extensions: `algo`, `fts`, `json`, and `vector`. For those four, remove the runtime `INSTALL` and `LOAD` calls. For an older Kuzu version, or for any other extension on `0.11.3`, run the archived Kuzu extension-repository image locally and use the documented `FROM` URL.
+Kuzu `0.11.3` is the special case. Its final release pre-installs and pre-loads four extensions: `algo`, `fts`, `json`, and `vector`. For those four, remove the runtime `INSTALL` and `LOAD` calls. For an older Kuzu version, or for any other official extension on `0.11.3`, run the archived Kuzu extension-repository image locally and use the documented `FROM` URL.
 
 ## First, Identify the Exact Failure
 
@@ -28,9 +28,9 @@ CALL SHOW_OFFICIAL_EXTENSIONS() RETURN *;
 CALL SHOW_LOADED_EXTENSIONS() RETURN *;
 ~~~
 
-These answer different questions. The official list is the catalog of extension names known to that release. The loaded list is the functionality available in the current session. A downloaded extension may still need `LOAD`; conversely, the four bundled `0.11.3` extensions are already loaded and need neither operation.
+These answer different questions. The official list is a hard-coded list of official extensions for that release. In `0.11.3`, it omits `vector` even though `vector` is bundled, so do not treat it as a complete capability check. The loaded list shows the extensions available in the current session. A downloaded extension may still need `LOAD`; conversely, the four bundled `0.11.3` extensions are already loaded and need neither operation.
 
-Avoid relying on a developer workstation where `~/.kuzu/extensions` contains artifacts from old experiments. Reproduce with the same container image, user, home directory, OS, architecture, and Kuzu package used in production.
+Avoid relying on a developer workstation where `~/.kuzu/extension` contains artifacts from old experiments. Reproduce with the same container image, user, home directory, OS, architecture, and Kuzu package used in production.
 
 ## Case 1: Kuzu 0.11.3 and a Bundled Extension
 
@@ -50,7 +50,7 @@ INSTALL json;
 LOAD json;
 ~~~
 
-The first can attempt a download path that no longer exists, while both are unnecessary for the bundled set. If a bundled function is unavailable, verify that the running native library really is `0.11.3`; a package manifest alone is insufficient. Also check that the application did not load a different `libkuzu` through its dynamic-library search path.
+On `0.11.3`, both statements stop at the static-link check and return an informational message that the extension is already linked into the Kuzu core. Neither downloads nor loads anything, and both are unnecessary for the bundled set. If a bundled function is unavailable, verify that the running native library really is `0.11.3`; a package manifest alone is insufficient. Also check that the application did not load a different `libkuzu` through its dynamic-library search path.
 
 The final release notes are authoritative about the bundle. They say `0.11.3` combines the `0.11.2` engine with `algo`, `fts`, `json`, and `vector` so users do not need to install them. The final docs additionally say they are pre-loaded.
 
@@ -120,19 +120,19 @@ Record this tuple for every artifact:
 
 ~~~text
 Kuzu engine version
+Kuzu extension/repository version
 extension name
 extension binary checksum
-operating system
-CPU architecture
+Kuzu platform identifier (OS, CPU architecture, and Linux C++ ABI where applicable)
 extension repository image digest
 installation date and owner
 ~~~
 
-Native extensions are not portable JavaScript bundles. Do not copy an artifact between macOS and Linux, x86-64 and ARM64, or unmatched Kuzu releases. An extension that happens to load against a different engine build has not thereby become supported or safe.
+Native extensions are not portable JavaScript bundles. Do not copy an artifact between macOS and Linux, x86-64 and ARM64, Linux C++ ABIs, or unmatched Kuzu extension/repository versions. An extension that happens to load against a different engine build has not thereby become supported or safe.
 
 ## Separate Install Time from Runtime
 
-`INSTALL` downloads an extension into the Kuzu per-user extension location, documented as `~/.kuzu/extensions`. `LOAD` makes a previously installed extension available to a session. For non-bundled extensions, loading is session-scoped, so a new CLI or application process must load it again.
+`INSTALL` downloads an extension into Kuzu's per-user, extension-version- and platform-specific location under `~/.kuzu/extension/<extension-version>/<platform>/`. The archived on-disk-files page incorrectly shows the plural path `~/.kuzu/extensions`; the `0.11.3` source and released binaries use the singular, versioned path. `LOAD` makes a previously installed extension available to a session. For non-bundled extensions, loading is session-scoped, so a new CLI or application process must load it again.
 
 Prefer installing during an image-build or controlled provisioning phase, then starting the runtime without permission to modify the extension directory. This avoids making application availability depend on a repository server during every restart.
 
@@ -165,30 +165,31 @@ Then check:
 
 - the URL ends at the repository root expected by Kuzu;
 - the engine version is exactly the one selected;
-- the OS and CPU architecture have a matching artifact;
+- the engine's extension/repository version and exact platform identifier have a matching artifact;
 - a proxy is not rewriting the URL or blocking plain HTTP;
-- the service user can create its `~/.kuzu/extensions` tree;
+- the service user can create its `~/.kuzu/extension/<extension-version>/<platform>/` tree;
 - its home directory is stable across restarts;
 - old partial files are not shadowing the intended extension;
 - container read-only filesystem settings provide a deliberate writable install location.
 
-Use the Kuzu error body and repository access logs. A `404` is a path or artifact mismatch; connection refusal is a routing/listener issue; permission denied points to the local extension directory. Treating all three as “the extension server is down” wastes time.
+Use the Kuzu error body and repository access logs. A Kuzu-reported `404` for the required extension library is a path or artifact mismatch; a repository-log `404` for Kuzu's optional `_installer` probe can be normal. Connection refusal is a routing/listener issue; permission denied points to the local extension directory. Treating every case as “the extension server is down” wastes time.
 
 ## Do Not Mix Kuzu and Ladybug Extension Repositories
 
-LadybugDB, the active successor, has its own image at `ghcr.io/ladybugdb/extension-repo`, stores artifacts under `~/.lbug/extensions`, and builds `.lbug_extension` libraries. Those are not replacements for Kuzu `.kuzu_extension` binaries. If migrating, install target-native extensions and rebuild extension-backed indexes as part of target validation.
+LadybugDB, the active successor, has its own image at `ghcr.io/ladybugdb/extension-repo`. Current Ladybug releases store downloaded extensions in an extension-version- and platform-specific tree under `~/.lbdb/extension/` and build `.lbug_extension` libraries. Those are not replacements for Kuzu `.kuzu_extension` binaries. If migrating, install target-native extensions and verify or recreate extension-backed indexes as part of target validation.
 
 ## Official Documentation
 
 - [Kuzu archive and local extension-server announcement](https://github.com/kuzudb/kuzu)
 - [Kuzu 0.11.3 release notes](https://github.com/kuzudb/kuzu/releases/tag/v0.11.3)
 - [Kuzu extension catalog and lifecycle](https://kuzudb.github.io/docs/extensions/)
-- [Kuzu on-disk extension location](https://kuzudb.github.io/docs/developer-guide/files/)
+- [Kuzu 0.11.3 on-disk extension location](https://github.com/kuzudb/kuzu/blob/v0.11.3/src/main/client_context.cpp#L195-L198)
 - [Kuzu installation](https://kuzudb.github.io/docs/installation/)
 - [Kuzu JSON extension](https://kuzudb.github.io/docs/extensions/json/)
 - [Kuzu HTTPFS extension](https://kuzudb.github.io/docs/extensions/httpfs/)
 - [Ladybug extension documentation for migration comparison](https://docs.ladybugdb.com/extensions/)
+- [Ladybug 0.19.1 on-disk extension location](https://github.com/LadybugDB/ladybug/blob/v0.19.1/src/main/client_context.cpp#L191-L194)
 
 ## Conclusion
 
-On Kuzu `0.11.3`, use `algo`, `fts`, `json`, and `vector` directly because they are bundled and pre-loaded. For older Kuzu versions or any other extension, host the archived Kuzu repository image locally and install from its explicit URL. Pin the engine and repository artifacts together, keep native-extension paths trusted, and verify the capability in the real runtime environment.
+On Kuzu `0.11.3`, use `algo`, `fts`, `json`, and `vector` directly because they are bundled and pre-loaded. For older Kuzu versions or any other official extension, host the archived Kuzu repository image locally and install from its explicit URL. Pin the engine and repository artifacts together, keep native-extension paths trusted, and verify the capability in the real runtime environment.
