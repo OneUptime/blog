@@ -1,18 +1,18 @@
-# How to Parameterize Kuzu Cypher Safely Without Replanning Every Query
+# How to Parameterize Kuzu Cypher Safely Without Assuming Plan Reuse
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kuzu, Cypher, Prepared Statements, Query Security, Python, Performance
 
-Description: Use typed Kuzu parameters and version-aware prepared statements safely, while measuring rather than assuming what 0.11.3 caches between executions.
+Description: Use typed Kuzu parameters and version-aware prepared statements safely, while measuring rather than assuming what 0.11.3 reuses between executions.
 
 ---
 
-Parameterize every data value in Kuzu Cypher with `$name` and pass a typed parameter map through the client API. This prevents values from changing query structure, keeps query text stable, and gives Kuzu a reusable statement shape. For hot loops in APIs that expose a reusable prepared-statement object, prepare once per connection and execute it repeatedly.
+Parameterize every supported runtime data value in Kuzu Cypher with `$name` and pass a typed parameter map through the client API. This prevents values from changing query structure and keeps query text stable. For hot loops in APIs that expose a reusable prepared-statement object, prepare once on the connection that will execute it so parsing can be reused.
 
-There is an important Kuzu 0.11.3 caveat behind the phrase “without replanning.” The official guide says prepared statements make reuse more efficient, and the C++ API exposes `prepare()` plus parameterized execution. However, the 0.11.3 source rebinds a cached parsed statement during parameterized execution, and the Python wrapper deprecates separate public `prepare()` in favor of `execute(query, parameters)`, which automatically prepares a string. Do not promise zero compile work merely because an object is named `PreparedStatement`. Measure compile and execution times in the exact binding you ship.
+There is an important Kuzu 0.11.3 caveat behind prepared-statement reuse. The official guide says parameters make reuse more efficient, and the C++ API exposes `prepare()` plus parameterized execution. However, the 0.11.3 source caches the parsed statement but rebinds it and builds and optimizes a fresh logical plan on every successful parameterized execution. The Python wrapper also deprecates separate public `prepare()` in favor of `execute(query, parameters)`, which automatically prepares a string. Do not promise plan reuse merely because an object is named `PreparedStatement`. Measure compile and execution times in the exact binding you ship.
 
-That distinction does not weaken the security rule: values must still be parameters. It makes the performance claim accurate for a frozen engine.
+That distinction does not weaken the security rule: caller-controlled values supported as expressions must still be parameters, while bind-time literal choices need allowlisted templates. It makes the performance claim accurate for a frozen engine.
 
 ## Values Belong in Parameters
 
@@ -43,7 +43,7 @@ result = conn.execute(
 )
 ~~~
 
-Kuzu maps `$min_age` to the `min_age` dictionary key. Parameters are values, not text substitutions. The binder validates their presence and types before execution.
+Kuzu maps `$min_age` to the `min_age` dictionary key. Parameters are values, not text substitutions. Kuzu binds supplied values by name and uses their inferred types while binding the query. In 0.11.3, unexpected parameter names fail, but omitted names are not universally rejected; validate required keys in application code.
 
 Do not interpolate:
 
@@ -57,7 +57,7 @@ A name containing a quote can break syntax; malicious input can alter the statem
 
 ## Parameterize Writes Too
 
-The same rule applies to `CREATE`, `MERGE`, `SET`, vector queries, and limits:
+The same rule applies to `CREATE`, `MERGE`, `SET`, vector inputs, and limits:
 
 ~~~python
 upsert_person = """
@@ -90,7 +90,7 @@ result = conn.execute(
         'embedding_index',
         $embedding,
         $k,
-        efs := $efs
+        efs := 400
     )
     RETURN node.document_id, distance
     ORDER BY distance;
@@ -98,12 +98,11 @@ result = conn.execute(
     {
         "embedding": embedding.tolist(),
         "k": 20,
-        "efs": 400,
     },
 )
 ~~~
 
-Check the target function's accepted parameter types. The vector index expects the query vector as a float list, `k` as an integer, and `efs` as an integer.
+Check the target function's accepted parameter types. The vector index expects a query vector compatible with the indexed `FLOAT` or `DOUBLE` array and `k` as an integer. In 0.11.3, the optional `efs` setting is a bind-time literal; writing `efs := $efs` silently leaves the default in effect. If callers may select `efs`, map an allowlisted choice to complete static query templates.
 
 ## Parameters Cannot Replace Every Token
 
@@ -144,9 +143,9 @@ def find_person(conn: kuzu.Connection, person_id: str):
     return conn.execute(QUERY, {"person_id": person_id})
 ~~~
 
-Keep `QUERY` constant and reuse the connection appropriately, but do not bypass the supported API solely to silence compile timing. Kuzu 0.11.3's archived source is the authority for that binding.
+Keep `QUERY` constant for safety and reviewability and reuse the connection appropriately. Note that 0.11.3 creates a fresh prepared object for each parameterized string call. Do not bypass the supported API solely to silence compile timing. Kuzu 0.11.3's archived source is the authority for that binding.
 
-If an existing application already holds an explicit Python `PreparedStatement`, `execute(prepared, params)` remains accepted by the wrapper. Treat it as legacy surface: pin the version, test deprecation behavior, and compare compilation summaries before deciding that it materially improves the loop.
+If an existing application already holds an explicit Python `PreparedStatement`, `execute(prepared, params)` remains accepted when called on the connection that created it. Always pass the complete parameter map: in 0.11.3, an omitted key on a reused prepared object can retain its previously bound value. Treat this as legacy surface: pin the version, test deprecation behavior, and compare compilation summaries before deciding that it materially improves the loop.
 
 ## C++: Prepare Once Per Connection
 
@@ -167,24 +166,28 @@ auto result = connection->execute(
     std::make_pair(std::string{"min_age"}, int64_t{18}),
     std::make_pair(std::string{"max_age"}, int64_t{30}),
     std::make_pair(std::string{"limit"}, int64_t{100}));
+
+if (!result->isSuccess()) {
+    throw std::runtime_error(result->getErrorMessage());
+}
 ~~~
 
-Keep the prepared object with the connection that created it; Kuzu caches associated state in the client context. Do not move a statement between unrelated connections or keep it after its database/connection lifetime ends. Check both preparation and execution results.
+Keep the prepared object with the exact `Connection` that created it; Kuzu caches associated state in that connection's client context. Do not execute it through another connection, even one attached to the same `Database`, or after its database/connection lifetime ends. Check both preparation and execution results.
 
-Preparing once avoids resending and reparsing a changing string in application code, but 0.11.3 source shows that execution rebinds from the cached parsed statement and constructs a current logical plan. This can be necessary because parameter types and catalog state matter. Describe the benefit as stable, cached statement state—not a universal guarantee of one plan forever.
+Preparing once avoids reparsing the query text on each execution, but 0.11.3 source shows that every successful parameterized execution rebinds the cached parsed statement and builds and optimizes a fresh logical plan. That binding and planning use the current parameter types and catalog state. Describe the benefit as parsing reuse, not logical-plan reuse.
 
 ## Keep Parameter Types Stable
 
 Pass values that match the schema consistently:
 
 ~~~python
-# Prefer the declared INT64 shape every time.
+# Use Python integers consistently for integer parameters.
 params = {"person_id": "p-42", "min_age": 21, "limit": 50}
 ~~~
 
-Avoid sometimes sending `"21"` and sometimes `21`, or `None` when a predicate requires an integer. A parameter used as a primary-key lookup should have the primary-key column's declared type. Client-side normalization makes failures deterministic and removes runtime casts from query text.
+Avoid sometimes sending `"21"` and sometimes `21`, or `None` when a predicate requires an integer. Kuzu 0.11.3 infers the narrowest fitting integer type for a Python `int`, so a primary-key parameter should be compatible with the column's declared type rather than assumed to arrive as `INT64`. Client-side normalization makes behavior deterministic and removes runtime casts from query text.
 
-Complex values need deliberate mapping. Python `datetime`, `date`, `timedelta`, UUID, list, and dict values have documented Kuzu conversions. Test nulls, empty lists, nested lists, numeric width, and vector dimensions at the API boundary.
+Complex values need deliberate mapping. Python `datetime`, `date`, `timedelta`, `uuid.UUID`, and list values are supported by the binding. For query parameters, an ordinary dictionary becomes a `STRUCT`; a `MAP` uses the binding's `{"key": [...], "value": [...]}` representation. Test nulls, empty lists, nested lists, numeric width, and vector dimensions at the API boundary.
 
 ## Do Not Confuse Parameterization With Bulk Loading
 
@@ -201,14 +204,14 @@ Or let Kuzu read Parquet/CSV directly. Prepared statements optimize the shape of
 
 ## Measure Compilation and Execution Separately
 
-Kuzu result summaries expose compiling and executing time in supported APIs and the CLI prints both. Benchmark at least these cases:
+Kuzu result summaries expose compiling and executing time in supported APIs, and the CLI's default stats output prints both. Benchmark at least these cases:
 
 1. Literal query text changed on every iteration—unsafe baseline, never a deployment choice.
 2. One constant parameterized string through the binding's recommended API.
 3. An explicit reusable prepared object where the binding supports it without deprecation.
 4. `COPY FROM` for a bulk workload.
 
-Consume the same number of result rows, reuse the same connection, warm up separately, and test representative parameter selectivity. If compile time remains visible in 0.11.3, that matches the version's rebind/replan path; do not hide it in reporting.
+Consume the same number of result rows, reuse the same connection, warm up separately, and test representative parameter selectivity. Compilation time remains visible in 0.11.3 because parameterized execution rebinds and replans; do not hide it in reporting.
 
 Also profile total latency. Saving a fraction of a millisecond in parsing is irrelevant if a high-degree traversal produces a million rows.
 
@@ -219,7 +222,7 @@ Also profile total latency. Saving a fraction of a millisecond in parsing is irr
 - Set query timeouts for user-driven searches.
 - Log template identity and parameter types, but redact secrets and personal data.
 - Add injection-shaped strings to tests: quotes, backslashes, Unicode, and Cypher-looking text should remain ordinary values.
-- Test missing, extra, null, and wrong-type parameters.
+- Validate required keys in application code, always pass a complete map to an explicitly reused 0.11.3 prepared statement, and test missing, extra, null, and wrong-type parameters.
 - Pin Kuzu 0.11.3 and record the client binding version with benchmarks.
 
 ## Official Documentation
@@ -235,4 +238,4 @@ Also profile total latency. Saving a fraction of a millisecond in parsing is irr
 
 ## Conclusion
 
-Use `$parameters` for every value and static, allowlisted templates for every structural variation. Reuse a prepared statement per connection where the binding supports that lifecycle; in Kuzu 0.11.3 Python, follow the supported `execute(query, parameters)` path. Most importantly, be precise about performance: frozen 0.11.3 caches prepared state but rebinds and can rebuild a plan for execution, so “prepared” is not proof of zero replanning. Measure compilation separately, and use `COPY FROM` when the real workload is bulk ingestion.
+Use `$parameters` for supported runtime data values and static, allowlisted templates for structural or bind-time literal variations. Reuse a prepared statement on its originating connection where the binding supports that lifecycle; in Kuzu 0.11.3 Python, follow the supported `execute(query, parameters)` path. Most importantly, be precise about performance: frozen 0.11.3 caches the parsed statement but rebinds and rebuilds the logical plan for every successful parameterized execution, so “prepared” is not proof of plan reuse. Measure compilation separately, and use `COPY FROM` when the real workload is bulk ingestion.
