@@ -34,9 +34,9 @@ Open both pipelines and record:
 2. commit SHA;
 3. source and target branch;
 4. workflow names;
-5. webhook delivery IDs and timestamps.
+5. pipeline creation times, then correlate them with delivery IDs and timestamps in the forge's webhook-delivery log if needed.
 
-If the events differ, Woodpecker is responding to two intentional forge events. If both are `push` or both are `pull_request`, inspect the forge for duplicate Woodpecker hooks, webhook retries after timeouts, or multiple Woodpecker instances subscribed to the repository. Do not apply event filters to conceal a truly duplicated hook.
+If the events differ, Woodpecker is responding to two intentional forge events. If both are `push` or both are `pull_request`, inspect the forge for duplicate Woodpecker hooks, webhook retries or redeliveries where the forge supports them, or multiple Woodpecker instances subscribed to the repository. Do not apply event filters to conceal a truly duplicated hook.
 
 Fork pull requests behave differently from same-repository branches. A push to a fork is not necessarily an event for the upstream Woodpecker repository. Diagnose using the actual pipeline metadata rather than assuming every pull request will be doubled.
 
@@ -50,6 +50,8 @@ A common policy is:
 
 In a single workflow:
 
+On Woodpecker 3.x, the instance administrator must allow this exact plugin image with `WOODPECKER_PLUGINS_PRIVILEGED=woodpeckerci/plugin-docker-buildx:6.1.1`; the allowlist runs the plugin in privileged mode.
+
 ~~~yaml
 steps:
   - name: test
@@ -60,9 +62,10 @@ steps:
       - event: pull_request
 
   - name: publish
-    image: woodpeckerci/plugin-docker-buildx
+    image: woodpeckerci/plugin-docker-buildx:6.1.1
     settings:
       repo: registry.example.com/acme/api
+      registry: registry.example.com
       tags: latest
       username:
         from_secret: registry_username
@@ -98,9 +101,10 @@ when:
 
 steps:
   - name: publish
-    image: woodpeckerci/plugin-docker-buildx
+    image: woodpeckerci/plugin-docker-buildx:6.1.1
     settings:
       repo: registry.example.com/acme/api
+      registry: registry.example.com
       tags: latest
       username:
         from_secret: registry_username
@@ -190,7 +194,7 @@ It is not a replacement for separating `push` and `pull_request`. They are disti
 
 ## Repository Hook Settings Versus Workflow Conditions
 
-Project settings can limit which webhook events Woodpecker handles. Disabling an event there can reduce all pipelines of that type. Workflow conditions are more precise and live in version control.
+Project settings can disable pull-request handling for the repository. Workflow conditions are more precise and live in version control.
 
 Prefer workflow conditions when:
 
@@ -198,7 +202,7 @@ Prefer workflow conditions when:
 - the policy should be reviewed with code;
 - different target branches have different rules.
 
-Use repository hook settings only when the entire repository has no use for an event. If pull requests are disabled there, no YAML condition can bring them back.
+Use the project-level pull-request setting only when the entire repository has no use for pull-request pipelines. If pull requests are disabled there, no YAML condition can bring them back.
 
 ## A Practical Event Matrix
 
@@ -208,7 +212,7 @@ Write the desired policy before editing YAML:
 | --- | --- | --- | --- |
 | PR lint and test | `pull_request` | target branch | none |
 | Main packaging | `push` | pushed branch `main` | registry push |
-| Release publish | `tag` or `release` | ref/tag, not branch | release credentials |
+| Release publish | `tag` or `release` | `tag`: branch filter ignored; `release`: release target/ref, forge-dependent | release credentials |
 | Operator task | `manual` | selected branch | narrowly scoped |
 
 Then give each responsibility a workflow file and a global `when`. This produces understandable forge statuses and avoids paying for a clone just to skip every step.
