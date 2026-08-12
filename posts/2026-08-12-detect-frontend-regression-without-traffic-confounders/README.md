@@ -14,14 +14,14 @@ Detect regressions at the release and cohort level before interpreting the blend
 
 ## Define the Observation Unit
 
-Decide what one row represents before building alerts. For Core Web Vitals, a page visit with the metric library's metric ID is a useful unit. A bfcache restore is a separate visit; INP is absent when the user never interacts. For errors, the unit may be an eligible page visit with at least one first-party error, not the raw exception count.
+Decide what one row represents before building alerts. For Core Web Vitals, a metric instance within a page visit is a useful unit. Use the metric library's metric ID to deduplicate or update reports for that metric instance, and keep a separate visit ID to join different metrics. A bfcache restore creates new metric instances and is a separate visit; INP is absent when the user never interacts. For errors, the unit may be an eligible page visit with at least one first-party error, not the raw exception count.
 
 Store bounded dimensions:
 
 ~~~text
 release = immutable frontend build
 route = router template
-visit_kind = normal | bfcache_restore | prerender_activation
+visit_kind = navigate | reload | back_forward | bfcache_restore | prerender_activation | restore | soft_navigation | unknown
 form_factor = phone | tablet | desktop | unknown
 browser_family = bounded family
 browser_major = bounded integer or unknown
@@ -31,20 +31,20 @@ sampling_rule = versioned bounded identifier
 
 Keep random visit and trace IDs as non-indexed correlation fields rather than metric labels. Never group by raw URL, user ID, full user-agent string, DOM selector, or extension ID.
 
-Use the official `web-vitals` implementation where its support fits so lifecycle details and metric definitions are consistent. Tag the release before monitoring starts; a value inferred later from “current deployment” can assign an old open tab to the wrong code.
+Use the official `web-vitals` implementation where its support fits so lifecycle details and metric definitions are consistent. If you opt into its soft-navigation reporting, keep those observations separate because support and semantics differ from full-page navigation. Tag the release before monitoring starts; a value inferred later from “current deployment” can assign an old open tab to the wrong code.
 
 ## Prefer a Simultaneous Release Comparison
 
 The strongest operational design is a stable canary:
 
-- assign eligible visits to control and candidate at the edge or release router;
+- randomly assign eligible experiment units to control and candidate at the edge or release router;
 - keep assignment sticky for the intended experiment lifetime;
 - serve complete, internally consistent asset sets;
 - run both during the same clock period;
 - use identical telemetry schema, sampling, privacy, and intake;
 - exclude staff and synthetic traffic using explicit authenticated markers, not guesswork.
 
-This controls for campaigns, weather, browser releases, time of day, and regional traffic changes better than “24 hours before versus 24 hours after.” Compare candidate and control within each important stratum, then expand traffic only after primary and guardrail metrics pass.
+This helps balance campaigns, weather, browser releases, time of day, and regional traffic changes better than “24 hours before versus 24 hours after.” Compare candidate and control within each important stratum, then expand traffic only after primary and guardrail metrics pass.
 
 If simultaneous releases are impossible, use a release-centered time series with several stable baselines: same hour/day pattern, previous release, and a synthetic control flow. A time-correlated jump beginning at deployment is evidence, but planned marketing and browser updates remain competing explanations.
 
@@ -54,7 +54,7 @@ Browser JavaScript cannot reliably decide whether its environment is human. User
 
 For known synthetic monitors, add an authenticated marker at the edge and propagate only a bounded `traffic_class=synthetic` field to RUM. Rotate the credential, prevent customers from setting it, and keep synthetic results in their own dashboard.
 
-For recognized crawlers, verify server-side. Google's current documentation warns that the Googlebot user-agent is often spoofed and recommends reverse DNS verification or matching published Googlebot IP ranges. Apply equivalent official verification for each crawler you intentionally classify. Do not perform reverse DNS from browser code.
+For recognized crawlers, verify server-side. Google's current documentation warns that the Googlebot user-agent is often spoofed and recommends its documented reverse-then-forward DNS verification procedure or matching the source IP against published Googlebot IP ranges. Apply equivalent official verification for each crawler you intentionally classify. Do not perform DNS verification from browser code.
 
 Use classes rather than a single `is_bot` flag:
 
@@ -99,7 +99,7 @@ metric-availability rate
 sampling-rule share
 ~~~
 
-Suppose desktop checkout INP stays at 150 ms and mobile checkout stays at 280 ms, but mobile grows from 30% to 70%. The blended INP can worsen with no within-device regression. That is still a real change in users' aggregate experience, but the remedy is not necessarily a rollback.
+Suppose the desktop checkout INP distribution and mobile checkout INP distribution stay fixed, with respective p75 values of 150 ms and 280 ms, but mobile grows from 30% to 70%. Depending on the shapes of those distributions, the blended p75 can worsen with no within-device regression. That is still a real change in users' aggregate experience, but the remedy is not necessarily a rollback.
 
 Compare in two views:
 
@@ -112,7 +112,7 @@ For means or threshold rates, direct standardization is straightforward:
 standardized_value(release) = sum(reference_weight[stratum] * value[release, stratum])
 ~~~
 
-Percentiles do not combine by averaging stratum percentiles. Reweight the underlying visit observations or histogram buckets, then calculate the percentile from the combined weighted distribution. Keep the reference population versioned and publish excluded sparse strata.
+Percentiles do not combine by averaging stratum percentiles. Reweight the underlying visit observations, then calculate the percentile from the combined weighted distribution. If only aligned histogram buckets are available, combine their weights and approximate or bound the percentile at the histogram's resolution. Keep the reference population versioned and publish excluded sparse strata.
 
 If observed worsens but standardized remains stable, mix explains much of the shift. If both worsen and several high-volume strata regress, the candidate likely changed performance. If only one stratum regresses, target the responsible browser, route, or device without hiding it in a global average.
 
@@ -124,7 +124,7 @@ For each route and important coarse stratum, calculate:
 - p50, p75, p95 or histogram;
 - poor-threshold fraction;
 - candidate minus control absolute and relative change;
-- first-party error-session rate;
+- first-party error-visit rate;
 - action completion or abandonment guardrails;
 - application and telemetry bytes per visit;
 - missing-field and rejected-event rates.
