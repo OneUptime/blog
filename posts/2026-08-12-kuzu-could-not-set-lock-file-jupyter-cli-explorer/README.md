@@ -23,7 +23,7 @@ db = kuzu.Database("/srv/graphs/app.kuzu")
 conn = kuzu.Connection(db)
 ~~~
 
-The `db` object owns components such as storage, buffer, and transaction managers. Its caches know about writes made through connections created from that object. A second `Database` object has independent caches and cannot be notified safely about the first object's changes. That is why Kuzu prevents a second instance when a writer is involved.
+The `db` object owns components such as storage, buffer, and transaction managers. Its caches know about writes made through connections created from that object. A second `Database` object has independent caches and cannot be notified safely about the first object's changes. That is why Kuzu's supported concurrency model allows only one `Database` object when it is read-write.
 
 The file is not merely locked during an individual query. It remains owned for the lifetime of the `Database` object, often the lifetime of the notebook kernel or server process.
 
@@ -93,11 +93,12 @@ Explorer embeds another Kuzu instance inside its Docker container. The official 
 ~~~bash
 docker run -p 8000:8000 \
   -v /srv/graphs:/database \
+  -e KUZU_FILE=app.kuzu \
   -e MODE=READ_ONLY \
   --rm kuzudb/explorer:latest
 ~~~
 
-Set the Explorer database path according to the image's documented configuration and mount the host directory at the expected location. Mounting the database into the container does not share the original process's in-memory buffer manager.
+`KUZU_FILE` selects `app.kuzu` inside the mounted `/database` directory. If the database was created by an earlier Kuzu version, replace `latest` with the matching Explorer image version because storage formats can change between versions. Mounting the database into the container does not share the original process's in-memory buffer manager.
 
 There is an important archived Kuzu caveat: its concurrency page documents a known issue where Explorer may not recognize the file-lock permission flags set by a process outside the container because those flags are not propagated as expected. Therefore, lack of an Explorer error does not prove concurrent access is safe.
 
@@ -123,7 +124,7 @@ def make_connection() -> kuzu.Connection:
 
 Create the database once at process startup, inject it into request handlers, and create or pool connections from that shared object. Do not construct `kuzu.Database(path)` inside every HTTP request, notebook function, or worker task.
 
-Kuzu wraps statements in transactions and its transaction manager safely coordinates connections from the same object. It allows multiple read transactions but only one write transaction at a time, so long writes can still queue or block other writers. That is a throughput issue, not a reason to create another database instance.
+Kuzu wraps statements in transactions and its transaction manager safely coordinates connections from the same object. It allows multiple read transactions but only one write transaction at a time; Kuzu rejects a second concurrent writer, so applications must serialize or retry competing writes. That is a throughput issue, not a reason to create another database instance.
 
 ## Diagnose Path Mistakes Before Blaming Locks
 
@@ -136,17 +137,18 @@ database_path = Path("/srv/graphs/app.kuzu").resolve(strict=True)
 print(database_path)
 ~~~
 
-Also check file and directory ownership. A lock error can surface because the new process cannot set required permissions, not only because another owner exists. From the same user/container as Kuzu:
+Also check file and directory ownership. Permission problems can prevent a database open or the creation of runtime companion files, even though they are distinct from a lock held by another process. From the same user/container as Kuzu:
 
 ~~~bash
 id
 ls -ld /srv/graphs
 ls -l /srv/graphs/app.kuzu
+test -w /srv/graphs
 test -r /srv/graphs/app.kuzu
 test -w /srv/graphs/app.kuzu
 ~~~
 
-A read-write open needs appropriate directory and file permissions for Kuzu's runtime companions. Starting with `0.11.0`, Kuzu can create `.wal`, `.shadow`, and `.tmp` files beside the single main database file. A read-only container or mismatched UID can prevent that.
+A read-write open needs appropriate directory and file permissions for Kuzu's runtime companions. Starting with `0.11.0`, Kuzu can create `.wal`, `.shadow`, and `.tmp` files beside the single main database file. A read-only mount or mismatched UID can prevent a read-write open from creating or updating them.
 
 ## What Not to Do
 
