@@ -54,7 +54,6 @@
 
 ## Kuzu
 
-2. Kuzu to LadybugDB: What Actually Changes in Packages, APIs, Extensions, and Database Files?
 3. How to Audit a Frozen Kuzu Deployment for Security and Compatibility Risk
 4. Why Does `INSTALL EXTENSION` Fail in Kuzu Now? Using Bundled Extensions or a Local Extension Server
 5. How to Export and Validate a Kuzu Graph Before Moving to Another Database
