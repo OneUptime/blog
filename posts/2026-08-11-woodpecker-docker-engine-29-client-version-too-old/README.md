@@ -17,18 +17,21 @@ please upgrade your client to a newer version
 
 The Docker socket is reachable. Authentication to the Woodpecker server is not the problem. The agent's embedded Docker client is sending a versioned Engine API request that the daemon refuses. Fix the client/daemon API overlap instead of changing socket permissions or pipeline YAML.
 
-There is one important date-sensitive detail. Docker Engine 29.0 through 29.2 raised the daemon's minimum API to 1.44. Docker 29.3 lowered that minimum to 1.40. Therefore, “Docker 29 requires API 1.44” accurately describes early 29.x releases but not every current 29.x patch. Diagnose the exact versions before choosing a workaround.
+There is one important date-sensitive detail. By default, Docker Engine 29.0 through 29.2 raised the daemon's minimum API to 1.44. Docker 29.3 lowered that default minimum to 1.40. Therefore, “Docker 29 requires API 1.44” accurately describes the default on early 29.x releases but not every current 29.x patch. Diagnose the exact versions before choosing a workaround.
 
 ## Confirm Which Component Is Failing
 
 Woodpecker's server schedules workflows; the agent's Docker backend talks to the Docker daemon and creates step containers. Look in the agent log first:
 
 ~~~bash
-docker compose ps
+docker compose ps --all
 docker compose logs --tail=200 woodpecker-agent
-docker inspect woodpecker-agent \
-  --format '{{.Config.Image}} {{range .Config.Env}}{{println .}}{{end}}' \
-  | grep -E 'woodpecker-agent|API_VERSION|DOCKER_HOST'
+agent_container_id="$(docker compose ps --all --quiet woodpecker-agent | head -n 1)"
+docker inspect "$agent_container_id" \
+  --format 'Image reference: {{.Config.Image}}{{println}}{{print "Image ID: "}}{{.Image}}'
+docker inspect "$agent_container_id" \
+  --format '{{range .Config.Env}}{{println .}}{{end}}' \
+  | grep -E '^(DOCKER_API_VERSION|WOODPECKER_BACKEND_DOCKER_API_VERSION|DOCKER_HOST)='
 ~~~
 
 Adapt the service and container names to your Compose file. If the API error appears while the agent starts or initializes its backend, no repository-specific workflow change can repair it.
@@ -38,36 +41,38 @@ Next, ask the daemon what it supports:
 ~~~bash
 docker version
 curl --silent --unix-socket /var/run/docker.sock \
-  http://localhost/version | jq '{Version, ApiVersion, MinAPIVersion}'
+  http://localhost/v1.44/version | jq '{Version, ApiVersion, MinAPIVersion}'
 ~~~
 
-Run the socket test on the Docker host. For a remote daemon, use its protected TCP endpoint and the same TLS settings as the agent. Record all four values:
+Run the socket test on the Docker host. For a remote daemon, use its protected TCP endpoint and the same TLS settings as the agent. Record:
 
 - Docker Engine version;
 - daemon `ApiVersion`;
 - daemon `MinAPIVersion`;
-- the actual Woodpecker agent image tag or digest.
+- the Woodpecker agent's configured image reference and actual image ID.
 
 Do not infer an agent version from a stale Compose file. `docker compose images`, `docker inspect`, or the startup log shows what is running.
 
 ## Why the Upgrade Exposed the Error
 
-The Engine API is versioned separately from the Docker product. A compatible client normally negotiates the highest version both sides understand. Negotiation cannot produce an overlap when the client is pinned to an API below the daemon's minimum, and an explicitly forced `DOCKER_API_VERSION` disables normal negotiation.
+The Engine API is versioned separately from the Docker product. A compatible client normally negotiates the highest version both sides understand. Negotiation cannot produce an overlap when the client's maximum API is below the daemon's minimum, and an explicitly forced `DOCKER_API_VERSION` disables normal negotiation.
 
-Docker Engine 29.0 deliberately rejected API versions below 1.44. That uncovered older clients which still sent 1.43. The Woodpecker project tracked the exact failure and replaced its Docker backend dependency with the newer Moby client in pull request 6357. That change shipped in Woodpecker 3.14.0. The current stable Woodpecker 3.17.0 includes the change and uses a Moby client whose supported range overlaps current Docker 29.
+By default, Docker Engine 29.0 deliberately rejected API versions below 1.44. The reported 1.43 signature matches Woodpecker 2.8.x, whose final release used Docker 24 with a maximum API of 1.43 and was formerly published through the `latest` tag. An installation explicitly forced to 1.43 fails in the same way. Woodpecker 3.0.0 already used Docker 27.5, supported API 1.47, and enabled API negotiation. Pull request 6357 later migrated the Docker backend from the monolithic Docker SDK module to the split Moby client modules. That migration shipped in Woodpecker 3.14.0. The current stable Woodpecker 3.17.0 includes it and uses a Moby client whose supported range overlaps current Docker 29.
 
-Docker later changed the other side of the compatibility boundary: Engine 29.3.0 lowered its minimum from 1.44 to 1.40. This explains why the same old agent may fail against 29.0.2 but appear to recover after an Engine update. It also explains why advice that simply says “downgrade Docker 29” is now incomplete.
+Docker later changed the other side of the compatibility boundary: Engine 29.3.0 lowered its default minimum from 1.44 to 1.40. This explains why the same old agent may fail against 29.0.2 but appear to recover after an Engine update. It also explains why advice that simply says “downgrade Docker 29” is now incomplete.
 
 ## Preferred Fix: Upgrade the Woodpecker Agent
 
-Upgrade the server and agents deliberately to a supported 3.x release, with 3.17.0 being current at the time of writing. At minimum, the Docker-facing agent must include the Moby-client migration from 3.14.0 or later. Keeping server, agent, and CLI on the same release makes later diagnosis much easier.
+Upgrade the server and agents deliberately to a supported 3.x release, with 3.17.0 being current at the time of writing. Woodpecker 3.0.0 already had the API range required by early Docker 29, while the Moby-client module migration arrived in 3.14.0; use the current release rather than treating 3.14.0 as the compatibility boundary. Keeping server, agent, and CLI on the same release makes later diagnosis much easier.
 
-For Docker Compose, pin a real release rather than an absent `latest` tag:
+For Docker Compose, update the image references in your existing, complete deployment and pin an explicit release rather than `latest`, which no longer points to a runnable Woodpecker release. Preserve the existing forge, host, database, and persistence settings. When using the normal shared agent secret, configure the same value on the server and agent:
 
 ~~~yaml
 services:
   woodpecker-server:
     image: woodpeckerci/woodpecker-server:v3.17.0
+    environment:
+      WOODPECKER_AGENT_SECRET: ${WOODPECKER_AGENT_SECRET}
 
   woodpecker-agent:
     image: woodpeckerci/woodpecker-agent:v3.17.0
@@ -87,11 +92,11 @@ docker compose up -d woodpecker-server woodpecker-agent
 docker compose logs --tail=100 woodpecker-agent
 ~~~
 
-Back up the Woodpecker database before a major upgrade and read the migration notes if this also moves the installation from 2.x to 3.x. The Docker API repair is an agent change, but a major Woodpecker upgrade has separate workflow and database considerations.
+Back up the Woodpecker database before a major upgrade and read the migration notes if this also moves the installation from 2.x to 3.x. The agent makes the Docker API call, but Woodpecker enforces server-agent RPC compatibility, so upgrade the server and agent together when crossing incompatible releases. A major Woodpecker upgrade also has separate workflow and database considerations.
 
 ## Also Patch Early Docker Engine 29 Releases
 
-If the host still runs Docker 29.0, 29.1, or 29.2, update it to a maintained 29.x patch according to the operating system vendor's procedure. Engine 29.3 and later accept API 1.40 and above, and newer patches contain unrelated bug and security fixes. Do not freeze a production Docker daemon on an early 29.x release merely to preserve the original failure.
+If the host still runs Docker 29.0, 29.1, or 29.2, update it to a maintained 29.x patch according to the operating system vendor's procedure. By default, Engine 29.3 and later 29.x patches accept API versions from 1.40 through the daemon's reported maximum, and newer patches contain unrelated bug and security fixes. Do not freeze a production Docker daemon on an early 29.x release merely to preserve the original failure.
 
 Updating both sides is the cleanest outcome:
 
@@ -117,12 +122,16 @@ Do not use this as an excuse to retain an obsolete agent indefinitely. Docker do
 Check every place an override may be injected:
 
 ~~~bash
-docker inspect woodpecker-agent --format '{{range .Config.Env}}{{println .}}{{end}}' \
+agent_container_id="$(docker compose ps --all --quiet woodpecker-agent | head -n 1)"
+docker inspect "$agent_container_id" --format '{{range .Config.Env}}{{println .}}{{end}}' \
   | grep -E '^(DOCKER_API_VERSION|WOODPECKER_BACKEND_DOCKER_API_VERSION)='
-systemctl show woodpecker-agent --property=Environment 2>/dev/null
+systemctl show woodpecker-agent --value --property=Environment 2>/dev/null \
+  | tr ' ' '\n' \
+  | grep -E '^"?(DOCKER_API_VERSION|WOODPECKER_BACKEND_DOCKER_API_VERSION)='
+systemctl show woodpecker-agent --value --property=EnvironmentFiles 2>/dev/null
 ~~~
 
-A forgotten `DOCKER_API_VERSION=1.43` in an environment file can make a new agent behave like an old one.
+The last command lists any systemd environment files; inspect those files for the same two variable names. A forgotten `DOCKER_API_VERSION=1.43` in an environment file can make a new agent behave like an old one.
 
 ## Things That Do Not Fix an API Mismatch
 
@@ -133,7 +142,7 @@ A forgotten `DOCKER_API_VERSION=1.43` in an environment file can make a new agen
 - Setting the requested API below the daemon minimum guarantees rejection.
 - Assuming all Docker 29 releases have the same minimum ignores the documented 29.3 change.
 
-If the error changes to `permission denied`, `connection refused`, or `no such file or directory`, the API mismatch is resolved and a separate Docker endpoint problem remains. Diagnose the new message on its own terms.
+If the error changes to `permission denied`, `connection refused`, or `no such file or directory`, the current blocker is a separate Docker endpoint problem. Diagnose the new message on its own terms.
 
 ## Verification Checklist
 
@@ -168,4 +177,4 @@ Verify that:
 
 ## Conclusion
 
-The error is a protocol-range failure between the Woodpecker agent and Docker daemon. Confirm the actual agent image and the daemon's minimum API, then upgrade Woodpecker to 3.14 or later—preferably current 3.17—and patch Docker beyond the early 29.x releases. A forced API version is useful for a controlled diagnosis, but automatic negotiation between maintained components is the durable fix.
+The error is a protocol-range failure between the Woodpecker agent and Docker daemon. Confirm the actual agent image and the daemon's minimum API, then remove an obsolete forced version or upgrade an affected agent to a current supported 3.x release—3.17 at the time of writing—and patch Docker beyond the early 29.x releases. A forced API version is useful for a controlled diagnosis, but automatic negotiation between maintained components is the durable fix.
