@@ -214,7 +214,7 @@ The assumed relationship may be false, the metric definition may be broken, or a
 
 ## Keep the Scorecard Small
 
-For one improvement, five to eight measures across the layers are often enough:
+For one improvement, six to nine measures across the layers are often enough:
 
 1. one or two adoption signals;
 2. one or two flow diagnostics;
