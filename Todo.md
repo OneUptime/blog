@@ -54,7 +54,6 @@
 
 ## Kuzu
 
-5. How to Export and Validate a Kuzu Graph Before Moving to Another Database
 6. Kuzu Says “Could Not Set Lock on File”: Safely Using Jupyter, the CLI, and Explorer
 7. Can Multiple Web Workers Write to One Kuzu Database? Designing a Single-Process API Layer
 8. Kuzu In-Memory vs On-Disk: Which Mode Fits Tests, Analytics, and Production?
