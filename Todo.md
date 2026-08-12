@@ -54,7 +54,6 @@
 
 ## Kuzu
 
-9. How Should You Model Node Tables, Relationship Tables, and Primary Keys in Kuzu?
 10. Kuzu CSV Import Put the Header in Your Data—or Rejected Valid Rows: Fixing Auto-Detection, Nulls, and Delimiters
 11. `COPY FROM`, `CREATE`, or `MERGE`: Which Kuzu Ingestion Path Scales to Millions of Nodes and Edges?
 12. Kuzu Crashes or Exhausts Memory During Bulk Load: Tuning the Buffer Pool and Import Batch
