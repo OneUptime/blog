@@ -54,7 +54,6 @@
 
 ## Kuzu
 
-12. Kuzu Crashes or Exhausts Memory During Bulk Load: Tuning the Buffer Pool and Import Batch
 13. Why Doesn’t Neo4j Cypher Run Unchanged in Kuzu? Finding Dialect and Schema Assumptions
 14. A Kuzu Query Is Slow: Reading `EXPLAIN`/`PROFILE`, Bounding Paths, and Checking Join Order
 15. Why Did a Variable-Length Kuzu Traversal Explode in Rows and Memory?
