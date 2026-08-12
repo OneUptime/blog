@@ -27,10 +27,9 @@ Create a typed node table and index:
 CREATE NODE TABLE Document(
     document_id STRING PRIMARY KEY,
     title STRING,
+    active BOOLEAN,
     embedding FLOAT[384]
 );
-
-LOAD vector;
 
 CALL CREATE_VECTOR_INDEX(
     'Document',
@@ -41,7 +40,7 @@ CALL CREATE_VECTOR_INDEX(
 );
 ~~~
 
-Kuzu 0.11.3 bundles the vector extension, so it does not need a network `INSTALL`; it still must be loaded in a connection that uses its functions. Older versions and the maintained successor have different extension-distribution details, so pin the package and database artifact together.
+Kuzu 0.11.3 bundles and preloads the vector extension, so it needs neither `INSTALL` nor `LOAD`. Older versions and the maintained successor have different extension-distribution details, so pin the package and database artifact together.
 
 ## Query With Explicit `efs`
 
@@ -72,7 +71,7 @@ result = conn.execute(
 
 Always order by the returned `distance` if callers expect nearest-first output. Confirm that the query vector has the same dimension and embedding model as indexed rows.
 
-Kuzu supports `cosine`, `l2`, `l2sq`, and `dotproduct` metrics at index creation. Distance values and ordering semantics belong to the chosen metric. A cosine index compared against an L2 ground truth is not a recall test; it asks a different mathematical question.
+Kuzu supports `cosine`, `l2`, `l2sq`, and `dotproduct` metrics at index creation. Distance values and ordering semantics belong to the chosen metric. In Kuzu 0.11.3, `dotproduct` is the raw inner product treated as an ascending distance, so its exact baseline must use that same ordering rather than conventional maximum-inner-product ordering. A cosine index compared against an L2 ground truth is not a recall test; it asks a different mathematical question.
 
 ## Build an Exact Ground Truth
 
@@ -87,31 +86,38 @@ def exact_cosine_top_k(matrix, query, ids, k):
     matrix = np.asarray(matrix, dtype=np.float32)
     query = np.asarray(query, dtype=np.float32)
 
+    if not np.all(np.isfinite(matrix)) or not np.all(np.isfinite(query)):
+        raise ValueError("embeddings must contain only finite values")
     row_norms = np.linalg.norm(matrix, axis=1)
     query_norm = np.linalg.norm(query)
-    valid = (row_norms > 0) & (query_norm > 0)
 
-    similarity = np.full(len(ids), -np.inf, dtype=np.float32)
-    similarity[valid] = (
-        matrix[valid] @ query / (row_norms[valid] * query_norm)
-    )
+    nonzero_rows = row_norms > 0
+    similarity = np.zeros(len(ids), dtype=np.float32)
+    if query_norm > 0:
+        similarity[nonzero_rows] = (
+            matrix[nonzero_rows] @ query
+            / (row_norms[nonzero_rows] * query_norm)
+        )
+    else:
+        similarity[~nonzero_rows] = 1.0
+
     order = np.argsort(-similarity, kind="stable")[:k]
     return [ids[i] for i in order]
 ~~~
 
-Define how zero vectors, null embeddings, duplicate vectors, and ties are handled. If several documents have exactly the cutoff distance, ID-set recall can change with legitimate tie ordering. Use a distance-aware tie policy or compare against the complete tied set.
+This matches Kuzu 0.11.3's cosine convention: two zero vectors have distance 0, while a zero and a nonzero vector have distance 1. Reject null or non-finite embeddings before benchmarking. Define how duplicate vectors and ties are handled. If several documents have exactly the cutoff distance, ID-set recall can change with legitimate tie ordering. Use a distance-aware tie policy or compare against the complete tied set.
 
 Do not use a higher-`efs` HNSW result as “exact” ground truth unless exhaustive comparison is impossible and the limitation is recorded. Approximate against approximate can hide systematic misses.
 
 ## Calculate Recall@k
 
-For one query:
+For one query, let `m` be `min(k, number of eligible indexed embeddings)`:
 
 ~~~text
-recall@k = |approximate_top_k ∩ exact_top_k| / k
+recall@k = |approximate_top_k ∩ exact_top_m| / m
 ~~~
 
-For example, if 18 of the exact 20 IDs appear in HNSW's top 20, recall@20 is 0.90. Aggregate across queries with mean, median, low percentile, and worst-case recall. A mean of 0.98 can conceal a user segment at 0.60.
+For example, if 18 of the exact 20 IDs appear in HNSW's top 20, recall@20 is 0.90. If `m` is zero, report that the query has no eligible embeddings instead of assigning a recall score. Aggregate across queries with mean, median, low percentile, and worst-case recall. A mean of 0.98 can conceal a user segment at 0.60.
 
 Create a benchmark set that covers:
 
@@ -132,12 +138,12 @@ Use a geometric sweep around the requested `k` and the default:
 EFS_VALUES = [20, 40, 80, 120, 200, 400, 800]
 ~~~
 
-Ensure each candidate is valid for the engine and at least large enough for the intended top-k behavior. For every value:
+Ensure each candidate is valid for the engine. Kuzu 0.11.3 uses `max(k, efs)` as the effective search breadth, so an `efs` below `k` is valid but redundant. For every value:
 
 1. Warm the process and index with unmeasured queries.
 2. Randomize query order to reduce time-correlated bias.
 3. Run enough repetitions for stable p50, p95, and p99 latency.
-4. Consume the full `k` rows.
+4. Consume the entire result, up to `k` rows.
 5. Record recall@k for every benchmark query.
 6. Monitor CPU and concurrent throughput, not just single-query duration.
 
@@ -156,7 +162,7 @@ The curve usually has an elbow: recall improves quickly at first, then gains bec
 
 ## Separate `k` From `efs`
 
-`k` is how many neighbors the function returns; `efs` is search effort. Increasing `k` to compensate for poor recall changes the API result size and downstream work. It can be useful to retrieve more candidates for reranking, but it does not mean the true top k is present.
+`k` is the maximum number of neighbors the function returns; `efs` controls additional search effort when it exceeds `k`. Increasing `k` to compensate for poor recall changes the API result size and downstream work, and raising `k` above `efs` also raises the effective search breadth. It can be useful to retrieve more candidates for reranking, but it does not mean the true top k is present.
 
 If a reranker consumes 100 candidates and returns 10, benchmark recall@100 for candidate generation and end-to-end relevance@10 after reranking. Tune the stage that owns each objective.
 
