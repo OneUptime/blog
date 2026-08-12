@@ -8,7 +8,7 @@ Description: Rotate Cosign keys through an overlap period while preserving old p
 
 ---
 
-Rotating a Cosign key should change who may sign future releases without rewriting history. Existing image signatures remain cryptographically bound to the old public key. They keep verifying only while verifiers retain an appropriate trust path for that key and the signature artifacts remain available.
+Rotating a Cosign key should change who may sign future releases without rewriting history. Existing image signatures remain cryptographically bound to the old public key. They keep verifying only while verifiers retain an appropriate trust path for that key and the signed subject and signature artifacts remain available.
 
 The core pattern is add, overlap, cut over, restrict, and retain. A compromise requires a stricter variant because continuing to trust the old key for arbitrary new digests would preserve the attacker's authority.
 
@@ -47,14 +47,15 @@ This creates `release-2026.key` and `release-2026.pub`; it does not replace `rel
 
 ```bash
 cosign generate-key-pair \
-  --kms awskms:///alias/container-release-2026
+  --kms awskms:///alias/container-release-2026 \
+  --output-key-prefix release-2026
 
 cosign public-key \
   --key awskms:///alias/container-release-2026 \
   --outfile release-2026.pub
 ```
 
-KMS URI syntax is provider-specific. Validate the exact URI and key-creation permissions against Cosign's official KMS documentation and the provider's documentation.
+The `public-key` command above retrieves the public key again and rewrites `release-2026.pub`, so it is optional; export to a separate file or compare fingerprints if you need an independent check. To ensure that `generate-key-pair` creates a new AWS KMS key, the alias must be unused in the configured account and Region. If it already resolves to an enabled asymmetric KMS key that Cosign can read, the command writes that key's public key instead of creating another key; confirm that a reused key has `SIGN_VERIFY` usage and a supported signing algorithm. Other key types, key states, or access failures can make the command fail. After creation, record the immutable KMS key ID or ARN and its public-key fingerprint, restrict alias updates, and use the immutable identifier for signing where practical. KMS URI syntax is provider-specific. Validate the exact URI and key-creation permissions against Cosign's official KMS documentation and the provider's documentation.
 
 Distribute only the new public key and metadata through the same authenticated channel used for policy changes. A public key is not secret, but substituting it would redirect trust.
 
@@ -91,7 +92,7 @@ Do not move production signing until admission controllers, promotion jobs, disa
 
 ## Decide whether to dual-sign
 
-Dual-signing selected releases during the overlap can prove both trust paths work:
+Dual-signing selected releases during the overlap makes both signatures available for testing each trust path:
 
 ```bash
 cosign sign --key="$OLD_KMS_URI" "$IMAGE_BY_DIGEST"
@@ -100,19 +101,19 @@ cosign sign --key="$NEW_KMS_URI" "$IMAGE_BY_DIGEST"
 
 This is not always necessary. If policy accepts either key, one new-key signature is enough after verifiers have been updated. Dual-signing adds registry artifacts and can complicate assumptions about signature count.
 
-Do not run concurrent append operations without testing the Cosign/storage version. Legacy signature storage used read-append-write behavior with race concerns. Serialize signing for a subject and verify the final registry state.
+Do not run concurrent append operations without testing the Cosign/storage version. Cosign's legacy digest-tagged signature list and the OCI 1.1 referrers fallback tag used when a registry lacks the Referrers API use read-append-write updates and can lose concurrent writes. Serialize signing for a subject and verify the final registry state.
 
 ## Cut over future signing
 
 After successful overlap:
 
 1. remove old-key signing permission from CI;
-2. disable or restrict the old KMS key according to retention policy;
+2. migrate historical verifiers that fetch the old public key from KMS to the retained public key, then disable or restrict the old KMS key according to retention policy;
 3. make the new key the only key for ordinary new releases;
 4. remove the old key from broad “any digest in this repository” verification;
 5. preserve a narrow historical trust rule for approved old digests.
 
-That last distinction matters. If every verifier trusts the old public key forever for arbitrary future artifacts, the old private key remains valuable to an attacker. Historical verification should be scoped by an allowlist, release ledger, trusted signing-time cutoff, or a policy-engine mechanism that expresses equivalent constraints.
+That last distinction matters. If every verifier trusts the old public key forever for arbitrary future artifacts, the old private key remains valuable to an attacker. Historical verification should be scoped by an allowlist, release ledger, a verified RFC 3161 timestamp or trusted transparency-log integration-time cutoff (not signer-controlled metadata), or a policy-engine mechanism that expresses equivalent constraints.
 
 For a manageable release set, an immutable digest ledger is straightforward:
 
@@ -145,8 +146,8 @@ Rotation does not require deleting old signatures, public keys, bundles, or trus
 Keep:
 
 - old public keys and fingerprints;
-- signed image/attestation referrers;
-- Rekor or RFC 3161 timestamp evidence as applicable;
+- OCI signature and attestation artifacts, including legacy digest-tagged attachments, OCI 1.1 referring manifests, and any fallback referrers index;
+- Rekor transparency-log evidence and RFC 3161 timestamp evidence, as applicable;
 - key activation and retirement dates;
 - approved digest ledger;
 - policy versions and distribution records.
@@ -162,7 +163,7 @@ Delete or disable private signing capability according to KMS and incident polic
 - [ ] Test canary verification in CI, admission, DR, and offline environments.
 - [ ] Serialize and verify any dual-signing operation.
 - [ ] Remove old signing permission at cutover.
-- [ ] Restrict old-key trust to approved historical digests or times.
+- [ ] Restrict old-key trust to approved historical digests or trusted timestamp cutoffs.
 - [ ] Preserve old public keys, signatures, bundles, and audit records.
 - [ ] Use an immediate compromise procedure when confidentiality is in doubt.
 
