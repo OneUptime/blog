@@ -8,7 +8,7 @@ Description: Diagnose slow Kuzu Cypher with plans, runtime operator evidence, bo
 
 ---
 
-When a Kuzu query is slow, begin with two different questions: what plan did the optimizer choose, and where did the executed plan actually spend time or multiply rows? `EXPLAIN` answers the first without running the query. `PROFILE` runs it and annotates physical operators with runtime information. Use them in that order, on a controlled copy when the query can be expensive.
+When a Kuzu query is slow, begin with two different questions: what plan did the optimizer choose, and where did the executed plan actually spend time or do disproportionate work? `EXPLAIN` answers the first without running the query. `PROFILE` runs it and annotates physical operators with runtime information. Use them in that order, on a controlled copy when the query can be expensive.
 
 Kuzu is archived at 0.11.3, so keep the query text, dataset snapshot, engine version, thread configuration, and plan output together. Plan behavior from a newer LadybugDB release may illuminate the engine lineage but is not proof of what frozen Kuzu executes.
 
@@ -33,7 +33,7 @@ Prefix the statement:
 
 ~~~cypher
 EXPLAIN
-MATCH (p:Person)-[:PURCHASED]->(o:Order)-[:CONTAINS]->(i:Item)
+MATCH (p:Person)-[:PURCHASED]->(o:`Order`)-[:CONTAINS]->(i:Item)
 WHERE p.person_id = $person_id
   AND o.placed_at >= $since
 RETURN i.category, count(*) AS purchases
@@ -58,7 +58,7 @@ Run the same query with `PROFILE` only when it is safe to execute:
 
 ~~~cypher
 PROFILE
-MATCH (p:Person)-[:PURCHASED]->(o:Order)-[:CONTAINS]->(i:Item)
+MATCH (p:Person)-[:PURCHASED]->(o:`Order`)-[:CONTAINS]->(i:Item)
 WHERE p.person_id = $person_id
   AND o.placed_at >= $since
 RETURN i.category, count(*) AS purchases
@@ -66,13 +66,13 @@ ORDER BY purchases DESC
 LIMIT 20;
 ~~~
 
-The profile includes the plan plus execution time and output-tuple information for operators. Look for the first large jump in tuples, not just the operator with the largest absolute time. A downstream aggregate may be expensive only because an earlier expansion produced millions of rows.
+The profile includes the plan plus execution time and output-tuple information for operators. Treat `NumOutputTuples` as an operator-local work clue, not as a uniform logical-row count: Kuzu's vectorized, factorized operators do not all count output the same way. Corroborate a suspected expansion with the operator shape and final result cardinality rather than comparing adjacent counters mechanically. A downstream aggregate may be expensive only because an earlier expansion did disproportionate work.
 
 Useful diagnoses include:
 
 - A node scan stays large because the predicate is not selective or was expressed in a form the plan cannot exploit.
 - A relationship extension multiplies rows because the start node is a hub.
-- Two independent patterns form an unintended Cartesian product.
+- Two disconnected patterns without a join predicate form an unintended Cartesian product.
 - A variable-length traversal enumerates many walks that are later deduplicated.
 - Sorting receives a huge input because aggregation or filtering happens too late.
 - Returning full nodes, relationships, or path properties carries much more data than scalar IDs.
@@ -81,7 +81,7 @@ Useful diagnoses include:
 
 ## Bound Recursive Relationships
 
-Kuzu uses `WALK` semantics by default for recursive relationships: nodes and edges may repeat. An omitted upper bound falls back to a configured maximum depth of 30, which is a safety ceiling, not a sensible application query.
+Kuzu uses `WALK` semantics by default for recursive relationships: nodes and edges may repeat. An omitted upper bound falls back to the connection's `VAR_LENGTH_EXTEND_MAX_DEPTH`, which defaults to 30 and is a safety ceiling, not a sensible application query.
 
 Replace this:
 
@@ -126,18 +126,18 @@ Before forcing join order, measure the inputs. Useful queries include:
 ~~~cypher
 MATCH (p:Person) RETURN count(*) AS people;
 
-MATCH (p:Person)-[:PURCHASED]->(o:Order)
+MATCH (p:Person)-[:PURCHASED]->(o:`Order`)
 WHERE p.person_id = $person_id
 RETURN count(*) AS orders_for_person;
 
-MATCH (o:Order)-[:CONTAINS]->(i:Item)
+MATCH (o:`Order`)-[:CONTAINS]->(i:Item)
 WHERE o.placed_at >= $since
 RETURN count(*) AS recent_lines;
 ~~~
 
 For skew, aggregate degree and inspect percentiles outside the hot query or return a manageable distribution summary. A single global average hides hubs.
 
-Keep connected patterns connected. This query creates a cross product before the `WHERE` condition can rescue intent:
+Keep connected patterns connected. This query expresses a property join between two otherwise disconnected scans:
 
 ~~~cypher
 MATCH (p:Person), (i:Item)
@@ -145,7 +145,7 @@ WHERE p.country = i.origin_country
 RETURN count(*);
 ~~~
 
-If a relationship represents the association, express it. If a property join really is intended, understand that both sides may be large.
+Kuzu can plan this equality as a hash join, but it may still scan both sides, and repeated property values can produce many matches. If a relationship represents the association, express it. If a property join really is intended, understand that both sides may be large.
 
 Return only what the caller uses. `RETURN path` materializes nodes and relationships; `RETURN b.service_id` is much smaller. Add deterministic pagination or aggregation rather than relying on a UI result cap. A final `LIMIT` does not necessarily prevent upstream path enumeration, especially when sorting or aggregation requires seeing all candidates.
 
@@ -154,7 +154,7 @@ Return only what the caller uses. `RETURN path` materializes nodes and relations
 Kuzu automatically indexes each node table's declared primary key. Starting from an equality filter on that key is often an excellent anchor:
 
 ~~~cypher
-MATCH (p:Person)-[:PURCHASED]->(o:Order)
+MATCH (p:Person)-[:PURCHASED]->(o:`Order`)
 WHERE p.person_id = $person_id
 RETURN o.order_id;
 ~~~
@@ -190,7 +190,7 @@ For cyclic patterns, Kuzu can use worst-case-optimal multi-join operators; the o
 
 1. Reproduce with pinned data, parameters, version, and threads.
 2. Capture `EXPLAIN` and identify scans, expansions, joins, aggregation, sort, and limit.
-3. Capture a safe `PROFILE` and find the first tuple explosion.
+3. Capture a safe `PROFILE` and use operator-local tuple counters to locate disproportionate work.
 4. Make path bounds and semantics explicit.
 5. Remove unintended cross products and oversized projections.
 6. Anchor from a selective typed primary key when the data model supports it.
@@ -212,4 +212,4 @@ Correctness comes before speed: compare row counts, uniqueness, aggregates, and 
 
 ## Conclusion
 
-Treat a slow Kuzu query as a dataflow problem. `EXPLAIN` shows the intended work; `PROFILE` reveals where executed rows and time actually accumulate. Bound recursive patterns, select `WALK`, `TRAIL`, `ACYCLIC`, or shortest-path semantics intentionally, anchor from selective schema-backed identities, and keep result projections small. Only then consider a join-order hint—and preserve the profile that proves why it exists.
+Treat a slow Kuzu query as a dataflow problem. `EXPLAIN` shows the intended work; `PROFILE` reveals where operator-local work and time accumulate. Bound recursive patterns, select `WALK`, `TRAIL`, `ACYCLIC`, or shortest-path semantics intentionally, anchor from selective schema-backed identities, and keep result projections small. Only then consider a join-order hint—and preserve the profile that proves why it exists.
