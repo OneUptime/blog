@@ -8,7 +8,7 @@ Description: Choose a defensible path after Kuzu's archive: pin 0.11.3 briefly, 
 
 ---
 
-Kuzu is no longer merely a slow-moving dependency. Its official repository was archived on October 10, 2025, is read-only, and identifies `v0.11.3` as its final release. The project announcement says existing releases remain usable, but that is a statement about continued availability—not a promise of future security fixes, platform builds, compatibility work, or support.
+Kuzu is no longer merely a slow-moving dependency. Its official repository was archived on October 10, 2025, is read-only, and lists `v0.11.3` as its latest—and last published—release. The project announcement says existing releases remain usable, but that is a statement about continued availability—not a promise of future security fixes, platform builds, compatibility work, or support.
 
 The right response is therefore not “upgrade at once” or “it still runs, so do nothing.” Treat the archive as a lifecycle event. Pinning, forking, and migrating are all reasonable in different circumstances, but each transfers risk to a different place.
 
@@ -24,14 +24,14 @@ Pinning is a time-buying tactic, not a long-term maintenance strategy. A fork is
 
 ## What `0.11.3` Actually Gives You
 
-Kuzu `0.11.3` packages the `0.11.2` engine together with four extensions:
+Kuzu `0.11.3` bundles the `0.11.2` release with four extensions:
 
 - `algo`
 - `fts`
 - `json`
 - `vector`
 
-Those four no longer need a network `INSTALL` step in `0.11.3`. This matters because Kuzu's public extension server was retired with the archive. Other extensions—and any extension on an older Kuzu release—require a locally hosted extension repository.
+Those four no longer need a network `INSTALL` step in `0.11.3`. This matters because Kuzu's public extension server was retired with the archive. Other official extensions—and official extensions used with an older Kuzu release—require a locally hosted extension server.
 
 Moving from an earlier Kuzu version to `0.11.3` can therefore remove an immediate deployment dependency and put every environment on the last known upstream bits. Test the upgrade through Kuzu's documented export/import route; do not replace a database binary under a live process or assume every historical on-disk format can be opened directly.
 
@@ -80,16 +80,18 @@ Before approving it, demonstrate reproducible builds on every supported platform
 
 Ladybug's official repository explicitly says the database was formerly known as Kuzu. Its packages and branding have changed, and development has continued beyond the frozen Kuzu line. As of August 12, 2026, the latest official Ladybug release is `v0.19.1`, while Kuzu remains at `v0.11.3`.
 
-That lineage makes Ladybug the first target to evaluate, not proof that migration is a package rename. Client imports, package coordinates, executable names, default file suffixes, extension delivery, and behavior added in later releases all need testing. For example, Python uses `ladybug` and commonly `import ladybug as lb`; Node.js uses `@ladybugdb/core`; and the CLI is `lbug`.
+That lineage makes Ladybug the first target to evaluate, not proof that migration is a package rename. Client imports, package coordinates, executable names, database paths and naming conventions, extension delivery, and behavior added in later releases all need testing. For example, Python uses `ladybug` and commonly `import ladybug as lb`; Node.js uses `@ladybugdb/core`; and the CLI is `lbug`.
 
-Use a compatibility branch and run the same corpus against both engines:
+Use a compatibility branch and run the same corpus against both engines in separate processes and environments. Loading both native Python bindings into one process can cause type-registration conflicts:
 
 ~~~python
 # Frozen baseline
 import kuzu
 old_db = kuzu.Database("baseline.kuzu")
 old_conn = kuzu.Connection(old_db)
+~~~
 
+~~~python
 # Migration candidate
 import ladybug as lb
 new_db = lb.Database("candidate.lbdb")
@@ -109,7 +111,7 @@ CHECKPOINT;
 EXPORT DATABASE '/srv/migration/kuzu-export';
 ~~~
 
-The documented export contains `schema.cypher`, `macro.cypher`, `copy.cypher`, and data files, using Parquet by default. Preserve that directory as the auditable handoff. Load required extensions before export because Kuzu documents that only indexes whose dependent extensions are loaded are exported.
+The `0.11.3` export contains `schema.cypher` (including macro definitions), `copy.cypher`, `index.cypher`, and data files, using Parquet by default. Preserve that directory as the auditable handoff. Load required extensions before export, and install and load their Ladybug counterparts before import, because Kuzu exports only indexes whose dependent extensions are loaded.
 
 Restore into a new, empty target database. Kuzu and Ladybug documentation both warn that `IMPORT DATABASE` requires an empty database and does not automatically roll back a failed import. Therefore, make the candidate database disposable, save the import logs, and recreate it before retrying.
 
