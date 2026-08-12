@@ -14,7 +14,7 @@ Classify evidence before deciding ownership. Preserve the raw event in a restric
 
 ## Capture Both Synchronous Errors and Rejections
 
-The `window` `error` event covers synchronous script exceptions and resource load failures, but those have different shapes. Unhandled promise rejections use `unhandledrejection`; MDN also notes that cross-origin promise rejections may not dispatch this event because the reason could leak data.
+An `error` listener on `window` receives uncaught synchronous script exceptions and, when registered in the capture phase, can also observe resource load failures dispatched at elements; those events have different shapes. Unhandled promise rejections use `unhandledrejection`; MDN also notes that cross-origin promise rejections may not dispatch this event because the reason could leak data.
 
 ~~~javascript
 window.addEventListener('error', (event) => {
@@ -48,7 +48,7 @@ window.addEventListener('unhandledrejection', (event) => {
 });
 ~~~
 
-Sanitize messages, URLs, and rejection values before transmission; arbitrary thrown values can contain personal data or secrets. In production, prefer a maintained SDK for cross-browser stack parsing and duplicate suppression, but retain these event-type distinctions in the schema.
+Sanitize messages, stack traces, URLs, and rejection values before transmission; arbitrary thrown values can contain personal data or secrets. In production, prefer a maintained SDK for cross-browser stack parsing and duplicate suppression, but retain these event-type distinctions in the schema.
 
 ## Define “First Party” from the Build
 
@@ -102,7 +102,7 @@ function classifyFrame(rawUrl) {
 }
 ~~~
 
-Never try to enumerate a user's installed extensions. It is unreliable, creates fingerprinting risk, and is unnecessary for error triage. The frame URL visible in an error is enough to assign a confidence level. Hash or suppress the extension identifier if retaining it offers no operational value.
+Never try to enumerate a user's installed extensions. It is unreliable, creates fingerprinting risk, and is unnecessary for error triage. The frame URL visible in an error is enough to assign a confidence level. Suppress the extension identifier if retaining it offers no operational value. If cross-event aggregation is necessary, use a keyed, access-controlled pseudonym rather than a plain hash.
 
 Use a label such as `probable_extension` rather than asserting certainty when only the message resembles a known extension error. If an event has both extension and owned frames, keep it: the extension may merely have exposed a bug in a first-party handler.
 
@@ -141,7 +141,7 @@ Inventory every runtime-loaded external script with an owner, purpose, version s
 | `Script error.` with known external resource nearby | opaque cross-origin | aggregate separately; do not merge by message alone |
 | no stack, no URL, rare message | unknown | retain a bounded diagnostic sample |
 
-An allowlist such as Sentry's `allowUrls` can reduce noise, and Sentry's build-time third-party error filter marks application bundles for frame-level decisions. These are useful mechanisms, but choose a mode that tags or drops only events exclusively outside application code. Validate the effect on a shadow stream before deleting anything.
+An allowlist such as Sentry's `allowUrls` can reduce noise, but for captured exceptions it matches only the top stack-frame file URL and can therefore discard a mixed stack whose throw site is external. Sentry's `thirdPartyErrorFilterIntegration` instead uses build-time application-key marking so the browser SDK can make per-frame decisions at runtime. Choose a mode that tags events, or drops only events whose frames are exclusively outside application code. Validate the effect on a shadow stream before deleting anything.
 
 ## Use Confidence and Impact, Not a Binary Filter
 
@@ -158,7 +158,7 @@ release = immutable build ID
 
 Page and alert on high-confidence first-party errors with customer impact. Keep lower-confidence events in trend dashboards and sample their full diagnostics. An extension-only error can be excluded from an application error-rate SLO while still appearing in an “environment noise” counter.
 
-Fingerprint after symbolication using exception type plus stable owned frames. Grouping every opaque event under the literal message `Script error.` creates one meaningless super-cluster. Split opaque events by script host, page route, release, and temporal proximity to resource failures, all using bounded or normalized dimensions.
+Fingerprint after symbolication using exception type plus stable owned frames. Grouping every opaque event under the literal message `Script error.` creates one meaningless super-cluster. Because an opaque event does not expose the throwing script URL, use a script host only when separate load or integration telemetry identifies a candidate; otherwise split by observable dimensions such as page route and release. Treat temporal proximity to resource failures as correlation evidence rather than proof, and keep every dimension bounded or normalized.
 
 ## Validate the Classifier
 
