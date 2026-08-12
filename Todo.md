@@ -51,7 +51,6 @@
 
 ## Browser Monitoring
 
-16. Why Is Session Replay Blank or Incomplete? Iframes, Canvas, Shadow DOM, and Browser Compatibility
 17. Does Your Browser Monitoring SDK Slow the Page? Measuring Bundle, Main-Thread, and Network Overhead
 18. How Do bfcache Restores and Prerendered Pages Distort Browser Performance Metrics?
 19. INP Is Poor but LCP Is Fine: Finding the Long Task or Event Handler Behind Slow Interactions
