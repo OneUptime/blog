@@ -14,7 +14,7 @@ Safe values come from the producer's documented release process and an observed,
 
 ## Understand the two constraints
 
-`--certificate-identity` matches the identity carried in the signing certificate. Cosign documents valid identities such as email addresses, DNS names, IP addresses, and URIs. In automated builds, it is commonly a URI that identifies a source repository and workflow.
+`--certificate-identity` matches the identity carried in the signing certificate. Cosign documents valid identities such as email addresses, DNS names, IP addresses, and URIs. In automated builds, it is commonly a URI that identifies a workflow definition and ref.
 
 `--certificate-oidc-issuer` matches the OIDC issuer recorded for that certificate. It identifies the authority that authenticated the subject. The identity and issuer form a pair; neither should be treated as globally unique on its own.
 
@@ -27,17 +27,17 @@ cosign verify \
   ghcr.io/acme/payments@sha256:REPLACE_WITH_DIGEST
 ```
 
-The string is case-sensitive and includes the workflow path and Git ref. Use the actual identity documented by the publisher; do not mechanically substitute a guessed repository name.
+For GitHub Actions, Fulcio constructs this URI from the signing job's `job_workflow_ref`. The string is case-sensitive and includes the workflow path and Git ref. For a signing job in a reusable workflow, it names the called workflow. Use the actual identity documented by the publisher; do not mechanically substitute a guessed repository name.
 
 ## Start from the trust statement
 
 Write the policy in plain language before writing flags:
 
-> Trust images for `ghcr.io/acme/payments` only when the release workflow stored at `.github/workflows/release.yml` in the `acme/payments` repository signs from the protected `main` branch using GitHub's OIDC issuer.
+> Trust images for `ghcr.io/acme/payments` only when the signing job uses `.github/workflows/release.yml` at `refs/heads/main` in the `acme/payments` repository and authenticates with GitHub's Actions OIDC issuer.
 
-Every variable in the command should follow from that sentence. If the organization wants to trust tags, environments, or a reusable workflow instead, write that explicitly and confirm how those conditions appear in the certificate claims and identity.
+Every variable in the command should follow from that sentence. If the organization also requires a particular source ref, trigger, environment, or reusable-workflow caller, write that explicitly and confirm whether each condition appears in the certificate identity or in a separate certificate extension.
 
-The artifact publisher is the authority for its signer values. Prefer a verification section in its official release documentation. When bootstrapping your own producer, perform a controlled test release, preserve the raw verification result, inspect the certificate fields, and compare them with the intended OIDC claim policy before enabling enforcement.
+The artifact publisher is the authority for its signer values. Prefer a verification section in its official release documentation. When bootstrapping your own producer, perform a controlled test release, preserve the raw verification result and verification material, inspect the certificate fields, and compare them with the intended OIDC claim policy before enabling enforcement.
 
 ## Prefer exact matches
 
@@ -70,24 +70,24 @@ Avoid these policies:
 
 ```text
 --certificate-identity-regexp='.*'
---certificate-identity-regexp='^https://github.com/acme/.*$'
+--certificate-identity-regexp='^https://github\.com/acme/.*$'
 --certificate-oidc-issuer-regexp='.*'
 ```
 
-The first and third authorize everyone. The organization-wide pattern may authorize unrelated repositories and workflows. Even a repository-wide pattern can accidentally trust pull-request, test, or dependency-update workflows that were never meant to release production artifacts.
+The first accepts every identity allowed by the accompanying issuer constraint; the third accepts the accompanying identity regardless of the OIDC issuer value in any otherwise valid certificate chaining to the trusted CA roots. Used together, they remove both identity and issuer authorization constraints. The organization-wide pattern may authorize unrelated repositories and workflows. Even a repository-wide pattern can accidentally trust pull-request, test, or dependency-update workflows that were never meant to release production artifacts.
 
 If you need several known identities, it is often clearer to execute verification against an explicit allowlist or express multiple authorities in a policy engine rather than compressing them into a permissive regex.
 
 ## Identity discovery is not acceptance
 
-During a controlled investigation, an operator may use broad matching to display certificate information. Treat that as untrusted observation. It should never be the final gate, and its output must not automatically rewrite the allowlist.
+During a controlled investigation, an operator may use broad matching to verify a candidate signature and then separately inspect its certificate or verification bundle. Treat the discovered identity and issuer as untrusted observations. Broad matching should never be the final gate, and its output must not automatically rewrite the allowlist.
 
 A safer bootstrap process is:
 
 1. Resolve and record the image digest through an authenticated channel.
 2. Obtain the publisher's expected identity and issuer from official documentation.
 3. Verify with those exact values.
-4. Inspect the returned certificate/claims and compare them with the source repository and release workflow.
+4. Separately inspect the certificate and claims in the verification material and compare them with the source repository and release workflow.
 5. Have a second reviewer approve the policy.
 6. Test that a signature from a nearby but unauthorized workflow is rejected.
 
@@ -95,15 +95,15 @@ Negative tests matter. A policy that accepts the intended signer but also accept
 
 ## Account for branches, tags, and environments
 
-GitHub's OIDC token includes claims describing repository, ref, event, workflow, actor, and environment context. The exact certificate identity used by the Sigstore flow is determined by Fulcio's identity rules and the token claims. Do not assume that a release tag, branch, and protected environment produce the same identity.
+GitHub's OIDC token includes claims describing repository, ref, event, workflow, and actor, plus an environment claim when the job references an environment. Fulcio derives the GitHub Actions certificate identity from `job_workflow_ref`; source-ref, event, repository, and environment information are recorded in separate certificate extensions. A protected environment does not by itself change the certificate identity, and the identity and issuer flags do not check those separate extensions.
 
-If releases may come from signed tags, enumerate the allowed identity shape and anchor it tightly. If a protected GitHub environment is the trust boundary, enforce environment reviewers and deployment-branch rules in GitHub as well as checking the identity Cosign records. A certificate check cannot compensate for a repository configuration that lets untrusted contributors change the authorized workflow.
+If releases may be triggered by tags, confirm how the tag ref appears in the identity and source-ref extension for the real workflow, then constrain every value on which the policy depends. If a protected GitHub environment is the trust boundary, enforce environment reviewers and deployment-branch or tag rules, and make signing possible only in the environment-gated job. An identity and issuer check alone does not prove that environment protections ran. A certificate check cannot compensate for a repository configuration that lets untrusted contributors change the authorized workflow.
 
-Reusable workflows require similar care. Decide whether policy trusts the caller repository, called workflow, or both based on the claims actually recorded. Test the real workflow rather than copying an identity string from an unrelated example.
+Reusable workflows require similar care. Because Fulcio derives the identity from `job_workflow_ref`, it names the called workflow; the caller repository, source ref, and top-level workflow are recorded separately. The identity and issuer flags alone cannot require both caller and called workflow, so use a policy capable of checking the required extensions. Test the real workflow rather than copying an identity string from an unrelated example.
 
 ## Separate public-good and private Sigstore roots
 
-An organization may operate a private Fulcio and Rekor deployment. In that case the trusted CA roots, log keys, issuer, and identity namespace may all differ from the Sigstore public-good instance. Provide the intended trusted root or certificate chain and still constrain the identity and issuer:
+An organization may operate a private Fulcio and Rekor deployment. In that case the trusted CA roots, log keys, issuer, and identity namespace may all differ from the Sigstore public-good instance. Provide the intended Sigstore trusted root, including the relevant Fulcio CA certificates and, as applicable, Rekor, CT-log, and timestamp-authority trust material, and still constrain the identity and issuer:
 
 ```bash
 cosign verify \
@@ -113,16 +113,16 @@ cosign verify \
   "$IMAGE_BY_DIGEST"
 ```
 
-Do not confuse a registry's TLS CA with the certificate authority used to validate signing certificates. `--registry-cacert` secures the HTTPS connection to the registry; `--trusted-root`, `--certificate-chain`, or CA-root options establish signature-verification trust.
+Do not confuse a registry's TLS CA with the certificate authority used to validate signing certificates. `--registry-cacert` secures the HTTPS connection to the registry; `--trusted-root` supplies signing-certificate and Sigstore-service trust material. In Cosign v3.1.3, the direct `--certificate-chain`, `--ca-roots`, and `--ca-intermediates` verification inputs are deprecated in favor of `--trusted-root`; when Cosign selects the new-bundle verifier, CA trust must come from `--trusted-root` and those direct inputs are rejected.
 
 ## Policy review checklist
 
 - [ ] The image reference is pinned to a digest.
 - [ ] The publisher documents the expected signer identity and issuer.
 - [ ] Exact matching is used unless a broader set is explicitly required.
-- [ ] Every regex is anchored at both ends and literal punctuation is escaped.
-- [ ] The pattern names a specific repository and release workflow.
-- [ ] Pull-request and test workflows cannot match the release identity.
+- [ ] Every regex is anchored at both ends and regex metacharacters intended literally are escaped.
+- [ ] The pattern names a specific trusted signing workflow; reusable-workflow callers are constrained separately.
+- [ ] The complete policy rejects unauthorized pull-request or test callers, source refs, triggers, and environments.
 - [ ] Expected values live in protected policy configuration.
 - [ ] The policy has both positive and negative verification tests.
 - [ ] GitHub branch, tag, environment, and workflow protections support the claimed boundary.
@@ -138,4 +138,4 @@ Do not confuse a registry's TLS CA with the certificate authority used to valida
 
 ## Conclusion
 
-Choose identity and issuer values by translating an explicit release trust statement into exact certificate constraints. Keep the pair narrow, protect the configuration that supplies it, and prove with negative tests that nearby repositories and workflows are rejected. Cryptography establishes who signed; these flags decide whether that signer is authorized.
+Choose identity and issuer values by translating an explicit release trust statement into exact certificate constraints. Keep the pair narrow, protect the configuration that supplies it, and prove with negative tests that nearby repositories and workflows are rejected. Cryptography establishes who signed; these flags decide whether the certificate identity and issuer are authorized, while additional release claims require separate enforcement.
