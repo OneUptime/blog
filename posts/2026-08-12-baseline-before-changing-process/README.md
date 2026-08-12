@@ -52,8 +52,9 @@ Cycle time = production_verified_at - implementation_started_at
 Population: normal checkout-api changes whose implementation_started_at falls
 inside the window. One logical change remains one item across retries. Emergency
 incident mitigations and scheduled compliance releases are reported separately,
-not deleted. Times are stored in UTC. Missing finish events remain censored open
-items and contribute to work-item-age reporting.
+not deleted. Times are stored in UTC. Items confirmed unfinished at the window
+cutoff are right-censored and contribute to work-item-age reporting. Missing
+finish events are investigated rather than assumed to indicate open work.
 ```
 
 Do not silently change these rules after the intervention. If a correction is necessary, version the definition and recompute both periods where possible.
@@ -90,7 +91,7 @@ Process time is usually skewed. A few long waits may carry most customer harm wh
 - proportion meeting a service expectation;
 - age distribution for unfinished work.
 
-Google SRE notes that percentiles reveal different parts of a distribution and warns against assuming normally distributed data. Averages can hide tail behavior. The Kanban Guide defines cycle time, work item age, throughput, and work in progress as core flow measures; together they prevent a completed-item baseline from ignoring work still stuck in the system.
+Google SRE notes that percentiles reveal different parts of a distribution and warns against assuming normally distributed data. Averages can hide tail behavior. The Kanban Guide defines cycle time, work item age, throughput, and work in progress as its four mandatory flow metrics; together they prevent a completed-item baseline from ignoring work still stuck in the system.
 
 If sample volume is small, display every point or use weekly aggregates with the underlying count. Do not report p99 from 18 observations as though it were stable. Use uncertainty intervals or describe the range of plausible effects.
 
@@ -103,7 +104,7 @@ For a delivery workflow:
 | Level | Example baseline measures |
 | --- | --- |
 | Customer or service outcome | Availability, escaped defects, request completion |
-| Delivery outcome | Change lead time, deployment frequency, failed-deployment recovery, change fail rate, deployment rework rate |
+| Delivery outcome | Change lead time, deployment frequency, failed deployment recovery time, change fail rate, deployment rework rate |
 | Flow diagnostic | Queue time by state, WIP, work item age, throughput, blocked time |
 | Process diagnostic | Manual steps, handoffs, retry rate, automation coverage |
 | Sustainability guardrail | Toil, after-hours work, interruptions, well-being survey |
