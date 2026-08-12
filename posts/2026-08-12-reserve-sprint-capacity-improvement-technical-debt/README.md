@@ -31,28 +31,28 @@ Make the policy explicit. A policy can be a percentage, a fixed number of work i
 
 ## Start from Actual Capacity
 
-Do not multiply a percentage by an idealized headcount. Begin with the capacity the people doing the work expect to have during this Sprint. The Scrum Guide says Developers select what they can complete, informed by past performance, upcoming capacity, and the Definition of Done.
+Do not multiply a percentage by an idealized headcount. Begin with the capacity the people doing the work expect to have during this Sprint. The Scrum Guide says Developers select Product Backlog items for the Sprint through discussion with the Product Owner; knowledge of their past performance, upcoming capacity, and Definition of Done increases confidence in their Sprint forecast.
 
 A simple planning model is:
 
 ```text
-available team-days
+available person-days
   = working days × available people
   - leave and holidays
   - known support/on-call load
   - mandatory organizational work
 
 improvement reservation
-  = available team-days × policy percentage
+  = available person-days × policy percentage
 ```
 
-Suppose a six-person team has a ten-day Sprint. Leave removes six person-days, and expected support rotation consumes eight. Available capacity is 46 team-days, not 60. A 15% policy reserves about seven team-days. Treat that as a planning signal, not precision: knowledge work varies, support arrivals are stochastic, and a seven-day budget does not guarantee a seven-day outcome.
+Suppose a six-person team has a ten-day Sprint. Leave removes six person-days, and expected support rotation consumes eight. Available capacity is 46 person-days, not 60. A 15% policy reserves about seven person-days. Treat that as a planning signal, not precision: knowledge work varies, support arrivals are stochastic, and a seven-person-day budget does not guarantee a seven-person-day outcome.
 
 Use historical throughput or completed work as a second view. If a team usually finishes 12 similarly sized items per Sprint, reserving two improvement items may be clearer than converting story points or hours into a percentage.
 
 ## Quantify the Demand You Are Deferring
 
-Create one visible improvement backlog, then separate its demand by urgency and economic effect:
+Make improvement demand visible in the Product Backlog, then separate it by urgency and economic effect:
 
 | Demand class | Useful evidence |
 | --- | --- |
@@ -102,7 +102,7 @@ The numbers are illustrative. Your baseline, risk tolerance, and work-item shape
 
 ## Do Not Misapply Google's 50% SRE Rule
 
-Google's SRE material places an upper bound of 50% on operational work so at least half of SRE time remains for engineering project work. That is a deliberate rule for the SRE operating model, designed to prevent manual operational load from consuming the function. The SRE Workbook explicitly notes that this target may not suit every organization.
+Google's SRE material places an upper bound of 50% on operational work so at least half of SRE time remains for engineering project work. That is a deliberate rule for the SRE operating model, designed to prevent operational load from consuming the function. The SRE Workbook explicitly notes that this target may not suit every organization.
 
 It is useful evidence that capacity boundaries can protect long-term engineering, but it is not a recommendation that every product team reserve 50% for a technical-debt backlog. Product development, on-call structure, service maturity, staffing, and the definition of “engineering work” all differ. Borrow the principle—bound work that expands without limit—not the number without its context.
 
@@ -121,7 +121,7 @@ Some improvement belongs inside the Definition of Done rather than a capacity po
 
 ## Protect Slack Without Filling It in Advance
 
-Capacity does not need to be preassigned to named tasks. The Open Guide to Kanban describes slack as intentionally unused capacity that absorbs variability, urgent demand, or continuous improvement. A team might control work in progress below theoretical capacity, then use available time to improve the system.
+Capacity does not need to be preassigned to named tasks. The Open Guide to Kanban describes slack as intentionally unused capacity that absorbs variability and urgent demand or enables continuous improvement. A team might control work in progress below theoretical capacity, then use available time to improve the system.
 
 This is different from planning every engineer to 100% and labeling contingency work “stretch.” Slack loses its purpose when managers immediately fill every open slot. Use pull policies: when an engineer finishes current work, they help complete existing items, address an eligible improvement, or learn—not automatically start another feature.
 
