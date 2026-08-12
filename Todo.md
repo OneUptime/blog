@@ -57,7 +57,6 @@
 
 ## Continuous Improvement
 
-18. Improvement Fatigue Is Real: How Many Process Experiments Can a Team Run at Once?
 19. Did the Change Help Customers or Just Move an Internal Metric?
 20. How to Make an Improvement Stick: Ownership, Automation, Documentation, and Drift Checks
 
