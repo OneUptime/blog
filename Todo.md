@@ -57,7 +57,6 @@
 
 ## Continuous Improvement
 
-14. When Does Standard Work Help Continuous Improvement—and When Does It Become Bureaucracy?
 15. Small Reversible Experiment or Company-Wide Transformation: How Big Should an Improvement Be?
 16. Why Won’t People Raise Process Problems? Building Psychological Safety Without Empty Slogans
 17. How to Run a Remote Retrospective Where Quiet Team Members Shape the Actions
