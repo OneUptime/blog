@@ -87,7 +87,6 @@
 
 ## Continuous Improvement
 
-4. PDCA, A3, or DMAIC: Which Continuous Improvement Method Fits a Software Team?
 5. How to Turn “Deployments Are Painful” into a Measurable Improvement Hypothesis
 6. What Baseline Do You Need Before Changing a Process?
 7. Leading vs Lagging Improvement Metrics: How to Know Before the Quarter Ends
