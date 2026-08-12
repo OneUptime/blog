@@ -68,7 +68,7 @@ The verifier imports certificates into a named trust store and defines a trust p
       "registryScopes": ["registry.example.com/team/api"],
       "signatureVerification": {"level": "strict"},
       "trustStores": ["ca:production-signers"],
-      "trustedIdentities": ["x509.subject: CN=Release Signing,O=Example Corp,C=GB"]
+      "trustedIdentities": ["x509.subject: C=GB, ST=England, O=Example Corp, CN=Release Signing"]
     }
   ]
 }
@@ -87,7 +87,7 @@ The Notary Project specification supports JWS and COSE signature envelopes. The 
 | Managed keys | Built-in KMS URI support plus hardware/key files | Plugin model and configured signing keys |
 | Consumer identity policy | Public key or certificate identity + issuer; external policy engines add scope/thresholds | Native trust policy scopes repositories, trust stores, identities, and verification level |
 | Signed statements | Strong Cosign/in-toto attestation workflow | Signature metadata/specification; evaluate separate attestation needs and integrations |
-| Offline evidence | Sigstore protobuf bundles and trusted roots | X.509 chain, signature, trust store/policy, and plugin requirements |
+| Offline evidence | Sigstore protobuf bundles and trusted roots | Signature artifact with its X.509 chain, trust store/policy, any required plugins, and planned revocation/timestamp dependencies |
 | Registry storage | OCI 1.1 referrers in current Cosign; legacy mode exists | OCI signature artifacts with referrers/fallback behavior per Notation version |
 
 This comparison describes workflow emphasis, not an interoperability promise. A Cosign verifier should not be expected to validate a Notation signature, or vice versa, unless the exact implementation explicitly supports that format.
@@ -111,7 +111,7 @@ The runtime gate is decisive. Ask:
 - Can it verify during registry or transparency-service outages?
 - How are trust roots and policy updates distributed?
 
-Current Kyverno image-verification documentation lists Sigstore Cosign and Notary signature types. Ratify is closely associated with Notary Project workflows. Managed cloud registries and Kubernetes services may expose one format more naturally than another. Validate supported versions and limitations in the official documentation for the specific product.
+Current Kyverno ImageValidatingPolicy documentation describes both Cosign and Notary attestors. Ratify is closely associated with Notary Project workflows. Managed cloud registries and Kubernetes services may expose one format more naturally than another. Validate supported versions and limitations in the official documentation for the specific product.
 
 ## Registry compatibility is more than “OCI-compatible”
 
@@ -142,7 +142,7 @@ If dual-signing is required, define whether policy accepts either signature or r
 - [ ] Include attestations, SBOMs, and offline requirements in the evaluation.
 - [ ] Document trust-root distribution and key/identity incident response.
 - [ ] Benchmark verification latency and dependency availability.
-- [ ] Test multi-platform and separate-signature-repository cases.
+- [ ] Test multi-platform behavior and, where the chosen signer and verifier support it, separate-signature-repository cases.
 - [ ] If migrating, define exact either/both semantics and an end date.
 
 ## Official Documentation
@@ -153,7 +153,7 @@ If dual-signing is required, define whether policy accepts either signature or r
 - [Notary Project trust store and trust policy specification](https://github.com/notaryproject/specifications/blob/main/specs/trust-store-trust-policy.md)
 - [Notary Project signing and verification workflow specification](https://github.com/notaryproject/specifications/blob/main/specs/signing-and-verification-workflow.md)
 - [Notary Project plugin extensibility specification](https://github.com/notaryproject/specifications/blob/main/specs/plugin-extensibility.md)
-- [Kyverno image verification overview](https://kyverno.io/docs/policy-types/cluster-policy/verify-images/overview/)
+- [Kyverno ImageValidatingPolicy](https://kyverno.io/docs/policy-types/image-validating-policy/)
 
 ## Conclusion
 
