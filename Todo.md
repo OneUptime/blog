@@ -87,7 +87,6 @@
 
 ## Continuous Improvement
 
-8. How to Use DORA Metrics for Improvement Without Ranking or Punishing Teams
 9. Deployment Frequency Improved but Burnout Got Worse: Choosing Balanced Guardrail Metrics
 10. Cycle Time, Queue Time, Throughput, and Work Item Age: Which Flow Metric Answers Which Question?
 11. What Should Your First WIP Limit Be—and When Should You Change It?
