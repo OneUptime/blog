@@ -51,7 +51,6 @@
 
 ## Browser Monitoring
 
-15. Session Replay Without Leaking PII: Masking Inputs, URLs, DOM Text, and Network Payloads
 16. Why Is Session Replay Blank or Incomplete? Iframes, Canvas, Shadow DOM, and Browser Compatibility
 17. Does Your Browser Monitoring SDK Slow the Page? Measuring Bundle, Main-Thread, and Network Overhead
 18. How Do bfcache Restores and Prerendered Pages Distort Browser Performance Metrics?
