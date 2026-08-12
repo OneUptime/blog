@@ -87,7 +87,6 @@
 
 ## Continuous Improvement
 
-6. What Baseline Do You Need Before Changing a Process?
 7. Leading vs Lagging Improvement Metrics: How to Know Before the Quarter Ends
 8. How to Use DORA Metrics for Improvement Without Ranking or Punishing Teams
 9. Deployment Frequency Improved but Burnout Got Worse: Choosing Balanced Guardrail Metrics
