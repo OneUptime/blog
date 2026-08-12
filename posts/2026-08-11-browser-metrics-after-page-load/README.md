@@ -24,13 +24,13 @@ LCP, INP, CLS, Long Tasks, and custom action timings answer those questions at d
 
 | Signal | What it answers | Scope | Main limitation |
 | --- | --- | --- | --- |
-| Largest Contentful Paint (LCP) | When did the largest qualifying initial viewport content render? | Initial navigation lifecycle | Not a general metric for every later application update |
+| Largest Contentful Paint (LCP) | When did the largest qualifying initial viewport content render? | Initial navigation by default; supported soft navigations when enabled | Not a general metric for every later application update |
 | Interaction to Next Paint (INP) | How slow was the page's interaction responsiveness? | Page lifetime, based on observed interactions | Requires real interactions; final value is known when the lifecycle ends |
 | Cumulative Layout Shift (CLS) | How much unexpected visual instability occurred? | Page lifetime, using session windows | Needs attribution to identify the moving elements and cause |
 | Long Task | When was the main thread occupied for at least 50 ms? | Whenever the observer is active | A diagnostic primitive, not proof a user interaction was delayed |
 | Custom action | How long did a named product journey take? | Boundaries you define | Easy to define inconsistently or stop before visible completion |
 
-The current Core Web Vitals are LCP, INP, and CLS. Their recommended "good" thresholds are LCP at or below 2.5 seconds, INP at or below 200 milliseconds, and CLS at or below 0.1, evaluated at the 75th percentile of page loads. Those thresholds do not turn Long Tasks or business timings into lesser data. Core Web Vitals are a common user-experience baseline; custom telemetry explains your application.
+The current Core Web Vitals are LCP, INP, and CLS. Their recommended "good" thresholds are LCP at or below 2.5 seconds, INP at or below 200 milliseconds, and CLS at or below 0.1, evaluated at the 75th percentile of page loads separately for mobile and desktop. Those thresholds do not turn Long Tasks or business timings into lesser data. Core Web Vitals are a common user-experience baseline; custom telemetry explains your application.
 
 ## LCP Is a Load Metric, Even If It Finalizes Later
 
@@ -41,9 +41,9 @@ This has two operational consequences:
 - Do not treat an early observer callback as the final LCP value. Use the official `web-vitals` library or correctly retain the last relevant entry.
 - Do not reset ordinary LCP after `window.load` and call later widget paints "LCP." The standardized metric is tied to navigation measurement.
 
-For an SPA route transition, measure an application route-render action today and use the standardized Soft Navigations API only where supported. As of August 2026, Chrome is rolling the Soft Navigations API out from Chrome 151, while older Chrome versions and other browsers may not provide it. Feature-detect it and keep your portable custom route metric.
+For an SPA route transition, measure an application route-render action today and use the incubating Soft Navigations API only where supported. As of August 2026, Chrome is rolling the Soft Navigations API out from Chrome 151, while older Chrome versions and other browsers may not provide it. Feature-detect it and keep your portable custom route metric.
 
-LCP attribution is often more useful than LCP alone. Capture a privacy-safe description of the LCP element and break the time into server response, resource discovery delay, resource download, and render delay. If the LCP value is slow because JavaScript holds the main thread after the image is available, optimizing the CDN will not fix the dominant component.
+LCP attribution is often more useful than LCP alone. Capture a privacy-safe description of the LCP element and break the time into time to first byte (TTFB), resource load delay, resource load duration, and element render delay. If the LCP value is slow because JavaScript holds the main thread after the image is available, optimizing the CDN will not fix the dominant component.
 
 ## INP Covers What Happens After Load
 
@@ -87,11 +87,12 @@ Use `onCLS` from `web-vitals` for the standardized value and attribution tooling
 ```js
 import { onCLS } from "web-vitals/attribution";
 
-onCLS(({ value, rating, attribution }) => {
+onCLS(({ value, rating, attribution, id }) => {
   sendRum({
     metric: "CLS",
     value,
     rating,
+    id,
     largestShift: attribution.largestShiftValue,
     source: sanitizeTarget(attribution.largestShiftTarget),
     time: attribution.largestShiftTime,
@@ -103,7 +104,7 @@ A low initial-load CLS audit does not prove the page stays stable. Synthetic jou
 
 ## Long Tasks Are Clues, Not User Outcomes
 
-The Long Tasks API reports main-thread tasks whose duration exceeds 50 milliseconds. Long tasks can delay input processing and rendering, so their count, total blocking portion, and proximity to a slow interaction are valuable diagnostic signals.
+The Long Tasks API reports main-thread tasks whose duration is 50 milliseconds or longer. Long tasks can delay input processing and rendering, so their count, total blocking portion, and proximity to a slow interaction are valuable diagnostic signals.
 
 They are not interchangeable with INP:
 
@@ -112,7 +113,7 @@ They are not interchangeable with INP:
 - attribution is intentionally limited, especially across origins;
 - browser support is not uniform.
 
-Feature-detect observer entry types and cap what you retain. Performance entry buffers are finite, and an observer callback can report dropped entries.
+Feature-detect observer entry types and cap what you retain. The long-task entry buffer is finite, and an observer callback can report dropped entries.
 
 ```js
 if (PerformanceObserver.supportedEntryTypes.includes("longtask")) {
@@ -174,6 +175,7 @@ async function updateSearchResults(query) {
     sendRum({ metric: "action.search", outcome: classify(error) });
     throw error;
   } finally {
+    performance.clearMeasures("action.search");
     performance.clearMarks(start);
     performance.clearMarks(end);
   }
