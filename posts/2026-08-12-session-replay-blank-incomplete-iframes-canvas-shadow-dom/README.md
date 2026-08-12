@@ -23,7 +23,7 @@ Use the smallest matching category:
 | first screen exists; later activity stops | uncaught recorder error, page lifecycle, quota, network loss |
 | gray placeholders | privacy blocking or masked media |
 | empty iframe rectangle | origin boundary, frame instrumentation, sandbox |
-| blank or static canvas | canvas capture disabled/unsupported, tainted canvas |
+| blank or static canvas | canvas capture or playback disabled/unsupported, tainted canvas |
 | custom element shell only | closed/dynamic shadow root or SDK version |
 | layout present but fonts/images absent | expired assets, authentication, CORS, replay sandbox |
 | only one browser family affected | API and SDK compatibility, build target, extension blocking |
@@ -52,7 +52,7 @@ function noteReplaySegment(byteLength) {
 
 Do not assume selection means recording. A manually started recorder may never receive its start call; a consent promise may reject; an SPA route exclusion may stop capture; or the replay sampling rate may be a percentage of a broader RUM sample. Use the vendor's documented diagnostic logger in a synthetic environment, not verbose production logging that could expose replay data.
 
-Initialize early enough to capture the state you need, but only after required privacy and consent gates. rrweb's current guide documents `recordAfter` choices for `DOMContentLoaded` and `load`; a late dynamic import cannot reconstruct DOM mutations that occurred before recording started.
+Initialize early enough to capture the state you need, but only after required privacy and consent gates. rrweb's current guide documents `recordAfter` choices for `DOMContentLoaded` and `load`; a late dynamic import can snapshot the current DOM state but cannot recover mutations or interactions that occurred before recording started.
 
 ## Verify Upload and Ingestion
 
@@ -72,7 +72,7 @@ Avoid `unload`-dependent delivery. Use the SDK's supported batching and page-lif
 
 ## Iframes Are Separate Documents
 
-An iframe owns another browsing context and document. A same-origin parent may be able to access a same-origin frame's DOM, but cross-origin access is restricted by the same-origin policy. A sandboxed iframe can also have an opaque origin unless its sandbox policy allows same-origin behavior.
+An iframe owns another browsing context and document. A same-origin parent may be able to access a same-origin frame's DOM, but cross-origin access is restricted by the same-origin policy. A sandboxed iframe is forced into an opaque origin unless its sandbox includes `allow-same-origin`; that token preserves the embedded document's normal origin rather than making a cross-origin URL same-origin with its parent.
 
 Therefore, a parent recorder cannot simply traverse an arbitrary payment, identity, or advertising iframe. The safe options are:
 
@@ -80,13 +80,13 @@ Therefore, a parent recorder cannot simply traverse an arbitrary payment, identi
 2. If you own the frame, install a compatible recorder inside it and use the replay product's supported parent-child coordination.
 3. Emit sanitized business events such as `payment_widget_opened` and `payment_confirmed`, without field values.
 
-rrweb documents `recordCrossOriginIframes`, but explicitly requires rrweb to be injected in each child iframe. That option coordinates participating recorders; it does not bypass the same-origin policy. The frame owner must cooperate, and privacy rules apply inside the frame too.
+rrweb documents `recordCrossOriginIframes`, but explicitly requires rrweb to be injected in each child iframe. That option coordinates participating recorders; it does not bypass the same-origin policy. In a normal in-page deployment, the frame owner must cooperate. Configure privacy rules separately inside each child recorder and restrict which sites may embed it; rrweb warns that an untrusted parent can receive the child's events.
 
 For same-origin frames, check that `srcdoc`, `about:blank`, sandbox flags, delayed navigation, and frame replacement do not change the effective origin or destroy the instrumented document. Datadog's troubleshooting documentation notes that embedding iframe replays directly into parent windows is not supported by its replay model; follow the behavior of the chosen product rather than assuming all recorders recurse identically.
 
 ## Canvas Has Pixels, Not Replayable DOM Children
 
-The DOM records a `<canvas>` element's size and attributes, not the drawing commands or final pixel bitmap. rrweb therefore disables canvas recording by default and exposes `recordCanvas` as an explicit option. Replay vendors may capture 2D/WebGL commands, take snapshots, or provide a separate integration, each with compatibility, privacy, CPU, and payload tradeoffs.
+The DOM records a `<canvas>` element's size and attributes, not the drawing commands or final pixel bitmap. rrweb therefore disables canvas recording by default and exposes `recordCanvas` as an explicit option. Its replayer also ignores canvas-mutation events unless `UNSAFE_replayCanvas: true` is enabled; rrweb warns that this adds `allow-scripts` to the replay iframe and opts out of its sandbox script-execution protection. Replay vendors may capture 2D/WebGL commands, take snapshots, or provide a separate integration, each with compatibility, privacy, CPU, and payload tradeoffs.
 
 Before enabling canvas capture globally:
 
@@ -97,11 +97,11 @@ Before enabling canvas capture globally:
 - test 2D, WebGL, OffscreenCanvas, and worker rendering separately;
 - keep a kill switch.
 
-A canvas that draws an image or video from another origin without appropriate CORS permission becomes tainted. MDN documents that readback methods such as `getImageData()`, `toBlob()`, and `toDataURL()` then throw a `SecurityError`. A snapshot-based recorder cannot solve that with a client setting. Configure the source resource's CORS behavior if you own it, or leave the canvas blocked and add sanitized semantic events.
+A canvas that draws an image or video from another origin without appropriate CORS permission becomes tainted. MDN documents that readback methods such as `getImageData()`, `toBlob()`, and `toDataURL()` then throw a `SecurityError`. No recorder option can make pixel readback bypass that browser security check. If you own the resource, load it in CORS mode and return an appropriate `Access-Control-Allow-Origin` response; otherwise, leave the canvas blocked and add sanitized semantic events.
 
 ## Shadow DOM Depends on Mode and Timing
 
-Open shadow roots are reachable through `element.shadowRoot`; closed roots intentionally return `null` to outside code. A recorder cannot reliably walk a closed root after creation. Some SDKs patch `attachShadow` early to observe roots as they are created, so late initialization can miss dynamic components even when the product supports open Shadow DOM.
+Open shadow roots are reachable through `element.shadowRoot`; for closed roots, that property returns `null`, although code that retained the `ShadowRoot` returned by `attachShadow()` can still access it. A recorder that relies on intercepting `attachShadow()` to observe closed roots must initialize before those roots are created. Support for pre-existing or dynamically created open roots is SDK-specific.
 
 Check:
 
