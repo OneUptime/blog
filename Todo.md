@@ -54,7 +54,6 @@
 
 ## Kuzu
 
-20. Kuzu-Wasm Worker Fails to Load or Freezes the UI: Choosing Async, Sync, and Multithreaded Builds
 
 ## Continuous Improvement
 
