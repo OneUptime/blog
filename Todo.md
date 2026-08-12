@@ -4079,3 +4079,233 @@
 18. How to Prevent Cache Poisoning When the Origin Reflects Unkeyed Headers or Query Parameters
 19. How to Cache Hashed JavaScript and CSS for a Year While Keeping HTML Deployments Fresh
 20. Browser, Service Worker, CDN, or Origin? Locate a Stale Response with `Age`, `Via`, `X-Cache`, and DevTools
+
+## Octavia
+
+1. Octavia Load Balancer Stuck in `PENDING_CREATE`: Trace Amphora Boot, Management Port 9443, and Security Groups
+2. Amphora API Answers on TCP 9443 but the Load Balancer Is `OFFLINE`: Trace UDP 5555 Heartbeats, `bind_ip`, Routes, and `heartbeat_key`
+3. How to Build, Tag, and Validate an Octavia Amphora Image for the Exact OpenStack Release
+4. Octavia Controller Client Certificate Expired: Rotate It In Place—and Fail Over Amphorae Only If the Client CA Changed
+5. Octavia Returns HTTP 409 “Load Balancer Is Immutable”: Distinguish a Busy `PENDING_*` State from `ERROR` Before Retrying, Failing Over, or Deleting
+6. Pool Members Are `OFFLINE` but Serve Traffic: Debug Octavia Health-Monitor Paths, Codes, Timers, and TLS
+7. Where Does an Octavia VIP Live? Find Its Neutron Port and Amphora Network Namespace
+8. Amphora or OVN: How to Choose an Octavia Provider Without Assuming Feature Parity
+9. Why Does Octavia Still Launch an Amphora After You Enable OVN? Set Provider Defaults and Verify `--provider`
+10. `SINGLE` or `ACTIVE_STANDBY`: Build Octavia Flavors That Match Cost and Failure-Domain Requirements
+11. How to Terminate HTTPS in Octavia with a Barbican Certificate Container and SNI Certificates
+12. How to Re-encrypt and Validate Backend TLS from an Octavia `TERMINATED_HTTPS` Listener
+13. How to Restrict Octavia Listener Access with `allowed_cidrs` and VIP Security Groups Without Conflicting Rules
+14. Octavia L7 Policies Keep Redirecting the Wrong Requests: Debug Rule Ordering, Inversion, and Regex Matching
+15. How to Add Octavia Pool Members on Another Subnet: Set `--subnet-id` and Trace the Amphora Route
+16. How to Export Octavia Load-Balancer Metrics with a `PROMETHEUS` Listener and Scrape Them Safely
+17. How to Drain an Octavia Pool Member with `weight=0` Before Replacing It
+18. Octavia Keeps Failing Over Amphorae: Tune Heartbeats, Failover Threads, and the Circuit Breaker from Evidence
+19. How to Upgrade Octavia Safely: Run `octavia-status upgrade check`, Publish a New Amphora Image, and Fail Over in Batches
+20. How to Keep Active/Standby Octavia Amphorae on Separate Hosts—and Verify the Nova Server Group
+
+## OWASP
+
+1. How to Migrate an AppSec Checklist from OWASP Top 10:2021 to 2025 Without Losing Existing Controls
+2. The OWASP Top 10 Is Not a Test Plan: Turn the 2025 Risks into App-Specific Abuse Cases and Verification Tasks
+3. OWASP ASVS 5.0 Levels 1, 2, and 3: How to Choose Verification Depth for Your Application
+4. How to Run an OWASP ASVS 5.0 Gap Assessment and Survive Requirement Renumbering with Version-Pinned IDs and a Mapping Table
+5. How to Map OWASP ASVS 5.0 Requirements to User Stories, Automated Tests, and Manual Evidence
+6. How to Threat-Model a Web App with OWASP: Draw Trust Boundaries, Enumerate Abuse Cases, and Prioritize Mitigations
+7. How to Turn Version-Pinned OWASP WSTG Test IDs into a Repeatable Pentest Plan and Evidence Pack
+8. OWASP Dependency-Check Is Slow or Rate-Limited: Cache the NVD Database and Use an API Key in CI
+9. How to Suppress OWASP Dependency-Check False Positives Without Hiding Future CVEs
+10. How to Baseline an AppSec Program with OWASP SAMM and Turn Gaps into a 90-Day Roadmap
+11. How to Run OWASP Juice Shop for Developer Training Without Exposing an Intentionally Vulnerable App
+12. Why OWASP Recommends `X-XSS-Protection: 0`: Replace Legacy Browser Filters with CSP and Modern Security Headers
+13. How to Stop Client-Side CSRF When Trusted JavaScript Builds Requests from Attacker-Controlled URLs
+14. How to Find Shadow and Deprecated API Endpoints with OpenAPI Diffing, Gateway Logs, and OWASP API9:2023
+15. DNS Rebinding Bypasses a URL Allowlist: Pin Resolved IPs and Revalidate Every Redirect in an OWASP-Style SSRF Defense
+16. How to Prevent Session Fixation with OWASP: Rotate IDs at Login, MFA, and Privilege Changes Without Losing State
+17. An OWASP-Guided File-Upload Pipeline: Rename, Verify, Scan, and Isolate User Content
+18. OWASP A10:2025 Mishandling of Exceptional Conditions: How to Fail Closed, Roll Back Partial Work, and Release Resources
+19. How to Protect Sensitive API Business Flows from Bots Without Treating Rate Limiting as Authorization
+20. How to Consume Third-Party APIs Safely: Validate Responses, Bound Resources, and Refuse Untrusted Redirects
+
+## Schema Registry
+
+1. Schema Registry `40403 Schema Not Found` with `auto.register.schemas=false`: Trace the Subject, Registry URL, and Schema Match
+2. Schema Registry HTTP 409: Reproduce the Failure with `/compatibility/subjects/{subject}/versions/{version}?verbose=true` Before Changing the Schema or Policy
+3. `BACKWARD` vs `BACKWARD_TRANSITIVE`: Which Schema Registry Mode Keeps Old Kafka Records Readable After Rewinds?
+4. Consumer First or Producer First? Roll Out Schema Registry Changes in the Order Your Compatibility Mode Guarantees
+5. How to Add an Optional Avro Field Without Breaking Schema Registry Compatibility: Union Order, Defaults, and Nulls
+6. How to Evolve Protobuf in Schema Registry: Reserve Field Numbers, Avoid Type Changes, and Use `BACKWARD_TRANSITIVE`
+7. Why a JSON Schema Passes Locally but Fails Registry Compatibility: Open vs Closed Models and Strict vs Lenient Checks
+8. `TopicNameStrategy`, `RecordNameStrategy`, or `TopicRecordNameStrategy`: Choose Schema Registry Subjects for Multi-Type Topics
+9. Kafka Connect Ignores Your Subject Naming Strategy: Put Converter Settings at the Correct Configuration Level
+10. Schema Registry Serializer Selection: Pair `use.latest.version` with `latest.compatibility.strict` and `use.schema.id` with `id.compatibility.strict`
+11. “Unknown Magic Byte” in a Kafka Consumer: Detect Plain JSON, Avro, and Mixed Schema Registry Wire Formats
+12. How to Register JSON Schema with the Schema Registry REST API Without Double-Escaping the Payload
+13. How to Register Protobuf Imports and Shared Avro Types with Schema References in Dependency Order
+14. How to Soft-Delete and Hard-Delete Schema Registry Subjects—and Verify What Remains Addressable by ID
+15. How to Migrate Schema Registry Without Breaking Historical Kafka Data: Preserve IDs with IMPORT Mode or Schema Linking
+16. Schema Registry Writes Fail Only on Follower Pods: Fix Leader Forwarding and Stable Hostnames on Kubernetes
+17. How to Configure Schema Registry TLS Correctly: Separate REST HTTPS, Client mTLS, and Kafka-Store Credentials
+18. Kafka Connect Gets Schema Registry `401 Unauthorized`: Place Basic-Auth Settings on the Right Converter
+19. Why Restoring Kafka Without the `_schemas` Topic Breaks Consumers: Design Disaster Recovery Around Stable IDs
+20. One Schema Registry for Multiple Kafka Clusters: Prevent Subject Collisions with Contexts and Naming Conventions
+
+## WAL-G
+
+1. WAL-G `Archive ... does not exist` During Recovery: Verify `archive_command`, Storage Prefixes, Timelines, and WAL Coverage
+2. How to Restore a WAL-G Base Backup to a Consistent PostgreSQL Cluster Without `pg_resetwal`
+3. WAL-G `backup-push` Connects to the Wrong Database: Set `PGDATABASE` Without Misunderstanding Cluster-Wide Backups
+4. How to Continuously Test WAL-G PITR with a Throwaway Restore, `recovery_target_time`, and Data Checks
+5. How to Prune WAL-G Delta Chains Safely with `retain FULL`, `FIND_FULL`, and `--use-sentinel-time`
+6. How to Stop `pg_wal` from Filling Up When WAL-G Archiving Hangs or Fails
+7. WAL-G on a PostgreSQL Standby: Handle Promotion and Timeline Changes During `backup-push`
+8. How to Tune WAL-G Upload and Download Concurrency Without Starving PostgreSQL
+9. How to Configure WAL-G for MinIO When S3 Endpoints, Path Style, or TLS Certificates Fail
+10. WAL-G Returns S3 `AccessDenied`: Debug IAM, Bucket Policies, KMS, and Credential Resolution
+11. How to Encrypt WAL-G Backups with PGP or Cloud KMS—and Test Decryption Before Disaster
+12. How to Detect WAL Gaps and Split-Brain Timelines with `wal-show` and `wal-verify`
+13. How to Wrap WAL-G `wal-fetch` Exit Codes So Missing WAL Ends Cleanly but Storage Failures Stop Recovery
+14. WAL-G Restore Is Too Slow: Tune Prefetch and Concurrency Without Breaking `pg_rewind`
+15. How to Migrate WAL-G Backups Between Object Stores with `wal-g copy --with-history` Without Omitting Older WAL
+16. How to Configure WAL-G’s Experimental Failover Storages—and Audit WAL Coverage Across Every Backend
+17. How to Repair a Lagging PostgreSQL Standby with WAL-G Catchup Instead of Taking Another Full Backup
+18. How to Run WAL-G `backup-push` Remotely over PostgreSQL `BASE_BACKUP`—and Know Which Features You Lose
+19. WAL-G Uses Too Much Memory on Millions of Files: When to Disable File Metadata and What It Breaks
+20. How to Label and Protect WAL-G Backups with Sentinel User Data and Permanent Marks
+
+## VEX
+
+1. How to Choose OpenVEX, CycloneDX VEX, or CSAF VEX Without Breaking Scanner Interoperability
+2. How to Reapply Golden OpenVEX Rules to Each New Release with `vexctl` Without Carrying Stale Product IDs
+3. Trivy Ignored Your Local VEX File: Fix Product PURLs, Image Digests, Status Values, and Target Type
+4. How to Feed OpenVEX into Grype and Show Which Findings Were Ignored or Added
+5. How to Attach OpenVEX to an OCI Image with Cosign and Test Trivy’s Experimental `--vex oci` Discovery
+6. How to Link a Dynamic CycloneDX VEX to a Static SBOM with `exploitability-statement` and BOM-Link
+7. How to Build a Private Repository for Trivy’s Experimental `--vex repo` Mode with Priority, Authentication, and Offline Caching
+8. How to Map Each `not_affected` Case to a Machine-Readable VEX Justification—or Use an `impact_statement` When No Label Fits
+9. How to Move a CVE from `under_investigation` to `affected`, `fixed`, or `not_affected` Without Losing History
+10. How to Address Parent Products and Vulnerable Subcomponents in OpenVEX Without Over-Scoping the Statement
+11. How to Validate OpenVEX and CycloneDX VEX in CI Before Publishing a Release
+12. Conflicting VEX Statements from Suppliers and Internal Teams: Define Trust, Priority, and Recency Rules
+13. How to Verify a Keyless OpenVEX Attestation’s OIDC Issuer, Certificate Identity, Subject Digest, and Predicate Type
+14. How to Merge Per-CVE OpenVEX Files with `vexctl` Without Losing Statement Order
+15. How to Map OpenVEX into CycloneDX VEX for Dependency-Track Without Breaking Product Matching
+16. Dependency-Track Ignored Your VEX: Wait for SBOM Processing, Upload CycloneDX, and Verify `bom-ref` Matching
+17. How to Publish an `affected` VEX Statement with an `action_statement` Instead of Misusing `not_affected`
+18. How to Scope CSAF VEX with Product Trees and `product_status` Lists Without Suppressing Sibling Products
+19. How to Carry VEX Through an SBOM-to-Artifact Supply Chain and Detect When Consumers Drop It
+20. How to Reconcile CVE, GHSA, and Vendor Advisory Aliases Without Duplicating VEX Decisions
+
+## AWS SSM
+
+1. How to Make `aws ssm send-command` Wait for the Remote Result and Return the Real Exit Code
+2. SSM Marks a Failed PowerShell Script as Success: Test `$?` or `$LASTEXITCODE`, Then Call `exit` Explicitly
+3. Run Command Parameters Break on Quotes—or Become Injection Payloads: Use `interpolationType: ENV_VAR` with Safe Shell Quoting
+4. Why an SSM Command Document Cannot Read `SecureString` with `{{ssm:...}}`—and Safer Alternatives
+5. How to Target an Auto Scaling Group with a State Manager Command Association So New Tagged Instances Configure Themselves
+6. State Manager vs. Maintenance Windows vs. Run Command: Choose by Desired State, Schedule, and One-Off Execution
+7. Maintenance Window Says “The Provided Role Does Not Contain the Correct SSM Permissions”: Add the Task’s Required API Actions to the Service Role
+8. Not All Maintenance Window Targets Ran: Debug Tag Resolution, Concurrency, Error Thresholds, and Cutoff
+9. How to Pass `{{RESOURCE_ID}}` Correctly from a Maintenance Window into an Automation Runbook
+10. How to Roll Out SSM Run Command Safely with `MaxConcurrency`, `MaxErrors`, and a CloudWatch Alarm Stop Condition
+11. Session Manager Always Logs In as `ssm-user`: Configure Run As with IAM Role Tags and Existing OS Accounts
+12. Session Manager Opens `sh` Instead of `bash`: Set Shell Profiles Without Letting Users Inject Startup Commands
+13. SSM Automation Output Is Empty After `aws:runCommand`: Reference `stepName.Output` Directly and Avoid Multi-Target Output
+14. Session Manager Port Forwarding Freezes: Diagnose the Local Plugin, Antivirus, and Agent Version
+15. Default Host Management Configuration Is Enabled but Unused: Remove `ssm:UpdateInstanceInformation` from the Instance Profile
+16. How to Deploy SSM Host Management Across AWS Organizations with Quick Setup and Debug Failed StackSets
+17. How to Control Session Manager Preferences Across Accounts and Regions Without Document Drift
+18. How to Write One SSM Command Document for Linux and Windows with Schema 2.2 Preconditions
+19. SSM Ran the Wrong Document Version: Choose `$DEFAULT` or `$LATEST` Deliberately—or Pin an Exact Version Number
+20. How to Run Private GitHub Scripts with `aws:downloadContent`, a `SecureString` Token, and a Pinned Commit
+
+## Deployment Automation
+
+1. How to Separate Build, Release, and Deployment IDs So Pipeline Retries Do Not Create Phantom Releases
+2. How to Queue More Than One Pending GitHub Actions Deployment with `concurrency.queue: max`
+3. How to Reconcile a Deployment Marked Failed in CI When the Target Platform Finished It Successfully
+4. How to Run Production Database Migrations from CI When the Database Has No Public Network Path
+5. How to Use GitHub Environment Secrets Without Creating a Deployment Record with `environment.deployment: false`
+6. How to Restrict Cloud OIDC Trust to a Centrally Managed Reusable Deployment Workflow
+7. A Reusable GitHub Actions Deployment Cannot See Caller `env`: Pass Inputs, Variables, and Secrets Correctly
+8. How to Deploy Only Changed Monorepo Services While Including Transitive Shared-Dependency Changes
+9. How to Give Each Preview Deployment an Isolated Database Without Running Migrations Against Shared Staging
+10. How to Require a Minimum Sample Size Before an Automated Canary Can Pass
+11. How to Protect a Blue-Green Rollback Slot from Being Overwritten by the Next Release
+12. How to Resume a Deployment After the Schema Migration Succeeds but the Application Rollout Fails
+13. How to Serialize Deployments Across Multiple Repositories Without a Race Condition
+14. How to Pin Third-Party Deployment Actions by Commit SHA and Detect a Compromised Automation Dependency
+15. How to Keep Environment-Specific Configuration Out of Build Artifacts Without Causing Drift
+16. How to Refresh Short-Lived Cloud Credentials During a Long Deployment Without Restarting the Release
+17. How to Run Deployment Automation Inside a Private VPC with Ephemeral Self-Hosted Runners
+18. How to Coordinate Terraform Changes and Application Rollouts Without Deploying Against Half-Built Infrastructure
+19. How to Promote GitOps Manifests Between Environments Without Cherry-Picking Environment Branches
+20. How to Activate a Feature Flag Only After Every Region Runs the Compatible Release
+
+## Coolify
+
+1. How to Install Coolify on a Fresh VPS and Harden the Host Without Breaking Docker or SSH
+2. How to Deploy a Docker Compose Stack with Web, PostgreSQL, Redis, and Workers on Coolify
+3. `404 Not Found` or `No Available Server` in Coolify: Fix the Health Check and Container Port
+4. How to Configure Coolify Rolling Updates—and Know Why Docker Compose or Host Port Mappings Disable Them
+5. How to Route Wildcard Tenant Subdomains Through Coolify and Issue a DNS-Validated TLS Certificate
+6. Coolify Sends Traffic to the Wrong Port: Map Domains, Paths, and Internal Container Ports Correctly
+7. How to Put the Coolify Dashboard Behind Tailscale Without Breaking Realtime Deployment Updates
+8. How to Connect Coolify to a Private Remote Server Through a Cloudflare Tunnel
+9. How to Deploy a Private GitHub Repository with Submodules and Git LFS in Coolify
+10. Coolify Cannot Find Your Dockerfile in a Monorepo: Set the Base Directory, Dockerfile Path, and Build Context
+11. How to Give Every Coolify Pull-Request Preview Its Own URL and Environment Variables
+12. How to Keep Registry Tokens and API Keys Out of Coolify Image Layers with Docker Build Secrets
+13. How to Share Generated URLs, Passwords, and Project Variables Across Coolify Compose Services
+14. How to Create a Coolify Docker Compose Service with Domains in One API Request
+15. How to Schedule Coolify Database Backups to S3-Compatible Storage and Verify a Restore
+16. How to Recover a Coolify Instance with Its `APP_KEY`, Database Backup, SSH Keys, and Application Volumes
+17. How to Move a Stateful Coolify Application to a New Server Without Losing Named-Volume Data
+18. Intermittent Coolify Gateway Timeouts: Trace Container Health, Proxy Attachment, and Docker Network State
+19. How to Deploy a Private Registry Image in Coolify Without Rebuilding It from Source
+20. How to Route DNS and Traffic Correctly Across Multiple Coolify Deployment Servers
+
+## Platform Orchestration
+
+1. How to Make Backstage Scaffolder Actions Idempotent Before Retrying a Failed Task
+2. How to Draw Ownership Boundaries Between Terraform, Crossplane, and Argo CD So Controllers Do Not Fight
+3. How to Design a Crossplane `App` API That Provisions a Kubernetes Workload and Its Cloud Dependencies
+4. How to Hold an Application Rollout Until a Crossplane v2 Database Is `Ready` and Its Composed Connection Secret Is Populated
+5. How to Trigger Terraform from Backstage and Show Plan, Approval, and Apply Status on the Entity Page
+6. How to Build a GitOps Self-Service Workflow Where the Developer Portal Opens Pull Requests Instead of Applying Infrastructure
+7. How to Orchestrate an Environment on Demand with a Namespace, Database, DNS, Secrets, and an Expiration Time
+8. How to Verify Infrastructure Backward Compatibility Before Promoting an Existing Application Artifact
+9. How to Sequence Breaking Infrastructure and Application Changes Across Separate Delivery Pipelines
+10. How to Put OPA and Kyverno Guardrails Around Self-Service Platform Workflows
+11. How to Bootstrap External Secrets for a New Namespace Without Letting Backstage Read the Secret Value
+12. How to Detect and Resolve Drift When Terraform and GitOps Manage Adjacent Platform Resources
+13. How to Place Self-Service Workloads Across Cloud Accounts and Kubernetes Clusters with Policy
+14. How to Add Audited Day-Two Actions for Scaling, Credential Rotation, and Restore Operations in Backstage
+15. How to Version Golden Paths, Terraform Modules, and Crossplane APIs Without Breaking Existing Services
+16. How to Resume a Backstage Workflow After Terraform Succeeds but Catalog Registration Fails
+17. How to Surface Crossplane, Terraform, and Argo CD Failures in a Single Backstage Task View
+18. How to Propagate a Workflow Correlation ID Across Backstage, CI, Terraform, and Argo CD
+19. How to Limit Concurrent Self-Service Provisioning Before Cloud Quotas and Terraform State Locks Collapse
+20. How to Transfer a Service Between Teams Without Recreating Platform-Managed Resources
+
+## Logstash
+
+1. How to Build Grok Fallback Patterns That Preserve Unmatched Events and Explain `_grokparsefailure`
+2. How to Configure Multiline at the Shipper Before Logstash Without Mixing Stack Traces from Concurrent Hosts
+3. How to Parse Pretty-Printed Multiline JSON in Logstash Without Running Grok on JSON
+4. How to Parse Timestamps with Time Zones in Logstash and Preserve the Original Event Time
+5. How to Paginate Logstash JDBC Queries Without Duplicating or Skipping Rows When Ordering Is Not Guaranteed
+6. How to Give Every Logstash JDBC Input Its Own `last_run_metadata_path`
+7. How to Capture Late Database Rows in Logstash with a Lookback Window and Deterministic Document IDs
+8. How to Reprocess Logstash Dead-Letter Queue Events After Fixing an Elasticsearch Mapping Error
+9. How to Size a Logstash Persistent Queue for an Outage and Measure Its Throughput and Durability Tradeoffs
+10. How to Isolate a Slow Logstash Output with Pipeline-to-Pipeline Routing and Persistent Queues
+11. How to Tune Logstash `pipeline.workers` and `pipeline.batch.size` with Flow Metrics
+12. How to Speed Up Expensive Logstash Grok Filters with Anchors, Pattern Ordering, and Dissect
+13. How to Prevent Logstash Fields from Causing Elasticsearch Mapping Explosion
+14. How to Migrate a Logstash Pipeline to ECS-Compatible Field Names Without Breaking Dashboards
+15. How to Configure TLS Certificate Verification and API-Key Authentication from Logstash to Elasticsearch
+16. How to Run Multiple Logstash Pipelines in Docker and Persist `sincedb`, Queues, and DLQ State
+17. How to Test a Logstash Configuration with Sample Events Before Reloading Production
+18. How to Make Logstash File Input Reread a Completed File—or Resume from `sincedb` Without Assuming Exactly-Once Delivery
+19. How to Match Logstash Kafka Consumer Threads to Partitions and Detect Backpressure
+20. How to Route Logstash Events by Nested Field Without Conditional Type Errors
