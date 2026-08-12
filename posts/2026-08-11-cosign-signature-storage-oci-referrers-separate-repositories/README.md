@@ -8,9 +8,9 @@ Description: Understand how current Cosign stores signatures as OCI 1.1 referrin
 
 ---
 
-A Cosign signature is not embedded in an image layer, and it is not part of the image manifest being signed. Changing the image manifest to insert a signature would change its digest and therefore change the subject. Instead, Cosign uploads a separate OCI object that refers to the subject manifest digest.
+A Cosign signature is not embedded in an image layer, and it is not part of the image manifest being signed. Changing the image manifest to insert a signature would change its digest and therefore change the subject. Instead, Cosign stores the signature in a separate OCI object associated with the subject manifest digest. Current Cosign storage expresses that association with an OCI `subject` descriptor.
 
-Current Cosign releases use the OCI 1.1 referrers model by default. Older Cosign releases and registries without native referrers support used a digest-derived tag convention. Knowing which model is in use explains many “signature missing” problems during mirroring, garbage collection, and repository migration.
+Current Cosign releases use OCI 1.1 referring artifacts by default. When a registry lacks the native referrers API, OCI 1.1 clients use the standardized referrers-tag fallback. Older Cosign releases used a different digest-derived `.sig` tag convention. Knowing which model is in use explains many “signature missing” problems during mirroring, garbage collection, and repository migration.
 
 ## The subject remains immutable
 
@@ -20,7 +20,7 @@ Assume this is the signed image:
 registry.example.com/team/api@sha256:abcd...
 ```
 
-The digest identifies an image manifest or image index. Cosign creates another manifest containing the signature and verification material, with an OCI `subject` descriptor that points back to `sha256:abcd...`. The registry stores both objects. The image's digest does not change.
+The digest identifies an image manifest or image index. With current OCI 1.1 storage, Cosign creates another OCI image manifest whose layer points to a serialized Sigstore bundle containing the signed material and verification material. Its OCI `subject` descriptor points back to `sha256:abcd...`. The registry stores both manifests and the bundle blob. The image's digest does not change.
 
 OCI Distribution 1.1 defines a referrers API scoped to a repository and subject digest:
 
@@ -28,7 +28,7 @@ OCI Distribution 1.1 defines a referrers API scoped to a repository and subject 
 GET /v2/team/api/referrers/sha256:abcd...
 ```
 
-The response is an OCI image index containing descriptors for referring manifests. Signatures, attestations, and SBOM artifacts can all appear as referrers, distinguished by artifact type and media type.
+The response is an OCI image index containing descriptors for referring image manifests or indexes. Signatures, attestations, and SBOM artifacts can all appear as referrers. Response descriptors expose `artifactType` for semantic selection, while `mediaType` identifies the referenced manifest or index format. Current Cosign signature and attestation bundles share a Sigstore bundle artifact type and use bundle annotations such as `dev.sigstore.bundle.predicateType` to identify their content.
 
 “Stored alongside the image” therefore means in the same registry repository by default, not inside the image.
 
@@ -68,7 +68,13 @@ used a tag shaped like:
 registry.example.com/team/api:sha256-703218c0....sig
 ```
 
-This convention made signatures usable on registries that supported ordinary image manifests and tags but did not understand artifact relationships. OCI Distribution 1.1 also specifies a referrers-tag fallback for registries that return `404` for the referrers API.
+This convention made signatures usable on registries that supported ordinary image manifests and tags but did not understand artifact relationships. OCI Distribution 1.1 specifies a different referrers-tag fallback for registries that return `404` for the referrers API. For the same SHA-256 subject, the standardized fallback tag is shaped like:
+
+```text
+registry.example.com/team/api:sha256-703218c0...
+```
+
+It has no `.sig` suffix and points to an OCI image index containing referrer descriptors, rather than directly to the legacy Cosign signature object.
 
 Do not assume a tag listing tells the whole story on a native-referrers registry, and do not assume a referrers API response finds artifacts created only under an incompatible legacy convention. Check the Cosign and registry versions when migrating.
 
@@ -96,16 +102,18 @@ cosign verify \
 
 A separate repository can centralize write access and keep signatures when application repositories have aggressive cleanup policies. It also creates an operational dependency: every signer, verifier, mirror job, and policy engine must agree on the mapping. Document it as part of the trust policy.
 
-Repository syntax differs among registries. Sigstore's registry-support documentation notes, for example, that some registries require a full image-like path rather than a repository prefix. Test the exact target before rollout.
+Repository syntax differs among registries. Cosign's project documentation notes, for example, that some registries require a full image-like path rather than a repository prefix. Test the exact target before rollout.
+
+Use Cosign v3.1.0 or later for this OCI-bundle workflow with `COSIGN_REPOSITORY`; Cosign v3.0.x releases had bugs in one or both of the separate-repository signing and verification paths.
 
 ## Registry permissions are separate
 
-Signing an image generally requires pull access to resolve the subject and push access for the signature object. Verification requires pull access to the subject and signature location. With a separate signature repository, grant those permissions independently.
+Signing an image generally requires pull access to resolve the subject, pull access to query the signature location's referrers API or fallback index, and push access for the signature object. Verification requires pull access to the subject and signature location. With a separate signature repository, grant those permissions independently.
 
 Avoid giving runtime workloads signature-push permission. A typical split is:
 
 - build job: push image, no signature permission;
-- trusted signing job: pull subject and push signature artifacts;
+- trusted signing job: pull subject and pull/push signature artifacts;
 - admission controller: pull subject and signatures only;
 - mirror job: pull source graph and push destination graph;
 - registry administrator: configure retention and garbage collection.
@@ -114,11 +122,11 @@ A registry may authenticate all these requests correctly while still lacking OCI
 
 ## Retention and deletion need graph awareness
 
-Because signatures are separate manifests, deleting a tag does not necessarily delete either the image manifest or its referrers. Conversely, garbage collection or replication that understands only tagged image roots can remove untagged referring artifacts.
+Because signatures are separate manifests, deleting a tag does not necessarily delete either the image manifest or its referrers. Conversely, garbage collection that understands only tagged image roots can remove untagged referring artifacts, while replication with the same limitation can omit them.
 
 Before enabling cleanup:
 
-1. Confirm whether signatures use native referrers or a fallback tag.
+1. Confirm whether signatures use OCI 1.1 referring artifacts, discovered through the native API or standardized fallback index, or a legacy Cosign `.sig` tag.
 2. Confirm how the registry marks referrers reachable.
 3. Test deletion of a disposable signed image.
 4. Verify whether signature and attestation artifacts remain or are intentionally removed.
@@ -130,7 +138,7 @@ The OCI specification defines discovery and fallback behavior; registry-specific
 
 A basic `docker pull`, `docker tag`, and `docker push` transfers the image, not the entire relationship graph. Even if the subject digest is identical at the destination, its referrers live in a different repository namespace and must be copied or recreated there.
 
-Use a tool and mode that explicitly copies referrers, such as ORAS recursive copy where supported:
+Use a tool and mode that explicitly copies OCI 1.1 referrers, such as ORAS recursive copy where supported:
 
 ```bash
 oras cp --recursive \
@@ -138,13 +146,13 @@ oras cp --recursive \
   mirror.example.net/team/api:release
 ```
 
-Then discover and verify at the destination. Treat the final successful verification as the promotion gate.
+Legacy Cosign `.sig` tags are not OCI 1.1 referrers and must be copied separately with Cosign-aware tooling or explicit tag handling. Then discover and verify at the destination. Treat the final successful verification as the promotion gate.
 
 ## Storage troubleshooting checklist
 
 - [ ] Record the subject's repository and digest.
 - [ ] Check the Cosign major version and registry OCI 1.1 support.
-- [ ] Use `oras discover` to inspect native or fallback referrers.
+- [ ] Use `oras discover` to inspect native or standardized fallback referrers, and check legacy `.sig` tags separately.
 - [ ] Check for a configured `COSIGN_REPOSITORY` in both signing and verification environments.
 - [ ] Confirm pull/push authorization separately for the image and signature repositories.
 - [ ] Ensure mirror and backup tools copy the referrer graph, not only tags and layers.
@@ -162,4 +170,4 @@ Then discover and verify at the destination. Treat the final successful verifica
 
 ## Conclusion
 
-Cosign stores a signature as a separate registry object associated with an immutable subject digest. Current releases use OCI 1.1 referrers, while legacy and fallback workflows may use digest-derived tags. Make that storage model, any separate signature repository, and the artifact graph explicit in permissions, retention, mirroring, and verification procedures.
+Cosign stores a signature as a separate registry object associated with an immutable subject digest. Current releases use OCI 1.1 referring artifacts, discovered through the native referrers API or standardized fallback index, while legacy workflows may use digest-derived `.sig` tags. Make that storage model, any separate signature repository, and the artifact graph explicit in permissions, retention, mirroring, and verification procedures.
