@@ -48,7 +48,7 @@ Count HTML/document requests at an edge or server before the browser SDK is invo
 
 - bfcache restores can create page experiences without a new document request;
 - a service worker or cache can serve a document without hitting the origin;
-- SPA route changes do not create document requests;
+- client-side SPA route changes do not create document requests;
 - bots and synthetic agents may inflate server traffic;
 - retries and prerendering can differ from visible page views.
 
@@ -62,7 +62,7 @@ Where justified, use a small, purpose-named, same-origin health endpoint distinc
 
 ### Stages 5–6: Count on the server
 
-`navigator.sendBeacon()` returning `true` only means the browser queued the payload; it is not a delivery receipt. The collector's accepted-request count is the first durable evidence that the payload reached your infrastructure. Add counters after authentication, validation, enqueue, processing, and storage so a green HTTP endpoint cannot hide downstream loss.
+`navigator.sendBeacon()` returning `true` only means the browser queued the payload; it is not a delivery receipt. The collector's accepted-request count is the first server-side evidence that the payload reached your infrastructure. Add counters after authentication, validation, enqueue, processing, and storage so a green HTTP endpoint cannot hide downstream loss.
 
 ## Calculate Coverage as a Set of Ratios
 
@@ -72,9 +72,9 @@ Suppose a 30-minute window contains:
 900,000 estimated eligible document experiences
 810,000 bootstrap executions observed
 795,000 SDK-ready events observed
-780,000 events sampled in by policy
-750,000 collector-accepted payloads
-747,000 stored payloads
+780,000 sampled-in events queued for export
+750,000 events accepted after collector decoding and deduplication
+747,000 events stored
 ```
 
 Report several ratios:
@@ -82,7 +82,7 @@ Report several ratios:
 ```text
 bootstrap coverage estimate = 810,000 / 900,000 = 90.0%
 SDK initialization success = 795,000 / 810,000 = 98.1%
-collector acceptance among sampled-in events = 750,000 / 780,000 = 96.2%
+collector acceptance among queued sampled-in events = 750,000 / 780,000 = 96.2%
 pipeline persistence = 747,000 / 750,000 = 99.6%
 ```
 
