@@ -50,7 +50,7 @@ Use the current DORA delivery measures relevant to flow:
 - change lead time;
 - failed deployment recovery time.
 
-Report definitions, population, event coverage, count, and distributions. Failed deployment recovery time belongs with throughput in DORA's current model because inability to recover constrains the system's capacity to deliver.
+Report definitions, population, event coverage, count, and distributions. DORA's current model classifies failed deployment recovery time with throughput because it measures the speed of changes made in response to a failure.
 
 ### 2. Instability and rework
 
@@ -130,7 +130,7 @@ primary_outcome:
 guardrails:
   change_fail_rate: "no material increase from baseline"
   after_hours_share: "<= 10%"
-  pages_per_shift_p85: "<= 2 actionable incidents"
+  pages_per_shift_p85: "<= 2 actionable pages"
   sustainable_workload_favorable: ">= 75%"
 actions:
   any_guardrail_breach: "pause expansion and investigate"
@@ -141,7 +141,7 @@ Thresholds here are illustrative. Derive them from risk, baseline, staffing, SLO
 
 ## Measure Burnout Carefully
 
-Burnout is a serious occupational phenomenon, not a synonym for one difficult Sprint. Teams should not attempt to diagnose individuals from telemetry. Use established, ethically administered instruments through qualified organizational channels when clinical or employment decisions are involved.
+Burnout is a serious occupational phenomenon, not a synonym for one difficult Sprint. Teams should not attempt to diagnose individuals from delivery telemetry or team pulse surveys. Do not use either for individual clinical or employment decisions; refer clinical concerns to qualified health professionals using appropriate instruments.
 
 For improvement work, focus on modifiable work-system evidence:
 
@@ -233,7 +233,7 @@ Use a fixed review cadence and a named owner who can change priorities. If the o
 - [Microsoft Research: The SPACE of Developer Productivity](https://www.microsoft.com/en-us/research/publication/the-space-of-developer-productivity-theres-more-to-it-than-you-think/)
 - [Google SRE: Being On-Call](https://sre.google/sre-book/being-on-call/)
 - [Google SRE: Eliminating Toil](https://sre.google/sre-book/eliminating-toil/)
-- [NIOSH Worker Well-Being Questionnaire](https://www.cdc.gov/niosh/docs/2021-110/)
+- [NIOSH Worker Well-Being Questionnaire](https://www.cdc.gov/niosh/publications/numbered/2021-110.html)
 
 ## Conclusion
 
