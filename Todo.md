@@ -54,15 +54,6 @@
 
 ## Kuzu
 
-2. Kuzu to LadybugDB: What Actually Changes in Packages, APIs, Extensions, and Database Files?
-3. How to Audit a Frozen Kuzu Deployment for Security and Compatibility Risk
-4. Why Does `INSTALL EXTENSION` Fail in Kuzu Now? Using Bundled Extensions or a Local Extension Server
-5. How to Export and Validate a Kuzu Graph Before Moving to Another Database
-6. Kuzu Says “Could Not Set Lock on File”: Safely Using Jupyter, the CLI, and Explorer
-7. Can Multiple Web Workers Write to One Kuzu Database? Designing a Single-Process API Layer
-8. Kuzu In-Memory vs On-Disk: Which Mode Fits Tests, Analytics, and Production?
-9. How Should You Model Node Tables, Relationship Tables, and Primary Keys in Kuzu?
-10. Kuzu CSV Import Put the Header in Your Data—or Rejected Valid Rows: Fixing Auto-Detection, Nulls, and Delimiters
 11. `COPY FROM`, `CREATE`, or `MERGE`: Which Kuzu Ingestion Path Scales to Millions of Nodes and Edges?
 12. Kuzu Crashes or Exhausts Memory During Bulk Load: Tuning the Buffer Pool and Import Batch
 13. Why Doesn’t Neo4j Cypher Run Unchanged in Kuzu? Finding Dialect and Schema Assumptions
