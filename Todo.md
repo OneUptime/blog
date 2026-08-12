@@ -57,7 +57,6 @@
 
 ## Continuous Improvement
 
-12. How to Run a Value-Stream Mapping Session That Reveals Wait Time, Rework, and Handoffs
 13. How to Prevent Local Optimization from Making the End-to-End Delivery System Slower
 14. When Does Standard Work Help Continuous Improvement—and When Does It Become Bureaucracy?
 15. Small Reversible Experiment or Company-Wide Transformation: How Big Should an Improvement Be?
