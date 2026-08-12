@@ -10,7 +10,7 @@ Description: Use Woodpecker workflow-level path filters to test only affected mo
 
 A monorepo should not rebuild every service for every change, but “changed service” is a dependency question, not merely a directory-name check. Woodpecker provides `when.path` for push and pull-request events. The reliable design is one workflow per independently runnable service, filtered at workflow level, with shared files included wherever they can affect that service.
 
-This guide uses current Woodpecker 3.x behavior. In particular, pull-request path matching considers every file changed by the pull request, and multiple workflow files have separate workspaces unless artifacts are moved through external storage.
+This guide targets Woodpecker 3.15 or newer. In particular, pull-request path matching considers every file changed by the pull request, and multiple workflow files have separate workspaces, so cross-workflow artifacts must be transferred through external storage.
 
 ## Start with the Repository's Impact Map
 
@@ -179,6 +179,9 @@ when:
     include:
       - services/billing/**
       - packages/shared/**
+      - go.work
+      - go.work.sum
+      - .woodpecker/billing.yaml
     on_empty: false
 
 steps:
@@ -188,11 +191,12 @@ steps:
       - go test ./services/billing/...
 
   - name: publish
-    image: woodpeckerci/plugin-docker-buildx
+    image: woodpeckerci/plugin-docker-buildx:6.1.1
     settings:
       context: services/billing
       dockerfile: services/billing/Dockerfile
       repo: registry.example.com/acme/billing
+      registry: registry.example.com
       username:
         from_secret: registry_username
       password:
@@ -204,11 +208,13 @@ steps:
 
 The global path filter selects affected events. The step condition ensures pull requests never publish. Keep registry secrets unavailable to pull requests unless there is a carefully reviewed need.
 
+The Buildx plugin starts its own Docker daemon and requires privileged execution. Pin the plugin as shown and have the Woodpecker administrator allowlist that exact image with `WOODPECKER_PLUGINS_PRIVILEGED=woodpeckerci/plugin-docker-buildx:6.1.1`.
+
 ## Coordinate Multiple Workflows with Optional Dependencies
 
 Multiple Woodpecker workflows run independently, usually in parallel. A downstream integration or deploy workflow may need to wait for service checks that only sometimes exist in a pipeline.
 
-Current Woodpecker supports optional dependencies:
+Woodpecker supports optional dependencies starting in 3.15:
 
 ~~~yaml
 # .woodpecker/deploy.yaml
@@ -231,13 +237,13 @@ steps:
       - ./scripts/deploy-affected.sh
 ~~~
 
-If `billing` is present, deploy waits for it. If its path filter excluded it, that optional dependency is ignored. A required dependency on a filtered-out workflow can exclude or block the downstream design, so choose required versus optional based on the actual release invariant.
+If `billing` is present, deploy waits for it. If its path filter excluded it, that optional dependency is ignored. A required dependency on a filtered-out workflow causes the downstream workflow to be excluded, so choose required versus optional based on the actual release invariant.
 
 The dependency name is the workflow filename without path, leading dots, or YAML extension.
 
 ## Workspaces Do Not Cross Workflow Boundaries
 
-Steps within one workflow share a workspace, so a build output from one step is visible to the next. Separate workflow files do not share files. Woodpecker's workflow documentation explicitly calls this out.
+Steps within one workflow share a workspace, so a build output written to that workspace by one step is visible to the next. Separate workflow files do not share files. Woodpecker's workflow documentation explicitly calls this out.
 
 If `billing.yaml` builds an archive and `deploy.yaml` needs it, use one of these designs:
 
@@ -293,6 +299,8 @@ As the monorepo grows, review the impact map periodically. Stale path filters ar
 - [Woodpecker: Project pipeline-path resolution](https://woodpecker-ci.org/docs/usage/project-settings)
 - [Woodpecker: Environment variables and changed files](https://woodpecker-ci.org/docs/usage/environment)
 - [Woodpecker: Secret event filters](https://woodpecker-ci.org/docs/usage/secrets)
+- [Woodpecker: Docker Buildx plugin](https://woodpecker-ci.org/plugins/docker-buildx)
+- [Woodpecker: Server plugin privilege configuration](https://woodpecker-ci.org/docs/administration/configuration/server#plugins_privileged)
 - [doublestar pattern documentation](https://github.com/bmatcuk/doublestar)
 
 ## Conclusion
