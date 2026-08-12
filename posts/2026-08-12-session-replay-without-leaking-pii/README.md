@@ -51,26 +51,31 @@ When consent is withdrawn, call the SDK's supported stop method, discard unsent 
 
 ## Mask Inputs at the Recorder Boundary
 
-Password fields are commonly masked by default, but an ordinary text box can contain equally sensitive data. rrweb's official guide exposes `maskAllInputs` and selector/class controls. Configure the recorder itself so raw values do not enter emitted replay events:
+Password fields are commonly masked by default, but an ordinary text box can contain equally sensitive data. rrweb's official guide exposes `maskAllInputs` and selector/class controls. Configure the recorder itself so supported input values are masked before emitted replay events reach your queue:
 
 ~~~javascript
 import { record } from '@rrweb/record';
+import { EventType } from '@rrweb/types';
 
-const stop = record({
-  emit(event) {
-    enqueueEncryptedReplayEvent(event);
-  },
-  maskAllInputs: true,
-  maskTextClass: 'replay-mask',
-  blockClass: 'replay-block',
-  recordCanvas: false,
-  recordCrossOriginIframes: false,
-});
+export function startPrivacyReviewedReplay() {
+  return record({
+    emit(event) {
+      enqueueEncryptedReplayEvent(sanitizeReplayEvent(event));
+    },
+    maskAllInputs: true,
+    maskTextClass: 'replay-mask',
+    blockClass: 'replay-block',
+    recordCanvas: false,
+    recordCrossOriginIframes: false,
+  });
+}
 ~~~
 
-The example shows privacy intent, not a complete production transport. Use the exact options supported by the pinned recorder version and a maintained replay backend.
+The example shows privacy intent, not a complete production transport. Pin matching versions of `@rrweb/record` and `@rrweb/types`, use the exact options they support, and use a maintained replay backend.
 
-Masking replaces text while preserving enough shape to follow the interaction. Blocking replaces an entire element with a placeholder and is preferable when its dimensions, child count, image, or surrounding labels reveal too much. Apply blocking to payment forms, health data, account settings, document viewers, authentication recovery, chat, and any component whose safety is hard to prove.
+In rrweb, `maskAllInputs` masks its supported input value types; it does not sanitize arbitrary attributes, radio or checkbox values, hidden or file controls, or `<option>` text. Keep sensitive data out of those surfaces, pre-sanitize it, or block the containing element. Likewise, `recordCrossOriginIframes: false` disables cooperative capture from cross-origin child frames; it does not prevent same-origin iframe recording or iframe URL serialization, so block sensitive frames and keep their `src` URLs token-free.
+
+Masking replaces text while preserving enough shape to follow the interaction. Blocking omits an entire element's subtree and replaces it with a placeholder. It is preferable when child count, media, or labels inside the subtree reveal too much. rrweb preserves the blocked element's dimensions, so place it inside a reviewed, fixed-size outer container if size itself is sensitive. Apply blocking to payment forms, health data, account settings, document viewers, authentication recovery, chat, and any component whose safety is hard to prove.
 
 ~~~html
 <section class="replay-block" aria-label="Payment details">
@@ -106,9 +111,24 @@ function replayLocation(input = location.href) {
     // Deliberately omit url.search and url.hash.
   };
 }
+
+function sanitizeReplayEvent(event) {
+  if (event.type !== EventType.Meta) {
+    return event;
+  }
+
+  const { origin, route } = replayLocation(event.data.href);
+  return {
+    ...event,
+    data: {
+      ...event.data,
+      href: `${origin}${route}`,
+    },
+  };
+}
 ~~~
 
-Redact before calling the SDK, not only in the replay viewer. Also inspect document titles, breadcrumb labels, referrers, SPA route events, and manually added context; each can reintroduce the value removed from the URL.
+Redact synchronously in the browser before an event is queued or transmitted, not only in the replay viewer. rrweb builds navigation metadata from `window.location.href`, which is why the recorder wrapper above passes every event through `sanitizeReplayEvent`. That function does not rewrite URL-bearing DOM attributes such as `href`, `src`, or `action`; keep secrets out of them or block or sanitize their elements separately. Also inspect document titles, breadcrumb labels, referrers, SPA route events, and manually added context; each can reintroduce the value removed from the URL.
 
 OpenTelemetry's URL conventions explicitly require credentials to be removed from `url.full` and recommend scrubbing identifiable sensitive content. Its small default signed-query redaction list is not a complete application policy. Prefer an allowlist of safe query keys and closed value sets if a query dimension is truly needed.
 
@@ -121,8 +141,9 @@ For most replay investigations, method, normalized route, status class, start ti
   "method": "POST",
   "route": "/api/orders/:id/confirm",
   "status_class": "2xx",
+  "start_time": "2026-08-12T14:03:21.123Z",
   "duration_ms": 184,
-  "trace_id": "random-observability-identifier"
+  "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736"
 }
 ~~~
 
