@@ -20,12 +20,12 @@ Kuzu is archived at version 0.11.3, so freeze diagnostics against that version. 
 - Kuzu raised an out-of-memory or buffer-manager exception.
 - A large relationship import exhausted temporary storage while spilling.
 - The source contained a malformed value, duplicate primary key, or missing endpoint.
-- A browser or in-memory build could not use disk spilling at all.
+- An in-memory database could not use disk spilling at all.
 - Parallel parsing caused a higher peak than the same data loaded serially.
 
-Capture the exact error, process exit code, container events, peak resident memory, free space in the working directory, and the last completed table. Do not label every abrupt exit an engine memory leak.
+Capture the exact error, process exit code, container events, peak resident memory, free space on the database filesystem, and the last completed table. Do not label every abrupt exit an engine memory leak.
 
-On Linux, inspect the container or service cgroup limit rather than host RAM alone. A 64 GB host does not help a process limited to 8 GB. On macOS or a developer laptop, check memory pressure and competing applications. For every platform, confirm that the filesystem holding the database and the current working directory has free space.
+On Linux, inspect the container or service cgroup limit rather than host RAM alone. A 64 GB host does not help a process limited to 8 GB. On macOS or a developer laptop, check memory pressure and competing applications. For every platform, confirm that the filesystem holding the database has free space for both the database and its spill file.
 
 ## Understand the Three Memory Budgets
 
@@ -35,7 +35,7 @@ Treat the load as three separate budgets:
 2. **Other process memory.** The Python or Node runtime, client-side DataFrames, decompression, query results, and allocations outside the buffer manager still consume RAM.
 3. **Operating-system headroom.** The kernel, filesystem cache, monitoring agents, and other processes need space too.
 
-Kuzu's command-line shell historically defaults its buffer pool from available memory, and current successor documentation describes a default near 80%. In a container, an explicit value is safer than assuming discovery matches the cgroup limit. With the Kuzu Python API, pass the buffer-pool size in bytes when constructing the database:
+Kuzu 0.11.3 defaults its buffer pool to 80% of detected total physical system memory, capped at 80% of the maximum virtual-memory-region size. In a container, an explicit value is safer because that calculation does not explicitly inspect the cgroup limit. With the Kuzu Python API, pass the buffer-pool size in bytes when constructing the database:
 
 ~~~python
 import kuzu
@@ -44,7 +44,7 @@ GiB = 1024 * 1024 * 1024
 
 # Example starting point for an 8 GiB container, not a universal optimum.
 db = kuzu.Database(
-    "build/catalog.kuzu",
+    "catalog.kuzu",
     buffer_pool_size=5 * GiB,
 )
 conn = kuzu.Connection(db, num_threads=4)
@@ -56,7 +56,7 @@ Counterintuitively, lowering the buffer pool can make a load complete because it
 
 ## Keep Spill-to-Disk Enabled
 
-Kuzu's import guide says that preparing very large relationship tables can approach the buffer-pool limit. In an on-disk, read-write database, the engine can spill some preparation data to a `.tmp` file in the local directory. The corresponding connection configuration is:
+Kuzu's import guide says that preparing very large relationship tables can approach the buffer-pool limit. In an on-disk, read-write database, the engine can spill some preparation data to `<database-path>.tmp` beside the database file. The corresponding connection configuration is:
 
 ~~~cypher
 CALL spill_to_disk=true;
@@ -66,7 +66,7 @@ Spilling is enabled by default. Do not disable it during a memory investigation 
 
 Spill is not available for in-memory or read-only databases. That makes `:memory:` a poor choice for a bulk load whose working set exceeds RAM, even if the finished graph is ephemeral. Use an on-disk scratch database on fast storage, then delete it through the normal lifecycle after validation.
 
-The spill directory needs capacity and acceptable latency. Monitor both bytes and inodes. A “no space left on device” failure beside an almost-empty database volume often means `.tmp` landed on a different, smaller filesystem.
+The database filesystem needs capacity and acceptable latency. Monitor both bytes and inodes while `COPY` runs because Kuzu truncates the spill file after the query finishes. A “no space left on device” failure beside an almost-empty final database can mean `<database-path>.tmp` exhausted that filesystem during the load.
 
 ## Reduce Execution Parallelism Deliberately
 
@@ -156,7 +156,7 @@ Use the same database state and source checksum for every run. Record:
 | Source format | Parquet versus explicitly configured CSV |
 | Statement batch | Whole table versus deterministic shards |
 
-Track elapsed time, peak RSS, bytes spilled, temporary-space peak, CPU utilization, and the exact row count committed. Change one dimension at a time. The fastest successful run with no operational headroom is not the winner; leave margin for dataset growth and environmental variance.
+Track elapsed time, peak RSS, peak `<database-path>.tmp` size, CPU utilization, and the exact row count committed. Change one dimension at a time. The fastest successful run with no operational headroom is not the winner; leave margin for dataset growth and environmental variance.
 
 ## Validate After Every Successful Load
 
