@@ -57,7 +57,6 @@
 
 ## Continuous Improvement
 
-10. Cycle Time, Queue Time, Throughput, and Work Item Age: Which Flow Metric Answers Which Question?
 11. What Should Your First WIP Limit Be—and When Should You Change It?
 12. How to Run a Value-Stream Mapping Session That Reveals Wait Time, Rework, and Handoffs
 13. How to Prevent Local Optimization from Making the End-to-End Delivery System Slower
