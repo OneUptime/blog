@@ -18,14 +18,14 @@ Consider a product page:
 
 1. **Normal navigation:** the browser fetches or loads the document, parses it, runs scripts, and paints it.
 2. **bfcache restore:** the user navigates away and then back; the browser resumes a frozen in-memory document. There is no new document initialization.
-3. **Prerender activation:** the browser has already loaded and rendered a hidden document based on a speculation rule, then makes it visible when the user navigates.
+3. **Prerender activation:** the browser has begun loading and rendering a hidden document based on a speculation rule, then makes its current state visible when the user navigates. If prerendering is incomplete, loading continues after activation.
 
 All three can produce the same route and release. Their costs and user expectations differ. A normal navigation answers “how did a fresh document load?” A bfcache restore answers “how quickly did an existing document resume?” A prerender activation answers “what did the user experience after activation, and what work was spent speculatively beforehand?”
 
 Use a bounded model:
 
 ~~~text
-visit_kind = normal | history_reload | bfcache_restore | prerender_activation
+visit_kind = normal | loaded_back_forward | bfcache_restore | prerender_activation
 navigation_type = navigate | reload | back_forward
 document_id = one ID for the Document lifetime
 visit_id = new ID for each visible visit, including bfcache restores
@@ -36,7 +36,7 @@ Do not put raw URLs or random IDs into metric labels. Keep identifiers as event 
 
 ## Detect bfcache with `pageshow.persisted`
 
-The `pageshow` event fires after an initial load and whenever a document is restored from bfcache. Its `persisted` property is the direct signal for a restore:
+The `pageshow` event can fire after an initial load, while a document is still prerendering, and whenever a document is restored from bfcache. It is not by itself proof that the page is visible. Its `persisted` property is the direct signal for a restore:
 
 ~~~javascript
 const documentId = crypto.randomUUID();
@@ -49,13 +49,17 @@ function beginVisibleVisit(kind) {
 }
 
 addEventListener('pageshow', (event) => {
-  beginVisibleVisit(event.persisted ? 'bfcache_restore' : 'normal');
+  if (event.persisted) {
+    beginVisibleVisit('bfcache_restore');
+  }
 });
 
 addEventListener('pagehide', (event) => {
   finishCurrentView({ mayEnterBfcache: event.persisted });
 });
 ~~~
+
+Use `pageshow` here only for persisted restores. The activation-gated initialization shown below starts the initial normal/reload, loaded back/forward, or prerender visit exactly once; otherwise a prerender's non-persisted `pageshow` could create a premature view. If your visit definition also excludes ordinary background tabs, gate visit emission on `document.visibilityState` and deduplicate the first `visibilitychange`.
 
 On `pagehide`, `persisted: true` means the browser intends to cache the page, not a guarantee that it remains cached. Use `pageshow.persisted` to count actual hits. The web.dev bfcache guidance makes this distinction explicit.
 
@@ -114,10 +118,13 @@ In Chromium's Speculation Rules prerendering, a hidden document can execute Java
 const nav = performance.getEntriesByType('navigation')[0];
 
 function activateVisibleMonitoring() {
-  startView({
-    kind: nav?.activationStart > 0 ? 'prerender_activation' : 'normal',
-    route: routeTemplate(location.href),
-  });
+  const kind = nav?.activationStart > 0
+    ? 'prerender_activation'
+    : nav?.type === 'back_forward'
+      ? 'loaded_back_forward'
+      : 'normal';
+
+  beginVisibleVisit(kind);
 }
 
 if (document.prerendering) {
@@ -143,7 +150,7 @@ Raw prerender timings can include work before activation. For any custom timesta
 - **activation experience:** elapsed time since the user activated the page;
 - **document work:** lifecycle timing for the whole document.
 
-For an activation-relative custom event whose timestamp is after activation:
+For a custom performance timestamp from the same document time origin and after activation:
 
 ~~~javascript
 function sinceActivation(entryStartTime, navEntry) {
