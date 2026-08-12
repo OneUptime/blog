@@ -44,7 +44,7 @@ exclude:
   - "scheduled regional infrastructure migrations"
 ```
 
-Segment emergency work separately. If emergency hotfixes are mixed with routine changes, both duration and failure rates may appear worse without explaining routine deployment capability. Conversely, excluding every failure after the fact produces a dishonest baseline. Write inclusion rules before querying.
+Segment emergency work from routine-flow diagnostics, but retain the emergency deployments required by each metric's definition in service-level DORA calculations. Deployment rework rate, for example, is the ratio of unplanned deployments caused by production incidents. Mixing emergency hotfixes into the routine duration distribution obscures routine capability, and adding them to ratio denominators can move rates in either direction. Conversely, excluding every failure after the fact produces a dishonest baseline. Write inclusion rules before querying.
 
 ## Build a Baseline Across Speed, Stability, and Experience
 
@@ -60,7 +60,7 @@ DORA's current software delivery performance model includes five measures:
 - change fail rate;
 - deployment rework rate.
 
-Apply them to one application or service rather than ranking dissimilar teams. Record the exact event definitions used in your implementation.
+Apply them to one application or service rather than ranking dissimilar teams. Calculate them over the deployments required by each metric's definition; use the routine population for experiment-specific duration and process diagnostics. Record the exact event definitions used in your implementation. Also record the percentile estimator used, because common tools can return different percentile values for small samples.
 
 ### Process diagnostics
 
@@ -81,14 +81,17 @@ These locate the mechanism behind the outcome:
 Run a short, repeated survey with stable wording, for example:
 
 ```text
-On a 1–5 scale for this service's routine production deployments:
-1. I can deploy during normal working hours without unusual fear.
-2. I understand the current deployment state and the next safe action.
-3. I can recover from a failed deployment without relying on one person.
-4. The process requires a reasonable amount of coordination and rework.
+For this service's routine production deployments, rate each statement using:
+1 = strongly disagree; 2 = disagree; 3 = neither agree nor disagree;
+4 = agree; 5 = strongly agree.
+
+- I can deploy during normal working hours without unusual fear.
+- I understand the current deployment state and the next safe action.
+- I can recover from a failed deployment without relying on one person.
+- The process requires a reasonable amount of coordination.
 ```
 
-Keep responses confidential and report only groups large enough to protect people. Pair the survey with after-hours deployment share, interruption time, and unplanned rework. Do not treat sentiment as a proxy for individual resilience; the system is the unit to improve.
+Define the analysis before collecting responses. Report item-level distributions and medians. If you combine items into a single score, first confirm that they measure one construct, then document the scoring and missing-response rules and label the result as a custom composite. Keep responses confidential and report only groups large enough to protect people. Pair the survey with after-hours deployment share, interruption time, and unplanned rework. Do not treat sentiment as a proxy for individual resilience; the system is the unit to improve.
 
 ## Write the Problem Statement Without a Solution
 
@@ -97,7 +100,7 @@ A good statement identifies the gap, scope, evidence, and consequence:
 ```text
 For routine checkout-api deployments during the last 12 weeks, p85 artifact-
 ready-to-verified time was 94 minutes, 61% required two or more manual
-handoffs, and the median deployment-confidence survey score was 2.3/5.
+handoffs, and the median response to the deployment-confidence item was 2/5.
 Eight of 31 deployments occurred after normal hours. This delays small changes,
 concentrates release knowledge, and makes recovery dependent on two engineers.
 ```
@@ -114,12 +117,12 @@ Use an if–then–because form:
 If routine checkout-api deployments use one version-controlled, idempotent
 workflow for staging and production, including automated smoke checks and a
 tested rollback action, then p85 artifact-ready-to-verified time will fall from
-94 to below 45 minutes and the confidence score will rise from 2.3 to at least
-3.5, because manual handoffs and uncertainty about recovery are the dominant
+94 to below 45 minutes and the confidence-item median will rise from 2 to at
+least 4, because manual handoffs and uncertainty about recovery are the dominant
 sources of delay and fear.
 ```
 
-The “because” clause matters. It exposes the assumed mechanism. Evidence should support it: perhaps a timeline analysis shows 58 of 94 minutes waiting for manual commands, and interviews consistently cite untested rollback as the source of anxiety.
+The “because” clause matters. It exposes the assumed mechanism. Evidence should support it: perhaps per-deployment timeline analysis shows that manual-command waits dominate elapsed time in the slowest deployments, and interviews consistently cite untested rollback as the source of anxiety.
 
 Do not bundle every deployment improvement into one hypothesis. “Adopt trunk-based development, replace CI, introduce Kubernetes, automate testing, and reorganize teams” cannot reveal which change mattered and carries a large blast radius.
 
@@ -154,21 +157,21 @@ Set expected values before rollout:
 | Type | Measure | Decision threshold |
 | --- | --- | --- |
 | Outcome | p85 ready-to-verified time | Below 45 minutes |
-| Outcome | Confidence survey median | At least 3.5/5 |
-| Diagnostic | Manual handoffs | No more than one |
+| Outcome | Deployment-confidence item median | At least 4/5 |
+| Diagnostic | Manual handoffs per routine deployment | At most one in at least 85% of deployments |
 | Diagnostic | Automated verification coverage | At least 95% of routine deployments |
-| Guardrail | Change fail rate | Does not worsen beyond agreed variation |
-| Guardrail | Failed deployment recovery time | Does not worsen |
+| Guardrail | Change fail rate | No more than baseline plus the predeclared margin |
+| Guardrail | p85 failed deployment recovery time | No more than baseline plus the predeclared margin |
 | Guardrail | After-hours deployment share | Below baseline |
-| Guardrail | Emergency rework deployments | Does not increase |
+| Guardrail | Deployment rework rate | No more than baseline plus the predeclared margin |
 
 Do not optimize deployment duration by deleting tests or redefining failures. DORA emphasizes both throughput and instability; speed without safe recovery is not continuous delivery. Add service-level or customer guardrails when a deployment could cause invisible degradation.
 
-Thresholds need context. A small sample may not support statistical significance. Use confidence intervals or show every observation, supplement with qualitative evidence, and avoid claiming certainty the data cannot provide.
+Thresholds need context. Write the numerical margin and aggregation rule for every guardrail before rollout; “does not worsen” alone is not a decision rule. A small sample may not have enough precision to distinguish change from noise. When the design and sample support it, report confidence intervals for the estimated change; otherwise show every observation. Supplement the results with qualitative evidence, and avoid claiming certainty the data cannot provide.
 
-## Control Confounders
+## Account for Confounders
 
-Record factors that can change results independently of the intervention:
+Pre-specify and record factors that can change results independently of the intervention:
 
 - release size and type;
 - staff availability and on-call rotation;
@@ -178,7 +181,7 @@ Record factors that can change results independently of the intervention:
 - a new approval or compliance policy;
 - measurement-query changes.
 
-A comparison service or phased rollout may help, but only if its deployment flow is meaningfully similar. Otherwise use an interrupted time series, annotate material events, and describe the limits of inference. The goal is a credible decision, not a research-paper façade.
+A comparison service or phased rollout may help when it provides a credible counterfactual: check whether pre-intervention outcome trends are similar and whether relevant external events affect both populations. If you have enough observations before and after a clearly defined rollout point, an interrupted time-series analysis can model the baseline trend and post-intervention level or slope changes. It requires enough observations over enough time to characterize trends and temporal patterns. Recording or annotating potential confounders does not by itself control them; otherwise, describe the analysis as a before-and-after comparison and limit causal claims. The goal is a credible decision, not a research-paper façade.
 
 ## Decide: Keep, Adapt, or Stop
 
