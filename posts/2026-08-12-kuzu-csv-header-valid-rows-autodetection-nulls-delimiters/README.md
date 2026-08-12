@@ -223,7 +223,7 @@ For multiple files or glob patterns, require the same column layout and dialect 
 
 - [Kuzu CSV import and all configuration options](https://kuzudb.github.io/docs/import/csv/)
 - [Kuzu `LOAD FROM` scanning](https://kuzudb.github.io/docs/get-started/scan/)
-- [Kuzu warnings table and `SHOW_WARNINGS`](https://kuzudb.github.io/docs/import/ignore-errors/)
+- [Kuzu warnings table and `SHOW_WARNINGS`](https://kuzudb.github.io/docs/import/csv/#ignore-erroneous-rows)
 - [Kuzu create-table types and primary keys](https://kuzudb.github.io/docs/cypher/data-definition/create-table/)
 - [Kuzu data types](https://kuzudb.github.io/docs/cypher/data-types/)
 - [Kuzu transactions and `COPY FROM`](https://kuzudb.github.io/docs/cypher/transaction/)
