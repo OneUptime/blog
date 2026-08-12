@@ -129,6 +129,10 @@ Kuzu does not let you declare a relationship primary key. It assigns a unique in
 That is useful for events such as repeated transfers or purchases:
 
 ~~~cypher
+CREATE NODE TABLE Account(
+    account_id STRING PRIMARY KEY
+);
+
 CREATE REL TABLE TRANSFERRED(
     FROM Account TO Account,
     transfer_id STRING,
@@ -154,7 +158,7 @@ Promoting the event to a node makes it independently addressable, lets other fac
 
 ## Encode At-Most-One Multiplicity When It Is True
 
-Relationship tables default to many-to-many. Kuzu supports `MANY_ONE`, `ONE_MANY`, `ONE_ONE`, and `MANY_MANY` to constrain either direction to at most one.
+Relationship tables default to `MANY_MANY`. `MANY_ONE`, `ONE_MANY`, and `ONE_ONE` constrain one or both directions to at most one.
 
 For example, if the current domain says a user can have at most one home city:
 
@@ -166,8 +170,8 @@ CREATE NODE TABLE City(
 
 CREATE REL TABLE LIVES_IN(
     FROM User TO City,
-    MANY_ONE,
-    since DATE
+    since DATE,
+    MANY_ONE
 );
 ~~~
 
@@ -180,6 +184,10 @@ Do not add `MANY_ONE` simply because a sample currently has one row per user. As
 Modern Kuzu syntax allows multiple `FROM ... TO ...` pairs on a relationship table:
 
 ~~~cypher
+CREATE NODE TABLE Tag(
+    tag_id STRING PRIMARY KEY
+);
+
 CREATE REL TABLE TAGGED(
     FROM User TO Tag,
     FROM Product TO Tag,
@@ -193,7 +201,7 @@ The older `CREATE REL TABLE GROUP` form is deprecated; prefer multiple endpoint 
 
 ## Design for Bulk Import
 
-For CSV `COPY FROM`, load node tables before relationship tables. Kuzu interprets the first two relationship-file columns as the primary keys of the `FROM` and `TO` nodes; the remaining columns map to relationship properties.
+For CSV `COPY FROM`, load node tables before relationship tables. For a relationship table with one endpoint pair, Kuzu interprets the first two relationship-file columns as the primary keys of the `FROM` and `TO` nodes; the remaining columns map to relationship properties. Load a table with multiple endpoint pairs one pair at a time by specifying `FROM='...'` and `TO='...'` options on each `COPY`.
 
 Given:
 
