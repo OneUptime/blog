@@ -54,7 +54,6 @@
 
 ## Kuzu
 
-4. Why Does `INSTALL EXTENSION` Fail in Kuzu Now? Using Bundled Extensions or a Local Extension Server
 5. How to Export and Validate a Kuzu Graph Before Moving to Another Database
 6. Kuzu Says “Could Not Set Lock on File”: Safely Using Jupyter, the CLI, and Explorer
 7. Can Multiple Web Workers Write to One Kuzu Database? Designing a Single-Process API Layer
