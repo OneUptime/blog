@@ -8,7 +8,7 @@ Description: Build a verifiable Kuzu migration bundle with logical schema and da
 
 ---
 
-A copied Kuzu database file is a backup candidate, not a portable migration contract. The durable handoff is a logical export plus evidence that the source and target represent the same graph. Kuzu's `EXPORT DATABASE` command creates that handoff: schema and macro Cypher, generated `COPY FROM` statements, and table data in Parquet by default or CSV when requested.
+A copied Kuzu database file is a backup candidate, not a portable migration contract. The durable handoff is a logical export plus evidence that the source and target represent the same graph. Kuzu's `EXPORT DATABASE` command creates that handoff: schema and macro definitions in `schema.cypher`, generated `COPY FROM` statements, index Cypher, and table data in Parquet by default or CSV when requested.
 
 The export is only half the job. Before cutover, record invariants from the source, inspect and checksum the bundle, restore it into a disposable database, and replay application queries. That process catches missing extensions, wrong types, null conversion, relationship mapping, and partial imports while rollback is still easy.
 
@@ -23,14 +23,15 @@ python -c 'import kuzu; print(kuzu.__version__)'
 
 Kuzu is archived and its final release is `0.11.3`. Keep the binary or container digest with the migration bundle so the source can be reopened during the rollback window.
 
-Inventory the catalog and loaded extensions from a trusted connection:
+From the same trusted connection that will perform the export, inventory the tables, indexes, and loaded extensions:
 
 ~~~cypher
 CALL SHOW_TABLES() RETURN *;
+CALL SHOW_INDEXES() RETURN *;
 CALL SHOW_LOADED_EXTENSIONS() RETURN *;
 ~~~
 
-Load every extension on which an index depends before exporting. Kuzu's migration documentation explicitly warns that `EXPORT DATABASE` exports only indexes whose dependent extensions are loaded. If the application uses full-text or vector indexes, exercise their queries and record their definitions and results separately too.
+Load every extension on which an index depends in this session before exporting. Kuzu's migration documentation explicitly warns that `EXPORT DATABASE` exports only indexes whose dependent extensions are loaded. If the application uses full-text or vector indexes, exercise their queries and record their definitions and results separately too.
 
 Quiesce schema changes throughout the rehearsal. For the final export, quiesce writes as well. A consistent export should come from a controlled source state, not from a graph changing while operators compare counts.
 
@@ -48,7 +49,7 @@ MATCH ()-[r:FOLLOWS]->() RETURN count(*) AS follows;
 Then capture uniqueness, null, range, and relationship invariants relevant to the schema:
 
 ~~~cypher
-// The target should preserve one row for every source primary key.
+// The target should not contain duplicate business-key values.
 MATCH (u:User)
 WITH u.id AS id, count(*) AS occurrences
 WHERE occurrences <> 1
@@ -60,7 +61,7 @@ WHERE p.sku IS NULL
 RETURN count(*) AS products_missing_sku;
 
 // Detect implausible values before blaming the target.
-MATCH (o:Order)
+MATCH (o:`Order`)
 RETURN min(o.created_at) AS first_order,
        max(o.created_at) AS last_order,
        sum(o.total_cents) AS total_cents;
@@ -79,7 +80,7 @@ Also create a deterministic sample keyed by business IDs. Random samples are har
 MATCH (u:User)-[r:PURCHASED]->(p:Product)
 WHERE u.id IN ['user-001', 'user-042', 'user-900']
 RETURN u.id, p.id, r.ordered_at, r.quantity
-ORDER BY u.id, r.ordered_at, p.id;
+ORDER BY u.id, r.ordered_at, p.id, r.quantity;
 ~~~
 
 Choose examples that cover nulls, Unicode, timestamps, nested types, large values, and multiple relationships between the same nodes.
@@ -98,8 +99,8 @@ Kuzu documents Parquet as the default data format because it reduces formatting 
 ~~~text
 graph-export/
   schema.cypher
-  macro.cypher
   copy.cypher
+  index.cypher
   ... Parquet data files ...
 ~~~
 
@@ -112,21 +113,21 @@ EXPORT DATABASE '/srv/migration/graph-export-csv'
 
 CSV adds choices about delimiters, quote/escape characters, null spelling, line endings, and encodings. Prefer Parquet when both ends support it. Never convert formats without validating the conversion as another migration step.
 
-Use a new empty output directory for each run. Mixing files from two exports produces an artifact that no single source state created.
+Use a new output path that does not exist for each run; Kuzu creates the directory and rejects a path that already exists. Mixing files from two exports produces an artifact that no single source state created.
 
 ## 4. Inspect and Seal the Bundle
 
-Read `schema.cypher`, `macro.cypher`, and `copy.cypher`. Confirm that every expected node table, relationship table, property, default, multiplicity, macro, and index appears. For relationship imports, verify the generated data maps the source and destination node primary keys expected by the target.
+Read `schema.cypher`, `copy.cypher`, and `index.cypher`. Confirm that every expected node table, relationship table, property, default, multiplicity, macro, and index appears. For relationship imports, verify the generated data maps the source and destination node primary keys expected by the target.
 
 Create an inventory and checksums after export completion:
 
 ~~~bash
-find /srv/migration/graph-export -type f -print0 \
-  | sort -z \
-  | xargs -0 sha256sum \
+(cd /srv/migration/graph-export && \
+  find . -type f -print0 | sort -z | xargs -0 sha256sum) \
   > /srv/migration/graph-export.sha256
 
-sha256sum --check /srv/migration/graph-export.sha256
+(cd /srv/migration/graph-export && \
+  sha256sum --check ../graph-export.sha256)
 ~~~
 
 Store the checksum file beside, not inside, the directory being checksummed. Record file count and total bytes, protect the bundle from modification, and encrypt it in transit and at rest according to the graph's data classification.
