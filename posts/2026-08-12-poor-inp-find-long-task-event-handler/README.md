@@ -43,10 +43,13 @@ onINP((metric) => {
     value_ms: Math.round(metric.value),
     rating: metric.rating,
     metric_id: metric.id,
-    route: routeTemplate(location.href),
+    route: routeTemplate(metric.navigationURL ?? location.href),
     release: APP_RELEASE,
-    interaction_type: a.interactionType,
-    target: safeComponentName(a.interactionTarget),
+    navigation_type: metric.navigationType,
+    interaction_type: a.interactionType ?? 'unknown',
+    target: a.interactionTarget
+      ? safeComponentName(a.interactionTarget)
+      : 'unknown',
     load_state: a.loadState,
     input_delay_ms: Math.round(a.inputDelay),
     processing_ms: Math.round(a.processingDuration),
@@ -55,9 +58,9 @@ onINP((metric) => {
 });
 ~~~
 
-Use the type definitions for the pinned `web-vitals` version; attribution fields evolve. Do not send arbitrary selectors, element text, IDs, or input values. Map known components to bounded names such as `checkout-submit` or `search-filter`, and use `unknown` otherwise.
+Use the type definitions for the pinned `web-vitals` version; attribution fields evolve. `metric.navigationURL` avoids assigning a delayed report to whichever URL happens to be current when the callback runs. In an SPA using traditional page-lifetime INP, retain timestamped route history and correlate it with `a.interactionTime` when available if you need the exact interaction route; `web-vitals` 6 can instead opt in to per-soft-navigation reporting with `{ reportSoftNavs: true }` where the browser supports that feature. `loadState` describes only the document's loading phase, so use `metric.navigationType` and application telemetry for states such as bfcache restore, SPA navigation, or idle. Do not send arbitrary selectors, element text, IDs, or input values. Map known components to bounded names such as `checkout-submit` or `search-filter`, and use `unknown` otherwise.
 
-INP is not reported when the user never interacts. Store missing as missing, not zero. Associate a new metric ID after a bfcache restore with the corresponding visit; the official library handles this lifecycle when registered once.
+INP is not reported when the user never interacts. Store missing as missing, not zero. The callback can report updates for the same metric ID, so upsert the full value by ID or send `metric.delta` to an additive analytics system. A bfcache restore creates a new metric object and ID for the restored visit; the official library handles this lifecycle when registered once.
 
 ## Inspect Individual Event Timings
 
@@ -92,9 +95,9 @@ if (PerformanceObserver.supportedEntryTypes.includes('event')) {
 }
 ~~~
 
-Related events such as `pointerdown`, `pointerup`, and `click` can share an `interactionId`. The interaction latency is not the sum of all their durations; group them and inspect the longest relevant entry. The API rounds `duration` to an 8-millisecond granularity, so component arithmetic is approximate. The Event Timing specification permits a minimum `durationThreshold` of 16 milliseconds, but a higher diagnostic threshold controls overhead and volume.
+The values above are per-entry diagnostics. Related events such as `pointerdown`, `pointerup`, and `click` can share an `interactionId`. The interaction latency is the maximum of their durations, not their sum. For an interaction-level phase split, account for all event entries presented in the same frame, as the `web-vitals` attribution build does, instead of copying the phases from only the longest entry. The API rounds `duration` to an 8-millisecond granularity, so component arithmetic is approximate. The Event Timing specification clamps `durationThreshold` to a minimum of 16 milliseconds, but a higher diagnostic threshold controls overhead and volume. The 40-millisecond threshold applies to future entries after registration; `buffered: true` can only retrieve earlier entries that met the platform's default 104-millisecond threshold, so install the observer before the diagnostic workflow.
 
-The entry's target may be absent or removed from the DOM by the time it is processed. Instrument stable application action names at the handler boundary when possible.
+The entry's target may be absent or removed from the DOM by the time it is processed. Instrument stable application action names at the handler boundary when possible. An `interactionId` only groups entries within its `Window`; include a page-visit identifier when sending it to telemetry rather than treating it as globally unique.
 
 ## Decide Which Phase Dominates
 
@@ -151,7 +154,7 @@ if (PerformanceObserver.supportedEntryTypes.includes('longtask')) {
 
 An overlap is correlation, not ownership. The Long Tasks API has coarse attribution. Chrome's Long Animation Frames API can expose `scripts`, invoker information, and forced style/layout duration for long frames in supporting browsers. MDN marks this functionality as limited or experimental in some environments, so guard it with `PerformanceObserver.supportedEntryTypes.includes('long-animation-frame')` and use the field primarily for diagnosis.
 
-The current `web-vitals` attribution build can summarize the longest script and style/layout time intersecting the INP interval when Long Animation Frame data is available. That is often a faster path from a field outlier to a script URL or function, but a DevTools trace remains the proof.
+The current `web-vitals` attribution build can summarize the longest script and style/layout time intersecting the INP interval when Long Animation Frame data is available. That is often a faster path from a field outlier to a script URL or entry-point function, but a DevTools trace remains the proof.
 
 ## Reproduce the Field Interaction
 
