@@ -26,7 +26,7 @@ The datasets differ before a single metric is calculated.
 | --- | --- | --- | --- | --- |
 | First-party RUM | Visits where your telemetry runs and is sampled | Real devices, networks, regions, accounts, and interactions | Potentially URL template, release, device, journey, errors, and trace correlation | "Which of our users became slower after this release?" |
 | Synthetic test | A configured browser or agent | Controlled location, viewport, network/CPU settings, cache state, script, and schedule | Test steps, screenshots, traces, waterfall, assertions | "Can a user complete checkout from this location right now?" |
-| Lighthouse | One lab execution, often with simulated or configured throttling | Reproducible test environment, usually a fresh navigation | Audit diagnostics and lab metrics | "What work on this page is likely blocking load?" |
+| Lighthouse | One lab execution, with simulated throttling by default or configured throttling | A configured lab environment, usually a cold navigation | Audit diagnostics and lab metrics | "What work on this page is likely blocking load?" |
 | CrUX | Eligible, opted-in Chrome users on qualifying public pages or origins | Real-world Chrome conditions, aggregated over time | Public dimensions and metric distributions; no private app context | "What does the public Chrome field dataset report for this URL or origin?" |
 
 "Field data" includes both your RUM and CrUX, but they are not the same sample. CrUX has eligibility and privacy rules, includes Chrome experiences rather than every browser, and exposes aggregates rather than your raw events. Your RUM depends on when the SDK loads, consent, sampling, CSP, blockers, and the browsers you support. Those different inclusion rules alone can move a percentile.
@@ -43,18 +43,24 @@ First-party RUM is the most actionable production view when it is instrumented c
 - cold versus warm navigation, where you can infer it safely;
 - errors, failed requests, long tasks, and trace correlation.
 
-The official `web-vitals` library handles the tricky lifecycle rules for the Core Web Vitals better than hand-rolled observers. A minimal collector looks like this:
+The official `web-vitals` library handles the tricky lifecycle rules for the Core Web Vitals better than hand-rolled observers. The application-specific route lookup below safely falls back to `"unknown"`; replace it with your router's route-pattern matcher. A minimal collector looks like this:
 
 ```js
 import { onCLS, onINP, onLCP } from "web-vitals";
+
+function routeTemplate(url) {
+  const pathname = new URL(url, location.href).pathname;
+  return window.APP_ROUTE_TEMPLATE_FOR_PATH?.(pathname) ?? "unknown";
+}
 
 function report(metric) {
   const event = {
     name: metric.name,
     value: metric.value,
+    delta: metric.delta,
     id: metric.id,
-    route: routeTemplate(location.pathname),
-    release: window.APP_RELEASE,
+    route: routeTemplate(metric.navigationURL ?? location.href),
+    release: window.APP_RELEASE ?? "unknown",
     visibility: document.visibilityState,
   };
 
@@ -74,6 +80,8 @@ onINP(report);
 onLCP(report);
 ```
 
+Because a metric callback can run more than once during a page's lifetime, the receiver should replace the previous `value` for the same `name` and `id`, or collect and sum `metric.delta`, rather than count every callback as a separate visit.
+
 This is still not an unbiased census. Record telemetry health alongside product metrics: SDK initialization rate, event acceptance rate, sampled page views, browser mix, and beacon failures observed at the server. Never interpret a sudden improvement without checking whether a slow segment stopped reporting.
 
 ## What Synthetic Tests Are Uniquely Good At
@@ -88,7 +96,7 @@ Synthetic results are especially useful for:
 4. **Coverage without traffic:** do low-traffic but critical paths still work?
 5. **Pre-production gates:** does a candidate build meet a repeatable budget?
 
-Do not label a single Lighthouse score "user performance." Lighthouse runs a lab navigation and cannot measure real INP because there is no population of real interactions; it uses lab diagnostics such as Total Blocking Time to expose likely interactivity problems. A green synthetic test also says nothing about an underpowered phone on a congested network unless you configured a test that approximates that condition.
+Do not label a single Lighthouse score "user performance." A standard Lighthouse navigation performs no user input and therefore cannot measure INP; it reports Total Blocking Time as a lab proxy that can flag potential responsiveness problems, but TBT is not a substitute for field INP. A green synthetic test also says nothing about an underpowered phone on a congested network unless you configured a test that approximates that condition.
 
 Make synthetic monitors more informative by maintaining at least two profiles: an unthrottled or lightly throttled availability profile and a constrained performance profile. Run several iterations when comparing releases because browser startup, shared infrastructure, and network variance can affect any single run.
 
@@ -113,10 +121,10 @@ When Lighthouse is fast but RUM is slow, start with population and test conditio
 
 | Difference | Likely effect |
 | --- | --- |
-| Lighthouse uses a fresh profile while repeat users have large local state or extensions | Either dataset may be slower, depending on cache and client work |
+| A default Lighthouse navigation clears cache and site storage, while real visits include varied cache and local state | Either dataset may be slower, depending on cache and client work |
 | Real users have weaker CPUs or worse networks | Field LCP and INP become slower |
 | Consent delays the RUM SDK | Early lifecycle entries may be missed unless buffered APIs or `web-vitals` are used correctly |
-| RUM includes Safari and Firefox; CrUX is Chrome data | Browser mix changes the distribution |
+| First-party RUM may include Safari and Firefox, subject to each metric API's browser support; CrUX is Chrome data | Browser mix changes the distribution |
 | CrUX falls back from URL to origin in a reporting tool | Unrelated routes influence the result |
 | A release changed yesterday | RUM shows it quickly; a rolling aggregate changes gradually |
 | Bot or monitor traffic enters first-party analytics | RUM population no longer represents customers |
@@ -135,7 +143,7 @@ Use all three views as a feedback loop.
 5. **Canary in production.** Compare the new release with a concurrent control where possible.
 6. **Confirm in RUM, then CrUX.** RUM provides the early confirmation; CrUX later shows whether the improvement is visible in the public Chrome dataset.
 
-For an incident, synthetic availability gets the quickest operational answer. For a release regression affecting one device class, RUM wins. For Google's public Core Web Vitals assessment or competitor-level public benchmarking, CrUX is the relevant source. For fixing the code, a lab trace is usually where the investigation becomes concrete.
+For an incident, a synthetic availability check provides a direct operational answer even when no real-user traffic is present. For a release regression affecting one device class, RUM wins. For Google's public Core Web Vitals assessment or competitor-level public benchmarking, CrUX is the relevant source. For fixing the code, a lab trace is usually where the investigation becomes concrete.
 
 ## Trust the Scope, Not a Single Score
 

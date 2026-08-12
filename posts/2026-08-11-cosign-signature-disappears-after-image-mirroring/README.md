@@ -8,7 +8,7 @@ Description: Diagnose missing Cosign signatures after registry mirroring by chec
 
 ---
 
-An image mirror can preserve every layer and the image manifest while still omit its Cosign signature. The reason is structural: the signature is a separate OCI artifact that refers to the image's manifest digest. Copying the subject does not necessarily copy the objects that refer to it.
+An image mirror can preserve every layer and the image manifest while still omit its Cosign signature. The reason is structural: with Cosign v3's default storage, the signature is a separate OCI artifact that refers to the image's manifest digest. Copying the subject does not necessarily copy the objects that refer to it.
 
 The signature did not become cryptographically invalid merely because the registry hostname changed. It is usually absent from the destination's artifact graph, stored in a separate repository, attached to a different digest, or undiscoverable through the destination registry's referrers implementation.
 
@@ -28,7 +28,7 @@ printf 'source=%s\ndestination=%s\n' "$SOURCE_DIGEST" "$DEST_DIGEST"
 
 If the digests differ, the destination is not the same subject. Common causes include selecting one platform instead of copying the multi-platform index, converting manifest media types, rebuilding, or mutating the image during import. A signature over the source digest must not verify a different destination digest.
 
-If the digests match, continue. The content arrived; its referring artifacts may not have.
+If the digests match, continue. The subject manifest or index arrived unchanged; its referring artifacts may not have.
 
 ## Inspect the source artifact graph
 
@@ -39,9 +39,9 @@ oras discover \
   "source.example.com/team/api@$SOURCE_DIGEST"
 ```
 
-The result may include Cosign signatures, in-toto attestations, SBOM artifacts, and other metadata. Record their digests and artifact types.
+The result may include Sigstore bundles, SBOM artifacts, and other metadata. Record each referrer's digest, artifact type, and relevant annotations. With the current Cosign bundle format, use the `dev.sigstore.bundle.predicateType` and `dev.sigstore.bundle.content` annotations to distinguish bundle contents.
 
-Current Cosign uses OCI 1.1 referring artifacts. Older Cosign versions used digest-derived signature tags, and OCI Distribution 1.1 defines a referrers-tag fallback for registries without the native API. If discovery is empty but source verification succeeds, inspect the Cosign version, `COSIGN_REPOSITORY`, and fallback mode rather than concluding no signature exists.
+Cosign v3 defaults to standardized Sigstore bundles stored as OCI 1.1 referring artifacts. Cosign v2.6 introduced this format behind `--new-bundle-format=true`, and Cosign v3 still supports legacy digest-derived `.sig` tags with `--new-bundle-format=false`. The legacy `.sig` tag is distinct from the OCI Distribution 1.1 referrers-tag fallback, which indexes subject-bearing referrer manifests when the native API returns `404 Not Found`. If discovery is empty but source verification succeeds, inspect the Cosign version, `COSIGN_REPOSITORY`, and storage and discovery modes rather than concluding no signature exists.
 
 ## Why ordinary mirroring misses signatures
 
@@ -67,7 +67,7 @@ oras cp --recursive \
   "mirror.example.net/team/api:1.8.0"
 ```
 
-The `--recursive` option is documented as preview functionality, so pin and test the ORAS version used by the promotion pipeline. Both registries must support a compatible native referrers API or tag fallback. ORAS also provides `--from-distribution-spec` and `--to-distribution-spec` options when the endpoints require different mechanisms.
+The `--recursive` option remains preview functionality in ORAS 1.3, so pin and test the ORAS version used by the promotion pipeline. ORAS normally detects native Referrers API support and falls back to the OCI 1.1 referrers-tag schema. If necessary, force the source and destination mechanisms independently with `--from-distribution-spec` and `--to-distribution-spec`; the accepted values are `v1.1-referrers-api` and `v1.1-referrers-tag`. Recursive copying only follows subject-based referrers discoverable through those mechanisms. Legacy Cosign `.sig` tags and artifacts in a separate `COSIGN_REPOSITORY` must be copied separately.
 
 After copying, rediscover at the destination:
 
@@ -76,7 +76,7 @@ oras discover \
   "mirror.example.net/team/api@$DEST_DIGEST"
 ```
 
-Compare required referrer counts, types, and digests. Finally, run Cosign verification against the destination reference and the real trust policy:
+Compare required referrer counts, digests, artifact types, and annotations. Finally, for a keyless/Fulcio signature, run Cosign verification against the destination reference and the real trust policy:
 
 ```bash
 cosign verify \
@@ -105,7 +105,7 @@ A registry can accept the image but reject, rewrite, or fail to index an attache
 
 - Does `GET /v2/<name>/referrers/<digest>` work, or does the client need the OCI referrers-tag fallback?
 - Does the destination accept the signature manifest and all media types?
-- Are referrers required to live in the same repository as their subject?
+- Is the verifier querying the repository that contains the referrer? The standard Referrers API lists referring manifests only in the requested `<name>` namespace, so an alternate repository needs an explicit client mapping.
 - Did replication copy only tagged manifests?
 - Did a proxy cache fetch the image lazily without fetching referrers?
 
@@ -113,11 +113,11 @@ The OCI Distribution Specification defines expected discovery and fallback behav
 
 ## Check authentication at every location
 
-Verification may report “no signatures” when it was unable to list or pull them. Authenticate to the source image repository, source signature repository, destination image repository, and destination signature repository as applicable.
+Authentication failures can prevent verification from listing or pulling signatures. Authenticate to the source image repository, source signature repository, destination image repository, and destination signature repository as applicable.
 
 Prefer credential files or workload identity over putting passwords on a command line. Confirm that the verifier has `pull` permission for both subject and signature objects. A mirror service additionally needs source pull and destination push privileges for every manifest and blob in the graph.
 
-Do not use `--allow-insecure-registry` to hide a TLS or authorization problem. Cosign documents it for testing; production should install the correct registry CA with `--registry-cacert` or the platform trust store.
+Do not use `--allow-insecure-registry` to bypass TLS verification; it does not fix authorization failures. Cosign documents this flag for testing only. In production, provide the correct registry CA with `--registry-cacert` or install it in the platform trust store.
 
 ## Watch garbage collection and retention
 
@@ -141,7 +141,7 @@ This tests the behavior that production actually depends on.
 - [ ] Determine whether the signature covers an index or a platform child manifest.
 - [ ] Discover source referrers by digest and record their types.
 - [ ] Check for `COSIGN_REPOSITORY` or a policy-engine repository override.
-- [ ] Identify native OCI 1.1 versus legacy/fallback signature storage.
+- [ ] Identify native OCI 1.1 Referrers API storage, OCI 1.1 referrers-tag fallback, or legacy Cosign digest-derived tags.
 - [ ] Use a referrer-aware recursive copy operation.
 - [ ] Authenticate to every source and destination repository in the graph.
 - [ ] Discover destination referrers and compare them with the source.
