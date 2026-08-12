@@ -16,7 +16,7 @@ It can still make the failure operationally useful. The goal is to classify what
 
 ## First Separate HTTP Errors from Fetch Rejections
 
-`fetch()` resolves its promise when an HTTP response is available—even when the status is `404`, `429`, or `503`. It rejects only when the request cannot produce a response exposed to the caller, when request construction is invalid, or when it is aborted.
+`fetch()` resolves its promise once the response status and headers are available—even when the status is `404`, `429`, or `503`. It rejects when request construction is invalid, when Fetch produces a network error instead of an exposed response, or when the operation is aborted before the promise fulfills. If the signal is aborted after fulfillment, a later read of an unread response body can reject instead.
 
 ```js
 const response = await fetch("/api/orders");
@@ -31,10 +31,10 @@ Monitoring needs distinct outcome categories:
 | Outcome | Promise behavior | Evidence available |
 | --- | --- | --- |
 | HTTP `4xx`/`5xx` | Resolves | Status, selected exposed headers, timing |
-| Local abort | Rejects | `signal.aborted`, abort reason/name, caller context |
+| Local abort before `fetch()` fulfills | Rejects | `signal.aborted`, abort reason/name, caller context |
 | Invalid request/options | Rejects, usually `TypeError` | Request construction error and local code context |
 | Fetch network error | Rejects, usually `TypeError` | No script-visible response status |
-| Opaque `no-cors` response | Resolves with `type: "opaque"` | Status appears as `0`; body and headers are unreadable |
+| Successful opaque `no-cors` response | Resolves with `type: "opaque"` | Status appears as `0`; body and headers are unreadable |
 
 Do not convert every non-OK response and every rejected promise into the same error event. An API returning `503` is much easier to diagnose than a Fetch network error and deserves its own status-based metrics.
 
@@ -50,7 +50,7 @@ async function monitoredFetch(input, init = {}, context = {}) {
   try {
     request = new Request(input, init);
   } catch (error) {
-    reportRequest({
+    reportRequestSafely({
       operation: context.operation ?? "unknown",
       outcome: "invalid_request",
       errorName: safeErrorName(error),
@@ -64,7 +64,7 @@ async function monitoredFetch(input, init = {}, context = {}) {
   try {
     const response = await fetch(request);
     const opaque = response.type === "opaque" || response.type === "opaqueredirect";
-    reportRequest({
+    reportRequestSafely({
       ...safe,
       outcome: opaque ? "opaque_response" : response.ok ? "success" : "http_error",
       status: response.status,
@@ -73,7 +73,7 @@ async function monitoredFetch(input, init = {}, context = {}) {
     });
     return response;
   } catch (error) {
-    reportRequest({
+    reportRequestSafely({
       ...safe,
       outcome: classifyRejectedFetch(error, request.signal),
       errorName: safeErrorName(error),
@@ -93,9 +93,19 @@ function classifyRejectedFetch(error, signal) {
   if (error?.name === "TypeError") return "network_error_unclassified";
   return "request_error_other";
 }
+
+function reportRequestSafely(event) {
+  try {
+    Promise.resolve(reportRequest(event)).catch(() => {
+      // Track reporter failures through an independent health channel.
+    });
+  } catch {
+    // Monitoring must not change the request's behavior.
+  }
+}
 ```
 
-Always rethrow or preserve the application's intended error handling. Monitoring must not turn a failed request into an apparent success.
+Always rethrow or preserve the application's intended error handling. Monitoring must not turn a failed request into an apparent success, and a reporting failure must not replace the request's original result.
 
 Avoid a global `window.fetch` monkey patch unless you own and test all consumers. Libraries may capture the original function before your patch, and changing call semantics can cause subtle failures. Explicit API-client instrumentation is easier to version and validate. If you use an established RUM or OpenTelemetry Fetch instrumentation, confirm its initialization order and exclude the telemetry exporter itself to prevent recursion.
 
@@ -137,7 +147,9 @@ try {
 }
 ```
 
-The platform may reject with `AbortError`, `TimeoutError`, or a caller-supplied abort reason depending on how the signal was aborted. The most reliable local fact is `signal.aborted`; retain the caller's policy in controlled context rather than parsing a vendor-specific message. Classify navigation supersession, user cancellation, and timeout separately because their service impact differs.
+When an abort causes the pending `fetch()` promise to reject, the platform may reject with `AbortError`, `TimeoutError`, or a caller-supplied abort reason depending on how the signal was aborted. The most reliable local fact is `signal.aborted`; retain the caller's policy in controlled context rather than parsing a vendor-specific message. Classify navigation supersession, user cancellation, and timeout separately because their service impact differs.
+
+`monitoredFetch()` observes only the `fetch()` promise. If the signal is aborted after response headers make that promise fulfill, a later response-body read can reject; instrument body consumption separately if it is part of the operation.
 
 ## What `navigator.onLine` Can—and Cannot—Tell You
 
@@ -153,7 +165,7 @@ Do not rename that event `offline` as a fact, and do not suppress it. Compare wi
 
 ## Why JavaScript Cannot Diagnose CORS Directly
 
-For a cross-origin Fetch request, the server must satisfy CORS. A failed preflight or missing/invalid `Access-Control-Allow-Origin` causes the browser to return a network error to the caller. The browser console provides a developer-facing CORS reason, but production page JavaScript does not receive that diagnostic.
+For a cross-origin Fetch request made in the default `cors` mode, the server must satisfy CORS. A failed preflight or missing/invalid `Access-Control-Allow-Origin` causes the browser to return a network error to the caller. The browser console provides a developer-facing CORS reason, but production page JavaScript does not receive that diagnostic.
 
 Diagnose likely CORS failures with evidence outside the exception:
 
@@ -163,7 +175,7 @@ Diagnose likely CORS failures with evidence outside the exception:
 4. Test the deployed response, including error responses, for correct CORS headers.
 5. Compare failure onset with API gateway, CDN, and CSP changes.
 
-Do not "fix" observability by setting `mode: "no-cors"`. That returns an opaque response whose status, headers, and body are unreadable, so an API caller cannot verify success.
+Do not "fix" observability by setting `mode: "no-cors"`. On a successful cross-origin request, that returns an opaque response whose status, headers, and body are unreadable, so an API caller cannot verify success.
 
 ## Use Resource and Server Timing as Supporting Evidence
 
@@ -186,7 +198,7 @@ Error messages vary by browser and localization. Build a denominator of attempte
 
 ```text
 network_error_unclassified / request_attempts
-http_5xx / responses_received
+http_5xx / responses_with_visible_status
 timeout / request_attempts
 aborted_by_navigation / request_attempts
 ```
