@@ -51,7 +51,6 @@
 
 ## Browser Monitoring
 
-13. Why Are Production JavaScript Stack Traces Still Minified? Matching Source Maps to the Exact Release
 14. How to Separate First-Party JavaScript Failures from Extensions, Third-Party Scripts, and “Script Error”
 15. Session Replay Without Leaking PII: Masking Inputs, URLs, DOM Text, and Network Payloads
 16. Why Is Session Replay Blank or Incomplete? Iframes, Canvas, Shadow DOM, and Browser Compatibility
