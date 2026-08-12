@@ -8,9 +8,9 @@ Description: Debug Woodpecker when conditions by checking their boolean structur
 
 ---
 
-A Woodpecker `when` block is easiest to debug as a boolean expression over pipeline metadata. Most surprises come from one of four sources: confusing AND with OR, testing the wrong branch field for a pull request, matching a branch where only a ref exists, or expecting path and status data in an event or evaluation phase where it is unavailable.
+A Woodpecker `when` block is easiest to debug as a boolean expression over pipeline metadata. Most surprises come from one of four sources: confusing AND with OR, testing the wrong branch field for a pull request, using a branch filter on a tag where Woodpecker ignores it, or expecting path and status data in an event or evaluation phase where it is unavailable.
 
-This guide uses Woodpecker 3.x syntax. Do not copy legacy 2.x `includes`, `excludes`, or environment-filter examples; the 3.0 migration removed or replaced those forms.
+This guide targets Woodpecker 3.15 and newer. Do not copy legacy 2.x event-filter `includes`/`excludes` or `environment`-filter examples; the 3.0 migration removed those forms.
 
 ## Learn the Boolean Model First
 
@@ -24,7 +24,7 @@ when:
     branch: develop
 ~~~
 
-All keys inside one entry are ANDed. The entries in the list are ORed. The step runs when:
+All applicable keys inside one entry are ANDed. The entries in the list are ORed. Some filters apply only to particular event types and are ignored for other events, as described below. The step runs when:
 
 ~~~text
 (event is pull_request AND branch is main)
@@ -69,7 +69,7 @@ steps:
       - status: [success, failure]
 ~~~
 
-Woodpecker substitutes configuration values before runtime, so escape shell variables with `$$` when a command requires the container's shell—not Woodpecker—to expand them. The built-in `CI_*` examples above are intentionally diagnostic; remove the step after the filter is understood.
+Woodpecker preprocesses braced `${VAR}` expressions before runtime. To defer braced expansion to the container's shell, write `$${VAR}`; the unbraced `$VAR` form used above is already left for the shell. The built-in `CI_*` examples above are intentionally diagnostic; remove the step after the filter is understood.
 
 ## Branch Conditions
 
@@ -87,7 +87,7 @@ when:
 
 means “pull requests targeting `main`.” To inspect the contributor's branch, use `CI_COMMIT_SOURCE_BRANCH` in an `evaluate` expression.
 
-Branch conditions are not applied to tags. A tag has a ref such as `refs/tags/v2.4.0`; it does not become a normal branch merely because it points at a commit also reachable from `main`.
+Branch conditions are not applied to tags: Woodpecker ignores a `branch` key for a tag event instead of treating it as false. A tag has a ref such as `refs/tags/v2.4.0`; it does not become a normal branch merely because it points at a commit also reachable from `main`.
 
 Woodpecker uses doublestar matching for branch and path patterns. Quote a pattern that begins with `*` so YAML does not treat it as an alias:
 
@@ -113,16 +113,16 @@ when:
 
 Typical refs include `refs/heads/main` and `refs/tags/v1.2.3`. Matching `v*` against `refs/tags/v1.2.3` fails because the prefix is part of the value.
 
-Do not combine a tag event with a branch requirement:
+Do not use a branch requirement to constrain a tag event:
 
 ~~~yaml
-# Impossible or misleading: branch filters do not apply to tags.
+# Misleading: branch is ignored for tag events, so this matches every tag.
 when:
   - event: tag
     branch: main
 ~~~
 
-If a release policy needs to prove ancestry from a protected branch, perform an explicit Git ancestry check in a step. A tag payload alone does not encode “this tag was created from main” as a branch filter.
+Because the branch condition is ignored, this matches every tag; it does not prove that the tagged commit is on `main`. If a release policy needs to prove ancestry from a protected branch, perform an explicit Git ancestry check in a step. A tag payload alone does not encode “this tag was created from main” as a branch filter.
 
 ## Event Conditions
 
@@ -150,7 +150,7 @@ Project settings can disable handling of some repository hooks, such as pull req
 
 ## Path Conditions
 
-Path filters apply only to `push` and `pull_request` events. They are not a generic filesystem existence test and do not inspect files produced by earlier steps.
+Woodpecker documents path filters for `push` and `pull_request` events. They are not a generic filesystem existence test and do not inspect files produced by earlier steps.
 
 ~~~yaml
 when:
@@ -167,7 +167,7 @@ when:
 
 Key details from the current documentation:
 
-- Pull-request path matching considers all changed files in the pull request, not only the newest commit.
+- For forge integrations that support pull-request path filtering, matching considers all changed files in the pull request, not only the newest commit. Woodpecker currently documents [Bitbucket Cloud pull-request path filters as unsupported](https://woodpecker-ci.org/docs/administration/configuration/forges/bitbucket#missing-features).
 - An empty commit is considered a match by default; set `on_empty: false` when it should not run.
 - `ignore_message` can define a commit-message marker that bypasses path conditions.
 - Patterns are doublestar globs over repository-relative paths.
@@ -256,7 +256,7 @@ For global workflow filters, remember that a skipped workflow may also exclude w
 
 ## Validate the YAML Version in the Actual Revision
 
-Woodpecker loads the workflow from the event's commit. A local edit that has not been pushed cannot affect the result. Check:
+Woodpecker loads the workflow from the event's commit. A local edit that has not been pushed cannot affect the result. In a clean checkout of the commit SHA recorded in the pipeline details, check:
 
 ~~~bash
 git show HEAD:.woodpecker/test.yaml
