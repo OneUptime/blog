@@ -27,12 +27,12 @@ Maintain a sampling contract in your telemetry schema:
 | Field | Meaning |
 | --- | --- |
 | `rum_admitted` | basic session telemetry was selected |
-| `detail_sample_rate` | probability used for detailed events |
+| `inclusion_probability` | end-to-end probability that an eligible record was retained through all probabilistic stages; `null` if non-probabilistic or unknown |
 | `replay_mode` | `none`, `baseline`, or `triggered` |
 | `sampling_rule` | stable rule identifier, not free-form text |
 | `release` | immutable deployed build identifier |
 
-Without the applied rate, sampled counts cannot be weighted back to estimates. Never weight deliberately triggered error replays as if they were a random population sample.
+Without the end-to-end inclusion probability, probabilistically sampled counts cannot be weighted back to estimates; a conditional rate is insufficient when decisions are nested. Never weight deliberately triggered error replays as if they were a random population sample.
 
 ## Keep a Representative Baseline
 
@@ -40,7 +40,9 @@ Use a stable, deterministic decision for the baseline rather than calling `Math.
 
 ~~~javascript
 async function chooseBaseline(sessionId, rate) {
-  if (rate < 0 || rate > 1) throw new RangeError('rate must be 0..1');
+  if (!Number.isFinite(rate) || rate < 0 || rate > 1) {
+    throw new RangeError('rate must be a finite number from 0 to 1');
+  }
 
   const bytes = new TextEncoder().encode(`browser-rum-v3:${sessionId}`);
   const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', bytes));
@@ -49,7 +51,7 @@ async function chooseBaseline(sessionId, rate) {
 }
 ~~~
 
-Generate `sessionId` randomly; do not derive it from an email address, account ID, or other personal identifier. Version the hash namespace when changing sampling policy. The example makes a stable local decision, but use an SDK's supported sampler when one exists so its internal session, trace, and billing semantics remain correct.
+The Web Crypto call requires a secure context, such as an HTTPS page. Generate `sessionId` randomly; do not derive it from an email address, account ID, or other personal identifier. Version the hash namespace when changing sampling policy. The example makes a stable local decision, but use an SDK's supported sampler when one exists so its internal session, trace, and billing semantics remain correct.
 
 A representative sample must cover the population you intend to describe. Check selection rates by low-cardinality strata such as route template, device class, browser family, geography region, authentication state, and release. If mobile Safari accounts for 12% of eligible sessions but 2% of the baseline, investigate SDK initialization and browser compatibility before trusting the aggregate.
 
@@ -63,7 +65,7 @@ Baseline sampling estimates normal experience. A separate triggered path preserv
 - repeated failed resource or API requests;
 - a release canary cohort selected before page execution.
 
-The critical design is **buffer, then decide**. Sentry's documented error-replay mode buffers recent replay events for a session that was not selected for full-session replay and uploads them only if an error occurs. A home-grown recorder needs the same bounded circular-buffer idea; starting observation after the exception cannot reconstruct the preceding interaction.
+The critical design is **buffer, then decide**. Sentry's documented error-replay mode keeps the most recent 60 seconds of replay events in memory for a session that was not selected for full-session replay. If an error occurs and the session passes `replaysOnErrorSampleRate`, it uploads that buffer and records the rest of the session. A home-grown recorder needs the same bounded circular-buffer idea; starting observation after the exception cannot reconstruct the preceding interaction.
 
 Do not promise “100% of errors” unless the implementation can support that claim. A browser can close, lose connectivity, hit an SDK rate limit, block the endpoint, or crash before upload. Say “eligible error sessions are selected at 100% before quota and delivery loss,” then monitor accepted and dropped counts at every stage.
 
@@ -92,7 +94,7 @@ One global event cap lets a traffic spike evict the rare events it was meant to 
 | canary | release safety | fixed cohort at a higher detail rate |
 | replay | visual context | baseline plus bounded triggered buffer |
 
-Cap each lane per tenant and globally. Within the error lane, reserve capacity for new fingerprints so a noisy known error cannot consume everything. Within the slow lane, stratify by route template; otherwise the busiest endpoint dominates. When a quota is exhausted, emit a low-cost counter describing the drop reason rather than failing silently.
+Cap each lane per tenant and globally, but do not implement the representative baseline as a first-N or arrival-order cap. If a baseline budget requires additional thinning, use a random or reservoir design with a calculable final inclusion probability; otherwise mark the affected interval unsuitable for population estimates. Within the error lane, reserve capacity for new fingerprints so a noisy known error cannot consume everything. Within the slow lane, stratify by route template; otherwise the busiest endpoint dominates. When a quota is exhausted, emit a low-cost counter describing the drop reason rather than failing silently.
 
 ## Calculate Whether the Sample Can See the Event
 
@@ -102,9 +104,9 @@ For an event with per-session probability `p` and `n` independent sampled sessio
 P(observe at least one) = 1 - (1 - p)^n
 ~~~
 
-If an error rate is 0.01% (`p = 0.0001`), approximately 29,956 sampled sessions are needed for a 95% chance of seeing at least one occurrence. This is why simply increasing a tiny random rate often remains inadequate. Triggering on the error changes the collection problem, while baseline sampling remains necessary to estimate how common the error is.
+If an error rate is 0.01% (`p = 0.0001`), approximately 29,956 sampled sessions are needed for a 95% chance of seeing at least one occurrence. This is why simply increasing a tiny random rate often remains inadequate. Triggering on the error changes the collection problem. To estimate how common the error is, use either a representative baseline or broadly retained aggregate counts of affected sessions with an eligible-session denominator.
 
-Use weighted denominators carefully. If 2% of ordinary sessions are sampled, one admitted baseline session represents roughly 50 eligible sessions under ideal independent sampling. A deliberately retained error session has no such weight. Store the lane and inclusion probability with every event so queries cannot accidentally mix the two.
+Use weighted denominators carefully. If 2% of ordinary sessions are sampled, one admitted baseline session represents roughly 50 eligible sessions under ideal independent sampling. A deliberately retained error session must not receive that 50-times baseline weight; any valid weight depends on its complete inclusion policy. Store the lane and end-to-end inclusion probability with every event so queries cannot accidentally mix the two.
 
 ## Roll Out Sampling Changes as Production Changes
 
