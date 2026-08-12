@@ -10,7 +10,7 @@ Description: Choose Kuzu's in-memory or on-disk mode from durability, working-se
 
 Kuzu selects persistence when the `Database` is created. An omitted path, an empty string, or `:memory:` creates an in-memory database. A real path creates an on-disk database. The query language may look identical, but recovery, spilling, sharing, and lifecycle are not.
 
-Use in-memory mode for small, disposable graphs whose complete setup is part of the job. Use on-disk mode when data must survive a process, the workload can exceed memory, or you need a recoverable operational artifact. Production is usually on-disk; “the source data can be rebuilt” is not enough unless rebuild time and failure behavior meet the service objective.
+Use in-memory mode for small, disposable graphs whose complete setup is part of the job. Use on-disk mode when data must survive a process, the stored graph can exceed memory, or you need a recoverable operational artifact. Production is usually on-disk; “the source data can be rebuilt” is not enough unless rebuild time and failure behavior meet the service objective.
 
 ## What the Two Modes Guarantee
 
@@ -63,11 +63,11 @@ Adapt parameter syntax to the exact binding method used by the pinned package. T
 
 Do not run only in-memory tests. They cannot prove:
 
-- WAL recovery after process termination;
+- WAL recovery after an abrupt process termination or crash;
 - checkpoint behavior;
 - filesystem permissions and lock handling;
 - single-file compatibility across the chosen release path;
-- `.tmp` spill behavior under memory pressure;
+- `.tmp` spilling for eligible `COPY FROM` work under memory pressure;
 - backup and logical export procedures;
 - restart persistence.
 
@@ -109,13 +109,15 @@ For a small graph loaded from CSV or DataFrames, in-memory mode removes file cle
 - no other process needs the same graph;
 - the analysis is genuinely disposable.
 
-Use on-disk mode when loading dominates the session, the graph is reused, or operations may exceed memory. Kuzu describes on-disk mode as suitable for larger-than-memory workloads. Its configuration allows intermediate data to spill to a temporary file under memory pressure. The `SPILL_TO_DISK` setting cannot be enabled in in-memory or read-only mode, so in-memory is not a safe way to make an oversized query magically fast.
+Use on-disk mode when loading dominates the session, the graph is reused, or the stored graph may exceed memory. Kuzu describes on-disk mode as suitable for larger-than-memory workloads. During `COPY FROM`, its `SPILL_TO_DISK` setting allows eligible intermediate import data to spill to a temporary file under memory pressure. The setting cannot be enabled in in-memory or read-only mode, so in-memory mode cannot fall back to disk for an oversized import.
 
 Do not assume in-memory mode always wins a benchmark. An on-disk database uses a buffer pool and hot data may already be cached by Kuzu and the operating system. End-to-end runtime includes loading, checkpointing, warm-up, and repeated queries. Measure the actual workflow with a fixed dataset and memory limit.
 
 For notebooks, write the rebuild steps as code even when choosing on-disk mode. A hidden graph accumulated across cells is hard to reproduce and can retain a read-write lock that later blocks the CLI.
 
 ## Production: Start with Durability Requirements
+
+As of August 2026, [Kuzu's upstream repository](https://github.com/kuzudb/kuzu) is archived and read-only, and [`0.11.3`](https://github.com/kuzudb/kuzu/releases/tag/v0.11.3) remains its latest official release. Factor the absence of active upstream maintenance into any new production deployment.
 
 Choose on-disk mode if any of these is true:
 
@@ -129,13 +131,13 @@ Choose on-disk mode if any of these is true:
 
 An ephemeral container with an on-disk path is not durable unless the path is on an appropriate persistent volume. Conversely, a persistent mount does nothing for `:memory:` because Kuzu never writes the graph there.
 
-In-memory production can be appropriate for a read-only graph derived deterministically at startup, such as a small per-job analysis or disposable cache. Treat startup loading as part of availability: verify source access, bound the dataset, expose readiness only after import and validation, and define behavior when rebuild fails.
+In-memory production can be appropriate for a graph that the application treats as read-only and derives deterministically at startup, such as a small per-job analysis or disposable cache. Treat startup loading as part of availability: verify source access, bound the dataset, expose readiness only after import and validation, and define behavior when rebuild fails.
 
 ## Concurrency Differs in Important Ways
 
-In-memory databases can only be opened `READ_WRITE`; Kuzu does not support a read-only in-memory database. They also cannot be attached, and Kuzu documents that HTTPFS remote-file caching is unsupported for in-memory databases.
+In-memory databases can only be opened `READ_WRITE`; Kuzu does not support a read-only in-memory database. An in-memory Kuzu database cannot be used as the target of `ATTACH`, and Kuzu documents that HTTPFS remote-file caching is unsupported for in-memory databases.
 
-An on-disk database can be opened in either mode, but the concurrency rule remains:
+An on-disk database can be opened in either mode, but for a given on-disk database path the allowed combinations are:
 
 - one `READ_WRITE` `Database` object; or
 - multiple separate `READ_ONLY` database objects.
@@ -146,7 +148,7 @@ In-memory mode does not enable cross-process sharing. Each process has a differe
 
 ## Memory Budgeting Matters in Both Modes
 
-The Python `Database` constructor exposes `buffer_pool_size` and `max_num_threads`; the CLI defaults its maximum buffer pool to about 80% of available memory and accepts `--defaultbpsize` in megabytes. A production process shares memory with the runtime, request buffers, result serialization, and other libraries, so leaving every component at an aggressive default can cause host-level pressure.
+The Python `Database` constructor exposes `buffer_pool_size` and `max_num_threads`; in Kuzu `0.11.3`, the CLI defaults its maximum buffer pool to about 80% of total physical system memory, subject to a virtual-memory-region cap, and accepts `--defaultbpsize` in MiB. A production process shares memory with the runtime, request buffers, result serialization, and other libraries, so leaving every component at an aggressive default can cause host-level pressure.
 
 For an on-disk deployment, set a tested budget:
 
@@ -169,11 +171,10 @@ For in-memory mode, the database data itself consumes memory in addition to quer
 On-disk operation enables a durable primary file, but a logical export is the stronger portability artifact:
 
 ~~~cypher
-CHECKPOINT;
 EXPORT DATABASE '/srv/backups/graph-export';
 ~~~
 
-Kuzu's export contains schema, macros, generated copy statements, and data files. Test `IMPORT DATABASE` into a clean empty database. Do not call a live file copy “validated” without a restore test.
+Kuzu's export contains schema, macros, generated copy statements, and data files; indexes are exported only when their dependent extensions have been loaded. Test `IMPORT DATABASE` into a clean empty database. Do not call a live file copy “validated” without a restore test.
 
 An in-memory graph can also be exported before shutdown if preserving it becomes necessary. That is an explicit application action; Kuzu will not persist it automatically merely because the process exits normally.
 
@@ -185,7 +186,7 @@ Choose **in memory** when all answers are yes:
 - Can setup recreate it completely and quickly?
 - Does data plus worst-case query memory fit with headroom?
 - Is one process sufficient?
-- Are on-disk recovery and spill behavior outside this test's purpose?
+- Are on-disk recovery and `COPY FROM` spill behavior outside this test's purpose?
 
 Choose **on disk** if any answer is no, then configure a real persistent path, one-writer ownership, memory limits, backup/export, and restore tests.
 
@@ -202,4 +203,4 @@ Choose **on disk** if any answer is no, then configure a real persistent path, o
 
 ## Conclusion
 
-In-memory Kuzu is a disposable execution mode, ideal for isolated small tests and quick analyses. On-disk Kuzu adds WAL-backed persistence, larger-than-memory operation, and an artifact that can be backed up and migrated. Pick from failure and recovery requirements first, then measure performance under a realistic memory budget.
+In-memory Kuzu is a disposable execution mode, ideal for isolated small tests and quick analyses. On-disk Kuzu adds WAL-backed persistence, support for larger-than-memory graph workloads, and an artifact that can be backed up and migrated. Pick from failure and recovery requirements first, then measure performance under a realistic memory budget.
