@@ -8,7 +8,7 @@ Description: Diagnose fast Lighthouse runs and slow production users by aligning
 
 ---
 
-A fast Lighthouse result and slow real-user monitoring (RUM) are not contradictory. Lighthouse measures one page load in a configured lab environment. RUM measures a distribution of visits across the devices, networks, regions, cache states, page variants, and behaviors that production actually receives. The two results should only converge when those conditions converge—and they rarely do by accident.
+A fast Lighthouse result and slow real-user monitoring (RUM) are not contradictory. A standard Lighthouse navigation audit measures one page load in a configured lab environment. RUM measures a distribution of visits across the devices, networks, regions, cache states, page variants, and behaviors that production actually receives. The two results should only converge when those conditions converge—and they rarely do by accident.
 
 The right response is not to average more Lighthouse runs until the field problem disappears. Preserve the field distribution, segment it along plausible causes, and then configure a lab run that represents the affected segment closely enough to reproduce and diagnose it.
 
@@ -23,7 +23,7 @@ Before looking for a code bug, confirm that both tools measured the same thing.
 | Metric | Are both values LCP or CLS? Lighthouse cannot measure real-user INP and reports lab proxies such as TBT. |
 | Statistic | Are you comparing one run, a median of runs, a p75, or a good/poor fraction? |
 | Device | Is Lighthouse's emulated mobile profile comparable to the affected real hardware? |
-| Network | Is throttling simulated or applied at the network layer, and how does it compare with production? |
+| Network | Is throttling simulated, request-level, proxy-level, or packet-level, and how does it compare with production? |
 | State | Are authentication, consent, experiments, personalization, service workers, and caches equivalent? |
 | Lifecycle | Is RUM including restored pages, hidden loads, or SPA activity that the lab navigation does not? |
 
@@ -39,7 +39,7 @@ Common optimism sources include:
 - the test location is close to the CDN while users are far from an edge or origin;
 - a test account has little data while established accounts render large lists;
 - banners, personalization, A/B tests, and third-party tags differ;
-- the lab stops after load while users open menus, filters, and editors later;
+- a standard navigation audit stops after load while users open menus, filters, and editors later;
 - a monitor always has a clean profile while users carry old service workers or large storage;
 - the tested route is fast but a whole-origin field number includes slower routes.
 
@@ -56,7 +56,7 @@ Start with coarse dimensions that materially change browser work:
 - coarse logical-processor and device-memory buckets where supported;
 - reduced-motion or data-saving modes when relevant to what the app serves.
 
-`navigator.hardwareConcurrency` and `navigator.deviceMemory` are hints, not specifications of CPU speed or available RAM. Values may be reduced for privacy, and `deviceMemory` is not supported everywhere. Never combine many hardware hints into a fingerprint or put raw user-agent strings into metric labels. Bucket at collection time and enforce an allowlist.
+`navigator.hardwareConcurrency` and `navigator.deviceMemory` are hints, not measurements of CPU speed or currently available RAM. A user agent may report fewer logical processors through `hardwareConcurrency`, including to limit fingerprinting; `deviceMemory` is an approximate value that is coarsened and clamped to implementation-defined bounds, and is not supported everywhere. Never combine many hardware hints into a fingerprint or put raw user-agent strings into metric labels. Bucket at collection time and enforce an allowlist.
 
 ```js
 function deviceClass() {
@@ -64,12 +64,13 @@ function deviceClass() {
   const viewport = width < 600 ? "small" : width < 1024 ? "medium" : "large";
 
   const cores = navigator.hardwareConcurrency;
-  const cpu = !cores ? "unknown" : cores <= 4 ? "low" : cores <= 8 ? "mid" : "high";
+  const logicalProcessors =
+    !cores ? "unknown" : cores <= 4 ? "low" : cores <= 8 ? "mid" : "high";
 
   const memory = navigator.deviceMemory;
-  const ram = !memory ? "unknown" : memory <= 4 ? "low" : "high";
+  const deviceMemory = !memory ? "unknown" : memory <= 4 ? "low" : "high";
 
-  return { viewport, cpu, ram };
+  return { viewport, logicalProcessors, deviceMemory };
 }
 ```
 
@@ -84,14 +85,19 @@ function networkClass() {
   const connection = navigator.connection;
   if (!connection) return { effectiveType: "unknown", saveData: "unknown" };
 
+  let saveData = "unknown";
+  if (typeof connection.saveData === "boolean") {
+    saveData = connection.saveData ? "on" : "off";
+  }
+
   return {
     effectiveType: connection.effectiveType ?? "unknown",
-    saveData: connection.saveData ? "on" : "off",
+    saveData,
   };
 }
 ```
 
-Client hints are not the only evidence. At your controlled edge or ingestion service, record coarse server-observed timing and region. Break LCP into time to first byte, resource load delay, resource load duration, and element render delay using supported attribution tooling. If only TTFB and download grow in one region, investigate routing, cache hit rate, and origin latency. If render delay grows while network components do not, investigate main-thread and rendering work instead.
+Browser-provided hints are not the only evidence. At your controlled edge or ingestion service, record coarse server-observed timing and region. Break LCP into time to first byte, resource load delay, resource load duration, and element render delay using supported attribution tooling. If TTFB and resource load duration grow in one region, investigate routing, cache hit rate, and origin latency. If element render delay grows while the other LCP subparts do not, investigate main-thread work, render-blocking dependencies, and delayed DOM or visibility changes.
 
 Do not label `effectiveType: "4g"` as literal 4G radio access. It is an effective connection category derived by the browser and can describe Wi-Fi or another transport.
 
@@ -119,7 +125,7 @@ Navigation and Resource Timing entries expose transfer sizes and detailed phases
 Useful comparisons include:
 
 - first page view in a session versus later page views;
-- navigation type (`navigate`, `reload`, or back/forward) from `PerformanceNavigationTiming`;
+- page-load navigation type (`navigate`, `reload`, or `back_forward`) from `PerformanceNavigationTiming`, plus the `pageshow` event's `persisted` property to identify back/forward-cache restores;
 - service-worker controller present versus absent;
 - resource `deliveryType` where supported;
 - same-origin resource transfer size and server-side CDN cache status;
@@ -146,13 +152,13 @@ For a release comparison, build a table like this:
 
 | Segment | Before share | After share | Before LCP p75 | After LCP p75 |
 | --- | ---: | ---: | ---: | ---: |
-| Small viewport / low CPU | 20% | 35% | 3.4 s | 3.3 s |
-| Small viewport / mid CPU | 30% | 28% | 2.5 s | 2.5 s |
+| Small viewport / low logical-processor count | 20% | 35% | 3.4 s | 3.3 s |
+| Small viewport / mid logical-processor count | 30% | 28% | 2.5 s | 2.5 s |
 | Large viewport | 50% | 37% | 1.6 s | 1.6 s |
 
 The aggregate can degrade even though no row regressed. For paging and deployment decisions, compare stable cohorts or reweight to a fixed reference mix, while keeping the raw user distribution visible as the product outcome.
 
-Do not slice until every bucket contains a handful of samples. Establish minimum counts, suppress high-cardinality dimensions, and widen the time window for low-traffic routes. Percentiles from tiny buckets jump between observations and invite false conclusions.
+Do not slice until every bucket contains enough representative samples for a stable percentile estimate. Establish minimum counts, suppress high-cardinality dimensions, and widen the time window for low-traffic routes. Percentiles from tiny buckets jump between observations and invite false conclusions.
 
 ## Turn the Slow Cohort into a Reproducible Test
 
@@ -167,7 +173,7 @@ Once RUM identifies a cohort, create a matching synthetic profile:
 7. Capture a performance trace, network waterfall, and screenshots.
 8. Repeat enough times to distinguish a change from run variance.
 
-If the problem does not reproduce, the RUM signal still stands. Add field attribution: LCP element and subparts, long animation frames or long tasks around slow interactions, resource timing for same-origin assets, error state, and release. Field debugging evidence often reveals the variable the lab profile omitted.
+If the problem does not reproduce, that alone does not invalidate the RUM signal. First verify instrumentation and telemetry health, then add field attribution: LCP element and subparts, long animation frames or long tasks around slow interactions where supported, resource timing for same-origin assets, error state, and release. Field debugging evidence often reveals the variable the lab profile omitted.
 
 ## Official Documentation
 
