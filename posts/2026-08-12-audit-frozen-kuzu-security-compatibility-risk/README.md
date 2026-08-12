@@ -22,8 +22,13 @@ Collect version and artifact evidence from every environment:
 kuzu --version
 python -c 'import kuzu; print(kuzu.__version__)'
 npm ls kuzu --depth=0
-sha256sum /usr/local/bin/kuzu
+# Linux
+sha256sum "$(command -v kuzu)"
+# macOS
+shasum -a 256 "$(command -v kuzu)"
 ~~~
+
+Use `Get-FileHash` for the equivalent check on Windows.
 
 For containers, record the image digest, base-image digest, OS packages, CPU architecture, and libc. For Java, Rust, Go, C, or C++, record the package coordinate or source commit and the linked native library. Keep this in an inventory that maps service, environment, owner, data path, engine version, and recovery objective.
 
@@ -31,15 +36,15 @@ If any environment is older than `0.11.3`, document why. The final release bundl
 
 ## 2. Inventory Every Extension and Native Artifact
 
-Extensions are part of the executable database surface. Kuzu's docs say `INSTALL` places official extension libraries under `~/.kuzu/extensions`, and `LOAD` finds them there. In `0.11.3`, four extensions are bundled; other extensions still require a local extension repository.
+Extensions are part of the executable database surface. Despite the archived on-disk-files page saying `~/.kuzu/extensions`, the `0.11.3` runtime places dynamically installed official extensions below `~/.kuzu/extension/0.11.3/<platform>/`, and a named `LOAD` resolves them there. In `0.11.3`, four extensions are bundled; other official extensions installed by name require a local extension server, while self-built extensions can be loaded directly by library path.
 
 From the application startup path and representative sessions, identify:
 
 - which extensions are loaded;
-- their exact files and hashes;
+- their exact files and hashes, or the containing engine or binding artifact for a statically linked extension;
 - which engine version, OS, and architecture they target;
 - whether they came from the bundled release, a local Kuzu extension server, or an internal build;
-- who can replace files in `~/.kuzu/extensions`;
+- who can replace files in the resolved extension directory;
 - which extensions can access local files, HTTP endpoints, cloud storage, or external databases.
 
 Do not treat an extension name as a version. Preserve the actual binary or a reproducible build and verify that its directory is not writable by the unprivileged application user. Never load a library from an upload directory or user-controlled path.
@@ -51,8 +56,10 @@ Kuzu is embedded; it does not itself create a network service for your applicati
 Parameters should carry values:
 
 ~~~python
-stmt = conn.prepare("MATCH (u:User) WHERE u.id = $id RETURN u.email")
-result = conn.execute(stmt, {"id": request.user_id})
+result = conn.execute(
+    "MATCH (u:User) WHERE u.id = $id RETURN u.email",
+    parameters={"id": request.user_id},
+)
 ~~~
 
 Do not let callers supply table names, clauses, `INSTALL`, `LOAD`, `COPY FROM`, `ATTACH`, or arbitrary paths through the same API used for normal reads. Parameters are not a way to parameterize grammar or identifiers; expose fixed operations and validate any unavoidable identifier against an allowlist.
@@ -95,7 +102,7 @@ A recovery test should cover:
 
 1. quiescing writes;
 2. closing long-running transactions;
-3. creating a logical `EXPORT DATABASE` artifact;
+3. loading every extension that owns an index, then creating a logical `EXPORT DATABASE` directory;
 4. restoring into a new, empty database;
 5. checking schema, counts, relationships, indexes, and application queries;
 6. recording elapsed recovery time and any manual step.
@@ -172,6 +179,8 @@ Every accepted risk needs an owner and date. “Kuzu is archived” is context; 
 - [Kuzu installation artifacts](https://kuzudb.github.io/docs/installation/)
 - [Kuzu system requirements](https://kuzudb.github.io/docs/system-requirements/)
 - [Kuzu extensions and local server guidance](https://kuzudb.github.io/docs/extensions/)
+- [Kuzu 0.11.3 extension-directory implementation](https://github.com/kuzudb/kuzu/blob/v0.11.3/src/main/client_context.cpp#L195-L198)
+- [Kuzu prepared statements](https://kuzudb.github.io/docs/get-started/prepared-statements/)
 - [Kuzu connections and concurrency](https://kuzudb.github.io/docs/concurrency/)
 - [Kuzu transactions and checkpoints](https://kuzudb.github.io/docs/cypher/transaction/)
 - [Kuzu on-disk files](https://kuzudb.github.io/docs/developer-guide/files/)
