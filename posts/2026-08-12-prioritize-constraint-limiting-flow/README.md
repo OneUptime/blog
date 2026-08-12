@@ -63,7 +63,7 @@ A queue is evidence of imbalance, not automatic proof of the constraint. Work ma
 These terms are often collapsed:
 
 - A **blocker** stops one or more items temporarily.
-- A **bottleneck** is a stage whose effective capacity is lower than demand over the observed period.
+- A **bottleneck** is a stage whose effective capacity is at or below demand over the observed period.
 - A **constraint** is the factor currently limiting the system's chosen outcome. It may be a person, tool, environment, policy, market, dependency, or demand itself.
 - A **pain point** is costly or frustrating but may not limit total flow.
 
@@ -174,7 +174,7 @@ Watch for:
 - quality or operational guardrails becoming the new limit;
 - market demand falling below delivery capability.
 
-This is not failure. Constraint movement is how system improvement manifests.
+This is not failure. Constraint movement is one way system improvement manifests.
 
 ## Common Prioritization Traps
 
@@ -198,4 +198,4 @@ This is not failure. Constraint movement is how system improvement manifests.
 
 ## Conclusion
 
-When improvement ideas exceed capacity, prioritize the factor that limits the defined end-to-end outcome. Map the whole flow, use queue, age, throughput, rework, and practitioner evidence to test a constraint hypothesis, protect the constraint from avoidable loss, and align upstream work with explicit WIP controls. Elevate capability only through a bounded, measurable experiment. Then look again: once an improvement works, the constraint moves, and the next priority should move with it.
+When improvement ideas exceed capacity, prioritize the factor that limits the defined end-to-end outcome. Map the whole flow, use queue, age, throughput, rework, and practitioner evidence to test a constraint hypothesis, protect the constraint from avoidable loss, and align upstream work with explicit WIP controls. Elevate capability only through a bounded, measurable experiment. Then look again: if an improvement breaks the current constraint, the constraint moves, and the next priority should move with it.
