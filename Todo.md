@@ -54,7 +54,6 @@
 
 ## Kuzu
 
-7. Can Multiple Web Workers Write to One Kuzu Database? Designing a Single-Process API Layer
 8. Kuzu In-Memory vs On-Disk: Which Mode Fits Tests, Analytics, and Production?
 9. How Should You Model Node Tables, Relationship Tables, and Primary Keys in Kuzu?
 10. Kuzu CSV Import Put the Header in Your Data—or Rejected Valid Rows: Fixing Auto-Detection, Nulls, and Delimiters
