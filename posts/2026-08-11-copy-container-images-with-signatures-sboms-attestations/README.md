@@ -14,7 +14,7 @@ The safe unit of promotion is therefore an immutable subject digest plus the set
 
 ## Model the release as an OCI graph
 
-In OCI 1.1, an attached artifact is a separate manifest with a `subject` descriptor. The registry's referrers API discovers manifests whose subject is a particular digest. A release can look like this:
+In OCI 1.1, an attached artifact is a separate manifest with a `subject` descriptor. The registry's referrers API discovers manifests in the same repository whose subject is a particular digest. A release can look like this:
 
 ```text
 image index sha256:aaaa...
@@ -27,7 +27,7 @@ image index sha256:aaaa...
 
 Some relationships may be nested. A multi-platform index also references platform manifests in the forward direction, while signatures and attestations refer back to their subjects. Copy tooling must understand both the image/index content graph and the referrer graph.
 
-Current Cosign stores signatures as OCI 1.1 referring artifacts by default. Legacy signatures may use digest-derived tags, and OCI Distribution 1.1 defines a tag-based fallback for registries without the native referrers API. Inventory the actual graph rather than assuming one storage scheme.
+Cosign 3 stores new signatures and attestations as OCI 1.1 referring artifacts by default. Older Cosign formats may use digest-derived `.sig`, `.att`, or `.sbom` tags. Those legacy tags are distinct from the OCI Distribution 1.1 referrers-tag fallback and must be enumerated and copied separately with version-appropriate Cosign tooling or explicit tag handling. Inventory the actual storage rather than assuming one scheme.
 
 ## Define the source by digest
 
@@ -60,12 +60,13 @@ Verify required attestations independently with `cosign verify-attestation` and 
 Inspect the source graph:
 
 ```bash
+cosign tree "$SOURCE"
 oras discover --format json "$SOURCE" > source-referrers.json
 ```
 
-Keep a machine-readable allowlist of required artifact types. For example, release policy might require at least one Cosign signature, one SLSA provenance attestation, and one SPDX or CycloneDX SBOM artifact. Do not require “at least three referrers” without checking types and signers; unrelated metadata could satisfy a count.
+Keep a machine-readable policy for required evidence. Artifact type alone may not distinguish evidence kinds: Cosign 3 signatures and attestations share the Sigstore bundle artifact type. Use format-specific annotations such as `dev.sigstore.bundle.content` and `dev.sigstore.bundle.predicateType` as inventory hints, then confirm the predicate type, signed contents, and signer during cryptographic verification. For example, release policy might require at least one Cosign signature, one SLSA provenance attestation, and one SPDX or CycloneDX SBOM artifact. Do not require “at least three referrers”; unrelated metadata could satisfy a count.
 
-If the organization uses `COSIGN_REPOSITORY`, run discovery and copy against that repository as well. A signature repository is a separate part of the promotion design and will not be inferred by a generic image copy.
+If the organization uses `COSIGN_REPOSITORY`, treat it as an explicit source-to-destination repository mapping and migrate its entries with tooling appropriate to their storage mode. A signature-only repository may not contain the subject manifest, so an ORAS operation rooted at the image digest may not work there. A separate signature repository will not be inferred by a generic image copy.
 
 ## Copy recursively with ORAS
 
@@ -89,7 +90,7 @@ oras cp --recursive \
   "$DEST_REPO:1.8.0"
 ```
 
-Use those options only after confirming actual endpoint behavior. The destination fallback tag can have concurrency and retention considerations documented in the OCI Distribution Specification.
+Use those options only after confirming actual endpoint behavior. The destination fallback tag has concurrency considerations documented in the OCI Distribution Specification and may also be affected by registry-specific retention and garbage-collection policies.
 
 Plain `docker pull/tag/push` and `crane copy` are useful for images but do not, by their basic command contract, promise recursive referrer copying. Do not substitute them without a separate metadata-copy step.
 
@@ -99,13 +100,17 @@ After the copy, resolve the destination tag:
 
 ```bash
 DEST_DIGEST=$(crane digest "$DEST_REPO:1.8.0")
-test "$DEST_DIGEST" = "$SOURCE_DIGEST"
+if [ "$DEST_DIGEST" != "$SOURCE_DIGEST" ]; then
+  printf 'digest mismatch: source=%s destination=%s\n' \
+    "$SOURCE_DIGEST" "$DEST_DIGEST" >&2
+  exit 1
+fi
 DEST="$DEST_REPO@$DEST_DIGEST"
 ```
 
 If the assertion fails, stop. The destination may contain a platform-specific manifest rather than the index, a converted manifest, or a rebuilt artifact. Existing signatures correctly refuse to authorize changed content.
 
-Digest preservation across repositories is possible because the manifest's bytes do not contain its registry hostname. However, any tool that rewrites the manifest changes its digest.
+A manifest digest hashes the raw manifest bytes and is independent of the registry reference used to fetch them, so a byte-for-byte copy preserves the digest. However, any tool that rewrites the manifest changes its digest.
 
 ## Compare the destination graph
 
@@ -115,7 +120,7 @@ Discover the copied referrers:
 oras discover --format json "$DEST" > destination-referrers.json
 ```
 
-Compare artifact types and relationships, not only raw referrer digests. In some compatibility flows, representation can differ while the required evidence remains verifiable. The strongest end-to-end check is to run the same verification policy used by the destination runtime:
+Compare relationships, artifact types, and format-specific annotations, not only raw referrer digests. In some compatibility flows, representation can differ while the required evidence remains verifiable. The strongest end-to-end check is to run the same verification policy used by the destination runtime:
 
 ```bash
 cosign verify \
@@ -127,10 +132,13 @@ cosign verify-attestation \
   --certificate-identity="$EXPECTED_IDENTITY" \
   --certificate-oidc-issuer="$EXPECTED_ISSUER" \
   --type slsaprovenance1 \
-  "$DEST" > verified-provenance.json
+  "$DEST" > verified-provenance.dsse.json
+
+jq -s '[.[].payload | @base64d | fromjson]' \
+  verified-provenance.dsse.json > verified-provenance.json
 ```
 
-Use the predicate type actually emitted by your builder. Validate the verified statement's subject digest, builder identity, source repository, and other required fields with a policy engine or a carefully reviewed parser.
+`cosign verify-attestation` emits verified DSSE envelopes, so the `jq` command decodes their payloads into an array of in-toto statements. Use the predicate type actually emitted by your builder. Validate each verified statement's subject digest, builder identity, source repository, and other required fields with a policy engine or a carefully reviewed parser.
 
 ## Handle multi-platform subjects
 
@@ -152,7 +160,7 @@ The source repository name stays the same while the digest changes. After promot
 
 ORAS provides separate source and destination credential, CA, and client-certificate options. Prefer registry config files, credential helpers, or workload identity instead of plaintext command-line passwords, which can leak through process listings and logs.
 
-Install private registry CAs with `--from-ca-file` and `--to-ca-file` as appropriate. Do not use plaintext HTTP or insecure TLS modes in production. Those options weaken transport authentication even if artifact signatures are later checked.
+Provide private registry CA files with `--from-ca-file` and `--to-ca-file` as appropriate. Do not use plaintext HTTP or insecure TLS modes in production. Those options weaken transport authentication even if artifact signatures are later checked.
 
 ## Promotion checklist
 
