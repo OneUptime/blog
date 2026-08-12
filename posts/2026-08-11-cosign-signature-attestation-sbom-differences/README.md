@@ -12,7 +12,7 @@ A signature, an attestation, and a software bill of materials are related supply
 
 At a high level, a Cosign image signature binds a signer to an image digest, an attestation binds a signer to a structured statement about a subject, and an SBOM inventories components. An SBOM may be stored or signed in several ways; the inventory itself is not automatically trustworthy.
 
-## Cosign image signature: who authorized this digest?
+## Cosign image signature: who signed this digest?
 
 `cosign sign` creates a cryptographic signature over a payload tied to the container manifest digest:
 
@@ -55,10 +55,12 @@ cosign verify-attestation \
   --certificate-identity="$EXPECTED_BUILDER_IDENTITY" \
   --certificate-oidc-issuer="$EXPECTED_ISSUER" \
   --type slsaprovenance1 \
-  "$IMAGE" > verified-attestations.json
+  "$IMAGE" > verified-attestations.dsse.jsonl
 ```
 
-First, cryptographic verification establishes who signed the statement and that it targets the subject. Second, policy must evaluate the predicate: expected builder, source repository, commit, build parameters, completeness, scan time, or other requirements.
+The redirected output is JSON Lines because more than one matching DSSE envelope may be returned. Each envelope's base64-encoded `payload` contains an in-toto statement.
+
+First, cryptographic verification establishes who signed the statement and that it targets the subject. Second, policy must evaluate the predicate: expected builder, source repository, commit, build parameters, resolved dependencies, scan time, or other requirements.
 
 A validly signed statement can contain false or insufficient claims if the signer is compromised or the predicate is weak. Trust the relevant authority for that statement. The release signer, build service, and vulnerability scanner do not necessarily have the same authority.
 
@@ -74,7 +76,7 @@ An SBOM answers “What did this generator report is present?” It does not inh
 - that the listed components are vulnerability-free;
 - that the document has not been modified.
 
-Integrity and subject binding require a signature or signed attestation. Accuracy still depends on the trusted generator and process.
+Integrity can be checked against a digest obtained through a trusted channel. Authenticating who vouched for the inventory and its link to an image requires signed evidence, such as an attestation whose subject is the image or a signature over an OCI artifact whose manifest identifies the image as its subject. Accuracy still depends on the trusted generator and process.
 
 ## Three ways to distribute an SBOM
 
@@ -92,21 +94,28 @@ Policy must validate both the SBOM's association with the image and the signatur
 
 ### 2. Attest a digest and location
 
-Create a small predicate containing the SBOM artifact digest and location, then sign it with `cosign attest`. Sigstore's documentation recommends this style over placing an entire large SBOM in an attestation because verification otherwise downloads the complete SBOM whenever it verifies the attestation.
+Create a small predicate containing the SBOM document digest and location, then sign it with `cosign attest`. Sigstore's documentation recommends this style over placing an entire large SBOM in an attestation because verification otherwise downloads the complete SBOM whenever it verifies the attestation. The vetted in-toto Reference predicate is designed for this use case.
 
 Example predicate:
 
 ```json
 {
-  "sbom": {
-    "uri": "oci://registry.example.com/team/api-sbom@sha256:REPLACE",
-    "digest": "sha256:REPLACE"
+  "attester": {
+    "id": "https://security.example.com/sbom-generator/v1"
   },
-  "format": "spdx-json"
+  "references": [
+    {
+      "downloadLocation": "https://sboms.example.com/team/api.spdx.json",
+      "digest": {
+        "sha256": "REPLACE_WITH_SBOM_SHA256"
+      },
+      "mediaType": "application/spdx+json"
+    }
+  ]
 }
 ```
 
-Use an organization-defined predicate type URI and publish its schema. Verification must fetch the referenced document, compare its digest, and validate its signature if policy requires one.
+Use this predicate with `cosign attest --type https://in-toto.io/attestation/reference/v0.1`. If the vetted schema does not fit, use an organization-defined predicate type URI and publish its schema. Verification must fetch the referenced document, compare its digest, and validate its signature if policy requires one.
 
 ### 3. Put the SBOM in an attestation predicate
 
@@ -116,10 +125,10 @@ Cosign supports SPDX and CycloneDX predicate types. This provides direct signed 
 
 | Evidence | Primary question | Cryptographically binds subject? | Contains component inventory? | Needs content policy? |
 | --- | --- | --- | --- | --- |
-| Image signature | Who signed/authorized this image digest? | Yes | No | Identity/key authorization |
+| Image signature | Who signed this image digest? | Yes | No | Identity/key authorization |
 | Attestation | Who asserted these structured facts about this digest? | Yes | Only if predicate contains or references one | Yes, predicate semantics |
 | Unsigned SBOM | What components did the document report? | Not by itself | Yes | Integrity, subject, generator, completeness |
-| Signed SBOM artifact | Who signed this exact SBOM document? | To the SBOM digest; image link must also be checked | Yes | Image association and inventory policy |
+| Signed SBOM artifact | Who signed the OCI artifact containing this SBOM? | To the OCI artifact manifest digest, which transitively binds the SBOM blob; image link must also be checked | Yes | Image association and inventory policy |
 
 The table is a trust-model summary, not a claim that every storage representation behaves identically.
 
@@ -154,9 +163,10 @@ Use different expected identities when different systems are authoritative. Requ
 - [Sigstore in-toto attestation verification](https://docs.sigstore.dev/cosign/verifying/attestation/)
 - [Sigstore guidance for signing SBOMs and other artifact types](https://docs.sigstore.dev/cosign/signing/other_types/)
 - [in-toto Attestation Framework](https://github.com/in-toto/attestation)
+- [in-toto Reference predicate](https://github.com/in-toto/attestation/blob/main/spec/predicates/reference.md)
 - [SPDX specifications](https://spdx.dev/use/specifications/)
 - [CycloneDX specification](https://cyclonedx.org/specification/overview/)
 
 ## Conclusion
 
-A signature authorizes an artifact digest, an attestation signs a structured claim about a subject, and an SBOM reports an inventory. Secure policy composes them: verify the right signer for each artifact, validate subject binding, and evaluate the statement or inventory itself. No single one replaces the others.
+A signature authenticates a signer and binds the signature to an artifact digest, an attestation signs a structured claim about a subject, and an SBOM reports an inventory. Secure policy composes them: verify the right signer for each artifact, validate subject binding, and evaluate the statement or inventory itself. No single one replaces the others.
