@@ -54,7 +54,6 @@
 
 ## Kuzu
 
-15. Why Did a Variable-Length Kuzu Traversal Explode in Rows and Memory?
 16. How to Parameterize Kuzu Cypher Safely Without Replanning Every Query
 17. Kuzu HNSW Search Is Fast but Misses Neighbors: Tuning `efs` for Recall and Latency
 18. How to Combine Kuzu Vector Search, Full-Text Search, and Graph Traversal for Graph RAG
