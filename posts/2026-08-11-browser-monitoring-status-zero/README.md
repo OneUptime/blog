@@ -16,7 +16,7 @@ CORS, offline conditions, DNS/TLS failures, Content Security Policy (CSP), abort
 
 ### XMLHttpRequest
 
-`XMLHttpRequest.status` is `0` before the request completes and when an XHR error prevents a readable response. Code that samples `status` too early can therefore manufacture false failures. Use terminal events rather than polling the property.
+`XMLHttpRequest.status` is `0` before response headers are received and when an XHR error prevents a readable response. Code that samples `status` too early can therefore manufacture false failures. Use terminal events rather than polling the property.
 
 ```js
 const xhr = new XMLHttpRequest();
@@ -44,12 +44,12 @@ An HTTP `404` or `503` completes the request and fires `load`; the application m
 
 For a normal Fetch network error or CORS rejection, `fetch()` rejects. JavaScript receives no `Response` object to inspect, so a monitoring SDK may normalize the missing status to `0`.
 
-Fetch also has actual script-visible responses with status zero:
+The `fetch()` function can also fulfill with script-visible responses whose status is zero:
 
-- a `no-cors` cross-origin request resolves with an **opaque** response;
-- a manually handled cross-origin redirect can expose an **opaque-redirect** response.
+- a `no-cors` cross-origin request can resolve with an **opaque** response;
+- a manually handled redirect can expose an **opaque-redirect** response.
 
-Their status, headers, URL details, and body are intentionally hidden. This is not proof the network request failed.
+Their actual HTTP status, headers, and body are intentionally hidden. An opaque response also hides its URL; an opaque-redirect response exposes the URL that produced the redirect, but not the `Location` target. This is not proof the network request failed.
 
 ```js
 try {
@@ -60,10 +60,18 @@ try {
     status: response.status,
   });
 } catch (error) {
+  const signal = options?.signal;
+  const signalCausedRejection =
+    signal?.aborted && Object.is(error, signal.reason);
+  let outcome = "network_error";
+  if (signalCausedRejection) {
+    outcome = error?.name === "TimeoutError" ? "timeout" : "aborted";
+  }
+
   report({
-    outcome: options.signal?.aborted ? "aborted" : "network_error",
+    outcome,
     status: null, // There was no script-visible Response.
-    errorName: error.name,
+    errorName: error?.name ?? null,
   });
 }
 ```
@@ -74,12 +82,12 @@ Using `null` or `status_available: false` internally is clearer than inventing z
 
 | Evidence | Defensible classification | What remains unknown |
 | --- | --- | --- |
-| XHR `abort` event or Fetch signal is aborted | `aborted` | Whether the user, route, timeout policy, or code initiated it unless caller context says |
-| XHR `timeout` or `AbortSignal.timeout()` evidence | `timeout` | Which network stage was slow |
+| XHR `abort` event or Fetch rejection matching the supplied signal's abort reason | `aborted` | Whether the user, route, or code initiated it unless caller context says |
+| XHR `timeout` event or Fetch rejection matching an `AbortSignal.timeout()` signal's reason | `timeout` | Which network stage was slow |
 | `Response.type === "opaque"` and status `0` | `opaque_response` | Actual HTTP status and response content |
-| `securitypolicyviolation` with `effectiveDirective === "connect-src"` matching destination | `csp_blocked` | Whether another layer would also have failed |
+| `securitypolicyviolation` with `effectiveDirective === "connect-src"` and `disposition === "enforce"` matching destination | `csp_blocked` | Whether another layer would also have failed |
 | `navigator.onLine === false` at failure | `network_error_offline_hint` | Whether the OS heuristic reflects destination reachability |
-| Browser console says CORS during reproduction | `cors_confirmed_in_reproduction` | Whether every production sample has the same cause |
+| Browser console reports a specific CORS protocol failure during reproduction | `cors_confirmed_in_reproduction` | Whether every production sample has the same cause |
 | No response, request absent from all controlled edge logs | `network_error_unclassified` | DNS, TLS, routing, policy, extension, or local network cause |
 | A known blocker reproduces the exact request failure | `client_blocking_reproduced` | Prevalence and whether all field samples used that blocker |
 
@@ -99,7 +107,10 @@ router.onBeforeNavigate(() => {
 try {
   await fetch("/api/recommendations", { signal: controller.signal });
 } catch (error) {
-  if (controller.signal.aborted) {
+  if (
+    controller.signal.aborted &&
+    Object.is(error, controller.signal.reason)
+  ) {
     report({
       outcome: "aborted",
       abortReason: safeAbortCategory(controller.signal.reason),
@@ -136,7 +147,10 @@ The page can observe a policy violation when its bootstrap code is running:
 document.addEventListener("securitypolicyviolation", (event) => {
   if (event.effectiveDirective === "connect-src") {
     reportLocallyOrQueue({
-      outcome: "csp_blocked",
+      outcome:
+        event.disposition === "enforce"
+          ? "csp_blocked"
+          : "csp_report_only_violation",
       directive: event.effectiveDirective,
       disposition: event.disposition,
       blockedOrigin: safeOrigin(event.blockedURI),
@@ -145,13 +159,13 @@ document.addEventListener("securitypolicyviolation", (event) => {
 });
 ```
 
-Do not export full blocked URLs; query strings can contain secrets. The report may itself be unable to reach the blocked telemetry destination, so also configure CSP reporting to a permitted endpoint. CSP reports are best effort, not guaranteed delivery. If CSP blocks the monitoring script from loading at all, its JavaScript listener cannot run; server-side report collection and telemetry coverage ratios become essential.
+Do not export full blocked URLs; query strings can contain secrets. The report may itself be unable to reach the blocked telemetry destination, so also configure CSP reporting to a reachable endpoint. CSP reports are best effort, not guaranteed delivery. If CSP blocks the monitoring script from loading at all, its JavaScript listener cannot run; server-side report collection and telemetry coverage ratios become essential.
 
 Test new policies with `Content-Security-Policy-Report-Only`, but remember that report-only traffic can include browser extensions and other noise. Filter and aggregate safely before changing enforcement.
 
 ## Why CORS Is Hard to Identify in Page Code
 
-CORS decides whether a cross-origin response can be exposed to the caller. If preflight fails or required response headers are missing, Fetch returns a network error and XHR exposes no readable response. The browser console explains the CORS reason to a developer, but page JavaScript does not receive the detailed reason.
+CORS decides whether a cross-origin response can be exposed to the caller. If preflight fails or required response headers are missing, Fetch returns a network error and XHR exposes no readable response. The browser console may identify a specific CORS protocol failure to a developer, but generic CORS-labelled failures can also cover DNS, TLS, mixed-content, or extension failures. Page JavaScript does not receive the detailed reason.
 
 Use external evidence:
 
@@ -177,11 +191,11 @@ Avoid deceptive attempts to bypass an explicit user choice. A first-party, purpo
 
 ## Quantify and Alert Correctly
 
-Build rates with an attempted-request denominator:
+Build rates with explicit denominators:
 
 ```text
 http_error_rate = HTTP error responses / completed readable responses
-network_error_rate = rejected/no-response attempts / attempts
+network_error_rate = residual unclassified network-error attempts / attempts
 abort_rate = controlled aborts / attempts
 opaque_rate = opaque responses / attempts
 ```
