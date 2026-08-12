@@ -61,6 +61,10 @@ Make sure the two public keys represent separate approval domains. Two keys acce
 Keyless threshold policy should name exact identities:
 
 ```bash
+#!/usr/bin/env bash
+set -euo pipefail
+
+IMAGE='registry.example.com/team/api@sha256:REPLACE_WITH_DIGEST'
 ISSUER='https://token.actions.githubusercontent.com'
 BUILD_ID='https://github.com/acme/api/.github/workflows/build.yml@refs/heads/main'
 APPROVAL_ID='https://github.com/acme/security/.github/workflows/approve-api.yml@refs/heads/main'
@@ -94,34 +98,57 @@ Threshold policy should count distinct trusted authorities, not registry objects
 
 ## Express the threshold in Kyverno
 
-Kyverno's legacy `verifyImages` attestors support `count`, which specifies how many entries must verify. A two-of-two public-key policy is shaped like this:
+Kyverno 1.18's stable `ImageValidatingPolicy` uses named attestors and CEL. A two-of-two public-key policy is shaped like this:
 
 ```yaml
-verifyImages:
-  - imageReferences:
-      - "registry.example.com/team/api*"
+apiVersion: policies.kyverno.io/v1
+kind: ImageValidatingPolicy
+metadata:
+  name: require-release-and-security-signatures
+spec:
+  failurePolicy: Fail
+  validationActions:
+    - Deny
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["pods"]
+  matchImageReferences:
+    - glob: "registry.example.com/team/api*"
+  validationConfigurations:
     mutateDigest: true
     verifyDigest: true
     required: true
-    failureAction: Enforce
-    attestors:
-      - count: 2
-        entries:
-          - keys:
-              publicKeys: |-
-                -----BEGIN PUBLIC KEY-----
-                RELEASE_PUBLIC_KEY
-                -----END PUBLIC KEY-----
-          - keys:
-              publicKeys: |-
-                -----BEGIN PUBLIC KEY-----
-                SECURITY_PUBLIC_KEY
-                -----END PUBLIC KEY-----
+  attestors:
+    - name: release
+      cosign:
+        key:
+          data: |-
+            -----BEGIN PUBLIC KEY-----
+            RELEASE_PUBLIC_KEY
+            -----END PUBLIC KEY-----
+    - name: security
+      cosign:
+        key:
+          data: |-
+            -----BEGIN PUBLIC KEY-----
+            SECURITY_PUBLIC_KEY
+            -----END PUBLIC KEY-----
+  validations:
+    - expression: >-
+        (images.containers + images.initContainers + images.ephemeralContainers)
+          .map(image, verifyImageSignatures(image, [attestors.release, attestors.security]))
+          .all(count, count == 2)
+      message: every matching image must be signed by both release and security
 ```
 
-Use valid PEM data or documented Secret/KMS references in a real policy. Test with zero, release-only, security-only, and both signatures.
+`verifyImageSignatures` returns the number of listed named attestors that verify, so comparing it with `2` requires both authorities. Use valid PEM data or documented KMS/CEL-loaded key material in a real policy. Test with zero, release-only, security-only, and both signatures.
 
-Kyverno 1.18 marks `ClusterPolicy`/`verifyImages` as deprecated and provides stable `ImageValidatingPolicy`. For new deployments, implement equivalent authority logic with the current stable API and validate its exact CEL/attestor semantics against the installed CRD. Do not translate an old example without testing.
+Kyverno 1.17 began the legacy-policy deprecation schedule. In 1.18, `ClusterPolicy`, including its `verifyImages` rules, is deprecated and receives critical fixes only. Validate the exact CEL and attestor semantics against the installed CRD before deployment.
+
+This policy works with Cosign 3's default Sigstore bundles when they are stored as OCI referrers alongside the image. Kyverno 1.18.2 pins a Cosign version that does not honor an alternate `source.repository` while discovering those bundles, so keep them in the subject repository or use a Kyverno build that includes the newer target-repository fix.
 
 ## Separate AND from rotation OR
 
@@ -158,14 +185,14 @@ The second signer should not trust a mutable tag or unauthenticated digest passe
 If only one authority verifies, check:
 
 - both parties signed the same index/manifest digest;
-- mirroring copied every signature referrer;
-- `COSIGN_REPOSITORY` is consistent;
+- mirroring copied every signature artifact required by the selected storage mode, including all OCI 1.1 referrers or the legacy digest-derived signature tag;
+- the signer and shell verifier use the same `COSIGN_REPOSITORY`; for Kyverno 1.18.2, keep Cosign 3 bundles in the subject repository because alternate-repository discovery is not supported;
 - each verifier uses the intended public key or exact identity/issuer;
 - registry permissions allow all signature objects to be discovered;
 - a concurrent signing operation did not overwrite legacy signature state;
-- the policy's `count` semantics apply to entries, not signatures within one entry.
+- the CEL threshold counts successful named attestors, not signatures returned by one attestor.
 
-Use `oras discover` to inspect referrers, but let cryptographic verification—not presence—decide validity.
+When signatures use OCI 1.1 referrer storage, use `oras discover` against the repository where Cosign stored them. It does not list Cosign's legacy digest-derived signature tag. Let cryptographic verification—not presence—decide validity.
 
 ## Multi-signer checklist
 
@@ -176,18 +203,19 @@ Use `oras discover` to inspect referrers, but let cryptographic verification—n
 - [ ] Count authorities, not raw signature objects.
 - [ ] Distinguish threshold AND from key-rotation OR.
 - [ ] Test the complete truth table with missing-signature cases.
-- [ ] Copy every signature referrer during promotion.
+- [ ] Copy every signature artifact required by the selected storage mode during promotion.
 - [ ] Reverify the threshold at the destination and at admission.
 - [ ] Protect signer credentials/workflows in separate control domains.
 
 ## Official Documentation
 
-- [Cosign verification command behavior](https://github.com/sigstore/cosign/blob/main/doc/cosign_verify.md)
-- [Cosign signing command](https://github.com/sigstore/cosign/blob/main/doc/cosign_sign.md)
-- [Cosign project signature storage and multiple signatures](https://github.com/sigstore/cosign)
-- [Kyverno image-verification attestor count semantics](https://kyverno.io/docs/policy-types/cluster-policy/verify-images/overview/)
-- [Kyverno Sigstore verification](https://kyverno.io/docs/policy-types/cluster-policy/verify-images/sigstore/)
+- [Cosign verification command behavior](https://github.com/sigstore/cosign/blob/v3.1.3/doc/cosign_verify.md)
+- [Cosign signing command](https://github.com/sigstore/cosign/blob/v3.1.3/doc/cosign_sign.md)
+- [Cosign registry support and OCI 1.1 signature storage](https://docs.sigstore.dev/cosign/system_config/registry_support/)
+- [Kyverno ImageValidatingPolicy](https://kyverno.io/docs/policy-types/image-validating-policy/)
+- [Kyverno policy type status and deprecation schedule](https://kyverno.io/docs/policy-types/overview/)
 - [OCI Distribution Specification referrers](https://github.com/opencontainers/distribution-spec/blob/main/spec.md)
+- [ORAS discover command](https://oras.land/docs/commands/oras_discover/)
 
 ## Conclusion
 
