@@ -51,7 +51,6 @@
 
 ## Browser Monitoring
 
-20. How to Detect a Frontend Regression Without Confusing It with Bot Traffic, Extensions, or a Changing User Mix
 
 ## Kuzu
 
