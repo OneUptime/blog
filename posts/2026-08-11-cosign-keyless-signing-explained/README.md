@@ -19,22 +19,24 @@ For the Sigstore public-good service, a typical Cosign signing operation follows
 1. Cosign generates a public/private key pair in memory.
 2. The signer authenticates to an OpenID Connect provider, or a CI workload exposes an ambient OIDC token.
 3. Cosign sends proof of possession and identity information to Fulcio.
-4. Fulcio issues a short-lived code-signing certificate binding the ephemeral public key to claims derived from the OIDC token.
-5. Cosign signs the artifact's digest with the ephemeral private key.
-6. The certificate and signature transparency information are recorded through Sigstore's transparency infrastructure.
-7. The signature and its verification material are stored alongside the OCI artifact in the registry.
+4. Fulcio issues a short-lived code-signing certificate binding the ephemeral public key to claims derived from the OIDC token. During issuance, Fulcio submits a precertificate to a separate certificate transparency log and embeds the returned Signed Certificate Timestamp in the certificate.
+5. Cosign creates and signs a payload that identifies the artifact's immutable digest with the ephemeral private key.
+6. Cosign obtains trusted time evidence and submits signing metadata to Rekor, receiving signature-transparency evidence. The current public-good signing configuration uses an RFC 3161 timestamp authority as well as Rekor.
+7. Cosign stores the resulting Sigstore bundle, including the signature, certificate, timestamp, and transparency-log evidence, as an OCI 1.1 referrer alongside the artifact in the registry.
 
 The private key is not uploaded to Fulcio or Rekor. It exists only long enough to sign. The certificate, signature, log evidence, and artifact digest are public verification material, not secrets.
 
 ## What identity is recorded
 
-The identity is derived from the OIDC token accepted by Fulcio; it is not an arbitrary label passed to `cosign sign`. The form depends on the identity provider and signing environment.
+The certificate identity is derived from the OIDC token accepted by Fulcio; it is not an arbitrary label passed to `cosign sign`. The form depends on the identity provider and signing environment.
 
-For an interactive identity provider, it may be an email address. For GitHub Actions, modern examples use a workflow identity URI such as:
+For an interactive identity provider, it may be an email address. For GitHub Actions, the value matched by `--certificate-identity` is a URI subject alternative name that Fulcio constructs from the token's `job_workflow_ref` claim, such as:
 
 ```text
 https://github.com/example/payments/.github/workflows/release.yml@refs/heads/main
 ```
+
+Fulcio also records provider-specific source and build claims in certificate extensions. Current Fulcio releases preserve the raw OIDC `sub` claim in a dedicated extension; that raw subject is distinct from the GitHub workflow URI matched by `--certificate-identity`.
 
 The issuer is a separate trust dimension. For GitHub Actions, the issuer is:
 
@@ -46,19 +48,26 @@ Two providers could assert similarly formatted subjects, so checking only the id
 
 ## Sign by immutable digest
 
-In CI, grant the signing job only the permissions it needs. GitHub requires `id-token: write` to request an OIDC token; this setting permits token minting and does not itself grant repository write access.
+In CI, grant the signing job only the permissions it needs. GitHub requires `id-token: write` to request an OIDC token; this setting permits token minting and does not itself grant repository write access. This excerpt assumes that a `build` job publishes a `digest` job output.
 
 ```yaml
 jobs:
   sign:
+    needs: build
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:
-      contents: read
       packages: write
       id-token: write
     steps:
-      - uses: sigstore/cosign-installer@v3
+      - uses: sigstore/cosign-installer@v4.1.2
+        with:
+          cosign-release: v3.1.3
+      - name: Log in to GHCR
+        env:
+          REGISTRY_USER: ${{ github.actor }}
+          REGISTRY_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: printf '%s' "$REGISTRY_TOKEN" | cosign login ghcr.io --username "$REGISTRY_USER" --password-stdin
       - name: Sign the pushed manifest
         env:
           IMAGE: ghcr.io/example/payments
@@ -85,13 +94,13 @@ cosign verify \
 
 This checks that at least one signature satisfies the cryptographic and identity constraints. An unbounded regular expression such as `.*` is useful only for diagnostics in a controlled environment; it is not an authorization policy. It would allow any identity from any matching issuer.
 
-The expected identity should be owned by the artifact producer. A repository, workflow path, and protected branch are stronger than an organization-wide wildcard because they narrow who can create an acceptable signing event.
+The expected identity should be owned by the artifact producer. A repository and workflow path scoped to a branch ref, backed by branch protection, are stronger than an organization-wide wildcard because they narrow who can create an acceptable signing event.
 
 ## Why the certificate may expire without invalidating the signature
 
 Fulcio certificates are intentionally short-lived. Verification uses trusted time evidence to determine that signing occurred while the certificate was valid. A verifier does not simply compare the certificate's `NotAfter` value with today's date. If it did, every keyless release would become unverifiable soon after it was published.
 
-The verification bundle and transparency-log evidence matter because they carry or support that signing-time proof. Preserve them when mirroring artifacts, and keep the trusted Sigstore root current for the verification environment.
+For a short-lived Fulcio certificate, a complete verification bundle includes at least one trusted timestamp: a signed Rekor entry timestamp or an RFC 3161 timestamp. Rekor v1 can supply the former; Rekor v2 uses a separate timestamp authority. Preserve the bundle and transparency-log evidence when mirroring artifacts, and keep the trusted Sigstore root current for the verification environment.
 
 ## What keyless signing proves
 
@@ -100,14 +109,14 @@ After successful verification against a precise policy, keyless signing can esta
 - the signed payload refers to the artifact digest being verified;
 - the signature was produced by the private key corresponding to the certified public key;
 - Fulcio bound that public key to the recorded OIDC identity;
-- the expected OIDC issuer authenticated that identity;
+- Fulcio accepted an identity token from the expected OIDC issuer for that identity;
 - required transparency and trusted-time checks passed.
 
 It does not establish that the source code was reviewed, the build was isolated, dependencies were safe, or the image was vulnerability-free. Those claims require separate controls and, where appropriate, signed attestations evaluated by policy.
 
 ## Operational trade-offs
 
-Keyless signing eliminates storage and rotation of a long-lived private key, but it introduces dependencies at signing time: the OIDC provider, Fulcio, transparency services, and registry must be reachable. Verification can be designed for outages or disconnected environments by distributing complete Sigstore bundles and trusted roots in advance.
+Keyless signing eliminates storage and rotation of a long-lived private key, but it introduces dependencies in the end-to-end signing path: the OIDC provider, Fulcio and its certificate transparency log, Rekor, the timestamp authority, and the registry must be reachable. Unless service configuration is cached or supplied explicitly, Cosign also obtains it from Sigstore's TUF repository. Verification can be designed for outages or disconnected environments by distributing the artifacts, complete Sigstore bundles, identity policy, and trusted roots in advance.
 
 Identity lifecycle replaces key lifecycle as the central control. Protect the repository and workflow, restrict who can modify it, use protected environments for releases, minimize token permissions, and monitor transparency logs for unexpected uses of your identity.
 
