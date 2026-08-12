@@ -57,7 +57,6 @@
 
 ## Continuous Improvement
 
-19. Did the Change Help Customers or Just Move an Internal Metric?
 20. How to Make an Improvement Stick: Ownership, Automation, Documentation, and Drift Checks
 
 ## Apache Spark
