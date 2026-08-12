@@ -10,20 +10,20 @@ Description: Persist Kuzu-Wasm safely across reloads by mounting IDBFS, populati
 
 A Kuzu-Wasm database disappears on refresh when it lives only in Emscripten's in-memory filesystem or when the application mounts IDBFS but never synchronizes the in-memory tree with IndexedDB. Mounting is only half the persistence protocol. On startup, call `syncfs(true)` before opening Kuzu to populate the virtual filesystem from IndexedDB. After writes, close the connection and database, then call `syncfs(false)` to persist the virtual files back to IndexedDB before unmounting.
 
-That ordering follows Kuzu's official 0.11.3 `browser_persistent` example and Emscripten's documented `populate` direction. It is not equivalent to putting an “initialized” flag in `localStorage`. The database files—not a flag—are the source of truth.
+That synchronization ordering appears in the `browser_persistent` example retained in Kuzu's v0.11.3 source tree and follows Emscripten's documented `populate` direction. It is not equivalent to putting an “initialized” flag in `localStorage`. The database files—not a flag—are the source of truth.
 
-Kuzu and `kuzu-wasm` are archived, so pin the exact package and preserve its runtime assets. The maintained LadybugDB successor has since moved its current persistent browser example toward OPFS; that does not retroactively change Kuzu-Wasm's documented IDBFS lifecycle.
+Kuzu's source repository is archived and `kuzu-wasm` 0.11.3 is deprecated on npm, so pin the exact package and preserve its matching main-module and worker-bundle assets. The maintained LadybugDB successor has since moved its current persistent browser example toward OPFS; that does not retroactively change Kuzu-Wasm's documented IDBFS lifecycle.
 
 ## Why the Default Filesystem Is Ephemeral
 
-WebAssembly code generally expects synchronous file operations. Browser persistence is asynchronous, so Emscripten presents a virtual filesystem to the compiled database. Its default `MEMFS` files live in memory and disappear with the page or worker.
+Applications compiled to WebAssembly with Emscripten commonly expect synchronous file operations. IndexedDB is asynchronous, so Emscripten presents a virtual filesystem to the compiled database. Its default `MEMFS` files live in memory and disappear with the page or worker.
 
 IDBFS bridges that virtual tree to IndexedDB. File reads and writes still affect the in-memory view first. `syncfs` reconciles the two stores:
 
 - `syncfs(true)` means **populate** the in-memory filesystem from persistent IndexedDB.
 - `syncfs(false)` means **flush** the in-memory filesystem to persistent IndexedDB.
 
-Reversing them at startup can overwrite or obscure persisted state with an empty in-memory tree. Opening Kuzu before the populate completes can create what looks like a fresh database at the same path.
+Calling `syncfs(false)` at startup with an empty in-memory tree can delete persisted files from IndexedDB. Initializing Kuzu before the populate completes can create what looks like a fresh database at the same path.
 
 ## The Correct Startup Order
 
@@ -33,6 +33,7 @@ Use one mounted directory and await every asynchronous step:
 import kuzu from "kuzu-wasm";
 
 const MOUNT_PATH = "/database";
+const DATABASE_PATH = `${MOUNT_PATH}/app.kuzu`;
 
 async function openPersistentDatabase() {
   await kuzu.FS.mkdir(MOUNT_PATH);
@@ -42,27 +43,28 @@ async function openPersistentDatabase() {
   await kuzu.FS.syncfs(true);
 
   // Open only after persisted files are visible in the virtual filesystem.
-  const db = new kuzu.Database(MOUNT_PATH);
+  const db = new kuzu.Database(DATABASE_PATH);
   const conn = new kuzu.Connection(db);
   return { db, conn };
 }
 ~~~
 
-The official example uses the mounted `/database` path as the Kuzu database path. The virtual directory is recreated on every page load, then populated from the IDBFS backend.
+The example in the v0.11.3 source tree uses the mounted `/database` directory itself as the database path, but its lockfile resolves `kuzu-wasm` 0.8.0. Published `kuzu-wasm` 0.11.3 rejects a directory as the database path, so use a file inside the mount, such as `/database/app.kuzu`. The virtual mount point is recreated on every page load, then populated from the IDBFS backend.
 
 Do not do this:
 
 ~~~javascript
-// Race: the database opens before IndexedDB population finishes.
+// Race: database initialization can begin before population finishes.
 kuzu.FS.syncfs(true);
-const db = new kuzu.Database("/database");
+const db = new kuzu.Database(DATABASE_PATH);
+await db.init();
 ~~~
 
 Promises must be awaited. Also ensure initialization runs exactly once. React development effects, hot-module reload, two tabs, or two application components can otherwise mount or open the same logical database concurrently.
 
 ## Initialize Schema by Inspecting the Database
 
-An `isFirstRun` value in `localStorage` can drift from IndexedDB. Users can clear one storage area, a previous sync can fail, or a deployment can change origins. Instead, open the populated database and inspect its catalog:
+An `isFirstRun` value in `localStorage` can drift from IndexedDB. Users can clear one storage area or a previous sync can fail. Instead, open the populated database and inspect its catalog:
 
 ~~~javascript
 async function ensureSchema(conn) {
@@ -84,7 +86,7 @@ Handle the actual column keys returned by the pinned API and query alias deliber
 
 ## The Correct Persistence and Shutdown Order
 
-Kuzu's official persistent example closes query results, connection, and database before flushing IDBFS:
+The persistent example retained in Kuzu's tagged source tree closes query results, connection, and database before flushing IDBFS:
 
 ~~~javascript
 async function closeAndPersist({ conn, db }) {
@@ -93,7 +95,7 @@ async function closeAndPersist({ conn, db }) {
 
   // Emscripten's in-memory filesystem -> IndexedDB.
   await kuzu.FS.syncfs(false);
-  await kuzu.FS.unmount("/database");
+  await kuzu.FS.unmount(MOUNT_PATH);
 }
 ~~~
 
@@ -133,7 +135,7 @@ await serialize(async () => {
   await conn.close();
   await db.close();
   await kuzu.FS.syncfs(false);
-  await kuzu.FS.unmount("/database");
+  await kuzu.FS.unmount(MOUNT_PATH);
 });
 ~~~
 
@@ -176,21 +178,21 @@ Treat IndexedDB as sensitive local data. Tenant logout should follow an explicit
 
 1. Confirm the page origin is identical before and after refresh.
 2. Verify the IDBFS directory was mounted before `syncfs(true)`.
-3. Verify `syncfs(true)` completed before `new kuzu.Database(...)`.
-4. Confirm the database path exactly matches the mounted path.
+3. Verify `syncfs(true)` completed before `db.init()` or the first connection operation.
+4. Confirm the database file path is inside the mounted directory; with 0.11.3, do not use the directory itself as the database path.
 5. Verify the last save awaited connection close, database close, and `syncfs(false)`.
 6. Inspect rejected promises and IndexedDB/quota errors in developer tools.
 7. Check whether two tabs or duplicate initializers opened the same store.
 8. Remove `localStorage` first-run logic from the diagnosis and inspect catalog state.
-9. Confirm the pinned `kuzu-wasm` JS, worker, and Wasm assets all come from one version.
+9. Confirm the `kuzu-wasm` main module and worker bundle come from the same package version and variant. In the 0.11.3 browser build, the worker bundle contains the Wasm binary.
 
-Build an automated persistence test: create a uniquely identified node, close and flush, reload in a new page context, populate IDBFS, reopen, and assert the node exists. Then simulate a failed sync and verify the UI does not claim durability.
+Build an automated persistence test: create a uniquely identified node, close and flush, then load the same origin in a fresh page while preserving the browser profile, populate IDBFS, reopen, and assert the node exists. Then simulate a failed sync and verify the UI does not claim durability.
 
 ## Official Documentation
 
 - [Kuzu 0.11.3 release](https://github.com/kuzudb/kuzu/releases/tag/v0.11.3)
 - [Kuzu-Wasm documentation](https://kuzudb.github.io/docs/client-apis/wasm/)
-- [Kuzu 0.11.3 persistent browser example](https://github.com/kuzudb/kuzu/blob/v0.11.3/tools/wasm/examples/browser_persistent/public/index.html)
+- [Persistent browser example retained in the Kuzu 0.11.3 source tree (`kuzu-wasm` 0.8.0)](https://github.com/kuzudb/kuzu/blob/v0.11.3/tools/wasm/examples/browser_persistent/public/index.html)
 - [Kuzu 0.11.3 Wasm source and examples](https://github.com/kuzudb/kuzu/tree/v0.11.3/tools/wasm)
 - [Emscripten IDBFS and `syncfs` reference](https://emscripten.org/docs/api_reference/Filesystem-API.html#fs-syncfs)
 - [Kuzu transactions](https://kuzudb.github.io/docs/cypher/transaction/)
@@ -199,4 +201,4 @@ Build an automated persistence test: create a uniquely identified node, close an
 
 ## Conclusion
 
-IDBFS persistence is a two-direction synchronization protocol. Mount the directory, await `syncfs(true)`, and only then open Kuzu. At a deliberate save boundary, finish queries, close the connection and database, await `syncfs(false)`, and unmount. Serialize the lifecycle, coordinate tabs, surface quota and sync failures, and test across a real reload. Once those rules are explicit, refresh stops being a gamble and becomes a verifiable durability boundary.
+IDBFS persistence is a two-direction synchronization protocol. Mount the directory, await `syncfs(true)`, and only then open a Kuzu database file inside it. At a deliberate save boundary, finish queries, close the connection and database, await `syncfs(false)`, and unmount. Serialize the lifecycle, coordinate tabs, surface quota and sync failures, and test across a real reload. Once those rules are explicit, an explicit save followed by refresh stops being a gamble and becomes a verifiable durability test.
