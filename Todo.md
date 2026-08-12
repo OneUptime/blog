@@ -57,7 +57,6 @@
 
 ## Continuous Improvement
 
-20. How to Make an Improvement Stick: Ownership, Automation, Documentation, and Drift Checks
 
 ## Apache Spark
 
