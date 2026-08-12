@@ -51,7 +51,6 @@
 
 ## Browser Monitoring
 
-17. Does Your Browser Monitoring SDK Slow the Page? Measuring Bundle, Main-Thread, and Network Overhead
 18. How Do bfcache Restores and Prerendered Pages Distort Browser Performance Metrics?
 19. INP Is Poor but LCP Is Fine: Finding the Long Task or Event Handler Behind Slow Interactions
 20. How to Detect a Frontend Regression Without Confusing It with Bot Traffic, Extensions, or a Changing User Mix
