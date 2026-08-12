@@ -47,6 +47,8 @@ CREATE REL TABLE WORKS_AT(
 CREATE (:Person {id: 'p1', name: 'Ada'});
 ~~~
 
+Neo4j's `IS UNIQUE` constraint permits `Person` nodes with no `id`; a Kuzu primary key is non-null as well as unique. Reject or supply missing IDs before import.
+
 This changes more than syntax. Decide how Neo4j's optional or heterogeneous properties map to typed columns, which property is the durable primary key, and which label pairs each relationship may connect. Kuzu creates the node primary-key index; it does not accept arbitrary Neo4j index/constraint DDL unchanged.
 
 Do not port Neo4j internal IDs as business identity. Define stable source keys and verify uniqueness before import.
@@ -76,7 +78,7 @@ Kuzu `MERGE` treats the entire pattern as the match-or-create unit; it does not 
 
 ## Difference 3: Variable-Length Paths Use Walk Semantics
 
-This is the highest-risk semantic difference. Neo4j uses trail semantics for a pattern in `MATCH`: the same relationship cannot repeat within a path. Kuzu's recursive relationship uses `WALK` by default, allowing nodes and relationships to repeat. A cyclic graph can therefore produce many more Kuzu rows for an apparently equivalent query.
+This is the highest-risk semantic difference. By default, Neo4j uses relationship-unique (trail) semantics in `MATCH`: the same relationship cannot repeat within a matched graph pattern. Neo4j Cypher 25 can opt into repeated elements explicitly, while Kuzu's recursive relationship uses `WALK` by default, allowing nodes and relationships to repeat. A cyclic graph can therefore produce many more Kuzu rows for an apparently equivalent query.
 
 Bound every traversal:
 
@@ -86,7 +88,7 @@ WHERE a.id = $start
 RETURN b.id, count(*) AS path_count;
 ~~~
 
-When Neo4j-like no-repeated-edge behavior is required, request it explicitly:
+For the single recursive segment shown, when Neo4j-like no-repeated-edge behavior is required, request it explicitly:
 
 ~~~cypher
 MATCH (a:Person)-[:KNOWS* TRAIL 1..4]->(b:Person)
@@ -94,7 +96,7 @@ WHERE a.id = $start
 RETURN b.id;
 ~~~
 
-For no repeated nodes, use `ACYCLIC`. Kuzu also offers path predicates such as `is_trail()` and `is_acyclic()`, but selecting the recursive semantic in the pattern can avoid generating unwanted walks in the first place.
+For no repeated intermediate nodes, use `ACYCLIC`. Kuzu does not include the source and destination nodes in that recursive-relationship check; for no repeated nodes across the complete path, bind a named path and filter with `is_acyclic(p)`. The `is_trail(p)` predicate likewise checks a complete named path. Selecting the recursive semantic in the pattern can still avoid generating many unwanted walks in the first place.
 
 Kuzu assigns a configured default maximum depth—30 in the archived documentation—if an upper bound is omitted. That prevents nontermination; it does not make an unbounded-looking production query selective or cheap. Express the business bound.
 
@@ -146,13 +148,15 @@ Build a compatibility map for every nontrivial Neo4j function used by the applic
 
 | Neo4j expression | Kuzu direction |
 | --- | --- |
-| `labels(n)` | `label(n)` |
-| `elementId(n)` | `id(n)` for Kuzu's internal ID, not durable identity |
+| `labels(n)` | `label(n)` returns one `STRING`, not Neo4j's `LIST<STRING>`, because a Kuzu node has one table label |
+| `elementId(n)` | `id(n)` returns Kuzu's `INTERNAL_ID`, not Neo4j's `STRING`; neither is durable identity |
 | `toInteger(x)` | `cast(x, 'INT64')` or an equivalent typed cast |
-| `head(xs)` | `list_extract(xs, 1)` or list indexing |
-| `tail(xs)` | `list_slice(...)` |
-| `timestamp()` | `current_timestamp()` |
+| `head(xs)` | `list_extract(xs, 1)` or list indexing; guard empty lists because Kuzu raises instead of returning `NULL` |
+| `tail(xs)` | `list_slice(xs, 2, size(xs))` |
+| `timestamp()` | `to_epoch_ms(current_timestamp())` for Neo4j's epoch-millisecond integer; `current_timestamp()` itself returns a `TIMESTAMP` |
 | cosine similarity function | `array_cosine_similarity(...)` |
+
+These are migration directions, not always drop-in equivalents. For example, Neo4j `toInteger()` accepts booleans and returns `NULL` when a supported input cannot be parsed, whereas Kuzu cannot cast `BOOL` to `INT64` and raises a conversion error for an invalid numeric string. Validate input and conversion behavior explicitly when it matters.
 
 Kuzu follows a strict typing model. Lists must have a consistent element type, and property assignments must fit declared columns. A Neo4j property that sometimes contains a string and sometimes a number needs a migration decision, not a clever cast sprinkled through every query.
 
@@ -164,10 +168,10 @@ Like Cypher generally, Kuzu does not use an explicit SQL `GROUP BY`. Non-aggrega
 
 ~~~cypher
 MATCH (p:Person)-[:WORKS_AT]->(c:Company)
-RETURN c.id, count(*) AS employees;
+RETURN c.id, count(*) AS work_relationships;
 ~~~
 
-If a port also returns `p.name`, it groups by company and person rather than just company. Validate result schemas and uniqueness, not merely whether the query executes.
+If a port also returns `p.name`, it groups by company ID and person name rather than just company ID. Validate result schemas and uniqueness, not merely whether the query executes.
 
 ## Use a Migration Harness
 
