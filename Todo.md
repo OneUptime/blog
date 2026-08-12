@@ -87,7 +87,6 @@
 
 ## Continuous Improvement
 
-3. Too Many Improvement Ideas, Too Little Time: Prioritizing the Constraint That Actually Limits Flow
 4. PDCA, A3, or DMAIC: Which Continuous Improvement Method Fits a Software Team?
 5. How to Turn “Deployments Are Painful” into a Measurable Improvement Hypothesis
 6. What Baseline Do You Need Before Changing a Process?
