@@ -54,7 +54,6 @@
 
 ## Kuzu
 
-17. Kuzu HNSW Search Is Fast but Misses Neighbors: Tuning `efs` for Recall and Latency
 18. How to Combine Kuzu Vector Search, Full-Text Search, and Graph Traversal for Graph RAG
 19. Kuzu-Wasm Database Vanishes on Refresh: Persisting IDBFS and Synchronizing the Filesystem
 20. Kuzu-Wasm Worker Fails to Load or Freezes the UI: Choosing Async, Sync, and Multithreaded Builds
