@@ -104,14 +104,15 @@ Record a digest after all build transformations and before upload or deployment:
 ~~~bash
 find dist -type f \( -name '*.js' -o -name '*.js.map' \) -print0 \
   | sort -z \
-  | xargs -0 shasum -a 256 > source-artifacts.sha256
+  | xargs -0 -r shasum -a 256 > source-artifacts.sha256
 
+test -s source-artifacts.sha256
 shasum -a 256 -c source-artifacts.sha256
 ~~~
 
 Archive that checksum file with the build. At incident time, fetch the reported content-hashed bundle from the CDN, compare its digest with the manifest, and compare the locally retained map digest. A mismatch proves an artifact-identity problem before you inspect mapping internals.
 
-Also verify the bundle's final line. A normal public map often contains a `//# sourceMappingURL=...` directive that browsers resolve relative to the generated file. Chrome DevTools documents this discovery behavior. A hidden map intentionally lacks that comment, so DevTools will not fetch it automatically and an error service needs an upload/debug-ID association.
+Inspect the bundle, commonly near its end. A bundle linked to a public map often contains a `//# sourceMappingURL=...` directive whose relative URL browsers resolve against the generated code's source origin—normally the bundle URL for an external script. A hidden build omits that comment; unless the server supplies a `SourceMap` response header, DevTools will not discover the map automatically, so an error service needs another association such as uploaded release/path metadata or a debug ID.
 
 ## Diagnose One Raw Frame End to End
 
@@ -124,9 +125,9 @@ Start with an event captured after the artifacts were uploaded:
 5. For uploaded maps, inspect the provider's artifact list or source-map diagnostic tool.
 6. Verify that the map includes column mappings. Line-only “cheap” maps are inadequate for a one-line minified production bundle.
 7. Inspect `sources` and `sourceRoot`; confirm original paths are usable and `sourcesContent` is present if the processor requires embedded sources.
-8. Test the generated line and zero-based column using a source-map consumer locally.
+8. Normalize the event coordinates to the consumer's indexing convention, then test the generated position locally. Mozilla's `source-map` uses one-based lines and zero-based columns; Sentry event frames use one-based `lineno` and `colno`, so pass `line: lineno` and `column: colno - 1`.
 
-Sentry's `sourcemaps explain <event-id>` is one provider-specific diagnostic. Chrome DevTools' Developer Resources view can show map load failures for public maps. Do not use an old event to test a map uploaded afterward: Sentry explicitly documents that artifact uploads do not retroactively annotate previously processed errors.
+Sentry's in-product `Unminify Code` workflow is one provider-specific diagnostic; its per-event source-map debug API can also expose processing details. Chrome DevTools' Developer Resources view can show map load failures for public maps. Do not use an old event to test a map uploaded afterward: Sentry explicitly documents that artifact uploads do not retroactively annotate previously processed errors.
 
 ## Common Failure Patterns
 
