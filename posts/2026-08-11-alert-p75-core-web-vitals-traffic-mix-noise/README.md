@@ -29,36 +29,52 @@ Start with correct event semantics. The current Core Web Vitals are:
 
 The recommended assessment is the 75th percentile of page loads, segmented across mobile and desktop devices. Use the official `web-vitals` library rather than inventing partial definitions from raw performance entries.
 
-Callbacks may report updated values during a page's lifecycle. The metric `id` identifies a metric instance, and the callback also provides a delta. If every update is inserted as an independent sample, pages that update more often receive more weight. Upsert the latest value by metric instance, or emit only at a well-defined finalization boundary while accepting that sudden process termination can lose the event.
+Callbacks can report a metric more than once during a visit. The metric `id` identifies a metric instance, and `delta` is the change since its previous report. If every report is inserted as an independent sample, instances reported more often receive more weight. Upsert the latest value by metric instance, using a per-instance sequence so out-of-order delivery cannot overwrite a later value. The default callbacks report at lifecycle checkpoints; CLS and INP can report again if a page returns from a hidden state and later changes. The `reportAllChanges` option is useful for debugging but is not generally recommended for production collection.
+
+Capture immutable navigation context when each view begins rather than deriving it when the callback eventually runs. In the example, `navigationContext(metric)` returns that captured context. Current `web-vitals` versions also expose `navigationURL`, which prevents a late callback from being attributed to the wrong SPA route.
 
 ```js
 import { onCLS, onINP, onLCP } from "web-vitals";
 
+const reportSequences = new WeakMap();
+
 function publish(metric) {
+  const reportSequence = (reportSequences.get(metric) ?? 0) + 1;
+  reportSequences.set(metric, reportSequence);
+
+  const context = navigationContext(metric);
   const payload = {
     metric_id: metric.id,
     metric_name: metric.name,
+    report_sequence: reportSequence,
     value: metric.value,
-    route: normalizedRoute(),
-    form_factor: formFactor(),
-    release: APP_RELEASE,
-    observed_at: Date.now(),
+    route: normalizedRoute(metric.navigationURL ?? context.url),
+    form_factor: context.formFactor,
+    release: context.release,
+    environment: context.environment,
+    visibility_at_start: context.visibilityAtStart,
+    navigation_started_at: context.startedAt,
+    reported_at: Date.now(),
   };
 
-  // The ingestion service upserts by (metric_id, metric_name).
-  navigator.sendBeacon("/rum/vitals", JSON.stringify(payload));
+  const body = JSON.stringify(payload);
+
+  // Upsert only if report_sequence is greater for (metric_id, metric_name).
+  if (!navigator.sendBeacon?.("/rum/vitals", body)) {
+    void fetch("/rum/vitals", { body, method: "POST", keepalive: true });
+  }
 }
 
-onCLS(publish, { reportAllChanges: true });
-onINP(publish, { reportAllChanges: true });
-onLCP(publish, { reportAllChanges: true });
+onCLS(publish);
+onINP(publish);
+onLCP(publish);
 ```
 
-If your library version has different options, follow that version's API documentation. The important data-model rule is that metric updates are not additional page views.
+If your library version has different options, follow that version's API documentation. Reports with the same metric ID are not additional visits; a back/forward cache restoration creates new metric instances because it is treated as a separate visit. Soft-navigation reporting is opt-in in `web-vitals` v6, so enable and validate it separately if SPA route changes belong in your page-view population. Retain append-only reports or equivalent version history alongside the latest-value view if you need to replay what an alert would have seen in the past.
 
 ## Calculate the Percentile from the Intended Population
 
-For a lower-is-better metric, p75 is a value at or below which at least 75% of observations fall. Compute it from final per-view values over an explicit cohort and window. A database with ordered-set aggregates might use:
+A p75 estimate locates the 75% point of a distribution. For a finite sample, the exact result depends on the percentile method: `percentile_disc` returns the first observed value whose ordered position reaches 75%, while `percentile_cont` can interpolate between adjacent observations. Compute the percentile from one deduplicated, latest reported value per metric instance over an explicit cohort and window. The query below uses the immutable navigation start time and an illustrative five-minute reporting-lateness watermark to select a closed 30-minute window. Tune the watermark from observed reporting delays and track page-view-to-metric coverage separately because some visits report later or never report. Filtering on the mutable report time would select a different population.
 
 ```sql
 SELECT
@@ -66,9 +82,10 @@ SELECT
   route,
   form_factor,
   percentile_cont(0.75) WITHIN GROUP (ORDER BY value) AS p75,
-  count(*) AS samples
+  count(value) AS samples
 FROM rum_vital_latest
-WHERE observed_at >= now() - interval '30 minutes'
+WHERE navigation_started_at >= now() - interval '35 minutes'
+  AND navigation_started_at < now() - interval '5 minutes'
   AND environment = 'production'
   AND visibility_at_start = 'visible'
 GROUP BY metric_name, route, form_factor;
@@ -160,7 +177,7 @@ An alert without a plausible on-call action is a report wearing a pager costume.
 
 ## A Concrete Multi-Signal Rule
 
-For a critical route, an example policy is:
+For a critical route, an example policy in vendor-neutral pseudocode is:
 
 ```yaml
 name: checkout-mobile-lcp-regression
@@ -169,7 +186,7 @@ evaluate_every: 5m
 conditions:
   - samples >= 1000
   - telemetry_acceptance_ratio >= 0.95
-  - mobile_share within_expected_range_or_accounted_for
+  - subcohort_mix within_expected_range_or_accounted_for
   - lcp_p75_ms > 4000
   - lcp_p75_ms > baseline_same_cohort * 1.20
   - poor_page_views_per_minute > 100
