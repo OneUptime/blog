@@ -35,10 +35,10 @@ The Fetch Standard bounds in-flight request bodies whose keepalive flag is set. 
 | Custom headers | No direct header option | Yes |
 | Read response | No | Promise exposes response if execution continues |
 | Designed for small analytics | Yes | Can be used, still quota-bound with a body |
-| Queue result | Boolean | Promise; may reject |
+| Caller-visible result | Boolean queue result | Promise fulfilled with a `Response`, including for HTTP errors, or rejected on a fetch/network error |
 | Guaranteed delivery | No | No |
 
-Prefer Beacon for a simple, same-origin analytics POST. Prefer keepalive Fetch when you truly need a different method, headers, or response semantics. Do not use both for the same payload unless Beacon returned `false`, or you will create duplicates by design.
+Prefer Beacon for a simple, same-origin analytics POST. Prefer keepalive Fetch when you truly need a different method, headers, credentials mode, or response semantics. Choose one transport for each batch, and never send the same batch with Fetch after Beacon returns `true`, because the second request can duplicate delivery. A `false` return means Beacon did not queue the data, but an immediate keepalive Fetch of the same body cannot be relied on to escape the shared keepalive quota; requeue, split, or retry the batch while the page is still active.
 
 ## Flush on `visibilitychange`, Not `unload`
 
@@ -57,8 +57,6 @@ On mobile, a user may switch apps and the operating system may later kill the br
 `pagehide` can be a fallback for browsers or transitions where it fires, but it is not guaranteed either. Deduplicate flushes and recognize that a hidden page may become visible again, especially through bfcache or tab switching. A visibility flush should checkpoint the stream, not irrevocably declare the user session finished.
 
 ```js
-let lastFlushedSequence = 0;
-
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "hidden") flushTelemetry("hidden");
 });
@@ -68,7 +66,7 @@ window.addEventListener("pagehide", () => {
 });
 ```
 
-The sequence and server-side batch ID make repeated lifecycle signals harmless.
+The queue must remove selected events atomically, and the collector must use stable identities to deduplicate any retries so repeated lifecycle signals are harmless.
 
 ## Do Not Save Everything for Exit
 
@@ -103,15 +101,17 @@ Do not compress for the first time inside `visibilitychange`; asynchronous compr
 
 ## A Lifecycle-Aware Queue
 
-The following pattern uses Beacon first and falls back to keepalive Fetch only when Beacon refuses to queue the batch:
+The following pattern uses Beacon as its transport and returns refused events to the in-memory queue. If you need Fetch semantics, use keepalive Fetch as the primary transport rather than as a same-body quota fallback:
 
 ```js
 const pending = [];
+const pageViewId = crypto.randomUUID(); // Requires a secure context.
 let sequence = 0;
 
 function enqueueTelemetry(event) {
   pending.push({
     ...sanitize(event),
+    pageViewId,
     sequence: ++sequence,
     occurredAt: Date.now(),
   });
@@ -122,44 +122,43 @@ function enqueueTelemetry(event) {
 function flushTelemetry(reason) {
   if (pending.length === 0) return;
 
-  const events = takeBatchWithinBytes(pending, 48 * 1024);
-  const batch = {
+  const envelope = {
     batchId: crypto.randomUUID(),
     reason,
     release: APP_RELEASE,
-    events,
   };
-  const body = JSON.stringify(batch);
+  const { events, body } = takeBatchWithinBytes(
+    pending,
+    envelope,
+    MAX_BATCH_BYTES,
+  );
+  const beaconBody = new Blob([body], { type: "application/json" });
 
-  if (navigator.sendBeacon("/rum/intake", body)) {
+  if (navigator.sendBeacon("/rum/intake", beaconBody)) {
     return; // Queued, not confirmed delivered.
   }
 
-  fetch("/rum/intake", {
-    method: "POST",
-    body,
-    keepalive: true,
-    credentials: "same-origin",
-    headers: { "content-type": "application/json" },
-  }).catch(() => {
-    // Requeue only if this page is still executing and policy permits it.
-    pending.unshift(...events);
-  });
+  // Beacon did not queue this request. A later flush may form a new batch.
+  pending.unshift(...events);
 }
 ```
 
-`takeBatchWithinBytes` must measure the encoded final body, not just event payloads. A production queue also needs maximum memory, expiry, consent changes, retry limits, and protection against the telemetry client reporting its own exporter failure recursively.
+`takeBatchWithinBytes` must remove the selected events from `pending` and return the final serialized body. Its byte calculation must include the envelope, the events, and JSON syntax, not just the event payloads. It must select at least one event or remove and quarantine an event that cannot fit by itself; it must not return an empty batch while leaving the same oversized event at the head of the queue. A production queue also needs maximum memory, expiry, consent changes, retry limits, and protection against the telemetry client reporting its own exporter failure recursively.
 
-Be careful with the Beacon content type. A string uses a CORS-safelisted media type in typical implementations; a `Blob` with `application/json` sent cross-origin can invoke CORS requirements. Same-origin collection is simplest. If the collector is cross-origin, test the exact body type, credentials behavior, preflight, and response headers in every supported browser.
+Passing a string to Beacon makes Fetch encode it as UTF-8 and use `text/plain;charset=UTF-8`, a CORS-safelisted media type. The same-origin example uses an `application/json` `Blob` so the collector sees the intended media type. An `application/json` `Blob` sent cross-origin makes Beacon use CORS mode and requires a successful preflight. Same-origin collection is simplest. If the collector is cross-origin, test the exact body type, credentials behavior, preflight, and response headers in every supported browser.
+
+For a keepalive Fetch transport, inspect `response.ok`: HTTP error statuses such as 429 or 500 still fulfill the promise. A rejected promise does not prove that the collector failed to accept the batch because the response can fail after server acceptance. When retransmitting the same serialized batch after an ambiguous outcome, reuse its batch ID. If events are split or repackaged, assign new batch IDs and rely on their stable event identities for cross-batch deduplication.
 
 ## Make the Collector Idempotent
 
-Lifecycle events repeat and retries can race. Give every batch a random ID and every event a stable page-lifecycle ID plus sequence. The collector should accept a duplicate batch without storing duplicate metrics.
+Lifecycle events repeat and retries can race. Give every logical batch a random ID and preserve it when retransmitting that same batch after an ambiguous outcome. Give every event a stable page-lifecycle ID plus sequence so repackaged events also deduplicate. The collector should accept a duplicate batch without storing duplicate metrics.
 
 ```text
 deduplication key: tenant + batchId
-event identity: pageViewId + sequence
+event identity: tenant + pageViewId + sequence
 ```
+
+Enforce deduplication atomically with durable enqueueing so racing copies cannot both be stored.
 
 Keep identifiers scoped and short-lived; do not turn reliability IDs into cross-site tracking IDs. Apply authentication, origin validation, payload limits, schema validation, and rate limiting. Beacon endpoints are write-only from the page's perspective and should not perform expensive synchronous processing before acceptance.
 
@@ -187,9 +186,10 @@ If the endpoint is same-origin, `'self'` is usually sufficient for HTTPS Fetch a
 
 For a cross-origin collector:
 
-- configure CORS for keepalive Fetch requests that need readable responses;
-- test whether the chosen body/content type triggers preflight;
-- decide whether cookies are needed and understand `SameSite` behavior;
+- configure CORS for cross-origin keepalive Fetch requests that use the default `cors` mode;
+- recognize that `application/json` triggers a preflight, so the collector must authorize the origin, method, and `Content-Type` header before the POST is sent;
+- use `mode: "no-cors"` only with a safelisted method and headers when an opaque response is acceptable;
+- remember that Beacon fixes its credentials mode to `include`, while Fetch makes it configurable; cookie attachment remains subject to `SameSite` and browser policy, and credentialed CORS requires an explicit allowed origin plus `Access-Control-Allow-Credentials: true`;
 - never put secrets in the URL to avoid headers;
 - allow the destination in CSP;
 - handle blocker and enterprise-network filtering as expected delivery loss.
@@ -224,4 +224,4 @@ Emerging deferred-fetch APIs may improve some cases, but support, quotas, and AP
 
 ## Conclusion
 
-Navigation-time beacons are lost because the page and network are not durable infrastructure. Flush throughout the session and when visibility becomes hidden, keep encoded batches far below the shared keepalive limit, use Beacon's Boolean only as a queue result, and fall back to keepalive Fetch without double-sending. Idempotent ingestion, explicit CSP/CORS configuration, and end-to-end acceptance counters make the remaining loss measurable. The target is bounded, observable best-effort delivery—not a promise the browser APIs do not make.
+Navigation-time beacons are lost because the page and network are not durable infrastructure. Flush throughout the session and when visibility becomes hidden, keep encoded batches far below the shared keepalive limit, use Beacon's Boolean only as a queue result, and choose Beacon or keepalive Fetch according to the request requirements. Idempotent ingestion, explicit CSP/CORS configuration, and end-to-end acceptance counters make the remaining loss measurable. The target is bounded, observable best-effort delivery—not a promise the browser APIs do not make.
