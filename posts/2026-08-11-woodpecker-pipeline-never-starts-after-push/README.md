@@ -16,8 +16,8 @@ This guide targets Woodpecker 3.x. Older installations can have different hook p
 
 Open the repository's Pipelines page immediately after a test push.
 
-- If there is no new pipeline number, concentrate on repository activation, the webhook, event selection, commit skip markers, and configuration discovery.
-- If a pipeline exists but has no workflows, inspect global `when` filters and the configured pipeline path.
+- If there is no new pipeline number, concentrate on repository activation, the webhook, event selection, commit skip markers, workflow-level `when` filters, and configuration discovery.
+- If an error pipeline exists but has no workflows, inspect its configuration-fetch, YAML-parsing, and schema diagnostics.
 - If a workflow exists and is `pending`, the webhook already worked. Move to agent labels, platform, capacity, and backend health instead.
 - If the clone step fails, the event and scheduler worked; investigate clone credentials and network access.
 
@@ -25,16 +25,16 @@ That classification prevents four unrelated failure domains from being treated a
 
 ## 1. Confirm That the Repository Is Activated
 
-Woodpecker does not listen to every repository visible through OAuth automatically. A user with repository administrator rights activates it from **New repository**. Activation is important because Woodpecker needs permission to create the forge webhook.
+Woodpecker does not listen to every repository visible through OAuth automatically. A user with repository administrator rights activates it from **Add repository**. Activation is important because Woodpecker needs permission to create the forge webhook.
 
 If the repository is absent or looks stale:
 
 1. Sign in as a user who still has admin permission on the forge repository.
-2. Synchronize the repository list in Woodpecker.
+2. Refresh or reload the repository list in Woodpecker.
 3. Activate the correct repository, taking care with renamed organizations and repositories.
 4. Open Project settings and verify that the project is active and points to the expected forge identity.
 
-Repository synchronization and webhook repair solve different problems. Sync refreshes which repositories Woodpecker can see. Repair recreates or updates the hook for a repository that Woodpecker already knows. Do not assume a successful sync proves that hook delivery works.
+Refreshing the repository list and repairing a webhook solve different problems. A refresh updates repository visibility and permissions. Repair recreates or updates the hook for a repository that Woodpecker already knows. Do not assume a successful refresh proves that hook delivery works.
 
 ## 2. Inspect the Forge's Webhook Delivery
 
@@ -50,7 +50,7 @@ Check all of the following:
 - the response is a successful HTTP status rather than a timeout, redirect loop, `404`, or `502`;
 - the delivery timestamp corresponds to the new push.
 
-If there is no Woodpecker hook, use **Repair repository** in the repository settings, the administrator's repair-all action when appropriate, or the current CLI repository-repair command. Repair is particularly important after migrations that changed webhook paths or tokens.
+If there is no Woodpecker hook, use **Repair repository** in the repository settings, the administrator's repair-all action when appropriate, or run `woodpecker-cli repo repair <repo-id|repo-full-name>`. Repair is particularly important after migrations that changed webhook paths or tokens.
 
 A response from a login page is not success. Reverse proxies must send the hook request to the Woodpecker server, not an interactive authentication gateway. Likewise, a `301` from HTTP to HTTPS may work for a browser yet fail for a forge that does not follow the redirect as expected. Configure the hook with its final HTTPS URL.
 
@@ -71,7 +71,7 @@ For Gitea or Forgejo on a private address, also review the forge's outbound-webh
 
 ## 4. Check Repository Hook and Event Settings
 
-Project settings let owners limit which repository hooks Woodpecker handles. Confirm that `push` has not been deselected. Also check for a global workflow condition that excludes pushes.
+Confirm that the Woodpecker-owned webhook at the forge still subscribes to `push`. **Repair repository** recreates the hook with Woodpecker's standard event subscriptions. Also check for a global workflow condition that excludes pushes.
 
 A minimal push workflow for Woodpecker 3.x is:
 
@@ -95,13 +95,13 @@ Remember that Woodpecker honors `[SKIP CI]` and `[CI SKIP]` in commit messages, 
 
 ## 5. Validate the Pipeline Configuration Path
 
-When the Project settings pipeline path is empty, current Woodpecker resolves configuration in this order:
+When the Project settings pipeline path is empty and the server uses its stock pipeline-config defaults, Woodpecker resolves configuration in this order:
 
 1. workflow files matching `.woodpecker/*.{yaml,yml}`;
 2. `.woodpecker.yaml`;
 3. `.woodpecker.yml`.
 
-Only YAML files directly inside the workflow directory are loaded; nested subdirectories are ignored. If you configure a custom file or directory, Woodpecker stops using the default search. A custom directory path must end in `/` when it is intended to contain multiple workflows.
+Directory discovery reads matching YAML files only from that directory; it does not recurse into nested subdirectories. If you configure a custom file or directory, Woodpecker stops using the default search. A custom directory path must end in `/` when it is intended to contain multiple workflows.
 
 Common mistakes include:
 
@@ -123,7 +123,7 @@ The server fetches configuration for the event's commit. A correct file on your 
 
 ## 6. Separate “No Configuration” from “Filtered Configuration”
 
-A syntactically valid workflow may be omitted by a global `when` condition. For example, this workflow will not be part of a push pipeline:
+A syntactically valid workflow may be omitted by a global `when` condition. For example, this workflow is omitted for a push. If it is the only discovered workflow, no new pipeline remains visible:
 
 ~~~yaml
 when:
@@ -149,7 +149,7 @@ Use this order for each controlled test push:
 3. Confirm the delivery reached the final HTTPS hook URL successfully.
 4. Correlate forge, proxy, and Woodpecker server logs by timestamp.
 5. Repair the repository hook if it is absent or has an obsolete token.
-6. Confirm push is enabled in Project settings.
+6. Confirm `push` is selected on the forge webhook.
 7. Remove CI-skip markers from the test commit.
 8. Inspect the config path and exact pushed tree.
 9. Reduce global conditions to `event: push`.
