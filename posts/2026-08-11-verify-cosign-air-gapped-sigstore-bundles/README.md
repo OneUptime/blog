@@ -8,7 +8,7 @@ Description: Prepare signed images, complete transparency evidence, trusted root
 
 ---
 
-Air-gapped verification is possible only if everything the verifier needs crosses the boundary in advance. For a keyless signature, that includes the immutable artifact, signature and certificate, trusted-time and transparency material, a trusted Sigstore root, and the expected signer identity and issuer.
+Air-gapped verification is possible only if everything the verifier needs crosses the boundary in advance. For the keyless policy shown here, that includes the immutable artifact, bundle verification material (the signature, certificate, and required RFC 3161 timestamp and/or transparency entries), a trusted Sigstore root, and the expected signer identity and issuer.
 
 A Sigstore bundle packages verification material so a client can validate log evidence without a live Rekor query. For registry images, Cosign can also save the image and its associated signatures to a local directory and verify that saved representation with `--local-image`.
 
@@ -18,7 +18,7 @@ Use a controlled transfer station in the connected zone. It should:
 
 1. resolve an approved image by digest;
 2. verify it online against the production policy;
-3. export the signed image and associated registry artifacts;
+3. export the signed image and the signature and bundle artifacts supported by the pinned Cosign release;
 4. obtain current trusted-root material through Sigstore's TUF process;
 5. create a manifest with hashes of every transferred file;
 6. move the package through the organization's approved import channel.
@@ -27,7 +27,7 @@ The disconnected verifier should never infer trust from “the file came on appr
 
 ## Pin and verify online first
 
-In the connected zone:
+The commands in this guide were validated with Cosign v3.1.3. In the connected zone:
 
 ```bash
 IMAGE_REPO=registry.example.com/team/api
@@ -40,7 +40,9 @@ cosign verify \
   "$IMAGE"
 ```
 
-The digest should come from authenticated release metadata, ideally the build output. Online verification catches missing or malformed evidence before transfer and provides an audit event. Offline verification remains required after transfer.
+The digest should come from authenticated release metadata, ideally the build output. With Cosign v3.1.3, this local bundle workflow requires `$IMAGE_DIGEST` to identify a single image manifest, not a multi-platform OCI image index. Local verification of a saved image index is affected by [Cosign issue #4937](https://github.com/sigstore/cosign/issues/4937); for an index, sign and export each required platform manifest separately, or use a later release in which image-index support has been qualification-tested.
+
+Online verification catches missing or malformed evidence before transfer and can provide an audit record when its output and exit status are retained. Offline verification remains required after transfer.
 
 ## Export the signed container image
 
@@ -54,7 +56,7 @@ cosign save \
   "$IMAGE"
 ```
 
-If the source registry uses a private CA or credentials, give `cosign save` the documented registry options or authenticate first. If signatures live under `COSIGN_REPOSITORY`, use the same setting used for online verification.
+If the source registry uses a private CA or credentials, give `cosign save` the documented registry options or authenticate first. In Cosign v3.1.3, `cosign save` cannot correctly fetch v3 bundle referrers redirected to a separate `COSIGN_REPOSITORY`; co-locate those referrers with the image, or use a later release in which that storage path has been qualification-tested.
 
 Inspect the resulting directory and test local verification in a network-isolated container or host before approving export. Do not modify generated files; their digests and relationships matter.
 
@@ -72,26 +74,27 @@ The command uses an embedded initial root and retrieves current trusted certific
 cp "$TRUSTED_ROOT_PATH" export/trusted-root.json
 ```
 
-Resolve `$TRUSTED_ROOT_PATH` from the pinned Cosign release and its initialized trust directory; avoid a fragile hard-coded user path in automation. For a private Sigstore deployment, initialize from its authenticated out-of-band root and mirror, using `--root` and `--root-checksum` as documented.
+Resolve `$TRUSTED_ROOT_PATH` from the pinned Cosign release and its initialized trust directory; avoid a fragile hard-coded user path in automation. For a private Sigstore deployment, initialize with its authenticated out-of-band root and mirror by using `--root` and `--mirror`. When `--root` is an HTTP(S) URL, also provide its independently obtained checksum with `--root-checksum`. Ensure that the private TUF repository publishes a `trusted_root.json` target; otherwise assemble one from independently trusted service material with `cosign trusted-root create` instead of assuming the file was produced.
 
-The trusted root is a security-sensitive input. Record its source, TUF metadata version, acquisition time, and file hash. A bare download over HTTPS is not equivalent to TUF's update and rollback protections.
+The trusted root is a security-sensitive input. Record its source, the relevant TUF metadata versions, acquisition time, and file hash. A bare download over HTTPS is not equivalent to TUF's update and rollback protections.
 
 ## Transfer the policy, not only the evidence
 
 Include a reviewed policy file outside attacker-controlled artifact metadata:
 
 ```text
+imageRepository=registry.example.com/team/api
 certificateIdentity=https://github.com/acme/api/.github/workflows/release.yml@refs/heads/main
 certificateOidcIssuer=https://token.actions.githubusercontent.com
 subjectDigest=sha256:REPLACE_WITH_APPROVED_DIGEST
 ```
 
-Sign or otherwise authenticate the transfer manifest according to the organization's import procedure. Include hashes for:
+Sign or otherwise authenticate the transfer manifest according to the organization's import procedure. The authenticated manifest must bind `imageRepository` and `subjectDigest` to the saved-image directory's file hashes; the v3 bundle subject contains the digest, but the source repository name remains an external authorization input. Include hashes for:
 
 - every file in the saved image directory;
 - `trusted-root.json`;
-- expected-identity policy;
-- verifier binary and its version metadata, if transferred together;
+- identity and artifact policy;
+- verifier and `jq` binaries and their version metadata, if transferred together;
 - SBOMs and required attestations.
 
 Do not derive the expected identity from the bundle being verified. That would let the producer choose its own authorization rule.
@@ -101,6 +104,28 @@ Do not derive the expected identity from the bundle being verified. That would l
 Copy the export package into the disconnected environment, validate the transfer manifest, and run:
 
 ```bash
+set -euo pipefail
+
+# Load these values from the authenticated policy, not from the bundle.
+EXPECTED_DIGEST=sha256:REPLACE_WITH_APPROVED_DIGEST
+
+SAVED_DIGEST="$(
+  jq -er '
+    [.manifests[]
+      | select(.annotations.kind == "dev.cosignproject.cosign/image")
+      | .digest]
+    | if length == 1 then .[0]
+      else error("expected exactly one saved image manifest")
+      end
+  ' export/signed-image/index.json
+)"
+
+if [[ "$SAVED_DIGEST" != "$EXPECTED_DIGEST" ]]; then
+  printf 'saved digest %s does not match approved digest %s\n' \
+    "$SAVED_DIGEST" "$EXPECTED_DIGEST" >&2
+  exit 1
+fi
+
 cosign verify \
   --local-image \
   --trusted-root export/trusted-root.json \
@@ -109,9 +134,9 @@ cosign verify \
   export/signed-image
 ```
 
-`--local-image` tells Cosign to interpret the positional target as the directory produced by `cosign save`; the saved representation retains the image subject information needed for claims checking. Confirm the syntax with `cosign verify --help` for the pinned release and test it in the qualification environment; air-gap procedures should never float across untested major versions.
+Load `$EXPECTED_IDENTITY` and `$EXPECTED_ISSUER` from the same authenticated policy. The `jq` check binds the saved OCI layout to its independently approved digest; Cosign then checks that the verified bundle subject matches that saved image. `--local-image` tells Cosign to interpret the positional target as the directory produced by `cosign save`. Confirm the syntax with `cosign verify --help` for the pinned release and test it in the qualification environment; air-gap procedures should never float across untested releases.
 
-Current Cosign's generated verification reference does not require an `--offline` flag for this local-image form. Avoid copying commands from obsolete examples that combine removed or version-specific bundle switches.
+Cosign v3.1.3 does not require the deprecated `--offline` flag for this local-image form. Avoid copying commands from obsolete examples that combine deprecated or version-specific bundle switches.
 
 For a standalone blob rather than a registry image, the bundle workflow is more direct:
 
@@ -132,7 +157,7 @@ Do not present a blob signature over exported bytes as if it were the registry i
 
 ## Why expired Fulcio certificates can still verify
 
-Fulcio certificates are short-lived. The bundle's trusted signed-time and transparency evidence lets Cosign check that signing happened within the certificate's validity period. Offline verification should not compare only the certificate expiration date with the current clock.
+Fulcio certificates are short-lived. A verified RFC 3161 timestamp—or, for Rekor v1, a verified integrated time from the signed log entry—lets Cosign establish an observed time within the certificate chain's validity period. Rekor v2 entries do not provide an integrated time and therefore require signed timestamp material. Offline verification should not compare only the certificate expiration date with the current clock.
 
 Keep the complete bundle/referrer and trusted root. A detached certificate and signature without acceptable trusted-time evidence may be insufficient after certificate expiry.
 
@@ -151,26 +176,29 @@ The cadence should align with artifact imports and trust changes. Staleness may 
 
 ## Air-gap checklist
 
-- [ ] Use a pinned image digest and record its repository identity.
+- [ ] Use a pinned single-image-manifest digest, record its repository identity, and compare the imported layout with that approved digest.
 - [ ] Verify online before export and offline after import.
-- [ ] Export the image plus associated signatures with `cosign save`.
+- [ ] Export the image plus the supported signature and bundle artifacts with `cosign save`.
 - [ ] Preserve complete Sigstore bundle/transparency material.
 - [ ] Acquire trusted roots through TUF, not an unverified download.
-- [ ] Transfer exact identity and issuer policy through a protected channel.
+- [ ] Transfer exact identity, issuer, repository, and subject-digest policy through a protected channel.
 - [ ] Hash and authenticate every transferred file.
-- [ ] Test commands with the pinned Cosign major/minor version.
+- [ ] Test commands with the exact pinned Cosign release.
 - [ ] Never add transparency-ignore flags merely because the network is absent.
 - [ ] Refresh trusted roots and verifier binaries through an audited process.
 
 ## Official Documentation
 
-- [Cosign save command](https://github.com/sigstore/cosign/blob/main/doc/cosign_save.md)
-- [Cosign verify command and local-image/trusted-root options](https://github.com/sigstore/cosign/blob/main/doc/cosign_verify.md)
-- [Cosign initialize and TUF trust bootstrap](https://github.com/sigstore/cosign/blob/main/doc/cosign_initialize.md)
-- [Cosign verify-blob bundle reference](https://github.com/sigstore/cosign/blob/main/doc/cosign_verify-blob.md)
+- [Cosign v3.1.3 release](https://github.com/sigstore/cosign/releases/tag/v3.1.3)
+- [Cosign save command](https://github.com/sigstore/cosign/blob/v3.1.3/doc/cosign_save.md)
+- [Cosign verify command and local-image/trusted-root options](https://github.com/sigstore/cosign/blob/v3.1.3/doc/cosign_verify.md)
+- [Cosign initialize and TUF trust bootstrap](https://github.com/sigstore/cosign/blob/v3.1.3/doc/cosign_initialize.md)
+- [Cosign trusted-root creation](https://github.com/sigstore/cosign/blob/v3.1.3/doc/cosign_trusted-root_create.md)
+- [Cosign sign-blob bundle reference](https://github.com/sigstore/cosign/blob/v3.1.3/doc/cosign_sign-blob.md)
+- [Cosign verify-blob bundle reference](https://github.com/sigstore/cosign/blob/v3.1.3/doc/cosign_verify-blob.md)
 - [Sigstore bundle protobuf specification](https://github.com/sigstore/protobuf-specs)
 - [Sigstore client specification](https://github.com/sigstore/architecture-docs/blob/main/client-spec.md)
 
 ## Conclusion
 
-Air-gapped Cosign verification is a packaging and trust-distribution problem. Export the immutable signed image, complete log evidence, current TUF-derived trusted root, and an independently protected identity policy; then verify the saved image locally. When every dependency is deliberate and version-tested, no live Rekor or registry connection is required for the decision.
+Air-gapped Cosign verification is a packaging and trust-distribution problem. Export the immutable signed single-image manifest, its complete bundle evidence, a current TUF-derived trusted root, and an independently protected identity and artifact policy; then verify the saved image locally. When every dependency and storage path is deliberate and release-tested, no live Rekor or registry connection is required for the decision.
