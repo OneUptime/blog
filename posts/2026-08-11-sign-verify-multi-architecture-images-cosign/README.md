@@ -25,7 +25,7 @@ INDEX="$IMAGE@$INDEX_DIGEST"
 crane manifest "$INDEX" | jq '{mediaType, manifests}'
 ```
 
-An OCI index uses media type `application/vnd.oci.image.index.v1+json`. Docker's compatible manifest-list media type may also appear. The `manifests` array contains descriptors with a digest and platform fields.
+An OCI index uses media type `application/vnd.oci.image.index.v1+json`. Docker's compatible manifest-list media type may also appear. The `manifests` array contains descriptors with a required digest and, for platform-specific targets, usually a `platform` field.
 
 Record the full index reference. Do not sign `:1.8.0` after another job can move that tag.
 
@@ -46,7 +46,7 @@ cosign verify \
   "$INDEX"
 ```
 
-This establishes that the trusted signer authorized the exact index. Because every child descriptor, including its digest and platform metadata, is part of the index bytes, changing the child list changes the index digest and invalidates that binding.
+This establishes that the trusted signer authorized the exact index. Because every child descriptor, including its digest and any platform metadata, is part of the index bytes, changing the child list changes the index digest and invalidates that binding.
 
 Index-only signing is often sufficient when admission policy verifies the exact index digest used in deployment. It is insufficient when a downstream system pulls, mirrors, or distributes a child manifest independently and expects a signature directly attached to that child.
 
@@ -62,10 +62,13 @@ For key-based signing, provide the approved key URI or file:
 
 ```bash
 cosign sign \
+  --yes \
   --key awskms:///alias/container-release \
   --recursive \
   "$INDEX"
 ```
+
+For KMS signatures, use the same trusted public-key source during verification—for example, `cosign verify --key awskms:///alias/container-release "$INDEX"`—instead of the keyless certificate flags below.
 
 The recursive operation signs the index and additionally signs the discrete images it references. Confirm the exact behavior with the pinned Cosign version used by CI; command behavior and registry representation are versioned dependencies.
 
@@ -73,7 +76,7 @@ Concurrent signing processes can create operational races in legacy storage form
 
 ## Verify every required subject
 
-The current `cosign verify` command does not advertise a recursive verification flag. Verify the index, enumerate child digests from the immutable index, and verify each child explicitly:
+The current `cosign verify` command does not advertise a recursive verification flag. Verify the index, enumerate child digests from the immutable index, and verify each child explicitly. The following example assumes a flat index whose immediate descriptors are the subjects the policy requires; OCI permits nested indexes, which must be walked recursively if they are in scope.
 
 ```bash
 set -euo pipefail
@@ -88,22 +91,25 @@ verify_subject() {
 verify_subject "$INDEX"
 
 crane manifest "$INDEX" \
-  | jq -r '.manifests[].digest' \
+  | jq -er '.manifests[].digest' \
   | while read -r digest; do
       verify_subject "$IMAGE@$digest"
     done
 ```
 
-`set -o pipefail` prevents a later pipeline command from hiding a failed verifier. Do not verify a child list obtained from a mutable tag after verifying the index; read it from the verified index digest.
+`set -e` stops the loop on a failed verifier, while `set -o pipefail` prevents a failure in `crane` or `jq` from being hidden by the downstream loop. Do not verify a child list obtained from a mutable tag after verifying the index; read it from the verified index digest.
 
 If policy requires only selected platforms, filter descriptors explicitly and fail on unexpected duplicates or missing platforms:
 
 ```bash
 AMD64_DIGEST=$(
   crane manifest "$INDEX" \
-    | jq -er '.manifests[]
-      | select(.platform.os == "linux" and .platform.architecture == "amd64")
-      | .digest'
+    | jq -er '
+      [.manifests[]
+        | select(.platform.os == "linux" and .platform.architecture == "amd64")]
+      | if length == 1 then .[0].digest
+        else error("expected exactly one linux/amd64 descriptor")
+        end'
 )
 
 verify_subject "$IMAGE@$AMD64_DIGEST"
@@ -117,7 +123,7 @@ A multi-platform tag can be reduced to one architecture when it passes through a
 
 Before signing, assert the media type and expected platform set from the remote manifest. After mirroring, compare the source and destination index digests. A different digest means the existing index signature should not verify.
 
-Use registry-to-registry tools that copy the complete index. ORAS documents that copying an image index copies all of its manifests. If signatures and attestations also need promotion, use its recursive referrer-copy option and validate the destination graph.
+Use registry-to-registry tools that copy the complete index. ORAS documents that copying an image index copies all of its manifests. If signatures and attestations stored as OCI referrers also need promotion, use its preview recursive referrer-copy option and validate the destination graph. Legacy tag-based Cosign storage requires a copy workflow that includes those signature and attestation tags.
 
 ## Decide where attestations and SBOMs attach
 
@@ -125,7 +131,7 @@ Build provenance may describe the build that produced the whole index, while an 
 
 - index signature: authorizes the multi-platform release set;
 - child signature: authorizes one runnable platform manifest independently;
-- index provenance: describes a build/publish operation covering the index, if the predicate subjects say so;
+- index provenance: describes a build/publish operation covering the index, if the statement identifies the index as a subject and the predicate semantics support that claim;
 - child SBOM: inventories packages for one platform manifest;
 - index-level SBOM: valid only if it genuinely represents the complete index and its platform-specific contents.
 
@@ -138,7 +144,7 @@ Kubernetes accepts an image reference by tag or digest. The container runtime re
 Choose and document one model:
 
 1. **Index trust:** manifests pin the index digest; admission verifies it; runtimes select children from that exact index.
-2. **Child trust:** manifests are rendered with architecture-specific child digests; admission verifies each child.
+2. **Child trust:** manifests are rendered with architecture-specific child digests and scheduled onto matching nodes; admission verifies each child.
 3. **Both:** release signs index and children, and separate gates validate each level where it is consumed.
 
 The third model provides flexibility but creates more signatures and policy work. Do not require it without a concrete distribution need.
