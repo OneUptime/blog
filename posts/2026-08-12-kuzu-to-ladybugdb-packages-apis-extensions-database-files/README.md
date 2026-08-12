@@ -26,7 +26,7 @@ The official installation pages establish these primary package changes:
 | Go | `github.com/kuzudb/go-kuzu` | `github.com/LadybugDB/go-ladybug` |
 | CLI | `kuzu` | `lbug` |
 | Typical file name | `example.kuzu` | `example.lbdb` |
-| Per-user state | `~/.kuzu` | `~/.lbug` |
+| Per-user state | `~/.kuzu` | `~/.lbdb` |
 
 Update lockfiles and container build stages along with application source. Check transitive code generators, migration scripts, health checks, PATH lookups, native-library names, and deployment allowlists. A service may compile successfully while an operations script still calls `kuzu` or backs up only `*.kuzu`.
 
@@ -59,12 +59,14 @@ Node.js has a similar conceptual API but a new module name:
 ~~~javascript
 const lbug = require("@ladybugdb/core");
 
-const db = new lbug.Database("app.lbdb");
-const conn = new lbug.Connection(db);
-const result = await conn.query(
-  "MATCH (u:User) RETURN u.id ORDER BY u.id"
-);
-const rows = await result.getAll();
+(async () => {
+  const db = new lbug.Database("app.lbdb");
+  const conn = new lbug.Connection(db);
+  const result = await conn.query(
+    "MATCH (u:User) RETURN u.id ORDER BY u.id"
+  );
+  const rows = await result.getAll();
+})();
 ~~~
 
 Ladybug documents both async `query()`/`getAll()` and synchronous `querySync()`/`getAllSync()` paths. Preserve the application's intended async behavior; replacing an awaited call with a synchronous one can block an event loop even if its results are correct.
@@ -87,10 +89,10 @@ CREATE REL TABLE Follows(
 
 MATCH (a:User)-[f:Follows]->(b:User)
 RETURN a.id, b.id, f.since
-ORDER BY a.id, b.id;
+ORDER BY a.id, b.id, f.since;
 ~~~
 
-Run the real application's query corpus, not only this happy path. Later Ladybug releases can add functions, types, extensions, optimizer behavior, and validation that did not exist in Kuzu `0.11.3`. Check parameter binding, returned type representations, nulls, unordered results, transaction boundaries, and error handling. When comparing result sets, add `ORDER BY`; neither engine should be expected to provide a stable implicit row order.
+Run the real application's query corpus, not only this happy path. Later Ladybug releases can add functions, types, extensions, optimizer behavior, and validation that did not exist in Kuzu `0.11.3`. Check parameter binding, returned type representations, nulls, unordered results, transaction boundaries, and error handling. When comparing ordered result sequences, use an `ORDER BY` that fully orders the returned values; neither engine should be expected to provide a stable implicit row order.
 
 A useful adapter keeps engine-specific setup in one module:
 
@@ -117,7 +119,7 @@ LOAD json;
 CALL SHOW_LOADED_EXTENSIONS() RETURN *;
 ~~~
 
-Ladybug stores installed extension libraries under `~/.lbug/extensions`, not `~/.kuzu/extensions`. Extensions are compiled native code coupled to an engine, release, OS, and CPU architecture. Never copy a `.kuzu_extension` artifact into Ladybug's directory or rename its suffix. Install the Ladybug build that matches the deployed engine.
+Released Ladybug `0.19.1` stores installed extension libraries under `~/.lbdb/extension/<extension-version>/<platform>/`; Kuzu `0.11.3` uses `~/.kuzu/extension/<extension-version>/<platform>/`. Extensions are compiled native code coupled to an engine's extension ABI/version and OS/CPU platform. Never copy a `.kuzu_extension` artifact into Ladybug's directory or rename its suffix. Use `INSTALL` to fetch the Ladybug build selected for the deployed engine.
 
 Also remember that loading is session-scoped. A successful migration shell does not ensure the application process has loaded `fts`, `vector`, or another required extension. Add explicit startup loading and a capability check. Recreate and query extension-backed indexes in acceptance tests rather than checking only that `LOAD` succeeds.
 
@@ -141,16 +143,16 @@ That architectural similarity is not a documented guarantee that any Kuzu file c
 mv production.kuzu production.lbdb
 ~~~
 
-Treat the raw Kuzu file as the rollback artifact and the logical export as the migration artifact. From the pinned Kuzu engine, quiesce writes, finish or roll back open transactions, checkpoint, and export:
+Treat the raw Kuzu file as the rollback artifact and the logical export as the migration artifact. From the pinned Kuzu engine, load every extension that owns an index because `EXPORT DATABASE` omits an extension-backed index when its dependent extension is not loaded. Then quiesce writes, finish or roll back open transactions, checkpoint, and export:
 
 ~~~cypher
 CHECKPOINT;
 EXPORT DATABASE '/var/lib/graph-export';
 ~~~
 
-The export directory contains schema, macros, generated `COPY FROM` statements, and data files. Parquet is the documented default. Check the generated Cypher into a controlled migration bundle or at least retain its checksum so schema changes are reviewable.
+The export directory contains schema and macro definitions, generated `COPY FROM` and index statements, and data files. Parquet is the documented default. Confirm that the generated index definitions contain every expected index. Check the generated Cypher into a controlled migration bundle or at least retain its checksum so schema changes are reviewable.
 
-Create a new, empty Ladybug database and import a copy of the bundle:
+If the Kuzu bundle contains extension-backed index definitions, `INSTALL` and `LOAD` the corresponding Ladybug extensions in the Ladybug import session first. Kuzu `0.11.3` can export bare index-creation calls without Ladybug installation or loading statements. Then create a new, empty Ladybug database and import a copy of the bundle:
 
 ~~~bash
 lbug /var/lib/ladybug/candidate.lbdb
