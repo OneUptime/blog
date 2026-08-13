@@ -26,9 +26,11 @@ PARTITIONED BY (event_date date)
 STORED AS PARQUET;
 ~~~
 
-The partition column is not stored with ordinary row columns in the same way; each distinct partition value corresponds to a separate data directory and metastore partition. A dynamic insert supplies or derives it:
+The partition column is not stored with ordinary row columns in the same way; each distinct partition value corresponds to a separate data directory and metastore partition. When fully dynamic partition inserts are enabled, an insert can derive it:
 
 ~~~sql
+SET hive.exec.dynamic.partition.mode=nonstrict;
+
 INSERT INTO logs PARTITION (event_date)
 SELECT level,
        message,
@@ -165,7 +167,7 @@ Verify the exact compatibility matrix for Spark, Flink, Hive, Trino, or other en
 
 Apache Iceberg's Spark procedures provide distinct migration tools:
 
-- <code>snapshot</code> creates a lightweight Iceberg view for testing while the source still owns data files;
+- <code>snapshot</code> creates a lightweight temporary Iceberg table for testing while sharing the source table's data files;
 - <code>migrate</code> replaces a supported source table with Iceberg metadata;
 - <code>add_files</code> imports files into an existing Iceberg table.
 
@@ -185,6 +187,7 @@ These are not interchangeable. A snapshot table is prohibited from maintenance t
 - [Apache Hive: Language Manual DML—Dynamic Partitions](https://hive.apache.org/docs/latest/language/languagemanual-dml/)
 - [Apache Hive: Partition-Based Queries](https://hive.apache.org/docs/latest/language/languagemanual-select/#partition-based-queries)
 - [Apache Hive: Tutorial—Partitions](https://hive.apache.org/docs/latest/user/tutorial/)
+- [Apache Hive: Configuration Properties](https://hive.apache.org/docs/latest/user/configuration-properties/#hivemetastorelimitpartitionrequest)
 - [Apache Iceberg: Partitioning and Hidden Partitioning](https://iceberg.apache.org/docs/latest/partitioning/)
 - [Apache Iceberg: Spark DDL and Partition Evolution](https://iceberg.apache.org/docs/latest/spark-ddl/)
 - [Apache Iceberg: Table Format Specification—Partition Evolution](https://iceberg.apache.org/spec/#partition-evolution)

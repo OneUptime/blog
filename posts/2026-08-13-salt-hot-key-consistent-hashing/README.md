@@ -141,7 +141,7 @@ The client then performs a k-way merge by <code>(event_time, event_id)</code>. D
 - page-token contents;
 - per-shard fetch size and global limit.
 
-A global <code>LIMIT 100</code> cannot be applied independently as “return the first 100 from each shard and concatenate.” That returns up to 1,600 rows and incorrect global order. Fetch candidates, merge, and encode each shard's paging state plus the last emitted sort key. Page tokens may be large and version-specific; treat them as opaque, authenticated application state.
+A global <code>LIMIT 100</code> cannot be applied independently as “return the first 100 from each shard and concatenate.” That returns up to 1,600 rows and incorrect global order. Fetch candidates and merge them. For correct next-page state, either retain each shard's unconsumed buffered rows together with its paging state, or use keyset pagination from the last emitted <code>(event_time, event_id)</code>. A Cassandra paging state continues after the returned CQL page; saving it after emitting only part of that page can skip buffered rows. Paging states are protocol-version-specific and must be reused with the same query.
 
 Fan-out is a trade: salting lowers per-partition load while raising coordinator/client work. Increase buckets only until the hottest physical partition meets its objective.
 
@@ -218,6 +218,7 @@ Use <code>nodetool tablehistograms</code> and table metrics on every node. Hash 
 - [Apache Cassandra: Denylisting Partitions](https://cassandra.apache.org/doc/latest/cassandra/managing/operating/denylisting_partitions.html)
 - [Apache Cassandra: CQL BATCH Semantics](https://cassandra.apache.org/doc/latest/cassandra/developing/cql/cql_singlefile.html#batch)
 - [Apache Cassandra: Data Modeling Overview](https://cassandra.apache.org/doc/latest/cassandra/developing/data-modeling/intro.html)
+- [Apache Cassandra: Native Protocol Result Paging](https://cassandra.apache.org/doc/latest/cassandra/_attachments/native_protocol_v5.html#result-paging)
 
 ## Conclusion
 
