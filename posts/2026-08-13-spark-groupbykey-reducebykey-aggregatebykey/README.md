@@ -8,13 +8,13 @@ Description: Select Spark RDD key operations by required result shape and use ma
 
 ---
 
-The difference among `groupByKey()`, `reduceByKey()`, and `aggregateByKey()` is not merely syntax. It determines whether values can be combined on each mapper before crossing the shuffle and what intermediate state a reducer must hold.
+The difference among `groupByKey()`, `reduceByKey()`, and `aggregateByKey()` is not merely syntax. It determines whether values can be reduced to smaller partial aggregates on each mapper before crossing the shuffle and what intermediate state a reducer must hold.
 
 If the goal is an aggregation such as sum, count, min, or a custom bounded summary, Spark's RDD programming guide explicitly recommends `reduceByKey()` or `aggregateByKey()` over `groupByKey()`. Use `groupByKey()` only when the algorithm genuinely needs the complete iterable of original values for each key and that iterable is bounded.
 
 ## Understand the Shuffle Shape
 
-For a pair RDD containing `(K, V)`, values for each key may begin in many partitions. A key operation must bring related data together. With `groupByKey()`, mapper output retains individual values for transfer; reducers receive `(K, Iterable[V])`.
+For a pair RDD containing `(K, V)`, values for each key may begin in many partitions. A key operation needs related data co-located; unless compatible partitioning already provides that, it must bring them together. `groupByKey()` retains every original value rather than reducing values to a smaller partial aggregate. When a shuffle is required, PySpark may package same-key values into lists locally, but all values remain in the payload; the output RDD contains `(K, Iterable[V])`.
 
 With `reduceByKey(func)`, Spark merges values locally on each mapper before sending results to reducers, similarly to a MapReduce combiner. If a mapper contains one million `(customer_id, 1)` records for only one thousand customer IDs, local combining can reduce its transmitted values toward one thousand partial counts.
 
@@ -24,7 +24,7 @@ counts = pairs.reduceByKey(lambda left, right: left + right)
 
 The reduction function must be associative and commutative because Spark may combine values in different groupings and orders. Floating-point addition is not mathematically associative in finite precision, so exact reproducibility may require a more deliberate numeric approach.
 
-Map-side combining reduces shuffle records when keys repeat within input partitions. It does not guarantee a small final reducer: one hot key still converges on one output partition, and its accumulator may itself be large.
+Map-side combining can reduce the shuffle payload when repeated values collapse into smaller partial aggregates within input partitions. It does not guarantee a small final reducer: one hot key still converges on one output partition, and its accumulator may itself be large.
 
 ## Use `reduceByKey()` When Input and Aggregate Types Match
 
@@ -40,9 +40,9 @@ revenue_by_product = sales.map(
 )
 ```
 
-Good reducers include sum, min, max, set union with carefully bounded sets, and merging bounded custom summaries. Avoid returning an ever-growing list from `reduceByKey()`; it technically changes individual records into collections but recreates the unbounded per-key memory problem.
+Good reducers include sum, min, max, set union with carefully bounded sets, and merging bounded custom summaries. Avoid using `reduceByKey()` to merge ever-growing collection-valued inputs; although this can satisfy its same-type contract, it recreates the unbounded per-key memory problem.
 
-Choose the output partition count from shuffle bytes, available cores, and reducer working-set measurements. Increasing partitions reduces different keys per reducer but cannot split one key.
+Choose the output partition count from shuffle bytes, available cores, and reducer working-set measurements. Increasing partitions can reduce the number of different keys per reducer but cannot split one key.
 
 ## Use `aggregateByKey()` When the State Type Differs
 
@@ -87,7 +87,7 @@ This may be necessary for a bounded operation that must inspect complete raw gro
 - Does the algorithm really need raw values, or only top N, count, sum, or a sketch?
 - Is ordering required? A shuffled iterable does not provide a useful deterministic order.
 
-Spark's tuning guide warns that reduce-side shuffle operations build in-memory structures and can run out of memory when a reduce task's working set is too large. The RDD guide explains that shuffle data spills when in-memory tables do not fit, adding disk I/O and GC. Spill provides execution resilience, not proof that an unbounded group is safe.
+Spark's tuning guide warns that reduce-side shuffle operations build in-memory structures and can run out of memory when a reduce task's working set is too large. The RDD guide explains that shuffle data spills when in-memory tables do not fit, adding disk I/O and GC. Spill reduces memory pressure at that cost; it is not proof that an unbounded group is safe.
 
 For top N per key, maintain a bounded heap in `aggregateByKey()` rather than grouping every value. For distinct values, decide whether an exact unbounded set is required or an approximate built-in at the DataFrame/SQL layer meets the requirement.
 
@@ -102,7 +102,7 @@ Compare candidates with the same input partitioning and output. In the Spark UI 
 - task duration and GC time;
 - maximum versus median task metrics.
 
-If keys are nearly unique within every mapper, map-side combine may reduce little. `reduceByKey()` still states the correct aggregate contract, but its shuffle advantage will be smaller. If one key dominates globally, neither local combining nor more reduce partitions resolves the final hot-key bottleneck; redesign or split a decomposable key deliberately.
+If keys are nearly unique within every mapper, map-side combine may reduce little. `reduceByKey()` still states the correct aggregate contract, but its shuffle advantage will be smaller. If one key dominates globally, more reduce partitions cannot split it. Map-side combining may still make a bounded, decomposable aggregation much cheaper; if the remaining partial merge or accumulator is too large, redesign or deliberately split the key and merge its partials.
 
 Partitioning upstream can also change local repetition. Do not repartition solely to improve combining without including that extra shuffle in the comparison.
 
@@ -114,11 +114,11 @@ Whichever API you choose, the algebra is the same: bounded partial aggregation i
 
 ## Preserve or Replace Partitioners Deliberately
 
-Pair RDD operations can accept an explicit partition count or `Partitioner`, and some downstream key operations can reuse compatible partitioning. Inspect the RDD lineage and partitioner when a pipeline performs several joins or aggregations by the same key. An unnecessary repartition between them can discard reuse and add another all-to-all exchange.
+In PySpark, the by-key methods shown here accept an explicit partition count and a `partitionFunc`; Scala and Java overloads can accept a `Partitioner`. Some downstream key operations can reuse compatible partitioning. Inspect the RDD lineage and partitioner when a pipeline performs several joins or aggregations by the same key. An unnecessary repartition between them can discard reuse and add another all-to-all exchange.
 
-Do not preserve a poor partitioner merely to avoid one shuffle. If its partition count is too small for the current cluster or hot keys dominate it, the reused layout may carry the bottleneck forward. Compare the cost of one deliberate repartition with repeated skewed stages.
+Do not preserve a poor partitioner merely to avoid one shuffle. If its partition count is too small for the current cluster or its function places several heavy keys together, the reused layout may carry the bottleneck forward. If a single hot key remains a bottleneck, it requires decomposition; an ordinary repartition cannot split it. Compare the cost of one deliberate repartition with repeated skewed stages.
 
-Partitioner equality is a technical property, while data balance is empirical. Profile rows/bytes per partition after aggregation and confirm that custom key hash/equals implementations are correct. A broken hash contract can produce incorrect grouping behavior; a technically correct but low-entropy key can produce extreme skew.
+Partitioner equality is a technical property, while data balance is empirical. Profile rows/bytes per partition after aggregation and confirm that custom key hash/equality implementations are correct. A broken hash contract can produce incorrect grouping behavior; a technically correct but low-entropy key can produce extreme skew.
 
 ## Official Documentation
 
@@ -133,4 +133,4 @@ Partitioner equality is a technical property, while data balance is empirical. P
 
 ## Conclusion
 
-Choose from the result contract. `reduceByKey()` combines same-type values with an associative, commutative reducer. `aggregateByKey()` builds a different bounded state with explicit local and cross-partition merge functions. `groupByKey()` retains every value and is appropriate only for genuinely bounded whole-group algorithms. Measure shuffle reduction and hot-key memory; map-side combining lowers movement, but it cannot make an unbounded final key safe.
+Choose from the result contract. `reduceByKey()` combines same-type values with an associative, commutative reducer. `aggregateByKey()` can build a different bounded state with explicit local and cross-partition merge functions. `groupByKey()` retains every value and is appropriate only for genuinely bounded whole-group algorithms. Measure shuffle reduction and hot-key memory; map-side combining lowers movement, but it cannot make an unbounded final key safe.
