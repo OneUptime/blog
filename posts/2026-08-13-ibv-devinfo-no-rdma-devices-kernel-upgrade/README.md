@@ -22,13 +22,13 @@ $ cat /proc/cmdline
 $ lspci -nnk | grep -A3 -iE 'infiniband|network controller|mellanox|nvidia'
 ~~~
 
-If the HCA is absent from `lspci`, libibverbs is not the problem. Check firmware/BIOS PCIe settings, physical presence, power, PCIe errors, and whether the function was assigned to a VM or another host. If PCI sees it, note `Kernel driver in use` and the BDF such as `0000:5e:00.0`.
+If the HCA is absent from `lspci`, libibverbs is not the problem. Check firmware/BIOS PCIe settings, physical presence, power, PCIe errors, and, on composable systems, whether the function was assigned to another host. If PCI sees it, note `Kernel driver in use` and the BDF such as `0000:5e:00.0`. On a typical KVM/QEMU VFIO host, a passed-through function remains visible to `lspci` but is bound to a VFIO driver such as `vfio-pci` or a device-specific VFIO driver.
 
-For current NVIDIA ConnectX devices, the normal low-level driver is `mlx5_core`; `mlx5_ib` provides InfiniBand/RDMA-specific integration. Seeing `mlx5_core` bound does not prove that `mlx5_ib` successfully attached.
+For NVIDIA ConnectX-4 and newer devices, the normal low-level driver is `mlx5_core`; `mlx5_ib` provides InfiniBand/RDMA-specific integration. Seeing `mlx5_core` bound does not prove that `mlx5_ib` successfully attached.
 
 ## Verify Modules for This Exact Kernel
 
-Query the installed module files, their build identity, and their load state:
+Query the module metadata, build identity, and load state:
 
 ~~~console
 $ modinfo -F filename mlx5_core
@@ -36,30 +36,30 @@ $ modinfo -F vermagic mlx5_core
 $ modinfo -F filename mlx5_ib
 $ modinfo -F vermagic mlx5_ib
 $ lsmod | grep -E 'mlx5_core|mlx5_ib|ib_core|ib_uverbs'
-$ find /lib/modules/"$(uname -r)" -type f -name 'mlx5*.ko*'
+$ find /lib/modules/"$(uname -r)" -name 'mlx5*.ko*'
 ~~~
 
-`modinfo` failing or pointing only into another kernel's module tree means the running kernel has no usable copy. A `vermagic` or symbol error in the kernel log means the file is not compatible with this build. Load one module at a time so the error is attributable:
+`modinfo` failing means kmod did not find indexed module metadata for the running kernel, but the driver may instead be built into the kernel. A valid `weak-updates` link can also resolve to a module built for another vendor-kernel release when its kABI is compatible. A kernel-reported version-magic mismatch or symbol-version disagreement indicates incompatibility; an `Unknown symbol` error can also indicate a missing dependency or mixed module set, so read the surrounding kernel log. `lsmod` lists only dynamically loaded modules; built-in support will not appear there. Probe one component at a time so any error is attributable:
 
 ~~~console
 $ sudo modprobe mlx5_core
 $ sudo modprobe mlx5_ib
 $ sudo modprobe ib_uverbs
-$ journalctl -k -b --no-pager | grep -iE 'mlx5|infiniband|rdma|uverbs|module|firmware'
+$ sudo journalctl -k -b --no-pager | grep -iE 'mlx5|infiniband|rdma|uverbs|module|firmware'
 ~~~
 
 `ib_uverbs` can be built or packaged differently by distribution, so interpret a missing standalone module in the context of the kernel configuration and existing device nodes. The decisive evidence is the kernel log plus whether an RDMA class device and uverbs device appear.
 
 ## Look for the Classic Out-of-Tree Upgrade Failure
 
-NVIDIA documents a specific MLNX_OFED failure mode: when its modules are incompatible with a new errata or OS kernel, the expected `weak-updates` links are not created and driver loading fails. On Debian-family MLNX_OFED installations, DKMS normally builds modules for installed kernels, but that build can fail or remain unsigned.
+On Red Hat and SLES KMP installations, NVIDIA documents a specific MLNX_OFED failure mode: when its modules are incompatible with a new errata or OS kernel, the expected `weak-updates` links are not created and driver loading fails. On Debian/Ubuntu MLNX_OFED installations that use `mlnx-ofed-kernel-dkms`, DKMS normally builds modules for installed kernels, but that build can fail or the resulting module can remain unsigned.
 
 Inspect package and build logs instead of repeatedly running `modprobe`:
 
 ~~~console
 $ command -v ofed_info >/dev/null && ofed_info -s
 $ dkms status
-$ journalctl -k -b --no-pager | grep -iE 'unknown symbol|invalid module|version magic|key was rejected'
+$ sudo journalctl -k -b --no-pager | grep -iE 'unknown symbol|invalid module|version magic|key was rejected'
 ~~~
 
 Not every system has `ofed_info` or DKMS; their absence is itself useful when identifying whether the system uses distribution inbox RDMA or a vendor stack. Do not run an old `mlnx_add_kernel_support.sh` copied from another release. Build or install only through the documentation for the installed MLNX_OFED/DOCA-OFED release and a kernel/OS combination in its support matrix.
@@ -71,7 +71,7 @@ A correctly compiled module can still be rejected. The Linux kernel can enforce 
 ~~~console
 $ mokutil --sb-state
 $ modinfo -F signer mlx5_ib
-$ journalctl -k -b --no-pager | grep -iE 'secure boot|signature|verification|key.*rejected'
+$ sudo journalctl -k -b --no-pager | grep -iE 'secure boot|lockdown|unsigned|signature|verification|key.*rejected'
 ~~~
 
 `mokutil` may not be installed, but the kernel log remains authoritative. Do not disable Secure Boot as the routine fix. Enroll the documented key or have the rebuilt module signed through the organization's approved process. A module with an unknown or invalid signature may be rejected when enforcement is enabled.
@@ -112,7 +112,7 @@ $ ls -l /dev/infiniband/uverbs*
 
 Distribution package names differ, so use the native package manager to find the owner of `ibv_devinfo`, `libibverbs.so`, and the mlx5 provider library. Look for a mixture of `/usr`, `/usr/local`, vendor repository, and distribution files. `LD_LIBRARY_PATH`, containers, and chroots can make the command load a different libibverbs than the host package manager reports.
 
-The rdma-core debugging documentation supports `VERBS_LOG_LEVEL` and `VERBS_LOG_FILE`; use those when a provider-loading failure remains unclear. Permissions matter when a process opens `/dev/infiniband/uverbsN`, but an HCA missing from the kernel RDMA class is not a permissions problem.
+Set `IBV_SHOW_WARNINGS=1` when provider discovery is in doubt; libibverbs then warns when it discovers a kernel verbs device without a corresponding userspace provider. For runtime library/provider diagnostics, rdma-core also supports `VERBS_LOG_LEVEL` with `VERBS_LOG_FILE`. Permissions matter when a process opens `/dev/infiniband/uverbsN`, but an HCA missing from the kernel RDMA class is not a permissions problem.
 
 ## Repair One Coherent Stack
 
@@ -134,18 +134,19 @@ $ ibv_devinfo -v
 $ ibstat
 ~~~
 
-Use the real BDF. After enumeration succeeds, a non-Active port is a separate cable, link-mode, or Subnet Manager investigation.
+Use the real BDF. After enumeration succeeds, diagnose a non-Active port separately: check the cable and link mode, and for an InfiniBand port that reaches `INIT` but not `ACTIVE`, check the Subnet Manager.
 
 ## Official Documentation
 
 - [rdma-core: userspace libraries, device nodes, and supported providers](https://github.com/linux-rdma/rdma-core)
 - [rdma-core: `ibv_devinfo(1)` manual](https://github.com/linux-rdma/rdma-core/blob/master/libibverbs/man/ibv_devinfo.1)
+- [rdma-core: `ibv_get_device_list(3)` provider warnings](https://github.com/linux-rdma/rdma-core/blob/master/libibverbs/man/ibv_get_device_list.3.md)
 - [rdma-core: libibverbs permissions and debugging](https://github.com/linux-rdma/rdma-core/blob/master/Documentation/libibverbs.md)
 - [Linux kernel: stable InfiniBand and uverbs sysfs ABI](https://www.kernel.org/doc/Documentation/ABI/stable/sysfs-class-infiniband)
 - [Linux kernel: module signing and enforcement](https://docs.kernel.org/admin-guide/module-signing.html)
-- [NVIDIA MLNX_OFED: installation-related kernel compatibility issues](https://docs.nvidia.com/networking/display/mlnxofedv23102131201lts/installation-related-issues.pdf)
-- [NVIDIA MLNX_OFED: UEFI Secure Boot key enrollment](https://docs.nvidia.com/networking/display/mlnxofedv23102131201lts/uefi-secure-boot.pdf)
+- [NVIDIA MLNX_OFED: installation-related kernel compatibility issues](https://docs.nvidia.com/networking/display/mlnxofedv24104140lts/installation-related-issues)
+- [NVIDIA MLNX_OFED: UEFI Secure Boot key enrollment](https://docs.nvidia.com/networking/display/mlnxofedv24104140lts/uefi-secure-boot)
 
 ## Conclusion
 
-An empty `ibv_devinfo` after a kernel upgrade is a layered software-enumeration problem until evidence says otherwise. Prove PCI discovery, then module presence and signature for the exact running kernel, then the kernel RDMA class and uverbs devices, and finally libibverbs plus its hardware provider. Repair either the distribution stack or the supported vendor stack as one coherent unit. Only after the HCA enumerates should you spend time on physical link state or OpenSM.
+An empty `ibv_devinfo` after a kernel upgrade is a layered software-enumeration problem until evidence says otherwise. Prove PCI discovery, then module presence and signature for the exact running kernel, then the kernel RDMA class and uverbs devices, and finally libibverbs plus its hardware provider. Repair either the distribution stack or the supported vendor stack as one coherent unit. Only after the HCA enumerates should you investigate physical link state and, for InfiniBand, the Subnet Manager/OpenSM.
