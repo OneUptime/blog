@@ -49,12 +49,12 @@ Check:
 - Are all expected partitions cached?
 - Does the storage level permit disk fallback or recompute missing partitions?
 - Is memory/disk footprint close to the capacity available across current executors?
-- Do executors holding many blocks later disappear under dynamic allocation?
+- If removal of cache-holding executors is configured under dynamic allocation, do those executors disappear, and are their blocks preserved or migrated?
 - Does the entry remain after its useful phase?
 
 `DataFrame.storageLevel` reports the active persistence policy. Do not assume the RDD and DataFrame `cache()` defaults or serialization behavior are identical across APIs and releases; inspect the actual value.
 
-For SQL workloads, the physical plan should show an in-memory relation/scan when reuse occurs. If later actions show the original file scan and expensive exchanges again, the cached plan may not match the reused logical subtree, partitions may have been evicted/lost, or the cache was cleared.
+For SQL workloads, a cache hit in the physical plan should show an `InMemoryTableScan` over an `InMemoryRelation`. The relation can still display its original child scan and exchanges, so their presence alone does not mean they ran. If the in-memory scan is absent, the cached plan may not match the reused logical subtree, or the cache was unpersisted or cleared. If the scan is present, use stage and block evidence—not the printed child plan—to determine whether missing cached partitions were recomputed through lineage.
 
 ## Understand Recompute and Eviction
 
@@ -73,16 +73,18 @@ Eviction is not automatically bad. A cache can still pay if hot partitions remai
 
 ## Correlate SQL, Stage, and Executor Evidence
 
-Compare cached and uncached runs using event logs and the same input snapshot. Track:
+Compare cached and uncached runs using event logs and the same input snapshot. Supplement event logs with the live Storage tab and host I/O telemetry where needed. Track:
 
 - total elapsed time across population plus every consumer;
 - upstream scan bytes and records;
 - repeated shuffle stages and exchanges;
 - task GC time and peak execution memory;
-- disk reads/writes caused by the storage level;
+- cache disk footprint and, with host I/O telemetry, disk reads/writes caused by the storage level;
 - executor loss and cached-block loss;
 - cache footprint and fraction of partitions materialized;
-- CPU time spent decoding cached data versus recomputing lineage.
+- executor CPU time for cache-reading stages versus stages that recompute lineage.
+
+Per-block update events are not written to event logs by default. Enable `spark.eventLog.logBlockUpdates.enabled` when block-level history is required, but expect considerably larger event logs.
 
 A common misleading result is a faster second query but a slower overall notebook: the saved scan took 20 seconds, while cache population and storage pressure added 45 seconds. Another is a benchmark where the uncached candidate benefits from operating-system or object-store caches warmed by the cached candidate. Alternate run order and repeat trials.
 
@@ -116,17 +118,17 @@ Avoid persistence by default when:
 - recomputation is a cheap scan with effective pruning;
 - each consumer reads a different small subset;
 - the cached node is larger than stable executor storage;
-- dynamic allocation removes the executors holding it;
+- dynamic allocation is configured to remove the executors holding it and their blocks are not preserved or migrated;
 - a long-running application retains many obsolete cached datasets;
 - external source data changes and cache freshness is not managed.
 
 Caching is more promising when several actions reuse the same expensive deterministic subtree and its useful representation fits without destructive churn. Iterative algorithms and interactive exploration are common examples, but still require measurement.
 
-Checkpointing is not a drop-in performance substitute. Checkpoint changes lineage and writes reliable storage for recovery/lineage truncation; persistence is a reusable storage hint within the application. Choose according to the requirement.
+Reliable checkpointing is not a drop-in performance substitute. It truncates lineage and writes to the configured checkpoint directory for recovery; persistence is a reusable storage hint within the application. Choose according to the requirement.
 
 ## Tune Only After Choosing the Right Boundary
 
-Spark SQL exposes cache compression and batch-size settings. Larger columnar batches can improve compression and throughput but increase risk of out-of-memory failures while caching. Storage-level changes trade memory, CPU, disk, and resilience. These are secondary decisions.
+Spark SQL exposes cache compression and batch-size settings. Larger columnar batches can improve memory utilization and compression but increase risk of out-of-memory failures while caching. Storage-level changes trade memory, CPU, disk, and resilience. These are secondary decisions.
 
 First prove that reuse exists and that the cached node is the right shape. If a cache never reaches break-even, changing compression does not fix its economics.
 
