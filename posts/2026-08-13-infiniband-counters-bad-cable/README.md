@@ -25,7 +25,7 @@ $ perfquery -C mlx5_0 -P 1
 
 Repeat after a fixed interval or a controlled workload. Do the same on the adjacent switch port and, where possible, the remote HCA. A total of 500 errors accumulated over years is different from 500 new errors during a 30-second test.
 
-Do not start by resetting everything. `perfquery -r` resets after reading, `perfquery -R` performs a reset, and `ibqueryerrors --clear-errors` clears fabric counters. Those operations can erase evidence used by monitoring and another operator. Save a complete baseline and obtain approval before resetting shared fabric counters.
+Do not start by resetting everything. `perfquery -r` resets the selected counters after reading, `perfquery -R` resets the selected counters without reporting them, and `ibqueryerrors --clear-errors` clears error counters after reading on the scanned ports. Those operations can erase evidence used by monitoring and another operator. Save a complete baseline and obtain approval before resetting shared fabric counters.
 
 ## Know What Each Counter Can Prove
 
@@ -33,16 +33,17 @@ The following interpretation follows the Linux sysfs names and NVIDIA's document
 
 | Counter | What growth means | Cable specificity |
 | --- | --- | --- |
-| `symbol_error` / `SymbolErrorCounter` | minor physical-link errors or, in extended telemetry, error bits not corrected by PHY correction | strong physical-path evidence, but not cable-only |
+| `symbol_error` / `SymbolErrorCounter` | minor link errors detected on one or more physical lanes | strong physical-path evidence, but not cable-only |
+| `SymbolErrorCounterExtended` | error bits not corrected by PHY correction mechanisms | strong physical-path evidence, but not cable-only |
 | `link_error_recovery` | the port training state machine successfully completed link error recovery | strong instability evidence when unplanned and increasing |
-| `link_downed` | training failed link error recovery and downed the link | strong disruption evidence, but administrative events must be excluded |
+| `link_downed` | training failed link error recovery and downed the link | strong disruption evidence; correlate increases with planned interventions |
 | `port_rcv_errors` | packets containing an error arrived at the port | supports a receive-path problem; broader than cable faults |
-| `port_rcv_remote_physical_errors` | packets marked with the error-at-bad-packet delimiter arrived | says the upstream path marked an error, not necessarily this local cable |
+| `port_rcv_remote_physical_errors` | packets marked with the End Bad Packet (EBP) delimiter arrived | says the upstream path marked an error, not necessarily this local cable |
 | `port_xmit_discards` | outbound packets were discarded because the port was down or congested | weak cable evidence; separate down time from congestion |
 | `port_xmit_wait` | the egress had data but could not transmit for lack of credits or arbitration | congestion/flow-control evidence, not a cable diagnosis |
 | constraint errors | packets were rejected by partition or other constraints | policy/configuration evidence, not signal integrity |
 
-`link_downed` also counts link-down transitions that may have an intentional explanation. Correlate its timestamps with maintenance, port resets, firmware activation, host reboots, and cable reseats. A monotonically increasing counter without event context is not a root cause.
+`link_downed` counts failed link-error-recovery attempts that force the link down; it is not a generic count of every down transition. Correlate increases with maintenance, port resets, firmware activation, host reboots, and cable reseats. A monotonically increasing counter without event context is not a root cause.
 
 ## Query the Fabric with Endpoint Context
 
@@ -55,30 +56,31 @@ $ iblinkinfo -l
 
 The report-port output associates a failing port with its remote GUID, remote port, node description, and link settings when available. That is essential: the receive counter on one side reflects traffic sent across the link from the other side, and a remote-physical-error mark can originate upstream.
 
-Use an explicit threshold file appropriate for the environment when zero is too noisy. The official `ibqueryerrors` format accepts names such as `SymbolErrorCounter`, `LinkErrorRecoveryCounter`, and `VL15Dropped`. Thresholds should reflect rates and operational policy; they should not be copied as universal hardware limits.
+Use an explicit threshold file appropriate for the environment when zero is too noisy. The official `ibqueryerrors` format accepts names such as `SymbolErrorCounter`, `LinkErrorRecoveryCounter`, and `VL15Dropped`. These are absolute counter thresholds, not rate expressions; choose them for the environment's counter age and reset policy, or calculate deltas and rates externally. They should not be copied as universal hardware limits.
 
 ## Add Modern PHY, FEC, and Retry Evidence
 
-At high link generations, the traditional symbol counter is not the whole story. NVIDIA documents that link-level retry can retransmit corrupted packet portions and that bandwidth may fall when cable performance degrades. PHY correction or FEC can also correct errors before they appear as ordinary packet failures.
+The traditional symbol counter is not always the whole story. For FDR links, NVIDIA documents that its proprietary link-level retransmission (LLR) adds CRC checking and retransmits portions of packets with CRC errors; excessive retransmissions can reduce bandwidth when cable performance degrades. PHY correction mechanisms such as FEC can also correct errors before they appear as ordinary packet failures.
 
 For supported NVIDIA devices, collect the read-only physical view:
 
 ~~~console
 $ sudo mlxlink -d /dev/mst/<adapter-device> --show_counters
 $ sudo mlxlink -d /dev/mst/<adapter-device> --show_module
+$ sudo mlxlink -d /dev/mst/<adapter-device> --show_fec
 ~~~
 
-Depending on device and firmware, this can expose BER, physical counters, FEC capabilities, module alarms, per-lane optical information, and link recovery/downed counts. NVIDIA's `ibdiagnet` cable-diagnostic plugin and BER tests provide a fabric-wide option on supported platforms.
+Depending on device and firmware, these queries can expose BER, physical counters, FEC capabilities, module alarms, per-lane optical information, and link recovery/downed counts. For a fabric-wide view on supported NVIDIA platforms, use `ibdiagnet --get_phy_info` to collect PHY and BER information. The legacy cable-diagnostic plugin and `--ber_test` are deprecated.
 
 Interpret these signals together:
 
 - rising uncorrectable or effective errors are more serious than a static historical total;
-- a high corrected-error or retransmission rate can explain lost bandwidth even without packet loss;
-- one anomalous lane points toward lane-specific media, connector, or receiver trouble;
+- a high corrected-error rate indicates degraded link margin even when FEC prevents packet loss; a high link-level retransmission rate can explain bandwidth loss without end-to-end packet loss;
+- one anomalous lane points toward lane-specific transmitter, media, connector, or receiver trouble;
 - low receive optical power or loss-of-signal strengthens an optical-path hypothesis;
-- clean PHY diagnostics with high `PortXmitWait` point toward congestion instead.
+- clean PHY diagnostics with high `PortXmitWait` point toward credit starvation or arbitration/QoS contention instead.
 
-Do not run PRBS, eye scans, error injection, port toggles, or counter clears as if they were queries. Those advanced `mlxlink` operations can disrupt production and require the documented offline procedure.
+`mlxlink --show_eye` is a read-only query, but PRBS/test mode, error injection, and port-state changes can disrupt production; run those operations only under an approved maintenance procedure. Counter clears do not test the link, but they erase evidence.
 
 ## Correlate the Two Ends Correctly
 
@@ -120,10 +122,12 @@ Keep congestion signals separate. `PortXmitWait` and many transmit discards can 
 - [Linux kernel: stable InfiniBand counter sysfs ABI](https://www.kernel.org/doc/Documentation/ABI/stable/sysfs-class-infiniband)
 - [rdma-core: `perfquery(8)` counter query and reset semantics](https://github.com/linux-rdma/rdma-core/blob/master/infiniband-diags/man/perfquery.8.in.rst)
 - [rdma-core: `ibqueryerrors(8)` thresholds, details, and clear operations](https://github.com/linux-rdma/rdma-core/blob/master/infiniband-diags/man/ibqueryerrors.8.in.rst)
-- [NVIDIA UFM Enterprise 6.24.2: telemetry counter definitions](https://docs.nvidia.com/networking/display/nvidia-ufm-enterprise-user-manual-v6-24-2.pdf)
-- [NVIDIA MFT: `mlxlink` counters, module data, and BER diagnostics](https://networking-docs.nvidia.com/mftswum/426135lts/mlxlink-utility)
-- [NVIDIA: InfiniBand fabric utilities and link-level retry behavior](https://docs.nvidia.com/networking/display/mlnxofedv23102131201lts/infiniband-fabric-utilities.pdf)
-- [NVIDIA: `ibdiagnet` cable diagnostic and BER manual](https://docs.nvidia.com/networking/display/ibdiagnet-infiniband-fabric-diagnostic-tool-user-manual-v2-21.21.pdf)
+- [NVIDIA UFM Enterprise 6.25.1: high-frequency telemetry counter definitions](https://networking-docs.nvidia.com/ufmenterpriseum/6251/high-frequency-primary-telemetry-fields)
+- [NVIDIA DOCA: InfiniBand telemetry counter definitions](https://networking-docs.nvidia.com/doca/archive/3-1-0-core-update/doca-telemetry-service-guide)
+- [NVIDIA MFT 4.36: `mlxlink` counters, module data, FEC, and BER diagnostics](https://networking-docs.nvidia.com/mftswum/4.36.0/mlxlink-utility)
+- [NVIDIA MLNX_OFED: FDR link-level retransmission behavior](https://networking-docs.nvidia.com/mlnxofedswum/542413/infiniband-fabric-utilities)
+- [NVIDIA `ibdiagnet` 2.26: PHY and BER diagnostics](https://networking-docs.nvidia.com/ibdiagnetutilityum/2.26.0/phy-diagnostics)
+- [NVIDIA `ibdiagnet` 2.26: cable-diagnostic deprecation](https://networking-docs.nvidia.com/ibdiagnetutilityum/2.26.0/cable-diagnostic)
 
 ## Conclusion
 
