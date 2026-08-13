@@ -60,7 +60,6 @@
 
 ## Apache Spark
 
-4. How Many Partitions Should a Spark Job Use? Size Tasks from Input Bytes, Cores, and AQE
 5. `repartition()`, `coalesce()`, or `repartitionByRange()`: Which Spark Operation Fits Each Shuffle?
 6. Why Is Spark Reading Millions of Tiny Parquet Files Slowly—and Where Should You Compact Them?
 7. When Does Spark Spill to Disk, and Why Do Some “Spillable” Jobs Still Run Out of Memory?
