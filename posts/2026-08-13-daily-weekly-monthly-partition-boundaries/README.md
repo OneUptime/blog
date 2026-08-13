@@ -62,9 +62,9 @@ weekly report                      8%          7 days          13 weeks
 incident export                    2%          30 days         2 years
 ~~~
 
-A six-hour query touches at most one or two daily leaves, one or two weekly leaves, and one monthly leaf. But “one leaf” is not automatically less I/O. An index on <code>(tenant_id, occurred_at)</code> inside a monthly leaf can still find the six-hour range efficiently. Pruning selects relations; indexes select rows inside them.
+A six-hour query touches at most one or two daily, weekly, or monthly leaves. But “one leaf” is not automatically less I/O. An index on <code>(tenant_id, occurred_at)</code> inside a monthly leaf can still find the six-hour range efficiently. Pruning selects relations; indexes select rows inside them.
 
-A daily aggregate that scans all rows for one day may benefit from a daily leaf's direct locality and statistics. A query routinely spanning 90 days may pay planning and append overhead across 90 daily leaves while reading a similar amount of data from three monthly leaves.
+A daily aggregate that scans all rows for one day may benefit from a daily leaf's direct locality and statistics. A query spanning a 90-day range may pay planning and append overhead across 90 or 91 daily leaves while reading a similar amount of data from three to five monthly leaves, depending on boundary alignment.
 
 Test both selective and scan-heavy shapes. Measure planning time, buffers, actual rows, and execution time.
 
@@ -99,7 +99,7 @@ Monthly volume can be highly uneven. February and March differ in days; seasonal
 
 ## Account for the Active Write Edge
 
-Range partitioning by a monotonic timestamp directs current writes to the active leaf. Daily boundaries rotate that leaf more often and keep its indexes smaller. They do not distribute write capacity across old leaves. If one active daily leaf is still a bottleneck, making hourly leaves changes objects and index locality but all remain on the same server.
+Range partitioning by a monotonic timestamp directs current writes to the active leaf. Daily boundaries rotate that leaf more often and keep its indexes smaller. They do not distribute write capacity across old leaves. If one active daily leaf is still a bottleneck, making hourly local leaves changes objects and index locality but all remain on the same server.
 
 Measure insert throughput and commit latency for each candidate. Partition rotation can also produce a cold-cache effect at a new boundary and trigger DDL or statistics work. Pre-create leaves and warm critical paths where justified.
 
@@ -112,13 +112,13 @@ Late-arriving data means more than one leaf can remain writable. Define:
 
 ## Generate Typed Half-Open Bounds
 
-PostgreSQL range lower bounds are inclusive and upper bounds exclusive:
+PostgreSQL range lower bounds are inclusive and upper bounds exclusive. For a <code>timestamptz</code> partition key, type UTC bounds explicitly:
 
 ~~~sql
 CREATE TABLE events_2026_08
 PARTITION OF events
-FOR VALUES FROM ('2026-08-01 00:00:00+00')
-         TO   ('2026-09-01 00:00:00+00');
+FOR VALUES FROM (TIMESTAMP WITH TIME ZONE '2026-08-01 00:00:00+00')
+         TO   (TIMESTAMP WITH TIME ZONE '2026-09-01 00:00:00+00');
 ~~~
 
 Use one reviewed generator for DDL, retention metadata, and monitoring. Avoid <code>BETWEEN</code> for timestamp bounds because it includes both endpoints.
@@ -129,10 +129,10 @@ For monthly dates, advance by calendar month rather than assuming 30 days. For w
 
 ## Compare Candidate Designs at Full Horizon
 
-Build daily, weekly, and monthly copies with production-shaped skew. Replay:
+Build daily, weekly, and monthly copies with production-shaped skew. This example assumes <code>occurred_at</code> is <code>timestamptz</code>; use the production parameter types and representative values:
 
 ~~~sql
-EXPLAIN (ANALYZE, BUFFERS, SETTINGS)
+PREPARE event_window (timestamptz, timestamptz) AS
 SELECT event_id, occurred_at
 FROM events_candidate
 WHERE tenant_id = 42
@@ -140,9 +140,15 @@ WHERE tenant_id = 42
   AND occurred_at <  $2
 ORDER BY occurred_at DESC
 LIMIT 500;
+
+EXPLAIN (ANALYZE, BUFFERS, SETTINGS)
+EXECUTE event_window(
+    TIMESTAMPTZ '2026-08-01 00:00:00+00',
+    TIMESTAMPTZ '2026-08-01 06:00:00+00'
+);
 ~~~
 
-Use the real prepared-statement parameter types. Record:
+Record:
 
 - planning p50/p95/p99;
 - leaves planned and leaves executed;
@@ -172,7 +178,7 @@ Replace qualitative cells with measurements and hard objectives. If daily and mo
 
 ## Automate Provisioning and Failure Detection
 
-Maintain future coverage beyond the furthest accepted timestamp. Alert before missing-partition errors:
+Maintain future coverage beyond the furthest accepted timestamp. Inventory the bounds, compare them with the expected schedule, and alert before missing-partition errors:
 
 ~~~sql
 SELECT relid::regclass,
@@ -183,7 +189,7 @@ WHERE p.isleaf
 ORDER BY relid::text;
 ~~~
 
-Generate DDL idempotently, use a session-local <code>lock_timeout</code>, and monitor any default partition. A default is a safety net, not a scheduler; expected values landing there make later explicit creation scan and lock unless excluded by a valid check.
+Generate DDL idempotently, use a session-local <code>lock_timeout</code>, and monitor any default partition. A default is a safety net, not a scheduler. If expected values land there, remove them from the attached default, for example by moving or deleting them, before adding the corresponding explicit partition. For a local default partition, PostgreSQL scans and locks it while adding the partition unless a valid check proves that the new bound is empty there.
 
 ## Official Documentation
 
@@ -194,7 +200,7 @@ Generate DDL idempotently, use a session-local <code>lock_timeout</code>, and mo
 - [PostgreSQL: Date/Time Types](https://www.postgresql.org/docs/current/datatype-datetime.html)
 - [PostgreSQL: Database Object Size Functions](https://www.postgresql.org/docs/current/functions-admin.html#FUNCTIONS-ADMIN-DBSIZE)
 - [PostgreSQL: EXPLAIN](https://www.postgresql.org/docs/current/sql-explain.html)
-- [PostgreSQL: Partition Information Functions](https://www.postgresql.org/docs/current/functions-info.html#FUNCTIONS-INFO-PARTITION)
+- [PostgreSQL: Partition Information Functions](https://www.postgresql.org/docs/current/functions-admin.html#FUNCTIONS-INFO-PARTITION)
 
 ## Conclusion
 
