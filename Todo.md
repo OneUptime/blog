@@ -63,7 +63,6 @@
 
 ## Partitioning
 
-17. Consistent Hashing Still Has Hot Keys: How Do You Salt a Busy Partition Without Breaking Reads?
 18. Can You Change a Cassandra Partition Key? Plan the Replacement Table, Backfill, and Cutover
 19. Hive-Style Date Partitions or Iceberg Hidden Partitioning: Which Survives Layout Evolution?
 20. Why Do Lakehouse Partitions Create Tiny Files? Balance Pruning, Compaction, and Write Concurrency
