@@ -87,7 +87,6 @@
 
 ## InfiniBand
 
-4. Why Did an InfiniBand Link Negotiate 1X or a Lower Rate Than the HCA Advertises?
 5. Which InfiniBand Counters Actually Point to a Bad Cable? Read Symbol Errors, Link Recovery, and Discards
 6. Why Does `ibv_devinfo` Show No RDMA Devices After a Kernel Upgrade?
 7. Distribution `rdma-core` or MLNX_OFED: Which Driver Stack Fits Your Kernel and ConnectX Generation?
