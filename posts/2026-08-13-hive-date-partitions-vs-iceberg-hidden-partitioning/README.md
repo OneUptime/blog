@@ -65,7 +65,7 @@ CREATE TABLE prod.observability.logs (
     event_time timestamp
 )
 USING iceberg
-PARTITIONED BY (days(event_time));
+PARTITIONED BY (day(event_time));
 ~~~
 
 The logical schema exposes <code>event_time</code>; Iceberg applies the day transform when writing and stores partition tuples in manifests. A query filters the source column:
@@ -80,6 +80,8 @@ GROUP BY level;
 
 Iceberg projects the predicate through the transform to skip files when possible. Users do not maintain a duplicate <code>event_date</code> predicate, and writers do not choose its string format or accidentally derive it from processing time.
 
+In this Spark DDL, <code>timestamp</code> maps to Iceberg's timestamp-with-time-zone type. Iceberg stores that instant in UTC, so the day transform uses UTC day boundaries; a local business day still requires an explicit modeling choice.
+
 Hidden does not mean absent. Partition values exist in Iceberg metadata and influence file grouping and pruning; they are hidden from the ordinary logical row contract.
 
 ## Compare Correctness Failure Modes
@@ -89,25 +91,25 @@ Hive-style risks include:
 - writer derives date in one time zone while readers assume another;
 - path uses <code>20260813</code> while query filters <code>2026-08-13</code>;
 - processing date is written instead of event date;
-- files are copied directly but the metastore is not updated;
+- new partition directories are copied directly but the metastore is not updated;
 - partition metadata exists for a missing or wrong location;
 - changing the physical column breaks saved queries and writers.
 
-<code>MSCK REPAIR TABLE</code> can synchronize metastore entries with partitions found in storage; it cannot prove file rows semantically match directory names.
+Bare <code>MSCK REPAIR TABLE</code> defaults to adding partitions found in storage. On Hive versions that support it, <code>MSCK REPAIR TABLE ... SYNC PARTITIONS</code> also drops metastore entries for partitions missing from storage. Neither operation can prove file rows semantically match directory names.
 
 Iceberg centralizes transform semantics, but introduces other requirements:
 
-- writes must commit through an Iceberg-aware catalog and table implementation;
+- writes must commit through an Iceberg-aware table implementation using an atomic commit mechanism appropriate to its catalog or storage scheme;
 - engines must support the table format version and used features;
 - metadata and snapshots need maintenance;
 - object files copied outside a committed Iceberg operation are not automatically table data;
-- partition evolution changes overwrite behavior and must be tested.
+- partition evolution can change dynamic partition-overwrite behavior and must be tested.
 
 The better failure model depends on ecosystem discipline, not the word “lakehouse.”
 
 ## Partition Evolution Is the Structural Difference
 
-Suppose daily files become too large and new data should be hourly. In a Hive-style table, <code>event_date</code> is embedded in DDL, directory layout, inserts, and queries. Introducing <code>event_hour</code> usually means a new layout, query changes, and either mixed conventions or a rewrite.
+Suppose daily partitions become too coarse and new data should be partitioned hourly. In a Hive-style table, <code>event_date</code> is embedded in DDL, directory layout, inserts, and queries. Introducing <code>event_hour</code> usually means a new layout, query changes, and either mixed conventions or a rewrite.
 
 Iceberg creates a new partition spec. The format specification assigns each spec an ID; old manifests retain their old spec, and new files use the new default. Readers plan across both by projecting predicates according to each manifest's spec.
 
@@ -115,7 +117,7 @@ With Iceberg Spark SQL extensions, partition evolution can be a metadata update:
 
 ~~~sql
 ALTER TABLE prod.observability.logs
-ADD PARTITION FIELD hours(event_time);
+ADD PARTITION FIELD hour(event_time);
 ~~~
 
 The official Spark DDL documentation notes that adding or dropping a partition field does not rewrite existing data. New data uses the new partitioning; old data remains in the old layout. It also warns that dynamic partition-overwrite behavior changes when partitioning changes.
@@ -157,7 +159,7 @@ Iceberg is stronger when:
 - users should filter logical timestamps without knowing physical columns;
 - multiple engines need a shared table snapshot;
 - partition granularity or transforms will change;
-- object-store-safe atomic table commits are important;
+- object-store-safe atomic table commits from a correctly configured catalog or supported locking mechanism are important;
 - schema evolution, time travel, and concurrent writes are requirements;
 - file-level metrics and manifest pruning are valuable.
 
@@ -169,7 +171,7 @@ Apache Iceberg's Spark procedures provide distinct migration tools:
 
 - <code>snapshot</code> creates a lightweight temporary Iceberg table for testing while sharing the source table's data files;
 - <code>migrate</code> replaces a supported source table with Iceberg metadata;
-- <code>add_files</code> imports files into an existing Iceberg table.
+- <code>add_files</code> registers files from a Hive or file-based source in an existing Iceberg table without moving or schema-validating them; Iceberg then treats the files as owned table data.
 
 These are not interchangeable. A snapshot table is prohibited from maintenance that would delete source-owned files, and source file changes can break it. Before migration:
 
