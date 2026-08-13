@@ -79,7 +79,6 @@
 
 ## InfiniBand
 
-10. IPoIB Datagram, Connected, or Enhanced Mode: Which Options Does Your Driver and HCA Actually Support?
 11. Does Open MPI Actually Use InfiniBand? Prove UCX Transport Selection Instead of Assuming
 12. Open MPI Warns “IB Port Not Selected”: Why UCX Replaced the `openib` BTL
 13. `UCX_NET_DEVICES` Says `mlx5_0:1` Is Unavailable: Check Namespaces, Link Layer, and Build Options
