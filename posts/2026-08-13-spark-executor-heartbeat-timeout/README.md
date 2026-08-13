@@ -23,7 +23,7 @@ Collect four time-aligned views before restarting repeatedly:
 
 Determine whether the cluster manager killed the executor before the driver timed it out. An out-of-memory kill, node eviction, preemption, or pod deletion makes the later heartbeat timeout secondary. Conversely, an executor process that continues running after the driver removes it points toward communication or driver-side responsiveness.
 
-The Spark UI Executors tab and retained event log show executor add/remove events, task counts, GC time, memory, and shuffle activity. The monitoring guide notes that executor-level metrics travel to the driver as part of the heartbeat. Missing recent metrics may therefore be another consequence of the broken heartbeat path.
+The live Spark UI's Executors tab shows allocated executors, task counts, GC time, storage memory, and shuffle activity. With event logging enabled and the log retained, the History Server reconstructs corresponding views from logged events. The monitoring guide notes that executor-level metrics travel to the driver as part of the heartbeat. Missing recent heartbeat-driven metrics may therefore be another consequence of the broken heartbeat path; per-stage executor metric peaks are written to the event log only when `spark.eventLog.logStageExecutorMetrics` is enabled.
 
 ## Check the Timeout Relationship
 
@@ -32,7 +32,7 @@ Spark documents two relevant settings:
 - `spark.executor.heartbeatInterval` controls how often executors send heartbeats to the driver;
 - `spark.network.timeout` supplies a default timeout for several network interactions when their specific settings are absent.
 
-The configuration guide says the heartbeat interval should be significantly less than the network timeout. Inspect effective settings in the Environment tab; do not assume the application used the value in a stale configuration file.
+The configuration guide says the heartbeat interval should be significantly less than the network timeout. Inspect explicitly set values in the Environment tab and use the documented defaults for properties that are absent; do not assume the application used the value in a stale configuration file.
 
 ```bash
 spark-submit \
@@ -61,13 +61,13 @@ Do not infer “network” only because `spark.network.timeout` appears in the m
 
 A responsive executor cannot maintain a useful control channel if the driver is unresponsive. Look for driver GC pauses, CPU saturation, very large event-processing load, listener code doing blocking work, and a wave of executor timeouts at the same instant. If many unrelated executors expire together, a shared driver or network path is more plausible than simultaneous executor failures.
 
-Spark's monitoring pipeline and custom listeners can themselves add driver work. Keep listener callbacks bounded and move slow external I/O out of synchronous event processing.
+Spark's monitoring pipeline and custom listeners can themselves add driver work. Spark dispatches listener events asynchronously, but callbacks within each listener queue run serially; a slow listener can backlog or drop events in its queue and consume driver resources. Keep listener callbacks bounded and hand slow external I/O to a separate worker.
 
 ### Executor/container resource pressure
 
-The JVM may be alive but the container can be constrained by Python workers, native memory, Arrow buffers, direct network buffers, or other overhead outside executor heap. Cluster-manager memory diagnostics and process/container metrics are essential. Increasing `spark.executor.memory` without accounting for overhead can leave the container limit unchanged or worse.
+The JVM may be alive but the container can be constrained by Python workers, native memory, Arrow buffers, direct network buffers, or other overhead outside executor heap. Cluster-manager memory diagnostics and process/container metrics are essential. On YARN and Kubernetes, increasing `spark.executor.memory` raises executor heap and normally raises the Spark-managed container size, but it does not directly address non-heap pressure; if `spark.executor.memoryOverhead` is set explicitly, that headroom remains fixed until adjusted.
 
-CPU throttling and disk saturation can also compound pauses. Compare executor run time with executor CPU time: a large gap can indicate waiting, GC, I/O, or descheduling, though it does not uniquely identify one.
+CPU throttling and disk saturation can also compound pauses. When using REST task metrics, convert them to the same unit before comparing `executorRunTime` (milliseconds) with `executorCpuTime` (nanoseconds): a large gap can indicate waiting, GC, I/O, or descheduling, though it does not uniquely identify one.
 
 ## Find the Oversized or Skewed Task
 
