@@ -61,7 +61,7 @@ PostgreSQL routes an invoice insert to its time leaf and checks the referenced a
 
 ## Referenced Uniqueness Drives the Shape
 
-A foreign key must reference a primary key, a unique constraint, or the columns of a qualifying non-partial unique index. For a partitioned referenced table, the parent-level unique or primary constraint must include all partition-key columns and cannot rely on expressions in the partition key for that constraint.
+A foreign key must reference a non-deferrable primary-key or unique constraint, or the columns of a qualifying non-partial unique index. For a partitioned referenced table, the parent-level unique or primary constraint must include the partition-key columns of the target and, in a multilevel hierarchy, all descendant partitioned tables; those partition keys cannot contain expressions or function calls.
 
 That means this desired reference is not available if accounts are partitioned by tenant but only <code>account_id</code> is named:
 
@@ -87,14 +87,25 @@ ON invoices (tenant_id, account_id);
 PostgreSQL creates matching indexes on existing leaves and on partitions created or attached later. Verify that every leaf is attached to the partitioned index:
 
 ~~~sql
-SELECT indexrelid::regclass,
-       indrelid::regclass,
-       indisvalid
-FROM pg_index
-WHERE indrelid IN (
-    SELECT relid FROM pg_partition_tree('invoices'::regclass)
+WITH attached_indexes AS (
+    SELECT i.indrelid,
+           i.indexrelid,
+           i.indisvalid
+    FROM pg_partition_tree(
+             'invoices_account_fk_idx'::regclass
+         ) AS p
+    JOIN pg_index AS i
+      ON i.indexrelid = p.relid
+    WHERE p.isleaf
 )
-ORDER BY indrelid::regclass::text, indexrelid::regclass::text;
+SELECT t.relid::regclass AS partition_name,
+       a.indexrelid::regclass AS index_name,
+       a.indisvalid
+FROM pg_partition_tree('invoices'::regclass) AS t
+LEFT JOIN attached_indexes AS a
+  ON a.indrelid = t.relid
+WHERE t.isleaf
+ORDER BY t.relid::regclass::text;
 ~~~
 
 The useful index order depends on the referential lookup and other queries. For the foreign-key check initiated by an account deletion, the leading columns should support equality on the complete foreign key. A time-first index is not equivalent when invoices are partitioned by time and the lookup has no time predicate.
@@ -148,17 +159,25 @@ Do not detach the referenced and referencing partitions independently and assume
 Use catalog queries to map dependencies:
 
 ~~~sql
-SELECT conname,
-       conrelid::regclass AS referencing_table,
-       confrelid::regclass AS referenced_table,
-       convalidated
-FROM pg_constraint
-WHERE contype = 'f'
+WITH invoice_tree AS (
+    SELECT relid FROM pg_partition_tree('invoices'::regclass)
+),
+account_tree AS (
+    SELECT relid FROM pg_partition_tree('accounts'::regclass)
+)
+SELECT c.oid AS constraint_oid,
+       c.conname,
+       c.conrelid::regclass AS referencing_table,
+       c.confrelid::regclass AS referenced_table,
+       c.conparentid AS parent_constraint_oid,
+       c.convalidated
+FROM pg_constraint AS c
+WHERE c.contype = 'f'
   AND (
-      conrelid = 'invoices'::regclass
-      OR confrelid = 'accounts'::regclass
+      c.conrelid IN (SELECT relid FROM invoice_tree)
+      OR c.confrelid IN (SELECT relid FROM account_tree)
   )
-ORDER BY conname;
+ORDER BY c.conname, c.conrelid, c.confrelid;
 ~~~
 
 Child constraints have parent relationships visible through <code>pg_constraint.conparentid</code>. Prefer catalog inspection and <code>pg_dump --schema-only</code> review over guessing from constraint names.
@@ -188,7 +207,7 @@ Measure plans for application joins separately from internal referential checks.
 - [PostgreSQL: pg_constraint](https://www.postgresql.org/docs/current/catalog-pg-constraint.html)
 - [PostgreSQL: Trigger Behavior](https://www.postgresql.org/docs/current/trigger-definition.html)
 - [PostgreSQL 12 Release Notes: Partitioning](https://www.postgresql.org/docs/12/release-12.html)
-- [PostgreSQL: pg_partition_tree](https://www.postgresql.org/docs/current/functions-info.html#FUNCTIONS-INFO-PARTITION)
+- [PostgreSQL: pg_partition_tree](https://www.postgresql.org/docs/current/functions-admin.html#FUNCTIONS-INFO-PARTITION)
 
 ## Conclusion
 
