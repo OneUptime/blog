@@ -60,7 +60,6 @@
 
 ## Apache Spark
 
-10. Native Spark Functions, Arrow UDFs, or Pandas UDFs: Which PySpark Path Is Actually Faster?
 11. Why Does `applyInPandas()` OOM on One Group? Bound Skew Before Arrow Materializes It
 12. Does Caching Make This Spark Job Slower? Read Recompute, Eviction, and Storage-Level Metrics
 13. Executor Heartbeat Timed Out: Is Spark GC-Paused, Network-Starved, or Running an Oversized Task?
