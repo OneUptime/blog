@@ -8,7 +8,7 @@ Description: Set separate input and shuffle partition budgets from measured byte
 
 ---
 
-There is no universally correct Spark partition count. A partition is a unit of scheduling and, for a task, a unit of working data. Too few partitions leave cores idle and create large per-task working sets. Too many add scheduling, file-open, serialization, and shuffle-block overhead. The correct starting point depends on which boundary you are sizing: file scan, RDD transformation, SQL shuffle, or output files.
+There is no universally correct Spark partition count. Spark normally runs one task per partition in a stage, making a partition a unit of parallel work and, for that task, a unit of working data. Too few partitions leave cores idle and create large per-task working sets. Too many add scheduling, file-open, serialization, and shuffle-block overhead. The correct starting point depends on which boundary you are sizing: file scan, RDD transformation, SQL shuffle, or output files.
 
 Treat “number of partitions” as several related controls, not one knob.
 
@@ -16,7 +16,7 @@ Treat “number of partitions” as several related controls, not one knob.
 
 For Spark SQL file sources, Spark groups files and file ranges into scan partitions. Important controls include `spark.sql.files.maxPartitionBytes`, the maximum bytes packed into one file-source partition, and `spark.sql.files.openCostInBytes`, an estimated open cost used while packing files. Minimum and maximum partition-number settings can further influence the split proposal where supported.
 
-After an exchange such as a join or aggregation, `spark.sql.shuffle.partitions` supplies the initial SQL shuffle partition count. Adaptive Query Execution (AQE) can coalesce post-shuffle partitions using actual map-output statistics. That does not retroactively resize the original file scan.
+For SQL shuffles introduced by operations such as joins or aggregations, `spark.sql.shuffle.partitions` normally supplies the partition count. When AQE coalescing is enabled, an explicitly set `spark.sql.adaptive.coalescePartitions.initialPartitionNum` supplies the initial count instead; otherwise it falls back to `spark.sql.shuffle.partitions`. AQE can coalesce post-shuffle partitions using actual map-output statistics. That does not retroactively resize the original file scan.
 
 RDD key operations use their explicit partition argument, an existing partitioner where applicable, or defaults such as `spark.default.parallelism`. Output partitions then usually determine the number of task output files, although the writer and data source can add their own behavior.
 
@@ -46,7 +46,7 @@ Combine the byte and core views:
 initial partitions = max(byte-based estimate, enough tasks for several core waves)
 ```
 
-Then apply constraints. A task must have enough execution memory for joins, sorts, aggregation maps, decoded rows, and user code. Conversely, millions of tiny tasks are not justified just because the cluster has many cores. Stage scheduling delay and task-launch rate become visible in the UI.
+Then apply constraints. A task must have enough working memory for joins, sorts, aggregation maps, decoded rows, and user code. Conversely, millions of tiny tasks are not justified just because the cluster has many cores. Stage scheduling delay and task-launch rate become visible in the UI.
 
 Dynamic allocation complicates the calculation: use the executors expected while this stage runs, not the configured maximum that is never reached. Pending-task backlog can request executors, but provisioning delay may mean early waves execute on a smaller cluster.
 
@@ -57,6 +57,10 @@ AQE can use runtime map-output statistics to coalesce adjacent post-shuffle part
 ```python
 spark.conf.set("spark.sql.adaptive.enabled", "true")
 spark.conf.set("spark.sql.adaptive.coalescePartitions.enabled", "true")
+spark.conf.set(
+    "spark.sql.adaptive.coalescePartitions.parallelismFirst",
+    "false",
+)
 spark.conf.set("spark.sql.shuffle.partitions", "1200")
 spark.conf.set(
     "spark.sql.adaptive.advisoryPartitionSizeInBytes",
@@ -64,9 +68,9 @@ spark.conf.set(
 )
 ```
 
-The numbers are examples, not defaults or recommendations. Validate them against your workload. If the initial count is too low, coalescing cannot create the missing parallelism; other AQE rules may split qualifying skewed join partitions, but that is a narrower optimization with specific plan and threshold conditions.
+The `1200` initial count is an example, not a default or recommendation. The 64 MiB advisory size is Spark's current default, while `parallelismFirst=false` deliberately changes its default so that AQE respects that target. Validate these settings against your workload and Spark release. If the initial count is too low, coalescing cannot create the missing parallelism; other AQE rules may split qualifying skewed join partitions, but that is a narrower optimization with specific plan and threshold conditions.
 
-Use `df.explain(mode="formatted")` before the action and the SQL tab afterward. An adaptive plan can show both the initial and final plan. Confirm that an `AQEShuffleRead` or coalesced read actually appeared rather than assuming the configuration changed execution.
+Use `df.explain(mode="formatted")` before the action and the SQL tab afterward. An adaptive plan can show both the initial and final plan. Confirm that an `AQEShuffleRead` marked `coalesced` or `coalesced and skewed` actually appeared rather than assuming the configuration changed execution.
 
 ## Size Reduce Tasks by Their Working Set
 
@@ -74,7 +78,7 @@ Input bytes are insufficient for aggregations and joins. One row can fan out in 
 
 In the stage UI, compare median and maximum values for:
 
-- task duration and executor CPU time;
+- task duration and scheduler delay;
 - shuffle read bytes and records;
 - peak execution memory;
 - memory and disk spill;
