@@ -1,4 +1,4 @@
-# Validation Summary: Convert a Live PostgreSQL Table to Declarative Partitioning With Minimal Downtime
+# Validation Summary: Convert a Live PostgreSQL Table to Partitioning With Minimal Downtime
 
 ## Status
 

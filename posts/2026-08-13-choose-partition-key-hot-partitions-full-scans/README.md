@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: PostgreSQL, Cassandra, Partition Keys, Data Modeling, Query Performance, Hot Partitions
+Tags: PostgreSQL, Cassandra, Partition Key, Data Modeling, Query Performance, Hot Partitions
 
 Description: Choose a partition key by measuring predicate coverage, key frequency, growth, retention, and routing behavior so reads prune and peak writes do not collapse onto one key.
 
@@ -63,7 +63,7 @@ A key with one million distinct tenants can still be terrible if a single synthe
 
 **Data skew** means one partition contains far more rows or bytes. It increases scan, compaction, vacuum, backup, and maintenance cost.
 
-**Traffic skew** means one partition receives a disproportionate share of operations. It can be hot even while small—for example, a newly launched live event.
+**Traffic skew** means one partition receives a disproportionate share of operations. It can be hot even while small-for example, a newly launched live event.
 
 Hashing distributes distinct key values but does not split one value. In Cassandra, all rows sharing a partition key go to the same replica set. Virtual nodes help distribute token ranges among physical nodes; they do not cause one partition key to span multiple replica sets. In PostgreSQL, hash partitioning on <code>tenant_id</code> maps that tenant to one leaf partition.
 

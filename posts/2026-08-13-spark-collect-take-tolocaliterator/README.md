@@ -1,8 +1,8 @@
-# Choose `collect()`, `take()`, or `toLocalIterator()` Without Crashing the Spark Driver
+# Choose `collect()`, `take()`, or `toLocalIterator()` Without Crashing Spark
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Apache Spark, PySpark, Driver Memory, DataFrames, RDD, Debugging
+Tags: Apache Spark, PySpark, Driver Memory, DataFrame, RDD, Debugging
 
 Description: Inspect Spark results safely by bounding rows and columns, understanding driver materialization, and consuming partition-at-a-time iterators without accidental collection.
 

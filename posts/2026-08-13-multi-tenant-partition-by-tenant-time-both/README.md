@@ -83,7 +83,7 @@ PARTITION BY LIST (tenant_id)
 
 It permits a whole-tenant detach, but object count grows with customer count. Provisioning becomes part of tenant creation, unknown tenants need handling, and thousands of leaf indexes accumulate. PostgreSQL's partitioning best-practices section explicitly suggests a reasonable number of hash partitions instead of list partitioning by customer when the customer count may grow beyond a practical partition count.
 
-List partitions can be reasonable for a small, stable set of operational classes—for example, a few residency regions or dedicated enterprise tenants plus a shared default. Do not confuse “currently 40 tenants” with a governed maximum.
+List partitions can be reasonable for a small, stable set of operational classes-for example, a few residency regions or dedicated enterprise tenants plus a shared default. Do not confuse “currently 40 tenants” with a governed maximum.
 
 ## Option 3: Time Then Tenant Hash
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Apache Cassandra, Partition Keys, Schema Migration, Data Backfill, Cutover, CQL
+Tags: Apache Cassandra, Partition Key, Schema Migration, Data Backfill, Cutover, CQL
 
 Description: Change a Cassandra partition key by designing a replacement table, preserving write and TTL semantics during backfill, validating both models, and cutting reads over safely.
 

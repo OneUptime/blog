@@ -93,7 +93,7 @@ Spark exposes `spark.sql.execution.arrow.maxRecordsPerBatch` to bound row count 
 
 ## Do Not Treat Grouped Pandas APIs as Faster Scalar UDFs
 
-`groupBy().applyInPandas()` implements split-apply-combine and performs a full shuffle. Its single-DataFrame form loads all rows and columns for a group into one Pandas DataFrame before applying the function. The Arrow batch row limit does not bound that whole-group DataFrame. Use this form for algorithms that truly require complete group context and whose maximum group can fit—not as a generic vectorization switch. On Spark 4.1 and later, the iterator-of-DataFrames form can mitigate whole-group memory pressure when the algorithm can process each group's batches incrementally.
+`groupBy().applyInPandas()` implements split-apply-combine and performs a full shuffle. Its single-DataFrame form loads all rows and columns for a group into one Pandas DataFrame before applying the function. The Arrow batch row limit does not bound that whole-group DataFrame. Use this form for algorithms that truly require complete group context and whose maximum group can fit-not as a generic vectorization switch. On Spark 4.1 and later, the iterator-of-DataFrames form can mitigate whole-group memory pressure when the algorithm can process each group's batches incrementally.
 
 `mapInPandas()` operates on iterators of Pandas DataFrames and allows arbitrary output length. It is appropriate for partition/batch transformations that need DataFrame semantics. Again, it is a broader contract with different memory and cardinality implications.
 

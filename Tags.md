@@ -423,6 +423,7 @@
 - Adaptive Learning
 - Adaptive Load Balancing
 - Adaptive Protection
+- Adaptive Query Execution
 - Adaptive Sampling
 - ADAS
 - ADB
@@ -1043,6 +1044,7 @@
 - Apply Mode
 - APPLY Modifier
 - Apply Order
+- applyInPandas
 - Appointment Scheduling
 - AppRegistry
 - Apprise
@@ -1331,6 +1333,7 @@
 - Atomic Swap
 - Atomicity
 - Attach
+- ATTACH PARTITION
 - Attachments
 - Attack Detection
 - Attack Path Simulation
@@ -2016,6 +2019,7 @@
 - Benthos
 - Bento
 - BentoML
+- BER
 - Best Path
 - Best Practice
 - Best-practices
@@ -2355,6 +2359,7 @@
 - Broadband
 - Broadcast
 - Broadcast Address
+- Broadcast Join
 - Broadcast State
 - Broadcast Storm
 - Broadcasting
@@ -2566,6 +2571,7 @@
 - CA Trust Store
 - CAB
 - Cable
+- Cable Diagnostics
 - CABPT
 - Cache
 - Cache Analytics
@@ -3806,6 +3812,7 @@
 - Connect Gateway
 - Connect-RPC
 - Connected Machine Agent
+- Connected Mode
 - Connected Routes
 - Connected Vehicles
 - Connected-vehicles
@@ -3860,6 +3867,7 @@
 - Connector/J
 - Connector/NET
 - Connector/Python
+- ConnectX
 - Conntrack
 - Consecutive Values
 - Consensus
@@ -4690,6 +4698,7 @@
 - Data Archiving
 - Data at Rest
 - Data Auditing
+- Data Backfill
 - Data Blending
 - Data Boost
 - Data Box
@@ -4921,6 +4930,7 @@
 - Database Integrity
 - Database Internals
 - Database Introspection
+- Database Locks
 - Database Mail
 - Database Maintenance
 - Database Management
@@ -4932,6 +4942,7 @@
 - Database Operations
 - Database Operators
 - Database Optimization
+- Database Partitioning
 - Database Per Service
 - Database Performance
 - Database Programming
@@ -4974,6 +4985,7 @@
 - Dataform
 - DataFrame
 - Datagram
+- Datagram Mode
 - DatagramSocket
 - DataGrip
 - DataHub
@@ -5145,6 +5157,7 @@
 - Default ACLs
 - Default Deny
 - Default Gateway
+- Default Partitions
 - Default Policies
 - Default Policy
 - Default Profile
@@ -5748,6 +5761,7 @@
 - DNSViz
 - Do-release-upgrade
 - Doas
+- DOCA-OFED
 - Dock Scheduling
 - Docker
 - Docker Alternative
@@ -5945,6 +5959,7 @@
 - Drive Identification
 - Driver
 - Driver Configuration
+- Driver Memory
 - Drizzle ORM
 - DRM
 - Drone
@@ -6033,6 +6048,7 @@
 - DWDM
 - DX
 - Dynamic
+- Dynamic Allocation
 - Dynamic ARP Inspection
 - Dynamic Authorization
 - Dynamic Baselines
@@ -6350,6 +6366,7 @@
 - Engineering Metrics
 - Engineering Standards
 - Enhanced DAD
+- Enhanced IPoIB
 - Enhanced Monitoring
 - Enhanced Networking
 - ENI
@@ -6961,6 +6978,7 @@
 - Fetch
 - Fetch API
 - Fetch Stage
+- FetchFailedException
 - FFI
 - FFmpeg
 - FFT
@@ -8256,6 +8274,7 @@
 - Hibernation
 - Hidden Index
 - Hidden Member
+- Hidden Partitioning
 - HiDPI
 - HIDS
 - Hierarchical
@@ -8418,6 +8437,7 @@
 - Hot Backup
 - Hot Chocolate
 - Hot Key
+- Hot Partitions
 - Hot Reload
 - Hot Reloading
 - Hot Restart
@@ -8643,7 +8663,9 @@
 - IBM Kubernetes Service
 - IBM Power
 - IBM Z
+- ibstat
 - IBus
+- ibv_devinfo
 - ICA
 - ICE
 - Iceberg
@@ -10283,6 +10305,8 @@
 - Linger
 - Link Aggregation
 - Link Monitoring
+- Link Speed
+- Link Width
 - Link-Layer Address
 - Link-Local
 - Link-State
@@ -10833,6 +10857,7 @@
 - Map Visualization
 - MAP-E
 - Map-Reduce
+- Map-Side Combine
 - MAP-T
 - Mapped Types
 - Mapping
@@ -11316,7 +11341,10 @@
 - MLDv1
 - MLDv2
 - MLflow
+- MLNX_OFED
 - MLOps
+- mlxconfig
+- mlxlink
 - MM2
 - MMKV
 - MMTC
@@ -12024,6 +12052,7 @@
 - Network Connectivity Center
 - Network Control
 - Network Cost
+- Network Counters
 - Network Debugging
 - Network Design
 - Network Devices
@@ -12726,6 +12755,7 @@
 - OpenSearch Serverless
 - OpenSent
 - OpenShift
+- OpenSM
 - OpenSource
 - OpenSSF
 - OpenSSH
@@ -13071,6 +13101,7 @@
 - PAN-OS
 - Panache
 - Pandas
+- Pandas UDF
 - Pandoc
 - Panel
 - Panel Plugins
@@ -13149,6 +13180,7 @@
 - Partition Alignment
 - Partition Assignment
 - PARTITION BY
+- Partition Evolution
 - Partition Hotspots
 - Partition Key
 - Partition Management
@@ -13344,6 +13376,7 @@
 - Performance Tuning
 - Performance Validation
 - PerformanceObserver
+- perfquery
 - Perftest
 - Period Comparison
 - Periodic Task
@@ -14741,11 +14774,13 @@
 - RDB Persistence
 - RDB Snapshots
 - RDBMS
+- RDD
 - RDF
 - Rdiff-backup
 - Rdisc6
 - Rdkafka
 - RDMA
+- rdma-core
 - RDNSS
 - RDP
 - RDS
@@ -16934,6 +16969,7 @@
 - Slurm
 - Small Business
 - Small Cluster
+- Small Files
 - Small Network
 - Small Office
 - Small Teams
@@ -17179,6 +17215,7 @@
 - Spark SQL
 - Spark Streaming
 - Spark Tuning
+- Spark UI
 - SparkBar
 - SPARQL
 - Sparse Checkout
@@ -17642,6 +17679,7 @@
 - Storage Firewall
 - Storage Gateway
 - Storage Lens
+- Storage Level
 - Storage Management
 - Storage Migration
 - Storage Monitoring
@@ -17807,6 +17845,7 @@
 - Subnet Count
 - Subnet Design
 - Subnet Groups
+- Subnet Manager
 - Subnet Mask
 - Subnet Matching
 - Subnet Migration
@@ -17987,6 +18026,7 @@
 - System Analysis
 - System Architecture
 - System Call
+- System Catalogs
 - System Center
 - System Check
 - System Clock
@@ -18111,6 +18151,7 @@
 - Table Name
 - Table Not Found
 - Table Optimization
+- Table Partitioning
 - Table Recovery
 - Table Repair
 - Table Scan
@@ -19812,6 +19853,7 @@
 - VPC Service Controls
 - VPC Sharing
 - Vpc-cni
+- VPI
 - VPN
 - VPN Gateway
 - VPN Leaks

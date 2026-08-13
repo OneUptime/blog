@@ -17,7 +17,7 @@ The goal is not to apply every tuning knob. It is to locate the first constraine
 On both endpoints, record the route, interface, RDMA mapping, and link state:
 
 ~~~console
-$ ip route get <peer-ipoib-address>
+$ ip route get <peer-ipoib-address> from <local-ipoib-address>
 $ ip -d link show ib0
 $ ip -s link show ib0
 $ cat /sys/class/net/ib0/mode
@@ -25,6 +25,7 @@ $ cat /sys/class/net/ib0/pkey
 $ readlink -f /sys/class/net/ib0/device
 $ ibstat
 $ rdma link show
+$ ibv_devinfo -v -d <rdma-device> -i <port>
 ~~~
 
 `ip route get` exposes the selected device and source address. A management-Ethernet route can make a successful test irrelevant. IPoIB child interfaces represent P_Key partitions; confirm that both endpoints use the intended child or parent and that the Subnet Manager installed compatible membership.
@@ -33,7 +34,7 @@ Require `State: Active`, `Physical state: LinkUp`, and the expected active width
 
 ## Build a Reproducible TCP Baseline
 
-Bind the server and client to their IPoIB addresses so DNS and route changes cannot redirect the test:
+Use numeric IPoIB addresses, bind each endpoint to its IPoIB address, and confirm that the bound source follows the intended route before each test:
 
 ~~~console
 # Server
@@ -68,9 +69,11 @@ $ ip link show ib0
 $ tracepath -n <peer-ipoib-address>
 ~~~
 
+If the `mode` file is absent, connected-mode support is not built or exposed by that driver stack.
+
 Compare the effective MTU on both peers, every relevant child interface, and the partition/broadcast group configured by the SM. A locally configured jumbo value does not make the end-to-end path support it. MTU mismatch can produce fragmentation, PMTU behavior, drops, or a test that fails instead of becoming faster.
 
-Do not blindly switch a modern mlx5 deployment to connected mode. NVIDIA Enhanced IPoIB is a vendor-optimized, UD/datagram-only path with multiple queues and RSS/TSS. NVIDIA's newer MLNX_OFED releases support enhanced mode only. The generic Linux connected-mode capability and the currently installed NVIDIA stack are not interchangeable promises.
+Do not blindly switch a modern mlx5 deployment to connected mode. NVIDIA Enhanced IPoIB is a vendor-optimized, UD/datagram-only path with multiple queues and RSS/TSS. Starting with MLNX_OFED 23.07, that release series and later releases support Enhanced IPoIB only; older LTS release branches may differ. The generic Linux connected-mode capability and the currently installed NVIDIA stack are not interchangeable promises.
 
 ## Check Enhanced Mode, Offloads, and Queues
 
@@ -96,7 +99,7 @@ While the test runs, observe per-CPU use, frequency, softirqs, and HCA interrupt
 $ mpstat -P ALL 1
 $ grep -iE 'mlx5|ib0' /proc/interrupts
 $ cat /proc/softirqs
-$ lscpu -e=CPU,NODE,SOCKET,CORE,ONLINE,MAXMHZ,MINMHZ
+$ lscpu -e=CPU,NODE,SOCKET,CORE,ONLINE,MHZ,MAXMHZ,MINMHZ
 ~~~
 
 One saturated core with idle peers explains why parallel flows help. Check whether receive queues and application threads are on the HCA-local NUMA node. Container CPU sets and IRQ affinity can silently force work onto remote or overloaded cores.
@@ -118,7 +121,7 @@ Use the real BDF. Compare `LnkSta` width and speed with the adapter/platform req
 
 ## Separate Physical Errors from Congestion
 
-Take synchronized deltas during the test:
+Take synchronized counter snapshots before and after the test, then compare the deltas:
 
 ~~~console
 $ grep -H . /sys/class/infiniband/mlx5_0/ports/1/counters/{symbol_error,link_error_recovery,link_downed,port_rcv_errors,port_xmit_discards,port_xmit_wait}
@@ -126,7 +129,7 @@ $ ip -s link show ib0
 $ ibqueryerrors --report-port --details
 ~~~
 
-Growing symbol/BER/recovery errors implicate the physical path. `port_xmit_wait` points toward credit/arbitration pressure; transmit discards can reflect congestion or time spent down. TCP retransmissions and netdev drops explain low goodput even when raw link rate is high.
+Growing symbol or link-recovery errors implicate the physical path. `port_xmit_wait` points toward credit/arbitration pressure; transmit discards can reflect congestion or time spent down. TCP retransmissions and netdev drops explain low goodput even when raw link rate is high.
 
 ## Run a Native Verbs Control, Not a Replacement Test
 
@@ -141,10 +144,11 @@ After locating the layer, change the smallest supported control and rerun the sa
 - [Linux kernel: IPoIB modes, MTU, offloads, and interrupt moderation](https://docs.kernel.org/infiniband/ipoib.html)
 - [NVIDIA DOCA: current IPoIB and Enhanced IPoIB capabilities](https://docs.nvidia.com/doca/sdk/ip-over-infiniband.pdf)
 - [NVIDIA DOCA: MLX drivers, IPoIB offloads, and operating constraints](https://docs.nvidia.com/doca/sdk/mlx-drivers.pdf)
+- [NVIDIA: MLNX_OFED 23.07 changes and Enhanced-IPoIB-only support](https://docs.nvidia.com/networking/display/mlnxofedv23070500/changes+and+new+features)
 - [linux-rdma: official perftest repository and methodology](https://github.com/linux-rdma/perftest)
 - [ESnet: official iperf3 invocation reference](https://software.es.net/iperf/invoking.html)
 - [Linux kernel: stable InfiniBand rate and counter ABI](https://www.kernel.org/doc/Documentation/ABI/stable/sysfs-class-infiniband)
-- [NVIDIA: InfiniBand fabric diagnostic utilities](https://docs.nvidia.com/networking/display/mlnxofedv23105140lts/infiniband-fabric-utilities)
+- [NVIDIA: InfiniBand fabric diagnostic utilities](https://docs.nvidia.com/networking/display/mlnxofedv24104140lts/infiniband-fabric-utilities)
 
 ## Conclusion
 

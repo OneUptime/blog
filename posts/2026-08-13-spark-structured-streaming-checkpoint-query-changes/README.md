@@ -1,4 +1,4 @@
-# Decide Whether a Spark Structured Streaming Checkpoint Can Survive a Query Change
+# Can a Spark Structured Streaming Checkpoint Survive a Query Change?
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

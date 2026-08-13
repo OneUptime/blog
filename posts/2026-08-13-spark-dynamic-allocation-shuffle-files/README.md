@@ -46,7 +46,7 @@ spark.dynamicAllocation.enabled=true
 spark.dynamicAllocation.shuffleTracking.enabled=true
 ```
 
-Inspect `spark.dynamicAllocation.shuffleTracking.timeout` in the configuration guide for the deployed release. An infinite/no-timeout policy can retain executors until shuffle cleanup; a finite timeout trades preservation time against reclamation. Do not set it from job duration folklore—observe how long consumers need the shuffle and how retained RDD/DataFrame references affect cleanup.
+Inspect `spark.dynamicAllocation.shuffleTracking.timeout` in the configuration guide for the deployed release. An infinite/no-timeout policy can retain executors until shuffle cleanup; a finite timeout trades preservation time against reclamation. Do not set it from job duration folklore-observe how long consumers need the shuffle and how retained RDD/DataFrame references affect cleanup.
 
 ## Option 3: Graceful Decommissioning
 

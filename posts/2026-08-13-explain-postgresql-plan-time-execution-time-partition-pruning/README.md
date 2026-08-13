@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: PostgreSQL, EXPLAIN, Partition Pruning, Query Plans, Query Performance, Prepared Statements
+Tags: PostgreSQL, EXPLAIN, Partition Pruning, Query Plan, Query Performance, Prepared Statement
 
 Description: Read PostgreSQL plans for static, initialization-time, and per-loop partition pruning using child nodes, Subplans Removed, loops, and never-executed markers.
 

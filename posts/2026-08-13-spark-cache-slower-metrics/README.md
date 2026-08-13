@@ -54,7 +54,7 @@ Check:
 
 `DataFrame.storageLevel` reports the active persistence policy. Do not assume the RDD and DataFrame `cache()` defaults or serialization behavior are identical across APIs and releases; inspect the actual value.
 
-For SQL workloads, a cache hit in the physical plan should show an `InMemoryTableScan` over an `InMemoryRelation`. The relation can still display its original child scan and exchanges, so their presence alone does not mean they ran. If the in-memory scan is absent, the cached plan may not match the reused logical subtree, or the cache was unpersisted or cleared. If the scan is present, use stage and block evidence—not the printed child plan—to determine whether missing cached partitions were recomputed through lineage.
+For SQL workloads, a cache hit in the physical plan should show an `InMemoryTableScan` over an `InMemoryRelation`. The relation can still display its original child scan and exchanges, so their presence alone does not mean they ran. If the in-memory scan is absent, the cached plan may not match the reused logical subtree, or the cache was unpersisted or cleared. If the scan is present, use stage and block evidence-not the printed child plan-to determine whether missing cached partitions were recomputed through lineage.
 
 ## Understand Recompute and Eviction
 

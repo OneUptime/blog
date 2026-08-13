@@ -117,7 +117,7 @@ Run the same representative input with the corrected broadcast plan and a non-br
 - join output rows;
 - total query runtime and repeated-run variance.
 
-A sort-merge join typically redistributes and sorts inputs whose existing partitioning and ordering do not satisfy its requirements, but it avoids replicating a complete build relation to each participating executor. An initially planned broadcast join avoids the required large-side shuffle when the build relation is genuinely small. An AQE conversion may occur after shuffle output has been materialized, so it can avoid sorting and, with local shuffle readers, remote reads but cannot undo completed shuffle work. The cheaper plan depends on actual filtered sizes, partitioning, cluster resources, and reuse—not the table's label as a “dimension.”
+A sort-merge join typically redistributes and sorts inputs whose existing partitioning and ordering do not satisfy its requirements, but it avoids replicating a complete build relation to each participating executor. An initially planned broadcast join avoids the required large-side shuffle when the build relation is genuinely small. An AQE conversion may occur after shuffle output has been materialized, so it can avoid sorting and, with local shuffle readers, remote reads but cannot undo completed shuffle work. The cheaper plan depends on actual filtered sizes, partitioning, cluster resources, and reuse-not the table's label as a “dimension.”
 
 AQE can improve the decision when runtime sizes differ from static estimates, but it still needs a supported join shape and sensible thresholds. Inspect the final plan every time the behavior is surprising.
 

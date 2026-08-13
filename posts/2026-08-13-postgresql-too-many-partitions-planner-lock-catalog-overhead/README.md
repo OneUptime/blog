@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: PostgreSQL, Table Partitioning, Query Planner, Locks, System Catalogs, Performance Testing
+Tags: PostgreSQL, Table Partitioning, Query Planner, Lock, System Catalogs, Performance Testing
 
 Description: Find a safe PostgreSQL partition count by measuring planning time, backend memory, locks, catalog objects, and maintenance at the expected workload and retention horizon.
 
@@ -174,7 +174,7 @@ Record:
 | Catalog query latency | | | |
 | Blocking duration | | | |
 
-Increase count in steps—perhaps 100, 500, 1,000, 2,000—while keeping data volume and query semantics comparable. Those are experiment points, not recommended thresholds. Stop when an agreed service objective or memory budget fails.
+Increase count in steps-perhaps 100, 500, 1,000, 2,000-while keeping data volume and query semantics comparable. Those are experiment points, not recommended thresholds. Stop when an agreed service objective or memory budget fails.
 
 ## Reduce Count or Reduce Exposure
 

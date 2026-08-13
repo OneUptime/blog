@@ -1,4 +1,4 @@
-# Why Lakehouse Partitions Create Tiny Files—and How to Fix the Write Path
+# Why Lakehouse Partitions Create Tiny Files-and How to Fix the Write Path
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

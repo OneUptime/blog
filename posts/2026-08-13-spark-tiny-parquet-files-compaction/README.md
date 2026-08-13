@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Apache Spark, Parquet, Small Files, Compaction, Spark SQL, Data Lakes
+Tags: Apache Spark, Parquet, Small Files, Compaction, Spark SQL, Data Lake
 
 Description: Diagnose Parquet small-file overhead, tune scan planning separately from storage layout, and compact through a safely published maintenance rewrite.
 
@@ -154,4 +154,4 @@ The lasting fix makes compaction occasional maintenance, not a permanent race ag
 
 ## Conclusion
 
-Tiny Parquet files impose fixed discovery, metadata, open, and scheduling costs that columnar encoding cannot erase. First verify pruning and tune how Spark packs existing files into scan tasks. Then correct the writer and compact bounded partitions through a staged, validated, safely published rewrite. Judge the result by planning time, task shape, request load, and the rate at which new tiny files appear—not by file count alone.
+Tiny Parquet files impose fixed discovery, metadata, open, and scheduling costs that columnar encoding cannot erase. First verify pruning and tune how Spark packs existing files into scan tasks. Then correct the writer and compact bounded partitions through a staged, validated, safely published rewrite. Judge the result by planning time, task shape, request load, and the rate at which new tiny files appear-not by file count alone.

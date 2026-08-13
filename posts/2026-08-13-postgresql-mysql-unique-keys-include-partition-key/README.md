@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: PostgreSQL, MySQL, Table Partitioning, Unique Constraints, Primary Keys, Database Design
+Tags: PostgreSQL, MySQL, Table Partitioning, Unique Constraint, Primary Key, Database Design
 
 Description: Understand why partition-local indexes cannot enforce cross-partition uniqueness, how PostgreSQL and MySQL state the rule, and which redesigns preserve the intended invariant.
 
@@ -56,7 +56,7 @@ Partition bounds guarantee that identical complete key pairs cannot hide in diff
 
 For a unique or primary-key constraint declared on a PostgreSQL partitioned table:
 
-- all columns in the target table's partition key—and in the partition keys of any descendant partitioned tables—must appear in the constraint;
+- all columns in the target table's partition key-and in the partition keys of any descendant partitioned tables-must appear in the constraint;
 - none of those partition keys can contain expressions or function calls.
 
 The documentation explains that child indexes directly enforce uniqueness only within their partitions, so the partition structure must guarantee that duplicates cannot occur in different partitions.
@@ -89,7 +89,7 @@ PARTITION BY RANGE (YEAR(created_at)) (
 );
 ~~~
 
-This is invalid because the column used by the partitioning expression, <code>created_at</code>, is absent from the primary key. MySQL's manual provides several examples in which every unique key—not just one chosen key—must include all partition-expression columns.
+This is invalid because the column used by the partitioning expression, <code>created_at</code>, is absent from the primary key. MySQL's manual provides several examples in which every unique key-not just one chosen key-must include all partition-expression columns.
 
 Adding <code>created_at</code> to the primary key is insufficient if another <code>UNIQUE (external_reference)</code> remains. That key must include <code>created_at</code> too, or the partition design must change.
 

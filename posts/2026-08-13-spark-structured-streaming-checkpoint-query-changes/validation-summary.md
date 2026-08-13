@@ -1,4 +1,4 @@
-# Validation Summary: Decide Whether a Spark Structured Streaming Checkpoint Can Survive a Query Change
+# Validation Summary: Can a Spark Structured Streaming Checkpoint Survive a Query Change?
 
 ## Status
 validated

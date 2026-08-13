@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Apache Spark, Partitions, Adaptive Query Execution, Spark SQL, Performance Tuning, Data Engineering
+Tags: Apache Spark, Partition, Adaptive Query Execution, Spark SQL, Performance Tuning, Data Engineering
 
 Description: Set separate input and shuffle partition budgets from measured bytes, available cores, task memory, and Adaptive Query Execution instead of one magic count.
 

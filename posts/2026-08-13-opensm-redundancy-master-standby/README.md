@@ -130,4 +130,4 @@ Applications may react differently during that interval. Existing traffic can be
 
 ## Conclusion
 
-Healthy OpenSM redundancy has one elected master, one or more observable standbys, deliberate priorities, independent failure domains, and compatible fabric policy. Let the SM protocol perform election; do not set peers to ignore one another or rely on two uncontrolled masters. The final proof is a measured handover that preserves the intended partitions, routes, LIDs, and application behavior—not merely two running services.
+Healthy OpenSM redundancy has one elected master, one or more observable standbys, deliberate priorities, independent failure domains, and compatible fabric policy. Let the SM protocol perform election; do not set peers to ignore one another or rely on two uncontrolled masters. The final proof is a measured handover that preserves the intended partitions, routes, LIDs, and application behavior-not merely two running services.

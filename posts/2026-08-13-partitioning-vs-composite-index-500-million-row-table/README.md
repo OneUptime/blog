@@ -180,4 +180,4 @@ Set an acceptance criterion before viewing results. For example: “p99 bounded 
 
 ## Conclusion
 
-A 500-million-row table does not automatically need partitioning. Use a composite index when the central problem is selective lookup; use partitioning when compatible predicates can eliminate large physical units or lifecycle operations benefit from detaching whole ranges. Test the combined design when both are true. The winning choice is the one that satisfies the whole workload's latency, write, maintenance, and correctness objectives—not the one with the most dramatic single-query benchmark.
+A 500-million-row table does not automatically need partitioning. Use a composite index when the central problem is selective lookup; use partitioning when compatible predicates can eliminate large physical units or lifecycle operations benefit from detaching whole ranges. Test the combined design when both are true. The winning choice is the one that satisfies the whole workload's latency, write, maintenance, and correctness objectives-not the one with the most dramatic single-query benchmark.

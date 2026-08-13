@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Apache Cassandra, Consistent Hashing, Hot Partitions, Key Salting, Data Modeling, Distributed Databases
+Tags: Apache Cassandra, Consistent Hashing, Hot Partitions, Key Salting, Data Modeling, Distributed Database
 
 Description: Split a hot logical key into deterministic Cassandra buckets while preserving targetable point reads, bounded fan-out, ordering, and a safe bucket-count migration.
 

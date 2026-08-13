@@ -1,4 +1,4 @@
-# Validation Summary: Choose `collect()`, `take()`, or `toLocalIterator()` Without Crashing the Spark Driver
+# Validation Summary: Choose `collect()`, `take()`, or `toLocalIterator()` Without Crashing Spark
 
 ## Status
 validated

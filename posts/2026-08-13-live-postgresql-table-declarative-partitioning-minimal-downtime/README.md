@@ -1,4 +1,4 @@
-# Convert a Live PostgreSQL Table to Declarative Partitioning With Minimal Downtime
+# Convert a Live PostgreSQL Table to Partitioning With Minimal Downtime
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -215,4 +215,4 @@ A valid matching check lets PostgreSQL avoid the validation scan. <code>ATTACH P
 
 ## Conclusion
 
-A live partitioning conversion creates a new table; PostgreSQL does not rewrite the old table into a partitioned parent in place. Build the full target, establish a consistent snapshot and ordered change stream, backfill in restartable units, validate keys and values, and use a short write fence for final catch-up and dependency-aware cutover. Renames, dual writes, and counts alone are not correctness protocols. Rehearse the full sequence—including rollback—at production scale.
+A live partitioning conversion creates a new table; PostgreSQL does not rewrite the old table into a partitioned parent in place. Build the full target, establish a consistent snapshot and ordered change stream, backfill in restartable units, validate keys and values, and use a short write fence for final catch-up and dependency-aware cutover. Renames, dual writes, and counts alone are not correctness protocols. Rehearse the full sequence-including rollback-at production scale.

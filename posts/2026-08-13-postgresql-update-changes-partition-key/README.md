@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: PostgreSQL, Table Partitioning, UPDATE, Triggers, Concurrency, Database Transactions
+Tags: PostgreSQL, Table Partitioning, Update, Trigger, Concurrency, Database Transaction
 
 Description: Understand PostgreSQL row movement across partitions, including destination routing, trigger firing, serialization failures, foreign keys, and safe retry behavior.
 

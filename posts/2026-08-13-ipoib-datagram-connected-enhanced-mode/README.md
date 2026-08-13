@@ -72,7 +72,7 @@ Datagram is generally the interoperability baseline and is the only choice for N
 
 Connected mode uses InfiniBand Reliable Connected transport for eligible unicast peers. Its larger MTU reduces the number of IP packets needed for large TCP segments or UDP datagrams. The interface still keeps a UD QP for multicast and for peers that do not support connected mode; the Linux driver handles the smaller path requirement for those neighbors.
 
-Connected transport also creates per-peer connection state and has driver/HCA resource implications. Test peer count, connection churn, failover, multicast, and memory—not only two-host bulk throughput. NVIDIA documentation exposes connected-mode queue-pair limits for implementations without a shared receive queue, illustrating why capability and scale matter.
+Connected transport also creates per-peer connection state and has driver/HCA resource implications. Test peer count, connection churn, failover, multicast, and memory-not only two-host bulk throughput. NVIDIA documentation exposes connected-mode queue-pair limits for implementations without a shared receive queue, illustrating why capability and scale matter.
 
 Do not assume that the generic kernel feature means a particular HCA driver implements it. A write of `connected` may be rejected, or a vendor distribution may intentionally ship only its enhanced UD path.
 

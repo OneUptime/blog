@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Apache Hive, Apache Iceberg, Data Lakehouse, Hidden Partitioning, Partition Evolution, Table Formats
+Tags: Apache Hive, Apache Iceberg, Data Lakehouse, Hidden Partitioning, Partition Evolution, Table Format
 
 Description: Compare explicit Hive date columns with Iceberg transforms, predicate projection, metadata snapshots, and partition evolution to choose a layout that survives change.
 
@@ -10,7 +10,7 @@ Description: Compare explicit Hive date columns with Iceberg transforms, predica
 
 Hive-style partitioning exposes the physical layout as table columns and metastore entries. Apache Iceberg records a transform from a logical source column to partition values and can hide those values from users. Both can skip data; the difference is who owns the relationship between <code>event_time</code> and “event day,” and what happens when the layout changes.
 
-If a stable, governed Hive layout already serves every writer and reader, explicit partitions remain workable. If producers, query engines, or partition granularity will evolve, Iceberg's hidden partitioning and snapshot metadata remove a large class of coupling—but only when every engine uses compatible Iceberg integration.
+If a stable, governed Hive layout already serves every writer and reader, explicit partitions remain workable. If producers, query engines, or partition granularity will evolve, Iceberg's hidden partitioning and snapshot metadata remove a large class of coupling-but only when every engine uses compatible Iceberg integration.
 
 ## Hive Makes the Physical Column Part of the Contract
 
@@ -185,14 +185,14 @@ These are not interchangeable. A snapshot table is prohibited from maintenance t
 
 ## Official Documentation
 
-- [Apache Hive: Language Manual DDL—Partitioned Tables](https://hive.apache.org/docs/latest/language/languagemanual-ddl/)
-- [Apache Hive: Language Manual DML—Dynamic Partitions](https://hive.apache.org/docs/latest/language/languagemanual-dml/)
+- [Apache Hive: Language Manual DDL-Partitioned Tables](https://hive.apache.org/docs/latest/language/languagemanual-ddl/)
+- [Apache Hive: Language Manual DML-Dynamic Partitions](https://hive.apache.org/docs/latest/language/languagemanual-dml/)
 - [Apache Hive: Partition-Based Queries](https://hive.apache.org/docs/latest/language/languagemanual-select/#partition-based-queries)
-- [Apache Hive: Tutorial—Partitions](https://hive.apache.org/docs/latest/user/tutorial/)
+- [Apache Hive: Tutorial-Partitions](https://hive.apache.org/docs/latest/user/tutorial/)
 - [Apache Hive: Configuration Properties](https://hive.apache.org/docs/latest/user/configuration-properties/#hivemetastorelimitpartitionrequest)
 - [Apache Iceberg: Partitioning and Hidden Partitioning](https://iceberg.apache.org/docs/latest/partitioning/)
 - [Apache Iceberg: Spark DDL and Partition Evolution](https://iceberg.apache.org/docs/latest/spark-ddl/)
-- [Apache Iceberg: Table Format Specification—Partition Evolution](https://iceberg.apache.org/spec/#partition-evolution)
+- [Apache Iceberg: Table Format Specification-Partition Evolution](https://iceberg.apache.org/spec/#partition-evolution)
 - [Apache Iceberg: Spark Procedures and Table Migration](https://iceberg.apache.org/docs/latest/spark-procedures/)
 - [Apache Iceberg: Performance](https://iceberg.apache.org/docs/latest/performance/)
 

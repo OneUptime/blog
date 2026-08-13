@@ -30,7 +30,7 @@ $ cat /sys/class/infiniband/mlx5_0/ports/1/phys_state
 $ iblinkinfo -C mlx5_0 -P 1 -l
 ~~~
 
-`ibstat` reports the local LID, SM LID, state, aggregate active rate, and physical state. Linux also exposes that aggregate rate—active width multiplied by active speed—through the stable InfiniBand sysfs ABI. `iblinkinfo` gives each discovered link's active width and speed plus its remote endpoint, which prevents comparing the HCA with the wrong switch port.
+`ibstat` reports the local LID, SM LID, state, aggregate active rate, and physical state. Linux also exposes that aggregate rate-active width multiplied by active speed-through the stable InfiniBand sysfs ABI. `iblinkinfo` gives each discovered link's active width and speed plus its remote endpoint, which prevents comparing the HCA with the wrong switch port.
 
 Save this output with device GUIDs and node descriptions. Port names such as `mlx5_0` and switch faceplate labels can be reordered or mapped differently after maintenance. A GUID-to-port record makes the before/after comparison trustworthy.
 

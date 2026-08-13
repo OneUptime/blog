@@ -2,13 +2,13 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Apache Spark, Executors, Heartbeats, Garbage Collection, Networking, Troubleshooting
+Tags: Apache Spark, Executors, Heartbeat, Garbage Collection, Networking, Troubleshooting
 
 Description: Distinguish JVM pauses, driver overload, network loss, and oversized-task resource pressure behind Spark executor heartbeat timeouts before raising time limits.
 
 ---
 
-Spark executor heartbeats tell the driver that an executor is alive and carry metrics for in-progress tasks. When the driver expires an executor after missing heartbeats, the message identifies a liveness symptom—not whether the executor was garbage-collection paused, disconnected, CPU-starved, already dying, or unable to get a timely response through an overloaded driver.
+Spark executor heartbeats tell the driver that an executor is alive and carry metrics for in-progress tasks. When the driver expires an executor after missing heartbeats, the message identifies a liveness symptom-not whether the executor was garbage-collection paused, disconnected, CPU-starved, already dying, or unable to get a timely response through an overloaded driver.
 
 An oversized task can be the trigger without being the direct protocol cause: its working set may cause long stop-the-world garbage collection, container pressure, spill storms, or process starvation. A legitimate long-running task should still coexist with heartbeat traffic when the executor and network remain healthy.
 

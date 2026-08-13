@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: PostgreSQL, Table Partitioning, Foreign Keys, Referential Integrity, Database Design, SQL
+Tags: PostgreSQL, Table Partitioning, Foreign Key, Referential Integrity, Database Design, SQL
 
 Description: Design and operate foreign keys between PostgreSQL partitioned tables by aligning referenced uniqueness, indexing referencing leaves, and testing cascades and partition maintenance.
 

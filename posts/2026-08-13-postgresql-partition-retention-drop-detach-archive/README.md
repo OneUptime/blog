@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: PostgreSQL, Data Retention, Table Partitioning, Archiving, Database Locks, Backup and Recovery
+Tags: PostgreSQL, Data Retention, Table Partitioning, Archiving, Database Locks, Backup And Recovery
 
 Description: Choose a PostgreSQL retention action from reversibility, lock behavior, restore requirements, and dependencies, then verify each partition before irreversible deletion.
 
