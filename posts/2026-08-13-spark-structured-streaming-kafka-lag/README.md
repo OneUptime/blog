@@ -22,15 +22,16 @@ if progress is not None:
     print(progress)
 ```
 
-Persist progress events instead of sampling only `lastProgress`. For each Kafka topic-partition and trigger, retain:
+Persist progress events instead of sampling only `lastProgress`. For each trigger, retain:
 
-- Spark start and end offsets;
-- latest Kafka/source offset at observation time;
-- records processed and trigger duration;
-- input and processed row rates;
+- records processed and query/source row rates;
 - `durationMs` components;
 - state-operator update/commit metrics;
-- sink commit latency and failures.
+- sink metrics when the connector reports them.
+
+Within each Kafka source's offset JSON, retain the start, end, and latest offset for every topic-partition. Capture query failures from termination events or logs; the standard sink progress fields do not provide a universal sink commit-latency or failure metric.
+
+Do not treat Spark's `inputRowsPerSecond` as uncapped Kafka producer arrival when the query is rate-limited or backlogged. Spark calculates it from the input rows selected for a trigger and the time between trigger starts, while `processedRowsPerSecond` uses the trigger's processing time. To estimate sustained arrival, measure Kafka latest-offset deltas as an offset-rate signal or use broker/producer record metrics. Compare them with Spark end-offset or row-count deltas in matching units over the same wall-clock window.
 
 Offset lag is an offset-distance signal, not seconds or bytes. In an ordinary topic it is often used as a record-count approximation, but Kafka offsets can contain gaps, and transactional visibility or compaction can further separate offset distance from rows Spark will process. A partition with huge records can be more expensive at smaller offset lag. Also record the timestamp of the oldest unprocessed record if the operational objective is time delay.
 
@@ -46,7 +47,7 @@ Inspect `durationMs` and the Spark UI:
 - long task stages with high CPU point to parsing, UDF, join, or aggregation work;
 - high shuffle read/spill/GC points to partitioning, skew, or state pressure;
 - state update/commit growth points to an expanding state store;
-- long `addBatch`/sink work points to file layout, database throttling, `foreachBatch`, or sink commit behavior;
+- long `addBatch` means the complete batch execution, including the sink, is slow; use stage/task and sink-specific metrics to separate operator cost from file layout, database throttling, `foreachBatch`, or sink commit behavior;
 - trigger execution longer than the requested processing-time interval means triggers cannot maintain that cadence.
 
 Name the limiting stage before changing Kafka intake.
@@ -97,7 +98,7 @@ Common high-value fixes include:
 - size shuffle partitions and executors from task metrics;
 - scale executors only when task parallelism and external systems can use them.
 
-Trigger interval alone does not create capacity. Shorter intervals reduce records per micro-batch but add scheduling/commit frequency. Longer intervals amortize fixed cost but increase batch size and latency. Measure full trigger cost.
+Trigger interval alone does not create capacity. While the query keeps up, shorter intervals usually reduce records per micro-batch but add scheduling/commit frequency, while longer intervals amortize fixed cost but increase batch size and latency. Once execution exceeds the requested interval, Spark starts the next batch immediately after the previous one completes, so shortening the interval further does not restore capacity. Measure full trigger cost.
 
 ## Plan Catch-Up Separately from Steady State
 
@@ -107,7 +108,7 @@ A healthy query needs processing capacity above sustained arrival to reduce exis
 catch-up time ≈ backlog input rows / (processing rows/s - arrival rows/s)
 ```
 
-This is a planning approximation and requires all three terms to use the same unit. Do not silently substitute raw Kafka offset distance for rows when the topic has offset gaps. Rates also vary by record size, state, and sink. If processing does not exceed arrival, catch-up time is unbounded.
+This is a planning approximation and requires all three terms to use the same unit and the two rates to use the same wall-clock basis. Do not silently substitute raw Kafka offset distance for rows when the topic has offset gaps. Rates also vary by record size, state, and sink. If processing does not exceed arrival, catch-up time is unbounded.
 
 Raise `maxOffsetsPerTrigger` in controlled steps while watching trigger duration, memory, state commit, sink limits, and failures. An `AvailableNow` run can process data available at start in one or multiple batches and is useful for some bounded catch-up workflows; validate source/sink/query support and checkpoint ownership before changing trigger strategy.
 
