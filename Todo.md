@@ -60,7 +60,6 @@
 
 ## Apache Spark
 
-7. When Does Spark Spill to Disk, and Why Do Some “Spillable” Jobs Still Run Out of Memory?
 8. Spark Broadcast Join Keeps Timing Out: Should You Raise the Timeout, Fix Statistics, or Stop Broadcasting?
 9. How Do You Diagnose a Many-to-Many Spark Join That Silently Explodes the Row Count?
 10. Native Spark Functions, Arrow UDFs, or Pandas UDFs: Which PySpark Path Is Actually Faster?
