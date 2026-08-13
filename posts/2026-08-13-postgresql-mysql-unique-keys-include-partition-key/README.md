@@ -56,8 +56,8 @@ Partition bounds guarantee that identical complete key pairs cannot hide in diff
 
 For a unique or primary-key constraint declared on a PostgreSQL partitioned table:
 
-- all partition-key columns must appear in the constraint;
-- the partition key cannot contain expressions or function calls for this purpose.
+- all columns in the target table's partition key—and in the partition keys of any descendant partitioned tables—must appear in the constraint;
+- none of those partition keys can contain expressions or function calls.
 
 The documentation explains that child indexes directly enforce uniqueness only within their partitions, so the partition structure must guarantee that duplicates cannot occur in different partitions.
 
@@ -177,7 +177,7 @@ During backfill, duplicate validation must cover data copied before cutover and 
 
 ## Creating PostgreSQL Unique Indexes With Less Blocking
 
-PostgreSQL does not support <code>CREATE INDEX CONCURRENTLY</code> directly on a partitioned parent. Its partitioning documentation describes a staged technique:
+PostgreSQL does not support <code>CREATE INDEX CONCURRENTLY</code> directly on a partitioned parent. For a one-level partition tree, its partitioning documentation describes a staged technique:
 
 1. create an index on <code>ONLY</code> the parent, initially invalid;
 2. create matching indexes concurrently on leaves;
