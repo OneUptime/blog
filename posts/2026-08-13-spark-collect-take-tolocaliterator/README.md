@@ -60,7 +60,7 @@ The limit is part of the distributed plan. It is much safer than collecting firs
 first_50 = events.collect()[:50]
 ```
 
-Remember that `toPandas()` and `toArrow()` are also full driver collections. Arrow can make transfer more efficient; it does not make an unbounded result safe.
+Remember that `toPandas()` is also a full driver collection. The same is true of the `toArrow()` developer API, available in Spark 4.0 and later. Arrow can make transfer more efficient; it does not make an unbounded result safe.
 
 ## Use `take(n)` for a Bounded Look
 
@@ -105,7 +105,7 @@ for row in rows:
     send_to_bounded_debug_sink(row.event_id, row.status)
 ```
 
-The DataFrame API documents memory usage as approximately the largest partition; with partition prefetch enabled, as much as two largest partitions may be resident. That makes partition skew a driver risk. A single enormous partition can still cause an out-of-memory failure even though the total dataset is streamed incrementally.
+The DataFrame API documents memory usage as approximately the largest partition; with partition prefetch enabled, as much as two largest partitions may be resident. In Spark Connect, the `prefetchPartitions` argument has no effect. Partition skew therefore remains a driver risk: a single enormous partition can still cause an out-of-memory failure even though the total dataset is streamed incrementally.
 
 Do not write this:
 
@@ -114,17 +114,23 @@ Do not write this:
 rows = list(events.toLocalIterator())
 ```
 
-Also consider failure and side-effect semantics. If the loop calls an external API and the Spark job or client restarts, your Python loop needs its own idempotency and resume design. For distributed production writes, prefer a supported DataFrame writer or a carefully designed `foreachPartition` rather than funneling records through one driver.
+Also consider failure and side-effect semantics. If the loop calls an external API and the consuming application or loop restarts after a failure, your Python loop needs its own idempotency and resume design. For distributed production writes, prefer a supported DataFrame writer or a carefully designed `foreachPartition` rather than funneling records through one driver.
 
 ## Make the Largest Partition Safe
 
-Before using a local iterator over a substantial result, inspect partition balance. This diagnostic performs distributed counting and only collects one small aggregate row per partition:
+Before using a local iterator over a substantial result, inspect partition balance on the same filtered and projected DataFrame you will iterate. This diagnostic performs distributed counting and produces one small aggregate row for each nonempty input partition; the final `show(20)` prints the largest counts:
 
 ```python
 from pyspark.sql import functions as F
 
-partition_sizes = (
+iterated_events = (
     events
+    .where(F.col("event_date") == "2026-08-13")
+    .select("event_id", "status")
+)
+
+partition_sizes = (
+    iterated_events
     .select(F.spark_partition_id().alias("partition_id"))
     .groupBy("partition_id")
     .count()
@@ -140,7 +146,7 @@ For ongoing inspection, persist a small, deliberately sampled diagnostic dataset
 
 ## Protect the Driver Result Channel
 
-Driver safety is broader than heap size. Every returned row must be serialized on an executor, transported, deserialized by the driver JVM/Python client, and retained long enough for user code to consume it. The task metric `resultSize` measures bytes transmitted back as task results; compare its distribution with driver memory and garbage collection. A result can fit eventually yet still cause long pauses or exceed message/result limits along the way.
+Driver safety is broader than heap size. Every returned row must be serialized on an executor, transported, deserialized by the driver JVM/Python client, and retained long enough for user code to consume it. The task metric `resultSize` measures the serialized bytes a task transmits back as its `TaskResult`. Use its distribution as a warning signal, but monitor driver JVM and Python-process memory separately: `resultSize` is not the size of deserialized Python objects. Collecting actions can still cause long pauses or exceed `spark.driver.maxResultSize`, which limits the total serialized results returned for each action.
 
 Keep the consumer loop bounded too. Do not append iterator rows to an ever-growing Python collection, and do not submit unlimited asynchronous side effects. Use a fixed-size buffer with backpressure and explicit error handling. If the desired operation has no natural end or needs parallel throughput, that is evidence it belongs in distributed Spark work or a durable sink, not a local iterator.
 
@@ -154,7 +160,7 @@ Choose based on the contract:
 4. Use `toLocalIterator()` when sequential consumption is required and the largest partition is safe.
 5. Use distributed writers or partition-side processing when the real goal is exporting or applying side effects at scale.
 
-Monitor the Jobs and Stages tabs while testing. Result size is a task metric for bytes transmitted to the driver as task results. Driver process metrics and logs then show whether Python/JVM memory is approaching its limit.
+Monitor the Jobs and Stages tabs while testing. Result size is a task metric for bytes transmitted to the driver as task results. Use configured driver metrics and logs plus OS or container metrics to track the driver JVM and Python process separately.
 
 ## Official Documentation
 
@@ -165,6 +171,7 @@ Monitor the Jobs and Stages tabs while testing. Result size is a task metric for
 - [PySpark RDD `toLocalIterator()`](https://spark.apache.org/docs/latest/api/python/reference/api/pyspark.RDD.toLocalIterator.html)
 - [PySpark DataFrame `show()`](https://spark.apache.org/docs/latest/api/python/reference/pyspark.sql/api/pyspark.sql.DataFrame.show.html)
 - [Spark Monitoring and Task Result Metrics](https://spark.apache.org/docs/latest/monitoring.html)
+- [Spark Configuration: `spark.driver.maxResultSize`](https://spark.apache.org/docs/latest/configuration.html#application-properties)
 - [Spark SQL `LIMIT` Clause](https://spark.apache.org/docs/latest/sql-ref-syntax-qry-select-limit.html)
 
 ## Conclusion
