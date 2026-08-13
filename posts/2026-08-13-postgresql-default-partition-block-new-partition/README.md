@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: PostgreSQL, Default Partitions, Database Locks, Partition Management, ATTACH PARTITION, Reliability
 
-Description: Add a PostgreSQL partition without a surprise default-table outage by relocating conflicting rows, validating an exclusion constraint, and monitoring the exclusive lock.
+Description: Add a PostgreSQL partition without a surprise default-table outage by relocating conflicting rows, validating a check that excludes the new range, and monitoring the exclusive lock.
 
 ---
 
@@ -28,9 +28,16 @@ FOR VALUES FROM ('2026-07-01 00:00:00+00')
          TO   ('2026-08-01 00:00:00+00');
 
 CREATE TABLE events_default PARTITION OF events DEFAULT;
+
+INSERT INTO events (event_id, occurred_at, payload)
+VALUES (
+    1,
+    TIMESTAMPTZ '2026-08-15 00:00:00+00',
+    '{}'::jsonb
+);
 ~~~
 
-An August row currently routes to <code>events_default</code>. Adding August:
+The August row routes to <code>events_default</code>. Adding August:
 
 ~~~sql
 CREATE TABLE events_2026_08 PARTITION OF events
@@ -64,15 +71,18 @@ ORDER BY occurred_at
 LIMIT 100;
 ~~~
 
-An empty result at one instant does not protect against a concurrent insert one millisecond later. The cleanup, exclusion constraint, and attach need a concurrency protocol.
+An empty result at one instant does not protect against a concurrent insert one millisecond later. The cleanup, check constraint, and attach need a concurrency protocol.
 
 ## Prepare a Standalone Target
 
-Create August outside the tree:
+Create August outside the tree. Including indexes also prebuilds equivalents of the parent's indexes so that <code>ATTACH PARTITION</code> does not create missing indexes while holding cutover locks:
 
 ~~~sql
 CREATE TABLE events_2026_08_staging
-    (LIKE events INCLUDING DEFAULTS INCLUDING CONSTRAINTS);
+    (LIKE events
+        INCLUDING DEFAULTS
+        INCLUDING CONSTRAINTS
+        INCLUDING INDEXES);
 
 ALTER TABLE events_2026_08_staging
 ADD CONSTRAINT events_2026_08_bound
@@ -96,25 +106,32 @@ Do not immediately delete source rows and declare success. Concurrent updates, d
 
 ## Give PostgreSQL a Proof About DEFAULT
 
-Add an exclusion constraint:
+Before adding the constraint, activate the maintenance fence for August writes if rejected writes are unacceptable, and finish the final reconciliation. Then add a <code>CHECK</code> constraint that excludes August with a bounded lock wait:
 
 ~~~sql
+BEGIN;
+SET LOCAL lock_timeout = '5s';
+
 ALTER TABLE events_default
 ADD CONSTRAINT events_default_excludes_2026_08
 CHECK (
     occurred_at <  TIMESTAMPTZ '2026-08-01 00:00:00+00'
     OR occurred_at >= TIMESTAMPTZ '2026-09-01 00:00:00+00'
 ) NOT VALID;
+
+COMMIT;
 ~~~
 
-Because the constraint exists, new rows violating it are rejected even while it is not valid for old rows. After all conflicting old rows have been moved or removed, validate it:
+<code>NOT VALID</code> skips the initial table scan, but <code>ADD CONSTRAINT</code> still takes <code>ACCESS EXCLUSIVE</code> on the default partition. The local timeout limits each individual wait to acquire a lock; it does not limit execution after a lock is acquired. If it fires, roll back and retry from a known state.
+
+Because the check exists, new rows violating it are rejected even while it is not valid for old rows. After all conflicting old rows have been moved or removed, validate it:
 
 ~~~sql
 ALTER TABLE events_default
 VALIDATE CONSTRAINT events_default_excludes_2026_08;
 ~~~
 
-Validation scans the default ahead of the attach and under the lock behavior documented for <code>VALIDATE CONSTRAINT</code>. It does not require the attach's long <code>ACCESS EXCLUSIVE</code> scan. Confirm:
+Validation scans the default under <code>SHARE UPDATE EXCLUSIVE</code>, allowing ordinary reads and nonviolating writes to continue. This moves the scan out of the attach's <code>ACCESS EXCLUSIVE</code> lock window. Confirm:
 
 ~~~sql
 SELECT conname, convalidated, pg_get_constraintdef(oid)
@@ -125,9 +142,9 @@ WHERE conrelid = 'events_default'::regclass
 
 Once valid, the check proves that the default cannot overlap August.
 
-There is a deliberate behavioral consequence: until the August partition is attached, a new August row routed toward the default fails its explicit exclusion check. Keep that interval short or fence those writes. The constraint prevents recontamination; it does not reroute rows to a standalone table.
+There is a deliberate behavioral consequence: until the August partition is attached, a new August row routed toward the default fails its explicit check. Keep the fence in place through the attach; if rejected writes are acceptable instead, keep that interval short and make callers handle the error. The constraint prevents recontamination; it does not reroute rows to a standalone table.
 
-## Attach in a Bounded Transaction
+## Attach with a Bounded Lock Wait
 
 ~~~sql
 BEGIN;
@@ -141,7 +158,7 @@ FOR VALUES FROM ('2026-08-01 00:00:00+00')
 COMMIT;
 ~~~
 
-The validated bound on the staging table avoids scanning it, while the validated exclusion avoids scanning the default. PostgreSQL still takes locks to change the hierarchy. A short timeout and idempotent retry prevent an automation process from waiting indefinitely behind a long transaction.
+The validated bound on the staging table avoids scanning it, while the validated check on the default avoids scanning that table. PostgreSQL still takes <code>SHARE UPDATE EXCLUSIVE</code> on the parent and <code>ACCESS EXCLUSIVE</code> on both the staging table and the default partition. The proof shortens those exclusive lock holds; it does not remove them. <code>lock_timeout</code> applies separately to each lock acquisition, so five seconds is not a bound on total statement or transaction time. On a timeout, roll back and have automation inspect catalog state before retrying idempotently.
 
 After attach, verify routing:
 
@@ -153,7 +170,7 @@ WHERE occurred_at >= TIMESTAMPTZ '2026-08-01 00:00:00+00'
 GROUP BY tableoid;
 ~~~
 
-PostgreSQL's internal default bound now excludes August. The explicit exclusion check is redundant for that interval and may be dropped after review. The candidate's matching bound check is also redundant after attachment.
+PostgreSQL's internal partition constraint for the default now excludes August. The explicit check is redundant for that interval and may be dropped after review. The candidate's matching bound check is also redundant after attachment.
 
 ## Monitor the Lock Chain
 
@@ -180,7 +197,12 @@ SELECT l.pid,
        l.granted,
        l.relation::regclass
 FROM pg_locks AS l
-WHERE l.relation IN (
+WHERE l.database = (
+    SELECT oid
+    FROM pg_database
+    WHERE datname = current_database()
+)
+  AND l.relation IN (
     'events'::regclass,
     'events_default'::regclass,
     'events_2026_08_staging'::regclass
@@ -202,7 +224,7 @@ FROM pg_partition_tree('events_default'::regclass)
 ORDER BY level, relid::text;
 ~~~
 
-Validate exclusions throughout the relevant hierarchy and rehearse at the final leaf count.
+Validate checks that prove exclusion throughout the relevant hierarchy and rehearse at the final leaf count.
 
 ## Prefer Prevention
 
@@ -225,14 +247,14 @@ Also distinguish <code>CREATE TABLE ... PARTITION OF</code> from attaching a pre
 
 ## A Safe Monthly Runbook
 
-1. Create the standalone next partition and exact bound check.
-2. Find and reconcile matching rows in default.
-3. Add a <code>NOT VALID</code> exclusion to default.
-4. Validate the exclusion before the cutover.
-5. Fence matching writes for the short gap.
+1. Create the standalone next partition, exact bound check, and equivalent parent indexes.
+2. Find and bulk-copy matching rows from default.
+3. Fence matching writes and finish the source/target reconciliation.
+4. Add a <code>NOT VALID</code> check to default with a bounded lock wait.
+5. Validate the check before the cutover.
 6. Attach with session-local lock timeout.
 7. Release the fence and verify <code>tableoid</code> routing.
-8. Drop redundant checks if desired.
+8. Drop redundant checks in a separately bounded DDL step if desired.
 9. Alert if default receives expected-range rows again.
 10. Pre-create the following partition earlier.
 
@@ -245,8 +267,8 @@ Also distinguish <code>CREATE TABLE ... PARTITION OF</code> from attaching a pre
 - [PostgreSQL: Explicit Locking](https://www.postgresql.org/docs/current/explicit-locking.html)
 - [PostgreSQL: pg_locks](https://www.postgresql.org/docs/current/view-pg-locks.html)
 - [PostgreSQL: pg_stat_activity](https://www.postgresql.org/docs/current/monitoring-stats.html#MONITORING-PG-STAT-ACTIVITY-VIEW)
-- [PostgreSQL: Partition Information Functions](https://www.postgresql.org/docs/current/functions-info.html#FUNCTIONS-INFO-PARTITION)
+- [PostgreSQL: Partition Information Functions](https://www.postgresql.org/docs/current/functions-admin.html#FUNCTIONS-INFO-PARTITION)
 
 ## Conclusion
 
-Adding a partition changes the meaning of <code>DEFAULT</code>, so PostgreSQL must rule out overlapping rows. Move conflicts through a concurrency-safe process, add and validate a precise exclusion constraint, and attach the prepared target with a bounded lock wait. The proof removes the long exclusive scan, not all locks. Better still, pre-create expected ranges and monitor the default as an exception path rather than a normal landing zone.
+Adding a partition changes the meaning of <code>DEFAULT</code>, so PostgreSQL must rule out overlapping rows. Move conflicts through a concurrency-safe process, add and validate a precise check that excludes the new range, and attach the prepared target with a bounded lock wait. The proof removes the long exclusive scan, not all locks. Better still, pre-create expected ranges and monitor the default as an exception path rather than a normal landing zone.
