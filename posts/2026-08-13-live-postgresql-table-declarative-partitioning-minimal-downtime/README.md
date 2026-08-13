@@ -30,6 +30,8 @@ Capture more than columns:
 pg_dump --schema-only --table=public.events appdb > events-schema.sql
 ~~~
 
+Do not treat this table-scoped dump as a complete dependency inventory. With <code>--table</code>, <code>pg_dump</code> does not automatically include every related object; inspect the catalogs or a full database-wide schema-only dump for inbound foreign keys, views, functions, and other dependencies.
+
 Review:
 
 - primary, unique, check, exclusion, and foreign-key constraints;
@@ -41,7 +43,7 @@ Review:
 - views, materialized views, functions, and foreign keys depending on the table;
 - application SQL that names child tables or assumes a key is global.
 
-A renamed replacement does not inherit the old table's object identity. PostgreSQL dependencies refer to OIDs, not merely relation names. Renaming <code>events</code> to <code>events_old</code> and <code>events_new</code> to <code>events</code> does not retarget an existing view or foreign key to the new OID. Plan to recreate or deliberately rebind dependencies during cutover.
+A renamed replacement does not inherit the old table's object identity. Catalog-tracked dependencies such as parsed views and foreign keys refer to object OIDs, not merely relation names. Renaming <code>events</code> to <code>events_old</code> and <code>events_new</code> to <code>events</code> does not retarget an existing view or foreign key to the new OID. Function bodies stored as string literals can resolve relation names at execution time without a catalog-tracked table dependency, so inspect those bodies separately. Plan to recreate or deliberately rebind dependencies during cutover.
 
 ## Build the Target Hierarchy
 
@@ -77,21 +79,21 @@ start dual writes
 switch
 ~~~
 
-Writes committed between the copy snapshot and dual-write start are missing. Reversing the order naively is also unsafe: a trigger may write a newer version to the target, after which an old snapshot copy overwrites it.
+Writes committed between the copy snapshot and dual-write start are missing. Reversing the order naively is also unsafe: a trigger may write a newer version to the target, after which an old snapshot copy conflicts with it or, under a blind upsert, overwrites it.
 
 A correct change-capture design establishes an ordered boundary:
 
 1. start capturing changes at a known log position or in an atomic transaction boundary;
 2. take a consistent source snapshot associated with that boundary;
 3. copy snapshot rows;
-4. apply later inserts, updates, and deletes in commit order;
+4. apply later inserts, updates, deletes, and any allowed truncates in transactional order;
 5. continue until lag is negligible;
 6. stop or fence source writes;
 7. apply through the final confirmed position.
 
-PostgreSQL logical replication implements the general snapshot-then-continuous-change model. It uses replica identity, usually a primary key, for updates and deletes. When source and destination partition layouts differ, a publication with <code>publish_via_partition_root = true</code> publishes changes using the root's identity and schema.
+PostgreSQL logical replication implements the general snapshot-then-continuous-change model. It uses replica identity, usually a primary key, for updates and deletes. When the publisher is partitioned and publisher and subscriber partition layouts differ, a publication with <code>publish_via_partition_root = true</code> publishes changes using the publisher root's identity and schema. With this option, a <code>TRUNCATE</code> issued directly against a leaf partition is not replicated.
 
-Native logical replication is often easiest when the target is a separate PostgreSQL database or instance. If the target must remain in the same database, teams commonly use a purpose-built CDC consumer or a reviewed trigger-backed change log. Do not improvise row triggers without proving transaction ordering, delete handling, retry idempotency, bulk-statement behavior, and failure recovery.
+Built-in subscriptions match publisher and subscriber tables by fully qualified name, so they cannot replicate <code>public.events</code> directly into <code>public.events_new</code>. Native logical replication is therefore often easiest when the target is a separate PostgreSQL database or instance where the replacement can use the same qualified name. If the target must remain in the same database under a different name, teams commonly use a purpose-built CDC consumer with explicit name mapping or a reviewed trigger-backed change log. Do not improvise a trigger-backed design without proving transaction ordering, delete handling, retry idempotency, bulk-statement behavior, and failure recovery. Row triggers do not capture <code>TRUNCATE</code>, so prohibit it during the migration or capture it separately with a statement-level mechanism.
 
 ## Account for Logical Replication Limits
 
@@ -103,7 +105,7 @@ PostgreSQL's current restrictions matter to cutover:
 - tables need compatible target schemas;
 - update/delete publication needs a suitable replica identity;
 - conflicts can stop apply until resolved;
-- attaching existing contents to a published tree does not itself publish those existing rows.
+- attaching a table into a partition tree whose root is published with <code>publish_via_partition_root = true</code> does not itself publish the attached table's existing rows.
 
 Create target DDL separately, keep additive changes synchronized, and explicitly advance sequences before enabling writes:
 
@@ -136,10 +138,10 @@ Throttle by measured replica lag, WAL growth, storage I/O, checkpoint pressure, 
 
 ## Validate More Than Counts
 
-Counts detect gross omissions but not swapped values or offsetting errors:
+Counts can detect gross omissions but not swapped values or offsetting errors. Compare equivalent source and target results after the target has applied through the same captured or fenced change position. For example, one side of that comparison is:
 
 ~~~sql
-SELECT date_trunc('month', occurred_at) AS month,
+SELECT date_trunc('month', occurred_at AT TIME ZONE 'UTC') AS month_utc,
        count(*) AS rows,
        min(event_id) AS min_id,
        max(event_id) AS max_id
@@ -197,7 +199,7 @@ FOR VALUES FROM ('2026-07-01 00:00:00+00')
          TO   ('2026-08-01 00:00:00+00');
 ~~~
 
-A valid matching check lets PostgreSQL avoid the validation scan. The attach still takes locks and requires exact schema, constraints, and index compatibility. If the target has a default partition, separately prove that it contains no rows for the new bound or PostgreSQL will scan it under an exclusive lock.
+A valid matching check lets PostgreSQL avoid the validation scan. <code>ATTACH PARTITION</code> takes a <code>SHARE UPDATE EXCLUSIVE</code> lock on the parent and <code>ACCESS EXCLUSIVE</code> locks on the table being attached and on any default partition. The attached table must have the same columns and types and all parent <code>NOT NULL</code> and inheritable <code>CHECK</code> constraints. For each parent index, PostgreSQL creates a corresponding index or attaches an equivalent existing one; missing parent <code>UNIQUE</code> and <code>PRIMARY KEY</code> constraints are created. If the target has a default partition, add a valid <code>CHECK</code> constraint that excludes the new bound to avoid a scan; otherwise PostgreSQL scans the default partition while holding its lock.
 
 ## Official Documentation
 
