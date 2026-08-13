@@ -63,7 +63,6 @@
 
 ## Partitioning
 
-20. Why Do Lakehouse Partitions Create Tiny Files? Balance Pruning, Compaction, and Write Concurrency
 
 ## InfiniBand
 
