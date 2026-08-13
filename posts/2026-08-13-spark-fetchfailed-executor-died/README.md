@@ -8,22 +8,22 @@ Description: Trace Spark shuffle fetch failures to lost executors, transient net
 
 ---
 
-A `FetchFailedException` tells you where a Spark stage noticed damage, not necessarily where the damage began. A reduce task asked for a shuffle block and could not retrieve it. The producer executor may already be gone, its local file may be missing or corrupt, the shuffle service may be unavailable, or a healthy server may simply be unreachable long enough to exhaust the client's retries.
+A `FetchFailedException` tells you where a Spark stage noticed damage, not necessarily where the damage began. A task consuming a shuffle could not obtain required shuffle data or its map-output metadata. For a block-fetch failure, the producer executor may already be gone, its local file may be missing or corrupt, the shuffle service may be unavailable, or a healthy server may simply be unreachable long enough to exhaust the client's retries.
 
-Spark's own `FetchFailed` API describes the normal recovery path: invalidate the missing map output and rerun the earlier stage that generated it. A single successful retry can therefore be ordinary fault recovery. Repeated failures for the same host, shuffle, or disk are an infrastructure signal. Repeated failures spread across healthy hosts are more likely to indicate network saturation, oversized fetch pressure, or a shuffle-service bottleneck.
+Spark's own `FetchFailed` API describes the normal recovery path as going back to the stage that generated the missing data. In the usual non-barrier case, the scheduler invalidates the missing map output and resubmits the producing stage. A stage that succeeds after one such recovery cycle can therefore be ordinary fault recovery. Repeated failures for the same host or disk are an infrastructure signal; repeated failures in the same shuffle indicate a persistent problem rather than ordinary recovery. Failures spread across healthy hosts are more likely to indicate network saturation, oversized fetch pressure, or a shuffle-service bottleneck.
 
 ## Reconstruct the Failure in Timeline Order
 
-Start with the driver log, not the final exception alone. Record the shuffle ID, map ID, reduce ID, block-manager address, stage attempt, and timestamp from the first fetch failure. Then look slightly earlier for an executor-removal message and its reason.
+Start with the driver log, not the final exception alone. Record the shuffle ID, map ID, map index, reduce ID, block-manager address when present, stage attempt, and timestamp from the first fetch failure. Then look slightly earlier for an executor-removal message and its reason.
 
 The distinction matters:
 
-- If the executor or entire host disappeared first, the missing block is a consequence. Investigate the executor exit, container or pod event, node health, and decommission path.
-- If the executor remained registered, inspect its log and the shuffle-service log for connection resets, timeouts, file-not-found messages, and checksum diagnostics.
+- If the executor or entire host disappeared first and no preservation mechanism kept its shuffle output available, the missing block is a consequence. Investigate the executor exit, container or pod event, node health, and decommission path.
+- If the executor remained registered, inspect its log and, when one is enabled, the shuffle-service log for connection resets, timeouts, file-not-found messages, and checksum diagnostics.
 - If many reducers report the same producer address, suspect that producer host or its shuffle service.
 - If one reducer reports many unrelated producers, inspect the reducer host, its network path, and its local resource pressure.
 
-In the Spark UI, open the failed stage attempt and sort the task table by failure, shuffle read, fetch-wait time, and remote bytes read. The official Web UI reference defines **Shuffle Read Fetch Wait Time** as time blocked waiting for remote shuffle data. High fetch wait with little executor CPU time supports an I/O diagnosis; high GC time or peak execution memory points toward memory pressure instead. Cross-reference the stage with the Executors tab to see lost executors and per-executor shuffle totals.
+In the Spark UI, open the failed stage attempt. Use the **Status** and **Errors** columns, then sort the task table by **Shuffle Read Size / Records**, **Shuffle Read Fetch Wait Time**, and **Shuffle Remote Reads**. The official Web UI reference defines **Shuffle Read Fetch Wait Time** as time blocked waiting for remote shuffle data. High fetch wait with little executor computing time in the task timeline supports an I/O diagnosis; high GC time or unusually high peak execution memory supports a memory-pressure diagnosis instead. Cross-reference the stage with the Executors tab to see lost executors and per-executor shuffle totals.
 
 For retained event logs, the History Server and REST API expose the same task metrics. Preserve the event log and the cluster-manager events before retrying repeatedly, because ephemeral executor logs may vanish with the container.
 
@@ -33,11 +33,11 @@ For retained event logs, the History Server and REST API expose the same task me
 
 Shuffle map outputs normally live on local storage associated with the executor. When those outputs are no longer available, Spark reruns their map tasks. Determine *why* the executor left: an out-of-memory kill, node loss, preemption, disk eviction, deliberate dynamic allocation, or decommissioning require different fixes.
 
-Do not call every executor loss a network problem. A container exit code, Kubernetes event, YARN diagnostic, or operating-system OOM message is stronger evidence than the later fetch exception. If executors are routinely removed while their shuffle data is still needed, verify that the application's dynamic-allocation preservation mechanism is actually configured: an external shuffle service, shuffle tracking, graceful shuffle-block decommissioning, or a reliable custom shuffle storage implementation.
+Do not call every executor loss a network problem. A container exit code, Kubernetes event, YARN diagnostic, or operating-system OOM message is stronger evidence than the later fetch exception. If executors are routinely removed while their shuffle data is still needed, verify that the application's dynamic-allocation preservation mechanism is actually configured: an external shuffle service, shuffle tracking, graceful shuffle-block decommissioning, or an experimental reliable custom shuffle storage implementation.
 
 ### 2. The network failure was transient
 
-Spark's Netty shuffle client can retry I/O-related fetch errors. `spark.shuffle.io.maxRetries` controls the retry count and `spark.shuffle.io.retryWait` the wait between retries. `spark.shuffle.io.connectionTimeout` defaults to the general network timeout when not set separately.
+With the Netty shuffle transport, Spark can retry I/O-related fetch errors. `spark.shuffle.io.maxRetries` controls the retry count and `spark.shuffle.io.retryWait` the wait between retries. `spark.shuffle.io.connectionTimeout` defaults to the general network timeout when not set separately.
 
 Retries are appropriate for brief connection loss or a long pause. They do not repair a deleted file, a dead node, or a consistently overloaded service. Compare the first error with network telemetry: packet loss, connection resets, retransmits, interface saturation, and concurrent connections. If failures stop after a retry and hosts remain healthy, a modest retry review may be justified. If every retry targets a missing block, increasing the wait only delays recomputation.
 
@@ -45,17 +45,17 @@ Retries are appropriate for brief connection loss or a long pause. They do not r
 
 Inspect the producer host for full filesystems, I/O errors, unexpected cleanup, and unhealthy volumes. Spark can calculate shuffle checksums. With shuffle checksums enabled, Spark can use the checksum file when diagnosing detected corruption, including whether the problem is consistent with disk or network corruption.
 
-Treat `No space left on device`, missing index/data files, checksum mismatch, and kernel storage errors as disk evidence. Check every path configured through `spark.local.dir`; the effective directory may also be overridden by the cluster manager. Adding executor heap does not create local-disk capacity.
+Treat `No space left on device`, missing index/data files, and kernel storage errors as storage-layer evidence. A checksum mismatch is evidence of corruption, not by itself proof of a disk fault; use Spark's checksum diagnosis to distinguish disk corruption from network corruption when possible. Check every path configured through `spark.local.dir`; the effective directory may also be overridden by the cluster manager. Adding executor heap does not create local-disk capacity.
 
 ### 4. The external shuffle service is unavailable or saturated
 
-When enabled and correctly installed, the external shuffle service serves executor-written shuffle files independently of the executor process. Check that the service is running on every eligible worker, that its configured service name and port match the application, and that it can access the same local directories.
+When enabled and correctly installed on a supported cluster manager, the external shuffle service serves executor-written shuffle files independently of the executor process. Check that the service is running on every eligible worker, that the application is configured to use it, and that it can access the same local directories. On YARN, also verify that `spark.shuffle.service.name` matches the NodeManager auxiliary-service name; verify the configured service port where applicable.
 
 Service-side connection limits and backlogs can also reject load. Correlate service logs with the exact producer host and time. A setting such as `spark.shuffle.maxChunksBeingTransferred` intentionally closes new connections at its limit; clients then retry and eventually surface a fetch failure if retries are exhausted. Tune such limits only after observing service pressure and host capacity.
 
 ## Use a Controlled Diagnostic Configuration
 
-Capture the current values before changing anything:
+After capturing the current values, run a controlled diagnostic configuration. Ensure that `spark.eventLog.dir` points to an existing writable directory; for History Server use, it should be a shared directory matched by `spark.history.fs.logDirectory`:
 
 ```bash
 spark-submit \
@@ -90,7 +90,7 @@ A healthy run may still retry an isolated fetch. The success criterion is that f
 - [Spark Monitoring and Instrumentation](https://spark.apache.org/docs/latest/monitoring.html)
 - [Spark RDD Programming Guide: Shuffle Operations](https://spark.apache.org/docs/latest/rdd-programming-guide.html#shuffle-operations)
 - [Spark Job Scheduling: Dynamic Resource Allocation](https://spark.apache.org/docs/latest/job-scheduling.html#dynamic-resource-allocation)
-- [Spark Standalone Mode: External Shuffle Service](https://spark.apache.org/docs/latest/spark-standalone.html)
+- [Spark Standalone Mode](https://spark.apache.org/docs/latest/spark-standalone.html)
 
 ## Conclusion
 
