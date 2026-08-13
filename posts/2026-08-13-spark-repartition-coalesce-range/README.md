@@ -32,7 +32,7 @@ The exchange is expensive: rows are serialized, moved, and written/read through 
 
 ## `coalesce()`: Merge Existing Partitions Without Full Redistribution
 
-`DataFrame.coalesce(n)` returns exactly `n` partitions and uses a narrow dependency when decreasing the count. It combines existing partitions rather than evenly reshuffling all rows.
+`DataFrame.coalesce(n)` returns `n` partitions when `n` is lower than the current count; requesting a larger count leaves the count unchanged. When decreasing the count, it uses a narrow dependency and combines existing partitions rather than evenly reshuffling all rows.
 
 ```python
 reduced = heavily_filtered.coalesce(40)
@@ -40,7 +40,7 @@ reduced = heavily_filtered.coalesce(40)
 
 This is valuable after a strong filter when the remaining parent partitions are already reasonably balanced. It avoids a full exchange and reduces tiny output tasks.
 
-The API documentation warns about drastic coalescing. Calling `coalesce(1)` can place the computation on one node because upstream work may continue through the narrow dependency with very limited parallelism. If you require a balanced single final partition, `repartition(1)` introduces a shuffle so upstream partitions can execute in parallel before the final exchange—though the final single-partition work is still inherently serialized.
+The API documentation warns about drastic coalescing. Calling `coalesce(1)` can place the computation on one node because upstream work may continue through the narrow dependency with very limited parallelism. If you require a single final partition without collapsing upstream parallelism, `repartition(1)` introduces a shuffle so upstream partitions can execute in parallel before the final exchange—though the final single-partition work is still inherently serialized.
 
 Use `coalesce()` when all three are true:
 
@@ -89,7 +89,7 @@ You may combine them deliberately:
 )
 ```
 
-This does not guarantee exactly one file per date. Multiple Spark partitions can contain a date, and task retries or writer behavior also matter. Avoid high-cardinality directory partition columns; the writer documentation describes `partitionBy` as a filesystem layout suitable for columns with limited distinct values.
+This does not guarantee exactly one file per date in the destination: append writes can add files alongside existing ones, and `spark.sql.files.maxRecordsPerFile` can split a task's output. Within this write and absent a later shuffle, the explicit hash repartition does assign every row for a given date to the same Spark partition. Avoid high-cardinality directory partition columns; the writer documentation describes `partitionBy` as a filesystem layout suitable for columns with limited distinct values.
 
 ## Choose by the Next Boundary
 
@@ -126,11 +126,11 @@ Avoid chaining partition operations without checking the optimized plan. SQL par
 
 ## Treat the Partition Count as a Measured Intermediate Contract
 
-`getNumPartitions()` reports the DataFrame's current RDD partition count at that point, but later optimizer exchanges and AQE may produce a different partitioning for execution. Record both the declared count and the final adaptive plan. If a downstream library relies on partition-local ordering or grouping, document the exact operation after which that property holds; a subsequent shuffle invalidates it.
+`getNumPartitions()` reports the DataFrame's current RDD partition count at that point, but later optimizer exchanges and AQE may produce a different partitioning for execution. Record both the observed count and the final adaptive plan. If a downstream library relies on partition-local ordering or grouping, document the exact operation after which that property holds; a subsequent shuffle does not preserve local ordering, and repartitioning on incompatible keys invalidates grouping.
 
 Partitioning also does not imply uniqueness, completeness, or equal size. Hash partitions can be extremely uneven under hot keys, and range partitions can be uneven under concentrated distributions or samples. Add a small partition profile—rows, relevant bytes, and min/max key where meaningful—to the benchmark. This prevents a nominal “200 partitions” result from hiding one partition that contains most of the work.
 
-Finally, do not expose Spark partition IDs as stable business identifiers. Task retries, changed upstream partitioning, AQE, and different input splits can change them. Persist business keys and ordering fields, not `spark_partition_id()`, when downstream correctness needs identity.
+Finally, do not expose Spark partition IDs as stable business identifiers. Changed upstream partitioning, AQE, and different input splits can change them. Persist business keys and ordering fields, not `spark_partition_id()`, when downstream correctness needs identity.
 
 ## Official Documentation
 
