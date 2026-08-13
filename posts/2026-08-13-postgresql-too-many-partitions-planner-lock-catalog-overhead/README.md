@@ -66,10 +66,12 @@ WHERE occurred_at >= TIMESTAMPTZ '2026-08-13 00:00:00+00'
   AND occurred_at <  TIMESTAMPTZ '2026-08-14 00:00:00+00';
 ~~~
 
+The reported planning time excludes parsing and query rewriting.
+
 Run many iterations through the same driver and prepared-statement behavior as production. Separate:
 
 - client round-trip time;
-- server parse and plan time;
+- server parse and rewrite time, measured separately from the reported planning time;
 - execution time;
 - custom versus generic plan behavior;
 - cold catalog-cache versus warmed backend behavior.
@@ -90,6 +92,8 @@ FROM pg_backend_memory_contexts
 ORDER BY total_bytes DESC
 LIMIT 30;
 ~~~
+
+By default, this view is readable only by superusers or roles with the privileges of <code>pg_read_all_stats</code>.
 
 Take comparable snapshots:
 
@@ -112,12 +116,13 @@ From another session, inspect locks for a target backend:
 ~~~sql
 SELECT mode, granted, count(*) AS lock_count
 FROM pg_locks
-WHERE pid = $1
+WHERE pid = 12345  -- replace with the target backend PID
+  AND locktype = 'relation'
 GROUP BY mode, granted
 ORDER BY mode, granted;
 ~~~
 
-Join <code>pg_locks.relation</code> to <code>pg_class.oid</code> in the current database to identify relations. Use <code>pg_blocking_pids()</code> to find blockers rather than attempting a fragile self-join over lock compatibility.
+Join <code>pg_locks.relation</code> to <code>pg_class.oid</code> in the current database to identify relations. Pass the target PID to <code>pg_blocking_pids(integer)</code> to find blockers rather than attempting a fragile self-join over lock compatibility.
 
 <code>max_locks_per_transaction</code> sizes the shared lock table based on an average number of distinct lockable objects per transaction or prepared transaction. Individual transactions can exceed it while shared capacity remains, but a hierarchy query touching many tables is an official example of why it may need adjustment. This setting requires a server restart and increases shared-memory allocation, so do not raise it blindly to accommodate an accidental full-tree query.
 
@@ -199,7 +204,7 @@ Detaching old partitions can shrink the active tree, but archived standalone tab
 
 - [PostgreSQL: Partitioning Best Practices](https://www.postgresql.org/docs/current/ddl-partitioning.html#DDL-PARTITIONING-DECLARATIVE-BEST-PRACTICES)
 - [PostgreSQL: Partition Pruning](https://www.postgresql.org/docs/current/ddl-partitioning.html#DDL-PARTITION-PRUNING)
-- [PostgreSQL: pg_partition_tree](https://www.postgresql.org/docs/current/functions-info.html#FUNCTIONS-INFO-PARTITION)
+- [PostgreSQL: pg_partition_tree](https://www.postgresql.org/docs/current/functions-admin.html#FUNCTIONS-INFO-PARTITION)
 - [PostgreSQL: pg_locks](https://www.postgresql.org/docs/current/view-pg-locks.html)
 - [PostgreSQL: Lock Management Configuration](https://www.postgresql.org/docs/current/runtime-config-locks.html)
 - [PostgreSQL: Viewing Locks](https://www.postgresql.org/docs/current/monitoring-locks.html)
