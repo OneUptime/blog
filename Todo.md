@@ -87,7 +87,6 @@
 
 ## InfiniBand
 
-2. Active/Standby OpenSM or Competing Masters: How Should InfiniBand Subnet Manager Redundancy Work?
 3. `ibstat` Shows `Down/Polling`: How Do You Separate Cable, Port, Firmware, and Link-Mode Faults?
 4. Why Did an InfiniBand Link Negotiate 1X or a Lower Rate Than the HCA Advertises?
 5. Which InfiniBand Counters Actually Point to a Bad Cable? Read Symbol Errors, Link Recovery, and Discards
