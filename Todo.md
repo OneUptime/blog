@@ -72,7 +72,6 @@
 
 ## Partitioning
 
-6. How Can `EXPLAIN` Prove PostgreSQL Pruned Partitions at Plan Time or Execution Time?
 7. How Many PostgreSQL Partitions Are Too Many? Measure Planner, Lock, and Catalog Overhead
 8. Why Must PostgreSQL and MySQL Unique Keys Include the Partition Key?
 9. How Do Foreign Keys Behave When Both PostgreSQL Tables Are Partitioned?
