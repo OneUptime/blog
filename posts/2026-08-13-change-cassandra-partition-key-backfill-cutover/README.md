@@ -80,7 +80,7 @@ Cassandra encourages tables per query. If another query needs lookup by event ID
 
 ## Inventory Data Semantics
 
-Cassandra resolves cells by mutation timestamps. TTLs are also part of cell lifecycle, and deletes create tombstones. A migration that copies only visible values with new default timestamps can produce a different winner:
+Cassandra resolves ordinary cells by mutation timestamps. TTLs are also part of cell lifecycle, and deletes create tombstones. A migration that copies only visible values with new default timestamps can produce a different winner:
 
 ~~~text
 T1: backfill reads old value A
@@ -94,8 +94,8 @@ Similarly, copying an original 30-day TTL as a fresh 30-day TTL extends retentio
 Define how the copier handles:
 
 - per-column write timestamps;
-- remaining TTL rather than original TTL;
-- row and partition deletes;
+- original expiration times, recomputing the remaining TTL when each target write is issued;
+- cell/element, row, clustering-range, and partition deletes;
 - static columns;
 - collections and element timestamps;
 - counters, which are not ordinary idempotent values;
@@ -113,7 +113,7 @@ A correct online migration needs:
 3. replay of later mutations into the target without letting stale backfill win;
 4. continuing synchronization through cutover.
 
-Possible mechanisms include an application dual-write path, a durable application event log, or Cassandra CDC consumed by a purpose-built process. Apache Cassandra's CDC writes commit-log segments for enabled tables to a CDC area, but operators must provision and consume it: when configured CDC space is exhausted, writes to CDC-enabled tables are rejected. Enabling CDC is not a complete migration pipeline.
+Possible mechanisms include an application dual-write path, a durable application event log, or Cassandra CDC consumed by a purpose-built process. Apache Cassandra's CDC exposes commit-log segments containing mutations for CDC-enabled tables in a CDC area, but operators must provision and consume it: when configured CDC space is exhausted, writes to CDC-enabled tables are rejected. Enabling CDC is not a complete migration pipeline.
 
 Full Query Logging records successful CQL requests and supports replay/testing uses, but failed or timed-out requests are not logged. It should not be casually treated as a lossless CDC stream.
 
@@ -121,7 +121,7 @@ Whichever mechanism is chosen, persist offsets and make target mutations idempot
 
 ## Be Precise About Dual Writes
 
-Writing old and new tables in two independent driver calls can partially succeed. Retrying both is safe only for idempotent mutations with deliberate timestamps; counters are notably non-idempotent.
+Writing old and new tables in two independent driver calls can partially succeed. Retrying both is safe only for idempotent mutations; assign corresponding v1 and v2 cells the same client timestamp and reuse it on retry. Counters are notably non-idempotent.
 
 A logged CQL batch can group mutations so all eventually complete or none, but Cassandra documentation emphasizes:
 
@@ -130,7 +130,7 @@ A logged CQL batch can group mutations so all eventually complete or none, but C
 - batches are not full SQL transactions;
 - timestamp ties can resolve in an order different from statement order.
 
-Because old and new partition keys hash differently, the two mutations are likely cross-partition. Load-test the batchlog cost and decide whether a durable application retry/outbox is more controllable.
+Because the old and new mutations use different partition keys, the batch spans multiple partitions. Load-test the batchlog cost and decide whether a durable application retry/outbox is more controllable. This does not solve lightweight-transaction dual writes: conditional batches cannot span tables or partitions and cannot use client timestamps.
 
 Keep the old write successful state as the source of truth until target lag and conflicts are observable. Emit an explicit metric for “old succeeded, new pending” instead of hiding it in generic errors.
 
@@ -183,7 +183,7 @@ A controlled sequence:
 10. stop v1 writes only after rollback no longer requires them;
 11. wait through repair, backup, and policy checks before dropping v1.
 
-Keep schema names versioned. Renaming tables to simulate an in-place key change makes prepared statements and rollback harder to reason about.
+Keep schema names versioned. Cassandra cannot rename a table; dropping and recreating tables to reuse names would make prepared statements and rollback harder to reason about.
 
 Rollback after v2-only writes requires reverse synchronization. If no reverse path exists, the rollback point ends when v1 stops receiving changes; publish that deadline.
 
@@ -193,7 +193,7 @@ Rollback after v2-only writes requires reverse synchronization. If no reverse pa
 - [Apache Cassandra: CQL Data Definition and Primary Keys](https://cassandra.apache.org/doc/latest/cassandra/developing/cql/ddl.html)
 - [Apache Cassandra: Evaluating and Refining Data Models](https://cassandra.apache.org/doc/latest/cassandra/developing/data-modeling/data-modeling_refining.html)
 - [Apache Cassandra: Data Manipulation](https://cassandra.apache.org/doc/latest/cassandra/developing/cql/dml.html)
-- [Apache Cassandra: CQL BATCH](https://cassandra.apache.org/doc/latest/cassandra/developing/cql/cql_singlefile.html#batch)
+- [Apache Cassandra: CQL BATCH](https://cassandra.apache.org/doc/latest/cassandra/developing/cql/cql_singlefile.html#batchStmt)
 - [Apache Cassandra: Bulk Loading](https://cassandra.apache.org/doc/latest/cassandra/managing/operating/bulk_loading.html)
 - [Apache Cassandra: Monitoring Metrics](https://cassandra.apache.org/doc/latest/cassandra/managing/operating/metrics.html)
 - [Apache Cassandra: Full Query Logging](https://cassandra.apache.org/doc/latest/cassandra/managing/operating/fqllogging.html)
