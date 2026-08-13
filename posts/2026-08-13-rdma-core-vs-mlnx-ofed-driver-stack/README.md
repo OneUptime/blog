@@ -18,7 +18,7 @@ The safest default is the stack supported by the operating-system and applicatio
 
 | Layer | Distribution/upstream path | NVIDIA vendor path |
 | --- | --- | --- |
-| kernel RDMA drivers | shipped and maintained with the distribution kernel | NVIDIA-packaged drivers matched to supported OS/kernel builds |
+| kernel RDMA drivers | shipped and maintained with the distribution kernel | NVIDIA-packaged driver sources normally built locally with DKMS on supported DOCA-Host OS/profile combinations; legacy MLNX_OFED packaging varies by OS |
 | userspace verbs and CM | distribution build of upstream `rdma-core` | vendor-packaged userspace and providers |
 | HCA provider | for example upstream mlx5 provider | NVIDIA-tested provider from the vendor bundle |
 | lifecycle | follows distribution kernel/security updates | follows DOCA-OFED/MLNX_OFED release and support matrix |
@@ -33,7 +33,7 @@ Inbox kernel drivers plus distribution `rdma-core` are often the best operationa
 
 - the adapter is supported by the distribution kernel;
 - the workload uses standard verbs, RDMA CM, IPoIB, SRP, NFS/RDMA, or RoCE features available in that release;
-- security updates and kernel live-cycle integration matter more than an early vendor feature;
+- security updates and kernel lifecycle integration matter more than an early vendor feature;
 - Secure Boot keys and module signing are managed by the OS vendor;
 - the application vendor certifies the distribution stack;
 - the fleet upgrades kernels frequently.
@@ -67,9 +67,9 @@ $ rdma dev show
 $ ibv_devinfo -v
 ~~~
 
-For ConnectX-4-class and later devices, Linux and NVIDIA stacks use the mlx5 family, but support differs by exact SKU and release. Current DOCA profile documentation publishes a finite supported-device list. An `mlx5` module in a kernel is not proof that every new card feature is supported.
+For ConnectX-4-class and later devices, Linux and NVIDIA stacks use the mlx5 family, but support differs by exact SKU and release. Current DOCA profile documentation publishes a finite supported-device list. The presence of `mlx5_core` and `mlx5_ib` in a kernel is not proof that every new card feature is supported.
 
-ConnectX-3 and ConnectX-3 Pro need special care. NVIDIA states that MLNX_OFED 5.1 and later no longer support them, while the upstream rdma-core tree still contains an mlx4 provider. The viable path may be a distribution that still supports mlx4 or an older, specifically maintained vendor LTS. Do not put a modern OFED image on legacy hardware based solely on the word “ConnectX.” Verify the OS and security lifetime before preserving an old stack.
+ConnectX-3 and ConnectX-3 Pro need special care. NVIDIA states that MLNX_OFED 5.1 and later no longer support them, while the upstream rdma-core tree still contains an mlx4 provider. The viable path may be a distribution that still supports mlx4 or NVIDIA's archived MLNX_OFED 4.9 LTS under an applicable support agreement. Do not put a modern OFED image on legacy hardware based solely on the word “ConnectX.” Verify the OS and security lifetime before preserving an old stack.
 
 For the newest hardware, the inverse problem occurs: a long-lived enterprise kernel may recognize the PCI function but lack the required RDMA support. A supported newer OS kernel can be a cleaner solution than introducing out-of-tree modules to an otherwise standard fleet.
 
@@ -88,7 +88,7 @@ $ rdma dev show
 
 Then use the native package manager to list and identify owners of RDMA, libibverbs, mlx5-provider, OFED, and DOCA packages. Warning signs include:
 
-- kernel modules under a vendor `extra`/`updates` tree but distribution libibverbs packages;
+- kernel modules under a vendor `extra`/`updates` tree but distribution libibverbs packages without a vendor-documented split configuration;
 - binaries from `/usr/local` loading libraries from `/usr`;
 - both DOCA/MLNX repositories and distribution RDMA repositories supplying files;
 - an installer version that does not support the running kernel;
@@ -137,4 +137,4 @@ A rollback is a complete return to the previous known-good image, not reinstalli
 
 ## Conclusion
 
-Use distribution RDMA when its kernel and rdma-core packages support the exact device, workload, and support contract; it gives the cleanest OS-integrated lifecycle. Use DOCA-OFED when a named NVIDIA feature, new device, or certification requires the vendor stack and the fleet can follow its OS/kernel matrix. Treat old MLNX_OFED as an LTS compatibility choice, not the source of new features. Whichever path wins, deploy its kernel and userspace as one tested image and keep the other stack out.
+Use distribution RDMA when its kernel and rdma-core packages support the exact device, workload, and support contract; it gives the cleanest OS-integrated lifecycle. Use DOCA-OFED when a named NVIDIA feature, new device, or certification requires the vendor stack and the fleet can follow its OS/kernel matrix. Treat old MLNX_OFED as an LTS compatibility choice, not the source of new features. Whichever path wins, deploy one documented, tested kernel/userspace package combination; do not overlay packages from the other stack unless the vendor explicitly supports that combination.
