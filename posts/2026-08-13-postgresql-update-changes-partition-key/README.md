@@ -10,7 +10,7 @@ Description: Understand PostgreSQL row movement across partitions, including des
 
 When an <code>UPDATE</code> changes a PostgreSQL partition key so the row no longer fits its current leaf, PostgreSQL can route the new row to another partition. Internally, the movement is a delete from the source partition followed by an insert into the destination.
 
-That implementation affects triggers, concurrency, foreign tables, and error handling. It does not mean the application should issue a separate delete and insert; a single <code>UPDATE</code> remains the statement-level operation and transaction boundary.
+That implementation affects triggers, concurrency, foreign tables, and error handling. It does not mean the application should issue a separate delete and insert; a single <code>UPDATE</code> remains the statement-level operation and is atomic within its surrounding transaction.
 
 ## The Basic Route
 
@@ -57,14 +57,13 @@ Pre-create destinations for the full accepted range or deliberately use a monito
 
 ## Row-Level Triggers See Delete and Insert
 
-PostgreSQL's trigger documentation defines the sequence for row movement:
+PostgreSQL's trigger documentation defines which row-level triggers participate in row movement:
 
-1. row-level <code>BEFORE UPDATE</code> triggers fire on the original row;
+1. row-level <code>BEFORE UPDATE</code> triggers fire on the source partition;
 2. row-level <code>BEFORE DELETE</code> triggers fire on the source partition;
 3. row-level <code>BEFORE INSERT</code> triggers fire on the destination;
-4. row-level <code>AFTER DELETE</code> fires on the source;
-5. row-level <code>AFTER INSERT</code> fires on the destination;
-6. row-level <code>AFTER UPDATE</code> does not fire for the moved row.
+4. row-level <code>AFTER DELETE</code> triggers on the source and <code>AFTER INSERT</code> triggers on the destination are applied;
+5. row-level <code>AFTER UPDATE</code> triggers are not applied to the moved row.
 
 This surprises audit and outbox designs that assume every SQL <code>UPDATE</code> produces one row-level update event. If source and destination leaves have different user-defined triggers, both sets may participate.
 
@@ -92,6 +91,7 @@ perform all reads and writes
 commit
 
 if SQLSTATE == 40001:
+    roll back the failed transaction if it is still active
     discard all transaction-local results
     wait with bounded randomized backoff
     retry the entire transaction from the beginning
@@ -103,7 +103,7 @@ Also cap attempts and expose exhaustion. Infinite immediate retries can amplify 
 
 ## Unique Constraints Are Rechecked at the Destination
 
-The inserted version must satisfy destination check constraints, not-null constraints, and unique indexes. A parent primary or unique constraint includes the partition key under PostgreSQL's declarative-partitioning rule, so changing that key changes the complete unique tuple.
+For a local destination, the inserted version must satisfy destination check constraints, not-null constraints, and unique indexes. A primary or unique constraint declared on a partitioned parent must include all partition-key columns under PostgreSQL's declarative-partitioning rule, so changing the key changes the complete unique tuple.
 
 Leaf-specific constraints can differ when they are not inherited from the parent. For example, a September leaf may have an additional valid check or a unique index not present in August. An update that was valid in the source can fail on destination insertion.
 
@@ -111,9 +111,9 @@ Test <code>ON CONFLICT</code> behavior separately; it is part of an insert state
 
 ## Foreign Keys Still Apply
 
-If the moved row is on the referencing side, its foreign-key values must remain valid. If the update also changes referenced-key components, configured <code>ON UPDATE</code> actions apply.
+If the moved row is on the referencing side, its foreign-key values must remain valid. On PostgreSQL 15 and later, if the moved row is on the referenced side and the update changes referenced-key components, PostgreSQL runs an update action on the partition root, so configured <code>ON UPDATE</code> actions apply. Earlier major versions handled foreign-key actions for row movement as a delete and insert; test the exact deployed major version.
 
-The <code>UPDATE</code> reference documents an additional restriction: movement can fail when a foreign key directly references an ancestor of the source partition that is not the same ancestor named in the update query. This is an edge case in complex hierarchies and direct-leaf updates. Prefer targeting the partitioned root for ordinary DML and reproduce the exact schema when diagnosing the documented failure.
+The <code>UPDATE</code> reference documents an additional restriction: movement fails when a foreign key directly references an ancestor of the source partition that is not the same ancestor named in the update query. This is an edge case in multi-level partition hierarchies, especially when a foreign key references an intermediate partitioned ancestor while the update targets the root. Prefer defining such foreign keys on, and targeting, the partitioned root for ordinary DML. A direct update of a plain leaf cannot move the row to a sibling; it fails the leaf's partition constraint.
 
 Foreign-key checks and cascades can touch other partitions. Index referencing columns and load-test the largest fan-out.
 
@@ -125,14 +125,14 @@ The <code>postgres_fdw</code> documentation has additional row-movement restrict
 
 ## Measure the Operational Cost
 
-Row movement does more work than an in-place update:
+For logged local partitions, row movement can involve more work than a same-partition update:
 
-- source and destination indexes change;
-- more relation locks may be acquired;
+- the deleted source heap tuple and its index entries, if any, require later vacuum cleanup, while any destination indexes receive new entries;
+- additional relation locks may be acquired;
 - delete and insert triggers may execute;
 - WAL reflects work on both leaves;
-- logical decoding or replication observes changes according to its configured publication behavior;
-- source and destination maintenance statistics change.
+- logical decoding or CDC output depends on the output plugin, while built-in logical replication depends on publication settings;
+- with cumulative statistics enabled, per-table modification counters reflect activity on both leaves.
 
 Use a restored workload and:
 
@@ -145,7 +145,7 @@ WHERE tenant_id = 42
   AND occurred_at = TIMESTAMPTZ '2026-08-01 12:00:00+00';
 ~~~
 
-<code>EXPLAIN ANALYZE</code> executes the update. Run it only where the mutation is safe, usually inside a disposable environment. A rollback still performs work, takes locks, fires triggers, and generates WAL.
+<code>EXPLAIN ANALYZE</code> executes the update. Run it only where the mutation is safe, usually inside a disposable environment. A rollback still performs work, takes locks, can fire triggers, and generates WAL.
 
 Bulk corrections that move millions of rows can create intense write amplification and concurrency. Batch by a stable key, monitor replica lag and autovacuum, and keep transactions bounded. If correcting an entire partition's bound or data classification, building and attaching a corrected table may be more controllable than mass movement.
 
@@ -178,4 +178,4 @@ Use <code>tableoid</code> in tests to assert physical location, but avoid exposi
 
 ## Conclusion
 
-When a partition-key update crosses a bound, PostgreSQL performs row movement as an internal delete and insert. The destination must exist and accept the row; source delete and destination insert triggers fire; a concurrent updater can receive SQLSTATE <code>40001</code>; and foreign-table movement is directional. Target the partitioned root, make transactions safely retryable, and test triggers, constraints, foreign keys, and CDC before allowing partition-key changes at scale.
+When a partition-key update issued against a partitioned ancestor crosses a leaf bound, PostgreSQL performs row movement as an internal delete and insert. The destination must exist and accept the row; applicable source delete and destination insert triggers fire; a concurrent updater can receive SQLSTATE <code>40001</code>; and foreign-table movement is directional. Target the partitioned root, make transactions safely retryable, and test triggers, constraints, foreign keys, and CDC before allowing partition-key changes at scale.
