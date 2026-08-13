@@ -50,10 +50,11 @@ Inspect `spark.dynamicAllocation.shuffleTracking.timeout` in the configuration g
 
 ## Option 3: Graceful Decommissioning
 
-Spark can decommission an executor and migrate shuffle blocks before removal when decommissioning and shuffle-block migration are enabled in a supported deployment:
+Spark can decommission an executor and migrate shuffle blocks before removal when decommissioning and shuffle-block migration are enabled in a supported deployment. Because shuffle tracking defaults to `true` in current Spark, disable it when decommissioning is the selected preservation mechanism so it does not retain shuffle-bearing executors instead of reclaiming them promptly:
 
 ```text
 spark.dynamicAllocation.enabled=true
+spark.dynamicAllocation.shuffleTracking.enabled=false
 spark.decommission.enabled=true
 spark.storage.decommission.enabled=true
 spark.storage.decommission.shuffleBlocks.enabled=true
@@ -61,13 +62,13 @@ spark.storage.decommission.shuffleBlocks.enabled=true
 
 Migration requires time, network, and destination storage. On cluster managers that can force-delete an executor container or pod, configure enough termination/deletion grace for migration to finish. A sudden machine loss cannot complete graceful migration. Monitor decommission events and block migration rather than assuming flags guarantee completion.
 
-Shuffle-block migration also requires a migratable shuffle resolver, such as Spark's sort-based resolver. A custom shuffle implementation must explicitly provide the required migration behavior.
+Shuffle-block migration also requires a migratable shuffle resolver, such as Spark's sort-based resolver. A custom `ShuffleManager`/resolver must implement Spark's experimental `MigratableResolver` contract.
 
 RDD cache blocks have separate decommission and dynamic-allocation behavior. Preserving shuffle output does not automatically preserve every cached in-memory DataFrame/RDD partition.
 
 ## Option 4: Reliable Shuffle Storage Plugin
 
-The scheduling guide also permits an experimental custom `ShuffleDataIO` implementation whose driver components support reliable storage. This changes the storage architecture and must follow the plugin's own durability and cleanup guarantees. Verify that the class is actually loaded and supported by the Spark version; a configured name is not operational proof.
+The scheduling guide also permits an experimental custom `ShuffleDataIO` implementation whose driver components support reliable storage. This changes the storage architecture and must follow the plugin's own durability and cleanup guarantees. Verify that the class is actually loaded and supported by the Spark version; a configured name is not operational proof. On current Spark releases, also set `spark.dynamicAllocation.shuffleTracking.enabled=false` when reliable storage is meant to enable timely removal; otherwise tracking can retain shuffle-bearing executors.
 
 ## Diagnose Whether Blocks Were Really Lost
 
@@ -78,11 +79,11 @@ Use a timeline across the driver, SQL/stage UI, and cluster manager:
 3. see whether a downstream stage fetched those blocks successfully;
 4. look for `FetchFailed`, missing block/file, or executor-lost messages;
 5. see whether the producing stage gained another attempt and reran map tasks;
-6. check external service, decommission, or tracking logs/metrics on the host.
+6. check driver-side shuffle-tracking logs and allocation metrics, external-service logs/metrics on the host, and executor-decommission logs/metrics.
 
 If reducers continue without map-stage recomputation, preservation worked. If the map stage reruns after a planned removal, investigate mechanism setup. If the entire host died, recovery may be expected even with an external shuffle service.
 
-Spark's Web UI and REST/event-log metrics show stage attempts, executor removal, shuffle read/write, and fetch wait. Preserve event logs because the removed executor's local logs may be ephemeral.
+Spark's Web UI and REST/event-log metrics show stage attempts, executor removal, shuffle read/write, and fetch wait. Enable and preserve event logs because the removed executor's local logs may be ephemeral.
 
 ## Avoid Common Misconfigurations
 
@@ -113,11 +114,11 @@ Compare against a controlled static-allocation or less aggressive timeout baseli
 
 ## Account for Shuffle Cleanup
 
-Preserving shuffle data beyond executor lifetime creates a cleanup responsibility. External services and reliable storage must delete application shuffle files when they are no longer needed; otherwise long-running or frequent applications can fill worker disks. Review service cleanup settings and application-end behavior in the deployment-specific documentation, and alert on local-directory utilization.
+Preserving shuffle data beyond executor lifetime creates a cleanup responsibility. External services and reliable storage must delete application shuffle files when they are no longer needed; otherwise long-running or frequent applications can fill worker disks or exhaust a plugin's backing store. Review service or plugin cleanup settings and application-end behavior in the deployment-specific documentation, and alert on the relevant storage utilization.
 
-Early deletion is equally dangerous. Worker cleanup, pod volume lifecycle, or an operator script must not remove active application data merely because the executor process exited. Tie cleanup to Spark/application lifecycle signals supported by the shuffle mechanism, not file age alone.
+Early deletion is equally dangerous. Worker cleanup, pod volume lifecycle, or an operator script must not remove active application data merely because the executor process exited. Tie cleanup to Spark/application lifecycle signals supported by the shuffle mechanism. Where Spark documents TTL-managed storage, such as `spark.storage.decommission.fallbackStorage.path`, use a conservative TTL rather than executor-exit time as the deletion signal.
 
-Run a failure drill that removes an idle executor after a large map stage, consumes the shuffle, and then ends the application. Verify both sides of the contract: reducers fetch without map recomputation while active, and the preserved files are reclaimed afterward.
+Run a mechanism-appropriate drill after a large map stage. With an external shuffle service, graceful decommissioning, or reliable storage, trigger normal dynamic-allocation removal of an otherwise-idle executor before consuming the shuffle. With shuffle tracking, instead verify that Spark retains the executor while the shuffle remains needed. Then consume the shuffle and end the application. Verify consumers proceed without map recomputation, preserved files are eventually reclaimed, and tracked executors become eligible for removal after shuffle cleanup.
 
 ## Official Documentation
 
