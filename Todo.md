@@ -60,7 +60,6 @@
 
 ## Apache Spark
 
-13. Executor Heartbeat Timed Out: Is Spark GC-Paused, Network-Starved, or Running an Oversized Task?
 14. `groupByKey()`, `reduceByKey()`, or `aggregateByKey()`: Why Map-Side Combining Changes Spark Shuffle Memory
 15. Why Isn’t Adaptive Query Execution Fixing My Skewed Join? Check Statistics, Thresholds, and Join Shape
 16. Why Isn’t a Structured Streaming Watermark Dropping Old Events? Event-Time and Output-Mode Traps
