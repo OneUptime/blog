@@ -83,7 +83,6 @@
 
 ## InfiniBand
 
-8. Is This ConnectX Port in Ethernet or InfiniBand Mode? Verify VPI Link Type Before Reconfiguring It
 9. IPoIB Works, but Why Is It Far Below InfiniBand Line Rate?
 10. IPoIB Datagram, Connected, or Enhanced Mode: Which Options Does Your Driver and HCA Actually Support?
 11. Does Open MPI Actually Use InfiniBand? Prove UCX Transport Selection Instead of Assuming
