@@ -8,7 +8,7 @@ Description: Split a hot logical key into deterministic Cassandra buckets while 
 
 ---
 
-Consistent hashing distributes different keys and limits how much ownership changes when nodes change. It does not divide the traffic for one key. If “global-feed” receives 40% of writes, its hash maps to one token and one Cassandra replica set. Adding virtual nodes makes token ownership more even across the cluster; it does not split that partition across replica sets.
+Consistent hashing distributes different keys and limits how much ownership changes when nodes change. It does not split one partition across independently owned token ranges: reads remain confined to its fixed replica set, and writes are sent to all replicas. If “global-feed” receives 40% of writes, its hash maps to one token and one Cassandra replica set. Adding virtual nodes makes token ownership more even across the cluster; it does not split that partition across replica sets.
 
 Salting can split the logical key, but every added bucket becomes part of the read contract. A successful design specifies write routing, point reads, range reads, ordering, atomicity, and bucket-count evolution before the first salted write.
 
@@ -18,7 +18,7 @@ Do not redesign from node CPU alone. A node can be overloaded by uneven token ow
 
 Use several signals:
 
-- per-node and per-table read/write latency, timeouts, failures, pending flushes, and compactions;
+- per-node client-request latency, timeouts, and failures, plus per-table read/write latency, pending flushes, and pending compactions;
 - partition-size and cell-count histograms;
 - application request rate grouped by logical key;
 - <code>nodetool toppartitions</code> sampling for the affected table;
@@ -44,7 +44,7 @@ Cassandra hashes a CQL partition key to a token. The replication strategy select
 
 Virtual nodes let each physical node own multiple token ranges and help distribute many partitions. Every row sharing one partition key still belongs to the same replica set. A million uniformly used keys can balance well; one dominant key remains dominant.
 
-The same principle applies to application-level consistent hashing outside Cassandra: a ring maps one key to one owner. More virtual points improve the distribution of many keys, not the frequency distribution within a key.
+The same principle applies to application-level consistent hashing outside Cassandra: a ring maps one key to one fixed owner or replica set. More virtual points improve the distribution of many keys, not the frequency distribution within a key.
 
 ## Add a Deterministic Bucket
 
@@ -71,26 +71,27 @@ CREATE TABLE events_by_account_bucket (
     event_id uuid,
     payload text,
     PRIMARY KEY ((account_id, event_day, shard), event_time, event_id)
-) WITH CLUSTERING ORDER BY (event_time DESC);
+) WITH CLUSTERING ORDER BY (event_time DESC, event_id DESC);
 ~~~
 
 The writer computes:
 
 ~~~text
 event_day = UTC date of event_time
-shard = stable_hash(event_id) mod 16
+digest = SHA-256(bytes decoded from the canonical UUID text after removing hyphens)
+shard = unsigned(digest[0]) mod 16
 ~~~
 
-Use one specified hash algorithm and byte encoding in every language. “Language default hash” is unsafe: runtimes may use different algorithms, seeds, sign behavior, or string encodings. Publish test vectors:
+Use the same algorithm and byte encoding in every language. The hash here is for deterministic distribution, not a security control. “Language default hash” is unsafe: runtimes may use different algorithms, seeds, sign behavior, or string encodings. Publish test vectors:
 
 ~~~text
-event_id bytes                       bucket_count   expected shard
-00112233-4455-6677-8899-aabbccddeeff 16             ...
+event_id bytes (hex)                digest[0]   bucket_count   expected shard
+00112233445566778899aabbccddeeff    0xa8        16             8
 ~~~
 
 Generate expected results from the chosen implementation and check them in each client.
 
-The day bounds partition growth, while the salt splits a hot account-day across up to 16 replica sets, subject to token collisions and cluster topology.
+The day bounds partition growth, while the salt splits a hot account-day across 16 CQL partitions that may map to fewer than 16 distinct replica sets, depending on cluster size, token ownership, and topology.
 
 ## Preserve Targetable Point Reads
 
@@ -131,7 +132,7 @@ for shard in 0..15:
                  AND event_time>=? AND event_time<?
 ~~~
 
-The client then performs a k-way merge by <code>(event_time, event_id)</code>. Define:
+The client then performs a k-way merge in the table's clustering order: <code>event_time DESC</code>, then <code>event_id DESC</code>. UUID comparison must match Cassandra's CQL <code>uuid</code> comparator rather than assuming the language's default UUID order. Define:
 
 - maximum days per request;
 - maximum concurrent shard queries;
@@ -141,7 +142,7 @@ The client then performs a k-way merge by <code>(event_time, event_id)</code>. D
 - page-token contents;
 - per-shard fetch size and global limit.
 
-A global <code>LIMIT 100</code> cannot be applied independently as “return the first 100 from each shard and concatenate.” That returns up to 1,600 rows and incorrect global order. Fetch candidates and merge them. For correct next-page state, either retain each shard's unconsumed buffered rows together with its paging state, or use keyset pagination from the last emitted <code>(event_time, event_id)</code>. A Cassandra paging state continues after the returned CQL page; saving it after emitting only part of that page can skip buffered rows. Paging states are protocol-version-specific and must be reused with the same query.
+A global <code>LIMIT 100</code> cannot be applied independently as “return the first 100 from each shard and concatenate.” That returns up to 1,600 rows and incorrect global order. Fetch candidates and merge them. For correct next-page state, either retain each shard's unconsumed buffered rows together with its paging state, or use keyset pagination from the last emitted <code>(event_time, event_id)</code> in the same clustering order. A Cassandra paging state continues after the returned CQL page; saving it after emitting only part of that page can skip buffered rows. Paging states are protocol-version-specific and must be reused with the same query.
 
 Fan-out is a trade: salting lowers per-partition load while raising coordinator/client work. Increase buckets only until the hottest physical partition meets its objective.
 
@@ -172,14 +173,14 @@ The reader must know which layout to query. A routing record should be cached bu
 
 ## Version Bucket-Count Changes
 
-Changing <code>mod 16</code> to <code>mod 32</code> remaps many IDs. If writers switch instantly, a logical day can exist under both layouts and readers using only one count miss rows.
+Changing <code>mod 16</code> to <code>mod 32</code> remaps many IDs. If writers switch instantly, a logical day can contain both mappings. Point reads that compute only one count can miss remapped rows, and range readers still using the old count can miss rows in shards 16 through 31.
 
 Safe options include:
 
 1. keep the bucket count immutable for a table;
 2. introduce a new table version and backfill;
 3. assign a bucket-count generation by time boundary;
-4. store routing generation with each lookup record;
+4. for point reads, store routing generation with each lookup record;
 5. during migration, read old and new generations and deduplicate.
 
 For time-bucketed data, a clean rule can be:
@@ -189,7 +190,7 @@ days before 2026-09-01 -> 16 shards
 days on/after 2026-09-01 -> 32 shards
 ~~~
 
-Late events need a documented choice: route by event day to the old generation, or by ingestion generation with a lookup. Never infer the count from today's configuration alone.
+Late events need a documented choice: route by event day to the old generation, or by ingestion generation while recording it for point reads and making range readers query the bounded set of generations allowed to contain that event day. Never infer the count from today's configuration alone.
 
 ## Validate Under Skew
 
@@ -216,10 +217,10 @@ Use <code>nodetool tablehistograms</code> and table metrics on every node. Hash 
 - [Apache Cassandra: Monitoring Metrics](https://cassandra.apache.org/doc/latest/cassandra/managing/operating/metrics.html)
 - [Apache Cassandra: nodetool Commands](https://cassandra.apache.org/doc/latest/cassandra/managing/tools/nodetool/nodetool.html)
 - [Apache Cassandra: Denylisting Partitions](https://cassandra.apache.org/doc/latest/cassandra/managing/operating/denylisting_partitions.html)
-- [Apache Cassandra: CQL BATCH Semantics](https://cassandra.apache.org/doc/latest/cassandra/developing/cql/cql_singlefile.html#batch)
+- [Apache Cassandra: CQL BATCH Semantics](https://cassandra.apache.org/doc/latest/cassandra/developing/cql/dml.html#batch_statement)
 - [Apache Cassandra: Data Modeling Overview](https://cassandra.apache.org/doc/latest/cassandra/developing/data-modeling/intro.html)
-- [Apache Cassandra: Native Protocol Result Paging](https://cassandra.apache.org/doc/latest/cassandra/_attachments/native_protocol_v5.html#result-paging)
+- [Apache Cassandra: Native Protocol Result Paging](https://cassandra.apache.org/doc/latest/cassandra/_attachments/native_protocol_v5.html#s7)
 
 ## Conclusion
 
-Consistent hashing balances many keys; it cannot divide one hot key. Split a proven hot logical key with a deterministic, specified shard and a bounded time bucket, then design point routing, fan-out merge, paging, and failure behavior. Salting sacrifices single-partition guarantees and makes bucket count part of stored-data compatibility. Use the fewest buckets that meet peak load, version every count change, and validate actual replica placement under the hottest real key.
+Consistent hashing balances many keys; it cannot spread one hot partition beyond its fixed replica set. Split a proven hot logical key with a deterministic, specified shard and a bounded time bucket, then design point routing, fan-out merge, paging, and failure behavior. Salting sacrifices single-partition guarantees and makes bucket count part of stored-data compatibility. Use the fewest buckets that meet peak load, version every count change, and validate actual replica placement under the hottest real key.
