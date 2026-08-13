@@ -19,6 +19,8 @@ Profile multiplicity on both sides with the *exact normalized join expressions*.
 ```python
 from pyspark.sql import functions as F
 
+wide_count_type = "decimal(38,0)"
+
 left_counts = (
     orders
     .groupBy("customer_id")
@@ -34,17 +36,24 @@ right_counts = (
 fanout = (
     left_counts
     .join(right_counts, "customer_id", "inner")
-    .withColumn("expected_rows", F.col("left_rows") * F.col("right_rows"))
+    .withColumn(
+        "expected_rows",
+        F.col("left_rows").cast(wide_count_type)
+        * F.col("right_rows").cast(wide_count_type),
+    )
 )
 
 fanout.orderBy(F.desc("expected_rows")).show(50, truncate=False)
 
 fanout.agg(
-    F.sum("expected_rows").alias("predicted_inner_join_rows")
+    F.coalesce(
+        F.sum("expected_rows"),
+        F.lit(0).cast(wide_count_type),
+    ).alias("predicted_inner_join_rows")
 ).show()
 ```
 
-This distributes the counting rather than collecting raw keys to the driver. At extreme scales, choose a numeric type that cannot overflow your expected product. The calculation predicts ordinary equality matches; outer joins, null-safe equality, additional predicates, and non-equi conditions require the corresponding cardinality formula.
+This distributes the counting rather than collecting raw keys to the driver. The decimal casts happen before multiplication so each per-key product is not limited to a 64-bit count; confirm that the chosen type can also hold the aggregate sum. `coalesce` reports zero rather than `NULL` when there are no matching keys. The calculation predicts ordinary equality matches; outer joins, null-safe equality, additional predicates, and non-equi conditions require the corresponding cardinality formula.
 
 Also identify violations of the intended contract:
 
@@ -117,6 +126,8 @@ current_customer = (
 )
 ```
 
+Here, `record_id` must be a stable final tie-breaker that is unique within each `customer_id`; rows tied on every ordering expression are not selected deterministically.
+
 `dropDuplicates(["customer_id"])` does not express which version is correct. Use it only when rows are semantically interchangeable for the downstream result.
 
 ### Aggregate before joining
@@ -168,11 +179,11 @@ Turn the contract into a pipeline check. Persist counts of duplicate keys, maxim
 
 ## Reconcile Predicted and Actual Rows
 
-For an inner equality join without extra predicates, the sum of `L × R` over matching non-null keys should reconcile with actual output. A mismatch is useful evidence: the production condition includes casts or additional predicates, null-safe matching is involved, the profile used a different snapshot, or arithmetic overflowed. For outer joins, add unmatched-side contributions according to the join type.
+For an inner equality join without extra predicates, the sum of `L × R` over matching non-null keys should reconcile with actual output. A mismatch or an overflow error is useful evidence: the production condition includes casts or additional predicates, null-safe matching is involved, the profile used a different snapshot, or arithmetic exceeded the chosen numeric type. For outer joins, add unmatched-side contributions according to the join type.
 
 Make this reconciliation a bounded aggregate, not a second raw-data export. Store the predicted count, actual count, top fanout keys, and input snapshot identifiers with the run. When growth is legitimate, set a capacity guardrail on predicted output before executing the full join. When a uniqueness contract exists, fail on duplicate dimension keys directly; an output-row threshold alone may catch the defect only after data volume becomes expensive.
 
-Sampling is useful for finding example rows but unreliable for proving rare duplicate keys absent. Exact uniqueness checks cost a shuffle, yet that cost is normally smaller and more interpretable than an uncontrolled join explosion. For very large routine pipelines, maintain uniqueness at the table-ingestion boundary so every consumer does not rediscover it.
+Sampling is useful for finding example rows but unreliable for proving rare duplicate keys absent. Exact uniqueness checks normally require a shuffle, yet that cost is usually smaller and more interpretable than an uncontrolled join explosion. For very large routine pipelines, maintain uniqueness at the table-ingestion boundary so every consumer does not rediscover it.
 
 ## Official Documentation
 
