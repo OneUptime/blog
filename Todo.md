@@ -68,7 +68,6 @@
 
 ## Partitioning
 
-9. How Do Foreign Keys Behave When Both PostgreSQL Tables Are Partitioned?
 10. How Do You Convert a Live PostgreSQL Table to Declarative Partitioning With Minimal Downtime?
 11. Why Does PostgreSQL `ATTACH PARTITION` Scan and Lock the Table Despite a CHECK Constraint?
 12. Why Can a PostgreSQL DEFAULT Partition Make the Next Partition Creation Block?
