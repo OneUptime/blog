@@ -72,7 +72,6 @@
 
 ## Partitioning
 
-2. Partitioning or a Composite Index: Which Actually Helps a 500-Million-Row Table?
 3. Range, Hash, or List Partitioning: Match the Strategy to Predicates and Write Distribution
 4. How Do You Choose a Partition Key Without Creating Hot Partitions or Full Scans?
 5. Why Didn’t the Database Prune Partitions? Diagnose Casts, Functions, and Non-Sargable Predicates
