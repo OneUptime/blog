@@ -8,13 +8,13 @@ Description: Decide whether a large table needs local partition management or di
 
 ---
 
-Table partitioning and sharding both divide data, but they solve different classes of problem. A partitioned PostgreSQL or MySQL table is still one logical database table managed by one database server or cluster. A shard is an independently placed database unit with its own compute, storage, operational state, and usually its own failure and recovery path.
+Table partitioning and sharding both divide data, but they solve different classes of problem. In the local partitioning model discussed here, a partitioned PostgreSQL or MySQL InnoDB table is still one logical database table managed by one database server or cluster. A shard is an independently routable subset of a dataset that can be placed on separate compute and storage and given its own operational and recovery path.
 
 That distinction matters more than row count. If one server has enough capacity but retention deletes, index maintenance, or time-bounded queries are painful, local partitioning may be exactly right. If the working set, write rate, recovery objective, or tenant-isolation requirement exceeds one database failure domain, another child table does not create the missing capacity or isolation.
 
 ## Define the Boundary Before Choosing the Mechanism
 
-In PostgreSQL declarative partitioning, the partitioned parent has no storage; rows live in ordinary child tables and the server routes them by partition key. MySQL likewise treats partitions as parts of one table, and partitioning applies to the table's data and indexes. Both engines can prune partitions when a predicate proves that some partitions cannot match.
+In PostgreSQL declarative partitioning, the partitioned parent has no storage; rows live in ordinary child tables and the server routes them by partition key. MySQL InnoDB likewise treats partitions as parts of one table, and partitioning applies to the table's data and indexes. Both engines can prune partitions when a predicate proves that some partitions cannot match.
 
 None of that inherently moves a child to an independent database server. A host outage, storage failure, overloaded buffer pool, or exhausted connection limit can still affect the whole database. Replication and high-availability architecture may protect that database, but the partition boundary itself is not the HA boundary.
 
@@ -23,7 +23,7 @@ Cassandra illustrates the distributed alternative. It hashes a partition key ont
 Use precise language:
 
 - **Table partition:** a physical subdivision below one logical table.
-- **Shard:** an independently placed subset of a dataset.
+- **Shard:** an independently routable subset of a dataset that can be placed separately.
 - **Replica:** another copy of data for availability or reads.
 - **Failure domain:** the set of components that can fail together, such as a process, host, rack, zone, or region.
 
@@ -121,7 +121,7 @@ A useful decision record separates requirements:
 | Drop a retention window quickly | Strong fit | Still useful inside each shard |
 | Add aggregate write compute | No | Yes, when writes route independently |
 | Isolate one tenant operationally | Weak by itself | Stronger with dedicated placement |
-| Preserve local joins and constraints | Yes | Only within a shard |
+| Preserve local joins and constraints | Joins remain local; constraints have partitioning limits | Only within a shard |
 | Reduce single-database recovery scope | No | Potentially, with independent shards |
 
 ## Prefer the Smallest Architecture That Meets the Boundary
@@ -130,7 +130,7 @@ If measurements show one database is viable, add a compatible composite index, r
 
 If the requirement truly is a new failure or capacity domain, design shards deliberately. Pick a routing key from actual access patterns, decide how global identities are generated, define the behavior of cross-shard reads, and rehearse shard split and evacuation. Then use local partitioning inside each shard where it still improves retention or query locality.
 
-Avoid presenting sharding as an irreversible big-bang migration. A tenant directory can first route all tenants to one endpoint, then gradually move selected tenants while the application already uses the routing abstraction. The safe migration still needs duplicate-write or change-capture semantics, reconciliation, and a rollback point.
+Avoid presenting sharding as an irreversible big-bang migration. A tenant directory can first route all tenants to one endpoint, then gradually move selected tenants while the application already uses the routing abstraction. A migration that keeps source writes available during copying and cutover still needs duplicate-write or change-capture semantics, reconciliation, and a rollback point.
 
 ## Official Documentation
 
@@ -141,8 +141,8 @@ Avoid presenting sharding as an irreversible big-bang migration. A tenant direct
 - [MySQL 8.4: Partition Pruning](https://dev.mysql.com/doc/refman/8.4/en/partitioning-pruning.html)
 - [MySQL 8.4: InnoDB and MySQL Replication](https://dev.mysql.com/doc/refman/8.4/en/innodb-and-mysql-replication.html)
 - [Apache Cassandra: Dataset Partitioning and Consistent Hashing](https://cassandra.apache.org/doc/latest/cassandra/architecture/dynamo.html)
-- [Apache Cassandra: Data Replication](https://cassandra.apache.org/doc/latest/cassandra/architecture/dynamo.html#data-replication)
+- [Apache Cassandra: Data Replication](https://cassandra.apache.org/doc/latest/cassandra/architecture/dynamo.html#replication-strategy)
 
 ## Conclusion
 
-Partitioning is a local table-layout and lifecycle tool; sharding is a distribution and operational-boundary decision. Choose partitioning when predicates, retention, loading, or maintenance align with a useful key and one database still meets capacity and recovery goals. Choose sharding when evidence says the system needs independently placeable compute, storage, recovery, or tenant boundaries. Often the durable answer is both: replicated shards for failure-domain control, with carefully chosen local partitions inside each shard.
+Local table partitioning is a table-layout and lifecycle tool; sharding is a distribution and operational-boundary decision. Choose partitioning when predicates, retention, loading, or maintenance align with a useful key and one database still meets capacity and recovery goals. Choose sharding when evidence says the system needs independently placeable compute, storage, recovery, or tenant boundaries. Often the durable answer is both: replicated shards for failure-domain control, with carefully chosen local partitions inside each shard.
