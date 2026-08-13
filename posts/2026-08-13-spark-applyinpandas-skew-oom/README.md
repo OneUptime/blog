@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Apache Spark, PySpark, applyInPandas, Pandas UDF, Data Skew, Memory Management
 
-Description: Bound grouped Pandas memory by measuring group bytes, reducing the schema, isolating hot keys, and changing the algorithm before Arrow materializes an oversized group.
+Description: Bound grouped Pandas memory by measuring group bytes, reducing the schema, isolating hot keys, and changing the algorithm before Pandas materializes an oversized group.
 
 ---
 
-`groupBy().applyInPandas()` has a hard memory boundary: for the DataFrame form, Spark shuffles rows by key and loads all rows and columns for one group into a Pandas DataFrame before calling your function. The official API warns that a skewed group can cause an out-of-memory failure. `spark.sql.execution.arrow.maxRecordsPerBatch` does not split or cap that group.
+`groupBy().applyInPandas()` has a hard memory boundary: for the DataFrame form, Spark shuffles rows by key and loads all rows and columns for one group into a Pandas DataFrame before calling your function. The official API warns that a skewed group can cause an out-of-memory failure. `spark.sql.execution.arrow.maxRecordsPerBatch` does not cap the Pandas DataFrame passed to that form. Spark 4.1 and later can slice the transfer into Arrow record batches, but the Python worker recombines those batches before calling a DataFrame-form function.
 
 That means a single key can fail an otherwise well-partitioned job. Increasing the number of shuffle partitions does not split equal grouping keys; hash partitioning still sends the entire key to one task.
 
@@ -83,8 +83,12 @@ hot_keys = group_profile.where(
     (F.col("rows") > 2_000_000) | (F.col("payload_bytes") > 512 * 1024 * 1024)
 ).select("account_id")
 
-normal = events.join(hot_keys, "account_id", "left_anti")
-hot = events.join(hot_keys, "account_id", "left_semi")
+e = events.alias("e")
+h = hot_keys.alias("h")
+same_account = F.col("e.account_id").eqNullSafe(F.col("h.account_id"))
+
+normal = e.join(h, same_account, "left_anti")
+hot = e.join(h, same_account, "left_semi")
 
 normal_result = normal.groupBy("account_id").applyInPandas(
     compute_features, output_schema
@@ -106,7 +110,7 @@ salted = events.withColumn(
 )
 ```
 
-This is safe only if partial results can be merged into exactly the same final answer. Counts and sums are straightforward. Means require sum and count, not an average of averages. Arbitrary models, order-dependent algorithms, medians, and functions requiring every pair of rows may not have an exact bounded merge.
+This assumes `event_id` is non-null and sufficiently varied within each account; null or heavily repeated IDs can leave one salt bucket skewed. Salting is safe only if partial results can be merged into exactly the same final answer. Counts and sums of exact numeric types are straightforward; floating-point sums can differ in low-order bits when the merge order changes. Means require sum and the corresponding non-null count, not an average of averages. Arbitrary models, order-dependent algorithms, medians, and functions requiring every pair of rows may not have an exact bounded merge.
 
 A correct decomposable pattern is:
 
@@ -118,11 +122,11 @@ Never salt simply to make the error disappear. Validate the salted result agains
 
 ## Understand What More Partitions and Arrow Settings Can Do
 
-Raising `spark.sql.shuffle.partitions` can reduce the number of *different keys* handled by one task and improve concurrency. It cannot divide one key for `groupBy(account_id)`. Likewise, lowering `spark.sql.execution.arrow.maxRecordsPerBatch` helps APIs that process ordinary Arrow batches but the grouped-map documentation explicitly says the limit is not applied to a complete group.
+Raising `spark.sql.shuffle.partitions` can reduce the number of *different keys* handled by one task and improve concurrency. It cannot divide one key for `groupBy(account_id)`. Before Spark 4.1, `spark.sql.execution.arrow.maxRecordsPerBatch` was not applied to grouped-map groups. Spark 4.1 and later slice grouped input into Arrow record batches, but the DataFrame form reassembles those batches before calling the function, so lowering the limit does not bound full-group Pandas memory.
 
 More executor memory may be a controlled last resort when a legitimate maximum group is bounded and the full-group algorithm is unavoidable. Size the executor container for JVM heap, Python process memory, Arrow/Pandas buffers, native libraries, and overhead. Prove the high-percentile and maximum group sizes; otherwise growth merely moves the next failure threshold.
 
-Where the Spark release offers an iterator form for grouped Pandas execution, read that release's API semantics carefully and test whether the iterator changes peak materialization for your function. Do not assume API availability or that an iterator makes an algorithm requiring all rows bounded.
+Spark 4.1 and later support an iterator form selected with `Iterator[pandas.DataFrame]` type hints. It can consume a group's Arrow batches lazily and reduce peak memory when the function maintains bounded state and streams its output. It does not split a key across tasks or make an algorithm that retains all rows bounded.
 
 ## Add a Preflight Contract
 
