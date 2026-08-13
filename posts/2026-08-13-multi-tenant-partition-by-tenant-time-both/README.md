@@ -46,7 +46,7 @@ CREATE INDEX events_tenant_time_idx
 ON events (tenant_id, occurred_at DESC);
 ~~~
 
-This is strong when global retention removes whole months and most reads include time. A tenant-and-time query prunes by time and uses the tenant index inside selected leaves.
+This is strong when global retention removes whole months and most reads include time. A tenant-and-time query prunes by time and can use the tenant index inside selected leaves.
 
 A tenant-only export cannot prune time leaves. PostgreSQL may use each local tenant index, but it still plans across the retention horizon. Tenant deletion is also row-level work across every time partition unless the tenant owns the whole table or another design is used.
 
@@ -71,7 +71,7 @@ Create all remainders 0 through 15. Equality on tenant can prune to one leaf. A 
 
 It does not split a single hot tenant: all its rows still map to one leaf. It also makes global time retention a row-level delete in every hash leaf. Time indexes can make those deletes find rows, but they still produce dead tuples and vacuum work.
 
-Hash partitions are local relations on one PostgreSQL server. They do not create tenant failure domains. A noisy tenant can still exhaust shared CPU, WAL, buffer cache, connections, and storage throughput.
+The hash partitions shown here are local relations on one PostgreSQL server. They do not create tenant failure domains. A noisy tenant can still exhaust shared CPU, WAL, buffer cache, connections, and storage throughput.
 
 ## Avoid One List Partition per Unbounded Tenant
 
@@ -109,7 +109,7 @@ FOR VALUES WITH (MODULUS 16, REMAINDER 0);
 
 Create all hash remainders for every month. A bounded tenant query can prune by month and then tenant bucket. Global monthly retention can detach or drop the month subtree as one top-level partition.
 
-The cost is object multiplication. Thirty-six retained months times 16 hash leaves equals 576 leaves; four indexes per leaf add 2,304 index objects. Provisioning must create and verify every remainder before the month opens.
+The cost is object multiplication. Thirty-six retained months times 16 hash leaves equals 576 leaves; four hierarchy-wide indexes create 2,304 leaf index objects, plus partitioned index objects at the root and monthly parents. Provisioning must create and verify every remainder before the month opens.
 
 This order is often preferable when global time retention is the dominant lifecycle operation.
 
@@ -125,7 +125,7 @@ This order can be useful when tenant-only queries dominate and each tenant bucke
 
 If one tenant needs independent maintenance, encryption keys, recovery, regional placement, or compute, a child table on the same primary may not meet the requirement. Consider:
 
-- a separate database or shard for the tenant;
+- a database on a separate PostgreSQL cluster or shard for the tenant;
 - a routing directory mapping tenants to placements;
 - local time partitioning within each placement;
 - a migration protocol for promoting a tenant from shared to dedicated.
@@ -197,7 +197,7 @@ For each candidate:
 - [PostgreSQL: Row Security Policies](https://www.postgresql.org/docs/current/ddl-rowsecurity.html)
 - [PostgreSQL: CREATE POLICY](https://www.postgresql.org/docs/current/sql-createpolicy.html)
 - [PostgreSQL: Foreign Key Constraints](https://www.postgresql.org/docs/current/ddl-constraints.html#DDL-CONSTRAINTS-FK)
-- [PostgreSQL: Partition Information Functions](https://www.postgresql.org/docs/current/functions-info.html#FUNCTIONS-INFO-PARTITION)
+- [PostgreSQL: Partition Information Functions](https://www.postgresql.org/docs/current/functions-admin.html#FUNCTIONS-INFO-PARTITION)
 
 ## Conclusion
 
