@@ -46,7 +46,7 @@ Not every native expression receives identical code generation, and “native”
 
 ## Arrow-Optimized Scalar UDFs Preserve Row-at-a-Time Python
 
-An Arrow Python UDF is still scalar Python logic: values are presented as Python objects and the function operates one row at a time. Arrow supplies batched columnar transfer/serialization between the JVM and Python and more coherent type coercion than the pickled path described in the PySpark guide.
+An Arrow-optimized scalar Python UDF created with `udf(..., useArrow=True)` is still scalar Python logic: values are presented as Python objects and the function operates one row at a time. It is distinct from the vectorized `arrow_udf()` API introduced in Spark 4.1, whose functions operate directly on PyArrow arrays. Arrow supplies batched columnar transfer/serialization between the JVM and Python and more coherent type coercion than the pickled path described in the PySpark guide.
 
 ```python
 from pyspark.sql.functions import udf
@@ -55,7 +55,9 @@ from pyspark.sql.functions import udf
 def normalize_id(value):
     if value is None:
         return None
-    return "".join(ch for ch in value.strip().upper() if ch.isalnum())
+    return "".join(
+        ch.upper() for ch in value if ch.isascii() and ch.isalnum()
+    )
 
 arrow_scalar = events.withColumn("normalized_id", normalize_id("raw_id"))
 ```
@@ -66,7 +68,7 @@ Arrow batching reduces transfer overhead; the Python loop and opaque function re
 
 ## Pandas UDFs Are for Vectorized Series Work
 
-Scalar Pandas UDFs receive and return Pandas `Series` in Arrow-backed batches. Their output length must match the input length. They are effective when the implementation uses vectorized Pandas or NumPy operations rather than a Python loop:
+Series-to-Series Pandas UDFs receive one or more Pandas `Series` and return a `Series` in batches transferred with Arrow. Their output length must match the input length. They are effective when the implementation uses vectorized Pandas or NumPy operations rather than a Python loop:
 
 ```python
 import pandas as pd
@@ -91,7 +93,7 @@ Spark exposes `spark.sql.execution.arrow.maxRecordsPerBatch` to bound row count 
 
 ## Do Not Treat Grouped Pandas APIs as Faster Scalar UDFs
 
-`groupBy().applyInPandas()` implements split-apply-combine and performs a full shuffle. The DataFrame form loads all rows and columns for a group into a Pandas DataFrame before applying the function. The Arrow batch row limit does not bound a whole group. Use it for algorithms that truly require complete group context and whose maximum group can fit—not as a generic vectorization switch.
+`groupBy().applyInPandas()` implements split-apply-combine and performs a full shuffle. Its single-DataFrame form loads all rows and columns for a group into one Pandas DataFrame before applying the function. The Arrow batch row limit does not bound that whole-group DataFrame. Use this form for algorithms that truly require complete group context and whose maximum group can fit—not as a generic vectorization switch. On Spark 4.1 and later, the iterator-of-DataFrames form can mitigate whole-group memory pressure when the algorithm can process each group's batches incrementally.
 
 `mapInPandas()` operates on iterators of Pandas DataFrames and allows arbitrary output length. It is appropriate for partition/batch transformations that need DataFrame semantics. Again, it is a broader contract with different memory and cardinality implications.
 
@@ -99,7 +101,7 @@ Choose the API by semantics first:
 
 - one output per input row: native expression, Arrow scalar UDF, or scalar Pandas UDF;
 - arbitrary transformation per Arrow batch/partition: `mapInPandas()`;
-- arbitrary transformation requiring all records for a key: `applyInPandas()`, after bounding group size.
+- arbitrary transformation requiring all records for a key: the single-DataFrame form of `applyInPandas()`, after bounding group size.
 
 ## Build a Fair Benchmark
 
@@ -133,7 +135,7 @@ The fastest result with different coercion or null semantics is not equivalent.
 
 ## Operational Guardrails
 
-Pin compatible Python, Pandas, and PyArrow environments on executors according to the Spark release's dependency documentation. Initialize expensive read-only Python state once per worker/iterator where the API supports it rather than once per row. Never create external clients per scalar invocation.
+Pin compatible Python, Pandas, and PyArrow environments on the driver and executors according to the Spark release's dependency documentation. Initialize expensive read-only Python state once per worker/iterator where the API supports it rather than once per row. Never create external clients per scalar invocation.
 
 Keep return schemas explicit. Reduce columns before the Python boundary. Filter with native expressions first. If the UDF is deterministic and reusable, still confirm whether plan structure causes repeated evaluation; materialization has a cost and should be intentional.
 
@@ -148,6 +150,7 @@ Marking a Python UDF nondeterministic where appropriate is also a correctness de
 - [PySpark Guide: Python UDF and UDTF Categories](https://spark.apache.org/docs/latest/api/python/user_guide/udfandudtf.html)
 - [Apache Arrow in PySpark](https://spark.apache.org/docs/latest/api/python/tutorial/sql/arrow_pandas.html)
 - [PySpark `udf()`](https://spark.apache.org/docs/latest/api/python/reference/pyspark.sql/api/pyspark.sql.functions.udf.html)
+- [PySpark `arrow_udf()`](https://spark.apache.org/docs/latest/api/python/reference/pyspark.sql/api/pyspark.sql.functions.arrow_udf.html)
 - [PySpark `pandas_udf()`](https://spark.apache.org/docs/latest/api/python/reference/pyspark.sql/api/pyspark.sql.functions.pandas_udf.html)
 - [PySpark DataFrame `mapInPandas()`](https://spark.apache.org/docs/latest/api/python/reference/pyspark.sql/api/pyspark.sql.DataFrame.mapInPandas.html)
 - [PySpark GroupedData `applyInPandas()`](https://spark.apache.org/docs/latest/api/python/reference/pyspark.sql/api/pyspark.sql.GroupedData.applyInPandas.html)
