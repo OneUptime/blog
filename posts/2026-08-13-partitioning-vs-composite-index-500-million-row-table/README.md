@@ -73,7 +73,7 @@ LIMIT 100;
 
 The planner cannot discard older time partitions merely because a limit will probably be satisfied by recent data. Depending on the plan and data, it may scan or initialize multiple child paths. A global-looking composite index does not exist across PostgreSQL partitions; a partitioned index is a virtual parent whose child indexes enforce and serve each partition.
 
-MySQL has the same conceptual separation. Its optimizer can prune partitions when a condition reduces to useful comparisons on the partitioning expression, while ordinary indexes optimize access inside the selected partitions. MySQL partitioning applies to both a table's data and indexes; it does not let one global secondary index span all partitions.
+MySQL has the same conceptual separation. Its optimizer can prune partitions when a condition reduces to useful comparisons on the partitioning expression, while ordinary indexes optimize access inside the selected partitions. For MySQL 8.4 InnoDB tables, partitioning applies to both a table's data and indexes; it does not let one global secondary index span all partitions.
 
 ## Compare Four Candidate Designs
 
@@ -125,7 +125,7 @@ LIMIT 100;
 
 Run cold-cache and warm-cache tests if both matter. A result from a tiny development dataset says little about index height, correlation, cache pressure, or partition-planning overhead at production scale.
 
-For MySQL 8.4, traditional <code>EXPLAIN</code> exposes a <code>partitions</code> column, and <code>EXPLAIN ANALYZE</code> uses tree output and runs the statement. Compare selected partitions, access type, chosen key, examined rows, and actual iterator timing.
+For MySQL 8.4, traditional <code>EXPLAIN</code> exposes a <code>partitions</code> column, and <code>EXPLAIN ANALYZE</code> uses tree output and runs the statement. Compare selected partitions, access type, chosen key, estimated rows to examine, and actual iterator rows, loops, and timing.
 
 ## Model Index Economics
 
@@ -148,7 +148,7 @@ Partitioning creates objects: leaf tables, indexes, constraints, statistics, cat
 
 Choose granularity from operations and query windows, not from an arbitrary target row count. If retention deletes one month at a time and most queries span weeks, monthly partitions may be enough. Daily partitions may add 30 times the object count without eliminating materially more data.
 
-Account for constraints. A PostgreSQL primary or unique constraint on a partitioned table must include all non-expression partition-key columns. MySQL requires every unique key to include every column used in the partitioning expression. A seemingly simple repartition can therefore change key semantics or require another way to enforce a business identifier.
+Account for constraints. A PostgreSQL primary or unique constraint on a partitioned table requires a partition key with no expressions or function calls, and the constraint must include every partition-key column. MySQL requires every unique key to include every column used in the partitioning expression. A seemingly simple repartition can therefore change key semantics or require another way to enforce a business identifier.
 
 ## Run a Controlled Bake-Off
 
