@@ -16,7 +16,7 @@ Before changing firmware configuration, answer three separate questions:
 2. What link type is configured persistently for the next initialization?
 3. Does this exact adapter SKU, port combination, peer, and cable support the desired mode?
 
-Confusing those questions causes unnecessary outages. A pending `mlxconfig` value may differ from runtime until reboot, and an Ethernet-only ConnectX SKU cannot become InfiniBand just because it uses the `mlx5` driver.
+Confusing those questions causes unnecessary outages. A pending `mlxconfig` value may differ from runtime until the product's documented reboot, firmware reset, or power cycle, and an Ethernet-only ConnectX SKU cannot become InfiniBand just because it uses the `mlx5` driver.
 
 ## Read the Runtime Link Layer First
 
@@ -40,7 +40,7 @@ Do not infer mode from these weak signals:
 
 - Device name `mlx5_0`: mlx5 supports NVIDIA Ethernet, RoCE, and InfiniBand functions.
 - Presence of `/dev/infiniband`: that directory also serves RDMA devices whose link layer is Ethernet.
-- Netdev name: predictable naming can replace `ib0` or `ens...`, and IPoIB is itself a Linux netdev.
+- Netdev name: interfaces can have predictable or administratively assigned names, and IPoIB is itself a Linux netdev.
 - Cable form factor: QSFP and OSFP modules are not inherently one protocol.
 
 ## Map the RDMA Port to the Correct PCI Device
@@ -49,7 +49,7 @@ The persistent setting is applied to a PCI device and physical port. Map deliber
 
 ~~~console
 $ readlink -f /sys/class/infiniband/mlx5_0/device
-$ lspci -nnk -s 5e:00.0
+$ lspci -nnk -s 0000:5e:00.0
 $ sudo mlxfwmanager --query
 ~~~
 
@@ -65,9 +65,9 @@ NVIDIA MFT's `mlxconfig` reads device configuration by BDF or MST device:
 $ sudo mlxconfig -d 0000:5e:00.0 query | grep -E 'LINK_TYPE_P[12]'
 ~~~
 
-Typical capable-device values are `IB(1)` for InfiniBand and `ETH(2)` for Ethernet. Newer MFT releases also accept textual values such as `IB` and `ETH`; numeric values remain documented for older releases.
+Typical capable-device values are `IB(1)` for InfiniBand and `ETH(2)` for Ethernet. MFT also accepts textual values such as `IB` and `ETH`; numeric values `1` and `2` remain supported and also appear in current NVIDIA documentation.
 
-Treat this output as the saved device configuration that will be loaded on initialization. Compare it with runtime sysfs. If someone set a new value but has not rebooted or performed the documented reset, these can legitimately disagree:
+Treat this output as the saved device configuration that will be loaded on initialization. Compare it with runtime sysfs. If someone set a new value but has not completed the product's documented activation step, these can legitimately disagree:
 
 | Runtime `link_layer` | Saved `LINK_TYPE` | Interpretation |
 | --- | --- | --- |
@@ -76,7 +76,7 @@ Treat this output as the saved device configuration that will be loaded on initi
 | Ethernet | IB | pending change, wrong PCI mapping, or failed activation |
 | InfiniBand | ETH | pending change or wrong PCI mapping |
 
-Do not “fix” a mismatch until you confirm maintenance history and the exact BDF. A reboot in the middle of diagnosis may activate a previously staged change and remove the evidence.
+Do not “fix” a mismatch until you confirm maintenance history and the exact BDF. Performing the documented activation step in the middle of diagnosis may activate a previously staged change and remove the evidence.
 
 ## Prove That the Hardware Is Actually VPI
 
@@ -114,11 +114,11 @@ For a device whose documentation confirms VPI support, the command shape is:
 $ sudo mlxconfig -d 0000:5e:00.0 set LINK_TYPE_P1=IB
 ~~~
 
-Older documentation uses `LINK_TYPE_P1=1` for IB and `LINK_TYPE_P1=2` for Ethernet. Set only the intended physical port; do not copy `LINK_TYPE_P2` onto a single-port device. Review the interactive summary before accepting it.
+The equivalent numeric form is `LINK_TYPE_P1=1` for IB and `LINK_TYPE_P1=2` for Ethernet. Set only the intended physical port; do not copy `LINK_TYPE_P2` onto a single-port device. Review the interactive summary before accepting it.
 
-NVIDIA's port-type procedure requires a reboot for the new configuration to load. Some products support particular firmware reset flows, but use one only when the exact adapter and MFT documentation says it safely activates this setting. A planned host reboot is preferable to improvising a live reset around active storage or networking.
+NVIDIA's generic MFT port-type procedure requires a reboot for the new configuration to load, while some products require a full power cycle. Follow the exact adapter and platform documentation. Some products support particular firmware reset flows, but use one only when the exact adapter, platform, and MFT documentation says it safely activates this setting. A planned reboot or power cycle is preferable to improvising a live reset around active storage or networking.
 
-After restart, verify independently:
+After the documented activation step, verify independently:
 
 ~~~console
 $ cat /sys/class/infiniband/mlx5_0/ports/1/link_layer
@@ -138,7 +138,8 @@ In InfiniBand mode, also require `Physical state: LinkUp`, a reachable SM, a non
 - [NVIDIA: Linux port type management and reboot requirement](https://docs.nvidia.com/networking/display/RHEL94/port-type-management.pdf)
 - [NVIDIA: ConnectX-6 VPI per-port combinations and `LINK_TYPE` values](https://docs.nvidia.com/networking/display/nvidia-connectx-6-adapter-cards-firmware-release-notes-v20-43-4100-lts-2024-lts-u4.4100%20LTS%20%282024%20LTS%20U4%29.pdf)
 - [NVIDIA: high-speed port link type and persistent configuration](https://docs.nvidia.com/networking/display/ConnectX8OCP3/Setting-High-Speed-Port-Link-Type)
+- [NVIDIA: ConnectX-8 C8180P port configurations and power-cycle requirement](https://networking-docs.nvidia.com/connectx8ocphw/port-configurations)
 
 ## Conclusion
 
-Verify runtime `link_layer`, persistent `LINK_TYPE`, and hardware capability as separate facts. Map the RDMA port to an exact PCI BDF and PSID, because `mlx5_0` and a ConnectX family name do not establish physical-port identity or VPI capability. Reconfigure only when the card, peer, cable, and per-port combination support the desired protocol, then activate it through the documented reboot/reset and test the complete InfiniBand or RoCE path.
+Verify runtime `link_layer`, persistent `LINK_TYPE`, and hardware capability as separate facts. Map the RDMA port to an exact PCI BDF and PSID, because `mlx5_0` and a ConnectX family name do not establish physical-port identity or VPI capability. Reconfigure only when the card, peer, cable, and per-port combination support the desired protocol, then activate it through the documented reboot, firmware reset, or power cycle and test the complete InfiniBand or RoCE path.
