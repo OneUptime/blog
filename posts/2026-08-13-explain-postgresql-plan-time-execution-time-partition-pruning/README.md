@@ -65,6 +65,7 @@ If more than one child legitimately overlaps a range, an <code>Append</code> con
 Static pruning is easiest to prove because the irrelevant child scan nodes are simply not present. Compare with:
 
 ~~~sql
+BEGIN;
 SET LOCAL enable_partition_pruning = off;
 
 EXPLAIN (COSTS OFF)
@@ -72,6 +73,7 @@ SELECT *
 FROM events
 WHERE occurred_at >= DATE '2026-08-10'
   AND occurred_at <  DATE '2026-08-11';
+ROLLBACK;
 ~~~
 
 Inside a transaction, <code>SET LOCAL</code> lasts until transaction end. With pruning off, the plan normally includes all children and filters within them. Do not use the comparison to claim a universal timing ratio; cache state, data, indexes, and planning all influence results.
@@ -104,13 +106,6 @@ Subplans Removed: 2
 The exact plan shape is version-, schema-, and cost-dependent; do not require an <code>Append</code> when the planner selects another valid node. The key official behavior is that partitions pruned during initialization do not appear as executed child nodes, and the number removed is exposed by <code>Subplans Removed</code>.
 
 PostgreSQL also notes an important limitation: partitions removed at executor initialization are still locked at the beginning of execution. Initialization pruning can save scans without eliminating all relation-lock overhead.
-
-Reset the session setting after the experiment:
-
-~~~sql
-DEALLOCATE event_day;
-RESET plan_cache_mode;
-~~~
 
 In normal <code>auto</code> plan-cache mode, PostgreSQL may choose custom plans for early executions and later choose a generic plan when its estimated cost is not much higher. The <code>PREPARE</code> documentation describes the policy. Capture both the prepared statement and the cache mode when explaining different plans across environments.
 
@@ -146,7 +141,7 @@ The documentation tells you how to recognize this phase:
 
 Do not add child row counts together without accounting for loops. “Actual rows=10 loops=50” represents 10 rows per loop in text output, not necessarily 10 total.
 
-If a demonstration plan chooses a hash join or flattens the lateral query, do not disable planner methods in application sessions just to obtain a desired screenshot. Use the actual production plan. Runtime partition pruning is useful only when the selected plan exposes changing parameters to a prune-capable partitioned scan.
+If a demonstration plan flattens the lateral query or otherwise chooses an unparameterized plan, do not disable planner methods in application sessions just to obtain a desired screenshot. Use the actual production plan. Per-loop runtime partition pruning is useful only when the selected plan exposes changing parameters to a prune-capable partitioned scan.
 
 ## Use JSON for Automated Checks
 
@@ -155,6 +150,13 @@ Text plans are readable but brittle to parse. PostgreSQL supports JSON:
 ~~~sql
 EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON)
 EXECUTE event_day(DATE '2026-08-10');
+~~~
+
+Reset the prepared statement and session setting after the experiment:
+
+~~~sql
+DEALLOCATE event_day;
+RESET plan_cache_mode;
 ~~~
 
 Automation can walk the plan tree and record:
@@ -195,13 +197,16 @@ WHERE occurred_at < DATE '2026-07-15';
 ROLLBACK;
 ~~~
 
-This transaction pattern avoids committing the delete, but it still executes work, takes locks, generates WAL, fires triggers, and can affect concurrent sessions. A rollback is not a harmless dry run. Prefer a restored environment or a read-only representative query for risky analysis.
+This transaction pattern avoids committing the delete, but it still executes work and takes locks; it can generate WAL, fire applicable triggers, and affect concurrent sessions. A rollback is not a harmless dry run. Prefer a restored environment or a read-only representative query for risky analysis.
 
 Timing overhead is also real. <code>TIMING OFF</code> can reduce per-node clock overhead while retaining actual rows and loops:
 
 ~~~sql
 EXPLAIN (ANALYZE, BUFFERS, TIMING OFF, SUMMARY ON)
-SELECT ...;
+SELECT *
+FROM events
+WHERE occurred_at >= DATE '2026-08-10'
+  AND occurred_at <  DATE '2026-08-11';
 ~~~
 
 ## A Repeatable Pruning Audit
@@ -241,7 +246,7 @@ Parameterized join:
 - [PostgreSQL: PREPARE](https://www.postgresql.org/docs/current/sql-prepare.html)
 - [PostgreSQL: Planner Method Configuration](https://www.postgresql.org/docs/current/runtime-config-query.html#RUNTIME-CONFIG-QUERY-ENABLE)
 - [PostgreSQL: Date/Time Operators](https://www.postgresql.org/docs/current/functions-datetime.html)
-- [PostgreSQL: pg_partition_tree](https://www.postgresql.org/docs/current/functions-info.html#FUNCTIONS-INFO-PARTITION)
+- [PostgreSQL: pg_partition_tree](https://www.postgresql.org/docs/current/functions-admin.html#FUNCTIONS-INFO-PARTITION)
 
 ## Conclusion
 
