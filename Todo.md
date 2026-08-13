@@ -61,7 +61,6 @@
 ## Apache Spark
 
 17. Can You Reuse a Spark Structured Streaming Checkpoint After Changing the Query?
-18. Why Does a Structured Streaming State Store Keep Growing? Find Missing Watermarks and Unbounded Keys
 19. Why Does Kafka Consumer Lag Keep Rising in Spark Structured Streaming? Tune Input Rate and Find Slow Operators
 20. Dynamic Allocation Removed an Executor: Will Spark Lose Its Shuffle Files?
 
