@@ -130,6 +130,12 @@ Production should reject unsafe input before the expensive grouped function. Per
 
 Test the function locally with synthetic worst-case Pandas DataFrames, including nulls, wide values, and maximum output. Then run a Spark integration test containing a hot group. The contract should specify whether oversized keys are processed differently, quarantined, or cause the batch to fail early.
 
+## Measure Outside the JVM Heap
+
+The Python worker and Arrow/Pandas native allocations may live outside the executor JVM heap while still counting against the executor container or pod limit. A healthy-looking JVM heap graph therefore does not disprove memory pressure. Correlate container resident memory, Python worker exits, cluster-manager kill reasons, and JVM metrics at the same timestamp.
+
+Temporary copies matter. Pandas operations such as sorting, merging, changing dtype, or assigning several new columns can allocate multiples of the input DataFrame before old buffers are released. Profile peak memory inside `compute_features` with a worst-case group rather than sizing only from the incoming Arrow payload. Reduce intermediate lifetimes and avoid copying the whole frame when a few Series suffice.
+
 ## Official Documentation
 
 - [PySpark GroupedData `applyInPandas()`](https://spark.apache.org/docs/latest/api/python/reference/pyspark.sql/api/pyspark.sql.GroupedData.applyInPandas.html)

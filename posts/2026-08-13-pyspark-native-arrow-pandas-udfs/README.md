@@ -137,6 +137,12 @@ Pin compatible Python, Pandas, and PyArrow environments on executors according t
 
 Keep return schemas explicit. Reduce columns before the Python boundary. Filter with native expressions first. If the UDF is deterministic and reusable, still confirm whether plan structure causes repeated evaluation; materialization has a cost and should be intentional.
 
+## Preserve Semantics While Rewriting
+
+A native replacement is valid only when it matches the Python function's contract. Test empty strings, Unicode, nulls, time zones, decimal precision, NaN values, and malformed inputs. Spark SQL, Python, Pandas, and Arrow can differ in coercion and missing-value behavior. Use a representative golden dataset and compare both values and schema.
+
+Marking a Python UDF nondeterministic where appropriate is also a correctness decision; Spark may otherwise reason about repeated deterministic expressions differently. Avoid network calls, random state, and mutable global side effects inside any UDF. They make retries and speculative task attempts observable and invalidate a simple performance comparison.
+
 ## Official Documentation
 
 - [PySpark Guide: Python UDF and UDTF Categories](https://spark.apache.org/docs/latest/api/python/user_guide/udfandudtf.html)

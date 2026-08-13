@@ -112,6 +112,14 @@ For tabular workloads, DataFrame/SQL aggregation gives Spark schema and expressi
 
 Whichever API you choose, the algebra is the same: bounded partial aggregation is the core tool that reduces data movement and memory.
 
+## Preserve or Replace Partitioners Deliberately
+
+Pair RDD operations can accept an explicit partition count or `Partitioner`, and some downstream key operations can reuse compatible partitioning. Inspect the RDD lineage and partitioner when a pipeline performs several joins or aggregations by the same key. An unnecessary repartition between them can discard reuse and add another all-to-all exchange.
+
+Do not preserve a poor partitioner merely to avoid one shuffle. If its partition count is too small for the current cluster or hot keys dominate it, the reused layout may carry the bottleneck forward. Compare the cost of one deliberate repartition with repeated skewed stages.
+
+Partitioner equality is a technical property, while data balance is empirical. Profile rows/bytes per partition after aggregation and confirm that custom key hash/equals implementations are correct. A broken hash contract can produce incorrect grouping behavior; a technically correct but low-entropy key can produce extreme skew.
+
 ## Official Documentation
 
 - [Spark RDD Programming Guide: Key-Value Transformations](https://spark.apache.org/docs/latest/rdd-programming-guide.html#working-with-key-value-pairs)

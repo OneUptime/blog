@@ -118,6 +118,12 @@ A sort-merge join pays to redistribute and sort both sides but avoids distributi
 
 AQE can improve the decision when runtime sizes differ from static estimates, but it still needs a supported join shape and sensible thresholds. Inspect the final plan every time the behavior is surprising.
 
+## Keep Timeout and Memory as Separate Guardrails
+
+A longer broadcast timeout grants more time; it does not grant driver or executor memory. The build relation is materialized for the broadcast exchange and distributed to executors, so validate driver memory, executor memory, and concurrent broadcast activity independently. A relation that finishes building after ten minutes can still destabilize every executor once delivered.
+
+Conversely, a timeout can occur with a small final payload when its child query is slow. Record both build duration and broadcast data size. Alert on each separately: duration catches regressions in scans and upstream transformations, while size protects the replication cost. This makes a future timeout review evidence-based instead of normalizing an ever-increasing global setting.
+
 ## Official Documentation
 
 - [Spark SQL Performance Tuning: Broadcast Joins and AQE](https://spark.apache.org/docs/latest/sql-performance-tuning.html)

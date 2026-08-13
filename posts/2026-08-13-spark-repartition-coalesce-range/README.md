@@ -124,6 +124,14 @@ In the SQL tab, find `Exchange`, `AQEShuffleRead`, and sort nodes. In the stage 
 
 Avoid chaining partition operations without checking the optimized plan. SQL partitioning hints are resolved with optimizer rules, and the leftmost applicable hint can determine the chosen exchange. Clear, single-purpose repartitioning near the boundary is easier to reason about.
 
+## Treat the Partition Count as a Measured Intermediate Contract
+
+`getNumPartitions()` reports the DataFrame's current RDD partition count at that point, but later optimizer exchanges and AQE may produce a different partitioning for execution. Record both the declared count and the final adaptive plan. If a downstream library relies on partition-local ordering or grouping, document the exact operation after which that property holds; a subsequent shuffle invalidates it.
+
+Partitioning also does not imply uniqueness, completeness, or equal size. Hash partitions can be extremely uneven under hot keys, and range partitions can be uneven under concentrated distributions or samples. Add a small partition profile—rows, relevant bytes, and min/max key where meaningful—to the benchmark. This prevents a nominal “200 partitions” result from hiding one partition that contains most of the work.
+
+Finally, do not expose Spark partition IDs as stable business identifiers. Task retries, changed upstream partitioning, AQE, and different input splits can change them. Persist business keys and ordering fields, not `spark_partition_id()`, when downstream correctness needs identity.
+
 ## Official Documentation
 
 - [PySpark DataFrame `repartition()`](https://spark.apache.org/docs/latest/api/python/reference/pyspark.sql/api/pyspark.sql.DataFrame.repartition.html)

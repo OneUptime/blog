@@ -166,6 +166,14 @@ AQE may split qualifying skewed sort-merge join partitions to improve execution,
 
 Turn the contract into a pipeline check. Persist counts of duplicate keys, maximum multiplicity, predicted join rows, and actual output rows. Fail or quarantine the load when a supposedly unique dimension violates its key constraint. This catches the defect before the expensive join becomes the alarm.
 
+## Reconcile Predicted and Actual Rows
+
+For an inner equality join without extra predicates, the sum of `L × R` over matching non-null keys should reconcile with actual output. A mismatch is useful evidence: the production condition includes casts or additional predicates, null-safe matching is involved, the profile used a different snapshot, or arithmetic overflowed. For outer joins, add unmatched-side contributions according to the join type.
+
+Make this reconciliation a bounded aggregate, not a second raw-data export. Store the predicted count, actual count, top fanout keys, and input snapshot identifiers with the run. When growth is legitimate, set a capacity guardrail on predicted output before executing the full join. When a uniqueness contract exists, fail on duplicate dimension keys directly; an output-row threshold alone may catch the defect only after data volume becomes expensive.
+
+Sampling is useful for finding example rows but unreliable for proving rare duplicate keys absent. Exact uniqueness checks cost a shuffle, yet that cost is normally smaller and more interpretable than an uncontrolled join explosion. For very large routine pipelines, maintain uniqueness at the table-ingestion boundary so every consumer does not rediscover it.
+
 ## Official Documentation
 
 - [Spark SQL Join Syntax](https://spark.apache.org/docs/latest/sql-ref-syntax-qry-select-join.html)

@@ -98,6 +98,12 @@ Rerun the same input and compare heartbeat stability, GC pauses, task outliers, 
 
 Do not raise both heartbeat interval and network timeout proportionally without reasoning. Less frequent heartbeats reduce evidence and can interact poorly with detection. Maintain the documented “significantly less” relationship.
 
+## Check Neighboring Timeouts Before Attributing the Error
+
+`spark.network.timeout` can supply defaults for several subsystems when their specific timeouts are not set. A change intended for heartbeat detection may therefore alter shuffle connections, block-manager liveness, or RPC behavior too. Record explicit effective values for the relevant settings and assess the blast radius before changing the shared fallback.
+
+Likewise, a fetch timeout, RPC ask timeout, and executor heartbeat timeout can appear close together after one long pause. Order the messages by their first timestamp and identify the component that stopped making progress first. Treat later timeout messages as corroborating symptoms until evidence shows they are independent failures.
+
 ## Official Documentation
 
 - [Spark Configuration: Heartbeat and Network Timeouts](https://spark.apache.org/docs/latest/configuration.html)

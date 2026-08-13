@@ -120,6 +120,8 @@ One giant file is not the objective. Splittable Parquet files can support parall
 
 For active streaming partitions, compact only data that is sufficiently closed or use a table system designed for concurrent optimization. Rewriting files still being appended can race with writers or omit late data unless the publication protocol handles concurrency.
 
+Validate more than row count before publishing. Compare schema including nullability/metadata that consumers depend on, partition values, key aggregates, minimum/maximum event times, and a content checksum or deterministic sample. Parquet statistics and compression can change during a rewrite without changing logical rows; that is acceptable only when downstream readers support the resulting schema and codec. Retain the old generation until readers have moved safely and the owning storage system's retention rules permit cleanup.
+
 Measure improvement across both planes:
 
 - driver planning/listing time and metadata request rate;

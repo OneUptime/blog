@@ -138,6 +138,12 @@ Row counts are a first pass, not a byte measurement. Wide or nested rows can mak
 
 For ongoing inspection, persist a small, deliberately sampled diagnostic dataset to storage and inspect that artifact. This separates production computation from an interactive driver session and leaves an auditable sample.
 
+## Protect the Driver Result Channel
+
+Driver safety is broader than heap size. Every returned row must be serialized on an executor, transported, deserialized by the driver JVM/Python client, and retained long enough for user code to consume it. The task metric `resultSize` measures bytes transmitted back as task results; compare its distribution with driver memory and garbage collection. A result can fit eventually yet still cause long pauses or exceed message/result limits along the way.
+
+Keep the consumer loop bounded too. Do not append iterator rows to an ever-growing Python collection, and do not submit unlimited asynchronous side effects. Use a fixed-size buffer with backpressure and explicit error handling. If the desired operation has no natural end or needs parallel throughput, that is evidence it belongs in distributed Spark work or a durable sink, not a local iterator.
+
 ## A Practical Decision Rule
 
 Choose based on the contract:

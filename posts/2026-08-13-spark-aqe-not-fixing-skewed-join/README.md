@@ -121,6 +121,8 @@ Avoid reporting only the slowest task. Splitting it into ten tasks is not a win 
 7. Test one threshold, hint, or semantic correction at a time.
 8. Compare full-query cost and output correctness.
 
+Also distinguish skew splitting from AQE's post-shuffle coalescing. Coalescing combines small adjacent partitions toward an advisory size; skew optimization splits qualifying large join partitions. An aggressive initial partition count followed by coalescing can be healthy, while an initial count that is too small leaves broadly oversized partitions that are not necessarily “skewed” relative to their median. Read both adaptive rules in the final plan before crediting or blaming one setting.
+
 ## Official Documentation
 
 - [Spark SQL Performance Tuning: Adaptive Query Execution](https://spark.apache.org/docs/latest/sql-performance-tuning.html#adaptive-query-execution)
