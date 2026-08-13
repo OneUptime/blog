@@ -14,7 +14,7 @@ When pruning fails, do not begin by adding an index. PostgreSQL pruning uses par
 
 ## Reproduce the Exact Table and Query
 
-Capture the deployed definition, not an ORM model or migration file. For PostgreSQL:
+Capture the deployed definition, not an ORM model or migration file. In <code>psql</code>:
 
 ~~~sql
 \d+ public.events
@@ -33,7 +33,9 @@ SELECT c.oid::regclass AS relation,
        pg_get_expr(c.relpartbound, c.oid) AS bound
 FROM pg_class AS c
 WHERE c.oid IN (
-    SELECT relid FROM pg_partition_tree('public.events'::regclass)
+    SELECT relid
+    FROM pg_partition_tree('public.events'::regclass)
+    WHERE isleaf
 )
 ORDER BY c.oid::regclass::text;
 ~~~
@@ -61,7 +63,7 @@ WHERE occurred_at >= TIMESTAMPTZ '2026-08-13 00:00:00+00'
 For MySQL, traditional <code>EXPLAIN</code> includes a <code>partitions</code> column:
 
 ~~~sql
-EXPLAIN
+EXPLAIN FORMAT=TRADITIONAL
 SELECT *
 FROM events
 WHERE occurred_at >= '2026-08-13 00:00:00'
@@ -78,14 +80,14 @@ Suppose PostgreSQL range-partitions a <code>timestamptz</code> column directly. 
 WHERE occurred_at::date = DATE '2026-08-13'
 ~~~
 
-The partition bounds are on <code>occurred_at</code>, not generally on the result of <code>occurred_at::date</code>. An index on the raw timestamp also cannot directly navigate an arbitrary function of that column. Write an equivalent half-open range on the key:
+The partition bounds are on <code>occurred_at</code>, not generally on the result of <code>occurred_at::date</code>. An index on the raw timestamp also cannot directly navigate an arbitrary function of that column. For a UTC reporting day evaluated in a UTC session, write the equivalent half-open range on the key:
 
 ~~~sql
 WHERE occurred_at >= TIMESTAMPTZ '2026-08-13 00:00:00+00'
   AND occurred_at <  TIMESTAMPTZ '2026-08-14 00:00:00+00'
 ~~~
 
-The rewrite must preserve the application's time-zone semantics. Casting a <code>timestamptz</code> to <code>date</code> uses the session time zone. UTC bounds are equivalent only if UTC is the intended reporting day. For an America/New_York business day, calculate the correct instants explicitly and test daylight-saving transitions.
+The rewrite must preserve the application's time-zone semantics. Casting a <code>timestamptz</code> to <code>date</code> uses the session time zone. The shown UTC bounds are equivalent to the cast predicate only when the session <code>TimeZone</code> is UTC. Otherwise, derive the half-open instants for the same session or application reporting zone. For an America/New_York business day, calculate the correct instants explicitly and test daylight-saving transitions.
 
 The same diagnosis applies to:
 
@@ -107,11 +109,13 @@ A common failure shape casts the partition column because the parameter has the 
 WHERE event_id::text = $1
 ~~~
 
-Bind the parameter using the column's native type, or cast the parameter:
+If UUID value equality is intended, bind the parameter using the column's native type, or cast the parameter:
 
 ~~~sql
 WHERE event_id = $1::uuid
 ~~~
+
+This is not identical to comparing UUID output as text. PostgreSQL accepts several noncanonical UUID input forms but always outputs the canonical form, and invalid UUID text raises an error when cast. Validate that those input semantics are intended.
 
 For a timestamp key, prefer a timestamp parameter rather than comparing formatted text. Text ordering, collations, invalid inputs, and time zones can change semantics.
 
@@ -128,7 +132,7 @@ WHERE occurred_at >= $1
    OR tenant_id = $2
 ~~~
 
-The tenant branch has no time restriction, so every time partition may contain a match. Rewriting to <code>UNION ALL</code> can sometimes create independently optimizable branches, but it can duplicate rows when both predicates match. A correct rewrite needs <code>UNION</code> or an anti-overlap condition, each with its own cost.
+The tenant branch has no time restriction, so every time partition may contain a match. Rewriting to <code>UNION ALL</code> can sometimes create independently optimizable branches, but naive branches duplicate rows when both predicates match. A bag-preserving rewrite generally needs <code>UNION ALL</code> plus a null-safe anti-overlap condition, such as adding <code>AND (occurred_at &gt;= $1) IS NOT TRUE</code> to the tenant branch. Plain <code>UNION</code> is equivalent only when projected rows are guaranteed unique or set semantics are intended; otherwise it can collapse distinct source rows with identical projected values. Each approach has its own cost.
 
 Other patterns to inspect include:
 
@@ -163,7 +167,7 @@ Run controlled variants and record selected leaves:
 
 Keep result semantics identical when comparing performance. <code>BETWEEN</code> is inclusive at both ends, while time partitions usually use half-open ranges. Replacing it with an incorrect upper bound can create duplicate boundary results or omit fractional timestamps.
 
-After pruning works, optimize access inside the remaining leaves. Add or adjust indexes only from the residual predicate and ordering requirements. Re-run <code>ANALYZE</code> after representative loading so row estimates are meaningful.
+After pruning works, optimize access inside the remaining leaves. Add or adjust indexes only from the residual predicate and ordering requirements. After representative loading, run PostgreSQL <code>ANALYZE events</code> or MySQL <code>ANALYZE TABLE events</code> so row estimates are meaningful.
 
 ## Official Documentation
 
