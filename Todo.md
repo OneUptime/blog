@@ -68,7 +68,6 @@
 
 ## Partitioning
 
-16. Should a Multi-Tenant Table Partition by Tenant, Time, or Both?
 17. Consistent Hashing Still Has Hot Keys: How Do You Salt a Busy Partition Without Breaking Reads?
 18. Can You Change a Cassandra Partition Key? Plan the Replacement Table, Backfill, and Cutover
 19. Hive-Style Date Partitions or Iceberg Hidden Partitioning: Which Survives Layout Evolution?
