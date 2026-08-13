@@ -68,7 +68,6 @@
 
 ## Partitioning
 
-13. What Happens When an UPDATE Changes a PostgreSQL Partition Key?
 14. Daily, Weekly, or Monthly Partitions: Choose Boundaries From Retention and Query Windows
 15. Drop, Detach, or Archive: What Is the Safest Partition-Retention Workflow?
 16. Should a Multi-Tenant Table Partition by Tenant, Time, or Both?
