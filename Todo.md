@@ -63,7 +63,6 @@
 
 ## Partitioning
 
-19. Hive-Style Date Partitions or Iceberg Hidden Partitioning: Which Survives Layout Evolution?
 20. Why Do Lakehouse Partitions Create Tiny Files? Balance Pruning, Compaction, and Write Concurrency
 
 ## InfiniBand
