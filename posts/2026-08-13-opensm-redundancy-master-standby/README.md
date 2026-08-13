@@ -8,13 +8,13 @@ Description: Configure and verify OpenSM redundancy with one elected master, del
 
 ---
 
-InfiniBand Subnet Manager redundancy is not an active/active design in which two managers independently program the same fabric. Multiple SMs may be present, but the subnet-management protocol elects one `Master`; the others remain `Standby`. A standby polls the master and takes over when election and failure-detection rules require it.
+InfiniBand Subnet Manager redundancy is not an active/active design in which two managers independently program the same fabric. Multiple SMs may be present, but in a healthy steady state the subnet-management protocol elects one `Master`; the other participating SMs remain `Standby`. A standby polls the master and takes over when election and failure-detection rules require it.
 
 That makes the correct design simpler than an external split-brain cluster: run independent SM instances on independent failure domains, let the InfiniBand SM state machine choose the master, and keep their fabric policy compatible. Problems begin when operators force both managers to ignore one another, assign priorities accidentally, bind both to the wrong subnet, or deploy different partition and routing policy on the standby.
 
 ## Understand What Priority Actually Controls
 
-OpenSM exposes an SM priority from 0 through 15. Its manual defines 0 as the lowest and 15 as the highest. During handover, the master is selected by priority and GUID. The GUID therefore provides deterministic ordering when priorities are equal, but equal priority obscures operational intent.
+OpenSM exposes an SM priority from 0 through 15. Its manual defines 0 as the lowest and 15 as the highest. During handover, the higher-priority SM is preferred; if priorities are equal, the SM with the numerically lower port GUID wins. The GUID therefore provides deterministic ordering when priorities are equal, but equal priority obscures operational intent.
 
 A practical layout is:
 
@@ -25,17 +25,19 @@ A practical layout is:
 
 Those numbers are examples, not required values. The important properties are an intentional ordering and separate failure domains. Running two OpenSM processes on the same host protects against a process failure but not a host, power, PCIe, cabling, or HCA-port failure.
 
-Set priority through the packaging mechanism used on that system. In a generated `opensm.conf`, the setting is commonly named `sm_priority`; on the direct command line, OpenSM uses `-p` or `--priority`:
+Set priority through the packaging mechanism used on that system. In a generated `opensm.conf`, the setting is named `sm_priority`; configure each instance separately. On the direct command line, OpenSM uses `-p` or `--priority`:
 
 ~~~text
-# Preferred instance
+# Preferred instance's opensm.conf
 sm_priority 15
+~~~
 
-# Alternate instance
+~~~text
+# Alternate instance's opensm.conf
 sm_priority 14
 ~~~
 
-Do not append an option blindly to a vendor-managed UFM or switch SM. Those products own their generated configuration and expose their own supported configuration interface. Verify the effective state with SM queries after applying a change.
+Do not append an option blindly to a vendor-managed UFM or switch SM. Use the product's documented configuration path; for example, UFM documents supported `opensm.conf` changes and an SM-configuration REST API. Verify the effective state with SM queries after applying a change.
 
 ## Bind Each Instance to the Intended Fabric
 
@@ -65,7 +67,7 @@ The standby can become master and perform a fabric sweep. Its effective configur
 
 Byte-for-byte identical configuration is not always possible between an appliance and a host OpenSM, but the resulting policy must be compatible. A standby with a different partition file can make a successful protocol handover look like an application outage. A different routing engine can cause a longer or more disruptive first sweep even though election worked correctly.
 
-OpenSM normally tries to preserve LIDs. Its `--reassign_lids` option explicitly forces reassignment and the manual warns that using it on a running subnet may disrupt traffic. Do not enable it casually on a failover candidate. NVIDIA's UFM SM properties also expose an `honor_guid2lid_file` behavior for coming out of standby; whether to use such persistence is a fabric-policy decision, not a universal HA requirement.
+OpenSM normally tries to preserve LIDs. Its `--reassign_lids` option explicitly forces reassignment and the manual warns that using it on a running subnet may disrupt traffic. Do not enable it casually on a failover candidate. Upstream OpenSM also exposes `honor_guid2lid_file`, which honors a valid GUID-to-LID cache when coming out of standby. NVIDIA's UFM 6.24.x property table lists the setting but marks it as not applicable to UFM SM. On products that support it, whether to use such persistence is a fabric-policy decision, not a universal HA requirement.
 
 ## Do Not Configure the Managers to Compete
 
@@ -73,11 +75,11 @@ The `ignore_other_sm` setting is not a redundancy switch. It tells an SM to igno
 
 Likewise, do not use a generic HA product to block all network visibility between the two SMs. An external service manager may restart a failed process, but election and handover belong to the InfiniBand SM protocol. Network isolation can make two live managers unable to observe one another while both can still reach parts of the fabric.
 
-NVIDIA UFM supports an allowed-SM-GUID list. If such a control is used, include exactly the approved SM GUIDs and test it carefully. An allowlist that omits the standby turns a planned failover into a rejection; a null or disabled policy has different semantics from a list containing zero.
+NVIDIA UFM supports an allowed-SM-port-GUID list. If such a control is used, include exactly the approved SM port GUIDs and test it carefully. A standby whose port GUID is omitted is ignored during handover; `(null)` disables the feature, while the special value `0` disallows every other SM.
 
 ## Observe the Election from More Than One Port
 
-The `sminfo` utility queries the SMInfo attribute referenced by a local port. Query from hosts on different parts of the fabric:
+The `sminfo` utility queries a target SM's SMInfo attribute. With no target argument, it uses the SM LID recorded for the selected local port. Query from hosts on different parts of the fabric:
 
 ~~~console
 $ sminfo -C mlx5_0 -P 1
@@ -107,9 +109,9 @@ A green process dashboard does not validate redundancy. Schedule a test during a
 4. Measure detection, election, first sweep, and application recovery.
 5. Verify that the former standby is now the sole `Master` and that ports remain or return `Active`.
 6. Compare partitions, routes, LIDs, link state, and error counters with the baseline.
-7. Restore the preferred instance and observe whether priority causes the intended transition. Do not assume automatic failback semantics without testing the exact versions and product combination.
+7. Restore the preferred instance and confirm the expected priority-driven transition. Current upstream OpenSM is preemptive, but test the exact versions and product combination rather than assuming identical failback timing or behavior.
 
-Use graceful service control for the first test, then later exercise host or path failure if the risk permits. Killing both managers at once does not test handover. Forcing SM state with `sminfo --state` is also a poor routine test: the official manual warns that using `sminfo` for more than a simple query can malfunction the target SM.
+Use graceful service control for the first test, then later exercise host or path failure if the risk permits. Killing both managers at once does not test handover. Using `sminfo` to issue an SMInfo Set for a forced state change is also a poor routine test: the official manual warns that using `sminfo` for more than a simple query can malfunction the target SM.
 
 ## Plan for Convergence, Not Zero-Time Failover
 
@@ -121,7 +123,7 @@ Applications may react differently during that interval. Existing traffic can be
 
 - [OpenSM: official `opensm(8)` manual, including priority and GUID binding](https://github.com/linux-rdma/opensm/blob/master/man/opensm.8.in)
 - [rdma-core: `sminfo(8)` states, priority, and safety warning](https://github.com/linux-rdma/rdma-core/blob/master/infiniband-diags/man/sminfo.8.in.rst)
-- [NVIDIA UFM: Subnet Manager properties for priority, polling, allowlists, and other SMs](https://docs.nvidia.com/networking/display/ufmenterpriseumv6241/ufm-subnet-manager-default-properties)
+- [NVIDIA UFM: Subnet Manager properties for priority, polling, allowlists, and other SMs](https://docs.nvidia.com/networking/display/ufmenterpriseumv6242/ufm-subnet-manager-default-properties)
 - [NVIDIA: OpenSM application documentation](https://docs.nvidia.com/doca/sdk/nvidia-sm/index.html)
 - [Linux kernel: stable InfiniBand sysfs ABI](https://www.kernel.org/doc/Documentation/ABI/stable/sysfs-class-infiniband)
 - [rdma-core: `ibstat(8)` port and GUID reporting](https://github.com/linux-rdma/rdma-core/blob/master/infiniband-diags/man/ibstat.8.in.rst)
