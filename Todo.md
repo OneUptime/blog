@@ -60,7 +60,6 @@
 
 ## Apache Spark
 
-12. Does Caching Make This Spark Job Slower? Read Recompute, Eviction, and Storage-Level Metrics
 13. Executor Heartbeat Timed Out: Is Spark GC-Paused, Network-Starved, or Running an Oversized Task?
 14. `groupByKey()`, `reduceByKey()`, or `aggregateByKey()`: Why Map-Side Combining Changes Spark Shuffle Memory
 15. Why Isn’t Adaptive Query Execution Fixing My Skewed Join? Check Statistics, Thresholds, and Join Shape
