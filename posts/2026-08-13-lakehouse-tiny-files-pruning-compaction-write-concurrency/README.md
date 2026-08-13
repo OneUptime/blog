@@ -91,13 +91,13 @@ Change one variable at a time and measure actual files. Do not set enormous task
 
 ## Cause 3: Rows Are Not Clustered for the Writer
 
-Iceberg's default Spark writers require data in each task to be clustered by partition values to limit open file handles. Current Iceberg Spark integration can request distribution:
+Iceberg's clustered Spark writer requires data in each task to be clustered by partition values to limit open file handles. Current Iceberg Spark integration can request distribution:
 
 - <code>none</code>: no requested shuffle;
 - <code>hash</code>: hash distribution by partition values;
 - <code>range</code>: range distribution by partition or sort order.
 
-The current documentation says hash is the default starting with Iceberg 1.2.0 for Spark writes, but engine and Iceberg versions matter, and Spark did not respect distribution mode for CTAS/RTAS before Spark 3.5.0.
+Starting with Iceberg 1.2.0, hash is the default for partitioned tables without a sort order. Range is the default when a table has a sort order, while current integrations use none for unpartitioned, unsorted tables. Engine and Iceberg versions matter, and Spark did not respect distribution mode for CTAS/RTAS before Spark 3.5.0.
 
 Set the table property deliberately:
 
@@ -111,7 +111,7 @@ SET TBLPROPERTIES (
 
 The 512 MB value is Iceberg's documented default and is shown for clarity, not a universal optimum. Choose from scan size, object-store cost, write cadence, and rewrite capacity.
 
-The Spark fanout writer avoids requiring clustered input, but keeps file handles open for partitions touched by a task and uses more memory. It does not merge independent task output into one file. Enable it only after measuring memory and partition fan-out.
+The Spark fanout writer avoids requiring clustered input, but keeps file handles open for partitions touched by a task and uses more memory. It does not merge independent task output into one file. Iceberg's Spark 3.5 and later integrations may select it by default for partitioned, unsorted writes when no ordering is required; selection also depends on the Iceberg version and configuration. When it is used, measure memory and partition fan-out.
 
 ## Cause 4: Micro-Batches Are Smaller Than the Target
 
@@ -136,7 +136,7 @@ Reduce unnecessary writer count:
 - consolidate ingestion for the same table/partition;
 - assign disjoint partition ownership when possible;
 - stage small producer outputs and batch them;
-- cap speculative or retry duplicates;
+- make application-level append retries idempotent, and monitor orphan files from failed or speculative attempts;
 - schedule compaction after the high-concurrency window.
 
 Do not serialize all writers merely to obtain large files if it violates availability or throughput. Compaction is the intended trade for some workloads.
@@ -149,7 +149,7 @@ With Spark SQL extensions, Iceberg exposes <code>rewrite_data_files</code>:
 CALL prod.system.rewrite_data_files(
   table => 'observability.events',
   strategy => 'binpack',
-  where => 'event_time >= TIMESTAMP ''2026-08-12 00:00:00'' AND event_time < TIMESTAMP ''2026-08-13 00:00:00''',
+  where => 'event_time >= TIMESTAMP \'2026-08-12 00:00:00\' AND event_time < TIMESTAMP \'2026-08-13 00:00:00\'',
   options => map(
     'target-file-size-bytes', '536870912',
     'min-input-files', '5',
@@ -178,12 +178,12 @@ Partial progress limits the loss from a long failed rewrite but creates multiple
 
 Compacting data files does not automatically solve every metadata problem:
 
-- position/equality delete files may require their own rewrite action;
+- position delete files may require <code>rewrite_position_delete_files</code>; equality delete maintenance is version- and engine-specific;
 - many manifests can slow planning and may benefit from <code>rewrite_manifests</code>;
 - old snapshots keep references and metadata until expiration;
 - orphan-file deletion is a separate, potentially destructive maintenance action.
 
-Follow Iceberg's maintenance ordering and safety guidance. Do not delete files by listing an object-store prefix and guessing that unrecognized paths are obsolete. Snapshots, branches, tags, and in-progress writes can still reference them.
+Follow Iceberg's maintenance and safety guidance. Do not delete files by listing an object-store prefix and guessing that unrecognized paths are obsolete. Snapshots, branches, tags, and in-progress writes can still reference them.
 
 ## Balance Pruning Against File Size
 
