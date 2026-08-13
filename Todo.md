@@ -68,7 +68,6 @@
 
 ## Partitioning
 
-11. Why Does PostgreSQL `ATTACH PARTITION` Scan and Lock the Table Despite a CHECK Constraint?
 12. Why Can a PostgreSQL DEFAULT Partition Make the Next Partition Creation Block?
 13. What Happens When an UPDATE Changes a PostgreSQL Partition Key?
 14. Daily, Weekly, or Monthly Partitions: Choose Boundaries From Retention and Query Windows
