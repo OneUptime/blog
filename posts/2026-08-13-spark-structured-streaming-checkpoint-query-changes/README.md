@@ -18,7 +18,7 @@ The official recovery-semantics section groups changes by sources, sinks, statel
 
 ### Input sources
 
-Changing the number or type of input sources is not allowed. Changing source parameters depends on the source and query. The guide gives rate limits as an allowed example, while changing subscribed Kafka topics is generally not allowed because results are unpredictable.
+Under the general recovery semantics, changing the number or type of input sources is not allowed. Spark 4.2 adds an experimental, opt-in exception for queries created with `spark.sql.streaming.queryEvolution.enableSourceEvolution=true`: when every source has a stable `DataStreamReader.name()` identity, sources can be added, removed, or reordered without breaking the checkpoint. This does not make arbitrary source-type changes compatible; follow the feature's exact constraints. Changing source parameters depends on the source and query. The guide gives rate limits as an allowed example, while changing subscribed Kafka topics is generally not allowed because results are unpredictable.
 
 For Kafka, options such as `startingOffsets` apply when a *new* query starts. When a query resumes, Spark continues from offsets recorded in the checkpoint. Changing `startingOffsets` while retaining the checkpoint does not rewind or skip the established progress.
 
@@ -38,12 +38,12 @@ For the stateful operations listed in Spark's general recovery-semantics guide, 
 
 - number/type of streaming aggregation keys or aggregates;
 - number/type of streaming deduplication columns;
-- stream-stream join key schema or join type;
+- stream-stream join input schema, equi-join columns, or join type; other join-condition changes are ill-defined;
 - user-defined state schema or timeout type for legacy `mapGroupsWithState`/`flatMapGroupsWithState` operations.
 
 The restored state was encoded for the old operator contract. Renaming a function in source code may be harmless, while adding one grouping field is not.
 
-Spark 4.x's `transformWithState` is a documented, narrowly scoped exception rather than permission to evolve every stateful plan. Its current guide allows state variables to be added or removed and supports value-side schema evolution when the state-store encoding format is Avro. Key-side schema evolution is not supported. Follow that API's exact evolution rules; they do not make aggregation, deduplication, join, or legacy `mapGroupsWithState` checkpoint changes compatible.
+Spark 4.x's `transformWithState` is a documented, narrowly scoped exception rather than permission to evolve every stateful plan. Its current guide allows state variables to be added or removed across runs; removing one requires calling `deleteIfExists` for that variable from `StatefulProcessor.init` so Spark can purge the stored state. Evolution within a state variable is supported only on the value side and only when the checkpointed state-store encoding format is Avro. Key-side schema evolution is not supported. Because Spark persists the encoding format in the checkpoint, enabling Avro only when resuming an existing UnsafeRow checkpoint does not convert it. Follow that API's exact evolution rules; they do not make aggregation, deduplication, join, or legacy `mapGroupsWithState` checkpoint changes compatible.
 
 ## Treat Operator Order and Count as State Schema
 
@@ -64,7 +64,7 @@ Some SQL configurations are also checkpoint invariants. The current guide says t
 
 ### Reuse the checkpoint for a supported change
 
-Use only when the documented category permits it and semantic review agrees. Back up checkpoint metadata according to the underlying storage system, deploy to a non-production clone where feasible, and verify resumed offsets, batch IDs, state metrics, and sink output.
+Use only when the documented category permits it and semantic review agrees. Back up the complete checkpoint with a storage-consistent mechanism, deploy to a non-production clone where feasible, and verify resumed offsets, batch IDs, state metrics, and sink output.
 
 ### Start with a new checkpoint
 
@@ -81,7 +81,9 @@ source = (
 )
 
 query = (
-    transformed.writeStream
+    source.writeStream
+    .format("parquet")
+    .option("path", "hdfs:///outputs/events-v2/run-001")
     .option("checkpointLocation", "hdfs:///checkpoints/events-v2/run-001")
     .start()
 )
@@ -133,7 +135,7 @@ If documentation labels a change not allowed, a successful development restart d
 
 ## Copy Checkpoints Only with Storage-Level Consistency
 
-A checkpoint contains multiple logs and state files whose versions correspond to completed micro-batches. Copying it while a query is writing can capture an inconsistent mixture. Stop the query through its supported lifecycle or use a storage snapshot mechanism that provides a point-in-time consistent view. A directory copy is not automatically a valid backup on every object store.
+A checkpoint contains multiple logs and state files whose entries collectively form a recoverable processing history. Copying it while a query is writing can capture an inconsistent mixture. Stop the query through its supported lifecycle or use a storage snapshot mechanism that provides a point-in-time consistent view. A directory copy is not automatically a valid backup on every object store.
 
 Protect the associated sink state as well. Restoring an older checkpoint while leaving newer sink output in place can replay batches and create duplicates unless the sink's commit protocol recognizes them. Recovery testing must treat checkpoint and sink as one processing history.
 
@@ -141,6 +143,8 @@ Protect the associated sink state as well. Restoring an older checkpoint while l
 
 - [Structured Streaming: Recovery Semantics After Query Changes](https://spark.apache.org/docs/latest/streaming/apis-on-dataframes-and-datasets.html#recovery-semantics-after-changes-in-a-streaming-query)
 - [Structured Streaming: Recovering with Checkpointing](https://spark.apache.org/docs/latest/streaming/apis-on-dataframes-and-datasets.html#recovering-from-failures-with-checkpointing)
+- [Spark 4.2: Streaming Source and Sink Naming](https://spark.apache.org/releases/spark-release-4-2-0.html#streaming-source-and-sink-naming)
+- [PySpark DataStreamReader `name()`](https://spark.apache.org/docs/latest/api/python/reference/pyspark.ss/api/pyspark.sql.streaming.DataStreamReader.name.html)
 - [Structured Streaming: `transformWithState` and State Schema Evolution](https://spark.apache.org/docs/latest/streaming/structured-streaming-transform-with-state.html#state-schema-evolution)
 - [Structured Streaming: Checkpoint-Bound SQL Configuration](https://spark.apache.org/docs/latest/streaming/additional-information.html#miscellaneous-notes)
 - [Spark Structured Streaming Kafka Integration](https://spark.apache.org/docs/latest/streaming/structured-streaming-kafka-integration.html)
