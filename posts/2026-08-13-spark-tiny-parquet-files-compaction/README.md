@@ -14,7 +14,7 @@ Two remedies are often confused. **Scan planning** changes how Spark groups exis
 
 ## Confirm That File Overhead Is the Bottleneck
 
-Separate time before tasks start from time inside tasks. A long delay while the driver lists paths or builds the file index points toward discovery and metadata work. A stage with enormous task counts, small input per task, low executor CPU utilization, and short individual tasks points toward scheduling and file-open overhead.
+Separate scan-planning and listing work from scan-task execution. A long delay during path listing or file-index construction points toward discovery and metadata work. A stage with enormous task counts, small input per task, low executor CPU utilization, and short individual tasks points toward scheduling and file-open overhead.
 
 Inventory the exact partition or date range, not the whole lake. On a filesystem with a safe listing command, capture file count and byte distribution outside Spark. Inside Spark, use the SQL UI to inspect the scan node, its selected partitions, and input metrics. Verify partition pruning first; reading every date because a filter cannot be pushed to the directory partition is a different problem.
 
@@ -23,9 +23,13 @@ You can also count source paths for a bounded slice:
 ```python
 from pyspark.sql import functions as F
 
+events_root = "s3a://analytics/events"
+event_date = "2026-08-12"
+
 slice_df = (
-    spark.read.parquet("s3://analytics/events")
-    .where(F.col("event_date") == "2026-08-12")
+    spark.read
+    .option("basePath", events_root)
+    .parquet(f"{events_root}/event_date={event_date}")
 )
 
 source_file_count = (
@@ -37,13 +41,13 @@ source_file_count = (
 print(source_file_count)
 ```
 
-This is itself a Spark job and may be expensive; use object-store inventory or catalog metadata when available. It answers how many files contributed rows, not why they were created.
+Reading the leaf path bounds filesystem discovery to that partition; `basePath` retains `event_date` as a discovered partition column. This is itself a Spark job and may be expensive; use object-store inventory or catalog metadata when available. It answers how many files contributed rows, not why they were created.
 
 ## Tune File-Source Planning Carefully
 
 Spark SQL exposes file-source settings in its performance guide:
 
-- `spark.sql.files.maxPartitionBytes` limits bytes packed into a file-source partition;
+- `spark.sql.files.maxPartitionBytes` sets the maximum bytes normally packed into a file-source partition; a configured `spark.sql.files.maxPartitionNum` can rescale partitions beyond that size;
 - `spark.sql.files.openCostInBytes` supplies an estimated cost per open when packing multiple files;
 - parallel partition discovery settings control when and how Spark lists paths in parallel;
 - minimum and maximum partition-number suggestions can influence file splitting in supported releases.
@@ -62,24 +66,25 @@ Small files usually originate at a write boundary:
 - many concurrent jobs append independently;
 - retries and partial workflows leave fragmented output.
 
-Fixing only the reader guarantees the problem returns. Record rows and bytes written per trigger or job, the number of output tasks, and distinct values of directory partition columns. The official writer API describes `partitionBy()` as a Hive-style filesystem layout and notes it is normally suitable for columns with limited cardinality.
+If the writer continues unchanged, fixing only the reader means the problem returns. Record rows and bytes written per trigger or job, the number of output tasks, and distinct values of directory partition columns. The official writer API describes `partitionBy()` as a Hive-style filesystem layout and notes it is normally suitable for columns with limited cardinality.
 
-For a batch writer, reduce or redistribute immediately before the write based on expected output bytes:
+For a batch writer that handles one bounded event date at a time, reduce or redistribute immediately before the write based on expected output bytes:
 
 ```python
+# `transformed` is already limited to one event date.
 target_partitions = 160  # Derived from measured output bytes, not a universal value.
 
 (
     transformed
-    .repartition(target_partitions, "event_date")
+    .repartition(target_partitions)
     .write
     .mode("append")
     .partitionBy("event_date")
-    .parquet("s3://analytics/events")
+    .parquet("s3a://analytics/events")
 )
 ```
 
-This does not promise an exact file count or file size. Verify the resulting layout. `spark.sql.files.maxRecordsPerFile` can cap records per output file, which is useful for preventing files from becoming too large; it is not a direct target-byte-size setting and does not combine small tasks.
+This does not promise an exact file count or file size. For a multi-date batch, size dates separately or use a deliberate per-date shard; hashing only by `event_date` would send each date to one shuffle partition. Verify the resulting layout. `spark.sql.files.maxRecordsPerFile` can cap records per output file, which is useful for preventing files from becoming too large; it is not a direct target-byte-size setting and does not combine small tasks.
 
 ## Compact at a Controlled Maintenance Boundary
 
@@ -88,7 +93,7 @@ Compaction should create a replacement dataset and publish it only after validat
 A generic file-based workflow is:
 
 1. choose a bounded partition, such as one closed event date;
-2. read and validate its current schema and row-level invariants;
+2. establish its authoritative table schema and validate row-level invariants; if compatible raw Parquet schemas have evolved, enable schema merging when reading them;
 3. calculate output partitions from measured uncompressed/output bytes and reader goals;
 4. write compacted files to a separate staging location;
 5. validate row counts, key aggregates, schema, and file distribution;
@@ -98,10 +103,10 @@ A generic file-based workflow is:
 The Spark portion can be simple:
 
 ```python
-source = "s3://analytics/events/event_date=2026-08-12"
-staging = "s3://analytics-staging/events/event_date=2026-08-12/run-0042"
+source = "s3a://analytics/events/event_date=2026-08-12"
+staging = "s3a://analytics-staging/events/event_date=2026-08-12/run-0042"
 
-day = spark.read.parquet(source)
+day = spark.read.option("mergeSchema", "true").parquet(source)
 
 (
     day
@@ -112,7 +117,7 @@ day = spark.read.parquet(source)
 )
 ```
 
-Publishing is intentionally not shown as a rename: object stores, distributed filesystems, and transactional table formats have different atomicity and concurrency guarantees. Use the documented operation for the system that owns the table. Spark's generic Parquet writer alone does not provide a universal multi-file transaction protocol.
+Because `source` is the leaf partition path, `event_date` is represented by that path rather than included as a column in `day`; validate the partition value from the catalog or path. Publishing is intentionally not shown as a rename: object stores, distributed filesystems, and transactional table formats have different atomicity and concurrency guarantees. Use the documented operation for the system that owns the table. Spark's generic Parquet writer alone does not provide a universal multi-file transaction protocol.
 
 ## Avoid Over-Compaction
 
@@ -120,7 +125,7 @@ One giant file is not the objective. Splittable Parquet files can support parall
 
 For active streaming partitions, compact only data that is sufficiently closed or use a table system designed for concurrent optimization. Rewriting files still being appended can race with writers or omit late data unless the publication protocol handles concurrency.
 
-Validate more than row count before publishing. Compare schema including nullability/metadata that consumers depend on, partition values, key aggregates, minimum/maximum event times, and a content checksum or deterministic sample. Parquet statistics and compression can change during a rewrite without changing logical rows; that is acceptable only when downstream readers support the resulting schema and codec. Retain the old generation until readers have moved safely and the owning storage system's retention rules permit cleanup.
+Validate more than row count before publishing. Compare against the authoritative schema contract, including nullability and metadata that consumers depend on, plus partition values, key aggregates, minimum/maximum event times, and a content checksum or deterministic sample. Spark marks Parquet fields nullable when reading, so comparing raw `DataFrame.schema` values alone cannot verify physical required/optional annotations; inspect the Parquet schema separately if those annotations matter. Parquet statistics and compression can change during a rewrite without changing logical rows; that is acceptable only when downstream readers support the resulting schema and codec. Retain the old generation until readers have moved safely and the owning storage system's retention rules permit cleanup.
 
 Measure improvement across both planes:
 
@@ -138,10 +143,13 @@ The lasting fix makes compaction occasional maintenance, not a permanent race ag
 - [Spark SQL Performance Tuning: File Source Options](https://spark.apache.org/docs/latest/sql-performance-tuning.html)
 - [Spark Configuration: Spark SQL File Settings](https://spark.apache.org/docs/latest/configuration.html)
 - [Spark SQL Parquet Data Source](https://spark.apache.org/docs/latest/sql-data-sources-parquet.html)
+- [Spark Cloud Integration](https://spark.apache.org/docs/latest/cloud-integration.html)
 - [PySpark DataFrameReader `parquet()`](https://spark.apache.org/docs/latest/api/python/reference/pyspark.sql/api/pyspark.sql.DataFrameReader.parquet.html)
 - [PySpark DataFrameWriter `parquet()`](https://spark.apache.org/docs/latest/api/python/reference/pyspark.sql/api/pyspark.sql.DataFrameWriter.parquet.html)
 - [PySpark DataFrameWriter `partitionBy()`](https://spark.apache.org/docs/latest/api/python/reference/pyspark.sql/api/pyspark.sql.DataFrameWriter.partitionBy.html)
+- [Spark `DataFrameWriter` API](https://spark.apache.org/docs/latest/api/scala/org/apache/spark/sql/DataFrameWriter.html)
 - [PySpark DataFrame `repartition()`](https://spark.apache.org/docs/latest/api/python/reference/pyspark.sql/api/pyspark.sql.DataFrame.repartition.html)
+- [PySpark `input_file_name()`](https://spark.apache.org/docs/latest/api/python/reference/pyspark.sql/api/pyspark.sql.functions.input_file_name.html)
 - [Spark Web UI](https://spark.apache.org/docs/latest/web-ui.html)
 
 ## Conclusion
