@@ -60,7 +60,6 @@
 
 ## Apache Spark
 
-14. `groupByKey()`, `reduceByKey()`, or `aggregateByKey()`: Why Map-Side Combining Changes Spark Shuffle Memory
 15. Why Isn’t Adaptive Query Execution Fixing My Skewed Join? Check Statistics, Thresholds, and Join Shape
 16. Why Isn’t a Structured Streaming Watermark Dropping Old Events? Event-Time and Output-Mode Traps
 17. Can You Reuse a Spark Structured Streaming Checkpoint After Changing the Query?
