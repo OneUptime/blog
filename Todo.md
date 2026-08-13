@@ -87,7 +87,6 @@
 
 ## InfiniBand
 
-6. Why Does `ibv_devinfo` Show No RDMA Devices After a Kernel Upgrade?
 7. Distribution `rdma-core` or MLNX_OFED: Which Driver Stack Fits Your Kernel and ConnectX Generation?
 8. Is This ConnectX Port in Ethernet or InfiniBand Mode? Verify VPI Link Type Before Reconfiguring It
 9. IPoIB Works, but Why Is It Far Below InfiniBand Line Rate?
