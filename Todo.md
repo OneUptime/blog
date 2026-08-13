@@ -60,7 +60,6 @@
 
 ## Apache Spark
 
-2. Spark `FetchFailedException` After an Executor Dies: Is the Network, Disk, or Shuffle Service at Fault?
 3. `collect()`, `take()`, or `toLocalIterator()`: How Do You Inspect Spark Results Without Crashing the Driver?
 4. How Many Partitions Should a Spark Job Use? Size Tasks from Input Bytes, Cores, and AQE
 5. `repartition()`, `coalesce()`, or `repartitionByRange()`: Which Spark Operation Fits Each Shuffle?
