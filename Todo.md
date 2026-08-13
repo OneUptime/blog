@@ -87,7 +87,6 @@
 
 ## InfiniBand
 
-3. `ibstat` Shows `Down/Polling`: How Do You Separate Cable, Port, Firmware, and Link-Mode Faults?
 4. Why Did an InfiniBand Link Negotiate 1X or a Lower Rate Than the HCA Advertises?
 5. Which InfiniBand Counters Actually Point to a Bad Cable? Read Symbol Errors, Link Recovery, and Discards
 6. Why Does `ibv_devinfo` Show No RDMA Devices After a Kernel Upgrade?
