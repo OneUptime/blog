@@ -60,7 +60,6 @@
 
 ## Apache Spark
 
-20. Dynamic Allocation Removed an Executor: Will Spark Lose Its Shuffle Files?
 
 ## Partitioning
 
