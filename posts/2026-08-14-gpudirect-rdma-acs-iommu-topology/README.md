@@ -49,7 +49,7 @@ $ lspci -tv
 $ nvidia-smi topo -m
 ~~~
 
-Recent NVIDIA tools may also provide `nvidia-smi topo -mp` for a more detailed GPU and NIC map. Use the option supported by the installed driver.
+NVIDIA tools may also provide `nvidia-smi topo -mp`, which displays a PCI-only GPU and NIC matrix and excludes NVLink connections. Use the option supported by the installed driver.
 
 CUDA's GPUDirect RDMA documentation says the devices generally need to share the same upstream PCIe root complex. It classifies paths containing only PCIe switches as optimal, a single CPU/root complex as working with possible performance limits, and paths crossing the inter-socket connection as potentially severely limited or unreliable.
 
@@ -70,15 +70,15 @@ Collect the boot and runtime evidence:
 
 ~~~console
 $ cat /proc/cmdline
-$ dmesg --ctime | grep -iE 'iommu|dmar|amd-vi'
-$ find /sys/kernel/iommu_groups -maxdepth 2 -type l 2>/dev/null | sort
+$ sudo dmesg --ctime | grep -iE 'iommu|dmar|amd-vi'
+$ find /sys/kernel/iommu_groups -maxdepth 3 -type l 2>/dev/null | sort
 ~~~
 
 Current CUDA documentation states that GPUDirect RDMA relies on physical addresses being the same from each PCI device's point of view. IOMMU translation other than 1:1 is incompatible; the IOMMU must be disabled or configured for pass-through translation for the documented path.
 
 Do not translate that statement into an unreviewed fleet-wide bootloader edit. IOMMUs provide isolation for virtualization, device assignment, and security. On a managed system, follow the GPU, HCA, hypervisor, and server vendor support matrix. Confirm whether the intended mode is global pass-through, per-device identity mapping, or a platform-specific supported configuration, then schedule a reboot and rollback plan.
 
-In a VM or container, the host controls much of this state. A privileged container cannot change the physical PCIe topology or host IOMMU mapping.
+In a VM or container, the host controls much of this state. Running the workload in a privileged container does not by itself change the physical PCIe topology or make an incompatible host IOMMU configuration suitable for GPUDirect RDMA.
 
 ## Determine Whether ACS Redirects Peer Traffic
 
@@ -91,7 +91,7 @@ $ sudo lspci -vv -s 0000:ae:00.0 | grep -A6 -i 'Access Control Services'
 
 The relevant bridge path comes from `lspci -t`; checking only the endpoints can miss redirect settings on an upstream switch or root port. Preserve the full `ACSCap` and `ACSCtl` output for vendor review.
 
-Do not use `setpci` to clear ACS bits from an online production system based on a copied offset. Register layout and ownership differ, settings may be reset by firmware, and disabling ACS can weaken device isolation or invalidate virtualization assumptions. Prefer the server BIOS setting, NVIDIA platform tooling, or vendor-supported procedure for the exact platform.
+Do not use `setpci` to clear ACS bits from an online production system based on a copied offset. Capability locations and implemented bits vary, platform software may override settings, and disabling ACS can weaken device isolation or invalidate virtualization assumptions. Prefer the server BIOS setting, NVIDIA platform tooling, or vendor-supported procedure for the exact platform.
 
 On supported NVIDIA Grace Blackwell and ConnectX systems, NVIDIA documents the `rdma_topo` tool for checking and configuring ACS-related DirectNIC topology. That procedure is platform-specific, not a generic x86 command.
 
@@ -102,7 +102,7 @@ NVIDIA GPU Operator documents two kernel-mode approaches:
 - Linux DMA-BUF, which NVIDIA recommends when the supported kernel, GPU driver, and network driver combination is available;
 - the legacy `nvidia-peermem` module.
 
-Identify which path the workload requested:
+Inspect the loaded peer-memory modules and the capabilities exposed by the installed tools:
 
 ~~~console
 $ lsmod | grep -E 'nvidia_peermem|nv_peer_mem'
@@ -111,7 +111,9 @@ $ ib_write_bw --help | grep -E 'use_cuda|dmabuf'
 $ ucx_info -d | grep -i cuda
 ~~~
 
-For perftest, `--use_cuda_dmabuf` is explicit and must be paired with a CUDA buffer according to the installed version's help and the official README. Without it, a build may use another supported peer-memory path. Record the mechanism rather than describing every CUDA run as DMA-BUF.
+Use the workload's exact command line and runtime logs to determine which mechanism it actually used.
+
+For perftest, place `--use_cuda_dmabuf` after a CUDA selector such as `--use_cuda=0` to request DMA-BUF explicitly. Without it, perftest uses `ibv_reg_mr`; successful GPU-memory registration then depends on a peer-memory integration such as `nvidia-peermem`. Record the mechanism rather than describing every CUDA run as DMA-BUF.
 
 Check the exact compatibility matrix for:
 
