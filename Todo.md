@@ -69,7 +69,6 @@
 
 ## Infrastructure Testing
 
-19. How Do You Build Per-Pull-Request Infrastructure Environments That Clean Themselves Up?
 20. Which Infrastructure Tests Run on Every Pull Request—and Which Belong in a Nightly Suite?
 
 ## Backoff
