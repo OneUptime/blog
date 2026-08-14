@@ -14,7 +14,7 @@ Model one logical operation and its individual attempts as different things. The
 
 ## Define the Two Cardinalities
 
-A **logical call** is the operation the application requested. An **attempt** is one actual send to a dependency. A call always has at least one attempt unless admission fails before sending, and it may have retries or hedges.
+A **logical call** is the operation the application requested. An **attempt** is one actual send to a dependency. A call normally has at least one attempt, but it can fail or be canceled before sending, and it may have retries or hedges.
 
 The first derived signal is retry amplification:
 
@@ -23,9 +23,9 @@ attempt amplification = attempts started / logical calls started
 retry overhead ratio = retry attempts / all attempts
 ~~~
 
-Segment these by bounded operation, destination, region, and final outcome. An amplification of 1.0 means one send per call. A rising value with flat application traffic explains why the downstream sees unexpected load.
+Segment start-counter ratios by bounded attributes known when each measurement is recorded, such as operation, destination, and region. To segment by final outcome, record attempts per completed call at call completion or derive them from completed traces; counters emitted at start cannot carry the final outcome. An amplification of 1.0 means one attempt start per logical-call start on average over the measurement window, not that every call sent exactly once. A rising value with flat application traffic explains why the downstream sees unexpected load.
 
-Keep hedges separate from sequential retries. Both add attempts, but one starts before another attempt fails and has a different latency and load tradeoff.
+Keep hedges separate from sequential retries. Both add attempts, but a hedge can start while another attempt is still in flight and has a different latency and load tradeoff.
 
 ## Record a Minimal Metric Set
 
@@ -36,8 +36,8 @@ Where a library does not already expose standard instruments, useful custom metr
 | <code>client.logical_calls</code> | counter | logical operations started |
 | <code>client.attempts</code> | counter | actual sends, including initial, retry, and hedge |
 | <code>client.retries</code> | counter | policy retries started |
-| <code>client.retry_delay</code> | histogram | one scheduled backoff wait per retry |
-| <code>client.operation_retry_delay</code> | histogram | cumulative backoff delay per completed logical call |
+| <code>client.retry_delay</code> | histogram | elapsed duration of each backoff wait |
+| <code>client.operation_retry_delay</code> | histogram | cumulative elapsed backoff time per completed logical call |
 | <code>client.retry_exhausted</code> | counter | calls stopped by attempt or elapsed limit |
 | <code>client.retry_budget_rejected</code> | counter | eligible retries denied by tokens |
 | <code>client.retry_sleeping</code> | up-down counter | currently waiting retry operations |
@@ -46,7 +46,9 @@ Where a library does not already expose standard instruments, useful custom metr
 
 These names are examples, not OpenTelemetry semantic-convention names. Use instrumentation already provided by the protocol library when available.
 
-Current gRPC OpenTelemetry support defines stable, enabled-by-default per-attempt instruments such as <code>grpc.client.attempt.started</code> and <code>grpc.client.attempt.duration</code>. Its per-call retry instruments, including <code>grpc.client.call.retries</code>, <code>grpc.client.call.transparent_retries</code>, <code>grpc.client.call.hedges</code>, and <code>grpc.client.call.retry_delay</code>, are experimental and disabled by default. Language availability can differ, so check and explicitly enable the instruments supported by the deployed implementation.
+Current gRPC OpenTelemetry support defines stable per-attempt instruments such as <code>grpc.client.attempt.started</code> and <code>grpc.client.attempt.duration</code>, enabled by default once its OpenTelemetry plugin is configured. Its per-call retry instruments, including <code>grpc.client.call.retries</code>, <code>grpc.client.call.transparent_retries</code>, <code>grpc.client.call.hedges</code>, and <code>grpc.client.call.retry_delay</code>, are experimental and disabled by default. Language availability can differ, so check which instruments the deployed implementation supports and explicitly enable the experimental ones.
+
+gRPC's attempt boundary begins before the load-balancer pick, and <code>grpc.client.attempt.duration</code> includes subchannel-pick time. These instruments therefore measure library attempts rather than exact wire sends or transport-only latency; use proxy, server, or lower-level transport telemetry when exact downstream sends matter. Its <code>grpc.client.call.retry_delay</code> is total time with no active attempt during the call, not one observation per individual backoff wait.
 
 ## Use Low-Cardinality Attributes
 
@@ -84,9 +86,9 @@ Backoff can be an event on the logical span when detailed wait spans would add t
 
 ## Preserve Context Across Attempts
 
-All attempts belong to one logical trace, but each outbound attempt injects the current trace context according to the instrumentation. A server sees separate requests and normally creates separate server spans. Do not forge identical span IDs across attempts.
+With a logical application operation span or another active parent, all attempt spans belong to one trace, and instrumentation injects each attempt client span's context into its outbound request. Without an active parent, per-attempt HTTP spans may be separate root traces. A server sees separate requests and normally creates separate server spans. Do not reuse span IDs across attempts.
 
-Keep one stable application operation ID or idempotency key when the API contract requires it, but do not use it as a metric label. The retry helper should not start an unrelated root trace for each attempt.
+Keep one stable application operation ID or idempotency key when the API contract requires it, but do not use it as a metric label. If you need one trace for the logical call, make the logical operation span the parent of every attempt.
 
 If a service mesh performs hidden retries, application instrumentation may show only one client span while proxy telemetry shows multiple upstream attempts. Correlate proxy and workload traces, and expose the actual attempt count at the proxy boundary where supported.
 
