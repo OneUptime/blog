@@ -69,7 +69,6 @@
 
 ## Infrastructure Testing
 
-12. Policy Tests vs Behavior Tests: Should OPA, Checkov, or Terratest Enforce This Infrastructure Rule?
 13. How Do You Test Private Terraform Modules in CI Without Exposing Cloud Credentials?
 14. How Should Terratest Share Expensive Fixtures Without Coupling Every Test?
 15. Should Infrastructure Tests Verify Resource Configuration or the Service’s Actual Behavior?
