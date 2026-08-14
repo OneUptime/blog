@@ -35,7 +35,7 @@ The header is a response hint, not proof that an operation is retryable. Classif
 Let:
 
 - `local` be the selected jittered exponential-backoff delay;
-- `server` be the valid parsed `Retry-After` delay;
+- `server` be the remaining delay until the valid parsed `Retry-After` eligibility time;
 - `remaining` be time before the caller's overall deadline;
 - `attempt_budget` be the minimum useful time for another request and response.
 
@@ -62,7 +62,7 @@ Never subtract jitter from the server delay. The deadline check must include the
 
 ## Parse Delay-Seconds Strictly
 
-The delay form is digits only and represents seconds. Do not accept decimal fractions, signed values, units, or arbitrary whitespace within the number:
+The delay form is one or more ASCII digits (`0`–`9`) and represents seconds. Do not accept decimal fractions, signed values, units, or arbitrary whitespace within the number:
 
 ```text
 valid:   0
@@ -75,25 +75,28 @@ invalid: 30s
 
 Trim optional surrounding field whitespace through the HTTP library, then parse the complete value as a non-negative integer. Use checked or arbitrary-precision arithmetic before converting seconds into the language's duration type. A value too large to represent should behave as a delay beyond the client's horizon, not wrap into a negative or small duration.
 
+Anchor the parsed duration to a monotonic timestamp captured when the response was received, so parsing or response-cleanup time is not counted again before the wait.
+
 If an enormous valid value exceeds the caller's deadline or a background system's schedulable horizon, return or dead-letter according to policy. Retrying early because the duration did not fit an integer defeats the header.
 
 Do not confuse milliseconds with seconds. Proprietary rate-limit headers sometimes use Unix timestamps or milliseconds, but their official API documentation must define that. They are not interchangeable with `Retry-After`.
 
 ## Parse HTTP Dates With a Standards Library
 
-Use the platform's HTTP-date parser rather than a custom format string. RFC 9110 defines preferred and obsolete date forms that recipients may need to handle, and HTTP dates are always expressed relative to GMT semantics.
+Use a standards-compliant HTTP-date parser rather than a custom format string. RFC 9110 requires recipients that parse HTTP-field timestamps to accept IMF-fixdate and both obsolete HTTP-date forms, and every HTTP-date represents an instant in UTC.
 
-Convert the parsed absolute date into a duration using the client's current clock at response receipt:
+Capture wall-clock and monotonic readings together when the response is received. Convert the parsed absolute date into a monotonic eligibility time, then calculate the remaining delay when the client is ready to wait:
 
 ```text
-server_delay = parsed_http_date - response_received_wall_time
-if server_delay < 0:
-    server_delay = 0
+server_eligible_at = response_received_monotonic_time +
+    max(0, parsed_http_date - response_received_wall_time)
+
+server_delay = max(0, server_eligible_at - monotonic_now)
 ```
 
-Then take `max(local, server_delay)`. This means a past date or moderate clock skew falls back to local backoff instead of producing an immediate retry storm.
+Then take `max(local, server_delay)`. This means a date that is past according to the client, including one made past by clock skew, falls back to local backoff instead of producing an immediate retry storm.
 
-An absolute date is sensitive to client and server clock skew. Monitor negative and unexpectedly large date-derived delays. Keep hosts time-synchronized, but do not invent a different interpretation from an undocumented header. Once converted, enforce the wait and overall deadline with a monotonic clock so later wall-clock adjustments cannot alter elapsed timing.
+An absolute date is sensitive to client and server clock skew. Monitor negative and unexpectedly large date-derived delays. Keep hosts time-synchronized, but do not invent a different interpretation from an undocumented header. Use the same monotonic clock for the in-process wait and overall deadline so later wall-clock adjustments cannot alter elapsed timing.
 
 Do not split the raw field on commas to find multiple values; valid HTTP dates themselves contain a comma. `Retry-After` is not defined as a list. Treat ambiguous multiple field values as invalid unless the HTTP stack exposes one unambiguous value according to its protocol handling.
 
@@ -125,7 +128,7 @@ caller remaining: 5 seconds
 
 The correct synchronous result is to stop. Sleeping five seconds and retrying would violate the server guidance; sleeping 120 seconds would violate the caller deadline. Return a classified unavailable or rate-limited result and, where useful, expose safe retry metadata to the caller.
 
-For a queue worker, persist a next-eligible time at or after the server time, release the worker, and let the queue scheduler redeliver. Do not block a scarce worker thread for two minutes.
+For a queue worker, persist a next-eligible time at or after the later of the server-directed eligibility time and the locally computed eligibility time, plus any chosen post-hint spread. Release the worker and let the queue scheduler redeliver. Do not block a scarce worker thread for two minutes.
 
 Apply a separate business maximum for how old work may become. A valid long hint can mean the operation will not finish within its business objective, in which case it should fail or move to a dead-letter workflow rather than live forever.
 
@@ -133,13 +136,13 @@ Apply a separate business maximum for how old work may become. A valid long hint
 
 Common contexts include 429 and 503, but status alone is insufficient:
 
-- a GET is usually safe to retry, subject to application semantics;
-- a PUT can be idempotent by HTTP method semantics but still needs replayable content and application review;
+- a GET is defined as safe and idempotent by HTTP, though retryability still depends on application behavior and other constraints;
+- a PUT is idempotent by HTTP method semantics but still needs replayable content and application review;
 - a POST may create duplicate side effects unless the API supports an idempotency key or another deduplication contract;
 - a request timeout can have an unknown server outcome;
 - a 503 from an intermediary may describe a different scope from an origin's rate limit.
 
-Honor `Retry-After` only after the retry classifier accepts the response and the request can be repeated safely. The presence of the field on an otherwise terminal authentication or validation error should not cause an automatic retry unless the API explicitly documents that combination.
+For retries, as distinct from following a redirect, honor `Retry-After` only after the retry classifier accepts the response and the request can be repeated safely. For 3xx responses, apply `Retry-After` in redirect handling and evaluate the redirected request's method and body semantics separately. The presence of the field on an otherwise terminal authentication or validation error should not cause an automatic retry unless HTTP semantics or the API contract explicitly documents that combination.
 
 Drain or close failed HTTP response bodies according to the client's connection-reuse rules before waiting. Holding an unread response or checked-out connection throughout backoff can exhaust the pool and turn throttling into a client-side outage.
 
@@ -164,7 +167,7 @@ Only one layer should normally own retries. If the HTTP library or service SDK a
 Inject a wall-clock snapshot for parsing, a monotonic clock for elapsed deadlines, a random source, and a cancelable sleeper. Test:
 
 - delay-seconds zero and a normal positive value;
-- valid preferred and supported obsolete HTTP-date forms;
+- valid IMF-fixdate and both obsolete HTTP-date forms;
 - a date in the past;
 - malformed, signed, fractional, and unit-suffixed values;
 - a numeric value larger than the duration type;
@@ -190,4 +193,4 @@ Integration-test against the service or a protocol-faithful test server. Do not 
 
 ## Conclusion
 
-A valid `Retry-After` is server guidance that local backoff should not undercut. Parse either integer seconds or an HTTP date strictly, choose the larger of server and local delays, add only nonnegative spreading when appropriate, and stop or reschedule if the delay cannot fit the deadline. Missing or invalid hints fall back to normal jittered backoff, never an immediate retry.
+A valid `Retry-After` is server guidance that local backoff should not undercut. Parse either integer seconds or an HTTP date strictly, choose the larger of server and local delays, add only nonnegative spreading when appropriate, and stop or reschedule if the delay cannot fit the deadline. Missing or invalid hints fall back to normal jittered local backoff and retry limits; they are not interpreted as a zero delay.
