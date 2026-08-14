@@ -69,7 +69,6 @@
 
 ## Infrastructure Testing
 
-7. How Do You Run Terratest in Parallel Without State, Name, or Cloud-Quota Collisions?
 8. What Belongs in a Dedicated Cloud Account for Infrastructure Integration Tests?
 9. How Do You Keep Real-Cloud Infrastructure Tests Fast and Affordable?
 10. How Do You Test a Terraform Module Across Multiple Terraform and Provider Versions?
