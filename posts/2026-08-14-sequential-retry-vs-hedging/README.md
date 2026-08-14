@@ -99,11 +99,11 @@ gRPC Service Config can define hedging per method:
 }
 ~~~
 
-The official gRPC guide states that values above five for hedging <code>maxAttempts</code> are treated as five. Support varies by language, and the resolver must actually deliver the service config.
+The official gRPC guide states that values above five for hedging <code>maxAttempts</code> are treated as five. Support varies by language, and the client must actually receive the service config, either through name resolution or programmatically.
 
 For a non-fatal status, the next unsent hedge can be issued immediately instead of waiting through its remaining hedge delay. A fatal status cancels outstanding hedges and ends the call. A successful response cancels outstanding attempts and is returned.
 
-The call deadline applies to the entire hedge sequence. Server retry pushback can delay or suppress further hedges. gRPC retry throttling limits extra attempts when failures become widespread.
+The call deadline applies to the entire hedge sequence. Server retry pushback can delay or suppress further hedges. When configured, gRPC retry throttling limits extra attempts as qualifying failures become widespread.
 
 ## Choose Sequential Retry for Explicit Failure
 
@@ -132,7 +132,7 @@ At fleet level, cap:
 - retry or hedge tokens per destination;
 - total deadline and payload bytes duplicated.
 
-Prefer adaptive suppression when a service is unhealthy. gRPC retry throttling is designed to pause retries or hedges as failures consume tokens and successes restore them gradually.
+Prefer adaptive suppression when a service is unhealthy. Configured gRPC retry throttling suppresses new retry attempts and subsequent hedges as qualifying failures consume tokens and successful RPCs replenish them gradually.
 
 ## Run a Controlled Experiment
 
