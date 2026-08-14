@@ -40,10 +40,10 @@ For a retry to start:
 3. Acquire a global destination retry token.
 4. Acquire the tenant or tier retry token.
 5. Wait for fair scheduling and jittered backoff.
-6. Acquire an attempt-scoped concurrency permit.
-7. Recheck cancellation and deadline, then send.
+6. Admit under both global and tenant or tier attempt-scoped concurrency limits.
+7. Recheck cancellation, deadline, destination health, and reservation validity, then send.
 
-Define how reservations are refunded when cancellation occurs between steps. Avoid holding a concurrency permit during backoff. If a global token is reserved well before send, bound reservation time so sleeping work cannot hide all available capacity.
+Define how reservations are refunded when cancellation or a later admission failure occurs between steps. Avoid holding a concurrency permit during backoff. If a global token is reserved well before send, bound reservation time so sleeping work cannot hide all available capacity.
 
 The global bucket protects the dependency. The tenant bucket prevents one tenant from spending the full global bucket. Both can replenish from successful traffic according to a bounded policy.
 
@@ -54,26 +54,26 @@ Static equal partitions waste capacity when most tenants are idle. Unlimited sha
 - a small guaranteed active-tenant share;
 - weighted shares for service tiers when contracts require them;
 - borrowing from an idle common pool;
-- a maximum burst or retry share per tenant;
+- a maximum burst, retry, or concurrent-attempt share per tenant;
 - periodic or success-based replenishment with a hard capacity;
 - reclamation of unused leases.
 
-Weighted deficit round robin is one scheduling option for queued retries: each active tenant accumulates service credit proportional to its weight, and a send consumes credit. Other fair-queue algorithms can work. The essential property is that a large backlog does not make one tenant the only runnable tenant.
+Weighted deficit round robin is one scheduling option for queued retries: each active tenant accumulates service credit proportional to its weight, and a send consumes credit. If attempts have materially different costs or durations, charge credit by estimated cost and enforce tenant concurrency caps; unit-cost charging is suitable only when attempts are comparable. Other fair-queue algorithms can work. The essential property is that a large backlog does not make one tenant the only runnable tenant.
 
-Do not confuse fairness with strict equality. A tenant with ten times the paid capacity may receive a larger weight, while every active tenant still gets a nonzero path to progress.
+Do not confuse fairness with strict equality. A tenant with ten times the paid capacity may receive a larger weight, while every active tenant still gets a nonzero path to progress when global retry capacity is available.
 
 ## Partition State by the Downstream Throttling Dimension
 
-AWS SDK adaptive retry guidance provides a concrete warning. The adaptive limiter operates per SDK client instance, and AWS recommends it for a client targeting a single resource. If one adaptive client serves multiple resources or tenants, throttling on one resource can delay initial requests to unaffected resources. As of August 2026, AWS marks its documented 2026 cross-SDK behavior as opt-in through <code>AWS_NEW_RETRIES_2026=true</code>; confirm the active SDK behavior before depending on exact defaults.
+AWS SDK adaptive retry guidance provides a concrete warning. The adaptive limiter operates per SDK client instance, and AWS recommends adaptive mode only for throttling-heavy, latency-tolerant clients that target a single resource. If one adaptive client serves multiple resources or tenants, throttling on one resource can delay initial requests to unaffected resources. As of August 2026, AWS says its updated cross-SDK retry behavior requires <code>AWS_NEW_RETRIES_2026=true</code> in a supporting SDK release; confirm the SDK version and active settings before depending on exact defaults.
 
 Options are:
 
 - use standard retry mode and implement explicit tenant admission above it;
 - create adaptive clients per documented throttling resource when lifecycle and connection costs are acceptable;
-- put a correctly keyed limiter in a shared client wrapper;
+- put a correctly keyed limiter around a shared standard-mode client;
 - avoid adaptive mode when predictable initial-request latency matters.
 
-Do not blindly create one network client per tenant. That can multiply connection pools, credentials, threads, DNS state, and memory. Partition the control state at the required dimension while sharing safe transport resources when the SDK permits it.
+Do not blindly create one network client per tenant. Depending on the SDK and transport, that can multiply connection pools, initialization work, threads, and memory. Partition the control state at the required dimension while sharing safe transport resources when the SDK permits it.
 
 ## Preserve Tenant Identity Through Delayed Retries
 
@@ -90,7 +90,7 @@ Retries should not automatically outrank first attempts. Otherwise one failing t
 ~~~text
 total destination concurrency: 100
 minimum reserved for first attempts: 60
-maximum available to retries: 40
+maximum available to retries without borrowing: 40
 unused capacity may be borrowed under bounded rules
 ~~~
 
@@ -141,7 +141,7 @@ Simulate:
 6. a fleet restart with all local buckets initially full;
 7. a large delayed backlog becoming due during recovery.
 
-Assert the global send ceiling, minimum active-tenant progress, maximum noisy-tenant share, bounded memory, and no permit held during backoff. Test service-tier weights without allowing a high tier to bypass the dependency safety ceiling.
+Assert the global send ceiling, minimum active-tenant progress whenever the global gate admits retries, maximum noisy-tenant share, bounded memory, and no permit held during backoff. Test service-tier weights without allowing a high tier to bypass the dependency safety ceiling.
 
 ## Official Documentation
 
