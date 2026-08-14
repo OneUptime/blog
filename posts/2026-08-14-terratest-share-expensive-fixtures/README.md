@@ -29,7 +29,7 @@ Before sharing, write the fixture contract:
 ```text
 Fixture version: vpc-fixture/7
 Read-only outputs: vpc_id, private_subnet_ids, resolver_address
-Per-test allocation: one CIDR and name prefix derived from run ID
+Per-test allocation: one CIDR and name prefix derived from run ID and full test name
 Forbidden operations: modify routes, delete subnets, change resolver rules
 Owner: parent test
 Expiry: 2026-08-14T18:00:00Z
@@ -49,10 +49,11 @@ type networkFixture struct {
 }
 
 func TestNetworkModule(t *testing.T) {
-	fixture := createNetworkFixture(t)
+	fixturePlan := prepareNetworkFixture(t)
 	t.Cleanup(func() {
-		destroyNetworkFixture(t, fixture)
+		destroyNetworkFixture(t, fixturePlan)
 	})
+	fixture := createNetworkFixture(t, fixturePlan)
 
 	cases := []struct {
 		name string
@@ -72,9 +73,9 @@ func TestNetworkModule(t *testing.T) {
 }
 ```
 
-The explicit `tc := tc` keeps the loop value local on Go versions before the loop-variable semantics introduced in Go 1.22. The child functions receive values they need rather than reading package globals.
+The explicit `tc := tc` keeps the loop value local for packages using a Go language version before 1.22. Packages using language version 1.22 or later already get a new loop variable per iteration. The child functions receive values they need rather than reading package globals.
 
-Register cleanup immediately after successful creation, before any assertion can fail. Terratest's cleanup guidance makes the same recommendation for `terraform.Destroy`. Prefer one cleanup owner. A child can clean up its own overlay resources, but it must never destroy the parent fixture.
+Register cleanup as soon as teardown has enough information to run, before any provisioning operation can fail after creating partial resources. The example prepares that teardown information before calling `createNetworkFixture`. Terratest's current cleanup guidance similarly registers a deferred `terraform.DestroyContext` call before invoking `terraform.ApplyContext`. When a `T.Cleanup` callback calls `DestroyContext`, it must use a context that remains live during cleanup, such as a separately bounded context created inside the callback; Go cancels `t.Context()` before cleanup callbacks begin. A parent `defer` is not a substitute here because it runs before parallel children resume. Prefer one cleanup owner. A child can clean up its own overlay resources, but it must never destroy the parent fixture.
 
 ## Isolate Every Mutable Child Resource
 
@@ -106,7 +107,7 @@ Avoid these coupling signals:
 - a cleanup step that assumes every previous child succeeded;
 - children that share one `terraform.Options` while changing its fields.
 
-Give each child its own Terraform working copy and state even if both reference the same read-only fixture outputs. Terraform state is an ownership record, not a cache. Sharing it lets one child plan against or destroy another child's resources.
+Give each child its own Terraform working copy and state even if both reference the same read-only fixture outputs. Terraform state records bindings between configuration and remote objects, along with metadata needed to manage them; it is not merely a cache. Sharing it lets one child plan against or destroy another child's resources.
 
 ## Share Within the Smallest Scope
 
@@ -145,7 +146,7 @@ Never let skip flags reach a destroy stage accidentally. Keep local stage files 
 
 ## Make Cleanup Survive Test Failure
 
-The parent cleanup should attempt every owned deletion even if one operation fails, then report all remaining resources. A helper that calls `t.Fatal` on the first destroy error can prevent later cleanup steps. Separate best-effort cleanup collection from the final test failure.
+The parent cleanup should attempt every owned deletion even if one operation fails, then report all remaining resources. A helper that calls `t.Fatal` on the first destroy error stops later deletion attempts in that helper, although Go still runs other separately registered cleanup callbacks. Separate best-effort cleanup collection from the final test failure.
 
 In addition to in-process cleanup:
 
