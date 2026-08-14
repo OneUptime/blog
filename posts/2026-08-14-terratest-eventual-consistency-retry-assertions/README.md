@@ -33,12 +33,13 @@ Then define which intermediate states are retryable, which state is success, and
 
 ## Retry the Observation, Not the Provisioning Action
 
-Apply once, then poll a safe read:
+Invoke apply once at the test level, then poll a safe read:
 
 ~~~go
 package test
 
 import (
+	"context"
 	"fmt"
 	"testing"
 	"time"
@@ -47,19 +48,24 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func waitForServiceReady(t *testing.T, serviceID string) {
+func waitForServiceReady(t *testing.T, parentCtx context.Context, serviceID string) {
 	t.Helper()
 
 	const maxRetries = 30
 	const delay = 10 * time.Second
+	const timeout = 6 * time.Minute
 
-	_, err := retry.DoWithRetryE(
+	ctx, cancel := context.WithTimeout(parentCtx, timeout)
+	defer cancel()
+
+	_, err := retry.DoWithRetryContextE(
 		t,
+		ctx,
 		"wait for the service data plane",
 		maxRetries,
 		delay,
 		func() (string, error) {
-			status, err := readServiceStatus(serviceID)
+			status, err := readServiceStatus(ctx, serviceID)
 			if err != nil {
 				if isRetryableStatusError(err) {
 					return "", err
@@ -84,9 +90,9 @@ func waitForServiceReady(t *testing.T, serviceID string) {
 }
 ~~~
 
-The `retry.FatalError` marker makes a terminal failure exit immediately, while transitional states return ordinary retryable errors. Implement `isRetryableStatusError` with stable SDK error types or codes for the service; do not classify every read error as temporary. Pin the Terratest version so helper behavior changes are reviewed explicitly.
+The `retry.FatalError` marker makes a terminal failure exit immediately, while transitional states return ordinary retryable errors. Implement `isRetryableStatusError` with stable SDK error types or codes for the service; do not classify every read error as temporary. This example targets Terratest v1.0.1; pin the Terratest version so helper behavior changes are reviewed explicitly.
 
-Do not put `terraform.InitAndApply` inside the retry closure. Reapplying after an ambiguous failure can repeat non-idempotent provider behavior, increase quota usage, and obscure the original diagnostic. Terratest's `terraform.WithDefaultRetryableErrors` handles known transient Terraform command errors; it is not a substitute for service-readiness polling.
+Do not put `terraform.InitAndApplyContext` inside the retry closure. Reapplying after an ambiguous failure can repeat non-idempotent provider behavior, increase quota usage, and obscure the original diagnostic. Calling it once from the test can still let `terraform.WithDefaultRetryableErrors` retry matching transient Terraform command errors; it is not a substitute for service-readiness polling.
 
 ## Prefer Typed Errors and Provider Waiters
 
@@ -113,15 +119,18 @@ Avoid treating these as retryable by default:
 - an assertion showing the wrong immutable configuration;
 - a context cancellation or overall test deadline.
 
-Terratest's `DoWithRetryableErrorsE` accepts a map of regular expressions for command output and errors. It is useful for a narrow command-line integration, but typed SDK classification is more robust when available.
+Terratest's `DoWithRetryableErrorsContextE` accepts a map whose keys are regular expressions. After an action returns an error, it matches them against the returned output and error text; an unmatched error fails immediately. It is useful for a narrow command-line integration, but typed SDK classification is more robust when available.
 
 ## Bound Retries by Time and Attempts
 
 Set a budget from the service's observed convergence objective, not a copied sleep:
 
 ~~~text
-30 retries x 10 seconds = roughly 5 minutes plus API latency
+maxRetries=30 -> up to 31 observations
+31 sleeps x 10 seconds = 5 minutes 10 seconds on full v1.0.1 exhaustion
 ~~~
+
+`maxRetries` counts retries after the initial observation. Without an earlier context deadline, Terratest v1.0.1 also sleeps after the final failed observation before returning `MaxRetriesExceeded`, so the worst case includes those sleeps plus the latency of up to 31 API calls.
 
 The retry budget must fit inside:
 
@@ -137,18 +146,22 @@ Fixed intervals are simple and supported by Terratest's core retry functions. Fo
 
 ## Assert the Real Behavior After Readiness
 
-Resource state and service behavior are different assertions:
+Resource state and service behavior are different assertions. With a helper that returns a standard `*http.Response` and `io` imported:
 
 ~~~go
-waitForServiceReady(t, serviceID)
+waitForServiceReady(t, t.Context(), serviceID)
 
 response, err := callServiceEndpoint(t.Context(), endpoint)
 require.NoError(t, err)
+defer response.Body.Close()
+
+body, err := io.ReadAll(response.Body)
+require.NoError(t, err)
 require.Equal(t, 200, response.StatusCode)
-require.Contains(t, response.Body, "healthy")
+require.Contains(t, string(body), "healthy")
 ~~~
 
-`testing.T.Context()` requires Go 1.24 or later. On older supported Go releases, pass an explicitly created bounded context instead.
+`testing.T.Context()` was added in Go 1.24; Terratest v1.0.1 itself requires Go 1.26 or later. If you are pinned to an older Terratest release and Go toolchain, pass an explicitly created bounded context instead.
 
 A cloud API reporting `ACTIVE` may not prove routing, TLS, DNS, or application health. Conversely, an HTTP endpoint can become ready before a secondary status API catches up. Choose the readiness gate that protects the actual behavior assertion.
 
@@ -212,22 +225,23 @@ terraformOptions := terraform.WithDefaultRetryableErrors(t, &terraform.Options{
 	TerraformDir: "../examples/service",
 })
 
-defer terraform.Destroy(t, terraformOptions)
-terraform.InitAndApply(t, terraformOptions)
+ctx := t.Context()
+defer terraform.DestroyContext(t, ctx, terraformOptions)
+terraform.InitAndApplyContext(t, ctx, terraformOptions)
 ~~~
 
-Those function names match the classic `github.com/gruntwork-io/terratest/modules/terraform` package. Context-capable Terraform helpers are available in the separate `modules/terraform/v2` package, which is still a v2 beta as of this writing. If you adopt it, pin the exact beta and give destroy a fresh bounded cleanup context rather than a context that may already be cancelled. Most importantly, a hard process kill bypasses `defer`; ownership tags and an external janitor remain necessary.
+Those context-capable function names match the stable Terratest v1.0.1 `github.com/gruntwork-io/terratest/modules/terraform` package; the context-free `Destroy` and `InitAndApply` names are deprecated aliases. The independently versioned `modules/terraform/v2` package is still at v2.0.0-beta.2 as of this writing. If the operation context may already be cancelled when cleanup runs, give destroy a fresh bounded cleanup context rather than reusing it. Most importantly, a hard process kill bypasses `defer`; ownership tags and an external janitor remain necessary.
 
 ## Official Documentation
 
-- [Terratest retry package API](https://pkg.go.dev/github.com/gruntwork-io/terratest/modules/retry)
+- [Terratest v1.0.1 retry package API](https://pkg.go.dev/github.com/gruntwork-io/terratest/modules/retry@v1.0.1)
 - [Terratest quick start and default Terraform retry errors](https://terratest.gruntwork.io/docs/getting-started/quick-start/)
-- [Terratest classic Terraform helper API](https://pkg.go.dev/github.com/gruntwork-io/terratest/modules/terraform)
-- [Terratest v2 beta context-capable Terraform API](https://pkg.go.dev/github.com/gruntwork-io/terratest/modules/terraform/v2)
-- [Terratest HTTP helper package](https://pkg.go.dev/github.com/gruntwork-io/terratest/modules/http-helper)
+- [Terratest v1.0.1 Terraform helper API](https://pkg.go.dev/github.com/gruntwork-io/terratest/modules/terraform@v1.0.1)
+- [Terratest Terraform v2.0.0-beta.2 API](https://pkg.go.dev/github.com/gruntwork-io/terratest/modules/terraform/v2@v2.0.0-beta.2)
+- [Terratest v1.0.1 HTTP helper package](https://pkg.go.dev/github.com/gruntwork-io/terratest/modules/http-helper@v1.0.1)
 - [Go testing package: cleanup, contexts, and timeouts](https://pkg.go.dev/testing)
 - [Terraform test command cleanup guidance](https://developer.hashicorp.com/terraform/cli/commands/test)
 
 ## Conclusion
 
-Cloud convergence belongs in a bounded, observable polling step. Apply once, retry a read-only observation, fail permanent states immediately, and leave time for cleanup. Provider waiters and typed errors produce stronger tests than fixed sleeps or broad string matching, while a final behavior probe confirms what users actually depend on.
+Cloud convergence belongs in a bounded, observable polling step. Invoke apply once at the test level, retry a read-only observation, fail permanent states immediately, and leave time for cleanup. Provider waiters and typed errors produce stronger tests than fixed sleeps or broad string matching, while a final behavior probe confirms what users actually depend on.
