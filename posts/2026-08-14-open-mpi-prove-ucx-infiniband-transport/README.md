@@ -4,18 +4,18 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Open MPI, UCX, InfiniBand, MPI, RDMA, Troubleshooting
 
-Description: Prove that a multi-node Open MPI job selected the UCX PML and an InfiniBand transport, rather than inferring RDMA use from installed hardware or benchmark speed.
+Description: Prove that a multi-node Open MPI job selected the UCX PML and an RDMA transport on an InfiniBand port, rather than inferring RDMA use from installed hardware or benchmark speed.
 
 ---
 
-An InfiniBand HCA, a loaded `mlx5` driver, and an Open MPI binary do not prove that an MPI message crossed InfiniBand. Open MPI can have several communication components installed, UCX can select among RDMA, TCP, and shared-memory transports, and a one-node test never exercises the network.
+An InfiniBand HCA, a loaded `mlx5` driver, and an Open MPI binary do not prove that an MPI message crossed InfiniBand. Open MPI can have several communication components installed, UCX can select among RDMA, TCP, and shared-memory transports, and a one-node test does not prove that traffic traversed an inter-node network path.
 
 Build a chain of evidence instead:
 
 1. the job loaded the Open MPI UCX PML;
 2. UCX could see the intended HCA port;
 3. the tested ranks were on different hosts;
-4. the endpoint configuration named an InfiniBand transport and device;
+4. the endpoint configuration named an RDMA transport and device, and the selected port's link layer was InfiniBand;
 5. the message sizes of interest used the expected UCX protocol.
 
 ## Know Which Layer You Are Proving
@@ -31,18 +31,21 @@ Intra-node endpoints normally use shared memory. That is desirable, but it means
 
 ## Verify the Executable and Its UCX Support
 
-Run these in the same allocation, container, module environment, and PATH used by the application:
+Run these on every participating compute host, in the same allocation, container, module environment, and PATH used by the application:
 
 ~~~console
 $ command -v mpirun
+$ command -v ompi_info
+$ command -v ucx_info
 $ mpirun --version
+$ ompi_info --path prefix
 $ ompi_info --param pml all
 $ ompi_info --param pml ucx --level 9
 $ ucx_info -v
 $ ucx_info -d
 ~~~
 
-`ompi_info` must list the `ucx` PML. `ucx_info -v` records the loaded UCX library and its configure options; this catches a common mismatch in which `mpirun` comes from one prefix but `libucp.so` comes from another. `ucx_info -d` is the authoritative UCX inventory. Find an RDMA transport entry for the exact port, such as `rc_mlx5` on `mlx5_0:1`.
+The resolved paths and `ompi_info --path prefix` help establish which tools and Open MPI prefix are being queried. `ompi_info` must list the `ucx` PML. `ucx_info -v` reports the UCX runtime version and library path seen by that command, along with its build metadata and configure options. Compare that path with the library loaded by an MPI rank or Open MPI's UCX PML component; `ucx_info -v` alone does not prove which `libucp` the rank loaded. `ucx_info -d` is the transport inventory for that UCX installation. Find an RDMA transport entry for the exact port, such as `rc_mlx5` on `mlx5_0:1`.
 
 Do not treat these as equivalent:
 
@@ -58,18 +61,18 @@ Map them with `rdma link show`, `ibv_devinfo`, and sysfs before pinning a job to
 For diagnosis, failing explicitly is better than silently falling back:
 
 ~~~console
-$ mpirun --mca pml ucx \
-    --map-by ppr:1:node --report-bindings \
+$ OMPI_MCA_pml=ucx mpirun \
+    --map-by ppr:1:node --display map,bindings \
     -x UCX_NET_DEVICES=mlx5_0:1 \
     -x UCX_LOG_LEVEL=info \
     -np 2 ./mpi_bandwidth_test
 ~~~
 
-Use a known two-node allocation and confirm the hostnames printed by the launcher or test. Pass the same UCX settings to every rank using the launcher's supported environment-export mechanism. The `-x` syntax above is Open MPI syntax; a scheduler-native launcher may propagate variables differently.
+Use a known two-node allocation and confirm the hostnames printed by the launcher or test. `OMPI_MCA_pml=ucx` is the environment-variable form of the Open MPI MCA parameter. Pass the same UCX settings to every rank using the launcher's supported environment-export mechanism. The `-x` syntax above is Open MPI syntax; a scheduler-native launcher may propagate variables differently.
 
 The command deliberately does not set `UCX_TLS`. UCX recommends allowing automatic transport selection unless a documented workaround or controlled experiment requires a restriction. An incorrect allow-list can omit auxiliary transports, shared memory, or GPU-memory support and create a different failure from the one being investigated.
 
-If `--mca pml ucx` fails to select, stop there. Check `ompi_info`, dynamic-library paths, UCX version compatibility, and whether UCX sees a supported network. Removing the MCA option and accepting a TCP result does not validate InfiniBand.
+If forcing `pml=ucx` fails to select, stop there. Check `ompi_info`, dynamic-library paths, UCX version compatibility, and whether UCX sees a supported network. Removing the MCA setting and accepting a TCP result does not validate InfiniBand.
 
 ## Read UCX's Endpoint Evidence
 
@@ -93,7 +96,7 @@ Seeing shared memory and RDMA entries in one job is normal: local and remote pee
 For protocol-by-message-size detail, use UCX's protocol introspection on a short, controlled run:
 
 ~~~console
-$ mpirun --mca pml ucx --map-by ppr:1:node \
+$ OMPI_MCA_pml=ucx mpirun --map-by ppr:1:node \
     -x UCX_NET_DEVICES=mlx5_0:1 \
     -x UCX_PROTO_INFO=y \
     -np 2 ./mpi_bandwidth_test
@@ -118,13 +121,13 @@ As a negative control, restrict the diagnostic to a TCP device and compare the U
 
 These checks are insufficient on their own:
 
-- `ibstat` says the port is active: the fabric works, but the process may still use TCP.
+- `ibstat` says the port is active: the local port is up, but this does not prove peer reachability and the process may still use TCP.
 - `ldd` lists `libucp`: a linked component need not be selected.
-- the job starts with `--mca pml ucx`: UCX may still select TCP.
+- the job starts with `pml=ucx` forced: UCX may still select TCP.
 - bandwidth is “too fast for Ethernet”: the ranks may share a node, or the Ethernet link may be faster than assumed.
 - `UCX_NET_DEVICES` is set: a setting is not evidence that the named device was usable.
 
-The strongest practical proof is a two-host job where Open MPI reports the UCX PML and UCX's own endpoint/protocol output names the expected RDMA transport and port.
+The strongest practical proof is a two-host job that starts with `pml=ucx` forced, where `ibv_devinfo` reports `link_layer: InfiniBand` for the selected port and UCX's own endpoint/protocol output names the expected RDMA transport and port.
 
 ## Official Documentation
 
@@ -136,4 +139,4 @@ The strongest practical proof is a two-host job where Open MPI reports the UCX P
 
 ## Conclusion
 
-Prove the complete selection chain. Confirm that the intended Open MPI installation contains the UCX PML, that the loaded UCX library exposes the target port, and that ranks really span hosts. Then use `UCX_LOG_LEVEL=info` and, where supported, `UCX_PROTO_INFO=y` to capture the actual transport and protocol lanes. Hardware presence, linkage, and benchmark speed are clues; UCX's runtime endpoint configuration is the evidence.
+Prove the complete selection chain. Confirm that the intended Open MPI installation contains the UCX PML, that the loaded UCX library exposes the target port, that the port's link layer is InfiniBand, and that ranks really span hosts. Then use `UCX_LOG_LEVEL=info` and, where supported, `UCX_PROTO_INFO=y` to capture the actual transport and protocol lanes. Hardware presence, linkage, and benchmark speed are clues; UCX's runtime endpoint configuration, paired with the port's link layer, is the evidence.
