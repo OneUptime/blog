@@ -72,7 +72,6 @@
 
 ## Backoff
 
-3. Maximum Attempts or Maximum Elapsed Time: How Should a Retry Loop Stop?
 4. Should `Retry-After` Override Exponential Backoff—and What If the Header Is Invalid?
 5. HTTP 408, 409, 429, and 5xx: Which Responses Deserve a Backoff Retry?
 6. How Do You Retry a Timed-Out POST Without Creating Duplicate Side Effects?
