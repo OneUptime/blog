@@ -10,7 +10,7 @@ Description: Distinguish transport retry exhaustion from receiver-not-ready exha
 
 Both `IBV_WC_RETRY_EXC_ERR` and `IBV_WC_RNR_RETRY_EXC_ERR` appear in a send completion queue after a reliable-connected queue pair exhausts a retry policy. They do not mean the same thing:
 
-- `IBV_WC_RETRY_EXC_ERR` means the transport retry counter was exceeded because the requester did not receive the required response.
+- `IBV_WC_RETRY_EXC_ERR` means the transport retry counter was exceeded because the requester did not make forward progress before the retry budget expired.
 - `IBV_WC_RNR_RETRY_EXC_ERR` means the RNR retry counter was exceeded after the responder reported Receiver Not Ready.
 
 The completion is local to the work request that failed, but the cause may be on either endpoint or anywhere on the path. The status narrows the investigation; it does not identify a guilty machine by itself.
@@ -33,15 +33,15 @@ Capture both peers' QP state and logs at the same time. Once a QP enters error, 
 
 ## What Transport Retry Exhaustion Tells You
 
-For reliable-connected transport, the requester expects acknowledgements or responses. `IBV_WC_RETRY_EXC_ERR` says those did not arrive before the configured transport retry budget expired.
+For reliable-connected transport, the requester uses acknowledgements and response packets to make forward progress. `IBV_WC_RETRY_EXC_ERR` says the work request did not complete before the configured transport retry budget expired. A local ACK timeout can trigger these retries, but so can a retryable transport response such as a PSN sequence-error NAK. The status therefore does not prove that no response packet arrived.
 
 Investigate conditions that can prevent a usable response:
 
 - the remote QP does not exist, was destroyed, or is not in a compatible state;
 - connection metadata contains the wrong remote QP number, PSN, LID, GID, or port;
-- source and destination disagree about path attributes such as P_Key, service level, MTU, or GID context;
+- one or both QPs use incorrect path attributes such as P_Key, service level, or GID context, or the configured path MTU exceeds what the route can carry;
 - a native InfiniBand path or RoCE route is broken in one direction;
-- the remote process, host, or HCA stopped making progress;
+- the remote host or HCA stopped responding;
 - fabric congestion or packet loss exceeds the configured retry tolerance;
 - the QP was modified with an unexpectedly small timeout or retry count.
 
@@ -57,13 +57,13 @@ $ cat /sys/class/infiniband/mlx5_0/ports/1/counters/port_xmit_discards
 $ cat /sys/class/infiniband/mlx5_0/ports/1/counters/port_rcv_errors
 ~~~
 
-Counter filenames vary by driver and kernel. Take before/after deltas around one reproducer rather than treating a lifetime nonzero count as causation. For RoCE, include netdev/VLAN/IP routing and Ethernet switch counters; for native InfiniBand, include SM path records, LIDs, GIDs, P_Keys, and switch ports.
+The standard `counters` filenames above are part of the stable Linux kernel ABI; optional `hw_counters` filenames vary by driver and kernel. Take before/after deltas around one reproducer rather than treating a lifetime nonzero count as causation. For RoCE, include netdev/VLAN and Ethernet switch counters; for RoCEv2, also include IP routing. For native InfiniBand, include SA PathRecords, LIDs, GIDs, P_Keys, and switch ports.
 
 ## What RNR Retry Exhaustion Tells You
 
-RNR is more specific. The responder was reachable enough to return an RNR NAK, but it did not have a receive work queue entry available for an operation that requires one. The requester retried and eventually exhausted its `rnr_retry` policy.
+RNR is more specific. The responder was reachable enough to return an RNR NAK. For Send and RDMA Write with Immediate, the usual cause is that no usable receive WQE was available, although implementations can also report RNR when other responder resources are temporarily unavailable. The requester exhausted its `rnr_retry` policy after one or more RNR NAKs.
 
-Focus first on receive-credit management at the responder:
+When `wr_id` identifies a Send or RDMA Write with Immediate, focus first on receive-credit management at the responder:
 
 - receives were posted after sends could arrive;
 - the receive queue or shared receive queue drained under burst load;
@@ -73,7 +73,7 @@ Focus first on receive-credit management at the responder:
 - a receive-post operation failed and its return code was ignored;
 - the wrong QP/SRQ received the connection.
 
-Send operations consume receive WQEs. RDMA Write with Immediate also creates a receive-side completion and requires receive-side resources; plain RDMA Write does not consume a posted receive in the same way. Always correlate the submitted operation recorded for `wr_id` and the application protocol instead of assuming every RDMA operation needs an RQ entry.
+Send operations consume receive WQEs. RDMA Write with Immediate also creates a receive-side completion and requires receive-side resources; plain RDMA Write does not consume a posted receive in the same way. If `wr_id` identifies another opcode, do not infer an RQ-credit bug from the status alone. Always correlate the submitted operation recorded for `wr_id` and the application protocol instead of assuming every RDMA operation needs an RQ entry.
 
 Instrument receive credits explicitly:
 
@@ -86,16 +86,16 @@ post_recv_failures_total
 srq_limit_events_total
 ~~~
 
-Post the initial receive window before allowing the peer to send. Replenish in batches early enough to cover scheduling latency and the maximum in-flight burst. Increasing `rnr_retry` can make a transient scheduling pause survivable, but an infinite or very large retry policy can turn a missing receive into an indefinite hang. Fix the credit bug first.
+Post the initial receive window before allowing the peer to send. Replenish in batches early enough to cover scheduling latency and the maximum in-flight burst. Increasing `rnr_retry` can make a transient scheduling pause survivable, but `rnr_retry = 7` requests infinite RNR retries and can turn a permanently missing receive into an indefinite hang; finite values can still delay error detection. Fix the credit bug first.
 
 ## Compare the Two Errors
 
 | Evidence | `IBV_WC_RETRY_EXC_ERR` | `IBV_WC_RNR_RETRY_EXC_ERR` |
 | --- | --- | --- |
-| Required response observed | no usable ACK/response before retry exhaustion | explicit RNR response was observed |
-| Strongest first hypothesis | path, remote QP/state, addressing, or remote liveness | responder receive queue/SRQ had no WQE |
-| First place to inspect | both QPs and both directions of the path | responder's receive-credit logic |
-| Useful “fix” | correct connection/path/state; then tune timeout if justified | post/replenish receives; then tune RNR retry if justified |
+| Distinctive evidence | transport retry budget exhausted without forward progress; an ACK timeout or sequence-error NAK may have triggered retries | one or more explicit RNR NAKs were observed |
+| Strongest first hypothesis | path, remote QP/state, addressing, or remote liveness | for Send or RDMA Write with Immediate, the responder RQ/SRQ had no usable WQE |
+| First place to inspect | both QPs and both directions of the path | submitted opcode, then responder receive-credit logic |
+| Useful “fix” | correct connection/path/state; then tune timeout if justified | for Send or RDMA Write with Immediate, post/replenish receives; otherwise resolve the responder's not-ready condition; then tune RNR retry if justified |
 | Common misleading action | repeatedly increasing retry count | adding fabric retries or replacing a cable |
 
 An RNR response is evidence that at least part of the return path worked at that moment. It does not prove the fabric is perfect, and transport retry exhaustion does not prove packets never reached the responder.
@@ -135,4 +135,4 @@ For an RNR reproducer, deliberately delay receive posting in a lab to verify obs
 
 ## Conclusion
 
-Transport retry exhaustion says the requester never obtained the required response; RNR retry exhaustion says it repeatedly received “receiver not ready.” Start the former investigation with both QPs and the complete path. Start the latter with receive WQEs, SRQ credits, and reposting on the responder. Preserve the first WC, because the flushed completions that follow usually describe teardown, not the root cause.
+Transport retry exhaustion says the requester exhausted its transport retry budget before the work request completed; RNR retry exhaustion says it received one or more “receiver not ready” responses. Start the former investigation with both QPs and the complete path. For the latter, first correlate the submitted opcode; for Send or RDMA Write with Immediate, start with receive WQEs, SRQ credits, and reposting on the responder. Preserve the first WC, because the flushed completions that follow usually describe teardown, not the root cause.
