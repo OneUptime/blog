@@ -37,10 +37,14 @@ Also record device, port, process identity, buffer type, address, length, page s
 Linux uses `RLIMIT_MEMLOCK` to limit memory that a process may lock. Check the actual process, not merely `/etc/security/limits.conf`:
 
 ~~~console
+# In the launcher shell:
 $ ulimit -Sl
 $ ulimit -Hl
-$ grep -i 'Max locked memory' /proc/$$/limits
-$ grep -E 'VmLck|VmPin' /proc/$$/status
+
+# For the running application (replace 12345 with its PID):
+$ failing_pid=12345
+$ grep -i 'Max locked memory' "/proc/$failing_pid/limits"
+$ grep -E 'VmLck|VmPin' "/proc/$failing_pid/status"
 ~~~
 
 Run equivalent commands under the service manager, scheduler, or container entrypoint that launches the failing application. Limits are inherited. Common reasons a configured limit has no effect include:
@@ -54,26 +58,27 @@ Run equivalent commands under the service manager, scheduler, or container entry
 
 `ulimit -l` is commonly displayed in KiB by shells, while `/proc/<pid>/limits` labels its units. Do not compare the printed number directly with a byte-sized MR without checking units and accounting for all concurrent registrations.
 
-For a controlled test, raise the soft limit only within the permitted hard limit and rerun the smallest reproducer. In production, set a bounded value derived from worst-case pinned memory per rank and ranks per node. NVIDIA's NCCL troubleshooting documentation suggests unlimited memlock for its RDMA workloads, but that is an application deployment recommendation, not proof that every `ibv_reg_mr()` `ENOMEM` is an rlimit failure.
+For a controlled test, raise the soft limit only within the permitted hard limit and rerun the smallest reproducer. In production, size each process's bounded limit from its worst-case pinned memory, including page-granularity overhead and duplicate registrations. Separately multiply by ranks per node to verify aggregate host capacity. NVIDIA's NCCL troubleshooting documentation suggests unlimited memlock for its RDMA workloads, but that is an application deployment recommendation, not proof that every `ibv_reg_mr()` `ENOMEM` is an rlimit failure.
 
 ## Separate Virtual Memory, Pinning, and Registration
 
 Test registrations systematically:
 
 1. allocate one page-aligned host buffer;
-2. touch every page so allocation failures are visible;
+2. touch every page so backing-memory pressure is exposed before registration;
 3. register a small range with minimal access;
 4. increase the size geometrically;
-5. deregister each MR;
-6. repeat with the application's real allocator and flags.
+5. deregister each MR during the size sweep;
+6. separately increase the number of concurrently live small MRs, then deregister them;
+7. repeat with the application's real allocator and flags.
 
 This matrix distinguishes useful cases:
 
 | Result | Likely direction |
 | --- | --- |
-| small and large host MRs fail immediately | invalid PD/context, provider failure, permissions, or tiny memlock limit |
+| small and large host MRs fail immediately | invalid arguments, provider/device failure, permissions, or tiny memlock limit |
 | small succeeds, size threshold fails | effective lock/pin budget, address-space mapping, or device/provider size limit |
-| repeated small MRs eventually fail | leaked MRs or registration-object/translation-resource exhaustion |
+| many concurrently live small MRs eventually fail | aggregate lock/pin budget, leaked MRs, or registration-object/translation-resource exhaustion |
 | normal host memory works, huge/GPU/dma-buf memory fails | memory-type-specific registration path or peer-memory support |
 | minimal flags work, remote access flags fail | unsupported/invalid access combination or provider capability |
 
@@ -104,9 +109,9 @@ Look for these application defects:
 
 ## Treat ODP and Huge Pages as Separate Features
 
-On-demand paging uses `IBV_ACCESS_ON_DEMAND` and requires device/provider support. It changes when pages are made resident and can reduce eager pinning, but it is not a portable switch for bypassing every registration limit. The man page also gives special semantics to implicit ODP MRs and to `IBV_ACCESS_HUGETLB`.
+On-demand paging uses `IBV_ACCESS_ON_DEMAND` and requires device/provider support. It avoids pinning all pages eagerly and lets the HCA obtain translations on demand, but it is not a portable switch for bypassing every registration limit. Implicit ODP has special whole-address-space semantics; `IBV_ACCESS_HUGETLB` is applicable only to explicit ODP and promises that all pages are huge and remain so.
 
-Likewise, huge pages may reduce translation pressure for some workloads but require an appropriate allocator and system reservation. They do not repair leaked MRs, invalid access flags, a wrong protection domain, or absent GPU peer-memory support.
+Likewise, explicit HugeTLB pages may reduce translation pressure for some workloads but require an appropriate allocator and available or configured huge-page capacity. They do not repair leaked MRs, invalid access flags, or absent GPU peer-memory support.
 
 For CUDA memory, dma-buf, or another peer-memory type, validate that exact registration API and supported software matrix. A successful host `ibv_reg_mr()` does not prove `ibv_reg_dmabuf_mr()` or a legacy peer-memory path will work.
 
@@ -115,8 +120,9 @@ For CUDA memory, dma-buf, or another peer-memory type, validate that exact regis
 Inside the failing workload, collect:
 
 ~~~console
-$ cat /proc/self/limits
-$ cat /proc/self/cgroup
+$ failing_pid=12345  # replace with the application's PID
+$ cat "/proc/$failing_pid/limits"
+$ cat "/proc/$failing_pid/cgroup"
 $ ls -l /dev/infiniband
 $ ibv_devices
 $ ibv_devinfo
