@@ -66,7 +66,6 @@
 
 ## InfiniBand
 
-13. `UCX_NET_DEVICES` Says `mlx5_0:1` Is Unavailable: Check Namespaces, Link Layer, and Build Options
 14. `ibv_reg_mr()` Returns “Cannot Allocate Memory”: Check `memlock`, Page Pinning, and HCA Registration Limits
 15. `IBV_WC_RETRY_EXC_ERR` vs `IBV_WC_RNR_RETRY_EXC_ERR`: Which Side of the Queue Pair Is Broken?
 16. `RDMA_CM_EVENT_ROUTE_ERROR`: How Do GIDs, P_Keys, and Address Resolution Cause It?
