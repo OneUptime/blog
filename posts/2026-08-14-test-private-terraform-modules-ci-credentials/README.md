@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Terraform, Private Modules, CI/CD, Credential, GitHub Action, Supply Chain Security
 
-Description: Authenticate CI to private Terraform modules with narrow short-lived access, deterministic sources, and logs that never embed or publish download secrets.
+Description: Authenticate CI to private Terraform modules with narrow short-lived access, deterministic source selection, and logging practices that minimize exposure of download secrets.
 
 ---
 
@@ -12,7 +12,7 @@ Testing a private Terraform module usually needs two unrelated permissions. Terr
 
 The safest design starts with a private registry or source host that supports narrow machine identities, injects the credential only into the trusted initialization job, and never includes it in a module URL. Plan and mock tests for untrusted pull requests should run without production-capable secrets.
 
-## Choose a Source With a Reproducible Version
+## Choose a Deterministic Source Version
 
 A private registry gives Terraform a first-class module address and a `version` argument:
 
@@ -25,7 +25,7 @@ module "network" {
 }
 ```
 
-The hostname is part of the source address and must match the hostname used for credentials. Registry sources support version constraints; exact versions make a release verification job reproducible. Terraform's dependency lock file currently records provider selections, not remote module versions, so do not assume `.terraform.lock.hcl` pins a loose module constraint.
+The hostname is part of the source address and must match the hostname used for credentials. Registry sources support version constraints; exact versions make module version selection deterministic for a release verification job. Terraform's dependency lock file currently records provider selections and checksums, not remote module versions or content checksums, so do not assume `.terraform.lock.hcl` pins a loose module constraint or verifies module content.
 
 Terraform can also download modules from Git:
 
@@ -41,9 +41,9 @@ Pin an immutable commit for a reproducible consumer test, or a protected release
 
 ## Use a Narrow Registry Identity
 
-For HCP Terraform or Terraform Enterprise private registry access, Terraform accepts a user or team token for CLI operations; organization tokens cannot be used for that purpose. CI should normally use a team or service identity limited to the organizations and registries it needs, not a developer's personal token.
+For HCP Terraform or Terraform Enterprise private registry access, Terraform accepts a user or team token for CLI operations; organization tokens cannot be used for that purpose. CI should normally use a team or service identity limited to the organizations and registries it needs, not a developer's personal token. Within HCP Terraform, team-token registry read access is organization-level rather than module-level: it includes the team's organization registry and registries shared with that organization.
 
-Terraform 1.2 and later can read a host-specific environment variable. Dots in the hostname become underscores:
+Terraform 1.2 and later can read a host-specific environment variable. Dots in the hostname become underscores. The following `jobs` fragment assumes the surrounding workflow runs only trusted code:
 
 ```yaml
 jobs:
@@ -63,6 +63,8 @@ jobs:
       - run: terraform test
 ```
 
+The `terraform test` command requires Terraform 1.6 or later, and provider mocks require 1.7 or later. The setup action installs the latest Terraform release when `terraform_version` is omitted; pin a tested CLI version if the workflow itself must be reproducible.
+
 Store the secret in the CI platform or an external secret manager, mask it, and expose it only to the initialization step that needs it. The readable action tags keep this example concise; production workflows should pin actions according to the organization's supply-chain policy, often by full commit SHA.
 
 Rotate the token and test revocation. Prefer an access mechanism that can issue short-lived credentials for the registry. When the registry supports only a longer-lived token, reduce scope, protect the secret environment, and make rotation automatic. OIDC-based cloud credentials do not automatically authenticate Terraform to a private module registry; configure each service independently.
@@ -79,9 +81,9 @@ module "bad_example" {
 
 Credentials embedded in URLs can appear in configuration, shell history, Terraform diagnostics, process inspection, proxy logs, Git configuration, and `.terraform/modules/modules.json`. CI masking is not a guarantee because transformed or URL-encoded values may evade a redactor.
 
-For registry sources, use `TF_TOKEN_<hostname>`, a CLI credentials file supplied at runtime, or a configured credentials helper. For Git sources, use a dedicated SSH deploy key, GitHub App installation token, or source-host credential helper with repository-read scope. Do not globally rewrite every `https://github.com/` URL to include a powerful token on a shared runner.
+For registry sources, use `TF_TOKEN_<hostname>`, a CLI credentials file supplied at runtime, or a configured credentials helper. For Git sources, use a dedicated SSH deploy key, GitHub App installation token, or Git credential helper with repository-read scope. Do not globally rewrite every `https://github.com/` URL to include a powerful token on a shared runner.
 
-If an ephemeral CLI configuration file is necessary, create it in a private temporary directory, set `TF_CLI_CONFIG_FILE`, limit file permissions, and delete it when the job ends. Terraform's interactive `terraform login` stores a token in a local credentials file and is not designed for unattended CI.
+If an ephemeral CLI configuration file is necessary, create it in a private temporary directory, set `TF_CLI_CONFIG_FILE`, limit file permissions, and delete it when the job ends. By default, Terraform's interactive `terraform login` stores a token in a local credentials file and is not designed for unattended CI.
 
 ## Keep Source Access Separate From Cloud Access
 
@@ -89,10 +91,10 @@ Split the pipeline by capability:
 
 1. **Untrusted checks:** formatting, validation where dependencies are public or vendored safely, static policy, and tests using provider mocks. No cloud or broad source secret.
 2. **Trusted source check:** initialize private modules with read-only source credentials after the commit is in a trusted context.
-3. **Trusted live test:** obtain a short-lived cloud role restricted to a dedicated test account, then run the small apply-based suite.
+3. **Trusted live test:** obtain short-lived credentials for a cloud role restricted to a dedicated test account, then run the small apply-based suite.
 4. **Publish:** use a distinct identity that can release a module version. Test jobs do not receive it.
 
-GitHub does not pass ordinary Actions secrets to workflows triggered from forks, with specific exceptions documented for its own token. Do not work around that safeguard by using `pull_request_target` to check out and execute untrusted pull-request code with secrets. Review the event semantics and keep any privileged workflow on trusted code.
+By default, `pull_request` workflows from forks receive no Actions secrets other than a read-only `GITHUB_TOKEN`; private-repository fork policies can override these defaults. Do not work around that safeguard by using `pull_request_target` to check out and execute untrusted pull-request code with secrets. Review the event semantics and keep any privileged workflow on trusted code.
 
 For cloud access from GitHub Actions, OIDC lets a cloud trust policy restrict tokens by repository, branch, pull-request context, or GitHub environment. Grant only the operations and account needed by the integration test. A module-download credential should not be reused as a Terraform backend credential unless its identity and permissions were deliberately designed for both.
 
@@ -118,7 +120,7 @@ terraform validate
 terraform test
 ```
 
-Commit provider constraints and an appropriate dependency lock file for root test harnesses. Pin private registry module versions or Git commits. If CI uses a provider mirror or proxy, configure it through Terraform's documented provider installation settings rather than replacing source addresses ad hoc.
+Commit provider constraints and an appropriate dependency lock file for root test harnesses. Pin private registry module versions or Git commits. If CI uses a provider mirror, configure it through Terraform's documented provider installation settings rather than replacing source addresses ad hoc.
 
 Restrict egress from the runner to the registry, source host, provider distribution endpoints or mirror, backend, and test APIs that the workflow actually needs. This both reduces exfiltration paths and makes an undocumented download dependency fail visibly.
 
@@ -140,10 +142,10 @@ Print the Terraform version, sanitized source hostname, selected module version,
 
 Add safe, periodic checks that prove:
 
-- the read identity can download the intended module version;
+- the read identity can download the intended module version into a fresh Terraform data directory;
 - it cannot publish or delete a version;
 - it cannot read an unrelated private registry or repository;
-- revoking the identity causes initialization to fail;
+- revoking the identity causes initialization with a fresh Terraform data directory to fail;
 - fork or untrusted workflows receive no private source or cloud credential;
 - live-test cloud credentials expire and cannot access production;
 - CI artifacts contain neither the token nor the private module working tree.
