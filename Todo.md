@@ -69,7 +69,6 @@
 
 ## Infrastructure Testing
 
-1. How Do You Test a Terraform Module That Depends on Shared VPCs, IAM, or Remote State?
 2. `command = plan` vs `command = apply` in `terraform test`: Which Should Your Test Use?
 3. How Do `terraform test` Run Blocks Share State—and When Should You Isolate Them?
 4. How Do You Test Terraform Data Sources and Computed Attributes with `mock_provider` and Overrides?
