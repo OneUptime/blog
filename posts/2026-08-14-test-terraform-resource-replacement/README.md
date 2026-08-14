@@ -44,13 +44,14 @@ Create a root test harness that exposes the replace-triggering value without add
 module "service" {
   source = "../../.."
 
-  name           = var.name
+  name           = "${var.name}-${var.test_run_id}"
   immutable_mode = var.immutable_mode
-  test_run_id    = var.test_run_id
 }
 ```
 
 Run it in a dedicated cloud account or project with a unique name and remote or securely retained local state. Pin the baseline Terraform Core and provider versions. If the change is a provider upgrade, make that an explicit dimension and record both old and new lock files.
+
+When switching a module source or version constraint, or changing provider requirements, re-run `terraform init`. Use the intended baseline or candidate provider lock file, and add `-upgrade` only when deliberately selecting newer dependency versions permitted by the configured constraints.
 
 There are two important transition types:
 
@@ -136,7 +137,7 @@ The optimistic path is only part of replacement risk. In a disposable environmen
 - make a new dependent configuration invalid;
 - cancel before cutover and verify recovery through the documented procedure.
 
-Do not terminate Terraform randomly and assume that represents all real failures. Choose a lifecycle boundary, observe the resulting state, then rehearse the supported recovery: re-plan, import, remove a deposed object, restore the old input, or complete the apply as appropriate. Use Terraform state commands only after backing up state and understanding that changing state does not directly modify the remote object.
+Do not terminate Terraform randomly and assume that represents all real failures. Choose a lifecycle boundary, observe the resulting state, then rehearse the supported recovery: re-plan and apply, let Terraform retry destroying a deposed object, or, if manual reconciliation is required, remove all bindings for the resource address, re-import the desired object, and clean up the unwanted remote object. Restoring the old input or completing the apply may also be appropriate. Use Terraform state commands only after backing up state and understanding that changing state does not directly modify the remote object.
 
 The rollback may itself require another replacement. Verify it rather than promising that reverting Git automatically restores the old object.
 
@@ -144,9 +145,9 @@ The rollback may itself require another replacement. Verify it rather than promi
 
 `prevent_destroy` causes Terraform to reject plans that would destroy a protected managed object while the rule remains in configuration. It is useful protection but can make an immutable change impossible until an operator makes a deliberate lifecycle decision.
 
-`replace_triggered_by` can intentionally replace one resource when another resource or attribute changes. Test that the trigger is neither too broad nor too narrow. A reference to a multi-instance resource can cause changes to any instance to trigger replacement, as described in Terraform's lifecycle documentation.
+`replace_triggered_by` can intentionally replace one resource when another resource or attribute changes. Test that the trigger is neither too broad nor too narrow. A reference to a resource with multiple instances causes a planned update or replacement of any instance to trigger replacement, as described in Terraform's lifecycle documentation.
 
-Preconditions and policy checks should provide a clear message before apply when replacement is prohibited in a normal pull request. A separate approved transition workflow can then run the rehearsal with stronger review and environment controls.
+Use preconditions whose conditions are known during planning, or policy checks, to provide a clear message before apply when replacement is prohibited in a normal pull request. A separate approved transition workflow can then run the rehearsal with stronger review and environment controls.
 
 ## Make Cleanup Part of the Transition Result
 
