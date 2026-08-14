@@ -10,7 +10,7 @@ Description: Interpret gRPC retry pushback as server control of the next eligibl
 
 gRPC retry pushback lets a server influence the timing of a client's next retry. It is not an extra sleep to add after exponential backoff, and it is not permission to exceed the retry policy. It replaces the normal backoff delay for the next eligible attempt or tells the client not to retry.
 
-In the gRPC retry design, the server sends response metadata named <code>grpc-retry-pushback-ms</code>. The value represents milliseconds as a signed decimal integer:
+In the gRPC retry design, the server sends response metadata named <code>grpc-retry-pushback-ms</code>. The value is an ASCII-encoded signed 32-bit integer with no unnecessary leading zeros and represents milliseconds:
 
 - a valid non-negative value schedules the next retry after that delay;
 - a negative value tells the client not to retry;
@@ -20,14 +20,16 @@ Normally the gRPC library implements this behavior. Application code should not 
 
 ## Apply Pushback Inside Retry Eligibility
 
-Pushback matters only after all ordinary retry checks pass:
+A next policy attempt is sent only when all of these conditions hold; this is an eligibility checklist, not an implementation order:
 
 1. The RPC has not committed by receiving response headers or exceeding the client's replay buffer.
 2. The final status is included in the configured retryable status codes.
 3. The configured maximum attempts has not been reached.
 4. Retry throttling permits another attempt.
-5. The call deadline leaves enough time.
+5. The call deadline has not expired.
 6. The server pushback allows retry and supplies the next delay, or normal backoff computes it.
+
+Edge-case conformance is not uniform across current implementations. <code>grpc-go</code> requires a configured retryable status before applying non-negative pushback, while <code>grpc-java</code> permits non-negative pushback to trigger a retry even when the status is not listed. Both also accept some integer spellings that A6 excludes, such as unnecessary leading zeros. Send conforming values, and test malformed values and status precedence in the deployed client instead of assuming those cases are portable across languages.
 
 Receiving response headers commits a gRPC RPC for retry purposes. The official guide states that gRPC does not perform further retries after that point. An application-level repetition after a committed RPC is a new semantic decision and may duplicate side effects.
 
@@ -43,7 +45,7 @@ grpc-retry-pushback-ms: 2500
 
 The next retry delay is 2.5 seconds under the gRPC policy. It is not 3.3 seconds, and it should not receive a second application jitter calculation. The server is taking control of that attempt's timing.
 
-A zero value allows an immediate next retry, but it still passes through the maximum-attempt, throttling, and deadline gates. A large positive value can make the retry useless: when it leaves insufficient time before the call deadline, the client should finish with the deadline outcome rather than extending the call.
+A zero value allows an immediate next retry, but it still passes through the maximum-attempt, throttling, and deadline gates. A large positive value can make the retry useless: if the delay extends past the call deadline, the deadline expires without another attempt. The client must not extend the call.
 
 After the pushed-back attempt, a later retry without new pushback restarts at the configured <code>initialBackoff</code> and grows from there. It does not continue the exponential step that preceded the server signal.
 
@@ -79,7 +81,7 @@ Pushback supplements a method-level retry policy published through gRPC Service 
 
 This is an example, not a universal policy. <code>maxAttempts</code> counts the original attempt. Choose retryable status codes from the method contract. <code>UNAVAILABLE</code> is commonly transient; broadening to statuses such as <code>RESOURCE_EXHAUSTED</code> or <code>DEADLINE_EXCEEDED</code> requires understanding whether the operation reached application logic and whether repetition is safe.
 
-Language and release support for service-config features varies. Check the current gRPC language support table and verify that the deployed resolver actually supplies the intended service config. A configuration file that is never resolved does not change client behavior.
+Language and release support for service-config features varies. Check the current gRPC language support information and verify that the intended service config is supplied by the deployed resolver or configured programmatically as the client's default. A service config that is never supplied to the client does not change client behavior.
 
 ## Keep One Overall Deadline
 
@@ -91,12 +93,12 @@ Clients still need an overall deadline even when servers provide pushback. A mis
 
 ## Coordinate Pushback with Retry Throttling
 
-gRPC retry throttling maintains a token count per server name. Failed RPCs reduce tokens, successes restore them by a configured ratio, and policy retries stop when the count reaches the threshold described by the retry design. This protects a service during broad failure.
+gRPC retry throttling maintains a token count per server name. Qualifying failures—retryable or hedging non-fatal statuses, plus responses with no-retry pushback—decrement the count by 1. Successful RPCs add the configured <code>tokenRatio</code>, up to <code>maxTokens</code>. Policy retries are suppressed while the count is at or below <code>maxTokens / 2</code>. This protects a service during broad failure.
 
 The controls are complementary:
 
 - pushback controls the timing or cancellation of the next retry for one call;
-- backoff supplies timing when no valid pushback is present;
+- backoff supplies timing when no pushback metadata is present;
 - retry throttling suppresses retries when failures are widespread;
 - the call deadline bounds the complete operation.
 
@@ -129,7 +131,7 @@ Record or expose:
 - calls whose deadline expired during pushback;
 - final status and whether the RPC had committed.
 
-Do not attach arbitrary pushback values as metric labels. Use histograms for delays and bounded reason labels for stop decisions. gRPC's OpenTelemetry integration defines stable per-attempt instruments and experimental per-call retry instruments, including retry count and cumulative retry delay. The experimental instruments are disabled by default, and language support differs, so explicitly verify and enable them in the deployed implementation.
+Do not attach arbitrary pushback values as metric labels. Use histograms for delays and bounded reason labels for stop decisions. gRPC's OpenTelemetry integration defines stable per-attempt instruments and experimental per-call retry instruments, including retry count and total time with no active attempt during the call. The experimental instruments are disabled by default, and language support differs, so explicitly verify and enable them in the deployed implementation.
 
 ## Test the Wire Behavior
 
@@ -137,13 +139,13 @@ Use an integration server that returns:
 
 - <code>UNAVAILABLE</code> with positive pushback, then success;
 - <code>UNAVAILABLE</code> with zero pushback;
-- negative pushback;
-- alphabetic, overflowing, and otherwise invalid values;
-- a positive delay longer than the call deadline;
-- pushback on a non-retryable status;
-- initial response headers followed by an error.
+- <code>UNAVAILABLE</code> with negative pushback;
+- <code>UNAVAILABLE</code> with alphabetic, overflowing, and otherwise invalid values;
+- <code>UNAVAILABLE</code> with a positive delay longer than the call deadline;
+- non-negative pushback on a non-retryable status;
+- initial response headers followed by <code>UNAVAILABLE</code>.
 
-Assert the exact number and timing of server invocations. A unit test that only checks the final status will not catch stacked delays or an application loop that defeats negative pushback.
+Assert the exact number of server invocations and their timing within a defined tolerance. A unit test that only checks the final status will not catch stacked delays or an application loop that defeats negative pushback.
 
 ## Official Documentation
 
@@ -154,4 +156,4 @@ Assert the exact number and timing of server invocations. A unit test that only 
 
 ## Conclusion
 
-Treat <code>grpc-retry-pushback-ms</code> as the server's decision for the next policy retry: a non-negative value replaces normal backoff, while a negative or invalid value stops retries. The client still enforces status eligibility, attempt limits, throttling, and one deadline, and no outer loop should erase that decision.
+Treat <code>grpc-retry-pushback-ms</code> as the server's decision for the next policy retry: a non-negative value replaces normal backoff, while a negative or invalid value stops retries. The client still enforces attempt limits, throttling, and one deadline, and no outer loop should erase that decision. Verify status eligibility against the deployed implementation because its precedence relative to non-negative pushback differs across languages.
