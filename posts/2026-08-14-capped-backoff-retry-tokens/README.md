@@ -8,14 +8,14 @@ Description: Add a success-replenished retry-token budget to capped backoff so s
 
 ---
 
-Capping exponential backoff limits how long one caller waits. It does not limit how many callers retry. Once every failing operation reaches the cap, each continues at a fixed rate:
+Capping exponential backoff stops the backoff interval from growing indefinitely. It does not limit how many callers retry. Once every failing operation is in the capped regime, the population can continue at a steady expected rate:
 
 ~~~text
-steady retry rate per caller is approximately 1 / capped delay
-fleet retry rate is approximately failing callers / capped delay
+steady retry rate per caller is approximately 1 / (mean post-jitter delay at the cap + mean attempt duration)
+fleet retry rate is approximately failing callers / (mean post-jitter delay at the cap + mean attempt duration)
 ~~~
 
-Ten thousand active operations with a 10-second cap can still offer roughly one thousand retries per second before jitter and completion effects. New initial requests add more load. A sick service can remain trapped under traffic that exists only because earlier traffic failed.
+Ten thousand active operations whose post-jitter delays average 10 seconds at the cap, with short attempt durations, can still offer roughly one thousand retries per second. New initial requests add more load. A sick service can remain trapped under traffic that exists only because earlier traffic failed.
 
 A retry-token budget makes retries conditional on recent health. Backoff answers *when* an eligible retry may run. Tokens answer *whether* the system can afford that retry at all.
 
@@ -32,7 +32,7 @@ Keep the initial request path and retry path conceptually distinct:
 
 When tokens are depleted, return the current failure immediately. Do not wait for a token unless the design deliberately treats the token bucket as a queue; waiting can hide a dependency outage behind long caller latency.
 
-AWS SDK standard retry behavior is a production example of this idea. Its retry quota deducts tokens for retry attempts and replenishes tokens on successful requests. When the quota is empty, the SDK fails without another retry. Exact costs and defaults are SDK and version specific, so use the current documentation for the deployed client rather than copying constants. As of August 2026, AWS marks its documented 2026 cross-SDK behavior as opt-in through <code>AWS_NEW_RETRIES_2026=true</code> until it becomes the default; without that setting, pre-2026 behavior applies.
+AWS SDK standard retry behavior is a production example of this idea. Its retry quota deducts tokens for retry attempts and replenishes tokens on successful requests. When the quota is empty, the SDK fails without another retry. Exact costs and defaults are SDK and version specific, so use the current documentation for the deployed client rather than copying constants. As of August 2026, AWS marks its documented 2026 cross-SDK behavior as opt-in in SDK versions that support the flag through <code>AWS_NEW_RETRIES_2026=true</code> until it becomes the default; without that setting, pre-2026 behavior applies.
 
 ## Design the Token Economy
 
@@ -55,7 +55,7 @@ Those values are illustrative, not universal recommendations. The useful propert
 
 Different failure classes can have different costs. A throttling response might plausibly recover after server-directed delay, while connection failures across an entire region can indicate a broad outage. Higher token cost for failures with a low observed recovery rate drains the budget sooner. Base that distinction on measured outcomes and documented service signals.
 
-## Implement a Nonblocking Retry Gate
+## Implement a Non-queuing Retry Gate
 
 The token store can be local to a process when each client instance should protect its own offered load:
 
@@ -64,6 +64,16 @@ type RetryBudget struct {
 	mu       sync.Mutex
 	tokens   int
 	capacity int
+}
+
+func NewRetryBudget(capacity int) *RetryBudget {
+	if capacity <= 0 {
+		return &RetryBudget{}
+	}
+	return &RetryBudget{
+		tokens:   capacity,
+		capacity: capacity,
+	}
 }
 
 func (b *RetryBudget) TrySpend(cost int) bool {
@@ -84,14 +94,17 @@ func (b *RetryBudget) Refill(amount int) {
 	if amount <= 0 {
 		return
 	}
-	b.tokens += amount
-	if b.tokens > b.capacity {
+	if b.tokens >= b.capacity || amount >= b.capacity-b.tokens {
 		b.tokens = b.capacity
+		return
 	}
+	b.tokens += amount
 }
 ~~~
 
-Acquire immediately before committing to the retry. Define whether a canceled wait refunds the token. A clear approach is to spend the token only after backoff completes and just before sending, but that allows many sleepers to queue behind a still-full snapshot. Another approach reserves before sleep and refunds on cancellation. Whichever rule you choose, make it atomic and test cancellation races.
+The constructor starts a positive-capacity bucket full; a nonpositive capacity disables retries. Initialize through it so the bucket begins within its required bounds. <code>TrySpend</code> never waits for tokens to be replenished, although it can briefly wait for the mutex under contention.
+
+The flow above treats acquisition as a reservation before backoff. If cancellation wins before the retry is sent, refund the reservation exactly once. Alternatively, spending only after backoff avoids refunds but lets many callers enter backoff and discover when they wake that no token remains. Whichever rule you choose, make the reservation-to-sent or reservation-to-refunded transition atomic and test cancellation races.
 
 Do not refill merely because time passed unless you explicitly want a rate limiter rather than a health-sensitive retry quota. A clock-refilled token bucket permits retries throughout a complete outage. Success-based replenishment couples retry capacity to evidence that attempts are working again.
 
@@ -112,8 +125,8 @@ AWS adaptive retry guidance illustrates the scoping risk. Its client-side rate l
 Retry tokens are not a replacement for:
 
 - **jittered backoff**, which disperses the retries that are allowed;
-- **an overall deadline**, which stops work after its result is no longer useful;
-- **an attempt cap**, which bounds one logical operation;
+- **an overall deadline**, which bounds how long the caller waits for a useful result;
+- **an attempt cap**, which bounds the number of attempts for one logical operation;
 - **a concurrency limit**, which bounds in-flight load;
 - **a circuit breaker**, which can reject calls while a dependency is broadly unhealthy;
 - **server-directed delay**, which communicates resource-specific recovery timing.
@@ -126,7 +139,7 @@ Record:
 
 - initial attempts and retry attempts separately;
 - retry tokens available as a gauge;
-- tokens spent and replenished by failure class;
+- tokens spent by failure class and replenished by success or attempt class;
 - retries rejected because the budget was empty;
 - retry success probability by attempt number;
 - total retry delay and final operation outcome;
@@ -158,4 +171,4 @@ Load-test with the real number of client processes. A process-local bucket multi
 
 ## Conclusion
 
-Capped backoff eventually becomes a fixed retry cadence, and a large fleet can sustain damaging load at that cadence. Put a success-replenished token gate in front of retries, scope it to the dependency failure domain, and combine it with deadlines, jitter, concurrency limits, and gradual recovery admission.
+Capped backoff eventually enters a steady retry-rate regime, and a large fleet can sustain damaging load in that regime. Put a success-replenished token gate in front of retries, scope it to the dependency failure domain, and combine it with deadlines, jitter, concurrency limits, and gradual recovery admission.
