@@ -72,7 +72,6 @@
 
 ## Backoff
 
-18. Sequential Retry or Hedged Request: Which Reduces Tail Latency Without Doubling Load?
 19. Should Failed Requests Sleep in Worker Threads or Move to a Delayed Retry Queue?
 20. How Should a Multi-Tenant Client Partition Backoff and Retry Budgets to Avoid Noisy Neighbors?
 21. Why Your RxJS Poller Overlaps Requests During Backoff—and How to Serialize `retry` and `repeat`
