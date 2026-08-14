@@ -28,26 +28,26 @@ terraform init -input=false
 terraform plan -input=false -out="$plan_file"
 terraform show -json "$plan_file" > "$json_file"
 
-jq -e '.format_version | type == "string"' "$json_file" >/dev/null
+jq -e '.format_version | strings | test("^1\\.[0-9]+$")' "$json_file" >/dev/null
 ```
 
 Use an isolated, access-controlled working directory in CI. HashiCorp warns that `terraform show -json` displays sensitive values in plaintext. Do not print the document, upload it as an unrestricted artifact, or retain it beyond the job merely for debugging. A Terraform `sensitive` mark controls presentation in normal output; it is not encryption of plan or state artifacts.
 
-Render with the Terraform version and provider schemas that created the plan. A saved plan is not a portable long-term fixture. If provider schema versions have changed, `terraform show` may require the state to be upgraded, and a plan created with disabled refresh has documented limitations for JSON rendering.
+Render with the Terraform version and provider schemas that created the plan. A saved plan is not a portable long-term fixture. If provider schema versions have changed, `terraform show` may require the state to be upgraded, and `terraform show -json` requires a plan created without `-refresh=false`.
 
 ## Understand the Fields You Are Testing
 
 The most useful top-level collections include:
 
 - `resource_changes`, which describes each resource instance and its `change.actions`;
-- `planned_values`, which describes the planned state but omits unknown leaf values;
+- `planned_values`, which describes the planned state but may omit unknown values or represent them as `null`;
 - `configuration`, which represents configuration expressions rather than remote behavior;
 - `output_changes`, which describes root output changes;
 - `checks`, when present for the Terraform version in use.
 
-For a resource change, action arrays have defined meanings. Common values are `["no-op"]`, `["create"]`, `["read"]`, `["update"]`, `["delete"]`, and a pair containing both `create` and `delete` for replacement. The order of a replacement pair conveys create-before-destroy versus destroy-before-create behavior, so do not sort it if ordering is the property under test.
+For a resource change, action arrays have defined meanings. Common values are `["no-op"]`, `["create"]`, `["read"]`, `["update"]`, `["delete"]`, and `["forget"]`; replacements are represented by `["delete", "create"]`, `["create", "delete"]`, or `["create", "forget"]`. The order of a create/delete replacement pair conveys create-before-destroy versus destroy-before-create behavior, so do not sort it if ordering is the property under test.
 
-Values that will be learned only during apply are represented through structures such as `after_unknown`; absence from `planned_values` does not mean an empty string or null was planned. Sensitive paths have parallel metadata. A good assertion fails with an explicit unknown-value message when it requires a value that cannot exist at plan time.
+Values that will be learned only during apply are represented through structures such as `after_unknown` and `proposed_unknown`; in `planned_values`, they can be omitted or set to `null`, making them indistinguishable from absent or null values. Sensitive paths have parallel metadata. A good assertion fails with an explicit unknown-value message when it requires a value that cannot exist at plan time.
 
 ## Assert Sets and Predicates, Not the Entire Document
 
@@ -56,7 +56,7 @@ Suppose a module contract requires exactly one managed bucket, prohibits deletio
 ```bash
 jq -e '
   [
-    .resource_changes[]
+    (.resource_changes // [])[]
     | select(.mode == "managed" and .type == "example_bucket")
   ] as $buckets
   | ($buckets | length) == 1
@@ -69,7 +69,7 @@ jq -e '
 
 ```bash
 jq -r '
-  .resource_changes[]
+  (.resource_changes // [])[]
   | select(.mode == "managed" and .type == "example_bucket")
   | {address, actions: .change.actions, encryption: .change.after.encryption}
 ' "$json_file"
@@ -79,15 +79,18 @@ Before printing any `before` or `after` subtree, decide whether it can contain c
 
 ## Detect Replacements Without Assuming Action Order
 
-A blanket rule that forbids replacement should detect both possible orders:
+A blanket rule that forbids replacement should detect both create/delete orders and create/forget replacements:
 
 ```bash
 jq -e '
   [
-    .resource_changes[]
+    (.resource_changes // [])[]
     | select(
         (.change.actions | index("create")) != null
-        and (.change.actions | index("delete")) != null
+        and (
+          (.change.actions | index("delete")) != null
+          or (.change.actions | index("forget")) != null
+        )
       )
   ] | length == 0
 ' "$json_file" >/dev/null
@@ -98,7 +101,7 @@ If one address is intentionally replaced, assert that address and preserve order
 ```bash
 jq -e '
   any(
-    .resource_changes[];
+    (.resource_changes // [])[];
     .address == "example_service.app"
     and .change.actions == ["create", "delete"]
   )
@@ -127,14 +130,14 @@ If a team keeps small plan fixtures to unit-test a policy parser, normalize at t
 - project resource changes into stable fields such as address, type, mode, actions, and selected contract attributes;
 - sort collections only when their order is semantically irrelevant;
 - represent unknown and sensitive status explicitly;
-- omit timestamps, provider-private data, and unrelated computed defaults.
+- omit timestamps, unrelated provider-specific metadata, and unrelated computed defaults.
 
 For example, create a compact review projection:
 
 ```bash
 jq '
   [
-    .resource_changes[]
+    (.resource_changes // [])[]
     | {
         address,
         mode,
@@ -155,7 +158,7 @@ Use module assertions for promises local to the module: output shape, mutually e
 
 Policy code needs its own tests with small positive and negative inputs. Do not generate a live cloud plan for every Rego unit test. Separately run the policy against a real plan in CI to detect integration drift in the JSON adapter.
 
-Pin or validate the plan JSON `format_version`. Terraform documents that format versions use a major and minor scheme; readers should reject unsupported major versions and ignore unknown object properties to tolerate compatible additions. Do not bind a parser to every field being present.
+Pin or validate the plan JSON `format_version`. Terraform documents that format versions use a major and minor scheme; readers should reject unsupported major versions and ignore unknown object properties to tolerate compatible additions. The `checks` representation is experimental and may change even in minor Terraform CLI releases. Do not bind a parser to every field being present.
 
 ## Build Failure Messages for Reviewers
 
