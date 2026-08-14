@@ -66,7 +66,6 @@
 
 ## InfiniBand
 
-20. When Does GPUDirect RDMA Fail Because of PCIe ACS, IOMMU, or GPU–HCA Topology?
 
 ## Infrastructure Testing
 
