@@ -8,7 +8,7 @@ Description: Interpret Open MPI InfiniBand port-selection warnings by version, m
 
 ---
 
-An Open MPI warning about an InfiniBand port being ignored or not selected is often diagnosed with obsolete `btl_openib_*` parameters. That can be exactly wrong on a modern installation: Open MPI deprecated the `openib` BTL in the 4.0 series, and Open MPI 5 removed it. Current Open MPI 5 uses the UCX PML for InfiniBand and RoCE point-to-point traffic.
+An Open MPI warning about an InfiniBand port being ignored or not selected is often diagnosed with obsolete `btl_openib_*` parameters. That can be exactly wrong on a modern installation: Open MPI deprecated the `openib` BTL in the 4.0 series, and Open MPI 5 removed it. When built with UCX, Open MPI 5 supports InfiniBand and RoCE point-to-point traffic through the UCX PML and selects it by default when a supported device is detected.
 
 The first troubleshooting question is therefore not “which `openib` include list should I set?” It is “which Open MPI release and communication component produced this message?”
 
@@ -49,7 +49,7 @@ The historical path was roughly:
 MPI point-to-point -> ob1 PML -> openib BTL -> libibverbs
 ~~~
 
-The modern Open MPI 5 path is:
+The Open MPI 5 InfiniBand/RoCE path, when UCX is available and selected, is:
 
 ~~~text
 MPI point-to-point -> ucx PML -> UCX/UCP -> selected UCT transport
@@ -65,7 +65,7 @@ Preserve the exact message, hostname, rank, and component prefix. Then place it 
 
 ### A legacy openib warning
 
-If the text names `openib`, the process loaded or attempted to load the legacy BTL. On Open MPI 4, remove forced `ob1/openib` settings and test the supported UCX path. On Open MPI 5, an `openib` message strongly suggests mixed binaries, old logs, or a vendor-modified installation because upstream 5.x removed the component.
+If the text names the `openib` component, the process loaded or attempted to load the legacy BTL. An unknown-parameter message that merely names a `btl_openib_*` setting instead indicates stale configuration and is not evidence that the BTL loaded. On Open MPI 4, remove forced `ob1/openib` settings and, if `pml: ucx` is present, test UCX with `--mca pml ucx --mca btl '^openib'`; selecting UCX alone does not prevent 4.x from initializing `openib` in other internal contexts. On Open MPI 5, a message emitted by the `openib` component strongly suggests mixed binaries, old logs, or a vendor-modified installation because upstream 5.x removed the component.
 
 ### A UCX device-selection error
 
@@ -89,17 +89,16 @@ For native InfiniBand, the logical port should be active and have valid fabric a
 
 ## Move the Diagnostic to UCX
 
-Use an explicit UCX PML selection for a short two-host test:
+From a two-node allocation, use an explicit UCX PML selection for a short two-host test:
 
 ~~~console
-$ mpirun --mca pml ucx \
-    --map-by ppr:1:node --report-bindings \
-    -x UCX_NET_DEVICES=mlx5_0:1 \
-    -x UCX_LOG_LEVEL=info \
-    -np 2 ./mpi_pingpong
+$ UCX_NET_DEVICES=mlx5_0:1 UCX_LOG_LEVEL=info \
+    mpirun --mca pml ucx \
+    --map-by ppr:1:node --display bindings \
+    -n 2 ./mpi_pingpong
 ~~~
 
-This diagnostic should either fail clearly or produce UCX endpoint output naming a transport such as `rc_mlx5/mlx5_0:1`. If it shows `tcp/<interface>`, Open MPI is using UCX but the inter-node data path is TCP.
+This test should fail clearly if the UCX PML or selected device cannot be used. With UCX logging enabled, a successful run should also print endpoint-configuration output naming a transport such as `rc_mlx5/mlx5_0:1`; a UCX build configured with `--disable-logging` can succeed without those messages. Because `UCX_NET_DEVICES` is a strict allow-list, the forced test should use the selected RDMA device or fail rather than fall back to TCP. When testing default selection without that setting, an inter-node endpoint whose only network transport is `tcp/<interface>` is using TCP.
 
 In normal operation, consider removing `UCX_NET_DEVICES` after diagnosis. UCX's default is to evaluate available devices using characteristics such as bandwidth, PCIe bandwidth, and NUMA locality. Hard-coding `mlx5_0:1` can be wrong on another node or prevent multi-rail selection.
 
@@ -107,15 +106,16 @@ Avoid setting `UCX_TLS=rc` casually. UCX transport aliases can imply auxiliary t
 
 ## Check for Mixed Installations
 
-Warnings that contradict `mpirun --version` often come from library skew. Record these on a compute node:
+Warnings that contradict `mpirun --version` often come from library skew. Record these on compute nodes; run the final command from an allocation containing at least two nodes:
 
 ~~~console
 $ which mpirun ompi_info ucx_info
-$ ldd "$(command -v mpirun)" | grep -E 'mpi|open-rte|pmix|ucp|ucs'
-$ mpirun -np 2 sh -c 'hostname; command -v ompi_info; ompi_info --version'
+$ ldd "$(command -v mpirun)" | grep -E 'open-pal|open-rte|prrte|pmix'
+$ ldd ./mpi_pingpong | grep -E 'libmpi|open-pal|ucp|ucs'
+$ mpirun --map-by ppr:1:node -n 2 sh -c 'hostname; command -v ompi_info; ompi_info --version'
 ~~~
 
-Launcher and rank environments can differ under SSH, Slurm, modules, and containers. Do not combine an Open MPI launcher from one prefix with application libraries from another. If the application is dynamically linked, inspect it with `ldd` as well.
+Launcher and rank environments can differ under SSH, Slurm, modules, and containers. Do not combine an Open MPI launcher from one prefix with application libraries from another. If the application is dynamically linked, inspect it with `ldd` as well; that identifies its `libmpi` and any directly linked UCX libraries. A dynamically loaded UCX component may not appear there, so runtime transport evidence is still required.
 
 ## Decide What Success Means
 
@@ -124,7 +124,7 @@ A clean modern result has all of these properties:
 1. `ompi_info` lists the UCX PML from the same Open MPI prefix.
 2. `ucx_info -d` lists the intended HCA port and RDMA transport.
 3. a forced `--mca pml ucx` two-host test succeeds;
-4. UCX info output names the intended RDMA device rather than TCP;
+4. when UCX logging is available, its endpoint output names the intended RDMA device rather than a TCP-only inter-node endpoint;
 5. old `btl_openib_*` settings have been removed from job, user, and system configuration.
 
 Only after that should you optimize device choice, rails, affinity, or protocol thresholds. Port-selection warnings are configuration evidence, not a request to revive a removed component.
@@ -139,4 +139,4 @@ Only after that should you optimize device choice, rails, affinity, or protocol 
 
 ## Conclusion
 
-Treat an “IB port not selected” warning as versioned component information. On Open MPI 5, configure and inspect the UCX PML; the removed `openib` BTL and its MCA parameters are not a valid repair path. Eliminate mixed installations and stale MCA files, prove that UCX sees the port, and capture a two-host endpoint configuration showing the actual RDMA transport.
+Treat an “IB port not selected” warning as versioned component information. On Open MPI 5, configure and inspect the UCX PML; the removed `openib` BTL and its MCA parameters are not a valid repair path. Eliminate mixed installations and stale MCA files, prove that UCX sees the port, and, when UCX logging is available, capture a two-host endpoint configuration showing the actual RDMA transport.
