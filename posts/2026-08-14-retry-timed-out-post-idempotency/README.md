@@ -33,6 +33,7 @@ Generate an unpredictable key before the first attempt and retain it through eve
 POST /payments HTTP/1.1
 Host: api.example.com
 Content-Type: application/json
+Content-Length: 61
 Idempotency-Key: 3a46c0a7-8f5e-4a73-a94c-233865cf43dd
 
 {"account_id":"acct_42","amount_minor":2500,"currency":"GBP"}
@@ -61,7 +62,7 @@ create payment
 store key
 ~~~
 
-Two concurrent attempts can both observe absence and both create a payment. Instead, claim the key and commit the side effect in one transactional boundary, or use a uniqueness constraint plus a transaction that produces a single durable outcome.
+Two concurrent attempts can both observe absence and both create a payment. When the idempotency record and business effect share a transactional store, enforce uniqueness on the full key scope and commit both in one transaction. If the effect occurs in another system, a local transaction cannot make both writes atomic; propagate the same operation ID to a dependency with a documented idempotency contract, or drive the effect through durable state and reconciliation.
 
 A useful record contains:
 
@@ -87,9 +88,9 @@ Hash a canonical representation of the logical inputs, not incidental transport 
 
 ## Prefer Preconditions When the Operation Targets Existing State
 
-Some POST-like workflows are better expressed as a conditional update. If the service exposes a resource version or ETag, submit the expected version and let the server reject stale state. A precondition can make a write conditionally idempotent because only the intended version transition can succeed.
+Some POST-like workflows are better expressed as a conditional update. If the service exposes a version that changes on every relevant transition and is never reused, or an ETag with equivalent documented guarantees, submit the expected validator and let the server reject stale state. The precondition can make the guarded transition safe to retry when the write atomically changes that validator, so the same condition cannot authorize the transition twice.
 
-This pattern is common in object storage. Google Cloud Storage, for example, distinguishes always-idempotent, conditionally idempotent, and non-idempotent operations, and retries conditional operations only when the required generation or metageneration precondition is present.
+This pattern is common in object storage. Google Cloud Storage, for example, distinguishes always-idempotent, conditionally idempotent, and non-idempotent operations. Its guidance says conditionally idempotent operations should be retried by default only when the applicable condition case, such as a generation or metageneration precondition or an ETag, passes; exact defaults vary by tool and client library.
 
 Preconditions and idempotency keys solve different problems:
 
@@ -105,12 +106,12 @@ Not every dependency offers deduplication. For an unsafe POST without a document
 1. Create a client operation ID before sending.
 2. Include it in a documented business field if the API supports one.
 3. After a timeout, query a status or list endpoint by that ID.
-4. Retry only if the query proves that no operation exists.
+4. Retry only if the API contract guarantees that the lookup both finds no operation and prevents any still-arriving original attempt from committing.
 5. Escalate an unresolved outcome instead of guessing.
 
 If no status lookup or unique business reference exists, surface an <code>outcome_unknown</code> result. That is operationally awkward, but it is more honest than returning failure and creating a duplicate in the background.
 
-For internal systems, a transactional outbox can carry the command from the caller's database to a worker. The local transaction records both business intent and a unique operation ID. At-least-once delivery remains safe because the consumer deduplicates the operation ID.
+For internal systems, a transactional outbox can carry the command from the caller's database to a worker. The local transaction records both business intent and a unique operation ID. At-least-once delivery remains safe only when the consumer atomically deduplicates the operation ID with its local effect or propagates the ID to an idempotent dependency.
 
 ## Keep Retry Mechanics Consistent
 
@@ -123,7 +124,7 @@ Every attempt must preserve:
 
 Credentials and per-request signatures may need regeneration for each attempt. That does not change the operation identity. Conversely, changing the amount, target account, or business parameters requires a new operation and a new key.
 
-Retry only transient transport failures and documented transient responses. Use bounded jittered backoff, honor valid server delay guidance, and stop when the operation deadline expires. Idempotency prevents duplicate effects; it does not make unlimited retry load harmless.
+Retry only transient transport failures and documented transient responses. Use bounded jittered backoff, honor valid server delay guidance, and stop when the operation deadline expires. Idempotency prevents duplicate intended business effects; it does not make unlimited retry load harmless.
 
 ## Test the Failure Boundaries
 
@@ -146,4 +147,4 @@ These cases validate the contract that matters during a real timeout, not just t
 
 ## Conclusion
 
-A timed-out POST has an unknown outcome until the protocol proves otherwise. Reuse one logical operation key, atomically bind it to the side effect and request digest, replay the original result, and provide reconciliation for uncertain cases. If the API offers none of those guarantees, do not hide the ambiguity behind an automatic retry.
+A timed-out POST has an unknown outcome until the protocol proves otherwise. Reuse one logical operation key, atomically bind it to the request digest and any effect in the same transactional store, propagate it through documented downstream idempotency where needed, replay the original result, and provide reconciliation for uncertain cases. If the API offers none of those guarantees, do not hide the ambiguity behind an automatic retry.
