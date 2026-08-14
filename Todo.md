@@ -66,7 +66,6 @@
 
 ## InfiniBand
 
-16. `RDMA_CM_EVENT_ROUTE_ERROR`: How Do GIDs, P_Keys, and Address Resolution Cause It?
 17. InfiniBand Bandwidth Is Low but `ibdiagnet` Is Clean: Check PCIe Width, NUMA Placement, and CPU Pinning
 18. How Should You Run `ib_write_bw` Without Benchmarking the Wrong Path or Memory Type?
 19. Why Can a Kubernetes Pod See `/dev/infiniband` but UCX Still Fail GID Resolution?
