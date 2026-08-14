@@ -8,7 +8,7 @@ Description: Rebuild consumed HTTP bodies for each retry with bounded buffers or
 
 ---
 
-An HTTP request body is usually a stream, not an immutable value. The first transport attempt reads it until EOF. Reusing the same stream object for attempt two often sends zero bytes, sends only the unread suffix, or fails because the transport already closed it.
+An HTTP request body is usually a stream, not an immutable value. A transport attempt can consume some or all of it before the transport closes it. Reusing the same stream object for attempt two often sends zero bytes, sends only the unread suffix, or fails because the transport already closed it.
 
 Safe retry code separates the logical payload from the per-attempt reader. Every attempt gets a fresh body positioned at byte zero, while the operation's idempotency key and content remain stable.
 
@@ -40,9 +40,22 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 )
 
+// BodyFactory returns a fresh reader for the same bytes. The length is -1
+// when unknown, and the body is nil when err is non-nil.
 type BodyFactory func() (io.ReadCloser, int64, error)
+
+func normalizeBody(body io.ReadCloser, length int64) (io.ReadCloser, error) {
+	if length != 0 {
+		return body, nil
+	}
+	if err := body.Close(); err != nil {
+		return nil, err
+	}
+	return http.NoBody, nil
+}
 
 func BytesBody(payload []byte) BodyFactory {
 	snapshot := bytes.Clone(payload)
@@ -58,9 +71,17 @@ func newAttempt(
 	idempotencyKey string,
 	bodyFactory BodyFactory,
 ) (*http.Request, error) {
+	if idempotencyKey == "" {
+		return nil, fmt.Errorf("idempotency key must not be empty")
+	}
+
 	body, length, err := bodyFactory()
 	if err != nil {
 		return nil, err
+	}
+	body, err = normalizeBody(body, length)
+	if err != nil {
+		return nil, fmt.Errorf("prepare body: %w", err)
 	}
 
 	req, err := http.NewRequestWithContext(ctx, method, url, body)
@@ -73,8 +94,15 @@ func newAttempt(
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Idempotency-Key", idempotencyKey)
 	req.GetBody = func() (io.ReadCloser, error) {
-		fresh, _, err := bodyFactory()
-		return fresh, err
+		fresh, freshLength, err := bodyFactory()
+		if err != nil {
+			return nil, err
+		}
+		if freshLength != length {
+			fresh.Close()
+			return nil, fmt.Errorf("body length changed: got %d, want %d", freshLength, length)
+		}
+		return normalizeBody(fresh, freshLength)
 	}
 	return req, nil
 }
@@ -88,7 +116,7 @@ func doAttempt(client *http.Client, req *http.Request) (*http.Response, error) {
 }
 ~~~
 
-The payload snapshot prevents a caller from mutating the byte slice between attempts. Set the correct content length only when it is known. Let the request use an unknown length and normal transfer framing when a fresh stream does not have a cheap, reliable size.
+The payload snapshot prevents a caller from mutating the byte slice between attempts. Set the correct content length only when it is known. Have the factory return -1 so the request uses an unknown length and normal transfer framing when a fresh stream does not have a cheap, reliable size. A known zero-length body is normalized to <code>http.NoBody</code> because Go otherwise treats a zero content length with a non-nil body as unknown.
 
 The retry loop should create a new attempt context and call <code>newAttempt</code> each time. It must not modify the idempotency key or logical payload after the first send.
 
@@ -125,7 +153,7 @@ func FileBody(path string, expectedSize int64) BodyFactory {
 }
 ~~~
 
-Size alone does not prove immutability. For sensitive operations, hold a stable file descriptor, use an immutable source version, or verify a content digest. If the source can change while retries run, copying it once to controlled storage is safer than reopening a mutable path.
+Size alone does not prove immutability. Holding a stable file descriptor prevents path replacement but not in-place modification. For sensitive operations, use an immutable source version or verify a content digest. If the source can change while retries run, copying it once to controlled storage is safer than reopening a mutable path.
 
 For a truly live stream, bytes already consumed may be impossible to reproduce. A resumable protocol should assign chunks or offsets durable identities so the server can acknowledge progress. Retrying the entire stream without that contract can duplicate accepted data.
 
@@ -139,11 +167,11 @@ The second attempt must represent the same operation, but not every wire header 
 - recalculate a signature over exactly the bytes and headers sent by that attempt;
 - do not silently recompress or reserialize a logical object differently if the server deduplicates by payload bytes.
 
-If an API validates a digest such as <code>Content-MD5</code> or a vendor checksum, calculate it from the retained immutable source. A digest detects accidental variation; it does not create idempotency on its own.
+If an API validates a digest such as <code>Content-Digest</code> or an API-specific checksum, calculate it over the exact immutable bytes defined by that field. A digest detects accidental variation; it does not create idempotency on its own.
 
 ## Close Every Response Before Backoff
 
-When <code>Client.Do</code> returns a response, the caller owns its body and must close it. In Go, failing to both read as appropriate and close the response body can prevent connection reuse. Do not defer every close inside a long retry loop because all closes would wait until the function returns.
+When <code>Client.Do</code> returns a response with a nil error, the caller owns its body and must close it. In Go, failing to both read as appropriate and close the response body can prevent connection reuse. Do not defer every close inside a long retry loop because all closes would wait until the function returns.
 
 ~~~go
 resp, err := client.Do(req)
@@ -169,7 +197,7 @@ Use a test server that records the body of every attempt, returns a transient fa
 - the same idempotency key is present;
 - a mutable caller buffer cannot alter later attempts;
 - a body-factory failure stops before sending;
-- cancellation while opening or sending releases the source.
+- cancellation while sending releases the source.
 
 Also test a transport failure, not only an HTTP error response. HTTP libraries can close the request body on paths that a simple mock does not model.
 
@@ -177,6 +205,7 @@ Also test a transport failure, not only an HTTP error response. HTTP libraries c
 
 - [Go net/http package documentation](https://pkg.go.dev/net/http)
 - [RFC 9110: HTTP Semantics](https://www.rfc-editor.org/rfc/rfc9110.html)
+- [RFC 9530: Digest Fields](https://www.rfc-editor.org/rfc/rfc9530.html)
 
 ## Conclusion
 
