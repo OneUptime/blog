@@ -93,7 +93,7 @@ Clients still need an overall deadline even when servers provide pushback. A mis
 
 ## Coordinate Pushback with Retry Throttling
 
-gRPC retry throttling maintains a token count per server name. Qualifying failures—retryable or hedging non-fatal statuses, plus responses with no-retry pushback—decrement the count by 1. Successful RPCs add the configured <code>tokenRatio</code>, up to <code>maxTokens</code>. Policy retries are suppressed while the count is at or below <code>maxTokens / 2</code>. This protects a service during broad failure.
+gRPC retry throttling maintains a token count per server name. Qualifying failures-retryable or hedging non-fatal statuses, plus responses with no-retry pushback-decrement the count by 1. Successful RPCs add the configured <code>tokenRatio</code>, up to <code>maxTokens</code>. Policy retries are suppressed while the count is at or below <code>maxTokens / 2</code>. This protects a service during broad failure.
 
 The controls are complementary:
 

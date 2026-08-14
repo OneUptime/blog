@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Terraform, Private Modules, CI/CD, Credential, GitHub Action, Supply Chain Security
 
-Description: Authenticate CI to private Terraform modules with narrow short-lived access, deterministic source selection, and logging practices that minimize exposure of download secrets.
+Description: Authenticate CI to private Terraform modules with narrow short-lived access, deterministic sources, and logs that never embed or publish download secrets.
 
 ---
 

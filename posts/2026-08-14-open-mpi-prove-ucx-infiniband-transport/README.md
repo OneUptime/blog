@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Open MPI, UCX, InfiniBand, MPI, RDMA, Troubleshooting
 
-Description: Prove that a multi-node Open MPI job selected the UCX PML and an RDMA transport on an InfiniBand port, rather than inferring RDMA use from installed hardware or benchmark speed.
+Description: Prove that a multi-node Open MPI job selected the UCX PML and an InfiniBand transport, rather than inferring RDMA use from installed hardware or benchmark speed.
 
 ---
 

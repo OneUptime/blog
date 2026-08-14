@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Backoff, Retry State, Rate Limiting, Circuit Breaker, Multi-Tenancy, Distributed System
 
-Description: Keep attempt progression local while sharing only health, rate, and retry-budget signals at the smallest scope that actually needs coordination.
+Description: Keep attempt progression local while sharing only health, rate, and retry-budget signals at the failure-domain scope that actually needs coordination.
 
 ---
 

@@ -2012,6 +2012,7 @@
 - BEGIN
 - BEGIN...END
 - Beginner
+- Behavior Testing
 - Behavior Tracking
 - Behavioral Data
 - Benchmark
@@ -3111,6 +3112,7 @@
 - Client Certificate
 - Client Configuration
 - Client Credentials
+- Client Design
 - Client Development
 - Client ID
 - Client IO
@@ -3259,6 +3261,7 @@
 - Cloud Provider
 - Cloud Provisioning
 - Cloud Pub/Sub
+- Cloud Quotas
 - Cloud Resource
 - Cloud Resource Manager
 - Cloud Router
@@ -4260,6 +4263,7 @@
 - CPM
 - CProfile
 - CPU
+- CPU Affinity
 - CPU Allocation
 - CPU Analysis
 - CPU Frequency
@@ -4863,6 +4867,7 @@
 - Data Skew
 - Data Skipping Index
 - Data Source
+- Data Source Override
 - Data Source Plugins
 - Data Sovereignty
 - Data Staleness
@@ -5190,6 +5195,7 @@
 - Delayed Member
 - Delayed Messages
 - Delayed Replication
+- Delayed Retry
 - Delayed Secondary
 - Delegate_to
 - Delegated Administrator
@@ -6876,6 +6882,7 @@
 - Fair-Share Scheduling
 - Fairness
 - FAISS
+- Fake Clock
 - Faker
 - Fakeredis
 - Falco
@@ -7785,6 +7792,7 @@
 - Go Modules
 - Go pprof
 - Go Templates
+- Go Testing
 - Go-Kit
 - go-redis
 - Go-Template
@@ -7907,6 +7915,7 @@
 - GPU Passthrough
 - GPU Reservations
 - Gpu-operator
+- GPUDirect RDMA
 - Gqlgen
 - GraalVM
 - Grace Hash Join
@@ -8165,6 +8174,7 @@
 - HBONE
 - HCI
 - HCL
+- HCL Tests
 - Hcloud
 - HCP
 - HCP Terraform
@@ -8227,6 +8237,7 @@
 - Heatmap
 - Heavy Hitter
 - HEC
+- Hedged Requests
 - Hedging
 - Heimdall
 - HELLO
@@ -8666,6 +8677,7 @@
 - ibstat
 - IBus
 - ibv_devinfo
+- IBV_WC_RETRY_EXC_ERR
 - ICA
 - ICE
 - Iceberg
@@ -9004,6 +9016,7 @@
 - Inferentia
 - Inferentia2
 - InfiniBand
+- InfiniBand Diagnostics
 - Infinite Scroll
 - Infisical
 - InfluxDB
@@ -11032,6 +11045,7 @@
 - Memory Leak
 - Memory Limit
 - Memory Limiter
+- Memory Locking
 - Memory Management
 - Memory Metrics
 - Memory Monitoring
@@ -11039,6 +11053,7 @@
 - Memory Profiling
 - Memory Protection
 - Memory purge
+- Memory Registration
 - Memory Retrieval
 - Memory Safety
 - Memory Systems
@@ -12105,6 +12120,7 @@
 - Network Namespaces
 - Network Observability
 - Network Operations
+- Network Operator
 - Network Optimization
 - Network Overlay
 - Network Partition
@@ -12710,6 +12726,7 @@
 - Open Cluster Management
 - Open container initiative
 - Open Liberty
+- Open MPI
 - Open Policy Agent
 - Open Redirect
 - Open Service Mesh
@@ -12741,6 +12758,7 @@
 - OpenFeature
 - OpenFlow
 - OpenFunction
+- OpenIB BTL
 - OpenID Connect
 - OpenJDK
 - OpenLDAP
@@ -13018,6 +13036,7 @@
 - OwnerReferences
 - Ownership
 - Oxidized
+- P_Key
 - P2P
 - P5
 - P99
@@ -13128,6 +13147,7 @@
 - Parallel Routes
 - Parallel Storage
 - Parallel Testing
+- Parallel Tests
 - Parallel Upload
 - parallel_replicas
 - ParallelCluster
@@ -13288,6 +13308,8 @@
 - PCI DSS
 - PCI Passthrough
 - PCI-DSS
+- PCIe
+- PCIe ACS
 - PCP
 - PCRE
 - Pcs
@@ -14084,6 +14106,7 @@
 - Private Key
 - Private Link
 - Private Link Service
+- Private Modules
 - Private Network
 - Private Networking
 - Private Peering
@@ -14617,6 +14640,7 @@
 - Queue Mirroring
 - Queue Monitoring
 - Queue Ordering
+- Queue Pair
 - Queue Storage
 - Queue Time
 - Queue Tree
@@ -14780,6 +14804,9 @@
 - Rdisc6
 - Rdkafka
 - RDMA
+- RDMA CM
+- RDMA Core
+- RDMA Verbs
 - rdma-core
 - RDNSS
 - RDP
@@ -15504,12 +15531,15 @@
 - Retrieval-Augmented Generation
 - Retrospectives
 - Retry
+- Retry Budget
 - Retry Logic
 - Retry Options
 - Retry Pattern
 - Retry Pipelines
 - Retry Policies
 - Retry Policy
+- Retry Pushback
+- Retry State
 - Retry Storm
 - Retry Strategies
 - Retry Strategy
@@ -15695,6 +15725,7 @@
 - RKE2
 - Rkhunter
 - RLS
+- RNR
 - ROA
 - Roadmap
 - Roaming
@@ -15902,6 +15933,7 @@
 - Rules Engine
 - RUM
 - RUN
+- Run Blocks
 - Run Command
 - Run Data
 - Run History
@@ -16100,6 +16132,7 @@
 - Scheduled Reports
 - Scheduled Scaling
 - Scheduled Task
+- Scheduled Testing
 - Scheduled Workflows
 - Scheduler
 - Scheduler Service
@@ -16535,6 +16568,7 @@
 - Service CIDR
 - Service Classes
 - Service Communication
+- Service Config
 - Service Connect
 - Service Connections
 - Service Container
@@ -17538,6 +17572,7 @@
 - State Drift
 - State Encryption
 - State Files
+- State Key
 - State Lock
 - State Locking
 - State Machine
@@ -18190,6 +18225,7 @@
 - Tagging Policies
 - Tagging Strategy
 - Taiga
+- Tail Latency
 - Tail Sampling
 - Tail-Based Sampling
 - Tailable Cursor
@@ -18437,6 +18473,8 @@
 - Terraform output
 - Terraform plan
 - Terraform Registry
+- Terraform State
+- Terraform Test
 - Terraform validate
 - Terraform_data
 - terraform-docs
@@ -18452,6 +18490,7 @@
 - Test Analytics
 - Test Automation
 - Test Best Practices
+- Test Cleanup
 - Test Configurations
 - Test Container
 - Test Coverage
@@ -19168,6 +19207,8 @@
 - Ubuntu Pro
 - UCaaS
 - UCI
+- UCX
+- UCX_NET_DEVICES
 - Udev
 - Udev Rules
 - UDF
