@@ -69,7 +69,6 @@
 
 ## Infrastructure Testing
 
-13. How Do You Test Private Terraform Modules in CI Without Exposing Cloud Credentials?
 14. How Should Terratest Share Expensive Fixtures Without Coupling Every Test?
 15. Should Infrastructure Tests Verify Resource Configuration or the Service’s Actual Behavior?
 16. How Do You Test a Terraform Change That Forces Resource Replacement Before It Reaches Production?
