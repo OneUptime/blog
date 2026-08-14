@@ -46,8 +46,8 @@ run "uses_shared_network_inputs" {
   command = plan
 
   variables {
-    vpc_id              = "vpc-test0001"
-    private_subnet_ids  = ["subnet-test0001", "subnet-test0002"]
+    vpc_id              = "vpc-0123456789abcdef0"
+    private_subnet_ids  = ["subnet-0123456789abcdef0", "subnet-0fedcba9876543210"]
     execution_role_arn  = "arn:aws:iam::111122223333:role/test-execution"
   }
 
@@ -62,15 +62,16 @@ Mock-provider generated strings do not know AWS ARN or ID syntax. Supply meaning
 
 ## Override Discovery at the Narrowest Boundary
 
-Terraform 1.7 and later can mock providers and override resources, data sources, and module outputs. If the module intentionally discovers a shared VPC through a data source, override that data source:
+Terraform 1.7 and later can mock providers and override resources, data sources, and module outputs. Terraform 1.11 and later can make overridden values available during planning with `override_during = plan`. If the module intentionally discovers a shared VPC through a data source, override that data source:
 
 ~~~hcl
 mock_provider "aws" {}
 
 override_data {
-  target = data.aws_vpc.shared
+  target          = data.aws_vpc.shared
+  override_during = plan
   values = {
-    id         = "vpc-test0001"
+    id         = "vpc-0123456789abcdef0"
     cidr_block = "10.40.0.0/16"
   }
 }
@@ -79,7 +80,7 @@ run "builds_rules_for_shared_cidr" {
   command = plan
 
   assert {
-    condition = aws_security_group_rule.internal.cidr_blocks == ["10.40.0.0/16"]
+    condition = aws_vpc_security_group_ingress_rule.internal.cidr_ipv4 == "10.40.0.0/16"
     error_message = "The internal rule must use the discovered VPC CIDR."
   }
 }
@@ -91,10 +92,11 @@ If a wrapper module consumes a separate module that reads remote state, an `over
 mock_provider "aws" {}
 
 override_module {
-  target = module.network_contract
+  target          = module.network_contract
+  override_during = plan
   outputs = {
-    vpc_id             = "vpc-test0001"
-    private_subnet_ids = ["subnet-test0001", "subnet-test0002"]
+    vpc_id             = "vpc-0123456789abcdef0"
+    private_subnet_ids = ["subnet-0123456789abcdef0", "subnet-0fedcba9876543210"]
   }
 }
 ~~~
@@ -126,7 +128,7 @@ variable "private_subnet_ids" {
   type = list(string)
 
   validation {
-    condition     = length(var.private_subnet_ids) >= 2
+    condition     = length(toset(var.private_subnet_ids)) >= 2
     error_message = "At least two private subnets are required."
   }
 }
@@ -134,7 +136,7 @@ variable "private_subnet_ids" {
 
 Then test invalid and valid contracts with `command = plan`. Provider-independent validation belongs close to the module interface and does not need a real VPC.
 
-For a remote-state wrapper, test a dedicated fixture that publishes the same output schema. Do not rely only on static output names: verify semantic constraints such as region, partition, number of availability zones, and whether the supplied role may be assumed by the test identity.
+For a remote-state wrapper, test a dedicated fixture that publishes the same output schema. Do not rely only on static output names: verify semantic constraints such as region, address-family support, number of availability zones, and whether the role ARN belongs to the expected account and partition. Verify actual role assumption in the dedicated-cloud suite.
 
 ## Use a Setup Module for Owned Fixtures
 
@@ -162,7 +164,7 @@ run "deploy_consumer" {
 }
 ~~~
 
-Terraform executes run blocks sequentially unless parallel execution is enabled and references impose dependencies. Test-file parallel execution requires Terraform 1.12 or later. Terraform keeps test state in memory and attempts to destroy remaining resources after a test file completes.
+Terraform executes run blocks sequentially by default. Terraform 1.12 and later can execute eligible run blocks in parallel when parallel execution is enabled; output references and shared internal state impose dependencies. Terraform keeps test state in memory and attempts to destroy remaining resources after a test file completes.
 
 Create only fixtures the test account owns. Shared organization routing, central identity, and production network resources should be treated as external contracts, not resources a test may create or destroy.
 
