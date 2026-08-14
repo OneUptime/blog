@@ -20,26 +20,26 @@ Only retry when all three answers are yes. This prevents a convenient status-cod
 
 | Response | What HTTP specifies | Default retry decision |
 | --- | --- | --- |
-| <code>408 Request Timeout</code> | The server did not receive a complete request in the time it was prepared to wait, and it should send <code>Connection: close</code> | Retry on a new connection only when the operation and body are replayable |
+| <code>408 Request Timeout</code> | The server did not receive a complete request message within the time it was prepared to wait | Retry only when the operation and body are replayable; use a new connection if the current one is unusable |
 | <code>409 Conflict</code> | The request conflicts with the current state of the target resource | Do not blindly retry; re-read state, resolve the conflict, or follow API-specific guidance |
-| <code>429 Too Many Requests</code> | The client has exceeded a rate limit; the response may include <code>Retry-After</code> | Retry a safe operation after valid server guidance or jittered backoff |
-| <code>500 Internal Server Error</code> | The server encountered an unexpected condition | Retry only safe operations because execution may already have had effects |
+| <code>429 Too Many Requests</code> | The requester has sent too many requests in a given amount of time; the response may include <code>Retry-After</code> | Retry a replay-safe operation after valid server guidance or jittered backoff |
+| <code>500 Internal Server Error</code> | The server encountered an unexpected condition | Retry only replay-safe operations because execution may already have had effects |
 | <code>501 Not Implemented</code> | The server does not support the functionality required for the request | Do not retry unchanged |
-| <code>502 Bad Gateway</code> | A gateway received an invalid response from an upstream server | Often transient, but still require replay safety and a budget |
-| <code>503 Service Unavailable</code> | The server is temporarily unable to handle the request and may send <code>Retry-After</code> | Usually retryable with bounded delay when the operation is safe |
-| <code>504 Gateway Timeout</code> | A gateway did not receive a timely upstream response | Often transient, but the upstream might still have completed the operation |
+| <code>502 Bad Gateway</code> | A server acting as a gateway or proxy received an invalid response from an upstream server | Often transient, but still require replay safety and a budget |
+| <code>503 Service Unavailable</code> | The server is temporarily unable to handle the request and may send <code>Retry-After</code> | Usually retryable with bounded delay when the operation is replay-safe |
+| <code>504 Gateway Timeout</code> | A server acting as a gateway or proxy did not receive a timely upstream response | Often transient, but the upstream might still have completed the operation |
 
 The important surprise is <code>409</code>. A version conflict, duplicate identifier, invalid state transition, or uniqueness violation does not become correct merely because time passes. Some APIs explicitly use a conflict response for transient lock contention, but that is an API contract, not a general HTTP rule. Retry only the documented subtype, usually after refreshing state or changing a precondition.
 
-Likewise, do not treat every <code>5xx</code> response as transient. <code>501</code> is a permanent capability mismatch for the unchanged request. Other server errors can expose a durable bug or invalid route. Keep the allowlist narrow and make API-specific error codes more authoritative than a broad status class.
+Likewise, do not treat every <code>5xx</code> response as transient. <code>501</code> indicates a capability mismatch that retrying the unchanged request will not normally fix. Other server errors can expose a durable bug or invalid route. Keep the allowlist narrow and make API-specific error codes more authoritative than a broad status class.
 
 ## Check Replay Safety Separately
 
-HTTP defines safe methods and idempotent methods. <code>GET</code>, <code>HEAD</code>, <code>OPTIONS</code>, and <code>TRACE</code> are safe. <code>PUT</code>, <code>DELETE</code>, and the safe methods are idempotent in their intended semantics. That does not mean every implementation is bug-free, nor does it make every response cheap to repeat.
+HTTP defines safe methods and idempotent methods. <code>GET</code>, <code>HEAD</code>, <code>OPTIONS</code>, and <code>TRACE</code> are safe. <code>PUT</code>, <code>DELETE</code>, and the safe methods are idempotent in their intended semantics. That does not mean every implementation is bug-free, nor does it make every request cheap to repeat.
 
-<code>POST</code> is not inherently idempotent. A timed-out POST can have committed before its response was lost. Retry it only when the API supplies a real deduplication contract, a conditional write, or another way to determine that the first attempt was not applied. Reuse the same idempotency key and identical logical payload across attempts; creating a new key inside the retry loop defeats deduplication.
+<code>POST</code> is not inherently idempotent. A timed-out POST can have committed before its response was lost. Retry it only when the API documents the operation as idempotent, supplies a real deduplication contract, a conditional write, or another way to determine that the first attempt was not applied. Reuse the same idempotency key and identical logical payload across attempts; creating a new key inside the retry loop defeats deduplication.
 
-A transport error before any response is also ambiguous. The client may know that it failed to write any request bytes, but after bytes leave the process it generally cannot infer whether application logic ran. Let the HTTP library perform only the transparent retries it documents, and apply operation-level retry rules above that boundary.
+A transport error before any response is also ambiguous. The client may know that it failed to write any request bytes, but after bytes leave the process it generally cannot infer whether application logic ran. Prefer the HTTP library's documented retry mechanism. If operation-level retries are also required, disable or significantly limit one layer and make every physical attempt share the same overall deadline, attempt cap, and retry budget.
 
 ## Build a Two-Stage Classifier
 
@@ -68,11 +68,11 @@ This example is intentionally conservative. Adapt it to the exact API contract. 
 
 ## Honor Server Timing Without Giving Up Client Limits
 
-For <code>429</code> and <code>503</code>, a valid <code>Retry-After</code> value is stronger information than a guessed exponential delay. It can be either a non-negative number of seconds or an HTTP date. Parse it strictly, account for clock skew when using a date, and reject malformed, negative, or overflowing values.
+For <code>429</code> and <code>503</code>, a valid <code>Retry-After</code> value is stronger information than a guessed exponential delay. It can be either a non-negative decimal integer number of seconds or an HTTP date. Parse it according to RFC 9110, including all three HTTP-date formats that recipients are required to accept, and account for clock skew when using a date. Reject malformed syntax, detect numeric overflow without wrapping, and treat an otherwise valid delay that is too large to represent as exceeding the caller's deadline or maximum-wait policy.
 
 Treat a valid server delay as the earliest time to retry, not a value to clamp down to a shorter client cap. The client can wait longer when its local backoff requires it. If the server delay exceeds the caller's deadline or local maximum wait policy, stop or durably reschedule instead of retrying early. Attempt caps still protect against a broken or malicious upstream.
 
-When no valid server delay exists, use capped exponential backoff with jitter. Jitter must be applied independently by callers so that a fleet does not wake at the same instant.
+When no valid server delay exists, use capped exponential backoff with independently sampled jitter. When a valid server delay exists, add bounded, independently sampled caller-specific jitter without scheduling before that lower bound. This prevents a fleet from waking at the same instant.
 
 ## Validate the Policy Under Failure
 
