@@ -72,7 +72,6 @@
 
 ## Backoff
 
-12. How Do You Make a Backoff Sleep Respect Cancellation, Shutdown, and Request Deadlines?
 13. How Do You Test Jittered Retry Logic Deterministically Without Slow or Flaky Tests?
 14. Which Retry Metrics and Trace Attributes Reveal Backoff Loops Before They Become an Outage?
 15. Should Backoff State Be Per Request, Per Host, or Shared Across a Client Fleet?
