@@ -8,7 +8,7 @@ Description: Combine in-process destroy, durable per-run state, ownership tags, 
 
 ---
 
-No `defer`, `t.Cleanup`, or CI finally block can guarantee cleanup after `SIGKILL`, runner loss, host failure, or a control-plane outage. They run only while some process is alive and able to authenticate.
+No `defer`, `t.Cleanup`, or CI finally block can guarantee cleanup after `SIGKILL`, runner loss, host failure, or a control-plane outage. In-process hooks require a live process; successful teardown also requires working credentials and a reachable control plane.
 
 A crash-resistant design therefore has two cleanup planes:
 
@@ -19,29 +19,37 @@ The first keeps feedback fast. The second is what handles the failures that made
 
 ## Register Destroy Before Apply
 
-The standard Terratest shape registers cleanup before provisioning:
+The current Terratest v1 shape registers cleanup before provisioning:
 
 ~~~go
 func TestService(t *testing.T) {
 	t.Parallel()
+	operationCtx, cancelOperations := context.WithTimeout(t.Context(), 30*time.Minute)
+	defer cancelOperations()
 
 	terraformOptions := terraform.WithDefaultRetryableErrors(t, &terraform.Options{
 		TerraformDir: "../examples/service",
 		Vars: map[string]interface{}{
 			"test_run_id": testRunID(t),
+			"expires_at":  testExpiry(t),
+			"repository":  testRepository(t),
 		},
 	})
 
-	defer terraform.Destroy(t, terraformOptions)
+	defer func() {
+		cleanupCtx, cancelCleanup := context.WithTimeout(context.Background(), 15*time.Minute)
+		defer cancelCleanup()
+		terraform.DestroyContext(t, cleanupCtx, terraformOptions)
+	}()
 
-	terraform.InitAndApply(t, terraformOptions)
-	// Assertions follow.
+	terraform.InitAndApplyContext(t, operationCtx, terraformOptions)
+	// Assertions use operationCtx or shorter derived contexts.
 }
 ~~~
 
-Registering the `defer` first handles assertion failures and many panics because Go unwinds the test function. `t.Cleanup` is another option and runs registered functions after the test and its subtests complete, in last-added, first-called order.
+Registering the `defer` first handles assertion failures and panics that unwind the test goroutine because Go runs deferred calls as the function exits. `t.Cleanup` is another option and runs registered functions after the test and its subtests complete, in last-added, first-called order.
 
-Neither mechanism runs after `os.Exit`, `SIGKILL`, runner termination, or machine loss. A test-wide timeout may also leave too little time for destroy. Set the CI and Go timeouts so the assertion budget expires before the cleanup budget.
+Neither mechanism runs after `os.Exit`, `SIGKILL`, runner termination, or machine loss. The `go test -timeout` flag is also a hard backstop: when it fires, the test binary panics from an alarm goroutine, so the active test's deferred and registered cleanup are not reliably run. Give assertions their own shorter deadline, reserve a bounded window for cleanup, and set the Go and CI hard timeouts to outlive both.
 
 ## Give Every Run a Durable Identity
 
@@ -52,11 +60,19 @@ variable "test_run_id" {
   type = string
 }
 
+variable "expires_at" {
+  type = string
+}
+
+variable "repository" {
+  type = string
+}
+
 locals {
   test_tags = {
-    ManagedBy = "terratest"
-    TestRun   = var.test_run_id
-    ExpiresAt = var.expires_at
+    ManagedBy  = "terratest"
+    TestRun    = var.test_run_id
+    ExpiresAt  = var.expires_at
     Repository = var.repository
   }
 }
@@ -72,13 +88,13 @@ Terraform state is the best teardown inventory after a successful state write. I
 
 For real-cloud suites, use one of these patterns:
 
-- a unique, encrypted remote backend key per test run with locking;
+- a unique remote backend state key or path per test run, using a backend with state-at-rest encryption and locking;
 - an encrypted short-lived CI artifact containing state and the exact Terraform configuration;
 - a durable worker whose workspace survives test-process failure.
 
 Never make concurrent tests share a state key. Backend locking prevents simultaneous writers to one state; it does not turn shared state into isolation.
 
-State contains sensitive values. Restrict access, encrypt it, set short retention, and never print or commit it. HashiCorp recommends a remote backend or HCP Terraform for collaboration and warns against storage without secure access control and locking.
+State can contain sensitive values. Restrict access, encrypt it, set short retention, and never write it to unprotected logs or commit it. HashiCorp recommends a remote backend or HCP Terraform for collaboration and warns against storage without secure access control and locking.
 
 ## Handle the Apply to State Gap
 
@@ -91,10 +107,10 @@ After an interrupted apply:
 3. inspect state with `terraform state list` or `terraform show`;
 4. query the cloud inventory by run tags and names;
 5. compare remote objects with state;
-6. import or remove objects only through a reviewed recovery procedure;
+6. import supported objects into the recovered state, or delete clearly owned unmanaged objects, only through a reviewed recovery procedure;
 7. destroy from the recovered state or use the janitor for clearly owned objects.
 
-Do not run `terraform destroy` from an empty directory and assume it can discover resources. Terraform destroys objects tracked in its state and configuration; it is not a general cloud garbage collector.
+Do not run `terraform destroy` from an empty directory and assume it can discover resources. Terraform uses its configuration and state to plan deletion of managed objects; it is not a general cloud garbage collector.
 
 ## Add an Independent Janitor
 
@@ -127,7 +143,7 @@ Least privilege applies to both creation and cleanup. The janitor may need broad
 
 ## Make Resources Easy to Delete
 
-Integration-test fixtures should avoid settings that obstruct teardown unless deletion protection itself is under test:
+Integration-test fixtures should avoid settings that obstruct teardown or leave effects beyond the test unless that behavior itself is under test:
 
 - deletion protection and termination prevention;
 - retention policies that outlive the test;
@@ -140,7 +156,7 @@ If a test must enable deletion protection, add an explicit teardown phase that d
 
 ## Separate Assertion and Cleanup Contexts
 
-The classic `github.com/gruntwork-io/terratest/modules/terraform` package uses `Destroy` and `InitAndApply` without context parameters, so bound them with the Go test and CI timeouts. If you deliberately pin the v2 beta module at `github.com/gruntwork-io/terratest/modules/terraform/v2`, its context-capable helpers can give cleanup a separate deadline. In that case, allocate a fresh bounded cleanup context:
+Terratest v1 at `github.com/gruntwork-io/terratest/modules/terraform` provides context-capable helpers. The older `Destroy` and `InitAndApply` wrappers remain for v1 compatibility but are deprecated. Give cleanup a separate deadline by allocating a fresh bounded context:
 
 ~~~go
 defer func() {
@@ -150,7 +166,7 @@ defer func() {
 }()
 ~~~
 
-The cleanup deadline must remain below the CI job's hard timeout. Avoid an unlimited background context. If credentials expire at the end of the main job, provision a separate cleanup job or lease credentials long enough for the documented teardown window.
+The cleanup deadline must fit within the remaining Go test and CI hard-timeout budgets. Avoid an unlimited background context. If credentials expire at the end of the main job, provision a separate cleanup job or lease credentials long enough for the documented teardown window.
 
 ## Make CI Cleanup Redundant
 
@@ -195,13 +211,13 @@ This turns cleanup from a best-effort code path into an observable reliability s
 ## Official Documentation
 
 - [Terratest quick start: register Terraform destroy before apply](https://terratest.gruntwork.io/docs/getting-started/quick-start/)
-- [Terratest classic Terraform helper API](https://pkg.go.dev/github.com/gruntwork-io/terratest/modules/terraform)
-- [Terratest v2 beta context-capable Terraform API](https://pkg.go.dev/github.com/gruntwork-io/terratest/modules/terraform/v2)
+- [Terratest v1 Terraform helper API](https://pkg.go.dev/github.com/gruntwork-io/terratest@v1.0.1/modules/terraform)
+- [Terratest v1 context-helper migration guide](https://terratest.gruntwork.io/docs/migrating-to-v1/overview/#migrating-to-the-context-variants)
 - [Go testing: Cleanup execution semantics](https://pkg.go.dev/testing)
 - [Terraform test command: cleanup attempts and dedicated accounts](https://developer.hashicorp.com/terraform/cli/commands/test)
 - [Terraform state storage and locking](https://developer.hashicorp.com/terraform/language/state/backends)
 - [Terraform state security and remote storage guidance](https://developer.hashicorp.com/terraform/language/state)
-- [Terratest test stages for durable local iteration](https://terratest.gruntwork.io/docs/testing-best-practices/iterating-locally-using-test-stages/)
+- [Terratest test stages for local iteration](https://terratest.gruntwork.io/docs/testing-best-practices/iterating-locally-using-test-stages/)
 
 ## Conclusion
 
