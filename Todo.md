@@ -72,7 +72,6 @@
 
 ## Backoff
 
-2. How Do You Choose the Initial Delay, Multiplier, and Cap for Exponential Backoff?
 3. Maximum Attempts or Maximum Elapsed Time: How Should a Retry Loop Stop?
 4. Should `Retry-After` Override Exponential Backoff—and What If the Header Is Invalid?
 5. HTTP 408, 409, 429, and 5xx: Which Responses Deserve a Backoff Retry?
