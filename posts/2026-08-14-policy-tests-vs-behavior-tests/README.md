@@ -43,7 +43,7 @@ Checkov-style static checks inspect configuration and graph relationships. They 
 - obvious public ingress or wildcard identity policies;
 - organization conventions that should apply to every repository.
 
-OPA and Sentinel can evaluate Terraform plan data after Terraform has resolved expressions and asked providers to plan. Plan policy can see proposed actions and many resulting values, so it fits rules such as:
+OPA and Sentinel can evaluate Terraform plan data after Terraform has evaluated the configuration as far as possible and asked providers to propose planned values. Plan policy can see proposed actions and many resulting values, so it fits rules such as:
 
 - replacement or deletion of protected resource categories;
 - a planned resource value after module composition;
@@ -102,12 +102,18 @@ import rego.v1
 
 deny contains message if {
   some change in input.resource_changes
+  change.mode == "managed"
   change.type == "example_ingress_rule"
   change.change.after.cidr == "0.0.0.0/0"
+  change.change.after.protocol == "tcp"
   change.change.after.port == 22
-  message := sprintf("%s exposes SSH publicly", [change.address])
+  message := sprintf("%s allows public TCP/22", [change.address])
 }
 ```
+
+`input.resource_changes` assumes that raw `terraform show -json` output is passed directly to OPA. HCP Terraform wraps the plan under `input.plan`, so use `input.plan.resource_changes` for the equivalent policy there.
+
+This compact rule handles only known `cidr`, `protocol`, and `port` values. A production policy must also inspect the corresponding paths in `change.change.after_unknown` and apply its documented deny, defer, or exception decision.
 
 Use a provider-specific resource type and schema in a real policy. The example is neutral so it does not imply a schema that every provider implements. Unit tests should cover create and update actions, nested modules, absent fields, unknown values, multiple violations, and resources outside the rule's scope.
 
