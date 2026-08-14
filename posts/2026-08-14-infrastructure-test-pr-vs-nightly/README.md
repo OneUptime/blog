@@ -114,7 +114,7 @@ A red nightly dashboard that nobody owns is delayed noise. Every scheduled scena
 
 When nightly finds a code regression, add or promote the smallest reliable reproducer to the pull-request lane. This shortens detection for the next occurrence.
 
-Scheduled workflows run against a named branch and commit. Record both. A failure on yesterday's default-branch commit should not be attributed automatically to the newest pull request.
+In GitHub Actions, a scheduled workflow runs on the latest commit on the default branch. Record that ref and commit, plus any different ref the job explicitly checks out. A failure on yesterday's default-branch commit should not be attributed automatically to the newest pull request.
 
 ## Treat Flakes as Failed Test Engineering
 
@@ -131,7 +131,7 @@ Classify the source:
 
 Automatic reruns should preserve the first failure and distinguish attempt results. A test that passes on retry is evidence of instability, not an unconditional green.
 
-Do not retry invalid plans, authorization denials, policy failures, or deterministic name collisions as though they were transient.
+Do not retry invalid plans, policy failures, or deterministic name collisions as though they were transient. Treat authorization denials as failures unless a documented IAM propagation window applies; when it does, use bounded polling.
 
 ## Coordinate Concurrency and Quotas Across Lanes
 
