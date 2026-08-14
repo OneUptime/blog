@@ -69,7 +69,6 @@
 
 ## Infrastructure Testing
 
-20. Which Infrastructure Tests Run on Every Pull Request—and Which Belong in a Nightly Suite?
 
 ## Backoff
 
