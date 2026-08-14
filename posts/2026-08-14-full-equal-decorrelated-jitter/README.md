@@ -12,7 +12,7 @@ Use full jitter as the default for a custom distributed-client retry loop unless
 
 Equal jitter preserves at least half of the exponential delay, which sounds conservative but can keep clients unnecessarily synchronized and delayed. Decorrelated jitter uses the previous sleep to vary the next range; it can reduce completion time in some workloads at the cost of more client work, more state, and a less predictable sequence. These are tradeoffs, not universal rankings for every service.
 
-Before implementing any of them, check the official SDK. AWS and Google Cloud client libraries already implement documented retry behavior for many service calls. Replacing it can create nested retries or discard service-specific error classification and retry quotas.
+Before implementing any of them, check the official SDK. AWS and Google Cloud client libraries already implement documented retry behavior for many service calls. Adding an outer retry loop can create nested retries; disabling or replacing SDK retries can discard service-specific error classification and retry quotas.
 
 ## Start With a Capped Exponential Window
 
@@ -71,7 +71,7 @@ In AWS's published optimistic-concurrency simulation, equal jitter took longer t
 
 ## Decorrelated Jitter
 
-A commonly cited decorrelated variant uses the previous sleep to choose the next one:
+Assuming `0 < initial <= cap`, a commonly cited decorrelated variant uses the previous sleep to choose the next one:
 
 ```text
 previous = initial
