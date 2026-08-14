@@ -69,7 +69,6 @@
 
 ## Infrastructure Testing
 
-14. How Should Terratest Share Expensive Fixtures Without Coupling Every Test?
 15. Should Infrastructure Tests Verify Resource Configuration or the Service’s Actual Behavior?
 16. How Do You Test a Terraform Change That Forces Resource Replacement Before It Reaches Production?
 17. Why Does `terraform test` Pass Locally but Fail in CI? Check Versions, Credentials, Regions, and Quotas
