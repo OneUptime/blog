@@ -72,7 +72,6 @@
 
 ## Backoff
 
-4. Should `Retry-After` Override Exponential Backoff—and What If the Header Is Invalid?
 5. HTTP 408, 409, 429, and 5xx: Which Responses Deserve a Backoff Retry?
 6. How Do You Retry a Timed-Out POST Without Creating Duplicate Side Effects?
 7. Why Is the Request Body Empty on the Second HTTP Retry—and How Do You Replay It Safely?
