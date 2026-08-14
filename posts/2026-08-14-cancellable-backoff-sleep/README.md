@@ -46,38 +46,83 @@ func waitBackoff(ctx context.Context, delay time.Duration) error {
 
 	select {
 	case <-timer.C:
-		return nil
+		return ctx.Err()
 	case <-ctx.Done():
 		return ctx.Err()
 	}
 }
 ~~~
 
-This creates a new timer for one wait and does not reuse or reset it, avoiding version-sensitive timer-reset complexity. <code>Stop</code> prevents an unneeded active timer after cancellation. Current Go timer semantics are documented by the <code>time</code> package; consult the deployed Go version when maintaining older timer-reuse code.
+This creates a new timer for one wait and does not reuse or reset it, avoiding version-sensitive timer-reset complexity. <code>Stop</code> prevents an unneeded active timer after cancellation. Current Go timer semantics are documented by the <code>time</code> package. From Go 1.23 through Go 1.26, compatibility behavior can also depend on the main module's <code>go</code> directive and <code>GODEBUG=asynctimerchan</code>; consult those settings when maintaining timer-reuse code.
 
-After the timer fires, check cancellation again before sending if the attempt setup is not itself cancellation-aware. Cancellation and timer readiness can occur nearly together, and a final <code>ctx.Err()</code> check makes the preference to stop explicit.
+The timer branch checks cancellation again before returning. Cancellation and timer readiness can occur nearly together, and the final <code>ctx.Err()</code> check makes the preference to stop explicit. The next attempt must still use the same context because cancellation can occur after any standalone check.
 
 ## Refuse Sleeps That Outlive the Deadline
 
-An interruptible timer will eventually wake on deadline cancellation, but you can make the decision clearer before allocating it:
+An interruptible wait will wake on deadline cancellation, but you can make the decision clearer before allocating its timer:
 
 ~~~go
+var ErrInsufficientDeadline = errors.New("insufficient time remaining before deadline")
+
 func waitWithinDeadline(
 	ctx context.Context,
 	delay time.Duration,
 	minAttempt time.Duration,
 ) error {
-	if deadline, ok := ctx.Deadline(); ok {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if delay < 0 {
+		delay = 0
+	}
+	if minAttempt < 0 {
+		minAttempt = 0
+	}
+
+	deadline, hasDeadline := ctx.Deadline()
+	if hasDeadline {
 		remaining := time.Until(deadline)
-		if delay+minAttempt > remaining {
+		if remaining <= 0 {
+			if err := ctx.Err(); err != nil {
+				return err
+			}
 			return context.DeadlineExceeded
 		}
+		if delay > remaining ||
+			minAttempt > remaining-delay {
+			if err := ctx.Err(); err != nil {
+				return err
+			}
+			return ErrInsufficientDeadline
+		}
 	}
-	return waitBackoff(ctx, delay)
+
+	if err := waitBackoff(ctx, delay); err != nil {
+		return err
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if hasDeadline {
+		remaining := time.Until(deadline)
+		if remaining <= 0 {
+			if err := ctx.Err(); err != nil {
+				return err
+			}
+			return context.DeadlineExceeded
+		}
+		if minAttempt > remaining {
+			if err := ctx.Err(); err != nil {
+				return err
+			}
+			return ErrInsufficientDeadline
+		}
+	}
+	return nil
 }
 ~~~
 
-Use overflow-safe duration arithmetic in production if delays can approach numeric limits. The <code>minAttempt</code> reserve prevents sleeping until the deadline and then starting an attempt that cannot plausibly finish. A server-directed delay is subject to the same check.
+The helper treats negative durations as zero, and the split comparisons avoid <code>time.Duration</code> addition overflow. It checks the <code>minAttempt</code> reserve before and after waiting, which helps avoid starting an attempt that cannot plausibly finish. <code>ErrInsufficientDeadline</code> distinguishes that policy refusal from a context deadline that has actually expired. A server-directed delay is subject to the same check.
 
 Use duration and deadline operations that preserve the runtime's monotonic component. Wall-clock timestamps can jump because of synchronization or manual changes and are not appropriate for measuring elapsed backoff.
 
@@ -127,6 +172,7 @@ Do not wrap cancellation into a generic retry-exhausted error. Callers need to d
 
 - explicit caller cancellation;
 - overall deadline expiry;
+- insufficient remaining deadline budget;
 - process shutdown;
 - maximum attempts;
 - non-retryable failure;
