@@ -127,7 +127,7 @@ Inspect quota usage before apply and after destroy. CI may run in a newer accoun
 
 Local runs can appear reliable because a human pauses between commands. CI executes immediately. If a cloud service documents asynchronous convergence, poll the specific ready condition with a monotonic overall deadline, a bounded per-attempt timeout, and jitter.
 
-Do not retry authorization errors, invalid configuration, or name collisions as if they were eventual consistency. Log the last observed state and error class. A fixed sleep makes fast runs slow and still fails when convergence takes longer than the guess.
+Do not blindly retry authorization errors, invalid configuration, or name collisions. Retry an authorization error or name collision only when the service documents that exact condition as transient, such as after an access-policy change or resource deletion; otherwise fail fast. Log the last observed state and error class. A fixed sleep makes fast runs slow and still fails when convergence takes longer than the guess.
 
 For Go-based infrastructure tests, disable successful test-result caching for the live suite when appropriate, for example with `-count=1`. Terratest's official guidance warns that cached success does not retest current infrastructure.
 
