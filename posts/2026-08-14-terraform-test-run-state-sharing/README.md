@@ -185,7 +185,7 @@ Always combine state isolation with:
 
 - a dedicated account or project;
 - unique run-scoped resource names;
-- ownership and expiration tags;
+- ownership and expiration tags where supported;
 - a cleanup identity and independent janitor;
 - no production remote-state write permission.
 
@@ -219,7 +219,7 @@ test {
 
 Terraform uses references between run blocks and state relationships to determine eligible parallel work. Do not enable parallel mode and assume source order still provides setup ordering. Express value dependencies with `run.<name>.<output>` references and keep runs that mutate one state logically serialized.
 
-Even distinct state keys can collide in the cloud. Generate unique names, state paths, CIDRs where required, and quota budgets per scenario before increasing concurrency.
+Even distinct state keys can collide in the cloud. Generate unique resource names, storage paths, CIDRs where required, and quota budgets per scenario before increasing concurrency.
 
 ## Plan Cleanup With Every State Boundary
 
@@ -232,7 +232,7 @@ After a test file completes, Terraform attempts to destroy remaining infrastruct
 - an alternate module no longer contains the provider configuration needed for destroy;
 - the cloud API is eventually consistent.
 
-Do not use shared state as a cleanup guarantee. Tag every applied resource so a separate scheduled janitor can discover leftovers without relying on an in-memory state that vanished with the process.
+Do not use shared state as a cleanup guarantee. Tag every applied resource that supports tags, and configure a separate scheduled janitor with provider-specific discovery rules for resources that do not, so cleanup does not rely on an in-memory state that vanished with the process.
 
 ## State Boundary Checklist
 
