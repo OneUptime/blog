@@ -23,7 +23,7 @@ Look for:
 - a FIFO message group whose later messages are not delivered;
 - immediate requeue cycles with high CPU and broker traffic.
 
-Do not identify a poison message from one failure. A dependency outage can make every valid message fail. Group failures by bounded reason and dependency, then compare one message's history with the fleet.
+Do not identify a poison message from one failure unless the failure is conclusively permanent. A dependency outage can make every valid message fail. Group failures by bounded reason and dependency, then compare one message's history with the fleet.
 
 Keep payloads out of ordinary logs. Record a message ID, schema version, handler version, tenant cohort, first-seen time, attempt count, and low-cardinality failure class. Put sensitive payload inspection behind the DLQ's access controls.
 
@@ -39,7 +39,7 @@ Use three outcomes:
 
 Unknown internal errors can receive a small bounded retry allowance because a deployment or transient runtime problem may clear. They must not retry forever.
 
-If the handler partially committed, retry classification also depends on idempotency. The queue's at-least-once delivery means duplicates can occur even without an application retry loop. Give the business operation a stable identity and make its effects idempotent or deduplicated.
+If the handler partially committed, retry classification also depends on idempotency. With at-least-once delivery, duplicates can occur even without an application retry loop. Give the business operation a stable identity and make its effects idempotent or deduplicated.
 
 ## Bound Attempts and Elapsed Age
 
@@ -53,7 +53,7 @@ retry only when:
   AND retry budget permits another attempt
 ~~~
 
-Prefer the broker's authoritative delivery count when it exists. If the application republishes into retry queues, carry an immutable original message ID, <code>first_seen_at</code>, and increasing attempt number. Do not trust producers to set arbitrary internal retry metadata without validation.
+Prefer a broker-maintained delivery or receive count when its semantics match the retry policy. If the application republishes into retry queues, carry an immutable original message ID, <code>first_seen_at</code>, and increasing attempt number. Do not trust producers to set arbitrary internal retry metadata without validation.
 
 Choose limits from recovery data and business freshness. A webhook might be valuable for hours; an inventory reservation may become harmful after its client deadline expires.
 
@@ -76,9 +76,9 @@ In Amazon SQS, a source queue redrive policy names a DLQ and <code>maxReceiveCou
 
 SQS visibility timeout hides a received message while it is processed. If it is not deleted, it becomes visible again and can be received again. The service is at-least-once, so duplicate delivery remains possible even during the visibility window.
 
-For FIFO queues, one in-flight message blocks later messages in the same message group. Moving a poison message to a DLQ can unblock the group, but it removes that item from the original sequence. AWS cautions against a DLQ when an application must preserve exact FIFO order without interruption. Decide whether quarantine or complete-order halt is the correct business behavior.
+For FIFO queues, a receive can return multiple messages from one group, but while those messages remain in flight SQS does not return more messages from that group. Moving a poison message to a DLQ can unblock the group, but it removes that item from the original sequence. AWS cautions against a DLQ when an application must preserve exact FIFO order without interruption. Decide whether quarantine or complete-order halt is the correct business behavior.
 
-In RabbitMQ, dead-letter exchanges can receive messages rejected without requeue, expired by TTL, dropped because of a length limit, or returned beyond a quorum queue delivery limit. Configure DLX behavior with policies where possible. RabbitMQ also documents dead-letter cycles and safety differences; quorum queues can provide at-least-once dead-lettering when configured appropriately.
+In RabbitMQ, dead-letter exchanges can receive messages rejected without requeue, expired by message TTL, dropped because of a length limit, or returned beyond a quorum queue delivery limit. In RabbitMQ 4.3, quorum queue delivery limits use <code>delivery-count</code>; AMQP 0.9.1 <code>basic.nack</code> requeues do not increase that count, so that path still needs an application-level attempt or age bound. Configure DLX behavior with policies where possible. RabbitMQ also documents dead-letter cycles and safety differences; quorum queues can provide at-least-once dead-lettering when configured appropriately.
 
 ## Preserve a Diagnostic Envelope
 
@@ -113,7 +113,7 @@ Before redrive:
 6. watch normal queue age, failures, and dependency saturation;
 7. stop if the same failure returns.
 
-Amazon SQS supports controlled DLQ redrive velocity and recommends starting slowly to avoid overwhelming the destination. Redrive does not transform messages, so messages requiring schema repair need a separate reviewed remediation pipeline.
+Amazon SQS supports controlled DLQ redrive velocity and recommends starting slowly to avoid overwhelming the destination. Amazon SQS does not support filtering or modifying messages during redrive; redriven messages are treated as new and receive a new message ID and enqueue time. Messages requiring schema repair need a separate reviewed remediation pipeline.
 
 Never bulk redrive because an alert is inconvenient. A DLQ full of permanently invalid events will simply reproduce the outage.
 
@@ -130,7 +130,7 @@ Test:
 - redrive rate limiting protects the recovered consumer;
 - DLQ access and retention meet data policy.
 
-The publish-and-ack transition needs broker-supported dead lettering, a transaction, publisher confirmation, or another recoverable protocol. A naive application that publishes to a DLQ and then crashes before acknowledging can duplicate; acknowledging first can lose the message.
+The publish-and-ack transition needs broker-supported at-least-once dead lettering or an application protocol that verifies successful routing to the DLQ and waits for publisher confirmation before acknowledging the source message. The application-managed path remains at-least-once: a crash between confirmation and acknowledgement can duplicate the message, while acknowledging first can lose it.
 
 ## Official Documentation
 
