@@ -18,12 +18,12 @@ Leftovers cause more than cost:
 
 - a globally unique bucket or DNS name makes the next create fail;
 - a stale remote state key lets a new run update or destroy old resources;
-- a locked state blocks all later plans;
+- a locked state blocks later operations that need the same lock;
 - a subnet, public IP, network interface, or cluster consumes quota;
 - an asynchronous deletion leaves the name unavailable after destroy returns;
 - a stale endpoint answers a behavior probe intended for the new deployment;
 - a shared queue or database contains previous test data;
-- an orphaned policy grants access that makes a negative security test pass incorrectly.
+- an orphaned policy grants access that makes a negative security test fail misleadingly.
 
 Do not respond by making every test accept existing resources. That erases ownership and can turn a test into an updater for unknown infrastructure.
 
@@ -34,11 +34,13 @@ Use a stable tuple such as repository, suite, CI run ID, attempt, and test name.
 ```hcl
 locals {
   ownership_tags = {
-    managed-by = "infrastructure-test"
-    repository = var.repository
-    suite      = var.suite
-    run-id     = var.run_id
-    expires-at = var.expires_at
+    managed-by  = "infrastructure-test"
+    repository  = var.repository
+    suite       = var.suite
+    run-id      = var.run_id
+    run-attempt = var.run_attempt
+    test-name   = var.test_name
+    expires-at  = var.expires_at
   }
 }
 ```
@@ -54,7 +56,7 @@ Each concurrent run needs its own Terraform working directory and backend key or
 A backend key can include the run identity:
 
 ```text
-infrastructure-tests/<repository>/<suite>/<run-id>/terraform.tfstate
+infrastructure-tests/<repository>/<suite>/<run-id>/<run-attempt>/<test-name>/terraform.tfstate
 ```
 
 Sanitize every component and never allow user input to escape the intended prefix. Configure the backend through trusted automation, not unreviewed pull-request code.
@@ -71,15 +73,17 @@ In Go and Terratest, establish cleanup directly after creating the options and b
 func TestService(t *testing.T) {
 	opts := newTerraformOptions(t)
 	t.Cleanup(func() {
-		destroyAndReport(t, opts)
+		cleanupCtx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
+		defer cancel()
+		destroyAndReport(t, cleanupCtx, opts)
 	})
 
-	terraform.InitAndApply(t, opts)
+	terraform.InitAndApplyContext(t, t.Context(), opts)
 	assertServiceBehavior(t, opts)
 }
 ```
 
-Terratest's official guidance commonly shows `defer terraform.Destroy(t, terraformOptions)` immediately after options are created. `T.Cleanup` gives cleanup an explicit test lifecycle and also applies after subtests. Whichever mechanism you use, only one owner should destroy a given state.
+Terratest's current guidance shows `ctx := t.Context()` followed by `defer terraform.DestroyContext(t, ctx, terraformOptions)` before apply. `T.Cleanup` gives cleanup an explicit test lifecycle and runs after the test and all its subtests complete. A cleanup callback that uses Terratest's context-aware APIs must create its own bounded context, as above, because Go cancels `t.Context()` just before registered cleanup functions run. Whichever mechanism you use, only one owner should destroy a given state.
 
 Cleanup must attempt all independent operations and report all failures. A helper that stops at the first failed deletion can strand later dependencies. Preserve enough state and identifiers in access-controlled storage for a recovery job, but never publish state as a general CI artifact because it can contain sensitive values.
 
@@ -109,7 +113,7 @@ Use a two-phase design:
 
 Start in report-only mode. Maintain an explicit protected baseline and test the selector against it. Require a grace period after expiry to cover clock skew and long-running approved tests. Keep an audit record of every deletion target and outcome.
 
-The reconciler should prefer the original Terraform state and provider version. Dependency-aware destroy is safer than deleting resources in an arbitrary cloud inventory order. Service-specific cleanup is the recovery path when state is missing or corrupt, not the default.
+The reconciler should prefer the original Terraform state plus a trusted copy of the matching configuration and dependency lock file so it can reproduce the provider selections. Dependency-aware destroy is safer than deleting resources in an arbitrary cloud inventory order. Service-specific cleanup is the recovery path when state is missing or corrupt, not the default.
 
 ## Do Not Confuse State Removal With Resource Deletion
 
@@ -117,7 +121,7 @@ The reconciler should prefer the original Terraform state and provider version. 
 
 Use state commands only with a backup and a documented recovery objective:
 
-- `state list` and `state show` help identify tracked objects but can expose sensitive attributes;
+- `state list` shows tracked resource addresses; `state show` displays one resource's stored attributes, so treat its output as potentially sensitive;
 - `state pull` contains the full state and must be protected;
 - `import` can restore ownership of an existing object before normal destroy;
 - `force-unlock` addresses a verified stale lock, not an unknown apply.
