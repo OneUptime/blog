@@ -66,7 +66,6 @@
 
 ## InfiniBand
 
-19. Why Can a Kubernetes Pod See `/dev/infiniband` but UCX Still Fail GID Resolution?
 20. When Does GPUDirect RDMA Fail Because of PCIe ACS, IOMMU, or GPU–HCA Topology?
 
 ## Infrastructure Testing
