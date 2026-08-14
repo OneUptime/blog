@@ -10,7 +10,7 @@ Description: Reduce real-cloud test time and spend by moving cheap checks earlie
 
 Real-cloud infrastructure tests are slow and expensive when every assertion begins by creating a full production-shaped environment. The answer is not to remove the live tests that reveal IAM, networking, provider, and service behavior. It is to make each live test pay for a specific uncertainty that cheaper tests cannot answer.
 
-Terraform supports plan-only tests and provider mocks as well as apply-based tests that create real infrastructure. Use those layers deliberately. A fast suite proves expression logic and plan invariants without a cloud API; a small live suite proves the contracts that only the cloud can settle.
+Terraform supports plan-only tests and provider mocks as well as apply-based tests that create real infrastructure. Use those layers deliberately. A fast suite uses plan runs to avoid resource creation and provider mocks to avoid cloud API calls while proving expression logic and plan invariants; a small live suite proves the contracts that only the cloud can settle.
 
 ## Start With a Costed Test Inventory
 
@@ -27,7 +27,7 @@ Classify each assertion by the earliest layer that can answer it:
 
 | Question | Cheapest credible layer |
 | --- | --- |
-| Does variable validation reject bad input? | `terraform test` with `command = plan` |
+| Does variable validation reject bad input? | `terraform test` with `command = plan` and `expect_failures` |
 | Does conditional HCL create the expected resource? | Plan assertion or plan JSON policy |
 | Does a computed provider value drive the right output? | Mock provider with explicit override data |
 | Can the provider create and update the resource? | Small real-cloud apply test |
@@ -134,11 +134,11 @@ Provider downloads and Go modules are good cache candidates when integrity is ve
 
 Never cache mutable Terraform state as a performance optimization. State is the ownership record for a particular deployment. Reusing it across concurrent or unrelated runs creates collisions and can cause one test to update or destroy another test's resources.
 
-Likewise, do not reuse a saved plan after configuration, variables, state, provider, or credentials have changed. A saved plan is an execution artifact for one evaluated context, not a generic compilation cache.
+Likewise, do not reuse a saved plan if it no longer represents the intended configuration, variables, provider selections, or state. Credentials may rotate between plan and apply, but they must still target the intended environment. A saved plan is an execution artifact for one evaluated context, not a generic compilation cache.
 
 ## Make Cost and Cleanup Part of the Result
 
-Attach repository, suite, run ID, owner, and expiry tags to every supported resource. Activate cost-allocation tags before expecting them in billing reports. Then publish a per-suite dashboard with:
+Attach repository, suite, run ID, owner, and expiry tags to every supported resource. On AWS, activate user-defined cost allocation tag keys before expecting them in billing reports. Then publish a per-suite dashboard with:
 
 - p50 and p95 total duration;
 - create and destroy duration;
@@ -148,7 +148,7 @@ Attach repository, suite, run ID, owner, and expiry tags to every supported reso
 - resources found after expiry;
 - failures caused by fixtures versus the module under test.
 
-Terraform tries to clean up resources created by `terraform test`, and Terratest recommends placing `terraform.Destroy` in a Go `defer` immediately after options are created. Neither mechanism survives every runner failure. Run a scheduled, independently credentialed janitor that first reports expired resources and deletes only when ownership is unambiguous.
+Terraform tries to clean up resources created by `terraform test`, and Terratest recommends deferring `terraform.DestroyContext` with the test context and options as soon as they are available. Neither mechanism survives every runner failure. Run a scheduled, independently credentialed janitor that first reports expired resources and deletes only when ownership is unambiguous.
 
 Optimize from these numbers. Deleting a low-value scenario, moving an assertion to plan time, reducing a resource shape, or consolidating immutable setup can each help. Increasing parallelism helps only when external quotas and cleanup capacity support it.
 
