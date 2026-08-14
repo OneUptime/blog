@@ -26,7 +26,7 @@ func (p Policy) Delay(attempt int, unit float64) time.Duration {
 	if attempt < 0 {
 		attempt = 0
 	}
-	if unit < 0 {
+	if math.IsNaN(unit) || unit < 0 {
 		unit = 0
 	}
 	if unit >= 1 {
@@ -75,7 +75,7 @@ func (s *RecordingSleeper) Wait(
 }
 ~~~
 
-The retry loop receives a <code>Sleeper</code> and a draw function. A test can assert the exact recorded delay sequence and return <code>context.Canceled</code> on a chosen wait. Production uses a timer that selects between timer completion and <code>ctx.Done()</code>.
+The retry loop receives a <code>Sleeper</code> and a draw function. A test can assert the exact recorded delay sequence. A sequence-aware sleeper can return <code>context.Canceled</code> on a chosen wait. Production uses a timer that selects between timer completion and <code>ctx.Done()</code>.
 
 Do not replace only <code>time.Sleep</code> while the policy still calls <code>time.Now</code> directly. Deadline tests also need an injected monotonic clock or a context/fake-time facility that both the loop and sleeper share.
 
@@ -90,7 +90,7 @@ For jitter, stable invariants matter more than the exact output of a library RNG
 - a deadline can reject a delay even when it is in the jitter range;
 - duration arithmetic does not overflow for a very large attempt number.
 
-A fixed seed can make a pseudo-random sequence reproducible within the implementation you selected. Go's <code>math/rand/v2</code> supports explicit sources such as PCG, but tests should not assume that top-level random functions or future algorithm changes preserve a sequence unless that guarantee belongs to your own abstraction.
+A fixed seed can make a pseudo-random sequence reproducible for the implementation you select. Go's <code>math/rand/v2</code> supports explicit sources such as PCG, and its seeded standard-library streams are kept stable across Go releases. Its auto-seeded top-level functions guarantee no fixed sequence, so policy tests should still inject draws instead of depending on those functions.
 
 Use a sequence stub when exact draws are part of the scenario:
 
@@ -101,6 +101,9 @@ type DrawSequence struct {
 }
 
 func (d *DrawSequence) Next() float64 {
+	if d.index >= len(d.Values) {
+		panic("DrawSequence: unexpected extra draw")
+	}
 	value := d.Values[d.index]
 	d.index++
 	return value
@@ -111,7 +114,7 @@ Fail the test clearly when the loop asks for more draws than supplied. An unexpe
 
 ## Drive a Fake Clock Explicitly
 
-A fake clock should not advance merely because code reads it. Advance only when the test requests or when the fake sleeper models completion. This lets the test describe:
+A manually controlled fake clock should not advance merely because code reads it. Advance only when the test requests or when the fake sleeper models completion. This lets the test describe:
 
 ~~~text
 t=0       first attempt fails
@@ -155,7 +158,7 @@ A good suite includes:
 
 - response body closed before wait;
 - concurrency permit released between attempts;
-- timer canceled when the context ends;
+- timer stopped if context cancellation wins before the delay elapses;
 - final error retains the last cause and attempt history.
 
 Table-driven tests make the distinction between total attempts and retries explicit. Name fields <code>maxAttempts</code> or <code>maxRetries</code> accurately and assert backend invocation count.
@@ -166,7 +169,7 @@ Policy unit tests use controlled draws. A separate statistical smoke test can sa
 
 Random sources used concurrently need the synchronization documented by their implementation. The Go <code>math/rand/v2</code> package notes that a <code>Source</code> or <code>Rand</code> is normally for one goroutine at a time, while top-level functions are safe for concurrent use. Wrap or partition an injected source accordingly.
 
-Never seed every production replica with the same constant. That creates repeatable, synchronized jitter after a fleet restart. Deterministic seeding belongs in tests, not in the deployed policy.
+Never give every production replica the same fixed seed. It gives them identical jitter sequences and can synchronize retries when their draw schedules align. Use a shared fixed seed only in tests; deployed replicas should use the auto-seeded top-level functions or distinct per-replica seeds.
 
 ## Official Documentation
 
