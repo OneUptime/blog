@@ -69,7 +69,6 @@
 
 ## Infrastructure Testing
 
-3. How Do `terraform test` Run Blocks Share State—and When Should You Isolate Them?
 4. How Do You Test Terraform Data Sources and Computed Attributes with `mock_provider` and Overrides?
 5. Why Do Terratest Suites Flake on Eventually Consistent Cloud APIs—and How Should You Retry Assertions?
 6. How Do You Guarantee Cleanup When an Infrastructure Test Crashes Mid-Apply?
