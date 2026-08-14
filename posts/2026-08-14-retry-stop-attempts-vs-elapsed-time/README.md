@@ -24,7 +24,7 @@ Case C: valid Retry-After asks for 60 s before the next request
 
 If a user-facing request has a five-second objective, a fixed three-attempt loop can violate it in cases B and C. A maximum elapsed deadline makes the caller contract explicit regardless of how attempt latency and server hints vary.
 
-An attempt-count setting is also easy to misunderstand. Some libraries count retries after the initial request, while AWS's documented `max_attempts` setting counts total attempts including the initial request. Name metrics and configuration precisely:
+An attempt-count setting is also easy to misunderstand. Some libraries count retries after the initial request. AWS's shared-configuration `max_attempts` setting and `AWS_MAX_ATTEMPTS` environment variable count total attempts including the initial request, although language-specific in-code APIs can differ. Name metrics and configuration precisely:
 
 ```text
 attempt 1 = initial request
@@ -44,7 +44,7 @@ An attempt ceiling protects:
 - client CPU, sockets, and connection pools;
 - billing for per-call services;
 - logs and traces from unbounded repetition;
-- non-idempotent operations from excessive duplicate risk;
+- against unbounded duplicate attempts, without making a non-idempotent operation safe to retry;
 - a faulty clock, timer, or backoff configuration.
 
 AWS Well-Architected guidance recommends limiting retries with a maximum retry value or elapsed time. In practice, combining them provides two independent bounds.
@@ -63,20 +63,24 @@ The three boundaries answer different questions:
 
 The effective attempt timeout should not exceed the remaining overall budget. Before an attempt starts, reserve enough time to return a useful error and release resources.
 
-gRPC's deadline guidance similarly treats a deadline as the point after which a client is unwilling to wait and notes that clients do not set one by default. Protocol and library defaults vary, so pass the caller deadline explicitly through nested calls where supported.
+gRPC's deadline guidance similarly treats a deadline as the point after which a client is unwilling to wait and notes that clients do not set one by default. Protocol and library defaults vary, so propagate the caller deadline through nested calls. Depending on the implementation, propagation may be automatic or require explicit enabling or handling.
 
 ## Check the Budget Before Sleeping and Before Calling
 
 A correct loop evaluates the remaining budget twice:
 
 ```text
+stop if deadline or cancellation fired
+stop if minimum useful attempt plus return margin cannot fit deadline
+set attempt timeout to min(configured timeout, remaining budget minus margin)
 send initial attempt
 while failure is retryable:
     stop if attempt ceiling reached
     compute candidate delay
-    stop if delay plus minimum useful attempt cannot fit deadline
+    stop if delay plus minimum useful attempt plus return margin cannot fit deadline
     wait with cancellation
     stop if deadline or cancellation fired
+    stop if minimum useful attempt plus return margin cannot fit deadline
     set attempt timeout to min(configured timeout, remaining budget minus margin)
     send next attempt
 ```
@@ -142,7 +146,7 @@ If an application retries three times, a service mesh retries three times, and a
 
 Choose one retry owner when practical. If layers must retry, pass an overall deadline and attempt metadata, use small budgets at inner layers, and observe total downstream attempts per original request. A maximum at each layer does not by itself bound the entire call graph tightly enough.
 
-AWS Well-Architected guidance warns against retries at multiple application layers for this reason. The AWS SDK standard behavior also uses a retry quota so a client fails fast when its retry tokens are exhausted.
+AWS Well-Architected guidance warns against retries at multiple application layers for this reason. The AWS SDK `standard` retry mode also uses a retry quota so a client normally stops retrying when its retry tokens are exhausted.
 
 ## Preserve the Final Failure and Stop Reason
 
@@ -161,7 +165,7 @@ last_server_retry_after_ms: 2000
 
 Avoid embedding secrets, full URLs with credentials, request bodies, or every raw response. Keep an attempt history in trace events when needed and prevent every layer from logging the same failure as a new error.
 
-Distinguish stop reasons such as non-retryable, attempt limit, elapsed deadline, caller cancellation, retry quota exhausted, invalid server hint, and insufficient time for next attempt.
+Distinguish stop reasons such as non-retryable, attempt limit, elapsed deadline, caller cancellation, retry quota exhausted, and insufficient time for next attempt.
 
 ## Test With Virtual Time
 
