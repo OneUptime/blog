@@ -111,14 +111,14 @@ Amazon SQS offers several distinct mechanisms:
 - a per-message timer hides a newly sent standard-queue message for up to 15 minutes;
 - FIFO queues do not support individual message timers;
 - a queue-level delay applies to messages sent to that queue;
-- changing visibility delays redelivery of a message already received, up to the documented visibility limit;
+- extending a received message's visibility timeout postpones its normal reappearance, for at most 12 hours from the original <code>ReceiveMessage</code> request;
 - EventBridge Scheduler is the recommended AWS option for more advanced or longer scheduling.
 
-Changing SQS visibility keeps the message in flight. In-flight quotas still matter, and a FIFO message blocks later messages with the same group ID. It can be reasonable for short processing extensions, but it is not a free long-term delayed queue.
+Extending SQS visibility keeps the message in flight. In-flight quotas still matter, and while messages from a FIFO message group are in flight, SQS does not return additional messages from that group in subsequent receive calls. It can be reasonable for short processing extensions, but it is not a free long-term delayed queue.
 
 Azure Service Bus scheduled messages do not become active in the queue until their scheduled enqueue time. While a message remains scheduled, the sequence number returned by the scheduling API can be used to request cancellation. Activation and cancellation are not mutually locked, however, so cancellation close to the due time can race and the message can still become active. On activation it is appended as newly enqueued work with a new sequence number, so design ordering and idempotency accordingly.
 
-RabbitMQ can combine message TTL with dead-letter routing to create retry queues, but expiration and queue-head behavior require care. Per-message TTL can leave expired messages behind non-expired messages until they reach the head, and dead-letter routing has documented safety and cycle considerations.
+RabbitMQ 4.3 and later quorum queues support native delayed retry with linear backoff. Combining message TTL with dead-letter routing remains another way to create retry queues, but expiration and queue-head behavior require care: per-message TTL can leave expired messages behind non-expired messages until they reach the head. Default dead-lettering uses at-most-once forwarding and can lose a message if its target is unavailable; source quorum queues support opt-in at-least-once dead-lettering, which can create target duplicates while retrying. RabbitMQ detects a dead-letter cycle and drops the message if no rejection occurred anywhere in the cycle.
 
 Never assume a generic queue API supports an arbitrary per-message due time. Use the exact limits and ordering contract of the deployed broker.
 
@@ -182,6 +182,7 @@ Verify no permanent loss, bounded duplicates, stable attempt history, correct te
 - [Amazon SQS message timers](https://docs.aws.amazon.com/AWSSimpleQueueService/latest/SQSDeveloperGuide/sqs-message-timers.html)
 - [Amazon SQS visibility timeout](https://docs.aws.amazon.com/AWSSimpleQueueService/latest/SQSDeveloperGuide/sqs-visibility-timeout.html)
 - [Azure Service Bus message scheduling](https://learn.microsoft.com/en-us/azure/service-bus-messaging/message-sequencing)
+- [RabbitMQ quorum queues and delayed retry](https://www.rabbitmq.com/docs/quorum-queues#delayed-retry)
 - [RabbitMQ time-to-live](https://www.rabbitmq.com/docs/ttl)
 - [RabbitMQ dead-letter exchanges](https://www.rabbitmq.com/docs/dlx)
 
