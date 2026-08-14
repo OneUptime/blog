@@ -72,7 +72,6 @@
 
 ## Backoff
 
-11. What Does gRPC Retry Pushback Mean, and How Should Clients Combine It with Backoff?
 12. How Do You Make a Backoff Sleep Respect Cancellation, Shutdown, and Request Deadlines?
 13. How Do You Test Jittered Retry Logic Deterministically Without Slow or Flaky Tests?
 14. Which Retry Metrics and Trace Attributes Reveal Backoff Loops Before They Become an Outage?
