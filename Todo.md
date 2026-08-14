@@ -69,7 +69,6 @@
 
 ## Infrastructure Testing
 
-9. How Do You Keep Real-Cloud Infrastructure Tests Fast and Affordable?
 10. How Do You Test a Terraform Module Across Multiple Terraform and Provider Versions?
 11. How Can You Assert Terraform Plan JSON Without Writing Brittle Snapshot Tests?
 12. Policy Tests vs Behavior Tests: Should OPA, Checkov, or Terratest Enforce This Infrastructure Rule?
