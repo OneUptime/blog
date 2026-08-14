@@ -49,9 +49,9 @@ Measure separate failure classes:
 - lock contention may clear near the observed critical-section duration;
 - a batch dependency may not benefit from subsecond attempts at all.
 
-Use latency and incident data to estimate the distribution of transient recovery. Then simulate the fleet, because a delay that is safe for one client can be destructive for ten thousand clients. Full jitter allows sleeps near zero, so if an immediate retry is unacceptable, enforce a protocol minimum or choose an initial window large enough that the population-level early load remains safe.
+Use latency and incident data to estimate the distribution of transient recovery. Then simulate the fleet, because a delay that is safe for one client can be destructive for ten thousand clients. Full jitter allows sleeps near zero. If any individual immediate retry is unacceptable, enforce a protocol minimum. Otherwise, choose an initial window large enough that the population-level early load remains safe.
 
-Do not derive the initial delay from the normal p99 request latency alone. Request latency tells you when an attempt should time out; it does not necessarily tell you when the dependency will recover after overload or failover.
+Do not derive the initial delay from the normal p99 request latency alone. Healthy request latency helps you choose when an attempt should time out; it does not necessarily tell you when the dependency will recover after overload or failover.
 
 ## Choose the Multiplier From Desired Load Decay
 
@@ -61,7 +61,7 @@ The multiplier controls how rapidly retry frequency falls while failures persist
 - A multiplier of two doubles each ceiling and is a common starting point, not a law.
 - A larger multiplier sheds load faster but can make a recovered service wait longer for clients to return.
 
-With no cap and full jitter, expected sleep ceilings grow geometrically. For multiplier two, the expected sleeps are approximately half of `initial`, `initial`, `2 * initial`, and so on. Attempt duration must be added separately.
+With no cap and full jitter, expected sleeps form a geometric sequence. For multiplier two, the expected sleeps are approximately half of `initial`, `initial`, `2 * initial`, and so on. Attempt duration must be added separately.
 
 Choose a multiplier by testing competing objectives:
 
@@ -78,11 +78,11 @@ If clients are continuously generating new requests, retries are extra traffic o
 The cap limits one delay once the exponential ceiling grows large. It serves several purposes:
 
 - prevents arithmetic and scheduling from growing without bound;
-- ensures a long-lived client eventually checks whether the service recovered;
+- bounds how long a continuing retry loop waits before checking whether the service recovered;
 - limits how long one retry can hold caller or worker state;
 - makes fleet return traffic predictable enough to capacity-test.
 
-A cap that is too low creates a permanent retry drumbeat during a long outage. A cap that is too high can make a client miss recovery or exceed a user-visible deadline. Select it from the workload:
+A cap that is too low can create a high-rate retry drumbeat in a continuing loop during a long outage. A cap that is too high can make a client miss recovery or exceed a user-visible deadline. Select it from the workload:
 
 - an interactive request cap must fit inside its overall latency objective;
 - a background reconciliation loop can tolerate a longer cap but needs durable scheduling and fairness;
@@ -116,7 +116,7 @@ retry:
   jitter: full
 ```
 
-These numbers are examples, not recommendations. With four total attempts there are at most three sleeps. Under full jitter their maximum sum is 200 + 400 + 800 milliseconds, while their expected sum is half that. Attempt durations still need to fit within the five-second deadline.
+These numbers are examples, not recommendations. With four total attempts there are at most three sleeps. If all three sleeps occur, under full jitter their maximum sum is 200 + 400 + 800 milliseconds, while their expected sum is half that. Attempt durations still need to fit within the five-second deadline.
 
 Calculate both maximum and expected paths. Design correctness against the maximum allowed path, then use distributions to forecast typical latency.
 
@@ -124,7 +124,7 @@ Calculate both maximum and expected paths. Design correctness against the maximu
 
 A long per-attempt timeout can consume the entire overall budget before backoff matters. A short timeout can create false retries while healthy operations are merely in the normal tail.
 
-Set connection and request timeouts from observed healthy latency plus network and service semantics. For an operation with side effects, a timeout is an unknown outcome, not proof that the server did nothing. Retry only when the operation is idempotent, conditional, or protected by an idempotency key.
+Set connection and request timeouts from observed healthy latency plus network and service semantics. For an operation with side effects, a timeout is an unknown outcome, not proof that the server did nothing. Automatically retry that unknown outcome only when the operation is idempotent, made conditionally idempotent by a precondition, or protected by a service-supported idempotency key reused across attempts.
 
 Use the remaining overall budget to shrink later attempt timeouts where the API supports it. Do not start a two-second attempt with 100 milliseconds remaining. Preserve a small margin to return a useful error and release resources.
 
@@ -191,9 +191,9 @@ Change one parameter at a time and compare success, tail latency, dependency loa
 
 ## Validate Arithmetic and Configuration
 
-Reject negative or zero initial delays, multipliers below one unless a non-exponential strategy is intentional, caps below the initial delay unless clamping is documented, and attempt limits that conflict with the API's definition.
+Reject negative or zero initial delays, nonpositive multipliers, caps below the initial delay unless clamping is documented, and attempt limits that conflict with the API's definition. Require a multiplier greater than one for increasing exponential backoff; allow one or a value between zero and one only when constant or decreasing positive delays are intentional.
 
-Compute exponential ceilings with saturating arithmetic. Clamp before multiplying so a large retry index cannot overflow into a negative or tiny delay. Use a monotonic clock for elapsed deadlines, and a cancelable timer rather than blocking a worker blindly.
+Compute each next exponential ceiling with checked or saturating multiplication and clamp it to the cap at every step; if a checked multiplication overflows, use the cap. Do not compute `initial * multiplier^n` in a fixed-width integer type before clamping. Use a monotonic clock for elapsed deadlines, and a cancelable timer rather than blocking a worker blindly.
 
 Unit tests should inject a clock, sleeper, and random source. Load tests should validate the aggregate distribution and the dependency's response.
 
