@@ -28,7 +28,7 @@ Use overflow-safe arithmetic before applying the cap. Apply a documented jitter 
 | --- | --- | --- | --- |
 | fixed | predictable cadence and simple capacity math | synchronizes callers and does not react to repeated failure | normal polling, protocol-defined interval |
 | linear | increases caution without rapid growth | can still offer too much load during a broad outage | bounded local contention with a roughly known recovery window |
-| exponential | rapidly reduces repeat load during uncertain recovery | later attempts become slow and the cap becomes a fixed fleet cadence | transient network or service failures |
+| exponential | rapidly reduces repeat load during uncertain recovery | later attempts become slow and retry frequency stops falling once the raw delay reaches the cap | transient network or service failures |
 
 The examples are starting points, not rules. Evidence from the target API overrides a generic category.
 
@@ -62,7 +62,7 @@ When guidance is absent:
 - stop increasing the arrival rate;
 - use bounded exponential backoff with jitter for rejected attempts;
 - apply a client-side rate limiter to first attempts, not only retries;
-- enforce retry tokens so a fleet cannot sustain rejected traffic;
+- enforce retry-token budgets at the intended protection scope so sustained failures suppress further retries;
 - honor the operation deadline.
 
 Fixed-delay retry is risky because every limited client can return at the same interval. Exponential delay alone also does not enforce a steady permitted rate once calls recover; a rate limiter is the appropriate long-lived control.
@@ -88,10 +88,10 @@ When recovery time is unknown, exponential growth quickly removes repeat pressur
 
 ~~~text
 raw delays with initial 200 ms and multiplier 2:
-200 ms, 400 ms, 800 ms, 1.6 s, 3.2 s, then cap
+200 ms, 400 ms, 800 ms, 1.6 s, 3.2 s, and so on until the cap
 ~~~
 
-Use full or another documented jitter strategy so clients do not follow identical schedules. A cap prevents one delay from becoming unusably long, but every caller eventually reaches a fixed capped cadence. Add retry tokens, concurrency limits, or a circuit breaker to control aggregate load during a prolonged outage.
+Use full or another documented jitter strategy so clients do not follow identical schedules. A cap prevents the raw delay from becoming unusably long, but once it is reached the backoff no longer reduces the retry rate further; jitter still prevents a fixed synchronized cadence. Add retry tokens, concurrency limits, or a circuit breaker to control aggregate load during a prolonged outage.
 
 The initial delay should relate to how quickly the transient condition can plausibly clear. The cap should fit the caller's overall deadline and recovery objective. A multiplier of two is common, not mandatory.
 
@@ -110,14 +110,13 @@ Classify first. Backoff is scheduling for an eligible retry, not a substitute fo
 
 ## Combine the Pattern with Stop Conditions
 
-Every schedule needs:
+Every schedule needs an explicit stop policy appropriate to its lifetime:
 
-- a maximum total attempt count;
-- a maximum elapsed deadline;
+- a maximum total attempt count and/or maximum elapsed time, maximum age, or cancellation condition;
 - cancellation-aware waits;
-- a minimum useful time for the next attempt;
+- where there is a deadline, enough time remaining for the next attempt;
 - an operation replay-safety decision;
-- bounded server-delay handling;
+- server-delay handling consistent with the stop policy;
 - telemetry for attempts, delays, exhaustion, and final outcomes.
 
 For asynchronous jobs, maximum age can matter more than a synchronous deadline. Persist <code>first_seen_at</code> and attempt count across restarts so redeployment does not reset every failed job to its fastest delay.
@@ -137,4 +136,4 @@ Run fleet simulations. A schedule that is gentle for one caller can still be agg
 
 ## Conclusion
 
-Use fixed cadence for normal polling, short randomized fixed or linear delays for measured local contention, and capped exponential backoff with jitter for uncertain transient failure. Rate limits should follow server guidance and rate control. Whatever the curve, bound it with replay safety, deadlines, retry budgets, and measured recovery data.
+Use fixed cadence for normal polling, short randomized fixed or linear delays for measured local contention, and capped exponential backoff with jitter for uncertain transient failure. Rate limits should follow server guidance and rate control. Whatever the curve, pair it with replay-safety checks, an explicit stop policy, retry budgets where needed, and measured recovery data.
