@@ -10,6 +10,8 @@ Description: Keep retries inside one caller deadline by charging every attempt a
 
 A per-attempt timeout bounds one network call. An overall deadline bounds the complete logical operation, including DNS, connection setup, every request, response-body processing, and every backoff sleep. They solve different problems and must be enforced together.
 
+Both are cooperative bounds: every transport and local processing step must honor cancellation because a deadline cannot preempt arbitrary computation.
+
 Without an overall deadline, three 10-second attempts plus two sleeps can turn a 10-second expectation into a 35-second response. Without a per-attempt timeout, the first hung request can consume the entire operation budget and leave no opportunity for a useful retry.
 
 ## Define the Time Budget at the Entry Point
@@ -19,8 +21,10 @@ The caller knows when the result stops being useful. Establish that deadline onc
 For an operation with absolute deadline <code>D</code>, the remaining budget before each decision is:
 
 ~~~text
-remaining = D - monotonic_now
+remaining = time_until(D)
 ~~~
+
+Within one process, use a monotonic clock for this calculation when the deadline representation supports it. In Go, <code>time.Until</code> uses a monotonic reading when the <code>time.Time</code> carries one and otherwise falls back to wall-clock time.
 
 Backoff is not free time. If a retry sleeps for 400 milliseconds, the operation has 400 milliseconds less in which to complete.
 
@@ -48,7 +52,7 @@ A practical calculation is:
 attempt_budget = min(configured_per_attempt, remaining_after_sleep - finish_reserve)
 ~~~
 
-The finish reserve covers local response decoding, cleanup, and returning the result. It should be measured rather than made arbitrarily large. If <code>attempt_budget</code> is below the minimum time in which this dependency can plausibly respond, fail immediately with a deadline-budget reason.
+The finish reserve leaves time for cleanup, bookkeeping, and returning the result after an attempt. Response-body reading and decoding performed by <code>send</code> must fit within <code>attempt_budget</code>. The reserve should be measured rather than made arbitrarily large. If <code>attempt_budget</code> is below the minimum time in which this dependency can plausibly respond, fail immediately with a deadline-budget reason.
 
 Do not force every attempt to have equal time. Later attempts naturally receive less when earlier work and sleeps consumed the shared budget. If a specific API needs a minimum service time, reduce the attempt count or initial delays instead of exceeding the caller deadline.
 
@@ -57,25 +61,40 @@ Do not force every attempt to have equal time. Later attempts naturally receive 
 Go request contexts control the lifetime of an outgoing HTTP request, including obtaining a connection, sending the request, and reading its response headers and body. Derive each attempt from the original operation context:
 
 ~~~go
+var errInsufficientDeadlineBudget = errors.New("insufficient deadline budget for a useful attempt")
+
 func runAttempt(
 	ctx context.Context,
 	maxAttempt time.Duration,
+	minAttempt time.Duration,
 	finishReserve time.Duration,
 	send func(context.Context) error,
 ) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+
 	deadline, ok := ctx.Deadline()
 	if !ok {
 		return errors.New("overall deadline is required")
 	}
 
-	remaining := time.Until(deadline) - finishReserve
+	remaining := time.Until(deadline)
 	if remaining <= 0 {
 		return context.DeadlineExceeded
 	}
 
+	available := remaining - finishReserve
+	if available <= 0 {
+		return errInsufficientDeadlineBudget
+	}
+
 	budget := maxAttempt
-	if remaining < budget {
-		budget = remaining
+	if available < budget {
+		budget = available
+	}
+	if budget < minAttempt {
+		return errInsufficientDeadlineBudget
 	}
 	attemptCtx, cancel := context.WithTimeout(ctx, budget)
 	defer cancel()
@@ -84,9 +103,9 @@ func runAttempt(
 }
 ~~~
 
-The parent context wins when it expires first. Always call the returned cancel function so timer resources are released promptly. Pass the attempt context to the transport and to response processing that must be within the same attempt boundary.
+The parent context wins when it expires first. Always call the returned cancel function so timer resources are released promptly. Pass the attempt context to the transport and to response processing performed by <code>send</code>; all of that work must fit within the same attempt boundary.
 
-If headers and body need different limits, configure the transport's phase-specific timeouts carefully, but keep the context deadline as the outer bound. A header timeout does not necessarily limit reading a large body, and a connection timeout does not bound application processing.
+If response headers need a tighter limit than the complete attempt, configure <code>http.Transport.ResponseHeaderTimeout</code> carefully, but keep the request context deadline as the outer bound. <code>ResponseHeaderTimeout</code> does not include time spent reading the response body, and a connection timeout does not bound application processing.
 
 ## Make Backoff Part of the Same Control Flow
 
@@ -94,6 +113,10 @@ An ordinary blocking sleep ignores cancellation until the delay ends. Wait on bo
 
 ~~~go
 func waitForRetry(ctx context.Context, delay time.Duration) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+
 	if delay <= 0 {
 		return nil
 	}
@@ -103,7 +126,7 @@ func waitForRetry(ctx context.Context, delay time.Duration) error {
 
 	select {
 	case <-timer.C:
-		return nil
+		return ctx.Err()
 	case <-ctx.Done():
 		return ctx.Err()
 	}
@@ -114,7 +137,7 @@ Check the budget before creating the timer. A valid server-provided delay is sti
 
 ## Propagate Deadlines Across Services
 
-gRPC deadlines apply to the complete RPC from the application's point of view. A client should set a realistic deadline; servers should stop work after cancellation and propagate the remaining deadline to downstream RPCs. gRPC implementations convert an incoming deadline to a timeout when propagating it, which helps account for elapsed time and avoids depending on perfectly synchronized clocks.
+gRPC deadlines apply to the complete RPC from the application's point of view. A client should set a realistic deadline; servers should stop work after cancellation and propagate the remaining deadline to downstream RPCs. Where automatic deadline propagation is supported and enabled, gRPC converts the deadline to a timeout after deducting elapsed time, which avoids depending on perfectly synchronized clocks.
 
 For an HTTP service chain, use the framework's supported deadline propagation rather than trusting an arbitrary end-user header. Each hop needs time for its own work and response path. A downstream deadline must not exceed the upstream request's remaining budget.
 
@@ -154,10 +177,10 @@ Tests should simulate:
 - a fast failure followed by a successful retry;
 - cancellation during backoff;
 - a server delay longer than remaining time;
-- response processing that uses the finish reserve;
+- response processing that consumes the attempt budget and post-attempt work that uses the finish reserve;
 - a parent deadline that expires before an attempt-local timeout.
 
-Inject the clock and sleeper so tests advance virtual time instead of waiting. Assert that no send starts after the overall deadline and that every attempt deadline is less than or equal to its parent.
+Use a virtual-time facility that controls both <code>time</code> timers and context deadline timers, or inject all of those time dependencies, so tests advance virtual time instead of waiting. Assert that the retry loop refuses an attempt when the overall deadline is already exhausted at its budget check and that every attempt deadline is no later than its parent.
 
 ## Official Documentation
 
