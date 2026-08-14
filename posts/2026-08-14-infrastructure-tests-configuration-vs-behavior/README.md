@@ -16,7 +16,7 @@ None is a universal substitute for the others. A database can have the expected 
 
 Use precise names in the test plan:
 
-1. **Planned configuration:** values and actions in Terraform's plan or native test assertions.
+1. **Planned configuration:** values available to native plan-mode assertions, plus planned values and change actions in JSON generated from a saved Terraform plan.
 2. **Effective control-plane state:** values returned by the provider or cloud API after deployment.
 3. **Observed behavior:** a request made through the same relevant path and identity as a consumer.
 
@@ -41,11 +41,11 @@ Configuration assertions are the best primary evidence for rules that are intrin
 - absence of a forbidden resource type or public ingress declaration;
 - module outputs and input validation.
 
-Many of these can run against `terraform test` with `command = plan`, provider mocks, or plan JSON. That makes them fast and safe enough for every relevant pull request.
+Many of these can run against `terraform test` with `command = plan`, provider mocks, or JSON produced by `terraform show -json` from a saved plan. They are usually fast enough for every relevant pull request. An unmocked plan can still read remote APIs, and saved plan files and JSON output can expose sensitive values, so use appropriately scoped credentials and protect those artifacts.
 
 Prefer assertions against the module's public promise over implementation details. If a module promises one reachable endpoint, asserting an output and behavior is more durable than snapshotting every internal resource address. Assert an internal resource only when its configuration is itself a documented contract or security requirement.
 
-Provider mocks reproduce schemas and user-supplied overrides; they do not call the cloud. They are useful for testing how computed values flow through module expressions, not for proving that a remote API accepts the configuration.
+Mock providers use the original provider's schema, preserve values from configuration, and generate fake values for computed attributes unless the test supplies mock data or overrides. They do not create or read remote infrastructure. They are useful for testing how computed values flow through module expressions, not for proving that a remote API accepts the configuration.
 
 ## Read Back State When Providers or Platforms Add Meaning
 
@@ -101,7 +101,7 @@ apply completed
 
 If the deadline expires, report the last safe observation from every completed stage. A single three-minute sleep delays fast cases and gives slow failures no useful diagnosis.
 
-Keep convergence polling separate from retrying the operation under test. Repeating a mutating request can create duplicate side effects unless the API operation is idempotent or uses an idempotency key.
+Keep convergence polling separate from retrying the operation under test. Repeating a mutating request can create duplicate side effects unless the operation is idempotent or the API honors a reused idempotency key for the same request.
 
 ## Build a Minimal Layered Suite
 
@@ -148,7 +148,7 @@ State what each test cannot prove. That makes gaps visible and guides the next l
 
 ## Design Cleanup as Another Behavior
 
-An apply-based test is not complete until its resources are gone. Register destroy immediately after setup, retain protected state for recovery, and add an independent expiry janitor for runner loss. Report assertion failure and cleanup failure separately.
+An apply-based test is not complete until its resources are gone. In a custom or Terratest harness, register destroy before apply so partial deployments are covered, retain protected state for recovery, and add an independent expiry janitor for runner loss. Report assertion failure and cleanup failure separately.
 
 Test deletion behavior where it matters. Retention locks, dependent resources, final snapshots, and asynchronous deletion can all make a normal destroy fail. A scheduled cleanup audit should compare expected baseline inventory with actual resources and quota use.
 
