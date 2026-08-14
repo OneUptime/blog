@@ -72,7 +72,6 @@
 
 ## Backoff
 
-7. Why Is the Request Body Empty on the Second HTTP Retry—and How Do You Replay It Safely?
 8. Per-Attempt Timeout vs Overall Deadline: How Do You Budget Time Across Retries and Backoff?
 9. Where Should Retry Ownership Live When the SDK, Service Mesh, and Application All Retry?
 10. Why Does Capped Exponential Backoff Still Hammer a Sick Service—and How Do Retry Tokens Help?
