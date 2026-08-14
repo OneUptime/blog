@@ -67,7 +67,7 @@ Here `-d` selects the RDMA device, `-i` selects its port, `-s` sets the message 
 
 The server address used to establish the test is not by itself proof of the verbs data path. Without an explicit RDMA CM mode, perftest can exchange connection information over its control channel and then run the data test on the HCA selected by `-d` and `-i`. An IPoIB, management, or Ethernet address used for setup does not necessarily carry the measured RDMA Writes.
 
-Use `-R` only when the question specifically requires QPs established through RDMA CM. The official README defines `-R, --rdma_cm` as connecting QPs with RDMA CM and running the test on those QPs. It changes connection setup and path selection, so record it as part of the benchmark, not as a harmless logging switch.
+Use `-R` only when the question specifically requires QPs established through RDMA CM. The official README defines `-R, --rdma_cm` as connecting QPs with RDMA CM and running the test on those QPs. It changes connection setup and path selection, so record it as part of the benchmark, not as a harmless logging switch. With `-R`, RDMA CM route resolution can select a different device, port, or GID than `-d`, `-i`, or `-x`; verify the values perftest reports, and use `--bind_source_ip` when supported if the source address must constrain the route.
 
 ## Select the Correct GID for RoCE
 
@@ -76,15 +76,19 @@ For native InfiniBand, LID and Subnet Manager path state are normally central. F
 Inspect the current table:
 
 ~~~console
-$ for gid in /sys/class/infiniband/mlx5_0/ports/1/gids/*; do
-    printf '%s ' "$gid"
-    cat "$gid"
+$ gid_dir=/sys/class/infiniband/mlx5_0/ports/1
+$ for gid in "$gid_dir"/gids/*; do
+    index=${gid##*/}
+    printf '%s: gid=%s type=%s netdev=%s\n' "$index" \
+      "$(cat "$gid")" \
+      "$(cat "$gid_dir/gid_attrs/types/$index")" \
+      "$(cat "$gid_dir/gid_attrs/ndevs/$index")"
   done
 $ ip -br address
 $ rdma link show
 ~~~
 
-When the test requires a specific GID, pass each endpoint's locally correct `-x, --gid-index` value. The two numeric values need not match. Do not copy an index from another host because GID indices can differ with netdev, VLAN, IP address, driver, and namespace configuration.
+When the test is not using `-R` and requires a specific GID, pass each endpoint's locally correct `-x, --gid-index` value. The two numeric values need not match. Do not copy an index from another host because GID indices can differ with netdev, VLAN, IP address, driver, and namespace configuration.
 
 For a container, inventory the table inside the container. Host GID visibility does not prove the pod has the matching netdev and address context.
 
@@ -106,7 +110,7 @@ $ ib_write_bw -d mlx5_0 -i 1 -s 8388608 -D 20 -q 4 \
 
 The normal test buffer is host memory. Running `ib_write_bw` on a GPU server does not make it a GPUDirect RDMA test.
 
-Perftest must be built with CUDA support before `--use_cuda` is available. The project documents a build-time CUDA header configuration and these runtime forms:
+Perftest must be configured and built with CUDA support before `--use_cuda` is available. Since release 25.07, configure automatically detects `cuda.h` in the standard CUDA location; older releases require `CUDA_H_PATH`, which current builds retain for compatibility. The runtime forms are:
 
 ~~~console
 # Server
@@ -146,7 +150,7 @@ $ numactl --cpunodebind=1 --membind=1 \
     ib_write_bw -d mlx5_0 -i 1 -s 8388608 -D 20 --report_gbits
 ~~~
 
-Choose the actual local node on each server. Recent perftest builds may offer `--pin_cores` and `--numa_node`; do not assume older packaged builds support them.
+Choose the actual local node on each endpoint. Recent perftest builds may offer `--pin_cores` and `--numa_node`; do not assume older packaged builds support them.
 
 ## Collect Evidence Alongside the Number
 
@@ -156,7 +160,7 @@ For every result, retain:
 - raw output and perftest versions;
 - HCA, port, PCI BDF, link layer, active rate, MTU, and GID index;
 - one-way or bidirectional mode, message size, duration/iterations, QPs, and queue depth;
-- host, CUDA device, CUDA managed, or DMA-BUF memory mode;
+- buffer allocation type (host or CUDA device memory) and, for CUDA, registration path (DMA-BUF or legacy peer memory);
 - CPU, memory, GPU, and HCA topology;
 - port and PCIe counter deltas during the run.
 
@@ -172,4 +176,4 @@ Repeat enough times to show variance and run an order-controlled A/B test. If ho
 
 ## Conclusion
 
-An `ib_write_bw` result is valid only for the path it explicitly selected. Pin the HCA and port, use the correct per-node GID, keep server and client options symmetric, and label direction and parallelism. Most importantly, state whether the buffer was ordinary host memory or a deliberately selected GPU and DMA-BUF path.
+An `ib_write_bw` result is valid only for the path it explicitly selected. Pin the HCA, port, and per-node GID for regular verbs QPs; with `-R`, constrain and verify the RDMA CM-resolved path. Keep server and client options symmetric, and label direction and parallelism. Most importantly, state whether the buffer was ordinary host memory or deliberately selected GPU device memory and, for GPU memory, whether DMA-BUF or the legacy peer-memory path was used.
