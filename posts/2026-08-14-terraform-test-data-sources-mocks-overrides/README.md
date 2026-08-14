@@ -24,7 +24,7 @@ run "basic_plan" {
 }
 ~~~
 
-Configuration values remain the values supplied by the module. Computed attributes receive generated values during apply by default. HashiCorp documents these generated defaults:
+Configuration values remain the values supplied by the module. Provider-computed attributes on newly created managed resources receive generated values during apply by default. Mocked data sources are normally read during planning when their arguments and dependencies are known. HashiCorp documents these generated defaults:
 
 - numbers become `0`;
 - booleans become `false`;
@@ -36,7 +36,7 @@ Generated values are suitable when the test only needs a value to be present and
 
 ## Override a Data Source With Realistic Values
 
-Suppose a module discovers a VPC and uses its CIDR:
+Suppose a module discovers a VPC and uses its ID:
 
 ~~~hcl
 data "aws_vpc" "shared" {
@@ -59,7 +59,7 @@ mock_provider "aws" {}
 override_data {
   target = data.aws_vpc.shared
   values = {
-    id         = "vpc-test0001"
+    id         = "vpc-0123456789abcdef0"
     cidr_block = "10.50.0.0/16"
     tags = {
       Environment = "test"
@@ -75,13 +75,13 @@ run "uses_discovered_vpc" {
   }
 
   assert {
-    condition     = aws_security_group.service.vpc_id == "vpc-test0001"
+    condition     = aws_security_group.service.vpc_id == "vpc-0123456789abcdef0"
     error_message = "The security group must use the discovered VPC."
   }
 }
 ~~~
 
-The override supplies computed result values. Required configuration arguments for resources and data sources still need valid configuration unless the specific schema makes them optional.
+The override supplies computed result values. Arguments that the provider schema marks as required for resources and data sources still need valid configuration.
 
 ## Target Objects Inside Modules Precisely
 
@@ -91,7 +91,7 @@ Overrides use Terraform addresses. A data source inside a child module includes 
 override_data {
   target = module.service.data.aws_subnets.private
   values = {
-    ids = ["subnet-test0001", "subnet-test0002"]
+    ids = ["subnet-0123456789abcdef0", "subnet-0fedcba9876543210"]
   }
 }
 ~~~
@@ -104,8 +104,8 @@ Avoid overriding an implementation detail several modules deep when the consumer
 override_module {
   target = module.network_lookup
   outputs = {
-    vpc_id             = "vpc-test0001"
-    private_subnet_ids = ["subnet-test0001", "subnet-test0002"]
+    vpc_id             = "vpc-0123456789abcdef0"
+    private_subnet_ids = ["subnet-0123456789abcdef0", "subnet-0fedcba9876543210"]
   }
 }
 ~~~
@@ -120,8 +120,8 @@ The same mechanism handles a resource attribute used by another resource:
 override_resource {
   target = aws_kms_key.logs
   values = {
-    arn    = "arn:aws:kms:eu-west-2:111122223333:key/test-key"
-    key_id = "test-key"
+    arn    = "arn:aws:kms:eu-west-2:111122223333:key/1234abcd-12ab-34cd-56ef-1234567890ab"
+    key_id = "1234abcd-12ab-34cd-56ef-1234567890ab"
   }
 }
 
@@ -129,7 +129,7 @@ run "writes_key_arn_into_policy" {
   command = apply
 
   assert {
-    condition     = strcontains(aws_iam_policy.logs.policy, "test-key")
+    condition     = strcontains(aws_iam_policy.logs.policy, "1234abcd-12ab-34cd-56ef-1234567890ab")
     error_message = "The policy must reference the log KMS key."
   }
 }
@@ -139,29 +139,29 @@ This avoids asserting against a random generated string. Include only values the
 
 ## Make Values Known During a Plan
 
-Mocked computed values are normally generated during apply, so they remain unknown in a plan. HashiCorp provides `override_during` for tests that need plan-time values:
+Provider-computed attributes on mocked managed resources are normally generated during apply, so they remain unknown in a plan. Starting in Terraform 1.11, HashiCorp provides `override_during` for tests that need plan-time resource values. Data sources with known arguments and dependencies are already read during planning; Terraform defers their reads when those inputs are unknown.
 
 ~~~hcl
 mock_provider "aws" {
   override_during = plan
 }
 
-override_data {
-  target          = data.aws_caller_identity.current
+override_resource {
+  target          = aws_kms_key.logs
   override_during = plan
 
   values = {
-    account_id = "111122223333"
-    arn        = "arn:aws:iam::111122223333:user/test"
+    arn    = "arn:aws:kms:eu-west-2:111122223333:key/1234abcd-12ab-34cd-56ef-1234567890ab"
+    key_id = "1234abcd-12ab-34cd-56ef-1234567890ab"
   }
 }
 
-run "plans_account_scoped_name" {
+run "plans_key_arn_in_policy" {
   command = plan
 
   assert {
-    condition     = aws_s3_bucket.logs.bucket == "logs-111122223333"
-    error_message = "The bucket name must include the discovered account ID."
+    condition     = strcontains(aws_iam_policy.logs.policy, "1234abcd-12ab-34cd-56ef-1234567890ab")
+    error_message = "The planned policy must reference the log KMS key."
   }
 }
 ~~~
@@ -170,20 +170,20 @@ An override's own `override_during` setting takes precedence over the mock provi
 
 ## Understand Override Scope and Precedence
 
-Override blocks can appear at test-file scope or inside a run block. A run-level override wins for that run:
+Override blocks can appear at test-file scope or inside a run block. When both scopes override the same target address, a run-level override wins for that run:
 
 ~~~hcl
 mock_provider "aws" {}
 
 override_data {
   target = data.aws_region.current
-  values = { name = "eu-west-2" }
+  values = { region = "eu-west-2" }
 }
 
 run "alternate_region" {
   override_data {
     target = data.aws_region.current
-    values = { name = "us-east-2" }
+    values = { region = "us-east-2" }
   }
 
   assert {
@@ -252,7 +252,7 @@ Keep at least one version-pinned real-provider integration test for critical API
 
 If a mock test fails unexpectedly:
 
-1. Check the Terraform version; mocking requires Terraform 1.7 or later.
+1. Check the Terraform version; mocking requires Terraform 1.7 or later, while `override_during` requires Terraform 1.11 or later.
 2. Confirm the target address with `terraform test -verbose` output.
 3. Identify whether the needed attribute is computed, optional, or required in the provider schema.
 4. Check whether a plan sees the value as unknown.
@@ -271,4 +271,4 @@ Verbose output can contain sensitive configuration and state. Restrict CI artifa
 
 ## Conclusion
 
-Use `mock_provider` for schema-correct, API-free execution and explicit overrides for values whose format or contents matter. Target data sources and resources at the narrowest owned boundary, control whether values appear during plan or apply, and keep a small real-provider suite for behavior no fixture can prove.
+Use `mock_provider` for schema-correct, API-free execution and explicit overrides for values whose format or contents matter. Target data sources and resources at the narrowest owned boundary, control whether mocked resource values appear during plan or apply, and keep a small real-provider suite for behavior no fixture can prove.
