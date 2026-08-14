@@ -4439,3 +4439,233 @@
 18. How to Diagnose Unreadable MinIO SSE-S3 Objects When Legacy KES or Its External Key Store Is Unreachable—or the Master Key Is Missing
 19. How to Scrape MinIO Prometheus Metrics with JWT Authentication Without Falling Back to a Public Metrics Endpoint
 20. How to Fix Large MinIO Multipart Uploads Behind NGINX by Disabling Request Buffering and Correcting Body and Timeout Limits
+
+## High Availability
+
+1. Where Should a Quorum Witness Live? Testing Two-Node HA During a Site or WAN Failure
+2. Why Both HA Nodes Became Primary: How to Trace and Fix a Broken Fencing Path
+3. How to Size N+1 Capacity So the Surviving Zone Does Not Collapse Under Failover Load
+4. How to Warm Caches and Ramp Traffic After Failover Without Triggering a Second Outage
+5. How to Tune Health-Check Intervals and Failure Thresholds Without Causing Failover Flapping
+6. How to Make Database Clients Abandon Stale Connections After Primary Failover
+7. How to Choose Between a Floating VIP, DNS, and a Load Balancer for Service Failover
+8. How to Set DNS TTLs for Cross-Region Failover Without Leaving Clients on the Failed Site
+9. How to Preserve User Sessions During Load-Balancer Failover Without Relying on Sticky Sessions
+10. How to Rotate Shared TLS Certificates Across Active-Active Nodes Without Serving Mixed Chains
+11. How to Prevent a Retry Storm from Overloading the Surviving Site During Failover
+12. How to Make Write APIs Idempotent So Failover Retries Cannot Duplicate Transactions
+13. How to Drain Long-Lived Connections Before Taking an HA Node Down for Maintenance
+14. How to Deploy Backward-Compatible Database Migrations Across Active-Active Application Versions
+15. How to Test Regional Failover Against Production Traffic Without Creating Conflicting Writes
+16. How to Gate Database Promotion on Replication Lag So Automatic Failover Meets Your RPO
+17. How to Design Dependency-Aware Health Checks Without Turning a Shared Outage into a Total Outage
+18. How to Audit Hidden Regional Dependencies Before Declaring a Standby Site Highly Available
+19. How to Run a High-Availability Game Day That Measures Detection Time, RTO, and Data Loss
+20. How to Plan Rolling Maintenance Without Losing Quorum or Redundancy
+
+## DoT
+
+1. How to Prove Your Resolver Is Using DoT on TCP 853 Without Any Plaintext DNS Fallback
+2. How to Configure Unbound DoT Forwarders with CA Validation, SNI, and @853#hostname
+3. How to Diagnose DoT Certificate Failures Caused by an Expired CA Bundle or Incorrect System Time
+4. How to Serve DNS over TLS from Unbound with a Public Certificate and a Dedicated Port 853 Listener
+5. Unbound Cannot Read a Let’s Encrypt Certificate: How to Fix AppArmor Paths and Renewal Hooks
+6. How to Force Strict DNS over TLS in systemd-resolved Instead of Silently Downgrading
+7. How to Keep Corporate Split DNS Working over a VPN While Public Queries Use DoT
+8. NetworkManager Keeps Replacing Your DoT Settings: How to Make systemd-resolved Own DNS
+9. DoT Times Out on One Network: How to Detect a Blocked TCP 853 Path and Choose a Safe Fallback
+10. How to Reach a Self-Hosted DoT Resolver Behind Dynamic DNS and NAT from Android Private DNS
+11. Android Says “Private DNS Server Cannot Be Accessed”: How to Debug Bootstrap, SNI, and the Certificate Chain
+12. How to Reach a Captive Portal When Strict Android Private DNS Blocks Name Resolution
+13. How to Put an NGINX Stream TLS Proxy in Front of Pi-hole for Android Private DNS
+14. How to Expose a Home DoT Resolver Without Turning It into an Open Recursive DNS Service
+15. How to Rotate a DoT Server’s Let’s Encrypt Certificate Without Breaking Long-Lived Clients
+16. Why BIND 9 Still Answers Plain DNS After You Add a tls Block—and How to Bind Port 853 Correctly
+17. How to Encrypt Only Selected Unbound Forward Zones Without Sending Recursive Traffic to a Third Party
+18. How to Configure Multiple DoT Upstreams and See Which Resolver Unbound Actually Chooses
+19. DoT Works over IPv4 but Times Out over IPv6: How to Trace Routing and Firewall Rules for Port 853
+20. How to Bootstrap a DoT Resolver Hostname Without Creating a Circular DNS Dependency
+
+## BOSH
+
+1. How to Preview a Fully Interpolated BOSH Manifest with Layered Ops Files Before Deploying
+2. BOSH Ops File Says “Expected to Find a Map”: How to Fix Path Selectors, Optional Keys, and File Order
+3. How to Keep Generated BOSH Credentials Stable with --vars-store Across Director Redeploys
+4. How to Resolve BOSH Variables from CredHub and Debug Missing-Path or Permission Errors
+5. How to Rotate the BOSH NATS CA Without Leaving Deployment Agents Unresponsive
+6. bosh deploy Reports an Unresponsive Agent: How to Recover Logs When SSH Also Fails
+7. How to Use bosh cck --report and Recovery Plans Before Repairing Missing VMs or Disks
+8. How to Reattach an Orphaned BOSH Persistent Disk Before Garbage Collection Deletes It
+9. How to Change a BOSH Persistent Disk Type or Size Without Losing Application Data
+10. How to Roll Out a BOSH Stemcell Upgrade with Canaries and max_in_flight
+11. BOSH Deployment Stuck Behind a Task or Lock: How to Inspect Events and Cancel Safely
+12. How to Diagnose a Failing BOSH Job with instances --ps, Monit, and /var/vcap/sys/log
+13. How to Write BOSH Drain Scripts That Protect Stateful Jobs During Rolling Updates
+14. How to Run a BOSH Errand, Download Its Logs, and Choose Whether to Keep the Instance
+15. How to Spread BOSH Instance Groups Across Availability Zones with Cloud Config
+16. How to Add IaaS-Specific Load Balancer Settings with BOSH VM Extensions
+17. BOSH Finds Multiple Link Providers: How to Make consumes and provides Explicit
+18. How to Build and Upload a Compiled BOSH Release for an Air-Gapped Director
+19. How to Lock a Compiled BOSH Release to Its Stemcell and Avoid Surprise Package Changes
+20. How to Clean Up Unused BOSH Releases and Stemcells Without Deleting Recoverable Disks
+
+## Platform Governance
+
+1. How to Turn Platform Standards into Automated Guardrails Without Blocking Developer Self-Service
+2. How to Govern Kubernetes Self-Service with Policy-Compliant Templates and GitOps Drift Checks
+3. How to Design Golden Paths That Teams Can Extend Without Forking the Platform
+4. How to Build a Platform Exception Workflow with Time-Bound Waivers and Audit Trails
+5. How to Define Service Ownership in Backstage and Eliminate Orphaned Catalog Entries
+6. How to Enforce Backstage RBAC for Catalog Changes and Software Template Execution
+7. How to Govern Software Templates with Versioning, Approval Tests, and Deprecation Windows
+8. How to Detect and Remediate Drift from Platform Golden Paths Across Existing Services
+9. How to Separate Platform Guardrails, Safety Nets, and Manual Approval Gates
+10. How to Establish a Platform Governance Operating Model Across Engineering, Security, and FinOps
+11. How to Measure Platform Value with Adoption, Lead Time, Reliability, and Developer Friction
+12. How to Govern Multi-Tenant Developer Platforms with Namespace, Quota, and Network Isolation
+13. How to Add Policy-as-Code Checks to CI/CD Before Infrastructure Reaches Production
+14. How to Design Break-Glass Platform Access Without Creating Permanent RBAC Drift
+15. How to Standardize Service Metadata Across Backstage, GitOps, and Cloud Inventory
+16. How to Govern Platform API Changes with Compatibility Contracts and Deprecation Windows
+17. How to Allocate Cloud Costs to Platform Tenants with Mandatory Ownership Labels
+18. How to Secure Backstage Scaffolder Actions and Restrict Untrusted Template Sources
+19. How to Build a Platform Compliance Scorecard with Evidence from Every Deployment
+20. How to Migrate Teams onto a Governed Golden Path Without a Big-Bang Rewrite
+
+## CWE
+
+1. How to Map a CVE to the Most Specific CWE Using Root-Cause Evidence
+2. How to Handle CVEs with NVD-CWE-noinfo or Missing CWE Mappings
+3. How to Avoid Mapping Vulnerabilities to CWE Categories, Views, or Pillars
+4. How to Choose Between CWE-699 and CWE-1000 When Classifying Weaknesses
+5. How to Extract CVE-to-CWE Mappings from the NVD API 2.0 with Python
+6. How to Query the CWE REST API and Build a Local Weakness Catalog
+7. How to Parse CWE XML Downloads While Preserving Relationships and Entry Status
+8. How to Detect Deprecated CWE IDs and Migrate Findings to Current Entries
+9. How to Normalize SAST Findings from Multiple Scanners into One CWE Taxonomy
+10. How to Validate a SAST Tool’s Claimed CWE Coverage Before You Buy It
+11. How to Build a CWE-Based Secure Code Review Checklist for Your Language and Stack
+12. How to Prioritize CWE Findings with CWSS Instead of Misusing CVSS
+13. How to Reproduce the CWE Top 25 Ranking from CVE Frequency and CVSS Data
+14. How to Map OWASP Top 10 Categories to Specific CWE Root Causes Without Losing Detail
+15. How to Represent CWE Chains When a Vulnerability Has Multiple Root Causes
+16. How to Deduplicate Scanner Findings by CWE Without Hiding Distinct Vulnerabilities
+17. How to Turn CWE Mitigations into Testable Security Requirements
+18. How to Filter Irrelevant Scanner Findings with CWE Applicable-Platform Metadata
+19. How to Track CWE Version Changes Without Breaking Security Dashboards
+20. How to Build a CWE Coverage Matrix for SAST, DAST, and Manual Testing
+
+## SAP HANA
+
+1. How to List Every SAP HANA Table and View with SYS.TABLES and SYS.VIEWS
+2. How to Convert YYYYMMDD Strings to DATE Safely in SAP HANA SQL
+3. How to Format SAP HANA Timestamps Without Breaking Chronological Sort Order
+4. How to Concatenate Grouped Rows with STRING_AGG in SAP HANA
+5. How to Split a Delimited String into Rows in SAP HANA SQLScript
+6. How to Emulate UNPIVOT in SAP HANA with UNION ALL Without Dynamic SQL
+7. How to Update Rows from Another Table with MERGE in SAP HANA
+8. How to Create and Populate an SAP HANA Table with CREATE TABLE AS SELECT
+9. How to Decode Small SAP HANA BLOB Values with BINARY and BINTOSTR
+10. How to Parameterize Dynamic SQL in SAP HANA SQLScript with USING and INTO
+11. How to Connect Python to SAP HANA Cloud with hdbcli and Certificate Validation
+12. How to Connect Node.js to SAP HANA Cloud with @sap/hana-client and TLS
+13. How to Configure TLS for SAP HANA JDBC and ODBC Clients Without Disabling Hostname Verification
+14. How to Fix Insufficient Privilege Errors for Cross-Schema Access Between HDI Containers
+15. How to Diagnose SAP HANA Error 613 Timeouts with Expensive-Statement Views
+16. How to Stop One SAP HANA Query from Exhausting Memory with Workload Classes
+17. How to Restore an SAP HANA Tenant Database to a Point in Time with hdbsql
+18. How to Find and Clean Up an Oversized SAP HANA Backup Catalog Safely
+19. How to Set Per-User Statement Memory and Thread Limits in SAP HANA
+20. How to Return and Consume OUT Table Parameters from SAP HANA SQLScript Procedures
+
+## SonarQube
+
+1. How to Make a SonarQube Quality Gate Fail Your CI Pipeline Without Brittle Sleep Commands
+2. Why SonarQube Shows 0% Coverage Even Though Tests Passed—and How to Fix Report Paths
+3. How to Import JaCoCo, LCOV, and Cobertura Reports into SonarQube Without Mixing Source Paths
+4. How to Exclude Files from SonarQube Coverage Without Excluding Them from Static Analysis
+5. Shallow Clone Detected: How to Restore SonarQube Blame Data and Accurate New-Code Results
+6. PKIX Path Building Failed in SonarScanner: How to Trust a Private SonarQube Certificate
+7. SonarScanner Out of Memory: How to Size the Heap and Narrow Analysis Scope
+8. SonarQube Analysis Upload Returns 403: How to Separate Token Permissions from WAF Blocking
+9. How to Scan a Monorepo as Multiple SonarQube Projects Without Reusing Project Keys
+10. Analysis Finished but Metrics Are Missing: How to Poll SonarQube’s Compute Engine Task
+11. Jenkins waitForQualityGate Hangs: How to Repair the SonarQube Webhook and Secret
+12. Branch Analysis Cannot Use sonar.pullrequest.key: How to Stop Mixing SonarQube Analysis Modes
+13. How to Define New Code in SonarQube for Trunk-Based Development and Release Branches
+14. How to Keep SonarQube PR Decoration Working with Forks and Protected CI Secrets
+15. How to Diagnose a Growing SonarQube Compute Engine Queue Before CI Times Out
+16. How to Back Up and Restore SonarQube Without Restoring Stale Elasticsearch Indexes
+17. SonarQube Elasticsearch Will Not Start: How to Fix vm.max_map_count and File-Descriptor Limits
+18. How to Rotate SonarQube Analysis Tokens in CI Without Exposing Them in Scanner Arguments
+19. How to Tune a SonarQube Quality Profile Without Losing Changes on Upgrade
+20. SonarQube Behind a Reverse Proxy Redirects to the Wrong URL: How to Fix Headers and Server Base URL
+
+## Projected Volumes
+
+1. Projected Volume MountVolume.SetUp Failed: How to Find a Missing Secret, ConfigMap, or Key
+2. Why Projected Secret Updates Never Reach a subPath Mount—and How to Preserve Live Rotation
+3. How to Resolve Duplicate Target Paths When Multiple Projected Volume Sources Define the Same Filename
+4. How to Map Projected Secret and ConfigMap Keys into Nested Directories with items.path
+5. How to Set Per-File Permissions in a Projected Volume Without Misreading Octal and Decimal Modes
+6. Projected ServiceAccount Token Is Unreadable as Non-Root: How runAsUser Changes Ownership and Mode
+7. How to Share a Projected ServiceAccount Token Safely When Sidecars Run Under Different UIDs
+8. How to Set the Right audience on a Projected ServiceAccount Token for an External Service
+9. How to Reload a Rotated Projected ServiceAccount Token Instead of Caching Expired Credentials
+10. How to Recreate kube-api-access with a Projected Token, Root CA, and Namespace File
+11. kube-root-ca.crt Not Found: How to Repair a Broken Projected API Access Volume
+12. Can a Projected Volume Read a Secret from Another Namespace? Safe Alternatives That Work
+13. How to Make a Missing Projected ConfigMap or Secret Optional Without Blocking Pod Startup
+14. How to Project Pod Labels, Annotations, and Container Resource Limits with the Downward API
+15. How to Mount a ClusterTrustBundle as an Auto-Updating CA File in Kubernetes 1.36
+16. How to Use a podCertificate Projected Volume Without Loading a Mismatched Key and Certificate
+17. Why inotify Misses Projected Volume Updates—and How to Watch Kubernetes’ ..data Symlink
+18. Why fsGroup Changes Your Projected Volume’s Requested File Modes
+19. How to Encode Projected Volume File Modes Correctly in YAML, JSON, and Helm Templates
+20. How to Rename Secret Keys with Dots or Dashes When Projecting Them as Application Files
+
+## Log Levels
+
+1. How to Change a Production Service’s Log Level at Runtime Without Restarting It
+2. How to Override Log Levels for One Package or Class Without Enabling Global DEBUG
+3. Why DEBUG Messages Disappear: How Logger and Handler Thresholds Interact
+4. Why Every Log Line Appears Twice: How to Fix Root-Logger Propagation and Duplicate Handlers
+5. How to Send DEBUG Logs to a File and INFO Logs to the Console Without Duplicates
+6. How to Drive Log Levels from Environment Variables Across Development, Staging, and Production
+7. How to Map Syslog, Log4j, Zap, and .NET Severities into OpenTelemetry SeverityNumber
+8. Why Kubernetes Log Pipelines Cannot Reliably Infer Severity from stdout and stderr—and How to Preserve It as a Field
+9. ERROR Logs Vanish After Collector Filtering: How to Debug SeverityText and SeverityNumber Mismatches
+10. How to Sample Repetitive INFO Logs Without Dropping the First or Final Error
+11. How to Put a Time Limit on Temporary DEBUG Logging So It Cannot Stay Enabled in Production
+12. How to Prevent Tokens and PII from Leaking When You Turn On DEBUG or TRACE
+13. How to Guard Expensive Log Formatting So Disabled DEBUG Calls Do Not Hurt Hot Paths
+14. Async Logger Queue Full: How to Preserve WARN and ERROR Events Under Backpressure
+15. How to Assign Log Levels to Retry Attempts Without Reporting the Same Failure as ERROR Five Times
+16. Should HTTP 4xx Responses Be WARN or ERROR? How to Classify Expected Client Failures
+17. How to Alert on ERROR Logs Without Paging Once per Stack Trace
+18. How to Demote Noisy Health-Check and Polling Logs Without Losing Failure Signals
+19. How to Separate Audit Events from Operational Log Levels and Retention Policies
+20. Custom Log Levels Break Cross-Service Searches: How to Standardize Severity Without Losing Source Text
+
+## Zuul
+
+1. How to Build a Local Zuul Gating Lab with Gerrit and Docker Compose
+2. How to Configure Independent check and Dependent gate Pipelines in Zuul
+3. How to Put Interdependent Projects in a Shared Zuul Queue for Speculative Gating
+4. How to Use Depends-On Across Gerrit Changes and GitHub Pull Requests in Zuul
+5. Zuul Job Did Not Run: How to Debug files, irrelevant-files, and Branch Matchers
+6. Zuul Reports “Job Dependency Not Found”: When to Make a Dependency soft
+7. How to Pass Data and Artifacts Between Dependent Zuul Jobs with zuul_return
+8. How to Connect Cross-Change Build Artifacts with Zuul provides and requires
+9. How to Autohold a Failed Zuul Node and SSH In for Post-Mortem Debugging
+10. How to Encrypt Zuul Job Secrets Without Exposing Them to Untrusted Playbooks
+11. How to Replace Static Deployment Credentials with a Zuul OIDC Secret
+12. Zuul Jobs Stay Queued with “Node Request”: How to Debug Nodeset Labels and Capacity
+13. How to Limit Concurrent Zuul Jobs with Semaphores Without Hoarding Build Nodes
+14. Why a Zuul Job Variant Overrides the Wrong Value: How Inheritance and Freezing Work
+15. How to Keep Zuul Job Variants Correct Across Stable Branches with Implied Matchers
+16. How to Check Out the Right Cross-Repository Branch with required-projects and override-checkout
+17. How to Reload Zuul Tenant Configuration with a Smart Reconfigure Instead of a Restart
+18. Config Project or Untrusted Project? How to Place Zuul Jobs, Pipelines, and Secrets Safely
+19. How to Add Non-Voting Zuul Jobs Without Letting Experimental Failures Block the Gate
+20. Why Zuul Cancels Jobs When a New Patchset Arrives—and How to Tune dequeue-on-new-patchset
