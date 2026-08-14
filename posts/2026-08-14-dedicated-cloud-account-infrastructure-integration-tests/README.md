@@ -48,12 +48,12 @@ A useful baseline includes:
 1. Central audit logs and security findings that test code cannot disable.
 2. An allowlist of regions if the organization has data-location requirements.
 3. Denials for leaving the organization, disabling security controls, changing billing, or modifying the bootstrap role.
-4. A least-privileged CI role with a short session duration and a trust policy restricted to the intended repository and workflow identity.
+4. A least-privileged CI role with a short session duration and a trust policy restricted to the intended repository and execution context.
 5. Budgets and anomaly alerts routed to an owned channel.
 6. Known service quotas for the regions used by the suite.
 7. An inventory and cleanup role independent from the role that creates test payloads.
 
-Prefer workload identity federation to stored access keys. GitHub Actions OIDC tokens include claims that a cloud trust policy can restrict by repository, pull-request context, branch, or GitHub environment. Do not trust every repository in an organization by default, and do not expose cloud credentials to workflows triggered from untrusted fork code.
+Prefer workload identity federation to stored access keys. In AWS, a GitHub Actions OIDC trust policy can require the token's `sub` claim to identify the intended repository and an execution context such as a branch, the `pull_request` event, or a GitHub environment. Do not trust every repository in an organization by default, and do not expose cloud credentials to workflows that execute untrusted fork code.
 
 The creation role should normally be unable to change its own policy. For services that cannot be tag-restricted at create time, limit resource types, regions, and account-level operations, then rely on isolation, quotas, and cleanup as additional controls. Test this policy with the same scenarios the suite needs; an overly narrow role produces confusing false failures, while an overly broad role turns a test bug into an account-wide incident.
 
@@ -72,7 +72,7 @@ locals {
 }
 ```
 
-Use an unambiguous UTC timestamp for `expires-at`, and validate its format before deployment. Not every dependent resource inherits tags, so the test harness should also retain the Terraform state and a manifest of identifiers returned by external setup code. Activate relevant cost-allocation tags before relying on them for billing reports; cost allocation is not necessarily retroactive.
+Use an unambiguous UTC timestamp for `expires-at`, and validate its format before deployment. Not every dependent resource inherits tags, so a custom apply/destroy harness should retain its Terraform state and a manifest of identifiers returned by external setup code. Because `terraform test` keeps its state in memory rather than a reusable state file, retain its cleanup output and the same kind of identifier manifest. Activate relevant cost-allocation tags before relying on them for billing reports; cost allocation is not necessarily retroactive.
 
 Tag-based cleanup needs protections against deleting the baseline. Use a positive selection such as all of the expected ownership tags, reject resources without a parseable expiry, scope deletion to the test account, and maintain an explicit denylist for bootstrap resources. Start a new janitor in report-only mode before enabling deletion.
 
@@ -88,7 +88,7 @@ Test both sides of the boundary. A deployment can succeed while the real behavio
 
 ## Treat Quotas and Cost as Test Inputs
 
-A new account may have different quotas from an established production account. Inventory required quotas during bootstrap, request increases deliberately, and reserve capacity for cleanup. A suite that consumes the last network interface or public IP can prevent its own destroy operation.
+A new account may have different quotas from an established production account. Inventory required quotas during bootstrap, request increases deliberately, and keep enough headroom to avoid mid-run failures. A suite that exhausts a network-interface or Elastic IP quota can make later create or update operations fail, leave a partially created run, and complicate recovery.
 
 Use several independent cost controls:
 
@@ -109,7 +109,7 @@ Every account should therefore have a written recovery procedure:
 
 1. Revoke or pause new account leases.
 2. Enumerate active and expired run ownership records.
-3. Retry normal destroy using the preserved state and original provider version.
+3. Retry normal destroy using the preserved state and original provider version when the harness uses persistent state; otherwise use the `terraform test` cleanup output and manifest for manual cleanup.
 4. Remove external dependencies in documented order.
 5. Run the janitor in report mode, review the targets, then delete.
 6. Verify that only the baseline remains and that quota usage returned to its expected level.
