@@ -72,7 +72,6 @@
 
 ## Backoff
 
-16. Fixed, Linear, or Exponential Backoff: Which Pattern Fits Rate Limits, Lock Contention, and Polling?
 17. Why Can One Poison Message Stall a Backoff Loop—and When Should You Dead-Letter It?
 18. Sequential Retry or Hedged Request: Which Reduces Tail Latency Without Doubling Load?
 19. Should Failed Requests Sleep in Worker Threads or Move to a Delayed Retry Queue?
