@@ -32,7 +32,7 @@ Trace one representative request from caller to final dependency and list:
 
 Do not infer behavior from source code alone. Service configuration, environment variables, resolver-provided gRPC service config, and mesh routing rules can change it at deployment time.
 
-Capture attempt evidence in a controlled test. Istio and Envoy can expose attempt information through proxy telemetry and headers when configured; gRPC provides per-attempt metrics; many SDKs expose attempt metadata in debug logging. Keep these diagnostics away from sensitive production payloads.
+Capture attempt evidence in a controlled test. Istio and Envoy can expose attempt information through proxy telemetry and headers when configured; gRPC's OpenTelemetry integration can expose per-attempt metrics when enabled; many SDKs expose attempt metadata in debug logging. Keep these diagnostics away from sensitive production payloads.
 
 ## Choose the Owner by Required Knowledge
 
@@ -113,7 +113,9 @@ If policy cannot be narrowed safely by route or method, disabling mesh retries f
 
 ## Account for gRPC Transparent Retries
 
-gRPC can perform transparent retries even without a configured retry policy. If an RPC never leaves the client, the library can transparently retry until success or the call deadline. If it reaches the gRPC server library but not application logic, gRPC performs at most one transparent retry. Configured retry policies separately add status-based attempts, exponential backoff, and throttling.
+gRPC can perform transparent retries even without a configured retry policy. If an RPC never leaves the client, the library can transparently retry until success or the call deadline. If it reaches the gRPC server library but not application logic, gRPC performs at most one transparent retry. Configured retry policies separately add status-code-based attempts and exponential backoff; service config can also enable retry throttling.
+
+A configured retry policy's <code>maxAttempts</code> counts the original attempt, but transparent retries do not count toward it. If an exact cap on on-wire RPC attempts is required, account for up to one additional on-wire attempt caused by the transparent retry allowed after a prior attempt reaches the gRPC server library but not application logic, or disable retry support when creating the channel if no transparent retry is acceptable.
 
 Treat transparent recovery as part of the transport's documented contract, not as permission to add another unaware loop. Once response headers are received, gRPC commits the RPC and no further gRPC retry is attempted. An outer application still needs to decide whether repeating the complete RPC after its final result is semantically valid.
 
