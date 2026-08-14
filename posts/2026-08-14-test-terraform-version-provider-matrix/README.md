@@ -37,7 +37,7 @@ terraform {
 }
 ```
 
-The Terraform minimum must match the syntax and test features the repository actually uses. The native test framework is available from Terraform 1.6, while provider mocking arrived in 1.7. A module may support Terraform 1.5 at runtime yet keep mock-based tests that require a newer test runner; document that distinction instead of silently claiming the tests execute on 1.5.
+The module's Terraform minimum must match the Terraform language features its runtime configuration actually uses. Test features can impose a separate, higher minimum on the test runner. The native test framework is available from Terraform 1.6, while provider mocking arrived in 1.7. A module may support Terraform 1.5 at runtime yet keep mock-based tests that require a newer test runner; document that distinction instead of silently claiming the tests execute on 1.5.
 
 ## Choose Cells That Represent a Promise or a Risk
 
@@ -84,14 +84,16 @@ testing/compat/
   tf-current-provider-latest/
 ```
 
+Each harness must also contain version-compatible `.tftest.hcl` files, normally in its own `tests/` directory. `terraform test` searches the current root configuration and its test directory; it does not discover tests stored alongside the called child module.
+
 Exact harness constraints make a cell auditable. Generated harnesses are also workable, but publish the generated `required_providers` block and selected lock file as diagnostic artifacts. Never edit the module's source constraint to manufacture a passing cell; that changes the thing being tested.
 
 ## Treat Lock Files Differently by Lane
 
-For the consumer-baseline lane, use the committed lock file exactly as a consumer would:
+For the consumer-baseline lane, use the committed lock file without allowing initialization to change it:
 
 ```bash
-terraform init -input=false
+terraform init -input=false -lockfile=readonly
 terraform validate
 terraform test
 ```
@@ -105,7 +107,7 @@ terraform validate
 terraform test
 ```
 
-Record the resulting `.terraform.lock.hcl` and `terraform version` output for review. `terraform init -upgrade` disregards existing lock selections while still honoring configured constraints. It does not mean unconstrained latest.
+Record the resulting `.terraform.lock.hcl` and `terraform version` output for review. `terraform init -upgrade` disregards existing lock selections while still honoring configured constraints. It also upgrades remote modules to the newest versions allowed by their constraints, so hold their selections constant when a cell is intended to vary only provider versions. It does not mean unconstrained latest.
 
 For exact-version cells, check in separate harness lock files or regenerate them deterministically in separate jobs. The `terraform providers lock` command can pre-populate checksums for specified platforms and providers. This is useful when local development and CI run on different operating systems or architectures.
 
@@ -132,7 +134,8 @@ jobs:
       - uses: hashicorp/setup-terraform@v4
         with:
           terraform_version: ${{ matrix.terraform }}
-      - run: terraform version
+      - name: Verify Terraform version
+        run: terraform version | grep -Fx "Terraform v${{ matrix.terraform }}"
       - run: terraform init -input=false
         working-directory: ${{ matrix.harness }}
       - run: terraform validate
@@ -143,7 +146,7 @@ jobs:
 
 Pin third-party actions according to the repository's supply-chain policy, often by full commit SHA. The tag-based references above keep the example readable, not a claim that mutable tags are the strongest production pin.
 
-Terraform 1.x compatibility promises do not guarantee that every provider schema, cloud API, or module behavior remains identical. Keep provider versions as an explicit dimension even when Core stays within the same major version.
+Terraform 1.x compatibility promises cover a large subset of valid Core language and workflow behavior, but not individual provider schemas and behavior, remote cloud APIs, or newer releases of external modules. Keep provider versions as an explicit dimension even when Core stays within the same major version.
 
 ## Use the Right Depth in Each Cell
 
