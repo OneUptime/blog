@@ -66,7 +66,6 @@
 
 ## InfiniBand
 
-15. `IBV_WC_RETRY_EXC_ERR` vs `IBV_WC_RNR_RETRY_EXC_ERR`: Which Side of the Queue Pair Is Broken?
 16. `RDMA_CM_EVENT_ROUTE_ERROR`: How Do GIDs, P_Keys, and Address Resolution Cause It?
 17. InfiniBand Bandwidth Is Low but `ibdiagnet` Is Clean: Check PCIe Width, NUMA Placement, and CPU Pinning
 18. How Should You Run `ib_write_bw` Without Benchmarking the Wrong Path or Memory Type?
