@@ -72,7 +72,6 @@
 
 ## Backoff
 
-6. How Do You Retry a Timed-Out POST Without Creating Duplicate Side Effects?
 7. Why Is the Request Body Empty on the Second HTTP Retry—and How Do You Replay It Safely?
 8. Per-Attempt Timeout vs Overall Deadline: How Do You Budget Time Across Retries and Backoff?
 9. Where Should Retry Ownership Live When the SDK, Service Mesh, and Application All Retry?
