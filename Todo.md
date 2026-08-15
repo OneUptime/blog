@@ -75,7 +75,6 @@
 ## Feast
 
 ## Headless Services
-10. How to Point a Selectorless Headless Service at an External IP with EndpointSlices
 11. Why a Selectorless Headless Service Has No DNS Records: Labels, Addresses, and Port Matching
 12. How to Reach Headless Service Endpoints Across Namespaces with the Correct FQDN
 13. Why Deployment Pods Do Not Get Stable DNS Names from a Headless Service—and When to Use StatefulSet
