@@ -73,7 +73,6 @@
 ## Backoff
 
 ## Feast
-6. How Do You Rematerialize Corrected Feast Features When the Online Store Keeps the Older Value?
 7. Redis, DynamoDB, or PostgreSQL: Which Feast Online Store Fits Your Latency and Concurrency Needs?
 8. Feast Materialization Ran Out of Memory: When Should You Replace the In-Process Engine?
 9. How Do You Detect Silent Feast Materialization Failures Before Online Features Go Stale?
