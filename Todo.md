@@ -73,7 +73,6 @@
 ## Backoff
 
 ## Feast
-17. How Do You Push Streaming Features to Both Feast Stores Without Creating Training-Serving Skew?
 18. Why Is `get_historical_features` Slow or Memory-Hungry on a Large Entity DataFrame?
 19. Python Feature Server or Alpha Go Server: How Should Non-Python Clients Read Feast Features?
 20. How Do You Evolve a Feast FeatureView Schema Without Type Mismatches or Broken Consumers?
