@@ -71,7 +71,6 @@
 
 
 ## Backoff
-33. How to Retry a Partially Successful Batch with Backoff Without Reprocessing Completed Items
 34. Access Token Expired During Backoff: Refresh Once, Then Replay the Request Safely
 35. Database Deadlock Retries: Recreate the Entire Transaction Before Applying Backoff
 36. How to Back Off a Single Kafka Partition Without Pausing Healthy Partitions
