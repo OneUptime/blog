@@ -73,7 +73,6 @@
 ## Backoff
 
 ## Feast
-20. How Do You Evolve a Feast FeatureView Schema Without Type Mismatches or Broken Consumers?
 
 ## Headless Services
 
