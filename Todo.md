@@ -73,7 +73,6 @@
 ## Backoff
 
 ## Feast
-12. FeatureView, FeatureService, or OnDemandFeatureView: Which Feast Object Should You Use?
 13. How Do You Version Feast Feature Services Without Breaking a Deployed Model?
 14. File Registry or SQL Registry: Which Feast Backend Survives Concurrent Production Updates?
 15. How Should `feast apply` Promote Feature Definitions from Staging to Production Without Registry Drift?
