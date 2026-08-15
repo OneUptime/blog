@@ -75,7 +75,6 @@
 ## Feast
 
 ## Headless Services
-6. Headless Service Plus ClusterIP: How to Separate Stateful Peer Discovery from Client Traffic
 7. Why a Headless Service Does Not Load-Balance Requests—and How Clients Should Select Endpoints
 8. How to Handle DNS Caching When Pods Behind a Headless Service Roll
 9. How to Tune CoreDNS Cache TTLs for Fast Headless Service Updates Without a Query Storm
