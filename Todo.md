@@ -73,7 +73,6 @@
 ## Backoff
 
 ## Feast
-16. Batch Pipeline, On-Demand Transform, or Feast Aggregation: Where Should a 30-Day Rolling Feature Run?
 17. How Do You Push Streaming Features to Both Feast Stores Without Creating Training-Serving Skew?
 18. Why Is `get_historical_features` Slow or Memory-Hungry on a Large Entity DataFrame?
 19. Python Feature Server or Alpha Go Server: How Should Non-Python Clients Read Feast Features?
