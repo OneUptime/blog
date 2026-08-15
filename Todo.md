@@ -71,7 +71,6 @@
 
 
 ## Backoff
-36. How to Back Off a Single Kafka Partition Without Pausing Healthy Partitions
 37. Why Identically Seeded Jitter Synchronizes Every Pod After a Restart—and How to Fix It
 38. How to Ramp Traffic Back Up After an Outage Instead of Releasing Every Backoff at Once
 39. How to Preserve Attempt History in the Final Error Without Logging Every Failure Twice
