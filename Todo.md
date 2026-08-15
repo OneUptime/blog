@@ -75,8 +75,6 @@
 ## Feast
 
 ## Headless Services
-
-1. Why Does a Kubernetes Headless Service Return No Pod IPs? Checking Selectors, EndpointSlices, and Readiness
 2. How to Resolve One Specific StatefulSet Pod with `<pod>.<service>.<namespace>.svc`
 3. How to Query A, AAAA, and SRV Records for a Headless Service with `dig`
 4. How to Publish StatefulSet Peers Before They Are Ready with `publishNotReadyAddresses`
