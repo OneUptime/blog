@@ -73,7 +73,6 @@
 ## Backoff
 
 ## Feast
-9. How Do You Detect Silent Feast Materialization Failures Before Online Features Go Stale?
 10. How Do You Keep Feast Point-in-Time Joins Correct with Duplicate and Late-Arriving Rows?
 11. How Do Composite Entities and `join_key_map` Aliases Work in Feast?
 12. FeatureView, FeatureService, or OnDemandFeatureView: Which Feast Object Should You Use?
