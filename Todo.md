@@ -73,7 +73,6 @@
 ## Backoff
 
 ## Feast
-19. Python Feature Server or Alpha Go Server: How Should Non-Python Clients Read Feast Features?
 20. How Do You Evolve a Feast FeatureView Schema Without Type Mismatches or Broken Consumers?
 
 ## Headless Services
