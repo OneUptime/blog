@@ -71,7 +71,6 @@
 
 
 ## Backoff
-29. Why Async Backoff Freezes the Event Loop—and How to Replace Blocking Sleeps
 30. How to Persist Backoff State Across Worker Restarts Without Triggering a Retry Burst
 31. How to Checkpoint a Paginated Data Sync Before Backoff So Retries Resume at the Failed Page
 32. Why HTTP Retries Leak Connections: Drain and Close Failed Responses Before Backoff
