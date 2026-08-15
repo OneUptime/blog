@@ -71,7 +71,6 @@
 
 
 ## Backoff
-34. Access Token Expired During Backoff: Refresh Once, Then Replay the Request Safely
 35. Database Deadlock Retries: Recreate the Entire Transaction Before Applying Backoff
 36. How to Back Off a Single Kafka Partition Without Pausing Healthy Partitions
 37. Why Identically Seeded Jitter Synchronizes Every Pod After a Restart—and How to Fix It
