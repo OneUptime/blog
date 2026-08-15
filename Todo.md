@@ -73,8 +73,6 @@
 ## Backoff
 
 ## Feast
-
-1. What Does `event_timestamp` Mean in a Feast Entity DataFrame, and Why Is It Required?
 2. Why Does a Feast Point-in-Time Join Return Nulls? Debugging Timestamps, TTLs, and Join Keys
 3. Feast TTL Explained: Why Historical Join Windows and Online Feature Expiry Are Not the Same Thing
 4. `feast materialize` vs `materialize-incremental`: Which Handles Late-Arriving Feature Data Correctly?
