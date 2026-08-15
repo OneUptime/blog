@@ -73,7 +73,6 @@
 ## Backoff
 
 ## Feast
-11. How Do Composite Entities and `join_key_map` Aliases Work in Feast?
 12. FeatureView, FeatureService, or OnDemandFeatureView: Which Feast Object Should You Use?
 13. How Do You Version Feast Feature Services Without Breaking a Deployed Model?
 14. File Registry or SQL Registry: Which Feast Backend Survives Concurrent Production Updates?
