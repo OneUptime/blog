@@ -71,7 +71,6 @@
 
 
 ## Backoff
-25. Why Catching an Exception Inside a Retry Callback Disables Backoff—and Where to Log Instead
 26. Reactor `Retry.backoff` Exhausted: How to Propagate the Original Failure Instead of a Wrapper
 27. How to Use a Monotonic Clock for Backoff So NTP Adjustments Cannot Break Retry Timing
 28. Preventing Backoff Overflow: Safely Capping `base × 2^attempt` in Long-Running Workers
