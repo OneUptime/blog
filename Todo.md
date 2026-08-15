@@ -71,7 +71,6 @@
 
 
 ## Backoff
-23. WebSocket Closed Cleanly but Never Reconnected: Turning `onclose` into a Backoff Signal
 24. How to Restore WebSocket Subscriptions and Resume Missed Events After a Backoff Reconnect
 25. Why Catching an Exception Inside a Retry Callback Disables Backoff—and Where to Log Instead
 26. Reactor `Retry.backoff` Exhausted: How to Propagate the Original Failure Instead of a Wrapper
