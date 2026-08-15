@@ -71,7 +71,6 @@
 
 
 ## Backoff
-38. How to Ramp Traffic Back Up After an Outage Instead of Releasing Every Backoff at Once
 39. How to Preserve Attempt History in the Final Error Without Logging Every Failure Twice
 40. How to Combine Backoff with a Concurrency Limit So Waiting Retries Cannot Starve New Work
 
