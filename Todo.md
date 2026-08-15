@@ -71,7 +71,6 @@
 
 
 ## Backoff
-40. How to Combine Backoff with a Concurrency Limit So Waiting Retries Cannot Starve New Work
 
 ## Feast
 
