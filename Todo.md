@@ -75,7 +75,6 @@
 ## Feast
 
 ## Headless Services
-7. Why a Headless Service Does Not Load-Balance Requests—and How Clients Should Select Endpoints
 8. How to Handle DNS Caching When Pods Behind a Headless Service Roll
 9. How to Tune CoreDNS Cache TTLs for Fast Headless Service Updates Without a Query Storm
 10. How to Point a Selectorless Headless Service at an External IP with EndpointSlices
