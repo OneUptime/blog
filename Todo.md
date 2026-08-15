@@ -71,7 +71,6 @@
 
 
 ## Backoff
-31. How to Checkpoint a Paginated Data Sync Before Backoff So Retries Resume at the Failed Page
 32. Why HTTP Retries Leak Connections: Drain and Close Failed Responses Before Backoff
 33. How to Retry a Partially Successful Batch with Backoff Without Reprocessing Completed Items
 34. Access Token Expired During Backoff: Refresh Once, Then Replay the Request Safely
