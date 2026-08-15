@@ -75,7 +75,6 @@
 ## Feast
 
 ## Headless Services
-3. How to Query A, AAAA, and SRV Records for a Headless Service with `dig`
 4. How to Publish StatefulSet Peers Before They Are Ready with `publishNotReadyAddresses`
 5. How to Keep Terminating Pod IPs from Breaking Headless Service Clients
 6. Headless Service Plus ClusterIP: How to Separate Stateful Peer Discovery from Client Traffic
