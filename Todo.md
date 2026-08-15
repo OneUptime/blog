@@ -75,7 +75,6 @@
 ## Feast
 
 ## Headless Services
-8. How to Handle DNS Caching When Pods Behind a Headless Service Roll
 9. How to Tune CoreDNS Cache TTLs for Fast Headless Service Updates Without a Query Storm
 10. How to Point a Selectorless Headless Service at an External IP with EndpointSlices
 11. Why a Selectorless Headless Service Has No DNS Records: Labels, Addresses, and Port Matching
