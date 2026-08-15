@@ -73,7 +73,6 @@
 ## Backoff
 
 ## Feast
-8. Feast Materialization Ran Out of Memory: When Should You Replace the In-Process Engine?
 9. How Do You Detect Silent Feast Materialization Failures Before Online Features Go Stale?
 10. How Do You Keep Feast Point-in-Time Joins Correct with Duplicate and Late-Arriving Rows?
 11. How Do Composite Entities and `join_key_map` Aliases Work in Feast?
