@@ -20,26 +20,33 @@ Each log entry includes the justification for the access (such as a support tick
 
 ## Prerequisites
 
-Access Transparency is included for all Google Cloud organizations at no extra charge. It requires an organization resource - you cannot use it with standalone projects. You also need the Access Transparency Admin role at the organization level to verify or change the setting.
+Access Transparency is a default security control for every Google Cloud organization. It is included at no extra charge and is already on - there is no activation step to work through. It does require an organization resource, so it does not apply to standalone projects.
+
+Reading the setting needs the Access Approval Viewer role (`roles/accessapproval.viewer`). Administering it needs the Access Transparency Admin role (`roles/axt.admin`). Grant either at the organization level.
 
 ```bash
 # Verify your organization setup
 
 gcloud organizations list
 
-# Verify that you have roles/axt.admin at the organization level
+# Verify that you have roles/accessapproval.viewer (to read the setting)
+# or roles/axt.admin (to administer it) at the organization level
 # Navigate to: console.cloud.google.com/iam-admin/iam
 ```
 
-## Step 1: Enable Access Transparency
+## Step 1: Confirm Access Transparency Is Active
 
-Access Transparency is an organization-level control. In the Google Cloud console, verify it from IAM > Settings. If it is not enabled in your environment, use the console workflow with the Access Transparency Admin role.
+Access Transparency is an organization-level control that Google enables by default, so for most organizations this is a confirmation step rather than an enablement step. There is no gcloud command or API call that turns it on - confirm it from the console using either of two paths.
 
 ```bash
 # There is no gcloud access-transparency enable command.
-# Verify from the console instead:
-# IAM > Settings > Access Transparency
+# Confirm from the console instead, using either path:
+#
+#   Security > Access Approval  -> check the Home tab
+#   IAM > Settings              -> check Access Transparency
 ```
+
+If your organization predates the default rollout and the setting still reads as disabled, IAM > Settings is where you turn it on, using the Access Transparency Admin role.
 
 Access Transparency is separate from Access Approval, but they complement each other well. Use the Access Approval API only for Access Approval settings, not for enabling Access Transparency.
 
@@ -98,27 +105,77 @@ gcloud storage buckets add-iam-policy-binding gs://access-transparency-archive \
 
 ## Step 3: Set Up Access Approval
 
-Access Approval goes one step further than Access Transparency by requiring your explicit approval before Google personnel can access your data. This is optional but valuable for highly regulated environments.
+Access Transparency tells you after the fact that Google personnel touched your data. Access Approval goes further and puts a gate in front of that access. Today you enroll in it explicitly, but Google is migrating Access Approval onto the same platform as Access Transparency with customers enrolled by default, so the decision that actually matters is not whether to turn it on - it is which operating mode to run.
+
+### Pick an operating mode first
+
+Access Approval has three operating modes, selected through the approval policy on your settings. You can change the mode at any time.
+
+| Mode | `gcloud --approval_policy` | API `justificationBasedApprovalPolicy` | Behavior |
+| --- | --- | --- | --- |
+| Transparency | `transparency` | `JUSTIFICATION_BASED_APPROVAL_ENABLED_ALL` | Audit-only. Every access is pre-approved instantly and recorded. Nothing blocks. |
+| Streamlined Support | `streamlined-support` | `JUSTIFICATION_BASED_APPROVAL_ENABLED_EXTERNAL_JUSTIFICATIONS` | Access tied to your own support cases is pre-approved. Everything else waits for you. |
+| Access Approval | `access-approval` | `JUSTIFICATION_BASED_APPROVAL_NOT_ENABLED` | Every request waits for an explicit approval from your team. |
+
+Start in Transparency mode. You get the full record of who requested access and why, without an unanswered approval request stalling a live support case - which is the usual way these rollouts go wrong. Be clear-eyed about the tradeoff: Transparency mode is audit-only, so it is a recording, not a control. It satisfies "we know who touched our data"; it does not satisfy "nobody touches our data without our say-so."
+
+Run it long enough to learn your real access volume and to confirm someone actually answers the notifications. Then tighten to Streamlined Support, and to full Access Approval once you are confident an approver is always reachable.
 
 ```bash
-# Enable Access Approval at the organization level
+# Start in Transparency mode: audit-only, every access pre-approved and recorded
 gcloud access-approval settings update \
   --organization=ORG_ID \
+  --approval_policy=transparency \
   --enrolled_services=all \
   --notification_emails="security-team@company.com,compliance@company.com"
 ```
+
+```bash
+# Later, once approvers are reliably responding, tighten the mode
+gcloud access-approval settings update \
+  --organization=ORG_ID \
+  --approval_policy=streamlined-support
+
+# And finally require approval for every access
+gcloud access-approval settings update \
+  --organization=ORG_ID \
+  --approval_policy=access-approval
+```
+
+The same change through the REST API. Send `updateMask` explicitly - if you leave it unset, only `notificationEmails` is updated and your policy change is silently dropped.
+
+```bash
+curl -X PATCH \
+  -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+  -H "Content-Type: application/json" \
+  -d '{
+        "approvalPolicy": {
+          "justificationBasedApprovalPolicy": "JUSTIFICATION_BASED_APPROVAL_ENABLED_ALL"
+        }
+      }' \
+  "https://accessapproval.googleapis.com/v1/organizations/ORG_ID/accessApprovalSettings?updateMask=approvalPolicy"
+```
+
+### Enrollment and notifications
+
+Enrolled services and notification emails are set separately from the mode. Get the notification list right before you leave Transparency mode - in the stricter modes an unread inbox turns into a blocked support case.
 
 ```python
 from google.cloud import accessapproval_v1
 
 def configure_access_approval(org_id):
-    """Configure Access Approval with notification settings."""
+    """Configure Access Approval enrollment and notification settings.
+
+    Set the operating mode separately, with
+    `gcloud access-approval settings update --approval_policy=...` or the
+    REST API - the Python client does not expose approvalPolicy yet.
+    """
     client = accessapproval_v1.AccessApprovalClient()
 
     settings = accessapproval_v1.AccessApprovalSettings()
     settings.name = f"organizations/{org_id}/accessApprovalSettings"
 
-    # Require approval for all Google Cloud services
+    # Enroll every Google Cloud service
     settings.enrolled_services = [
         accessapproval_v1.EnrolledService(
             cloud_product="all",
@@ -303,4 +360,6 @@ def generate_compliance_report(project_id, dataset_id, start_date, end_date):
     return report
 ```
 
-Access Transparency logs close the visibility gap between what your users do and what your cloud provider does. For regulatory compliance, this is essential. Auditors want evidence that you track all access to sensitive data, and Access Transparency provides that evidence in a structured, queryable format. Combined with Access Approval for pre-authorization controls, you have a complete picture of who accesses your cloud resources and why.
+Access Transparency logs close the visibility gap between what your users do and what your cloud provider does. For regulatory compliance, this is essential. Auditors want evidence that you track all access to sensitive data, and Access Transparency provides that evidence in a structured, queryable format. Because it is now on by default, the work is not enabling it - it is routing the logs somewhere durable and querying them.
+
+Access Approval is the other half. Start it in Transparency mode to learn your access patterns without risking a stalled support case, then move up to Streamlined Support and full Access Approval as your approval process proves itself. At that point you are not just recording who accesses your cloud resources and why - you are deciding.
