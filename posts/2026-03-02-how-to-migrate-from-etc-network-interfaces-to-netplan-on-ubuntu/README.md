@@ -8,7 +8,7 @@ Description: A practical guide to migrating network configuration from the legac
 
 ---
 
-Ubuntu switched from `/etc/network/interfaces` to Netplan starting with Ubuntu 17.10. If you have older servers that were upgraded rather than freshly installed, or if you set up networking manually using the legacy format, you will eventually need to migrate. This guide covers the translation from common `interfaces` configurations to their Netplan equivalents.
+Ubuntu switched from `/etc/network/interfaces` to Netplan starting with Ubuntu 17.10. If you have older servers that were upgraded rather than freshly installed, or if you set up networking manually using the legacy format, you will eventually need to migrate. This guide covers the translation from common `interfaces` configurations to their Netplan equivalents. If the server is remote, read [Performing the Migration](#performing-the-migration) before you touch anything - the order of those steps is what keeps you from locking yourself out.
 
 ## Why Migrate
 
@@ -289,6 +289,20 @@ network:
 
 ## Performing the Migration
 
+Every step below touches the interface your SSH session runs over, so the order matters. The sequence keeps the working `ifupdown` configuration in place as a fallback until Netplan has proven itself on the live system.
+
+The one thing never to do remotely is stop the old networking service before Netplan is up. `networking.service` ships with `ExecStop=/sbin/ifdown -a --read-environment --exclude=lo`, so `systemctl stop networking` tears down every interface except loopback - including the one carrying your session.
+
+### Step 0: Arrange Out-of-Band Access
+
+Before you start, make sure you have a way back in that does not depend on the network you are about to reconfigure:
+
+- A cloud provider serial console or web console
+- IPMI / iDRAC / iLO on physical hardware
+- Someone who can walk up to the machine
+
+If you have none of these, the timed rollback in Step 4 is what stands in for a console. Do not skip it.
+
 ### Step 1: Write the Netplan Configuration
 
 Create the Netplan file based on your translation:
@@ -297,6 +311,15 @@ Create the Netplan file based on your translation:
 sudo nano /etc/netplan/01-network.yaml
 ```
 
+Netplan ships a converter that can give you a first draft from an existing `interfaces` file. It is a testing command, hidden unless test commands are enabled, and it refuses anything it does not understand (`pointopoint`, `metric`, `mapping` stanzas, and similar), so review the output rather than trusting it:
+
+```bash
+# Print the converted YAML without changing any files
+sudo env ENABLE_TEST_COMMANDS=1 netplan migrate --dry-run
+```
+
+Writing the file does not change the running network - nothing is applied until Step 5.
+
 ### Step 2: Validate
 
 ```bash
@@ -304,7 +327,7 @@ sudo nano /etc/netplan/01-network.yaml
 sudo netplan generate
 ```
 
-Fix any errors before proceeding.
+`netplan generate` only writes backend configuration under `/run`, so it is safe to run at any time. Fix any errors before proceeding.
 
 ### Step 3: Install Required Packages
 
@@ -314,34 +337,79 @@ If migrating from `ifupdown` to `networkd`:
 # Install netplan if not present (systemd-networkd is included with systemd)
 sudo apt install netplan.io
 
-# Enable systemd-networkd
+# Enable systemd-networkd for future boots (this does not start it)
 sudo systemctl enable systemd-networkd
 ```
 
-### Step 4: Disable the Old Networking Service
+Having `ifupdown` and `systemd-networkd` installed at the same time is fine for now. `ifupdown` is not a daemon - `networking.service` is a `oneshot` unit that ran once at boot and then stayed marked active - so it will not fight `networkd` over a running interface. The two only collide at the next boot, which Step 6 handles.
+
+### Step 4: Arm a Timed Rollback (Remote Servers)
+
+`netplan try` is a good safety net for editing an existing Netplan config, but it is a weaker one during a migration. It reverts by restoring the previous contents of `/etc/netplan` and re-applying them. On a machine that had no Netplan config at all, reverting means applying an empty config: `systemd-networkd` drops the addresses it configured, and `ifupdown` does not re-run on its own. The `netplan-try(8)` man page is explicit that after a timeout or cancellation you have to verify by hand that the network actually reverted.
+
+A reboot is what genuinely restores the old setup, because `/etc/network/interfaces` is untouched and `networking.service` is still enabled at this point. Schedule one before you apply anything:
 
 ```bash
-# Disable ifupdown networking service
-sudo systemctl disable networking
-sudo systemctl stop networking
+# In 10 minutes: move the new config aside and reboot back into ifupdown
+sudo systemd-run --on-active=10min --unit=netplan-rollback \
+  /bin/sh -c 'mv /etc/netplan/01-network.yaml /root/01-network.yaml.failed; systemctl reboot'
 ```
 
-### Step 5: Apply Netplan Configuration
+That creates a transient `netplan-rollback.timer`. If the migration works, you cancel it in Step 7. If you lose your session, the machine reboots itself back into the configuration it had this morning.
 
-If working remotely, use `netplan try` which auto-reverts after 120 seconds if connectivity is lost:
+### Step 5: Apply the Netplan Configuration
+
+The old service is still enabled and your rollback is armed, so this is now a recoverable step:
 
 ```bash
 sudo netplan try
-# Press Enter to confirm if connectivity is maintained
+# Press Enter to confirm while your session is still alive
 ```
 
-If at the console:
+`netplan try` reverts after 120 seconds by default; use `--timeout` to change it.
+
+One caveat worth knowing before you rely on it: `netplan try` refuses to run when the configuration contains a bridge or bond with any non-default parameters. It prints `reverting custom parameters for bridges and bonds is not supported` and exits. The bridge example above (`stp`, `forward-delay`) and the bond example (`mode`, `primary`, `mii-monitor-interval`) both fall in that category. For those configurations, apply directly and lean on the rollback timer instead:
 
 ```bash
 sudo netplan apply
 ```
 
-### Step 6: Verify
+If you are at the console, you can go straight to `netplan apply` and skip the timer entirely.
+
+### Step 6: Disable the Old Networking Service
+
+Only once Netplan is applied and your session survived:
+
+```bash
+# Remove ifupdown from future boots - this does not touch the running system
+sudo systemctl disable networking
+
+# Optional: make sure nothing re-enables it
+sudo systemctl mask networking
+```
+
+Use `disable`, not `stop`. `systemd-networkd` already owns the interface, so there is nothing to gain from stopping the old unit, and stopping it runs `ifdown -a` and disconnects you. Run `systemctl stop networking` only from a console.
+
+### Step 7: Cancel the Rollback and Reboot to Verify
+
+```bash
+# Cancel the scheduled rollback
+sudo systemctl stop netplan-rollback.timer
+```
+
+A reboot is the only real proof that the machine comes back on Netplan alone, so do it deliberately - during a maintenance window, with console access available:
+
+```bash
+sudo reboot
+```
+
+Once the reboot confirms everything works, you can remove the legacy stack. Keep the backups you made earlier:
+
+```bash
+sudo apt purge ifupdown
+```
+
+### Step 8: Verify
 
 ```bash
 # Check interface status
@@ -385,16 +453,20 @@ sudo apt install networkd-dispatcher
 
 ## Rolling Back
 
-If migration fails:
+If the migration fails, the reboot from Step 4 is the most reliable rollback: with the Netplan file moved aside and `networking.service` still enabled, the machine comes back on the old `interfaces` configuration. Backend files generated by Netplan live under `/run` and disappear on reboot on their own.
+
+To roll back without rebooting, do it from the console:
 
 ```bash
-# Re-enable the old networking
-sudo systemctl enable networking
-sudo systemctl start networking
+# Move the Netplan config out of the way so it does not return on boot
+sudo mv /etc/netplan/01-network.yaml /root/
 
-# Disable Netplan's backend
-sudo systemctl stop systemd-networkd
+# Hand the interfaces back to ifupdown
+sudo systemctl disable --now systemd-networkd
+sudo systemctl enable --now networking
 ```
+
+Do not run that over SSH. `systemd-networkd` defaults to `KeepConfiguration=no`, so stopping it drops the addresses and routes it configured, and your connection goes away before `ifupdown` gets a chance to bring the interfaces back.
 
 The backup of `/etc/network/interfaces` you made at the start can restore the original configuration.
 
