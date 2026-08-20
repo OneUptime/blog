@@ -20,7 +20,7 @@ Capture process resident memory, source bytes scanned, rows read and written, fe
 source query -> local transformation -> Feast serialization -> online writes
 ```
 
-An offline warehouse can execute a filtered query without using local memory, yet the result may still be downloaded and converted before online writes. Conversely, an on-demand or custom transform can expand rows locally even when the source result looked small.
+An offline warehouse can execute a filtered query without using local memory, yet the result may still be downloaded and converted before online writes. Conversely, a write-time on-demand transform (`write_to_online_store=True`) or a custom batch transform can expand the local intermediate data even when the source result looked small.
 
 Run one FeatureView at a time to isolate the offender:
 
@@ -61,12 +61,12 @@ Use observed peak memory and completion time, not a fixed row-count threshold. O
 
 ## Match the Engine to the Data Platform
 
-Current Feast documentation presents pluggable compute engines and calls out several choices:
+Current Feast documentation and the Feast 0.65 engine registry present several choices:
 
 - Spark provides distributed execution for materialization and historical retrieval, with configurable partitions and Spark memory settings.
 - Ray provides distributed datasets, join strategies, resource controls, and large entity-dataframe support.
 - Snowflake runs materialization compute in a Snowflake warehouse when used with the supported Snowflake source and configuration.
-- the production guide also discusses Bytewax on Kubernetes for scalable materialization in applicable deployments.
+- Kubernetes (`type: k8s`) distributes batch materialization writes across pods in a Kubernetes Job but does not support historical retrieval. The Bytewax wording that remains in the production guide is legacy for Feast 0.65.
 
 A Spark example from the current Feast reference uses `batch_engine` configuration:
 
@@ -80,11 +80,13 @@ batch_engine:
   spark_conf:
     spark.master: "spark://spark-master:7077"
     spark.app.name: "feast-materialization"
-    spark.sql.shuffle.partitions: 128
+    spark.sql.shuffle.partitions: "128"
     spark.executor.memory: "4g"
 ```
 
-Treat this as a shape, not a copy-paste production configuration. Verify supported offline and online stores, credentials, serialization versions, and engine status against the exact Feast release. Spark and Ray are marked as contributed integrations in the reference and need their own production qualification.
+Treat this as a shape, not a copy-paste production configuration. Feast 0.65.0 has an [open nested-`spark_conf` handling issue](https://github.com/feast-dev/feast/pull/6441) that passes the outer `batch_engine` mapping to `SparkConf`; use a release containing the fix or configure the Spark session externally before relying on these values.
+
+Distributed Spark transformation also does not guarantee a distributed source read. In Feast 0.65, only a `SparkRetrievalJob` stays distributed; other offline-store results are converted through Arrow/Pandas on the driver. The Snowflake/Spark pairing above is therefore a configuration-shape example, not by itself a driver-memory fix. Verify supported offline and online stores, credentials, serialization versions, and engine status against the exact Feast release. Spark and Ray are marked as contributed integrations in the live reference and need their own production qualification.
 
 ## Preserve Semantics During Migration
 
