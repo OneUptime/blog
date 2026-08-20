@@ -8,7 +8,7 @@ Description: Repair corrected Feast data by separating offline history fixes fro
 
 ---
 
-Correcting a row in the offline source and rerunning `feast materialize-incremental` often leaves the online value unchanged. That is expected when the corrected event is behind the registry's incremental watermark or when the online store already holds a later event for the same entity.
+Correcting a row in the offline source and rerunning `feast materialize-incremental` often leaves the online value unchanged. That is expected when the corrected event is behind the registry's incremental watermark. After an explicit replay, whether an older or same-time correction overwrites an existing online value depends on the online-store implementation and configuration.
 
 The repair must answer two different questions:
 
@@ -47,9 +47,14 @@ Validate a small point-in-time retrieval around the corrected event before touch
 ```python
 probe = pd.DataFrame(
     {
-        "account_id": ["a-17", "a-17"],
+        "account_id": ["a-17", "a-17", "a-17"],
         "event_timestamp": pd.to_datetime(
-            ["2026-08-10T09:59:59Z", "2026-08-10T10:00:01Z"], utc=True
+            [
+                "2026-08-10T09:59:59Z",
+                "2026-08-10T10:00:00Z",
+                "2026-08-10T10:00:01Z",
+            ],
+            utc=True,
         ),
     }
 )
@@ -62,32 +67,32 @@ print(
 )
 ```
 
-The before-and-after probe proves both the correction and its temporal boundary.
+The probes just before, exactly at, and just after the event prove both the correction and its temporal boundary.
 
 ## Replay an Explicit Event-Time Window
 
-Incremental materialization starts at the previous registered end for each FeatureView, so it will not normally revisit an older correction. Use stateless materialization with explicit bounds:
+When prior materialization history exists, incremental materialization starts at the latest registered end for each FeatureView, so it will not normally revisit an older correction. If the online store already has the desired latest value, stop after historical validation. Otherwise, use non-incremental materialization with explicit bounds:
 
 ```bash
 feast materialize -v account_risk \
   2026-08-10T09:00:00Z 2026-08-10T11:00:00Z
 ```
 
-Include enough context to select the intended latest row for affected entities. Replaying a bounded interval is preferable to a blind full-history run because it limits source scans and online writes.
+Include enough context to select the intended latest row for affected entities. On a backend that accepts unconditional upserts, set the end bound late enough to include each affected entity's current intended latest source row; otherwise a narrow replay can roll online state backward. Replaying a bounded interval is preferable to a blind full-history run because it limits source scans and online writes.
 
-Repeated writes are provider-dependent. Run one repair job per FeatureView or otherwise use an online store and registry that support your concurrency pattern. Feast recommends the SQL registry when materialization jobs write registry metadata concurrently.
+Repeated writes and timestamp-conflict handling are provider-dependent. Run repair jobs sequentially, one FeatureView at a time. If you parallelize them, use an online store and registry that support your concurrency pattern. Feast recommends the SQL registry when materialization jobs write registry metadata concurrently.
 
-## Understand Why an Older Correction May Not Win
+## Understand Online Write Conflicts
 
 An online store is latest-state storage. Suppose it contains an 11:00 value and you repair the 10:00 source row. Historical requests between 10:00 and 11:00 should change, but an online request should still see 11:00.
 
-If the 11:00 row itself is wrong and should not exist, merely replaying 10:00 may not make online state fall backward. Online-store implementations commonly guard against older event timestamps replacing newer ones. Feast does not expose one portable row-level "rewind to previous source value" command across all backends.
+If the 11:00 row itself is wrong and should not exist, replaying 10:00 does not portably make online state fall backward. Some online-store implementations reject older, and sometimes equal, event timestamps; others overwrite existing values without that guard. A same-event-time correction with a later created timestamp can therefore also be skipped by a backend that requires a strictly newer event timestamp. Feast does not expose one portable row-level "rewind to previous source value" command across all backends.
 
 Use one of these controlled strategies:
 
 - publish a new, semantically valid latest feature event from the upstream computation;
 - clear the affected FeatureView's online data with a provider-specific, reviewed maintenance procedure, then rematerialize the intended state;
-- create a versioned FeatureView and materialize it into fresh online infrastructure for a breaking or large correction.
+- create a versioned FeatureView and materialize it into separate online state, with separately provisioned infrastructure if required, for a breaking or large correction.
 
 The first option is normally safest for a small correction. The second requires a maintenance window, exact key targeting, backups, and a canary because native deletion bypasses Feast's portable API. The third gives the cleanest rollback for broad changes.
 
@@ -103,7 +108,7 @@ For a versioned repair:
 2. run `feast apply`;
 3. materialize `v2` from corrected data;
 4. verify historical and online canaries;
-5. create a new FeatureService for the model version;
+5. create a new FeatureService for the model version and run `feast apply` again;
 6. shift readers gradually;
 7. retain `v1` through the rollback window.
 
@@ -117,7 +122,7 @@ After replay, test:
 - online retrieval for affected entities and an unaffected control entity;
 - event timestamps or freshness metadata where the client exposes them;
 - missing-feature rate and model input distributions;
-- registry and feature-server cache propagation.
+- for a versioned repair, registry metadata and feature-server registry-cache propagation.
 
 Record the exact source revision, Feast version, registry, interval, FeatureView list, and affected entity count in the incident log. A repair that cannot be reproduced cannot be safely audited.
 
@@ -131,4 +136,4 @@ Record the exact source revision, Feast version, registry, interval, FeatureView
 
 ## Conclusion
 
-Repair offline history first, validate it with point-in-time probes, and replay an explicit window. If the correct online state must move behind its stored latest timestamp, use a controlled upstream rewrite, provider-specific rebuild, or versioned FeatureView instead of falsifying event time.
+Repair offline history first and validate it with point-in-time probes. When online state also needs repair, replay an explicit window that selects the intended latest row for every affected entity. If the correct online state must move behind its stored latest timestamp, use a controlled upstream rewrite, provider-specific rebuild, or versioned FeatureView instead of falsifying event time.
