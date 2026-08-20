@@ -60,10 +60,12 @@ A zero-row run is not inherently an error. Compare it with expected source volum
 
 The current Python feature server can expose Prometheus-compatible metrics on a separate endpoint. Its documented metrics include:
 
-- `feast_materialization_total{feature_view,status}`;
+- `feast_materialization_result_total{feature_view,status}`;
 - `feast_materialization_duration_seconds{feature_view}`;
 - `feast_feature_freshness_seconds{feature_view,project}`;
 - request counts and latency for the feature server.
+
+Despite its name, `feast_feature_freshness_seconds` is computed from the most recent materialization end time in the registry, not from online value event timestamps. Feast emits no freshness series for a FeatureView with no recorded materialization end, so alert separately when an expected series is absent.
 
 Metrics are opt-in, and the documented default metrics port is 8000. Enable and scrape them according to the configuration for the pinned Feast version.
 
@@ -74,8 +76,15 @@ max by (project, feature_view) (feast_feature_freshness_seconds) > 1800
 ```
 
 ```promql
-increase(feast_materialization_total{status!="success"}[15m]) > 0
+increase(feast_materialization_result_total{status="failure"}[15m]) > 0
+or
+(
+  feast_materialization_result_total{status="failure"} > 0
+  unless feast_materialization_result_total{status="failure"} offset 15m
+)
 ```
+
+The second branch catches a failure series that first appears during the window, before `increase()` has two samples.
 
 Choose thresholds per FeatureView. A daily feature and a five-minute fraud feature cannot share one freshness limit.
 
@@ -83,7 +92,7 @@ Not every deployment invokes materialization through the Python feature server, 
 
 ## Add a Known-Entity Canary
 
-After each materialization, retrieve one or more controlled entities through the same endpoint used by the model:
+After each materialization, retrieve one or more controlled entities through the same serving path used by the model. If the model uses the Feast Python SDK directly:
 
 ```python
 result = store.get_online_features(
@@ -91,10 +100,14 @@ result = store.get_online_features(
     entity_rows=[{"canary_id": "materialization-eu-west"}],
 ).to_dict()
 
-assert result["sequence_number"][0] == expected_sequence
+actual_sequence = result["sequence_number"][0]
+if actual_sequence != expected_sequence:
+    raise RuntimeError(
+        f"Canary mismatch: expected {expected_sequence}, got {actual_sequence}"
+    )
 ```
 
-The canary producer should write a deterministic, monotonically increasing value into every closed interval. The check catches wrong registry paths, wrong projects, missing online writes, stale server caches, and broken request serialization.
+If the model calls the deployed feature server over HTTP, send the equivalent canary to `/get-online-features` instead. The canary producer should write a deterministic, monotonically increasing value into every closed interval. Exercising the production path catches wrong registry paths, wrong projects, missing online writes, stale registry or serving-configuration caches, and broken entity or request serialization.
 
 Use more than one canary when feature data is sharded. Keep canary identifiers free of customer information.
 
@@ -106,7 +119,7 @@ Also track:
 
 - percentage of online reads with missing features;
 - age distribution of observed feature values;
-- source-to-online row-count reconciliation for bounded intervals;
+- source-to-online reconciliation for bounded intervals using write counts or distinct entity keys, not raw source-row counts;
 - change in feature-value distributions after a run;
 - last successful run by FeatureView, not only by workflow.
 
