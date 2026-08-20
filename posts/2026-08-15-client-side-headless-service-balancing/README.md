@@ -66,7 +66,7 @@ open one permanent connection
 never re-resolve
 ~~~
 
-It concentrates traffic, misses replacements, and turns one Pod restart into a client outage.
+It concentrates traffic, misses replacements, and turns one Pod replacement into a client outage.
 
 ## Choose an Algorithm That Matches the Workload
 
@@ -105,7 +105,7 @@ for each new connection:
 
 Respect the DNS TTL as an upper hint for when cached data expires, but do not make every request query DNS. Add jitter so thousands of clients do not refresh simultaneously. Coalesce concurrent refreshes inside one process.
 
-When a refresh fails temporarily, keeping a recently working set is often safer than replacing it with an empty set. Bound how long stale state remains eligible, and distinguish `NXDOMAIN`, an empty RRset, timeout, and `SERVFAIL` in metrics and logs.
+When a refresh fails temporarily, keeping a recently working set is often safer than replacing it with an empty set. Bound how long stale state remains eligible, and distinguish `NXDOMAIN`, `NOERROR`/`NODATA` (no A or AAAA answers), timeout, and `SERVFAIL` in metrics and logs.
 
 ## Make Connection Pools Membership-Aware
 
