@@ -60,18 +60,18 @@ async def call_with_retry(operation):
             ))
             history[:] = history[-10:]
 
-            retry_attempts_total.add(1, {"error_type": type(error).__name__})
+            retryable_failures_total.add(1, {"error_type": type(error).__name__})
 
             if final:
                 error.add_note(format_attempt_history(history))
                 raise  # Preserves the final attempt's traceback.
 
-            await asyncio.sleep(delay_ms / 1000)
+        await asyncio.sleep(delay_ms / 1000)
 ```
 
 The caller still receives the final underlying exception. Its note gives the attempt count, elapsed times, safe classifications, and chosen delays. Earlier stack traces are intentionally not chained because they rarely add value and can consume substantial memory.
 
-On Python versions before 3.11, wrap once at exhaustion and chain the final cause:
+On Python 3.7 through 3.10, adapt the annotations for the target version (`list[T]` requires Python 3.9 and `X | None` requires 3.10), then wrap once at exhaustion and chain the final cause:
 
 ```python
 raise RetryExhausted(history) from error
@@ -81,12 +81,12 @@ That changes the public exception type, so document it and keep `error` as the e
 
 ## Give One Boundary Ownership of the Error Log
 
-The retry helper should emit metrics and traces for attempts, not terminal stack traces. The boundary that can identify the logical operation logs once:
+The retry helper should emit metrics and trace-correlated structured events for attempts, not terminal stack traces. The boundary that can identify the logical operation logs once. Its caught type must match the failure contract:
 
 ```python
 try:
     await call_with_retry(send_invoice)
-except RETRYABLE_EXCEPTIONS:
+except TERMINAL_RETRY_EXCEPTIONS:
     logger.exception(
         "invoice delivery exhausted its retry budget",
         extra={"invoice_id": invoice_id, "operation_id": operation_id},
@@ -94,15 +94,17 @@ except RETRYABLE_EXCEPTIONS:
     raise
 ```
 
+`TERMINAL_RETRY_EXCEPTIONS` is `RETRYABLE_EXCEPTIONS` when notes preserve the original type, and `RetryExhausted` when the wrapper is used.
+
 If an attempt-level log is operationally necessary, emit a compact warning with a shared operation ID, attempt number, and delay. Configure the terminal owner not to repeat that same event through another middleware layer.
 
 ## Keep Metrics and Traces Per Attempt
 
-Avoiding duplicate logs does not mean hiding retries. Record low-cardinality metrics such as retries by operation and error class, final exhaustion count, recovery-after-retry count, and backoff duration.
+Avoiding duplicate logs does not mean hiding retries. Record low-cardinality metrics such as retryable failures by operation and error class, actual retry count, final exhaustion count, recovery-after-retry count, and backoff duration.
 
-In distributed traces, one span for the logical operation can contain one event per attempt. Do not put raw exception messages or unique IDs into metric labels. Use trace and operation IDs to connect the final log to detailed attempt events.
+For distributed telemetry, emit one structured event per attempt and correlate it with the logical operation's span context. OpenTelemetry recommends log-based events for new instrumentation; existing instrumentation may still surface them as span events during the transition. Do not put raw exception messages or unique IDs into metric labels. Use trace and operation IDs to connect the final log to detailed attempt events.
 
-Define whether the initial call counts as attempt one and keep that convention consistent across history, metrics, and user-facing errors. Also record whether a delay was selected but cancelled before it elapsed.
+Define whether the initial call counts as attempt one and keep that convention consistent across history, metrics, and user-facing errors. If you need to distinguish selected from completed backoff, add cancellation instrumentation around `asyncio.sleep`; `next_delay_ms` records only the selected delay.
 
 ## Preserve the Final Failure Contract
 
@@ -116,8 +118,8 @@ Choose deliberately rather than accidentally exposing whatever wrapper a retry l
 - [Python exception context and chaining](https://docs.python.org/3/library/exceptions.html#exception-context)
 - [Python `raise` statement](https://docs.python.org/3/reference/simple_stmts.html#the-raise-statement)
 - [Python `time.monotonic`](https://docs.python.org/3/library/time.html#time.monotonic)
-- [OpenTelemetry exception semantic conventions](https://opentelemetry.io/docs/specs/semconv/exceptions/exceptions-spans/)
+- [OpenTelemetry event semantic conventions](https://opentelemetry.io/docs/specs/semconv/general/events/)
 
 ## Conclusion
 
-Capture bounded and sanitized summaries for each attempt, attach them once to the final error, and let one outer boundary own the terminal log. Metrics and trace events retain retry visibility without multiplying stack traces.
+Capture bounded and sanitized summaries for each attempt, attach them once to the final error, and let one outer boundary own the terminal log. Metrics and trace-correlated events retain retry visibility without multiplying stack traces.
