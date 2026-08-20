@@ -18,10 +18,14 @@ A PushSource can point to a batch source that supports historical retrieval and 
 
 ```python
 from datetime import timedelta
-from feast import Entity, FeatureView, Field, PushSource
+from feast import Entity, FeatureView, Field, PushSource, ValueType
 from feast.types import Float64, Int64
 
-account = Entity(name="account", join_keys=["account_id"])
+account = Entity(
+    name="account",
+    join_keys=["account_id"],
+    value_type=ValueType.INT64,
+)
 
 account_push = PushSource(
     name="account_activity_push",
@@ -41,7 +45,7 @@ account_activity = FeatureView(
 )
 ```
 
-The pushed DataFrame must contain the entity join key, event timestamp, and declared features:
+For an online push, the DataFrame must contain every entity join key, the batch source's configured timestamp field, every declared feature, and the configured created-timestamp field when present. For `OFFLINE` or `ONLINE_AND_OFFLINE`, the current SDK additionally requires the DataFrame's column set to match the batch source table exactly:
 
 ```python
 from feast import FeatureStore
@@ -86,9 +90,11 @@ consume source event
   -> record outcome and retry from durable topic
 ```
 
-If the online write succeeds and offline write fails, retrying must not create a different feature value or timestamp. If offline succeeds and online fails, replay should safely repair serving.
+For one synchronous `ONLINE_AND_OFFLINE` push to one FeatureView, Feast attempts the online write first and then the offline write, with no rollback. If the online write succeeds and the offline write fails, retrying must not create a different feature value or timestamp. Across retries or separate destination writers, the offline record may already exist while an online repair fails; replay should safely repair serving.
 
-Use a stable feature-record identifier for producer deduplication. Feast's online store keeps the latest event-time value per entity, but offline stores may append duplicate rows. Configure `created_timestamp_column` or publish a deduplicated warehouse view so historical joins choose one deterministic revision.
+Use a stable feature-record identifier for producer deduplication. Online stores retain only one current value per entity and feature, but whether an older event-time write is rejected is store-specific. Offline stores may append duplicate rows. Configure `created_timestamp_column` or publish a deduplicated warehouse view so historical joins choose one deterministic revision.
+
+By default, `created_timestamp_column` only breaks ties between rows with the same event timestamp; it is not an as-known-at-time cutoff. If training must reproduce what was available at each entity timestamp, use an installed Feast version and offline store that support `filter_by_created_timestamp=True`, or enforce the equivalent cutoff in a warehouse view.
 
 ## Treat Late Events Differently from Retries
 
@@ -120,9 +126,9 @@ Materialization is a repair path, not proof of atomic push.
 
 ## Respect Online-Store Write Capabilities
 
-The Feast online-store matrix differs on concurrent same-key writes. Current Redis documentation advertises that capability; current DynamoDB and PostgreSQL Feast pages do not. A stream writer racing a batch materializer must match the selected plugin's contract.
+The Feast online-store matrix differs on concurrent same-key writes. The current Redis matrix marks that capability supported; the current DynamoDB and PostgreSQL matrices mark it unsupported. A stream writer racing a batch materializer must match the selected plugin's contract.
 
-Partition or fence writers by FeatureView and entity when necessary. With concurrent materialization jobs, use the SQL registry for progress metadata, but remember that it does not make online and offline feature values transactional.
+Partition or fence writers by FeatureView and entity when necessary. With concurrent materialization jobs, use the SQL registry so materialization metadata updates are serialized, but remember that it does not make online and offline feature values transactional.
 
 ## Monitor Skew Directly
 
