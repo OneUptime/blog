@@ -10,7 +10,7 @@ Description: Make Feast joins deterministic with explicit event and created time
 
 A point-in-time join is only deterministic when the source defines one winning feature record for each entity key and event time. Duplicate revisions without a reliable tie-breaker can produce unstable training rows. Late records can make a previously generated dataset differ from a later rerun.
 
-Feast prevents future feature values from joining backward in time, but it cannot define your upstream correction policy or lateness contract for you.
+By default, Feast prevents rows with a future event timestamp from joining backward in time, but it does not exclude revisions created after the observation. It cannot define your upstream correction policy or lateness contract for you.
 
 ## Give Every Timestamp One Meaning
 
@@ -41,7 +41,7 @@ logical key = (all entity join keys, feature_event_timestamp)
 winner      = greatest feature_created_timestamp
 ```
 
-If two different rows can still share all three values, add an upstream deterministic revision identifier and publish a view that selects exactly one winner before Feast reads it.
+If two different rows can still share all three values, add an upstream unique, deterministic revision identifier and publish a view that selects exactly one winner before Feast reads it.
 
 For example, a BigQuery source view could select one revision with a numbering window:
 
@@ -63,7 +63,7 @@ Feast does not need the `revision_id` if the source view has already resolved it
 
 ## Distinguish Source Duplicates from Entity Duplicates
 
-Duplicate entity DataFrame rows may be intentional. Two identical entity and observation-time rows can represent two labels or examples with different non-key columns. Feast generally preserves the entity DataFrame rows and joins features onto them.
+Duplicate entity DataFrame rows may be intentional. Two identical entity and observation-time rows can represent two labels or examples with different non-key columns. Preservation is offline-store-specific: some providers retain both rows, while others deduplicate on entity keys and observation time.
 
 Do not run `drop_duplicates` blindly. First define the training example key, such as `(application_id, observation_time)`, and reject only duplicates that violate that contract.
 
@@ -74,7 +74,7 @@ Source duplicates are different: they compete to supply one feature state. Resol
 A late row has an old event timestamp but appears in the source after a materialization or training dataset was generated. It can affect two paths:
 
 - a future historical retrieval can select it for old observations;
-- an incremental materialization may miss it because its event time is behind the saved start watermark.
+- an incremental materialization may miss it because its event time is earlier than the next window's start, normally the previous materialization's saved end time.
 
 Use a published upstream watermark for closed event-time intervals. For normal bounded lateness, let the scheduler call explicit `materialize` windows with overlap:
 
@@ -88,7 +88,7 @@ store.materialize(
 
 Set two hours from an observed lateness distribution and a stated guarantee, not a guess. Keep a separate backfill path for records later than the normal overlap.
 
-Repeated windows should be tested against the chosen online-store plugin. Online serving retains only the latest event-time value per entity, so an older late row should not displace a valid newer state.
+Repeated windows should be tested against the chosen online-store plugin. Feast's online-store model keeps only the latest feature values per entity, but stale-write handling is plugin-specific; verify that an older late row cannot displace a valid newer state.
 
 ## Decide Whether Training Datasets Are Mutable
 
@@ -108,7 +108,7 @@ Persist or version the resulting training dataset together with:
 - source snapshot or warehouse time-travel reference;
 - extraction timestamp and lateness cutoff.
 
-Point-in-time correctness prevents future leakage within one retrieval. It does not make a changing source immutable.
+Point-in-time correctness prevents feature events after an observation from leaking into one retrieval. By default, it does not exclude later-created revisions with eligible event times or make a changing source immutable.
 
 ## Test Boundary Cases
 
