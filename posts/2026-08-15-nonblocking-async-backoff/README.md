@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Python, AsyncIO, Backoff, Event Loop, Concurrency, Retry
+Tags: Python, Asyncio, Backoff, Event Loop, Concurrency, Retry
 
 Description: Keep async services responsive during retry delays by suspending only the failed task and moving unavoidable blocking work off the event loop.
 

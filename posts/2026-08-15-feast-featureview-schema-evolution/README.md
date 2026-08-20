@@ -33,13 +33,13 @@ account_stats_v1 = FeatureView(
 )
 ```
 
-Current FeatureView documentation says validation checks required columns and expected Feast types during materialization and historical retrieval. A missing required column raises `ValueError`, but type mismatches are logged as warnings and do not block execution. Make those warnings fatal in your own CI or preflight checks.
+Current FeatureView documentation describes validation of declared feature columns and expected Feast types during materialization and historical retrieval. In execution paths that run Feast's validation node, a missing declared feature column raises `ValueError`, while a type mismatch is logged as a warning. Feast 0.65 does not route every offline-store retrieval path through that node, so verify enforcement for your selected provider and compute engine, and make type warnings fatal in your own CI or preflight checks.
 
 ## Classify the Change
 
 | Change | Typical treatment |
 | --- | --- |
-| add an optional independent field | potentially additive after backend and client tests |
+| add an independent field not selected by existing consumers | potentially additive after backend and client tests |
 | remove or rename a field | breaking, new FeatureView and FeatureService |
 | `Int32` to `Int64` or scalar to list | breaking for serialization and consumers |
 | change entity or join-key type | breaking storage identity |
@@ -61,7 +61,7 @@ For a genuinely additive field:
 6. deploy the new model or client;
 7. keep old FeatureServices selecting only the original fields.
 
-An old FeatureService projection should not start requesting the new field automatically. Explicit selections provide a narrower contract than including the whole FeatureView.
+To keep an old FeatureService from requesting the new field, define it with an explicit projection such as `account_stats_v1[["account_age_days", "lifetime_value"]]`. Passing the whole FeatureView selects all of its current fields and will include the new field when the FeatureService definition is rebuilt.
 
 Check the selected online store's infrastructure update behavior. The functionality matrix can say that infrastructure updates are supported without guaranteeing that every in-place type or layout mutation is safe.
 
@@ -70,6 +70,8 @@ Check the selected online store's infrastructure update behavior. The functional
 Create parallel definitions:
 
 ```python
+from feast import FeatureService
+
 account_stats_v2 = FeatureView(
     name="account_stats_v2",
     entities=[account_v2],
@@ -93,14 +95,14 @@ Changing only the FeatureService name is insufficient if both services point at 
 
 ## Understand Feast's Alpha FeatureView Versioning
 
-Feast 0.65 introduces automatic FeatureView versioning as an alpha feature. Applying a schema or UDF change creates a new internal version, and `feast apply --no-promote` can register that version without making it active. This is useful for auditing changes and staging a rollout, but it is not yet a portable replacement for parallel FeatureView names:
+Feast 0.62 introduced automatic FeatureView versioning as an alpha feature; it remains alpha in 0.65. With the built-in file or SQL registry, applying a schema or UDF change creates a new internal version, and `feast apply --no-promote` can register that version without making it active. Version-qualified reads and version-specific materialization require `enable_online_feature_view_versioning: true` under `registry` in `feature_store.yaml`. This is useful for auditing changes and staging a rollout, but it is not yet a portable replacement for parallel FeatureView names:
 
-- version-qualified online reads are supported only by the SQLite online store;
+- in Feast 0.65, version-qualified `FeatureStore.get_online_features` reads are implemented for SQLite, MySQL, PostgreSQL, FAISS, Redis, DynamoDB, and Milvus; the Go feature server rejects `@v<N>` references;
 - offline historical retrieval cannot select a specific FeatureView version;
 - a FeatureService resolves the active, promoted version rather than pinning its own version;
 - each version needs its own materialization before it can serve online values.
 
-Use the alpha mechanism where those constraints fit. For production migrations that need simultaneous old and new contracts across other stores or historical retrieval, keep the explicit `v1` and `v2` FeatureViews described above.
+Use the alpha mechanism where those constraints fit. For production migrations that need FeatureServices pinned independently, an unsupported store or serving client, or version-specific historical retrieval, keep the explicit `v1` and `v2` FeatureViews described above.
 
 ## Test Historical and Online Parity
 

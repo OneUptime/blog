@@ -165,7 +165,7 @@ Likewise, do not configure the peer protocol with only the ClusterIP when the di
 
 The two-Service pattern does not know which replica is a leader, writer, follower, or read-only member. If clients need role-aware routing, update labels through a controller designed for that application and use additional Services with narrow selectors.
 
-Be careful with rapidly changing role labels. Pod label changes propagate through EndpointSlices and Service proxies asynchronously, and existing connections—or DNS caches for headless role Services—can outlive a role transition. The application protocol must still reject unsafe operations on the wrong role and redirect or retry safely.
+Be careful with rapidly changing role labels. Pod label changes propagate through EndpointSlices and Service proxies asynchronously, and existing connections-or DNS caches for headless role Services-can outlive a role transition. The application protocol must still reject unsafe operations on the wrong role and redirect or retry safely.
 
 ## Apply Security to Both Paths
 

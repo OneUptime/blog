@@ -14,7 +14,7 @@ The state to track is consecutive failures, not lifetime failures.
 
 ## Model a Failure Streak
 
-Keep the attempt counter next to the retry loop and reset it only after the operation has met the application's definition of success. Use this loop only when `sendOneRequest` is safe to replay—for example, when the operation is idempotent, protected by application-level deduplication, or known not to have been applied on the previous attempt:
+Keep the attempt counter next to the retry loop and reset it only after the operation has met the application's definition of success. Use this loop only when `sendOneRequest` is safe to replay-for example, when the operation is idempotent, protected by application-level deduplication, or known not to have been applied on the previous attempt:
 
 ```typescript
 const BASE_MS = 250;

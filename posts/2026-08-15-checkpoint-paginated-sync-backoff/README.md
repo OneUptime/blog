@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Pagination, Data Sync, Checkpointing, Backoff, Cursors, Idempotency
+Tags: Pagination, Data Sync, Checkpointing, Backoff, Cursor, Idempotency
 
 Description: Commit each applied page and its next cursor together so a failed paginated sync resumes safely instead of starting over.
 
@@ -80,7 +80,7 @@ These guarantees require one active worker per `sync_name`. If workers can overl
 
 When fetching page 17 fails, retain the cursor for page 17 and retry that request after backoff. Do not overwrite the checkpoint with `null`, a guessed offset, or the cursor that led to page 16.
 
-Provider-specific retry-token rules take precedence. Microsoft Graph directory paging says not to use an `@odata.nextLink` returned by a retry for a subsequent page because it can cause `DirectoryPageTokenNotFoundException`. For those APIs, retain the link from the last successful non-retry response—the link used for the retry—and make page application tolerate requesting it again.
+Provider-specific retry-token rules take precedence. Microsoft Graph directory paging says not to use an `@odata.nextLink` returned by a retry for a subsequent page because it can cause `DirectoryPageTokenNotFoundException`. For those APIs, retain the link from the last successful non-retry response-the link used for the retry-and make page application tolerate requesting it again.
 
 Reset the failure streak only after the page is fetched, validated, and committed. Receiving headers or parsing half a streaming response is not a successful page.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Backoff, PostgreSQL, Workers, Job Queue, Persistence, Resilience
+Tags: Backoff, PostgreSQL, Worker, Job Queue, Persistence, Resilience
 
 Description: Store retry attempts and due times durably so restarted workers preserve pacing and do not release a burst of failed jobs.
 
@@ -32,6 +32,10 @@ CREATE TABLE retry_job (
 CREATE INDEX retry_job_due_idx
     ON retry_job (next_attempt_at, id)
     WHERE status = 'pending';
+
+CREATE INDEX retry_job_expired_lease_idx
+    ON retry_job (lease_until, id)
+    WHERE status = 'running';
 ```
 
 Persist an absolute UTC due time because a process-local monotonic reading has no portable meaning after restart. Use monotonic clocks only after a worker has translated durable state into an in-process wait.
@@ -44,8 +48,8 @@ Multiple workers can claim different rows with `FOR UPDATE SKIP LOCKED`:
 WITH candidate AS (
     SELECT id
     FROM retry_job
-    WHERE (status = 'pending' AND next_attempt_at <= clock_timestamp())
-       OR (status = 'running' AND lease_until < clock_timestamp())
+    WHERE (status = 'pending' AND next_attempt_at <= statement_timestamp())
+       OR (status = 'running' AND lease_until <= statement_timestamp())
     ORDER BY next_attempt_at, id
     FOR UPDATE SKIP LOCKED
     LIMIT 1
@@ -60,9 +64,11 @@ WHERE job.id = candidate.id
 RETURNING job.*;
 ```
 
+`statement_timestamp()` provides one database-derived cutoff for the whole statement. Unlike the volatile `clock_timestamp()`, it can be used as an index-scan comparison value. The two partial indexes cover pending due times and expired running leases respectively.
+
 PostgreSQL warns that `SKIP LOCKED` gives an inconsistent view for general queries, but explicitly notes its usefulness for avoiding contention among consumers of queue-like tables.
 
-The random `lease_token` fences late completion from a worker whose lease expired and was reclaimed. Every success or failure update should require both `id` and the current token.
+The random `lease_token` fences late queue-state updates from a worker whose lease expired and was reclaimed. Every success, failure, or lease-renewal update should require both `id` and the current token. Treat zero affected rows as loss of the lease. Set the lease duration longer than the expected processing time, or renew it before expiry with the same guarded predicate.
 
 ## Persist the Next Delay on Failure
 
@@ -78,12 +84,13 @@ SET status = CASE WHEN attempt_count + 1 >= $3 THEN 'dead' ELSE 'pending' END,
     last_error_code = $4,
     updated_at = clock_timestamp()
 WHERE id = $1
-  AND lease_token = $5;
+  AND lease_token = $5
+RETURNING id;
 ```
 
 Persist the already-jittered `next_attempt_at`. If every worker recomputes the same deterministic delay after restart, jobs that failed together can synchronize again.
 
-On success, atomically commit the business effect and mark the job done whenever they share a database. If they cannot share a transaction, make the effect idempotent and record a stable operation key.
+Require the failure update to return exactly one row; an empty result means the worker lost the lease and must stop acting on the job. On success, atomically commit the business effect and mark the job done whenever they share a database. The token-guarded done update must likewise affect exactly one row, or the whole transaction must roll back. If they cannot share a transaction, make the effect idempotent and record a stable operation key.
 
 ## Restart Without Resetting the Queue
 
@@ -109,4 +116,4 @@ Useful metrics include due queue depth, oldest due age, attempts by error code, 
 
 ## Conclusion
 
-Make the failure streak, selected due time, and lease durable queue state. Claim due rows atomically, fence stale workers, preserve state on restart, and meter overdue work so recovery does not become another outage.
+Make the failure streak, selected due time, and lease durable queue state. Claim due rows atomically, fence stale queue-state updates, preserve state on restart, and meter overdue work so recovery does not become another outage.

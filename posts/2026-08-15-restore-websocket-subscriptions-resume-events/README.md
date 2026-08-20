@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: WebSocket, Event Streaming, Reconnection, Subscriptions, Cursors, JavaScript
+Tags: WebSocket, Event Streaming, Reconnection, Subscription, Cursor, JavaScript
 
 Description: Reconnect a WebSocket without silent gaps by replaying desired subscriptions and resuming from durable event cursors.
 

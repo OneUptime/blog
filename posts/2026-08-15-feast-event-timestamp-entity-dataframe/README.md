@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Feast, Feature Store, Event Time, Entity DataFrame, Point-in-Time Join, Machine Learning
 
-Description: Understand how Feast uses each entity-row timestamp as a historical lookup boundary and why entity-DataFrame training requests need it.
+Description: Understand how Feast uses each entity-row timestamp as a historical lookup boundary and why training requests require it.
 
 ---
 

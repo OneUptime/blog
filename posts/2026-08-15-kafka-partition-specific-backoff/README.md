@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Apache Kafka, Java, Consumers, Partitions, Backoff, Offset Management
+Tags: Apache Kafka, Java, Consumer, Partition, Backoff, Offset Management
 
 Description: Pause only a failing Kafka partition, keep polling healthy assignments, and resume safely without committing past failed records.
 
@@ -26,7 +26,7 @@ while (running) {
     long now = System.nanoTime();
 
     Set<TopicPartition> due = resumeAtNanos.entrySet().stream()
-        .filter(entry -> entry.getValue() <= now)
+        .filter(entry -> now - entry.getValue() >= 0)
         .map(Map.Entry::getKey)
         .filter(consumer.assignment()::contains)
         .collect(Collectors.toSet());
@@ -45,7 +45,10 @@ while (running) {
                 processIdempotently(record);
                 completedOffsets.put(
                     partition,
-                    new OffsetAndMetadata(record.offset() + 1));
+                    new OffsetAndMetadata(
+                        record.offset() + 1,
+                        record.leaderEpoch(),
+                        ""));
                 failures.remove(partition);
             } catch (RetryableDependencyException error) {
                 int failureCount = failures.merge(partition, 1, Integer::sum);
@@ -67,7 +70,7 @@ while (running) {
 }
 ```
 
-The loop still polls every 100 milliseconds, allowing Kafka group management and healthy partitions to progress. A production implementation should use saturating deadline arithmetic and an explicit maximum attempt or record-age policy.
+The loop continues calling `poll` with a 100-millisecond timeout, allowing Kafka group management and healthy partitions to progress. The actual interval between calls also includes processing and commit time, and rebalance callbacks can make `poll` exceed its timeout. A production implementation should cap backoff delays to a reasonable maximum and enforce an explicit maximum attempt or record-age policy.
 
 ## Seek Back to the Failed Offset
 
@@ -94,9 +97,10 @@ If the downstream failure affects every partition, per-partition pause will even
 Kafka documents that pause state is not preserved across a rebalance. In a `ConsumerRebalanceListener`:
 
 - On revocation, finish or cancel in-flight work, commit only completed offsets, and remove local timers for partitions no longer owned.
-- On assignment, rebuild durable retry state if the application persists it, and reapply `pause` after assignment as needed.
+- On loss, cancel or fence in-flight work and remove local timers without committing because ownership may already have moved.
+- On assignment, rebuild durable retry state if the application persists it, and reapply `pause` to every currently assigned partition with an active timer, not only the newly assigned partitions passed to `onPartitionsAssigned`.
 
-Do not call `pause`, `resume`, `seek`, or `commitSync` from a scheduler thread. A scheduler can enqueue a command and call `wakeup`, but the consumer thread should perform the consumer API calls.
+Do not call `pause`, `resume`, `seek`, or `commitSync` from a scheduler thread. A scheduler can enqueue a command and call `wakeup`, but the consumer thread should perform the consumer API calls. Because `wakeup` makes the current or next interruptible consumer call throw `WakeupException`, the consumer loop must catch it, drain queued commands, and continue unless it is shutting down.
 
 If processing itself can approach `max.poll.interval.ms`, move record work to bounded workers while the consumer thread keeps polling, pause partitions with outstanding work, and carefully coordinate contiguous offsets. That architecture is more complex than the single-threaded example and must fence results after revocation.
 

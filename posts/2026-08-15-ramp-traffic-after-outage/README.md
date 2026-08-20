@@ -19,7 +19,7 @@ Every attempt, including first attempts and retries, should pass through two ind
 - A concurrency limit bounds simultaneous in-flight work.
 - A rate limit bounds how quickly new attempts begin.
 
-A token bucket is a common rate gate. During an outage, lower its refill rate and prevent an unlimited backlog. After credible success, increase the refill rate in measured steps.
+A token bucket is a common rate gate. Its refill rate controls sustained admission, while its capacity controls the permitted burst. During an outage, lower its refill rate, keep the burst capacity small or drain stored tokens, and prevent an unlimited backlog. After credible success, increase the refill rate in measured steps.
 
 ```text
 on overload or timeout:
@@ -31,19 +31,21 @@ on a complete healthy window:
     sending_rate = min(normal_rate, sending_rate + ramp_step)
 
 before every attempt:
-    acquire rate token
     acquire concurrency permit
-    send one bounded attempt
-    release concurrency permit
+    try:
+        acquire rate token immediately before sending
+        send one bounded attempt
+    finally:
+        release concurrency permit
 ```
 
 This is an additive-increase, multiplicative-decrease sketch, not a universal tuning formula. Choose windows and thresholds from the dependency's latency, capacity, and error budget.
 
 ## Keep Jitter During the Ramp
 
-Do not remove per-request jitter when the circuit or health check turns green. The gate limits aggregate admission, while jitter prevents waiting clients from contending for tokens at identical instants.
+Do not remove per-request jitter when the circuit or health check turns green. The gate limits aggregate admission, while jitter reduces synchronized contention among clients waiting for tokens.
 
-The AWS SDK standard retry mode combines exponential backoff with full jitter and a retry token bucket. Its adaptive mode adds a client-side rate limiter that reacts to throttling. AWS cautions that adaptive clients should be scoped to the resource that shares a throttle dimension; otherwise one unhealthy resource can slow unrelated requests. As of August 2026, AWS says the behavior described in its current cross-SDK guide requires opting in with `AWS_NEW_RETRIES_2026=true`; without it, SDKs retain pre-2026 behavior that differs in timing, quota costs, and defaults.
+The AWS SDK standard retry mode combines exponential backoff with full jitter and a retry token bucket. Its adaptive mode adds a client-side rate limiter that reacts to throttling. AWS cautions that adaptive clients should be scoped to the resource that shares a throttle dimension; otherwise one unhealthy resource can slow unrelated requests. As of August 2026, AWS says supported SDK and tool releases require opting in to the behavior described in its current cross-SDK guide with `AWS_NEW_RETRIES_2026=true`; without it, they retain pre-2026 behavior that differs in backoff timing, retry quota costs, and service-specific defaults.
 
 Apply the same scoping principle to a custom recovery gate. A rate limit for one database shard, tenant, region, or API quota should not suppress healthy resources unless they truly share capacity.
 
@@ -67,13 +69,13 @@ A six-minute outage can accumulate more work than the dependency can ever catch 
 
 Separate traffic classes. Interactive requests may need a reserved lane while bulk retries consume spare capacity. Within each class, enforce per-tenant limits so one large backlog cannot monopolize recovery.
 
-Retry at one deliberate layer. If a proxy, SDK, service, and worker each retry independently, the multiplicative attempt count can overwhelm any ramp controller.
+Only retry operations that are safe to repeat, and do so at one deliberate layer. If a proxy, SDK, service, and worker each retry independently, the multiplicative attempt count can overwhelm any ramp controller.
 
 ## Coordinate Fleet-Wide Capacity
 
 A rate limiter inside each pod limits only that pod. If 1,000 pods each ramp to 10 requests per second, aggregate load is 10,000 requests per second. Either divide a known global budget across instances, use a shared limiter, or let the downstream service advertise and enforce capacity.
 
-Server signals such as `Retry-After` should influence admission. Validate and cap them, and still add client dispersion when the contract does not already provide it.
+Server signals such as `Retry-After` should influence admission. Validate the value and do not retry before its indicated time; if it exceeds a local waiting limit, fail or defer the work instead. When the contract does not already disperse clients, add only non-negative jitter after the indicated delay.
 
 Deploy recovery logic under load tests that simulate synchronized failures and restarts. Watch admitted rate, concurrency, retry ratio, queue age, rejection rate, and dependency saturation throughout the ramp.
 

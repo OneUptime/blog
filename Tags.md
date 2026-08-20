@@ -2376,6 +2376,7 @@
 - Brownfield
 - Browse
 - Browser
+- Browser APIs
 - Browser Automation
 - Browser Cache
 - Browser Extensions
@@ -3433,6 +3434,7 @@
 - ClusterGroups
 - Clustering
 - ClusterIP
+- ClusterIP Service
 - ClusterMap
 - ClusterMesh
 - ClusterPolicy
@@ -5716,6 +5718,8 @@
 - DNS
 - DNS Automation
 - DNS Best Practices
+- DNS Cache
+- DNS Caching
 - DNS Configuration
 - DNS Cutover
 - DNS Delegation
@@ -5735,6 +5739,7 @@
 - DNS over QUIC
 - DNS over TLS
 - DNS Peering
+- DNS Performance
 - DNS Policies
 - DNS Provider
 - DNS Proxy
@@ -6409,11 +6414,13 @@
 - Entertainment
 - Entity
 - Entity Behavior Analytics
+- Entity DataFrame
 - Entity Extraction
 - Entity Framework
 - Entity Framework Core
 - Entity Graph
 - Entity Group Transactions
+- Entity Key
 - Entity Recognition
 - Entra ID
 - Entropy
@@ -6939,24 +6946,32 @@
 - FDW
 - Fe80
 - Feast
+- feast apply
 - Feature
 - Feature Adoption
 - Feature Attribution
 - Feature Branch
 - Feature Comparison
 - Feature Compatibility Version
+- Feature Contract
 - Feature Engineering
 - Feature Flag
+- Feature Freshness
 - Feature Gates
 - Feature Management
 - Feature Parity
 - Feature Pipeline
 - Feature Proposals
 - Feature Request
+- Feature Retrieval
 - Feature Selection
+- Feature Server
+- Feature Serving
 - Feature Store
 - Feature Toggle
 - Feature-Gates
+- FeatureService
+- FeatureView
 - Federal
 - Federal Mandate
 - Federated
@@ -8337,6 +8352,7 @@
 - Histogram
 - histogram Function
 - Historical Data
+- Historical Features
 - History
 - History Tables
 - History Tracking
@@ -9650,6 +9666,7 @@
 - JOIN Optimization
 - Join Token
 - join_algorithm
+- join_key_map
 - Joins
 - Jool
 - Joomla
@@ -10638,6 +10655,7 @@
 - Long Polling
 - Long Running Tasks
 - Long Tasks
+- Long-Lived Clients
 - Long-Running
 - Long-Running Connections
 - Long-Running Jobs
@@ -10914,6 +10932,7 @@
 - Matchmaking
 - MATE
 - Material Consumption
+- Materialization
 - Materialize
 - MATERIALIZED
 - Materialized Path
@@ -11529,6 +11548,7 @@
 - Monolith Migration
 - Monolog
 - Monorepo
+- Monotonic Clock
 - Monstache
 - Monte Carlo
 - Month End
@@ -12631,6 +12651,7 @@
 - Offline Operations
 - Offline Persistence
 - Offline Scanning
+- Offline Store
 - Offline Testing
 - Offline validation
 - Offline Verification
@@ -12676,6 +12697,7 @@
 - ONBUILD
 - OnCall
 - OnData
+- OnDemandFeatureView
 - One Function
 - One-Off Commands
 - One-Time
@@ -12692,6 +12714,7 @@
 - Online Archive
 - Online DDL
 - Online Encryption
+- Online Features
 - Online Learning
 - Online Migration
 - Online Offline
@@ -12699,6 +12722,7 @@
 - Online Resize
 - Online Serving
 - Online Status
+- Online Store
 - Online Tools
 - ONNX
 - ONT
@@ -13334,6 +13358,7 @@
 - Peek Messages
 - Peer
 - Peer Configuration
+- Peer Discovery
 - Peer Groups
 - Peer Review
 - Peer-to-peer
@@ -13711,6 +13736,7 @@
 - Pod Networking
 - Pod Placement
 - Pod Priority
+- Pod Readiness
 - Pod Sandbox
 - Pod Scheduling
 - Pod Security
@@ -13741,6 +13767,7 @@
 - Point
 - Point In Time
 - Point-in-Time
+- Point-in-Time Join
 - Point-in-Time Recovery
 - Point-in-Time Restore
 - Point-of-sale
@@ -14423,6 +14450,7 @@
 - Publisher Confirms
 - Publishers
 - Publishing
+- publishNotReadyAddresses
 - PubSub
 - PUBSUB Commands
 - Pull
@@ -14468,6 +14496,7 @@
 - Pusher
 - Pushgateway
 - Pushover
+- PushSource
 - PV
 - PVC
 - PVC Storage
@@ -14730,6 +14759,7 @@
 - Random Numbers
 - Random Provider
 - Random Sampling
+- Random Seeds
 - Random_id
 - Random_password
 - Random_shuffle
@@ -15157,6 +15187,7 @@
 - Reliable Messaging
 - Reload
 - Reloader
+- Rematerialization
 - Remediation
 - Remi
 - Reminder
@@ -16407,6 +16438,7 @@
 - Selective Updates
 - Selector
 - Selector Labels
+- Selectorless Service
 - Selenium
 - Selenium Grid
 - Self Join
@@ -17391,6 +17423,7 @@
 - SQL Parsing
 - SQL Pattern
 - SQL Pool
+- SQL Registry
 - SQL Scripting
 - SQL Security
 - SQL Server
@@ -17487,6 +17520,7 @@
 - Stability
 - Stable Address
 - Stable diffusion
+- Stable DNS
 - Stable Privacy
 - Stack
 - Stack Deployment
@@ -17789,6 +17823,7 @@
 - Streaming Analytics
 - Streaming Comparison
 - Streaming Data
+- Streaming Features
 - Streaming Ingestion
 - Streaming Insert
 - Streaming Recognition

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Retry, Backoff, Python, Tenacity, Exceptions, Logging
+Tags: Retry, Backoff, Python, Tenacity, Exception, Logging
 
 Description: Keep retry failures visible without swallowing the exception signal that a retry library needs to apply backoff.
 

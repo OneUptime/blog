@@ -2,9 +2,9 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Backoff, Python, Monotonic Clock, NTP, AsyncIO, Retry
+Tags: Backoff, Python, Monotonic Clock, NTP, Asyncio, Retry
 
-Description: Schedule in-process backoff against elapsed time so wall-clock corrections cannot make retries fire early or late.
+Description: Schedule in-process backoff against elapsed time so wall-clock corrections cannot make retries fire early, late, or twice.
 
 ---
 

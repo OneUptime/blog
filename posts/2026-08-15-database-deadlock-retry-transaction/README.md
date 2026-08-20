@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: PostgreSQL, MySQL, Transactions, Deadlocks, Retry, Backoff
+Tags: PostgreSQL, MySQL, Transaction, Deadlock, Retry, Backoff
 
 Description: Recover from a database deadlock by rolling back, waiting outside the transaction, and rerunning the complete unit of work.
 

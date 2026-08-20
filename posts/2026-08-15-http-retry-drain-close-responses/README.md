@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Go, HTTP, Retry, Connections, Backoff, Resource Management
+Tags: Go, HTTP, Retry, Connection, Backoff, Resource Management
 
 Description: Prevent retry loops from leaking response bodies and exhausting connections by cleaning up every HTTP attempt before waiting.
 
@@ -115,7 +115,7 @@ func wait(ctx context.Context, delay time.Duration) error {
 }
 ```
 
-`io.CopyN` returns an error—normally `io.EOF` for a cleanly terminated body—when it cannot copy the requested number of bytes. That error is harmless for cleanup because the body is closed next. The 64 KiB cap bounds bytes, not elapsed time; use a context deadline or `Client.Timeout` if a peer can stall the response. In Go 1.27 and later, `Close` can also trigger the HTTP/1 transport's own bounded asynchronous drain. If cleanup stops before EOF, the connection might not be reused, but the bounded drains prevent an enormous or endless error body from being downloaded in full merely to save a socket.
+`io.CopyN` returns an error-normally `io.EOF` for a cleanly terminated body-when it cannot copy the requested number of bytes. That error is harmless for cleanup because the body is closed next. The 64 KiB cap bounds bytes, not elapsed time; use a context deadline or `Client.Timeout` if a peer can stall the response. In Go 1.27 and later, `Close` can also trigger the HTTP/1 transport's own bounded asynchronous drain. If cleanup stops before EOF, the connection might not be reused, but the bounded drains prevent an enormous or endless error body from being downloaded in full merely to save a socket.
 
 ## Rebuild Replayable Request Bodies
 

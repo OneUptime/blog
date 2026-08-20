@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Retry, Python, Exceptions, Observability, Logging, Backoff
+Tags: Retry, Python, Exception, Observability, Logging, Backoff
 
 Description: Attach bounded, sanitized attempt history to the final exception while emitting one owner-level terminal error log.
 

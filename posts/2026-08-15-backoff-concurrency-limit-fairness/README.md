@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Backoff, Concurrency, AsyncIO, Scheduling, Fairness, Retry
+Tags: Backoff, Concurrency, Asyncio, Scheduling, Fairness, Retry
 
 Description: Release permits during backoff and admit due retries through a fair scheduler so failed work cannot monopolize capacity.
 

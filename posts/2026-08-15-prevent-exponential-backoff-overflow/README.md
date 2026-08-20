@@ -78,7 +78,7 @@ Attempt count should also be bounded independently by maximum attempts or total 
 
 ## Add Jitter After Computing the Safe Ceiling
 
-Full jitter selects a delay uniformly below the capped exponential ceiling:
+Full jitter selects a delay uniformly between zero and the capped exponential ceiling, inclusive:
 
 ```java
 import java.util.concurrent.ThreadLocalRandom;
