@@ -24,21 +24,21 @@ It listens on port 6566 by default and documents production controls for worker 
 
 A non-Python client sends JSON:
 
-```http
-POST /get-online-features HTTP/1.1
-Content-Type: application/json
-
-{
-  "feature_service": "fraud_model_v17",
-  "entities": {
-    "account_id": ["a-17", "a-29"]
-  }
-}
+```bash
+curl -X POST \
+  "http://localhost:6566/get-online-features" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "feature_service": "fraud_model_v17",
+    "entities": {
+      "account_id": ["a-17", "a-29"]
+    }
+  }'
 ```
 
-Verify the exact request schema against the running server's OpenAPI or current documentation. Use generated or hand-written client code that preserves arrays, nulls, integer widths, timestamps, and feature statuses.
+Verify the exact request schema against the running server's OpenAPI or current documentation. Use generated or hand-written client code that preserves arrays, nulls, 64-bit integer values, timestamps, and feature statuses.
 
-The Python server also documents push, write, materialization, document retrieval, authentication, and metrics endpoints. Expose only the endpoints a client needs and enforce network policy and authorization.
+The Python server also documents push, direct-write, materialization, and vector-search endpoints, plus authorization configuration and a separate Prometheus metrics endpoint. Expose only the endpoints a client needs and enforce network policy and authorization.
 
 ## Treat the Current Go Server as Alpha
 
@@ -50,7 +50,7 @@ The unversioned Feast Go feature-server page currently documents:
 - `GET /health`;
 - OpenTelemetry tracing through `ENABLE_OTEL_TRACING='true'`;
 - `entity_key_serialization_version: 3`;
-- a Python transformation service dependency.
+- a Python transformation service dependency for ODFVs.
 
 The current configuration shape is:
 
@@ -70,7 +70,7 @@ store = FeatureStore(repo_path="./feature_repo")
 store.serve_transformations(6569)
 ```
 
-This is important: using the current Go server does not necessarily eliminate Python from the deployment, especially when transformations are involved. Older Feast branches document different flags and supported-store claims. Do not copy `go_feature_serving: true` or another historical configuration into a current deployment without checking the pinned branch.
+This is important: using the current Go server does not necessarily eliminate Python from the deployment when on-demand feature views (ODFVs) are requested. Older Feast branches document different flags and supported-store claims. Do not copy `go_feature_serving: true` or another historical configuration into a current deployment without checking the pinned branch.
 
 ## Compare the Required Surface
 
@@ -78,11 +78,11 @@ This is important: using the current Go server does not necessarily eliminate Py
 | --- | --- | --- |
 | non-Python online reads | documented | documented |
 | JSON HTTP | documented | documented overview and endpoint |
-| gRPC | not the primary online API | documented overview |
+| gRPC | not supported (HTTP only) | documented overview |
 | push and materialize endpoints | documented | not in current supported API table |
 | Prometheus feature freshness | documented | not listed; OpenTelemetry tracing documented |
-| Python transform dependency | native process | separate transformation service documented |
-| stability label | standard reference | Alpha |
+| Python transform dependency | transformations run in process | separate service for ODFVs |
+| documentation maturity marker | no Alpha marker | Alpha |
 
 This table is deliberately based on documented surfaces, not an assumption that an unlisted implementation detail is supported.
 
@@ -90,7 +90,7 @@ Use Python when broad API coverage, ODFV compatibility, current metrics, and ope
 
 ## Run Contract and Parity Tests
 
-Send identical requests to both servers against an isolated copy of the same registry and online data. Compare:
+Send equivalent requests to both servers against an isolated copy of the same registry and online data. When comparing HTTP responses, append `?status=true` to the Go endpoint because the current Go HTTP server otherwise omits statuses and event timestamps. Compare:
 
 - full feature names and ordering;
 - Feast types, arrays, nulls, and missing statuses;
@@ -113,7 +113,7 @@ model client -> internal feature API -> Python or Go Feast server
 
 Canary the Go backend for a subset of traffic, shadow requests without using shadow values for predictions, and compare results. Keep the Python server ready for rollback. Do not expose an Alpha server directly to untrusted networks without separately proving authentication and authorization, since current Feast permission documentation specifically discusses enforcement through Python servers.
 
-Pin the Feast server image, registry serialization version, online-store plugin, protobuf or JSON contract, and transformation service together.
+Pin the Feast server image, `entity_key_serialization_version`, online-store plugin, protobuf or JSON contract, and transformation service together.
 
 ## Official Documentation
 
@@ -125,4 +125,4 @@ Pin the Feast server image, registry serialization version, online-store plugin,
 
 ## Conclusion
 
-Use the Python feature server as the default language-neutral HTTP boundary. Evaluate the Alpha Go server only for a measured need, with the current configuration and Python transformation dependency, strict response parity tests, a narrow exposed surface, and immediate rollback.
+Use the Python feature server as the default language-neutral HTTP boundary. Evaluate the Alpha Go server only for a measured need, with the current configuration and a Python transformation service when ODFVs are needed, strict response parity tests, a narrow exposed surface, and immediate rollback.
