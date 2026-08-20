@@ -24,11 +24,11 @@ For `purchases_30d`, define:
 - output cadence and freshness objective;
 - behavior before 30 days of history exists.
 
-The output row's timestamp must represent the snapshot time `T`. Historical retrieval can then select the newest snapshot at or before each entity DataFrame observation without future leakage.
+The output row's timestamp must represent the snapshot time `T`. Historical retrieval can then select the newest snapshot at or before each entity DataFrame observation without event-time leakage, provided each snapshot contains only information allowed by the feature contract at `T`.
 
 ## Prefer Batch for Hourly or Daily Freshness
 
-Compute rolling snapshots in BigQuery, Snowflake, Spark, dbt, or the existing batch engine when an hourly or daily update satisfies the model:
+Compute rolling snapshots in BigQuery, Snowflake, Spark, dbt, or the existing batch engine when an hourly or daily update satisfies the model. For example, with a BigQuery `TIMESTAMP` event column:
 
 ```sql
 SELECT
@@ -36,8 +36,8 @@ SELECT
   event_timestamp,
   SUM(amount) OVER (
     PARTITION BY customer_id
-    ORDER BY UNIX_SECONDS(event_timestamp)
-    RANGE BETWEEN 2592000 PRECEDING AND CURRENT ROW
+    ORDER BY UNIX_MICROS(event_timestamp)
+    RANGE BETWEEN 2592000000000 PRECEDING AND CURRENT ROW
   ) AS purchase_amount_30d
 FROM analytics.customer_events;
 ```
@@ -57,7 +57,9 @@ customer_rolling = FeatureView(
 )
 ```
 
-The FeatureView TTL is the validity horizon for selecting a precomputed snapshot, not the 30-day aggregation window. A daily output might use a two-day TTL for operational headroom while the value itself summarizes 30 days.
+`online=True` enables the view for online serving; it does not load the batch rows. Register the definition and schedule Feast materialization to copy snapshots from the offline source into the online store.
+
+For historical retrieval, the FeatureView TTL bounds how far Feast scans backward from each entity DataFrame timestamp for a precomputed snapshot; it is not the 30-day aggregation window. A daily output might use a two-day TTL for historical-join headroom while the value itself summarizes 30 days. FeatureView TTL is not a universal online-store expiry setting; online expiry depends on the selected store.
 
 ## Use Streaming for Low-Latency Rolling State
 
@@ -66,7 +68,7 @@ Choose a streaming processor when the value must update within seconds or minute
 - the online path for fresh serving;
 - a durable offline history for point-in-time training.
 
-Feast's PushSource can propagate rows to online and offline destinations, but the producer remains responsible for computation, job operation, and consistency. Periodic batch materialization can repair the online store from canonical offline history.
+With a configured `batch_source` and an offline store that supports batch writes, `FeatureStore.push(..., to=PushMode.ONLINE_AND_OFFLINE)` can propagate rows through a PushSource to both destinations. The producer remains responsible for computation, job operation, and consistency. Periodic batch materialization can repair the online store from canonical offline history.
 
 Streaming adds state recovery, replay, deduplication, and dual-write failure modes. Do not choose it solely because the model is served online.
 
@@ -81,7 +83,7 @@ stored purchases_30d + purchases_in_current_request
 
 It is not the place to scan 30 days of raw events for each request. Feast documents ODFVs as local transformations in retrieval paths and notes that this can scale poorly for offline retrieval. The dedicated current reference labels the feature Beta and documents both transformations and grouped aggregations.
 
-Use ODFV aggregation only when the input rows and grouping semantics actually represent the intended time window. Grouping whatever rows happen to arrive at request time is not a point-in-time 30-day window.
+In Feast 0.65, ODFV aggregation groups only the rows already present in the retrieval response, and its online-serving path rejects a non-null `time_window`. Use it only when those input rows and grouping semantics already represent the intended population. Grouping whatever rows happen to arrive at request time is not a point-in-time 30-day window.
 
 ## Evaluate Native Feast Aggregation Carefully
 
@@ -95,7 +97,7 @@ It can be a good fit when:
 - watermark, late-data, and deduplication behavior is tested;
 - the team accepts the integration's stability level.
 
-Do not assume that adding `time_window="30d"` alone defines snapshot cadence, closed/open interval boundaries, or correction behavior. Build golden tests at exactly `T - 30 days`, exactly `T`, and just outside both boundaries.
+Do not assume that adding `time_window=timedelta(days=30)` alone defines snapshot cadence, closed/open interval boundaries, or correction behavior. Build golden tests at exactly `T - 30 days`, exactly `T`, and just outside both boundaries.
 
 For an established warehouse pipeline, moving a stable rolling computation into a newer Feast aggregation surface may add risk without reducing ownership.
 
