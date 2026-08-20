@@ -8,7 +8,7 @@ Description: Separate Feast's historical lookup horizon from online stale-read e
 
 ---
 
-TTL appears in several parts of a Feast deployment, but those settings do not all mean "delete this value after N seconds." The FeatureView TTL primarily defines a historical point-in-time lookup horizon. Online-store retrieval checks and backend key expiration are separate capabilities.
+TTL appears in several parts of a Feast deployment, but those settings do not all mean "delete this value after N seconds." The FeatureView TTL primarily defines a historical point-in-time lookup horizon. Serving-time freshness checks and backend key expiration are separate concerns.
 
 Confusing these mechanisms causes two opposite failures: training joins unexpectedly return null, or online serving keeps returning values that an operator assumed had expired.
 
@@ -43,9 +43,11 @@ The Feast online-store functionality matrix explicitly tracks two different capa
 - support for TTL at retrieval;
 - support for deleting expired data.
 
-These are not universally supported. Current Feast documentation lists both capabilities for Redis, while the current DynamoDB and PostgreSQL Feast backends list neither. That is a provider contract, not a claim that those databases lack native expiration features. Native database settings are not automatically wired to Feast's FeatureView semantics.
+These are not universally supported, and the labels do not guarantee two independent controls. Current Feast documentation lists both capabilities for Redis, while the current DynamoDB and PostgreSQL Feast backends list neither. The Redis-specific documentation clarifies that `FeatureView.ttl` does not filter online reads; `key_ttl_seconds` controls online expiry. For normal Redis reads, the same physical key expiry accounts for both a later miss and deletion, rather than a separate stored-event-time stale-read check.
 
-Therefore, never assume `ttl=timedelta(hours=6)` guarantees that every online backend will hide or delete a seven-hour-old value. Check the matrix for the exact Feast version and online-store plugin you deploy, then test it.
+That is a provider contract, not a claim that those databases lack native expiration features. Native database settings are not automatically wired to Feast's FeatureView semantics.
+
+Therefore, never assume `ttl=timedelta(hours=6)` guarantees that every online backend will hide or delete a seven-hour-old value. Check the provider-specific documentation and implementation for the exact Feast version and online-store plugin you deploy, then test it.
 
 ## Redis Key TTL Is a Third Clock
 
@@ -58,21 +60,21 @@ online_store:
   key_ttl_seconds: 86400
 ```
 
-Feast's Redis documentation notes that this TTL is applied at the entity level. Feature values associated with that entity are removed together. It is a physical retention policy, so it can delete multiple FeatureView values that share the entity key even if they have different freshness expectations.
+Feast's Redis documentation notes that this TTL is applied at the entity level. Feature values associated with that entity are removed together, and an accepted write to any co-located FeatureView resets the expiry for the whole entity hash. It is a physical retention policy, so it can delete multiple FeatureView values that share the entity key even if they have different freshness expectations.
 
-The three clocks now look like this:
+The relevant policies now look like this:
 
 | Setting | Primary purpose | Relative to | Effect |
 | --- | --- | --- | --- |
 | FeatureView `ttl` | historical validity window | entity-row lookup time | excludes old rows from point-in-time joins |
-| online retrieval TTL support | stale-read enforcement | serving time and stored event time | provider may return no value |
-| Redis `key_ttl_seconds` | physical key retention | backend write and expiry behavior | deletes the entity-level key |
+| serving-layer maximum age | stale-read enforcement | serving time and returned event time | application rejects or falls back from stale values |
+| Redis `key_ttl_seconds` | physical key retention | most recent accepted write to the shared entity hash | deletes all co-located FeatureView values for the entity |
 
 Do not set these equal by reflex. A feature may need 90 days of offline validity for backtesting but only two hours of acceptable online freshness. Conversely, physical retention may need extra headroom to survive a delayed pipeline while alerts fire.
 
 ## Freshness Is Not Materialization Frequency
 
-A six-hour FeatureView TTL does not refresh data every six hours. Materialization or push ingestion must still write newer rows. If the producer stops, TTL may eventually turn stale reads into missing values on stores that enforce it, but it does not repair freshness.
+A six-hour FeatureView TTL does not refresh data every six hours. Materialization or push ingestion must still write newer rows. If the producer stops, `FeatureView.ttl` does not make normal Redis online reads missing. A Redis key TTL can remove the entity hash after no accepted writes reset it, and a serving-layer age check can reject a stale value sooner, but neither repairs freshness.
 
 Use separate service-level objectives:
 
@@ -86,25 +88,25 @@ physical Redis key retention: 24 hours
 
 Monitor the event timestamp of served or sampled values, not only whether the key exists. A present value can be stale, and a missing value can be an intentional consequence of freshness enforcement.
 
-The current Python feature server can expose Prometheus metrics including `feast_feature_freshness_seconds`, labeled by FeatureView and project. Combine that with scheduler success, source-watermark lag, and a known-entity canary.
+The current Python feature server can expose Prometheus metrics including `feast_feature_freshness_seconds`, labeled by `feature_view` and `project`. This gauge measures seconds since the most recent materialization end time recorded by Feast; it does not inspect the event timestamp of each served value. Combine it with scheduler success, source-watermark lag, and a known-entity canary.
 
 ## Test the Actual Provider Contract
 
-Before rollout, write a feature with a controlled timestamp and test three ages:
+Before rollout, write features with controlled timestamps and test three cases:
 
-1. comfortably inside FeatureView TTL;
-2. just outside FeatureView TTL;
-3. beyond any physical key TTL.
+1. an event timestamp comfortably inside FeatureView TTL;
+2. an event timestamp just outside FeatureView TTL;
+3. an online key just before and after its physical TTL, measured from the last accepted write.
 
-Run both historical and online retrieval. Record whether the provider returns a value, a missing status, or a null. Repeat after upgrading Feast because capability matrices and implementations can change.
+Run both historical and online retrieval for the first two cases. Test the third separately with a short `key_ttl_seconds` or by inspecting Redis's key TTL; an old event timestamp does not make a newly written Redis key old. Record whether the provider returns a value, a missing status, or a null. Repeat after upgrading Feast because capability matrices and implementations can change.
 
-Also test co-located data. With Redis entity-level expiration, refreshing one group of values may affect the lifetime of a shared entity key differently than a design that stores each FeatureView independently. Base operational assumptions on observed behavior for your schema and plugin version.
+Also test co-located data. With Redis entity-level expiration, an accepted write to any FeatureView resets the TTL of the shared entity hash and can keep stale fields from another FeatureView alive. Base operational assumptions on observed behavior for your schema and plugin version.
 
 ## Choose Policies Deliberately
 
-Use FeatureView TTL to express the oldest feature value that remains meaningful for a historical observation. Use freshness monitoring to detect ingestion lag. Use online retrieval enforcement, where supported, to prevent stale predictions. Use physical key expiration to control retention and cleanup.
+Use FeatureView TTL to express the oldest feature value that remains meaningful for a historical observation. Use freshness monitoring to detect ingestion lag. Use an explicit serving-layer event-time check, or documented provider read-time enforcement, to prevent stale predictions. Use physical key expiration to control retention and cleanup.
 
-If a backend lacks a required Feast TTL capability, enforce freshness in a serving layer by returning and checking feature statuses or timestamps, or select a backend whose Feast integration supports the behavior. Do not quietly rely on undocumented native settings.
+If a backend lacks a required Feast TTL capability, enforce freshness in a serving layer by checking returned event timestamps and rejecting values beyond policy; use provider statuses only where the plugin documents a stale status. Alternatively, select a backend whose Feast integration supports the required behavior. Do not quietly rely on undocumented native settings.
 
 ## Official Documentation
 
@@ -116,4 +118,4 @@ If a backend lacks a required Feast TTL capability, enforce freshness in a servi
 
 ## Conclusion
 
-FeatureView TTL, online stale-read behavior, and backend key expiration solve different problems. Model the historical horizon with FeatureView TTL, verify the provider's online capabilities, configure physical retention separately, and alert on actual event-time freshness.
+FeatureView TTL, serving-time freshness enforcement, and backend key expiration solve different problems. Model the historical horizon with FeatureView TTL, verify the provider's online capabilities, configure physical retention separately, and alert on actual event-time freshness.
