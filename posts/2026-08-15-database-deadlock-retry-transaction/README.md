@@ -8,7 +8,7 @@ Description: Recover from a database deadlock by rolling back, waiting outside t
 
 ---
 
-When a database detects a deadlock, it chooses a transaction to abort so the other transactions can progress. Retrying only the last SQL statement is incorrect because earlier reads, writes, locks, and the transaction snapshot belonged to the aborted transaction.
+When a database detects a deadlock, it chooses a transaction to abort so the other transactions can progress. Retrying only the last SQL statement is incorrect because earlier reads, writes, locks, and snapshots were part of the aborted transaction.
 
 Exit the failed transaction, back off, then execute the complete transaction function again.
 
@@ -45,9 +45,9 @@ def transfer(pool, request_id: str, from_id: int, to_id: int, amount: int) -> No
             time.sleep(random.uniform(0.0, ceiling))
 ```
 
-The transaction context has rolled back before `time.sleep` runs. The next loop iteration obtains a new connection context and begins a new transaction with a fresh snapshot and lock state.
+The transaction context has rolled back before `time.sleep` runs. The next loop iteration obtains a new connection context and begins a new transaction with fresh transaction state; its statements acquire new snapshots and locks.
 
-The stable `operation_id` makes the business operation idempotent if a caller retries after an ambiguous network failure around commit. Enforce it with a unique constraint rather than relying only on application memory.
+The stable `operation_id` lets the application detect a caller retry after an ambiguous network failure around commit and prevents a second transaction from committing the same database operation. Enforce it with a unique constraint rather than relying only on application memory. The example would surface a unique violation for an already committed operation, so production code must return or reconcile the recorded outcome; the key alone does not make the API response idempotent.
 
 ## Retry the Correct Error Class
 
@@ -62,9 +62,9 @@ Do not use the same policy automatically for every database error:
 
 ## Never Sleep While Holding the Transaction
 
-Backoff inside the transaction retains locks and the connection while doing no useful work. It can prolong contention and consume the pool. Ensure rollback or context exit completes first.
+Sleeping while a transaction is still active can retain locks, and sleeping before context exit keeps the connection checked out while doing no useful work. A database may already have released some or all locks when it aborts a deadlock victim, but ensure rollback or context exit completes before backoff.
 
-Savepoints are not a general way to recover from a database-selected deadlock victim. The database has aborted the transaction involved in the deadlock. Recreate any session-scoped state the next attempt requires, and do not reuse in-memory decisions based on rows read during the old snapshot.
+Savepoints do not make retrying only the failed statement generally correct. PostgreSQL can restore an aborted transaction with `ROLLBACK TO SAVEPOINT`, but work and locks acquired after that savepoint are discarded and application decisions may need reevaluation; MySQL InnoDB rolls back the entire transaction on a deadlock. Retrying the complete unit of work is the safe general policy. Recreate any session-scoped state the next attempt requires, and do not reuse in-memory decisions based on rows read during the old snapshot.
 
 ## Keep External Effects Out of the Retried Body
 
@@ -78,7 +78,7 @@ Backoff spreads repeat collisions but does not fix a consistently inverted lock 
 
 - access shared rows and tables in a consistent order;
 - keep transactions small and short;
-- index predicates so updates lock only intended rows;
+- index predicates to reduce scan work and, where the engine locks scanned ranges, the lock footprint;
 - avoid user interaction and network calls inside transactions;
 - inspect PostgreSQL deadlock logs or MySQL `SHOW ENGINE INNODB STATUS` when deadlocks are frequent.
 
@@ -89,9 +89,9 @@ Use capped jitter and a small retry limit. A persistent deadlock pattern should 
 - [PostgreSQL explicit locking and deadlocks](https://www.postgresql.org/docs/current/explicit-locking.html#LOCKING-DEADLOCKS)
 - [PostgreSQL error codes](https://www.postgresql.org/docs/current/errcodes-appendix.html)
 - [PostgreSQL transaction isolation and serialization failures](https://www.postgresql.org/docs/current/transaction-iso.html)
-- [MySQL InnoDB: How to minimize and handle deadlocks](https://dev.mysql.com/doc/refman/9.0/en/innodb-deadlocks-handling.html)
-- [MySQL InnoDB deadlock detection](https://dev.mysql.com/doc/refman/9.0/en/innodb-deadlock-detection.html)
+- [MySQL InnoDB: How to minimize and handle deadlocks](https://dev.mysql.com/doc/refman/9.7/en/innodb-deadlocks-handling.html)
+- [MySQL InnoDB deadlock detection](https://dev.mysql.com/doc/refman/9.7/en/innodb-deadlock-detection.html)
 
 ## Conclusion
 
-A deadlock invalidates the transaction's whole execution context. Let it roll back, release its resources, wait with bounded jitter, and invoke the entire idempotent transaction again with fresh database state.
+For a safe general retry policy, treat a deadlock as invalidating the transaction's whole execution context. Let it roll back, release its resources, wait with bounded jitter, and invoke the entire transaction again with a stable operation identifier and fresh database state.
