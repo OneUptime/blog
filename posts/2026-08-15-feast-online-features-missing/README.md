@@ -26,7 +26,7 @@ Both processes must resolve the same values for:
 - Feast `project`;
 - registry type and path;
 - online-store type, endpoint, database, and namespace;
-- `entity_key_serialization_version` when explicitly configured;
+- `entity_key_serialization_version`, including the resolved default;
 - feature definitions and aliases.
 
 From the same runtime image and configuration used in production, inspect Feast configuration and registered objects:
@@ -44,9 +44,9 @@ Registry caching can delay visibility of a recent `feast apply`. The Python feat
 
 ## Verify That the FeatureView Was Registered for Online Use
 
-Run `feast apply` before materialization and inspect the FeatureView that is actually in the registry. Check its source, entities, schema, and `online` setting where the selected FeatureView type exposes one.
+Run `feast apply` before materialization and inspect the FeatureView that is actually in the registry. Check its source, entities, schema, `enabled` flag and lifecycle state, and the online-write control exposed by the selected FeatureView type (`online` or `write_to_online_store`).
 
-The current CLI documentation says `apply` creates or updates definitions it finds, validates them, syncs metadata to the registry, and provisions required infrastructure. It does not delete registry objects merely because their Python declaration disappeared. A stale object with a familiar name can therefore survive a repository edit.
+The current CLI documentation says `apply` creates or updates definitions it finds, validates them, syncs metadata to the registry, and provisions required infrastructure. The released Feast 0.65.0 CLI implementation also performs a full repository reconciliation and deletes registered objects that are absent from the scanned repository, despite the current documentation saying otherwise. By contrast, `FeatureStore.apply()` is partial by default and does not delete omitted objects. A stale object with a familiar name can therefore indicate a different registry or project, a partial SDK apply, or a serving process that has not refreshed its registry.
 
 Use a versioned FeatureView name for a breaking change rather than assuming an old online table was reshaped safely.
 
@@ -71,7 +71,7 @@ Common interval mistakes include:
 - selecting the wrong view with `-v`;
 - materializing a range that contains other entities but not the requested one.
 
-Feast online stores keep only the latest value for each entity key. A replayed older row normally should not displace a newer online event.
+Feast online stores retain only current state for each feature and entity key. Whether an older write is rejected is online-store- and configuration-specific, so do not assume that replaying an older interval cannot replace a newer value.
 
 ## Compare the Exact Entity Key
 
@@ -86,13 +86,13 @@ response = store.get_online_features(
 
 Check all of the following:
 
-- `customer_id`, not the Entity registry name `customer`;
-- integer `42017`, not string `"42017"`;
+- the physical join key `customer_id`; Entity-name input such as `customer` is deprecated compatibility behavior in the current Python SDK;
+- a value compatible with the registered entity type; for an `Int64` key, use integer `42017` rather than relying on coercion of string `"42017"`;
 - every component of a composite key;
 - the alias expected by a projected FeatureService;
 - identical normalization for case, whitespace, UUIDs, and leading zeros.
 
-Feast serializes entity keys for online storage. A type or serialization-version mismatch can address a different physical key even when log lines look similar.
+Feast serializes entity keys for online storage. A disagreement between the writer and reader about the registered key type or serialization version can address a different physical key even when log lines look similar.
 
 ## Check Schema and Timestamp Types
 
@@ -138,7 +138,7 @@ Monitor:
 - missing-feature rate by FeatureView and model version;
 - registry revision or deployment commit loaded by each server.
 
-The current Python feature server documents Prometheus counters for materialization and a per-FeatureView freshness gauge. Scheduler and canary signals are still necessary because not every materialization path runs through that server.
+The current Python feature server documents a materialization result counter, a materialization-duration histogram, and a per-FeatureView freshness gauge. Scheduler and canary signals are still necessary because not every materialization path runs through that server.
 
 ## Official Documentation
 
