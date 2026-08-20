@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Backoff, Python, Monotonic Clock, NTP, AsyncIO, Retry
 
-Description: Schedule in-process backoff against elapsed time so wall-clock corrections cannot make retries fire early, late, or twice.
+Description: Schedule in-process backoff against elapsed time so wall-clock corrections cannot make retries fire early or late.
 
 ---
 
 Wall clocks answer "what time is it?" Backoff needs to answer "how much time has elapsed?" Those are different questions.
 
-NTP corrections, administrator changes, daylight-saving rules, and virtual-machine clock adjustments can move civil time. An in-process retry deadline should use a monotonic clock that cannot move backward.
+NTP corrections, administrator changes, and virtual-machine clock adjustments can move wall time. An in-process retry deadline should use a monotonic clock that cannot move backward.
 
 ## The Fragile Wall-Clock Pattern
 
@@ -46,7 +46,7 @@ deadline = time.monotonic() + delay_seconds
 wait_until(deadline)
 ```
 
-The loop handles an interrupted or short sleep by recomputing from the same monotonic deadline.
+After the sleep returns, the loop checks the same monotonic deadline again.
 
 For `asyncio`, use the event loop's clock. `loop.time()` is documented as monotonic, and scheduling methods such as `call_at` use that same time reference:
 
@@ -73,6 +73,11 @@ from datetime import datetime, timezone
 import time
 
 def monotonic_deadline_from_http_date(retry_at: datetime, max_delay: float) -> float:
+    if retry_at.utcoffset() is None:
+        raise ValueError("retry_at must be timezone-aware")
+    if max_delay < 0:
+        raise ValueError("max_delay must be non-negative")
+
     now_wall = datetime.now(timezone.utc)
     relative = max(0.0, (retry_at - now_wall).total_seconds())
     bounded = min(relative, max_delay)
@@ -83,14 +88,14 @@ This limits wall-clock uncertainty to the conversion instant. Validate and cap s
 
 ## Know Where Monotonic Time Stops Working
 
-Monotonic readings are process-local values with an arbitrary origin. Do not:
+Monotonic readings have an arbitrary origin and are not durable timestamps. Python uses the same monotonic clock for processes on the same host, but readings are not portable across hosts or reboots. Do not:
 
-- store a monotonic timestamp in a database for another process;
+- store a monotonic timestamp as durable retry state;
 - compare readings from different hosts;
 - expect a reading to remain meaningful across a reboot;
 - put it in logs as a human timestamp.
 
-For durable retry state, persist an absolute UTC `next_attempt_at` or a remaining duration plus enough metadata to reconstruct policy after restart. On process startup, translate due work into new monotonic deadlines and release it through a rate or concurrency limit. Durable scheduling must tolerate wall-clock corrections because no process-local monotonic epoch survives every restart.
+For durable retry state, persist an absolute UTC `next_attempt_at` or a remaining duration plus enough metadata to reconstruct policy after restart. On process startup, translate due work into new monotonic deadlines and release it through a rate or concurrency limit. Durable scheduling must tolerate wall-clock corrections because a monotonic reference point is not guaranteed to remain meaningful across a reboot.
 
 Use wall time for audit fields such as `created_at` and `last_failed_at`. Use monotonic time for timeouts, elapsed durations, and in-process backoff.
 
@@ -116,4 +121,4 @@ The `adjustable` flag describes whether the clock can be set to jump, not whethe
 
 ## Conclusion
 
-Calculate in-process retry deadlines from a monotonic clock and use wall time only where a civil timestamp is required. Convert external dates to bounded relative delays once, and never persist or compare monotonic readings across process boundaries.
+Calculate in-process retry deadlines from a monotonic clock and use wall time only where a civil timestamp is required. Convert external dates to bounded relative delays once, and never persist monotonic readings as durable retry timestamps or compare them across hosts or reboots.
