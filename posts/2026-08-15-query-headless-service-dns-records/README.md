@@ -70,11 +70,11 @@ The Kubernetes test image provides a concrete TCP listener for the DNS exercise.
 
 ## Launch a DNS Toolbox Pod
 
-The Kubernetes DNS debugging image includes `dig`:
+The Kubernetes `agnhost` test image includes `dig`:
 
 ~~~bash
 kubectl -n data run dns-tools --rm -it --restart=Never \
-  --image=registry.k8s.io/e2e-test-images/dnsutils:1.3 \
+  --image=registry.k8s.io/e2e-test-images/agnhost:2.53 \
   --command -- /bin/sh
 ~~~
 
@@ -86,7 +86,7 @@ Use absolute names ending in a dot. That bypasses search-list expansion and make
 dig +noall +answer raft.data.svc.cluster.local. A
 ~~~
 
-A ready, IPv4-backed headless Service returns one A record per published IPv4 endpoint. The answer is an RRset, not a ClusterIP:
+By default, an IPv4-backed headless Service returns one A record per ready IPv4 endpoint. If `spec.publishNotReadyAddresses: true` is set, Kubernetes also publishes controller-generated endpoints for Pods that are not Ready. The answer is an RRset, not a ClusterIP:
 
 ~~~text
 raft.data.svc.cluster.local.  5  IN  A  10.244.1.20
@@ -137,13 +137,13 @@ dig +noall +answer \
   _peer._tcp.raft.data.svc.cluster.local. SRV
 ~~~
 
-A headless Service returns one SRV answer per published endpoint. Each answer contains priority, weight, port, and a target name:
+For the queried named port, a headless Service normally returns one SRV answer per backing Pod (more generally, per unique endpoint target and port). Each answer contains priority, weight, port, and a target name. With three ready IPv4 endpoints, one representative CoreDNS record might look like:
 
 ~~~text
-_peer._tcp.raft.data.svc.cluster.local. 5 IN SRV 0 100 7000 raft-0.raft.data.svc.cluster.local.
+_peer._tcp.raft.data.svc.cluster.local. 5 IN SRV 0 33 7000 raft-0.raft.data.svc.cluster.local.
 ~~~
 
-Treat those values as discovery data, not a health-aware load-balancing policy. For StatefulSet endpoints, the target is the stable Pod DNS name. For endpoints without a hostname, CoreDNS applies its endpoint-name rules and may use a dashed form of the IP address. A client that requires stable member identity should not derive it from record order or an encoded IP label.
+The TTL, priority, and weight are examples. Kubernetes does not prescribe priority or weight, and CoreDNS derives weight from the candidate set. Treat those values as discovery data, not a health-aware load-balancing policy. For StatefulSet endpoints, the target is the stable Pod DNS name. For endpoints without a hostname, CoreDNS applies its endpoint-name rules and may use a dashed form of the IP address. A client that requires stable member identity should not derive it from record order or an encoded IP label.
 
 The protocol label follows the Service port's protocol in lowercase. For example, a port named `dns` with `protocol: UDP` uses `_dns._udp...`.
 
@@ -178,7 +178,7 @@ Then distinguish:
 | `NXDOMAIN` | wrong owner name, no publishable endpoints, or DNS configuration |
 | `SERVFAIL` | CoreDNS synchronization, permissions, or runtime failure |
 
-For large RRsets, retry over TCP to separate UDP truncation from missing data:
+For large RRsets, force the query over TCP to rule out UDP-path or truncation problems:
 
 ~~~bash
 dig +tcp +noall +answer raft.data.svc.cluster.local. A
