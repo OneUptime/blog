@@ -1672,6 +1672,26 @@
 18. Why One EFS Client Stops Near 500 MiB/s: Client-Version Limits, NFS Parallelism, and Elastic Throughput
 19. EFS Files Are Slow on First Read: Measuring IA and Archive Latency and Returning Hot Data to Standard
 20. How to Find EFS Clients Before Deleting a Mount Target and Avoid Hung `df` Processes
+21. How to Build an Amazon EFS Backup Plan with Incremental Backups, Retention Rules, Cross-Region Copies, and Vault Lock
+22. How to Find Restored EFS Data When AWS Backup Places It Under an `aws-backup-restore_*` Directory
+23. How to Copy EFS Backups Across AWS Accounts and Regions and Prove They Can Be Restored
+24. How to Verify EFS Replication Initial Sync and Recovery-Point Readiness Before a Disaster-Recovery Test
+25. How to Fail Over to an EFS Replica by Removing Replication, Making the Destination Writable, and Switching Clients
+26. How to Fail Back an EFS Replica Without Losing Writes Made During the Disaster-Recovery Window
+27. How to Replicate into an Existing EFS File System by Managing Replication Overwrite Protection Safely
+28. How to Migrate an Unencrypted EFS File System to an Encrypted Replacement with AWS DataSync
+29. How to Change an Immutable EFS Performance Mode by Migrating Data to a New File System
+30. How to Migrate from EFS One Zone to Regional EFS Without Losing POSIX Ownership or Permissions
+31. How to Mount Amazon EFS from On-Premises Linux over Direct Connect or VPN with TLS
+32. How to Copy On-Premises or S3 Data into EFS with DataSync While Preserving UID, GID, Timestamps, and Permissions
+33. How to Isolate Multiple Kubernetes Tenants on One EFS File System with Separate Access-Point Roots and POSIX Identities
+34. How to Fix EFS CSI Dynamic Provisioning When the StorageClass Exhausts Its GID Range
+35. How to Delete EFS Access Points and Their Data When Kubernetes PVCs Are Removed
+36. How to Stop `efs-proxy` OOMKills by Sizing EFS CSI Node Memory for Volume Count and Concurrent Mounts
+37. How to Configure Cross-Account EFS CSI Provisioning with `awsRoleArn`, `externalId`, and AZ-Resilient DNS Resolution
+38. How to Enable FIPS-Compliant EFS CSI TLS Without Calling Unsupported Regional STS FIPS Endpoints
+39. Why EFS Lifecycle Policies Ignore POSIX `atime`: How the Internal Last-Access Timer Moves Files to IA and Archive
+40. How to Calculate EFS IA and Archive Costs for Small Files, 128-KiB Minimums, Transitions, and Retrievals
 
 ## Tracing
 
@@ -2293,6 +2313,26 @@
 18. Why Deleting JuiceFS Files Does Not Immediately Shrink Object Storage Usage: Trash, Open Handles, and Garbage Collection
 19. Bringing Existing S3 Data into JuiceFS: Why Raw Bucket Objects Are Invisible and When to Use `sync`
 20. Exposing a JuiceFS Volume Through the S3 Gateway: Credentials, TLS, and Multi-User Limitations
+21. How to Upgrade a Mounted JuiceFS Client In Place with Smooth FUSE Handover
+22. How to Rotate Expiring S3 STS Credentials in JuiceFS Without Unmounting Clients
+23. How to Mount JuiceFS as a Non-Root User with `user_allow_other` and a Writable Cache Directory
+24. JuiceFS in Docker Compose: How to Propagate a FUSE Mount with `rshared` and `/dev/fuse`
+25. How to Diagnose Slow Small-File Workloads in JuiceFS with `.accesslog`, `stats`, and `profile`
+26. How to Tune JuiceFS Metadata Cache TTLs for Git-Style Workloads Without Hiding Remote Changes
+27. How to Benchmark JuiceFS Metadata and Object-Storage Latency Separately with `bench` and `mdtest`
+28. How to Monitor JuiceFS FUSE, Cache, Metadata, and Object-Store Metrics with Prometheus and Grafana
+29. How to Set Directory, User, and Group Quotas in JuiceFS—and Repair Incorrect Usage Counters
+30. How to Restore Accidentally Deleted JuiceFS Files with `juicefs restore --put-back`
+31. How to Distinguish Real JuiceFS Corruption from Leaked or Stale Objects with `fsck` and `gc`
+32. How to Defragment Randomly Rewritten JuiceFS Files with `juicefs compact`
+33. How to Clone Large JuiceFS Directory Trees Without Duplicating Object Data—and Preserve Ownership
+34. How to Resume an Interrupted `juicefs sync` with Checkpoints and Verify Every Byte
+35. How to Preserve Empty Directories, Permissions, and Symlinks During a Local-to-JuiceFS Migration
+36. How to Run `juicefs format` Once from Terraform or Argo CD Without Reinitializing an Existing Filesystem
+37. How to Run JuiceFS on Spark, Flink, and Hive with the Hadoop Java SDK and Correct Off-Heap Memory
+38. How to Fix `Class io.juicefs.JuiceFileSystem Not Found` and `No FileSystem for scheme: jfs`
+39. How to Recover a JuiceFS CSI Mount Automatically After the FUSE Process Crashes
+40. How to Avoid Privileged Application Pods by Choosing the JuiceFS CSI Driver over In-Container FUSE
 
 ## Preemption
 
@@ -4616,3 +4656,187 @@
 18. Config Project or Untrusted Project? How to Place Zuul Jobs, Pipelines, and Secrets Safely
 19. How to Add Non-Voting Zuul Jobs Without Letting Experimental Failures Block the Gate
 20. Why Zuul Cancels Jobs When a New Patchset Arrives—and How to Tune dequeue-on-new-patchset
+
+## Resources
+
+1. `kubectl top` Says Idle but the Scheduler Reports `Insufficient cpu`: Reconcile Usage, Requests, and Allocatable
+2. How to Read `kubectl describe node` Allocated Resources Without Mistaking Limits for Reserved Capacity
+3. How to Calculate a Pod’s Effective Request with Init Containers, Restartable Sidecars, and Pod Overhead
+4. How to Fix an HPA That Over-Scales Because `averageUtilization` Divides by an Undersized CPU Request
+5. How to Detect CFS CPU Throttling Hidden by One-Minute Utilization Averages
+6. A Container Is OOMKilled Below Its Dashboard Limit: Reconcile Working Set, RSS, Page Cache, and cgroup Counters
+7. How to Choose Memory-Request Headroom from p95 Usage Without Missing Startup and Cache Spikes
+8. How to Size CPU Requests for Bursty Services Without Imposing a CPU Limit
+9. How to Keep a Rolling Deployment Schedulable When `maxSurge` Adds Temporary Resource Demand
+10. How to Account for DaemonSets, `kubeReserved`, and `systemReserved` Before Sizing Kubernetes Nodes
+11. How to Use LimitRange `maxLimitRequestRatio` Without Rejecting Legitimate Bursty Workloads
+12. LimitRange Defaults Made a Pod’s Request Exceed Its Limit: How to Find and Fix the Admission Conflict
+13. How to Preflight HPA `maxReplicas` Against Namespace ResourceQuota and Node Capacity
+14. How to Quota PVC and Ephemeral-Storage Requests Without Mistaking Requested Capacity for Actual Disk Usage
+15. Container Logs Trigger `ephemeral-storage` Eviction While `df` Looks Healthy: How to Trace Kubelet Accounting
+16. How to Resize Running Container CPU and Memory Through the Pod `/resize` Subresource
+17. How to Interpret `PodResizePending`, `PodResizeInProgress`, and Restart Policies During In-Place Scaling
+18. How to Use Pod-Level Resource Budgets When Sidecars Need to Share CPU and Memory
+19. How to Validate Kubernetes Quantity Units Before `400m` Memory Is Parsed as 0.4 Bytes
+20. How to Alert Separately on Request Saturation, Limit Saturation, and Node Pressure
+
+## Fleet
+
+1. Rancher Fleet `git ls-remote` Fails: Debug SSH Keys, Host Algorithms, and Private CA Trust
+2. Git Cloning Works but Fleet Cannot Fetch a Private Helm Chart: Configure `helmSecretName` Separately
+3. How to Replace 15-Second Fleet Git Polling with Signed Webhooks Without Missing Commits
+4. Fleet Ignored a New Commit: Force a Safe Reconcile with `forceSyncGeneration`
+5. Fleet Targets Zero Clusters: Debug GitRepo Workspaces, First-Match Rules, and Empty `{}` Selectors
+6. How to Deploy the Same Chart Twice to One Cluster with Different Values by Splitting Fleet Bundles
+7. How to Layer Fleet `valuesFiles`, Cluster-Label Templates, and Downstream `valuesFrom` Without Precedence Surprises
+8. Fleet Mangled `${...}` in a Helm Chart: When to Enable `disablePreProcess`
+9. Fleet Deploys Custom Resources Before Their CRDs: Split Bundles and Gate Them with `dependsOn`
+10. How to Remove a Fleet GitRepo Without Deleting PVCs, CRDs, or Operator-Managed Data
+11. Fleet Bundle Stuck `Modified`: Find the Exact Patch and Ignore Controller-Owned Fields
+12. Fleet Drift Correction Recreates a Service: When `correctDrift.force` Is Safe and How to Avoid It
+13. How to Adopt Pre-Existing Kubernetes Objects in Fleet Without Helm Ownership Conflicts
+14. Fleet Helm Upgrade Never Becomes Ready: Debug `atomic`, `waitForJobs`, Hooks, and Timeouts
+15. How Rancher Fleet Reconciles After an Offline Edge Cluster Reconnects—and When to Pause a Bundle
+16. Fleet Bundle Exceeds the etcd Object Limit: Move Bundle Content to OCI Storage
+17. `fleet-agent` Is Running but the Bundle Is NotReady: Trace GitRepo, BundleDeployment, and Helm State
+18. How to Validate `fleet.yaml` Targeting and Rendered Helm Output Locally with the Fleet CLI
+19. How to Automate Fleet ImageScan Commits Without Triggering Your Build Pipeline in a Loop
+20. How to Prevent an Image-Pull Storm Across 200 Fleet Clusters with `maxNew` and Rollout Partitions
+
+## Harbor
+
+1. How to Fix Harbor `docker login` 401 Errors by Tracing Token-Service URLs, Project Paths, and User Credentials
+2. Harbor Works in the Browser but Docker Gets `x509`: How to Trust the Private CA on Docker, containerd, and Kubernetes Nodes
+3. How to Create and Rotate Least-Privilege Harbor Robot Accounts Without Breaking CI Image Pulls
+4. How to Use Harbor Proxy Cache as a containerd Registry Mirror Without Rewriting Every Pod Image
+5. Harbor Proxy Cache Is Empty or Keeps Hitting Upstream: How to Debug Paths, HEAD Checks, and Credentials
+6. Harbor Garbage Collection Freed No Space: How to Find Untagged Artifacts, Pending Uploads, and Storage-Only Orphans
+7. How to Clean Up Abandoned Multipart Uploads in Harbor’s S3 Backend Without Deleting Registry Blobs
+8. How to Upgrade Harbor with Helm When the Database Migration Job Is Dirty or Stuck
+9. How to Back Up and Restore Harbor with Velero, PostgreSQL, and Object Storage
+10. How to Build a Highly Available Harbor Deployment with External PostgreSQL, Redis Sentinel, and S3
+11. How to Keep Harbor’s TLS Certificate Stable Across Helm Upgrades So Existing Clients Keep Trusting It
+12. Why OIDC Passwords Fail with `docker login` to Harbor—and How to Generate and Rotate CLI Secrets
+13. How to Restrict Harbor LDAP Login to One Directory Group with an LDAP Search Filter
+14. How to Sign Images in Harbor with Cosign and Replicate Their Signatures with the Artifact
+15. How to Enforce Signed-Only Pulls in Harbor Without Blocking the CI Pipeline That Produces Signatures
+16. How to Push and Pull Helm Charts as OCI Artifacts in Harbor Without ChartMuseum
+17. How to Push Multi-Architecture Images to Harbor and Verify Every Platform in the OCI Image Index
+18. Harbor Replication Fails with 401 or Skips Retagged Images: How to Trace Auth Redirects and Event Triggers
+19. How to Combine Harbor Tag Immutability and Retention Rules Without Deleting Rollback Images
+20. How to Monitor Harbor Pull Latency, Job Queue Backlogs, and Registry Errors with Metrics and Traces
+
+## Retries
+
+1. How to Classify DNS, TLS, Connect, Read, and Write Failures Before Retrying an HTTP Request
+2. How to Invoke a Fallback Once After All Retries Instead of Once Per Attempt
+3. How to Propagate the Remaining Caller Deadline Instead of Starting a Fresh Timeout on Every Retry
+4. How to Retry an Optimistic Concurrency Conflict by Re-reading State and Recomputing the Update
+5. How to Expire Idempotency Records Without Letting Late Retries Repeat Side Effects
+6. How to Preserve FIFO Throughput When One Poison Message Blocks Every Retry in Its Message Group
+7. How to Design Dead-Letter Records That Preserve the Original Topic, Partition, Offset, and Failure Context
+8. How to Separate Transient Failures from Bad Data Before Choosing a Retry Queue or Dead-Letter Queue
+9. How to Compose Timeout, Retry, Circuit Breaker, Rate Limiter, and Bulkhead Policies in the Correct Order
+10. How to Keep an Outer Retry from Treating an Open Circuit Breaker as a Recoverable Downstream Failure
+11. How to Share a Retry Budget Across Horizontally Scaled Workers Instead of Limiting Each Process Independently
+12. How to Add Adaptive Concurrency Limits So Retries Cannot Consume All Downstream Capacity
+13. How to Handle HTTP 429 When `Retry-After` Is Missing, Malformed, or Longer Than the Job Deadline
+14. How to Parse Both HTTP `Retry-After` Formats Safely Under Clock Skew
+15. How to Bound Retry Cost by Bytes, Tokens, or Dollars Instead of Attempt Count Alone
+16. How to Keep gRPC Transparent Retries from Multiplying Application-Level Attempts
+17. How to Retry a Streaming Upload from a Durable Checkpoint Instead of Replaying the Entire Request Body
+18. How to Resume Long-Polling or Change-Feed Consumers After Retry Without Gaps or Duplicate Events
+19. How to Redrive Dead Letters Safely After a Fix with Quarantine, Rate Limits, and Duplicate Protection
+20. How to Canary a Retry Policy Change and Detect Load Amplification Before Full Rollout
+
+## OpenGitOps
+
+1. How to Audit a Delivery Platform Against All Four OpenGitOps Principles
+2. How to Replace CI Push Deployments with an OpenGitOps Pull-and-Reconcile Loop
+3. How to Scope OpenGitOps Desired State Without Versioning Persistent Application Data
+4. Helm Templates or Rendered Manifests: How to Choose the Authoritative State for OpenGitOps
+5. How to Pin Container Image Digests So Mutable Tags Do Not Break OpenGitOps Immutability
+6. How to Keep Secrets Declarative Without Storing Plaintext Values in an OpenGitOps State Store
+7. How to Bootstrap an OpenGitOps Agent and Its State-Store Credentials Without a Circular Dependency
+8. How to Rebuild a Cluster from the State Store and Prove the OpenGitOps Desired State Is Complete
+9. How to Detect and Reconcile Manual `kubectl` Drift Without Erasing Emergency Changes
+10. How to Turn a Break-Glass Cluster Fix into a Reviewed Commit Before Reconciliation Reverts It
+11. How to Separate CI Artifact Creation from the Pull-Based OpenGitOps Deployment Loop
+12. How to Promote the Same Immutable Artifact Across Environments Without Rebuilding It
+13. How to Structure Repositories Without Mistaking Layout Conventions for OpenGitOps Requirements
+14. How to Keep the Last Reconciled System Stable When the OpenGitOps State Store Is Unavailable
+15. How to Run Database Schema Migrations Without Turning OpenGitOps Desired State into an Imperative Script
+16. How to Classify Operator-Generated Fields So OpenGitOps Reconciliation Does Not Report Permanent Drift
+17. How to Choose Reconciliation Intervals and Alerts When “Continuous” Does Not Mean “Instantaneous”
+18. How to Expose Closed-Loop GitOps Feedback with Commit, Drift, Health, and Last-Applied Revision
+19. How to Prove an OCI-Based Gitless Workflow Still Satisfies OpenGitOps
+20. How to Test OpenGitOps Conformance with Drift Injection and Full Cluster-Rebuild Exercises
+
+## Neon
+
+1. How to Choose Between Neon’s Pooled and Direct Connection Strings for Queries, Migrations, `pg_dump`, and `LISTEN/NOTIFY`
+2. How to Debug Prisma P1001 Against Neon: Endpoint Status, DNS, VPN Rules, Direct URLs, and Connection Timeouts
+3. How to Fix PrismaNeon `Pool` vs `PoolConfig` Type Errors by Passing the Adapter the Right Connection Configuration
+4. How to Choose HTTP vs WebSockets in the Neon Serverless Driver for One-Shot Queries and Transactions
+5. How to Stop Next.js and Vercel from Exhausting Neon Connections with Pool Reuse, Fluid Compute, and Pool Sizing
+6. How to Make Long-Lived Node.js Connection Pools Survive Neon Scale-to-Zero Suspends and Resumes
+7. How to Create a Neon Database Branch for Every Pull Request with GitHub Actions and Vercel Preview Deployments
+8. How to Prevent Orphaned Neon Preview Branches with PR-Close Cleanup and Automatic Expiration
+9. How to Prevent Prisma Migration Drift by Pairing Every Git Feature Branch with Its Own Neon Branch
+10. How to Reset a Long-Lived Neon Developer Branch from Production Without Recreating Its Connection Setup
+11. How to Create Schema-Only Neon Branches for Testing Without Copying Production Customer Data
+12. How to Recover Accidental Data Changes with Neon Time Travel Assist and a Point-in-Time Branch Restore
+13. How to Compare Neon Branch Schemas Before Promoting a Migration or Finalizing a Restore
+14. How to Route Prisma Reads to Neon Read Replicas While Keeping Writes on the Primary Compute
+15. How to Size Neon Autoscaling Bounds for `pgvector` Index Builds Without OOM Failures or Excess Idle Cost
+16. How to Keep Neon Logical Replication Healthy: Direct Connections, Active Slots, and the Scale-to-Zero Tradeoff
+17. How to Recreate Neon Logical Replication Slots and Subscriptions After a Branch Restore
+18. How to Lock Down a Neon Production Branch with Protected Branches, IP Allow, and Private Networking
+19. How to Migrate PostgreSQL to Neon with `pg_dump` and `pg_restore` Without Pooled-Connection or Ownership Errors
+20. How to Perform a Near-Zero-Downtime PostgreSQL-to-Neon Migration with Logical Replication and a Controlled Cutover
+
+## Boundary
+
+1. How to Fix Boundary’s “Node Is Not Yet Authorized” Error During Worker-Led or Controller-Led Registration
+2. How to Route Boundary Workers to Controllers on Port 9201 Through a Load Balancer Without Breaking TLS
+3. How to Debug a Boundary Session That Authorizes but Never Reaches the Target Across Client, Worker, and Target Network Paths
+4. How to Fix Boundary Worker WebSocket Handshake Failures Behind Kubernetes Ingress and Reverse Proxies
+5. How to Write Boundary Ingress and Egress Worker Filters with Tags, Names, and Correct Filter Syntax
+6. How to Build an Outbound-Only Multi-Hop Worker Chain in HCP Boundary or Boundary Enterprise
+7. How to Debug Boundary OIDC That Works in the Web UI but Fails in Desktop or CLI
+8. How to Fix Boundary `authorize-session` 403 Errors by Granting Principals at the Correct Org and Project Scopes
+9. How to Map OIDC Claims into Boundary Managed Groups and Automatically Grant Target Access
+10. How to Create the Renewable Orphan Periodic Vault Token a Boundary Credential Store Requires
+11. How to Reach a Private Vault Credential Store Through Boundary Workers with a `worker_filter`
+12. How to Choose Between Brokered and Injected Credentials for Boundary SSH, RDP, and Database Targets
+13. How to Inject Just-in-Time Vault-Signed SSH Certificates Through Boundary Without Exposing Private Keys
+14. How to Populate Boundary Targets Automatically with AWS Dynamic Host Catalog Filters
+15. How to Configure Boundary Session Duration, Connection Limits, and CLI Inactive Timeouts Without Dropping Active Tunnels
+16. How to Enable Boundary SSH or RDP Session Recording with a BSR KMS Key, Worker Storage, and S3
+17. How to Debug Failed Boundary Session Recordings Caused by Low Worker Disk Space, Worker Filters, or Inaccessible S3
+18. How to Apply Boundary Session-Recording Retention Policies Without Mistaking Them for S3 Object Deletion
+19. How to Configure Boundary Event Sinks for Structured Audit Logs Without Leaking Sensitive Fields
+20. How to Restore a Self-Managed Boundary Database Without Losing Access to KMS-Encrypted State
+
+## Trivy
+
+1. How to Gate CI on Fixed High and Critical Trivy Findings—and Fail Separately on End-of-Life Base Images
+2. How to Suppress a Trivy CVE for One Package or File with PURL- and Path-Scoped `.trivyignore.yaml` Rules
+3. How to Audit Trivy Suppressions with Expiration Dates, Justification Statements, and `--show-suppressed`
+4. How to Make Trivy Respect Ignore Rules in Remote Repository Scans by Checking Out Locally or Passing `--ignorefile`
+5. How to Explain Trivy Severity Differences by Inspecting Vendor Advisories, `SeveritySource`, and Backported Fixes
+6. How to Fix Trivy Go `stdlib` CVEs by Rebuilding with a Patched Go Toolchain Instead of Removing OS Packages
+7. How to Authenticate Trivy to a Private Container Registry with `registry login`, `--password-stdin`, and Isolated `DOCKER_CONFIG`
+8. How to Stop Trivy from Scanning the Wrong Image by Controlling Docker, containerd, Podman, and Remote Source Priority
+9. How to Scan the Correct Platform in a Multi-Architecture OCI Image with Trivy
+10. How to Run Trivy Fully Air-Gapped with Mirrored Vulnerability, Java, Checks, and VEX Data
+11. How to Self-Host Trivy Databases as OCI Artifacts and Avoid GHCR `TOOMANYREQUESTS` Failures
+12. How to Cache Trivy Databases in GitHub Actions Without Freezing CI on Stale Vulnerability Data
+13. How to Fix Trivy “Database May Be in Use” and Cache Lock Errors in Parallel CI Jobs
+14. How to Scale Multiple Trivy Servers with a Shared Redis Cache Without “Layer Cache Missing” Errors
+15. How to Fix Trivy “No Space Left on Device” During Image and Remote Repository Scans with `TMPDIR` and Cache Controls
+16. How to Verify a Cosign SBOM Attestation and Scan Its CycloneDX Contents with Trivy
+17. How to Publish Trivy SARIF to GitHub Code Scanning Without Losing Vulnerability, Secret, or Misconfiguration Results
+18. How to Detect Secrets Hidden in Docker Image Configuration and Build History with Trivy Image-Config Scanners
+19. How to Suppress a Trivy Misconfiguration in an Uneditable Helm Subchart with a Path-Scoped Ignore Rule
+20. How to Verify Trivy Binaries and Container Images with Cosign Before Running Them in CI
