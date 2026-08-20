@@ -8,7 +8,7 @@ Description: Combine EndpointSlice conditions, graceful shutdown, readiness-gate
 
 ---
 
-Kubernetes marks a terminating Pod's EndpointSlice entry before it removes that entry. For ordinary Service traffic, the `ready` condition becomes false and consumers avoid the endpoint. A headless Service is different because the client receives Pod IPs from DNS and connects directly, without kube-proxy selecting a backend.
+Kubernetes marks a terminating Pod's EndpointSlice entry before it removes that entry. With `publishNotReadyAddresses` disabled, the `ready` condition becomes false and ordinary Service consumers normally avoid the endpoint. A headless Service is different because the client receives Pod IPs from DNS and connects directly, without kube-proxy selecting a backend.
 
 Default DNS publication helps, but it cannot recall an IP from a client cache or close an existing connection. Safe rolling updates require cooperation between Kubernetes, DNS, the application, and the client.
 
@@ -96,7 +96,7 @@ spec:
 
 The image, endpoint, and drain command are placeholders. Implement `start-drain` so repeated calls are safe, new application requests are rejected or redirected appropriately, and existing requests can finish. Size both the short propagation allowance and the total grace period from measurements, not from the example values.
 
-Pod shutdown and EndpointSlice updates happen concurrently. A `preStop` sleep alone is not proof that every cache has expired, and an overly long hook consumes the same grace period available to the process. The application must also handle `SIGTERM` and stop before the grace period ends.
+Pod shutdown and EndpointSlice updates happen concurrently. A `preStop` sleep alone is not proof that every cache has expired, and an overly long hook consumes the same grace period available to the process. The application must also handle the container's configured stop signal (`SIGTERM` by default) and stop before the grace period ends.
 
 ## Design DNS Clients for Membership Changes
 
@@ -119,7 +119,7 @@ Retries must be safe. Preserve request deadlines and idempotency keys, avoid ret
 Watch the API and DNS at the same time during a controlled deletion:
 
 ~~~bash
-kubectl -n data delete pod ledger-1
+kubectl -n data delete pod ledger-1 --wait=false
 
 watch -n 1 'kubectl -n data get endpointslice \
   -l kubernetes.io/service-name=ledger-client-headless -o yaml'
