@@ -38,7 +38,7 @@ driver_stats = FeatureView(
 )
 ```
 
-Use the classic form when values already exist in a batch or push source and need historical retrieval, online materialization, or both. Current Feast also exposes transformation and aggregation fields that compatible compute engines can execute, but the FeatureView still defines the resulting data product and its retrieval contract. Treat those newer surfaces as version-specific engine capabilities.
+Use the classic form when values already exist in a batch or push source and need historical retrieval, online materialization, or both. Current Feast also provides experimental `BatchFeatureView` and `StreamFeatureView` variants with transformation and aggregation fields that compatible compute engines can execute, but each view still defines the resulting data product and its retrieval contract. Treat those newer surfaces as version-specific engine capabilities.
 
 Keep fields with the same entities, source cadence, ownership, and freshness contract together. Do not make one giant FeatureView solely to reduce the number of objects.
 
@@ -114,7 +114,7 @@ ODFVs can also be configured to transform on write, and the current reference do
 
 A 30-day rolling window over billions of raw events is not a lightweight request transform. Compute it in a batch warehouse or streaming pipeline, persist time-stamped results, and expose them through a FeatureView.
 
-Likewise, a FeatureService does not compute features, enforce model inference, or deploy a server. It only selects references. A FeatureView does not identify which subset one deployed model uses.
+Likewise, a FeatureService does not define feature transformations, run model inference, or deploy a server. Its core role is to select feature references, although current releases also expose service-level logging and online precomputation options. A FeatureView does not identify which subset one deployed model uses.
 
 Use this decision table:
 
@@ -141,7 +141,7 @@ upstream computation
 
 If a FeatureView's schema or meaning changes incompatibly, create a new FeatureView name. Merely creating `model_v4` does not isolate it if both services point to one mutated view name. Add the new service, materialize required online data, canary it, and retain the old graph for rollback.
 
-FeatureServices may also use `.with_name()` and `.with_join_key_map()` projections to reuse one FeatureView in roles such as origin and destination.
+When building a FeatureService, call `.with_name()` and `.with_join_key_map()` on a FeatureView to reuse it in roles such as origin and destination.
 
 ## Test the Object Boundaries
 
