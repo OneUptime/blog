@@ -8,10 +8,10 @@ Description: Choose explicit overlapping materialization windows when late rows 
 
 ---
 
-`feast materialize` and `feast materialize-incremental` write the latest eligible batch features into the online store. Their important difference is who owns the start of each event-time interval.
+`feast materialize` and `feast materialize-incremental` write the latest eligible batch features into the online store. Their important difference is who chooses the start of each event-time interval.
 
-- `materialize START END` is stateless. The caller supplies both boundaries.
-- `materialize-incremental END` reads the previous end time for each FeatureView from the registry and uses it as the next start.
+- `materialize START END` does not derive its interval from prior runs: the caller supplies both boundaries. A successful run is still recorded in the registry.
+- `materialize-incremental END` uses each FeatureView's most recent recorded end time, from either command, as the next start when one exists.
 
 That makes the incremental command convenient, but it does not automatically rediscover a late row whose event timestamp falls before the stored watermark.
 
@@ -25,16 +25,16 @@ Assume an hourly feature pipeline:
 13:05  next incremental run covers 12:00 through 13:00
 ```
 
-The row arrived physically at 12:20, but its event time is 11:42. A query bounded to the new interval starts at 12:00, so the row is outside it. The registry watermark records processed event-time intervals, not a change-data-capture cursor over source arrival time.
+The row arrived physically at 12:20, but its event time is 11:42. A query bounded to the new interval starts at 12:00, so the row is outside it. The registry records successful materialization intervals, not a change-data-capture cursor over source arrival time.
 
-Feast's production guide warns not to advance an incremental end time beyond data that is actually available. Its scheduler example uses an explicit overlap to account for late data.
+Feast's materialization guide documents that an incremental run starts at the previous end time. Its production scheduler example uses an explicit overlap to account for late data.
 
 ## Use Incremental Materialization for Closed Intervals
 
 `materialize-incremental` works well when the upstream system publishes a reliable event-time watermark. Set the Feast end time to the latest closed source interval, not blindly to the wall clock.
 
 ```bash
-feast materialize-incremental 2026-08-15T11:00:00Z
+feast materialize-incremental 2026-08-15T11:00:00+00:00
 ```
 
 Only advance to 11:00 after the producer guarantees that rows through 11:00 are complete under its lateness policy. If source data is complete 30 minutes after the hour, a run at 12:05 might intentionally end at 11:00.
@@ -43,7 +43,7 @@ The tracked end time is per FeatureView. That is useful when views have differen
 
 ## Let the Scheduler Own Overlapping Windows
 
-When late arrival is normal, call stateless `materialize` from an orchestrator that owns interval state:
+When late arrival is normal, call explicit `materialize` from an orchestrator that owns interval state:
 
 ```python
 from datetime import timedelta
@@ -68,13 +68,15 @@ feast materialize -v driver_hourly_stats \
   2026-08-12T00:00:00Z 2026-08-15T12:00:00Z
 ```
 
-This command queries the interval again. It does not reset the entire online store, and online stores still retain only their latest value per entity key.
+This command queries the interval again. It does not reset the entire online store, and online stores still retain only one current set of feature values per entity key. Whether replay replaces that value depends on the provider's write semantics.
 
 ## Do Not Confuse Event Time with Created Time
 
 A source can declare both:
 
 ```python
+from feast import BigQuerySource
+
 source = BigQuerySource(
     table="analytics.driver_hourly_stats",
     timestamp_field="event_timestamp",
@@ -82,15 +84,15 @@ source = BigQuerySource(
 )
 ```
 
-The event timestamp controls point-in-time eligibility and materialization intervals. The created timestamp can disambiguate revisions that have the same entity key and event time. It does not make an 11:42 event appear inside a 12:00 to 13:00 event-time scan merely because the row was created at 12:20.
+The event timestamp controls point-in-time eligibility and materialization intervals. The created timestamp can disambiguate revisions that have the same entity key and event time. It does not make an 11:42 event appear inside a 12:00 to 13:00 event-time scan merely because the row was created at 12:20. Whether rematerialization replaces a value already written at the same event time remains online-store-specific.
 
 If the warehouse cannot expose an event-time-complete interval, maintain a separate arrival watermark in the scheduler or transform late changes into a repair queue.
 
 ## Know What Replaying Can Correct
 
-The online store retains the latest event-time value for an entity key. Replaying an old interval can fill an entity that had no newer online row. It normally cannot make an older event-time correction replace a genuinely later feature event for the same entity.
+An online store retains one current set of feature values per entity key, not a history. Feast's `OnlineStore` interface does not require every provider to reject an older event-time write. Replaying an old interval can fill an entity that had no online row; depending on the provider, it can also overwrite a genuinely later feature event. Some providers reject older or equal event timestamps, while others use last-write-style upserts.
 
-For example, replaying a corrected 10:00 row should not displace a valid 11:00 row. That protects online recency but means backfills and online corrections need separate reasoning. Historical retrieval reads the corrected offline history; online serving needs only the latest correct state.
+For example, do not assume replaying a corrected 10:00 row will preserve a valid 11:00 row, or that a same-event-time revision will replace the value already online. A repair job must verify that the final served value is the latest correct state. Historical retrieval reads the corrected offline history; online repairs need separate provider-specific reasoning.
 
 ## Make the Workflow Observable
 
@@ -109,7 +111,7 @@ With concurrent FeatureView materializations, use the SQL registry recommended b
 
 ## Choose the Command from the Data Contract
 
-Use `materialize-incremental` when upstream intervals close cleanly and you want Feast to track per-view progress. Use explicit `materialize` windows when the scheduler already owns interval state, when overlap is required for late rows, or when performing a targeted repair.
+Use `materialize-incremental` when upstream intervals close cleanly and you want Feast to choose each view's next start from recorded progress. Use explicit `materialize` windows when the scheduler already owns interval state, when overlap is required for late rows, or when performing a targeted repair.
 
 Neither command solves unbounded lateness by itself. The reliable design combines an upstream watermark, bounded overlap, idempotent replay, a rare backfill path, and freshness monitoring.
 
