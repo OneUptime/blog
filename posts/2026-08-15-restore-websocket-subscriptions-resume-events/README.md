@@ -76,30 +76,37 @@ An event cursor should represent committed local progress:
 
 ```typescript
 async function onEvent(event: StreamEvent): Promise<void> {
-  const sub = registry.get(event.subscriptionId);
-  if (!sub) return;
+  await subscriptionQueues.run(event.subscriptionId, async () => {
+    const sub = registry.get(event.subscriptionId);
+    if (!sub) return;
 
-  if (sub.lastAppliedEventId === event.eventId) return;
+    const wasApplied = await localStore.transaction(async (tx) => {
+      const applied = await tx.applyEventIdempotently(event);
+      if (!applied) return false;
 
-  await localStore.transaction(async (tx) => {
-    await tx.applyEventIdempotently(event);
-    await tx.saveCursor(event.subscriptionId, event.eventId);
+      await tx.saveCursor(event.subscriptionId, event.eventId);
+      return true;
+    });
+
+    if (wasApplied) {
+      sub.lastAppliedEventId = event.eventId;
+    }
   });
-
-  sub.lastAppliedEventId = event.eventId;
 }
 ```
 
-Persisting the projection and cursor atomically prevents two bad outcomes:
+`subscriptionQueues.run` must process events serially in receive order for each subscription; an async event listener is not automatically awaited before the next event is dispatched. `applyEventIdempotently` must return `false` for any event ID already committed so an older replay cannot move the cursor backward.
 
-- Saving the cursor first can skip an event if the client crashes before applying it.
-- Applying first without idempotency can duplicate effects if the client crashes before saving the cursor.
+Persisting the projection, deduplication record, and cursor atomically prevents two bad outcomes:
+
+- Saving the cursor separately before applying can skip an event if the client crashes before applying it.
+- Applying separately without a durable deduplication record can duplicate effects if the client crashes before saving the cursor.
 
 Assume at-least-once delivery across reconnects. Deduplicate by a stable event ID, not by arrival time.
 
 ## Define Ordering and Retention
 
-A single global cursor is valid only if the server guarantees one total order. Independent topics or partitions usually need independent cursors. If events can arrive out of order, use a server-defined sequence and a gap detector instead of comparing opaque IDs lexically.
+A single scalar event position is valid only if the server guarantees one total order. Independent topics or partitions usually need independent cursors, or one opaque aggregate cursor that encodes every partition's position. If events can arrive out of order, use a server-defined sequence and a gap detector instead of comparing opaque IDs lexically.
 
 The server also needs a replay retention policy. When `afterEventId` is too old, it should return a typed response such as:
 
