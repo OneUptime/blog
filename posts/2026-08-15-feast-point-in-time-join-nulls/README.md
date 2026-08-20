@@ -10,14 +10,13 @@ Description: Debug null historical features by tracing entity keys, timestamps, 
 
 A null from `get_historical_features` usually means Feast could not find an eligible source row for one entity, one FeatureView, and one lookup timestamp. Start with that three-part relationship instead of treating the whole training DataFrame as one opaque join.
 
-For a row with entity key `E` and lookup time `T`, a point-in-time join needs a feature record that:
+For a row with entity key `E` and lookup time `T`, Feast's default point-in-time join finds the latest feature record that:
 
 1. has the same complete entity key;
 2. has a source event timestamp at or before `T`;
-3. is no older than the FeatureView TTL relative to `T`;
-4. contains the requested feature with a compatible value.
+3. is no older than the FeatureView TTL relative to `T`.
 
-If no record satisfies those constraints, a null is the correct result.
+If no record satisfies those join constraints, a null is the correct result. The selected row's requested feature value can also be null; an incompatible schema or type can instead make retrieval fail.
 
 ## Reproduce One Null as a Time Window
 
@@ -29,36 +28,44 @@ event_timestamp = 2026-08-10T12:00:00Z
 FeatureView TTL = 6 hours
 ```
 
-The eligible source interval is `(2026-08-10T06:00:00Z, 2026-08-10T12:00:00Z]`, subject to the offline store's exact boundary implementation. Inspect the source directly:
+For the BigQuery offline store used below, the eligible source interval is `[2026-08-10T06:00:00Z, 2026-08-10T12:00:00Z]`. Inspect the source directly:
 
 ```sql
-SELECT driver_id, event_timestamp, created_timestamp, conversion_rate
+SELECT driver_id, feature_event_time, created_timestamp, conversion_rate
 FROM analytics.driver_features
 WHERE driver_id = 1001
-  AND event_timestamp <= TIMESTAMP '2026-08-10 12:00:00+00'
-  AND event_timestamp >= TIMESTAMP '2026-08-10 06:00:00+00'
-ORDER BY event_timestamp DESC, created_timestamp DESC;
+  AND feature_event_time <= TIMESTAMP '2026-08-10 12:00:00+00'
+  AND feature_event_time >= TIMESTAMP '2026-08-10 06:00:00+00'
+ORDER BY feature_event_time DESC, created_timestamp DESC;
 ```
 
 If this query returns nothing, Feast cannot invent a value. If it returns the expected row, continue through the remaining checks.
 
 ## Check the Physical Join Keys
 
-An Entity has a registry name and one or more physical `join_keys`. Historical entity columns must match the join keys, unless a FeatureView projection deliberately supplies a `join_key_map` alias.
+An Entity has a registry name and one physical `join_key`. Set a non-default key through the single-item `join_keys` parameter; if it is omitted, the join key defaults to the Entity name. Historical entity columns must match the join keys, unless a FeatureView projection deliberately supplies a `join_key_map` alias.
 
 ```python
-driver = Entity(name="driver", join_keys=["driver_id"])
+from feast import Entity, ValueType
+
+driver = Entity(
+    name="driver",
+    join_keys=["driver_id"],
+    value_type=ValueType.INT64,
+)
 ```
 
-For this Entity, `driver_id` belongs in the DataFrame. A column called `driver` is not automatically equivalent. Composite FeatureViews require every join key for every row.
+For this Entity, `driver_id` belongs in the DataFrame. A column called `driver` is not automatically equivalent. A FeatureView with a composite entity key requires the join key of every Entity for every row.
 
-Also compare actual types, not just printed values. The string `"1001"` and integer `1001` may not join. Leading zeros, trailing spaces, case normalization, and binary identifiers can create the same symptom. Normalize keys before writing the feature source and before building the entity DataFrame.
+Also compare actual types, not just printed values. Comparing the string `"1001"` with the integer `1001` may fail retrieval or fail to match. Leading zeros, trailing spaces, case normalization, and binary identifiers can create the same symptom. Normalize keys before writing the feature source and before building the entity DataFrame.
 
 ## Check Both Sides of Time
 
-The entity DataFrame uses the reserved `event_timestamp` column as the requested snapshot time. The FeatureView source declares its own `timestamp_field`:
+The entity DataFrame normally uses the reserved `event_timestamp` column as the requested snapshot time. If it is absent, current Feast can infer the snapshot column only when exactly one datetime-typed column is present. The FeatureView source declares its own `timestamp_field`:
 
 ```python
+from feast import BigQuerySource
+
 source = BigQuerySource(
     table="analytics.driver_features",
     timestamp_field="feature_event_time",
@@ -66,9 +73,9 @@ source = BigQuerySource(
 )
 ```
 
-Verify that both values are real timestamps in a common timezone. A source timestamp accidentally stored as local time, text, a date, or milliseconds interpreted as seconds can put all rows outside the expected interval.
+Verify that both values are real timestamps in a common timezone. A source timestamp accidentally stored as local time, text, a date, or milliseconds interpreted as seconds can put rows outside the expected interval or make retrieval fail.
 
-A feature record after the entity timestamp is intentionally excluded. A record before it can still be excluded by TTL. Feast documents TTL as relative to each entity DataFrame timestamp, not relative to the current time when the query runs.
+A feature record whose source event timestamp is after the entity timestamp is intentionally excluded. A record before it can still be excluded by TTL. Feast documents TTL as relative to each entity DataFrame timestamp, not relative to the current time when the query runs.
 
 Temporarily widening TTL can be a useful diagnostic, but it is not automatically the correct fix. A long TTL may let obsolete feature values enter training. Choose TTL from the feature's business validity, then build source coverage that satisfies it.
 
@@ -79,7 +86,7 @@ There are two different cases:
 - no eligible feature row joined at all;
 - an eligible row joined, but its requested feature column was null.
 
-Query the entity key, source event timestamp, and all features from the same FeatureView. If every feature from that view is null, suspect the join. If only one is null, inspect the upstream feature value and its type.
+Inspect the entity key, source event timestamp, and feature values in the raw source. In Feast, request all features from the same FeatureView; if every returned feature is null, suspect the join. If only one is null, inspect the upstream feature value and its type.
 
 Use a minimal retrieval to remove unrelated views and on-demand transformations:
 
@@ -108,9 +115,9 @@ Avoid pointing a local diagnostic at a different registry and data warehouse tha
 
 ## Check Duplicate Resolution and Source Mapping
 
-When multiple revisions share an entity key and event timestamp, configure `created_timestamp_column` and ensure it increases for newer revisions. Otherwise the chosen row may be nondeterministic in some offline engines.
+When multiple revisions share an entity key and event timestamp, configure `created_timestamp_column` and ensure it increases for newer revisions. Otherwise duplicate resolution may be nondeterministic or may produce duplicate rows, depending on the offline store.
 
-Field mappings can also rename source columns. Inspect the registered data source and query the mapped physical columns. A correct logical feature name does not help if its source expression is missing or null.
+Field mappings can also rename feature columns. Inspect the registered data source and query the mapped physical columns. A missing mapped physical column normally makes retrieval fail; one that exists but is null yields a null feature value.
 
 ## Use a Small Debug Matrix
 
