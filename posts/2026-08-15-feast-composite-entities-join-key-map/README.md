@@ -21,13 +21,20 @@ Create one Entity per reusable domain concept, then attach multiple Entities to 
 
 ```python
 from datetime import timedelta
-from feast import Entity, FeatureView, Field
+
+import pandas as pd
+from feast import Entity, FeatureView, Field, ValueType
 from feast.types import Int64
 
-user = Entity(name="user", join_keys=["user_id"])
+user = Entity(
+    name="user",
+    join_keys=["user_id"],
+    value_type=ValueType.INT64,
+)
 merchant_category = Entity(
     name="merchant_category",
     join_keys=["merchant_category_id"],
+    value_type=ValueType.INT64,
 )
 
 user_category_stats = FeatureView(
@@ -39,7 +46,7 @@ user_category_stats = FeatureView(
 )
 ```
 
-The entity key is now the tuple of both join-key values. Historical entity rows must contain both physical columns:
+The entity key is now the tuple of both join-key values. Without a projection, historical entity rows must contain both join-key columns:
 
 ```python
 entity_df = pd.DataFrame(
@@ -86,7 +93,7 @@ route_features_v1 = FeatureService(
 )
 ```
 
-The map direction is original FeatureView join key to the alias expected in the request. `.with_name(...)` also gives each projected feature set a distinct reference, avoiding collisions between origin and destination outputs.
+The map direction is original FeatureView join key to the alias expected in the request. `.with_name(...)` gives each projection a distinct FeatureView reference. With `full_feature_names=True`, those projected names also prefix the outputs, for example `origin_stats__temperature` and `destination_stats__temperature`.
 
 The corresponding entity rows use the aliases:
 
@@ -99,10 +106,11 @@ route_entities = [
 store.get_online_features(
     features=store.get_feature_service("route_features_v1"),
     entity_rows=route_entities,
+    full_feature_names=True,
 )
 ```
 
-Use the same FeatureService projection for training so historical and online requests share alias semantics.
+Use the same FeatureService projection and `full_feature_names=True` for training so historical and online requests share alias and output-name semantics.
 
 ## Do Not Use Aliases as Source Mappings
 
@@ -110,7 +118,7 @@ Use the same FeatureService projection for training so historical and online req
 
 Similarly, aliases do not change storage identity. If a FeatureView is genuinely keyed by both account and region, aliasing `account_id` to `payer_id` does not make region optional.
 
-For a composite projection, map each key that changes:
+For portable behavior across Feast integrations, provide a complete map for a composite projection: map every changed key and include identity mappings for unchanged keys.
 
 ```python
 pair_features.with_join_key_map(
@@ -121,11 +129,11 @@ pair_features.with_join_key_map(
 )
 ```
 
-Leave unchanged keys unmapped only when the API and your tested Feast version handle that projection as intended. An explicit full mapping is easier to audit for role-heavy models.
+A complete mapping follows Feast's documented contract and is easier to audit for role-heavy models.
 
 ## Avoid Ambiguous Output Names
 
-If the same FeatureView appears twice, output features such as `temperature` or `risk_score` need distinct projected view names. Request full feature names during development and inspect the resulting columns.
+If the same FeatureView appears twice, output features such as `temperature` or `risk_score` need distinct projected view names. Set `full_feature_names=True` whenever repeated projections expose the same feature names, and inspect the resulting columns during development.
 
 Write a contract test that asserts:
 
