@@ -38,7 +38,7 @@ Replacing `mergeMap` with `concatMap` serializes the work, but a fast timer can 
 
 ## Make One Request Cycle Cold
 
-Use `defer` so every retry and repeat creates a fresh HTTP request. Put `retry` inside the cycle and `repeat` outside it:
+`ajax.getJSON` is already cold, but wrapping it in `defer` makes the creation of a new request Observable explicit for every retry and repeat. Put `retry` inside the cycle and `repeat` outside it:
 
 ```typescript
 import { defer, repeat, retry, timer } from "rxjs";
@@ -78,7 +78,7 @@ The sequence is now deterministic:
 3. If it succeeds and completes, wait for the polling interval.
 4. Repeat the whole cycle.
 
-There is never more than one active request subscription.
+Within a single subscription to `poll$`, there is never more than one active request.
 
 ## Understand `retry` Versus `repeat`
 
@@ -88,7 +88,7 @@ With `retry(...), repeat(...)`, a successful one-shot HTTP request completes and
 
 RxJS also provides `RetryConfig.resetOnSuccess`. It resets the retry counter when the retried source emits its first value. That is not the same as waiting for a request to complete successfully. It is useful for a long-lived source that can emit between bursts of failures, but it is unnecessary for the one-response HTTP cycle above because each `repeat` subscription gets fresh retry state.
 
-Prefer the configuration forms of `retry({ delay })` and `repeat({ delay })`. Current RxJS deprecation guidance marks `retryWhen` and `repeatWhen` for removal in a future major release.
+In RxJS 7.8.2, prefer the configuration forms of `retry({ delay })` and `repeat({ delay })`. `retryWhen` and `repeatWhen` are deprecated; their API documentation says they will be removed in v9 or v10.
 
 ## Decide What Is Retryable
 
@@ -117,7 +117,8 @@ Also honor a valid server-provided retry delay when the API defines one, cap the
 - [RxJS `repeat`](https://rxjs.dev/api/index/function/repeat)
 - [RxJS `concatMap`](https://rxjs.dev/api/operators/concatMap)
 - [RxJS higher-order Observables guide](https://rxjs.dev/guide/higher-order-observables)
-- [RxJS deprecation guidance](https://rxjs.dev/deprecations)
+- [RxJS `retryWhen` deprecation](https://rxjs.dev/api/index/function/retryWhen)
+- [RxJS `repeatWhen` deprecation](https://rxjs.dev/api/index/function/repeatWhen)
 
 ## Conclusion
 
