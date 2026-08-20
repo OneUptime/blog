@@ -93,13 +93,13 @@ Interpret the result carefully:
 - no slices usually means no selector, a missing Service, or a controller problem;
 - slices with no endpoints usually mean the selector matches no eligible Pods;
 - an address with `ready: false` is present in discovery state but is not normally published for the headless Service;
-- a terminating endpoint is not a healthy new-connection target even if it is still serving existing work.
+- a terminating endpoint is normally ignored by Service proxies, but they may route traffic to one that is both `serving` and `terminating` if all available endpoints are terminating.
 
 EndpointSlice is the current discovery API. The legacy Endpoints API is deprecated, can truncate large endpoint sets, and should not be the primary diagnostic source.
 
 ## Check Readiness Separately
 
-By default, a Pod needs to be ready before its per-Pod DNS record is published. Check Pod conditions and probe events:
+By default, a selected Pod needs to be ready before its address is published in the headless Service's DNS answer. Check Pod conditions and probe events:
 
 ~~~bash
 kubectl -n data get pods \
@@ -118,17 +118,20 @@ Test from a Pod that uses cluster DNS:
 
 ~~~bash
 kubectl -n data run dns-tools --rm -it --restart=Never \
-  --image=registry.k8s.io/e2e-test-images/dnsutils:1.3 \
+  --image=registry.k8s.io/e2e-test-images/agnhost:2.39 \
   --command -- \
-  dig +noall +answer members.data.svc.cluster.local. A
+  dig +noall +comments +answer members.data.svc.cluster.local. A
 ~~~
 
 Use the actual cluster domain if it is not `cluster.local`. A short lookup such as `members` depends on the querying Pod's namespace, search list, `ndots` setting, and `dnsPolicy`. A trailing dot makes the test an absolute DNS query.
 
-Also inspect the Pod's resolver configuration:
+Also inspect a test Pod's resolver configuration:
 
 ~~~bash
-kubectl -n data exec dns-tools -- cat /etc/resolv.conf
+kubectl -n data run dns-tools-resolver --rm -it --restart=Never \
+  --image=registry.k8s.io/e2e-test-images/agnhost:2.39 \
+  --command -- \
+  cat /etc/resolv.conf
 ~~~
 
 A Pod with `dnsPolicy: Default` or `dnsPolicy: None` may not send the query to cluster DNS unless its custom configuration does so.
