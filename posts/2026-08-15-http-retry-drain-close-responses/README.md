@@ -8,7 +8,7 @@ Description: Prevent retry loops from leaking response bodies and exhausting con
 
 ---
 
-An HTTP retry loop owns every response it receives, including error responses. If it waits and retries without consuming or closing the previous body, it can strand connections and file descriptors until the client stalls.
+An HTTP retry loop owns every response it receives with a nil error, including responses with error status codes. If it waits and retries without consuming or closing the previous body, it can strand connections and file descriptors until the client stalls.
 
 In Go, close each attempt inside the loop. Do not defer all closes until the retry function returns.
 
@@ -16,7 +16,7 @@ In Go, close each attempt inside the loop. Do not defer all closes until the ret
 
 Go's `http.Client.Do` returns a response for HTTP statuses such as `429` and `503`; those statuses are not transport errors. When `err` is `nil`, the response has a non-nil body that the caller must close.
 
-The Go documentation also states that the default transport might not reuse an HTTP/1.x keep-alive connection unless the response body is read to EOF and closed. A retry storm magnifies this mistake because every attempt leaves another resource unavailable.
+The Go documentation also states that the default transport might not reuse an HTTP/1.x keep-alive connection unless the response body is read to EOF and closed. Starting with Go 1.27, closing an unread HTTP/1 response body also causes the transport to drain it asynchronously up to a conservative limit. Explicit bounded draining remains useful for earlier Go releases and when small-body cleanup should finish before backoff. A retry storm magnifies delayed cleanup because every attempt leaves another resource unavailable.
 
 This pattern delays cleanup:
 
@@ -48,8 +48,8 @@ import (
 const maxErrorDrain = 64 << 10 // 64 KiB
 
 func drainAndClose(resp *http.Response) {
-	// Small bodies reach EOF and can allow HTTP/1.x connection reuse.
-	// Large or endless bodies are bounded; Close then abandons reuse safely.
+	// Bodies smaller than the limit reach EOF synchronously and can allow
+	// HTTP/1.x connection reuse. Close is required whether or not they do.
 	_, _ = io.CopyN(io.Discard, resp.Body, maxErrorDrain)
 	_ = resp.Body.Close()
 }
@@ -85,7 +85,7 @@ func GetWithRetry(ctx context.Context, client *http.Client, url string) ([]byte,
 		}
 
 		retryable := resp.StatusCode == http.StatusTooManyRequests ||
-			resp.StatusCode >= 500
+			(resp.StatusCode >= 500 && resp.StatusCode < 600)
 		status := resp.StatusCode
 		drainAndClose(resp) // Cleanup happens before any wait or next attempt.
 
@@ -97,6 +97,10 @@ func GetWithRetry(ctx context.Context, client *http.Client, url string) ([]byte,
 		}
 	}
 	panic("unreachable")
+}
+
+func backoff(attempt int) time.Duration {
+	return time.Duration(1<<attempt) * 100 * time.Millisecond
 }
 
 func wait(ctx context.Context, delay time.Duration) error {
@@ -111,7 +115,7 @@ func wait(ctx context.Context, delay time.Duration) error {
 }
 ```
 
-`io.CopyN` returns `io.EOF` when a body ends before the limit, which is harmless here. If the body exceeds the bound, closing it may prevent reuse of that connection, but it avoids downloading an attacker-controlled or enormous error body merely to save a socket.
+`io.CopyN` returns an error—normally `io.EOF` for a cleanly terminated body—when it cannot copy the requested number of bytes. That error is harmless for cleanup because the body is closed next. The 64 KiB cap bounds bytes, not elapsed time; use a context deadline or `Client.Timeout` if a peer can stall the response. In Go 1.27 and later, `Close` can also trigger the HTTP/1 transport's own bounded asynchronous drain. If cleanup stops before EOF, the connection might not be reused, but the bounded drains prevent an enormous or endless error body from being downloaded in full merely to save a socket.
 
 ## Rebuild Replayable Request Bodies
 
@@ -130,15 +134,15 @@ func newRequest(ctx context.Context, endpoint string, payload []byte) (*http.Req
 }
 ```
 
-`http.NewRequest` populates `GetBody` for common in-memory reader types, which helps the standard client replay bodies during some redirects. A custom application retry loop should still create a fresh request explicitly.
+`http.NewRequestWithContext` and `http.NewRequest` populate `GetBody` for common in-memory reader types, which helps the standard client replay bodies during some redirects. A custom application retry loop should still create a fresh request explicitly.
 
-Only replay a mutating request when its semantics are idempotent, an idempotency key protects it, or the application can prove the first attempt was not applied.
+Only replay a mutating request when its semantics are idempotent, a server-enforced idempotency key protects it, or the application can prove the first attempt was not applied.
 
 ## Protocol Distinctions
 
 Reading to EOF is specifically relevant to reuse of HTTP/1.x keep-alive connections. HTTP/2 multiplexes streams differently, but the caller must still close every response body. Cleanup also releases flow-control and client resources.
 
-Reuse one `http.Client` and its transport across attempts. Creating a new client for every retry defeats connection pooling and can create a different resource problem.
+Reuse one `http.Client` and its transport across attempts. Creating a new transport, or a new client with its own transport, for every retry defeats connection pooling and can create a different resource problem.
 
 ## Official Documentation
 
@@ -146,8 +150,9 @@ Reuse one `http.Client` and its transport across attempts. Creating a new client
 - [Go `http.Client.Do`](https://pkg.go.dev/net/http#Client.Do)
 - [Go `http.Response.Body`](https://pkg.go.dev/net/http#Response)
 - [Go `io.CopyN`](https://pkg.go.dev/io#CopyN)
+- [Go 1.27 release notes](https://go.dev/doc/go1.27)
 - [RFC 9110: Idempotent methods](https://www.rfc-editor.org/rfc/rfc9110.html#section-9.2.2)
 
 ## Conclusion
 
-Every HTTP attempt has its own response lifecycle. Fully drain small error bodies, bound large drains, close before sleeping, recreate request bodies, and reuse the client. Backoff cannot protect a service if the retry loop exhausts its own connection pool first.
+Every HTTP attempt has its own response lifecycle. Close before sleeping; when explicit draining is needed, fully drain small error bodies and bound large drains. Recreate request bodies and reuse the client. Backoff cannot protect a service if the retry loop exhausts its own connection pool first.

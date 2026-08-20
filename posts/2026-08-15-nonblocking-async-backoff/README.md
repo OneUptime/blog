@@ -24,6 +24,8 @@ async def fetch_with_retry():
         try:
             return await client.fetch()
         except TransientError:
+            if attempt == 4:
+                raise
             time.sleep(2 ** attempt)  # Blocks every task on this event loop.
 ```
 
