@@ -11,7 +11,7 @@ Description: Pair a headless governing Service with a ClusterIP client Service s
 A stateful workload often needs two incompatible networking behaviors:
 
 - peers need stable, individual DNS identities and may need discovery before readiness;
-- clients need one stable front door that sends new connections only to ready backends.
+- clients need one stable front door that normally sends new connections to ready, non-terminating backends.
 
 Use two Services over the same Pods. A headless governing Service owns peer identity, while a normal ClusterIP Service fronts client traffic.
 
@@ -34,7 +34,6 @@ spec:
     - name: peer
       protocol: TCP
       port: 7000
-      targetPort: peer
 ~~~
 
 The client Service receives a ClusterIP and keeps the default readiness behavior:
@@ -96,7 +95,7 @@ spec:
 
 Replace the image and probe with the application you operate. Readiness should mean that this replica can safely receive client work, not merely that its process exists.
 
-The resulting names have distinct purposes:
+Assuming the default `cluster.local` cluster domain, the resulting names have distinct purposes:
 
 | Name | Resolves to | Intended consumer |
 | --- | --- | --- |
@@ -119,10 +118,10 @@ Expected shape:
 ~~~text
 NAME            TYPE        CLUSTER-IP
 ledger-peers    ClusterIP   None
-ledger-client   ClusterIP   10.x.y.z
+ledger-client   ClusterIP   <assigned-IP>
 ~~~
 
-Compare DNS:
+From a Pod that uses cluster DNS and has `dig` installed, compare DNS. Use `AAAA` queries to inspect IPv6 addresses:
 
 ~~~bash
 dig +noall +answer ledger-peers.data.svc.cluster.local. A
@@ -140,7 +139,7 @@ kubectl -n data get endpointslice \
   -l kubernetes.io/service-name=ledger-client -o yaml
 ~~~
 
-Kubernetes creates separate slices because each Service is a separate discovery contract. With early peer publication, a Pod that is not application-ready can appear ready in the peer Service's slice while remaining not ready in the client Service's slice.
+Kubernetes creates separate slices because each Service is a separate discovery contract. With early peer publication, a Pod that is not application-ready is marked `ready: true` in the peer Service's slice because of `publishNotReadyAddresses`, even though its `serving` condition still reflects Pod readiness; in the client Service's slice it remains `ready: false`.
 
 ## Keep Protocols on Their Intended Names
 
@@ -166,14 +165,14 @@ Likewise, do not configure the peer protocol with only the ClusterIP when the di
 
 The two-Service pattern does not know which replica is a leader, writer, follower, or read-only member. If clients need role-aware routing, update labels through a controller designed for that application and use additional Services with narrow selectors.
 
-Be careful with rapidly changing role labels. Service and EndpointSlice propagation is asynchronous, and DNS or connection caches can outlive a role transition. The application protocol must still reject unsafe operations on the wrong role and redirect or retry safely.
+Be careful with rapidly changing role labels. Pod label changes propagate through EndpointSlices and Service proxies asynchronously, and existing connections—or DNS caches for headless role Services—can outlive a role transition. The application protocol must still reject unsafe operations on the wrong role and redirect or retry safely.
 
 ## Apply Security to Both Paths
 
 The peer and client ports have different trust models. Use distinct listeners and credentials where possible:
 
 - authenticate peer identities independently from client identities;
-- restrict peer-port ingress with NetworkPolicy if supported by the CNI;
+- restrict peer-port ingress with NetworkPolicy if enforced by your cluster's network plugin;
 - avoid exposing the peer Service outside the cluster;
 - publish only the necessary port on each Service;
 - enforce authorization in the application even when network policy is present.
@@ -182,9 +181,9 @@ The peer and client ports have different trust models. Use distinct listeners an
 
 ## Understand Connection-Level Behavior
 
-A ClusterIP Service gives the platform an opportunity to select a ready endpoint for a new connection. It does not guarantee that every HTTP request uses a different Pod. HTTP keep-alive, HTTP/2, gRPC, and database pools can keep many requests on one connection.
+A ClusterIP Service normally gives the platform an opportunity to select a ready, non-terminating endpoint for a new connection. Service proxies may route to endpoints that are both serving and terminating if all available endpoints are terminating. It does not guarantee that every HTTP request uses a different Pod. HTTP keep-alive, HTTP/2, gRPC, and database pools can keep many requests on one connection.
 
-Clients still need timeouts, retry safety, and sensible pool rotation. The difference is that the normal Service centralizes endpoint eligibility and proxy selection, while the headless peer Service deliberately exposes individual addresses.
+Clients still need timeouts, retry safety, and sensible pool rotation. The difference is that the normal Service encapsulates endpoint eligibility and lets the Service proxy select a backend, while the headless peer Service deliberately exposes individual addresses.
 
 ## Roll Out Without Mixing Health Contracts
 
@@ -194,7 +193,7 @@ During a rollout:
 2. peer bootstrap can begin before readiness because that Service publishes unready addresses;
 3. the Pod joins, restores state, and eventually passes readiness;
 4. its `ledger-client` endpoint becomes eligible for client traffic;
-5. on deletion, the client endpoint becomes not ready while peer-level shutdown can drain within the termination grace period.
+5. on deletion, the client endpoint is marked terminating and not ready; the application can drain existing peer connections within the termination grace period, although the peer address may remain published during that window.
 
 Monitor each Service separately. A healthy peer-discovery RRset does not prove that the client Service has enough ready capacity.
 
@@ -208,4 +207,4 @@ Monitor each Service separately. A healthy peer-discovery RRset does not prove t
 
 ## Conclusion
 
-Give peer discovery and client traffic separate Service contracts. The governing headless Service preserves ordinal identity and can publish bootstrap candidates early. The ClusterIP Service provides a readiness-gated client address and platform endpoint selection. Keeping those paths distinct prevents bootstrap requirements from weakening client health guarantees.
+Give peer discovery and client traffic separate Service contracts. The governing headless Service preserves ordinal identity and can publish bootstrap candidates early. The ClusterIP Service provides a stable client address and platform endpoint selection that normally uses ready, non-terminating backends. Keeping those paths distinct prevents bootstrap requirements from weakening client health guarantees.
