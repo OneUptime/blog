@@ -27,7 +27,7 @@ application cache
 
 The DNS response then feeds a connection pool, which can retain a destination beyond DNS expiry. Each layer has separate refresh, failure, and observability behavior.
 
-## Measure the Authoritative Answer First
+## Measure the Client-Visible Answer First
 
 From a Pod that uses cluster DNS:
 
@@ -50,7 +50,7 @@ Keep two CoreDNS settings distinct:
 - the `kubernetes` plugin's `ttl` controls the TTL on Kubernetes records; its current plugin default is 5 seconds and allowed values range from 0 through 3600;
 - the `cache` plugin stores responses and has separate maximum and minimum TTL controls for successful and denial responses.
 
-Kubernetes StatefulSet documentation also describes installations where negative answers are cached for about 30 seconds. That operational example is not the same as the current CoreDNS `kubernetes` plugin default. The deployed Corefile and the observed answer are authoritative for your cluster.
+Kubernetes StatefulSet documentation also describes installations where negative answers are cached for about 30 seconds. That operational example is not the same as the current CoreDNS `kubernetes` plugin default. The deployed Corefiles and answers observed through each resolution path determine effective behavior in your cluster.
 
 ## Find Node-Local and Pod-Level Caches
 
@@ -60,7 +60,7 @@ Check the resolver used by an application Pod:
 kubectl -n data exec app-0 -- cat /etc/resolv.conf
 ~~~
 
-If the nameserver is a node-local address and the cluster runs the `node-local-dns` DaemonSet, a second CoreDNS-based cache sits in front of the central DNS Service:
+`/etc/resolv.conf` alone does not prove whether NodeLocal DNSCache is in the path. In kube-proxy's iptables mode, `node-local-dns` listens on both the `kube-dns` Service IP and its node-local address. Check the DaemonSet and ConfigMap directly:
 
 ~~~bash
 kubectl -n kube-system get daemonset node-local-dns
@@ -73,11 +73,11 @@ Finally, inspect the application runtime. Some libraries honor DNS TTLs, some im
 
 ## Account for Negative Caching
 
-Positive caching retains an old Pod IP. Negative caching creates the opposite failure: a client asks for `db-2.db-peers...` before the Pod exists, caches `NXDOMAIN`, and continues reporting no such host after the Pod starts.
+Positive caching retains an old Pod IP. Negative caching creates the opposite failure: a client asks for `db-2.db-peers.data.svc.cluster.local.` before the Pod exists, caches `NXDOMAIN`, and continues reporting no such host after the Pod becomes eligible for DNS publication, normally after it becomes Ready.
 
 This is especially visible with predictable StatefulSet names. Do not use an aggressive loop that repeatedly queries a not-yet-created ordinal. Use bounded backoff, and ensure denial-cache TTLs match the required bootstrap convergence.
 
-If peer discovery must react faster than the acceptable DNS cache horizon, Kubernetes recommends watching the API directly. An API watch supplies state changes but also requires RBAC, reconnection, resource-version handling, and EndpointSlice aggregation.
+If peer discovery must react faster than the acceptable DNS cache horizon, Kubernetes recommends watching the API directly. An API watch supplies state changes but also requires RBAC, reconnection, and resource-version handling. A client that watches EndpointSlices must aggregate and deduplicate endpoints across all slices associated with the Service.
 
 ## Roll Pods with Readiness and Drain Time
 
@@ -89,9 +89,9 @@ DNS caching cannot be made perfectly instantaneous, so make the rollout tolerant
 4. bound the lifetime of existing connections;
 5. terminate only after in-flight work has completed or reached a safe deadline.
 
-For Pod deletion, Kubernetes marks the EndpointSlice endpoint `terminating: true` and `ready: false`. Default readiness-gated headless DNS stops publishing it, but cached answers remain possible. Do not enable `publishNotReadyAddresses` on a client discovery Service because that setting deliberately keeps unready endpoints publishable.
+For a selector-backed Service with the default `publishNotReadyAddresses: false`, Pod deletion causes its controller-managed EndpointSlice endpoint to become `terminating: true` and `ready: false`. Readiness-gated headless DNS then stops publishing it, but cached answers remain possible. Do not enable `publishNotReadyAddresses` on a client discovery Service that relies on readiness gating because Kubernetes then treats unready and terminating endpoints as ready until they are removed.
 
-A fixed sleep equal to one observed TTL is not a proof of safety. Cache refreshes are asynchronous, clients can begin their TTL window at different times, negative and positive settings can differ, and existing sockets ignore DNS entirely.
+A fixed sleep equal to one observed TTL is not a proof of safety. Cache expirations and refreshes are not synchronized across layers or clients, clients can begin their TTL window at different times, negative and positive settings can differ, and existing sockets ignore DNS entirely.
 
 ## Make Clients Reconcile Sets
 
@@ -126,18 +126,22 @@ First watch endpoint state:
 
 ~~~bash
 kubectl -n data get endpointslice \
-  -l kubernetes.io/service-name=members -w
+  -l kubernetes.io/service-name=members -o yaml -w
 ~~~
 
-Get the central DNS Service IP and query it directly from a routable Pod:
+Get a central CoreDNS endpoint IP from the `kube-dns` EndpointSlices and query it from a Pod that can route directly to Pod IPs. Querying the `kube-dns` Service IP can still hit NodeLocal DNSCache in kube-proxy's iptables mode:
 
 ~~~bash
-DNS_SERVICE_IP=$(kubectl -n kube-system get service kube-dns \
-  -o jsonpath='{.spec.clusterIP}')
+COREDNS_ENDPOINT_IP=$(kubectl -n kube-system get endpointslice \
+  -l kubernetes.io/service-name=kube-dns \
+  -o jsonpath='{.items[0].endpoints[0].addresses[0]}')
 
-dig @"${DNS_SERVICE_IP}" +noall +answer \
-  members.data.svc.cluster.local. A
+kubectl -n data exec app-0 -- \
+  dig @"${COREDNS_ENDPOINT_IP}" +noall +answer \
+    members.data.svc.cluster.local. A
 ~~~
+
+Repeat the direct query for every ready CoreDNS endpoint because replicas maintain independent caches.
 
 Then query through the application's configured nameserver and log the addresses actually chosen by the application. This separates:
 
@@ -147,7 +151,7 @@ Then query through the application's configured nameserver and log the addresses
 - application resolution delay;
 - connection-pool retirement delay.
 
-The CoreDNS kubernetes plugin exposes a DNS programming duration metric, and the cache plugin exposes request, hit, eviction, prefetch, and served-stale metrics. Use those signals with application-side address-age metrics.
+When the Prometheus plugin is enabled, the CoreDNS kubernetes plugin exposes a DNS programming duration metric, and the cache plugin exposes request, hit, eviction, prefetch, and served-stale metrics. Use those signals with application-side address-age metrics.
 
 ## Watch for `serve_stale`
 
