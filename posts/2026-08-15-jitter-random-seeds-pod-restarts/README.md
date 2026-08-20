@@ -8,7 +8,7 @@ Description: Ensure restarted pods draw independent retry delays instead of repr
 
 ---
 
-Jitter spreads retries only when clients draw different random values. If every pod initializes the same pseudo-random generator with the same seed, every pod produces the same sequence and the retry herd remains synchronized.
+Jitter spreads retries only when clients draw different random values. If every pod initializes the same pseudo-random generator with the same seed and makes the same sequence of random calls, every pod produces the same sequence and the retry herd remains synchronized.
 
 Do not use a shared deterministic seed in production retry timing.
 
@@ -21,31 +21,31 @@ private static final long RETRY_SEED = 20260815L;
 private final Random random = new Random(RETRY_SEED);
 ```
 
-The Java API specifies `Random`'s algorithm for portability, so instances constructed with the same seed produce the same sequence. If identically configured pods all fail on attempt zero, they choose the same first delay, then the same second delay, and so on.
+The Java API specifies `Random`'s algorithm for portability, so instances constructed with the same seed and given the same sequence of method calls produce the same sequence. If identically configured pods all fail on attempt zero, they choose the same first delay, then the same second delay, and so on.
 
 Seeding from wall-clock seconds is only superficially better. Pods in one rollout often start within the same second. Hostnames can also repeat across environments, and a restored process image can duplicate generator state.
 
 ## Let Production Generators Self-Seed
 
-For retry jitter, create one process-level generator without supplying a fixed seed. A `SecureRandom` obtains nondeterministic seed material from its provider and avoids accidentally correlated deterministic sequences:
+For retry jitter, create one shared, long-lived generator without supplying a fixed seed. A `SecureRandom` produces nondeterministic output; a PRNG-backed implementation self-seeds on first use from an implementation-specific entropy source selected by its provider. This avoids accidentally correlated deterministic sequences:
 
 ```java
 import java.security.SecureRandom;
 
 final class BackoffJitter {
     private static final long MAX_DELAY_MS = 30_000;
-    private final SecureRandom random = new SecureRandom();
+    private static final SecureRandom RANDOM = new SecureRandom();
 
     long fullJitter(long cappedCeilingMs) {
         if (cappedCeilingMs < 0 || cappedCeilingMs > MAX_DELAY_MS) {
             throw new IllegalArgumentException("invalid jitter ceiling");
         }
-        return random.nextLong(cappedCeilingMs + 1);
+        return RANDOM.nextLong(cappedCeilingMs + 1);
     }
 }
 ```
 
-Cryptographic strength is not required for backoff, but OS-seeded randomness is a straightforward way to obtain independent startup state. Do not call `setSeed` with a constant afterward. Use a practical ceiling so `cappedCeilingMs + 1` cannot overflow.
+Cryptographic strength is not required for backoff, but randomness seeded from the provider's entropy source is a straightforward way to obtain independent startup state. With a PRNG-backed `SecureRandom`, do not call `setSeed` with a constant before first use because that suppresses automatic self-seeding. After self-seeding, `setSeed` supplements rather than replaces the existing seed. Use a practical ceiling so `cappedCeilingMs + 1` cannot overflow.
 
 Many platform default generators also self-seed suitably. Confirm the exact runtime contract rather than assuming a default constructor is independent across cloned or embedded environments.
 
@@ -61,9 +61,11 @@ env:
         fieldPath: metadata.uid
 ```
 
-If a constrained runtime requires an explicit deterministic seed, derive it from enough independent values, such as the pod UID, process-specific entropy, and a worker index. Do not rely on the pod name alone when names are reused by StatefulSets.
+The UID identifies the Pod object. A replacement Pod gets a new UID even if it reuses the old name, but the UID does not change when the kubelet restarts a container within the same Pod.
 
-An explicit unique seed is still weaker than letting a good operating-system source seed the generator. It can also leak topology into a reproducible sequence. Use the pod UID primarily for diagnostics and testing the uniqueness assumption, not as a replacement for available entropy.
+If a constrained runtime requires an explicitly seeded deterministic generator, derive its seed from fresh per-process entropy and, where useful, the pod UID and a worker index. Do not rely on the pod UID alone across container restarts or the pod name alone across replacement Pods; StatefulSets deliberately reuse ordinal-based Pod names.
+
+An explicit identity-derived seed is still weaker than letting a good entropy source seed the generator. It can also leak topology into a reproducible sequence. Use the pod UID primarily for diagnostics and testing the uniqueness assumption, not as a replacement for available entropy.
 
 ## Keep Determinism in Tests
 
@@ -74,7 +76,7 @@ interface JitterSource {
     long choose(long ceilingMs);
 }
 
-// Production: OS-seeded implementation.
+// Production: self-seeded implementation.
 // Tests: deterministic implementation with a recorded seed.
 ```
 
@@ -86,7 +88,7 @@ Full jitter chooses a value uniformly from zero through the capped exponential w
 
 Independent random streams are necessary but not sufficient. Also cap attempts, respect server retry signals, limit aggregate retry concurrency, and ramp admission after a dependency recovers. A large fleet can still create a burst by chance if its first jitter window is too narrow.
 
-Track retry timestamps by pod during restart tests. Identical sequences across instances are a configuration defect, while a broad distribution is evidence that jitter is operating as intended.
+Track retry timestamps by pod during container-restart and Pod-replacement tests. Identical sequences across instances are a configuration defect, while a broad distribution is evidence that jitter is operating as intended.
 
 ## Official Documentation
 
@@ -99,4 +101,4 @@ Track retry timestamps by pod during restart tests. Identical sequences across i
 
 ## Conclusion
 
-Jitter fails when its random stream is shared. Use independently self-seeded production generators, reserve fixed seeds for tests, and combine broad jitter windows with fleet-wide retry and admission limits.
+Jitter fails when instances repeat the same random stream. Use independently self-seeded production generators, reserve fixed seeds for tests, and combine broad jitter windows with fleet-wide retry and admission limits.
