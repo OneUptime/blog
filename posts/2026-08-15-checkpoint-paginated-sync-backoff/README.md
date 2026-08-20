@@ -10,11 +10,11 @@ Description: Commit each applied page and its next cursor together so a failed p
 
 A paginated sync should not restart from page one whenever a later page fails. It should also never advance its cursor past data that was not committed locally.
 
-The safe checkpoint is the next-page token saved atomically with the effects of the page that produced it.
+The safe checkpoint is the provider-approved continuation state saved atomically with the effects of the page that produced it.
 
 ## Treat Page Tokens as Opaque State
 
-Many APIs return a `next_page_token`, `nextLink`, or continuation token. Do not parse it, increment it, or synthesize a replacement. Google AIP-158 requires page tokens to be opaque and says other request arguments should remain consistent while paginating. Microsoft Graph likewise tells clients to use the returned `@odata.nextLink` without inspecting its state token.
+Many APIs return a `next_page_token`, `nextLink`, or continuation token. Do not parse it, increment it, or synthesize a replacement. Google AIP-158 requires page tokens to be opaque and says request arguments other than `page_token` and `page_size` should remain consistent while paginating. Microsoft Graph likewise tells clients to use the returned `@odata.nextLink` without inspecting its state token.
 
 A durable sync record might contain:
 
@@ -32,7 +32,7 @@ Storing the complete next URL is often safer when the provider returns one. It p
 
 ## Commit Page Data and the Next Cursor Together
 
-The core loop is:
+The core loop is below. Here, the API adapter exposes the provider-approved continuation as `page.next_url` and normalizes the provider's documented terminal signal to `None`; provider-specific retry-token exceptions are discussed below.
 
 ```python
 async def run_sync(sync_name, initial_url):
@@ -69,14 +69,18 @@ The order matters:
 
 1. Fetch a page using the current durable cursor.
 2. Apply its items idempotently.
-3. Save the returned next cursor in the same local transaction.
+3. Save the provider-approved continuation cursor in the same local transaction.
 4. Only then request the next page.
 
 If the process crashes before commit, it replays the current page. If it crashes after commit, it resumes from the next page. It never skips an unapplied page.
 
+These guarantees require one active worker per `sync_name`. If workers can overlap, serialize them with a fenced lease or lock, or make the checkpoint update conditional on the cursor or version that the worker read. A failed conditional update must roll back the page transaction so a stale worker cannot move the checkpoint backward.
+
 ## Back Off the Failed Page, Not the Whole Sync
 
 When fetching page 17 fails, retain the cursor for page 17 and retry that request after backoff. Do not overwrite the checkpoint with `null`, a guessed offset, or the cursor that led to page 16.
+
+Provider-specific retry-token rules take precedence. Microsoft Graph directory paging says not to use an `@odata.nextLink` returned by a retry for a subsequent page because it can cause `DirectoryPageTokenNotFoundException`. For those APIs, retain the link from the last successful non-retry response—the link used for the retry—and make page application tolerate requesting it again.
 
 Reset the failure streak only after the page is fetched, validated, and committed. Receiving headers or parsing half a streaming response is not a successful page.
 
@@ -112,9 +116,10 @@ Record the reason for a full restart so cursor expiry does not look like an ordi
 
 - [Google AIP-158: Pagination](https://google.aip.dev/158)
 - [Google Merchant API pagination](https://developers.google.com/merchant/api/guides/reports/paging)
+- [Microsoft Graph paging](https://learn.microsoft.com/en-us/graph/paging)
 - [Microsoft Graph delta query overview](https://learn.microsoft.com/en-us/graph/delta-query-overview)
 - [Microsoft Graph list item delta API](https://learn.microsoft.com/en-us/graph/api/listitem-delta)
 
 ## Conclusion
 
-Use the provider's opaque cursor unchanged, apply each page idempotently, and commit its effects with the next cursor. On failure, back off and retry that same cursor; on expiry, follow an explicit full-resync path.
+Use the provider's opaque cursor unchanged, apply each page idempotently, and commit its effects with the provider-approved continuation state. On failure, back off and retry that same cursor; on expiry, follow an explicit full-resync path.
