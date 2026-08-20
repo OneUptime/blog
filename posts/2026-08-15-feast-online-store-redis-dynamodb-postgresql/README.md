@@ -27,7 +27,7 @@ At the time of writing, the official Feast pages report these notable difference
 | delete expired data | yes | no | no |
 | entityless FeatureViews | yes | yes | yes |
 
-Recheck the pages for the Feast version you deploy. "No" here means the Feast plugin does not advertise that capability. It does not mean the underlying database lacks all concurrency or expiration features.
+Recheck the pages for the Feast version you deploy. "No" here means the published Feast matrix does not advertise that capability. It does not mean the underlying database lacks all concurrency or expiration features. Feast v0.65.0's alpha Go feature-server source implements Redis, DynamoDB, and PostgreSQL readers even though the matrix marks the latter two "no," so validate the exact release and configuration before relying on that path.
 
 ## Choose Redis for the Broadest Feast Serving Surface
 
@@ -64,9 +64,9 @@ online_store:
   consistent_reads: false
 ```
 
-Feast documents that `BatchGetItem` is limited to 100 items per request and that `max_read_workers` controls parallel batches. AWS documents that eventually consistent reads are the default, while strongly consistent reads are available for tables and local secondary indexes at a higher capacity cost.
+Feast documents that `BatchGetItem` is limited to 100 items per request, and `max_read_workers` controls parallel batches on the synchronous read path. AWS documents that eventually consistent reads are the default, while strongly consistent reads are available for tables and local secondary indexes at a higher capacity cost.
 
-The current Feast matrix does not advertise same-key concurrent writing, retrieval TTL, expired-data deletion, or Go/Java readability for DynamoDB. If any is mandatory, either add an explicitly tested application layer or select another integration.
+The current Feast matrix does not advertise same-key concurrent writing, retrieval TTL, expired-data deletion, or Go/Java readability for DynamoDB. Feast v0.65.0's alpha Go feature-server source nevertheless includes a DynamoDB reader. If same-key concurrent writing, retrieval TTL, expired-data deletion, or Java readability is mandatory, either add an explicitly tested application layer or select another integration.
 
 Choose DynamoDB when:
 
@@ -89,9 +89,10 @@ online_store:
   user: feast_reader
   password: DB_PASSWORD
   sslmode: verify-ca
+  sslrootcert_path: /path/to/server-ca.pem
 ```
 
-The current Feast integration persists only the latest feature values and supports SSL configuration and optional pgvector features. Inject or render the credential securely before Feast reads this file; do not commit a real password. Its matrix does not advertise same-key concurrent writes, TTL behavior, Go readability, or Java readability.
+The current Feast integration persists only the latest feature values and supports SSL configuration and optional pgvector features. Inject or render the credential securely before Feast reads this file; do not commit a real password. Its published matrix does not advertise same-key concurrent writes, TTL behavior, or Java readability. Although that matrix also marks Go readability "no," Feast v0.65.0's alpha Go feature-server source includes a PostgreSQL reader; test this path with the exact release.
 
 PostgreSQL also introduces connection-pool sizing, vacuum and index health, transaction contention, and noisy-neighbor risks. PostgreSQL's MVCC gives native database concurrency, but that does not override the narrower Feast same-key write contract. Test the exact online-write implementation before permitting competing stream and batch writers.
 
@@ -134,6 +135,7 @@ For production with concurrent materialization writers, Feast recommends a SQL r
 - [Feast Redis online store](https://docs.feast.dev/reference/online-stores/redis)
 - [Feast DynamoDB online store](https://docs.feast.dev/reference/online-stores/dynamodb)
 - [Feast PostgreSQL online store](https://docs.feast.dev/reference/online-stores/postgres)
+- [Feast v0.65.0 Go online-store selection](https://github.com/feast-dev/feast/blob/v0.65.0/go/internal/feast/onlinestore/onlinestore.go)
 - [AWS DynamoDB read consistency](https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/HowItWorks.ReadConsistency.html)
 - [Redis pipelining](https://redis.io/docs/latest/develop/using-commands/pipelining/)
 - [PostgreSQL concurrency control](https://www.postgresql.org/docs/current/mvcc.html)
