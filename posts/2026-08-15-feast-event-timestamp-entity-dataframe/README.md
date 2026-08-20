@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Feast, Feature Store, Event Time, Entity DataFrame, Point-in-Time Join, Machine Learning
 
-Description: Understand how Feast uses each entity-row timestamp as a historical lookup boundary and why training requests require it.
+Description: Understand how Feast uses each entity-row timestamp as a historical lookup boundary and why entity-DataFrame training requests need it.
 
 ---
 
 In a Feast entity DataFrame, `event_timestamp` is the time at which you want to reconstruct a feature vector. It is not the time when the retrieval job runs, the time when the label was loaded, or necessarily the timestamp column in a feature source.
 
-That distinction is what makes a historical lookup point-in-time correct. For each entity row, Feast finds feature records for the requested entity key whose source event time is at or before the row's `event_timestamp`. It then selects the latest eligible record, subject to the FeatureView TTL.
+That distinction is what makes a historical lookup point-in-time correct with respect to feature event time. For each entity row, Feast finds feature records for the requested entity key whose source event time is at or before the row's `event_timestamp`. It then selects the latest eligible record, subject to the FeatureView TTL.
 
 The current Feast quickstart calls `event_timestamp` a reserved key and describes it as the upper bound for the point-in-time join.
 
@@ -31,9 +31,11 @@ The entity DataFrame timestamp and source timestamp have different roles:
 
 - `entity_df["event_timestamp"]` is the lookup time for one requested feature vector.
 - A source's `timestamp_field` identifies when each feature record occurred.
-- An optional `created_timestamp_column` records when a source row was created and can break ties between revisions at the same event time.
+- An optional `created_timestamp_column` records when a source row was created and, by default, breaks ties between rows with the same entity key and event time by choosing the greatest created timestamp.
 
-Do not substitute ingestion time for event time unless that is genuinely the model's definition of when the fact became true.
+By default, Feast does not compare that created timestamp with the entity row's `event_timestamp`, so a correction or backfill created after the lookup time can still be returned.
+
+Do not substitute ingestion time for occurrence time accidentally. If availability time is the model's relevant boundary, model that choice explicitly and document it.
 
 ## Build a Valid Entity DataFrame
 
@@ -82,7 +84,7 @@ For training, the timestamp should represent when the prediction would have been
 
 Using the label resolution time can leak information. A chargeback may be confirmed weeks after checkout, but the model must reconstruct features at checkout time, not at confirmation time.
 
-For batch scoring, Feast's documentation uses the current time in the entity DataFrame to request the latest eligible offline values. Online retrieval is different: `get_online_features` accepts entity rows without timestamps because online stores retain one latest value per entity key.
+For batch scoring, Feast's documentation uses the current time in the entity DataFrame to request the latest eligible offline values. Online retrieval is different: `get_online_features` accepts entity rows without timestamps because online stores retain the latest feature values for each entity key.
 
 ```python
 entity_df["event_timestamp"] = pd.Timestamp.now(tz="UTC")
@@ -114,7 +116,7 @@ Then test a few entity rows for which the expected source record is known. Inspe
 
 Treat `event_timestamp` as part of the training dataset contract. Document its business meaning, timezone, precision, and source. If a pipeline changes from transaction time to settlement time without changing the dataset version, the join may remain technically valid while the model learns from a different world.
 
-The useful mental model is simple: every entity row asks, "What could this model have known for this entity at this instant?" Feast uses `event_timestamp` to answer that question without reading future feature values.
+The useful mental model is simple: every entity row asks, "What was the latest feature event for this entity at or before this instant?" Feast uses `event_timestamp` to answer that event-time question without reading feature events from the future.
 
 ## Official Documentation
 
@@ -124,4 +126,4 @@ The useful mental model is simple: every entity row asks, "What could this model
 
 ## Conclusion
 
-`event_timestamp` is required for historical retrieval because it supplies the upper time boundary for every requested feature vector. Use the prediction event's time, normalize it to UTC, provide all physical join keys, and verify a few known rows before producing a training dataset.
+When historical retrieval uses an entity DataFrame, `event_timestamp` supplies the upper time boundary for every requested feature vector. Use the prediction event's time, normalize it to UTC, provide all physical join keys, and verify a few known rows before producing a training dataset.
