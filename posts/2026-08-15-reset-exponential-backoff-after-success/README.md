@@ -14,7 +14,7 @@ The state to track is consecutive failures, not lifetime failures.
 
 ## Model a Failure Streak
 
-Keep the attempt counter next to the retry loop and reset it only after the operation has met the application's definition of success:
+Keep the attempt counter next to the retry loop and reset it only after the operation has met the application's definition of success. Use this loop only when `sendOneRequest` is safe to replay—for example, when the operation is idempotent, protected by application-level deduplication, or known not to have been applied on the previous attempt:
 
 ```typescript
 const BASE_MS = 250;
@@ -35,12 +35,14 @@ async function runClient(signal: AbortSignal): Promise<void> {
       const response = await sendOneRequest(signal);
 
       if (!response.ok) {
-        throw new RetryableHttpError(response.status);
+        throw new HttpStatusError(response.status);
       }
 
       await consumeAndValidate(response);
       consecutiveFailures = 0; // The operation really succeeded.
     } catch (error) {
+      signal.throwIfAborted();
+
       if (!isRetryable(error) ||
           consecutiveFailures >= MAX_RETRIES_PER_FAILURE_STREAK) {
         throw error;
@@ -53,6 +55,8 @@ async function runClient(signal: AbortSignal): Promise<void> {
   }
 }
 ```
+
+Have `isRetryable` reject permanent failures; a non-2xx HTTP response is not automatically retryable.
 
 Increment after computing the current delay so attempt zero uses the initial window. Put an upper bound on both the delay and the number or total duration of retries.
 
@@ -83,27 +87,28 @@ When many callers share one destination, centralize the retry budget or circuit 
 
 ## Avoid Premature Resets in Concurrent Clients
 
-If multiple requests update a shared counter, one success can erase evidence of failures that occurred later. Serialize state updates or include a generation:
+If multiple requests update a shared counter, one success can erase evidence of failures that occurred later. One conservative generation policy is to reset only if no failure completed while the successful operation was in flight:
 
 ```typescript
 type BackoffState = {
-  generation: number;
+  failureVersion: number;
   consecutiveFailures: number;
 };
 
-async function attempt(state: BackoffState): Promise<void> {
-  const myGeneration = state.generation;
+async function attempt(
+  state: BackoffState,
+  operation: () => Promise<void>,
+): Promise<void> {
+  const failureVersionAtStart = state.failureVersion;
 
   try {
-    await sendOneRequest();
-    if (state.generation === myGeneration) {
+    await operation();
+    if (state.failureVersion === failureVersionAtStart) {
       state.consecutiveFailures = 0;
-      state.generation += 1;
     }
   } catch (error) {
-    if (state.generation === myGeneration) {
-      state.consecutiveFailures += 1;
-    }
+    state.failureVersion += 1;
+    state.consecutiveFailures += 1;
     throw error;
   }
 }
