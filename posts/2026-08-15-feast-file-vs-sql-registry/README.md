@@ -30,7 +30,7 @@ Use a file registry when:
 
 - development is local or single-user;
 - one controlled writer serializes `apply` and materialization;
-- recovery from object versions is tested;
+- object versioning or another backup is enabled, and recovery is tested;
 - concurrency and availability requirements are modest.
 
 ## Use SQL for Concurrent Production Writers
@@ -40,17 +40,17 @@ Feast's SQL registry uses SQLAlchemy and currently documents PostgreSQL, MySQL, 
 ```yaml
 registry:
   registry_type: sql
-  path: postgresql://feast_writer:DB_PASSWORD@registry-db:5432/feast
+  path: "postgresql://feast_writer:${DB_PASSWORD}@registry-db:5432/feast"
   cache_ttl_seconds: 60
   sqlalchemy_config_kwargs:
     pool_pre_ping: true
 ```
 
-Inject the real credential securely rather than committing it. Use TLS and database settings appropriate to the chosen driver and environment.
+Supply the URL-encoded credential through `DB_PASSWORD` rather than committing it. Use TLS and database settings appropriate to the chosen driver and environment.
 
-The SQL registry creates its metadata tables and stores serialized Feast objects keyed by name. Atomic object changes make it suitable for materializing different FeatureViews concurrently. Feast explicitly recommends it for concurrent materialization correctness.
+The SQL registry creates its metadata tables and stores serialized Feast objects in type-specific tables, generally keyed by project and object name. Atomic object changes make it suitable for materializing different FeatureViews concurrently. Feast explicitly recommends it for concurrent materialization correctness. Feast's production guide notes that the Java feature server does not understand the SQL registry.
 
-SQL does not resolve semantic conflicts. If two CI pipelines apply different definitions for the same FeatureView name, the database can serialize both writes while the last one still wins. Keep one authorized deployment writer per environment.
+SQL does not resolve semantic conflicts. If two CI pipelines apply different definitions for the same FeatureView name in one project, the database can serialize both writes while the last one still wins. Keep one authorized deployment writer per environment.
 
 ## Compare Operational Properties
 
@@ -60,7 +60,7 @@ SQL does not resolve semantic conflicts. If two CI pipelines apply different def
 | remote reads | object store path | database connection |
 | update unit | complete serialized file | individual object |
 | concurrent writers | documented risk or serialization bottleneck | atomic object changes |
-| backup | file or object versions | database backup and point-in-time recovery |
+| backup | file or enabled object versions | database backup; point-in-time recovery when supported and configured |
 | serving cache | cache TTL can delay changes | cache TTL can delay changes |
 | operational dependencies | object store | database, pool, migrations, credentials |
 
@@ -79,11 +79,11 @@ training jobs         registry read, offline read
 serving               registry read, online read
 ```
 
-The exact database privileges required depend on Feast's registry behavior, including table creation and teardown. Test a least-privilege role with every command the job actually runs.
+The exact database privileges required depend on Feast's registry behavior, including creation of missing tables at startup and the row deletions performed by teardown. Test a least-privilege role with every command the job actually runs.
 
 ## Plan Cache and Failure Behavior
 
-`cache_ttl_seconds` reduces repeated registry reads but delays propagation. During a rollout, a feature server may serve the old definition until its cache refreshes. Include that maximum delay in the deployment and rollback plan.
+`cache_ttl_seconds` reduces repeated registry reads for SDK clients but delays propagation. A Feast online server has a separate registry refresh interval: `--registry_ttl_sec` for `feast serve`, or `registryTTLSeconds` in the Feast Operator. During a healthy rollout, a client or server may use the old definition until its next successful refresh. Include the configured interval, and the possibility of longer staleness after refresh failures, in the deployment and rollback plan.
 
 Exercise failures:
 
@@ -101,7 +101,7 @@ Registry and online store are separate systems, so back them up and recover them
 For a production migration:
 
 1. inventory every registry reader and writer;
-2. stop `apply`, materialization, and push components that update metadata;
+2. stop `apply` and materialization jobs that update registry metadata; pause push jobs only if the cutover also requires freezing online or offline feature writes;
 3. export or reconstruct desired definitions from the version-controlled feature repository;
 4. initialize and apply to the SQL registry in an isolated environment;
 5. compare registered objects and run historical probes;
