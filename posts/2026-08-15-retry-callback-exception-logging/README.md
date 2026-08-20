@@ -14,7 +14,7 @@ Log through retry lifecycle hooks, or re-raise after local cleanup.
 
 ## The Failure-Swallowing Pattern
 
-This Tenacity-decorated function does not retry:
+This Tenacity-decorated function does not retry caught timeouts:
 
 ```python
 import logging
@@ -38,7 +38,7 @@ Tenacity retries exceptions by default. It can also retry selected return values
 
 ## Use a Before-Sleep Hook
 
-Tenacity provides `before_sleep` specifically for work that should run after a retryable failure and before the delay:
+Tenacity provides `before_sleep` specifically for work that should run after a failure has been selected for another retry and before its delay:
 
 ```python
 import logging
@@ -65,7 +65,7 @@ def fetch_order(order_id: str):
     return response
 ```
 
-The operation now raises unchanged. Tenacity classifies the exception, records the attempt, invokes the logging hook, waits, and calls the function again. With `reraise=True`, exhaustion propagates the final underlying exception instead of a `RetryError` wrapper.
+The operation now raises unchanged. Tenacity classifies the exception and records the attempt. If the stop policy permits another attempt, it invokes the logging hook, waits, and calls the function again. With `reraise=True`, exhaustion propagates the final underlying exception instead of a `RetryError` wrapper.
 
 ## Re-Raise When Cleanup Belongs Locally
 
@@ -88,7 +88,7 @@ def write_projection(event):
 
 A bare `raise` preserves the current exception and traceback. If you translate the exception, chain it explicitly with `raise NewError(...) from error` and ensure the retry predicate recognizes the new type.
 
-Do not catch `BaseException`; cancellation, keyboard interrupts, and process-exit signals generally should not become retries.
+Do not catch `BaseException`; `asyncio.CancelledError`, `KeyboardInterrupt`, and `SystemExit` generally should not become retries.
 
 ## Log Once at the Right Levels
 
@@ -124,7 +124,7 @@ retry_policy = (
 )
 ```
 
-The callback still needs to return the real result. Do not use an exception handler to manufacture a value that accidentally satisfies the success path.
+The retried operation still needs to return the real result. Do not use an exception handler to manufacture a value that accidentally satisfies the success path.
 
 ## Official Documentation
 
