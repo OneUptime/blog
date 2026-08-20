@@ -81,12 +81,12 @@ Run the query from a Pod configured to use cluster DNS:
 
 ~~~bash
 kubectl -n data run dns-tools --rm -it --restart=Never \
-  --image=registry.k8s.io/e2e-test-images/dnsutils:1.3 \
+  --image=registry.k8s.io/e2e-test-images/agnhost:2.39 \
   --command -- \
   dig +noall +answer ledger-0.peers.data.svc.cluster.local. A
 ~~~
 
-On an IPv6 or dual-stack cluster, also query `AAAA`:
+For an IPv6-only governing Service, query `AAAA` instead of `A`; for a dual-stack Service, query both:
 
 ~~~bash
 dig +noall +answer ledger-0.peers.data.svc.cluster.local. AAAA
