@@ -8,7 +8,7 @@ Description: Use a dedicated headless Service to publish StatefulSet peer DNS be
 
 ---
 
-Some stateful systems cannot become ready until they discover enough peers to form a quorum or join a cluster. Kubernetes normally publishes ready endpoints in Service DNS, so a peer that waits for DNS before becoming ready can create a bootstrap deadlock.
+Some stateful systems cannot become ready until they discover enough peers to form a quorum or join a cluster. For a headless Service, Kubernetes normally publishes only ready endpoints in Service DNS, so a peer that waits for DNS before becoming ready can create a bootstrap deadlock.
 
 Set `publishNotReadyAddresses: true` on a dedicated headless peer Service to break that cycle. The setting changes discovery visibility; it does not prove that a peer is accepting connections or safe for client traffic.
 
@@ -42,6 +42,7 @@ metadata:
   namespace: data
 spec:
   serviceName: ledger-peers
+  podManagementPolicy: Parallel
   replicas: 3
   selector:
     matchLabels:
@@ -70,7 +71,7 @@ spec:
             failureThreshold: 6
 ~~~
 
-The image and readiness command are placeholders for the system you operate. The important relationship is `serviceName: ledger-peers`, matching labels, a named peer port, and early publication on the governing Service.
+The image and readiness command are placeholders for the system you operate. The important relationship is `serviceName: ledger-peers`, matching labels, a named peer port, and early publication on the governing Service. This example uses `podManagementPolicy: Parallel` because quorum-dependent readiness requires multiple replicas to be created; the default `OrderedReady` policy waits for each lower ordinal to become Ready before creating the next Pod. The FQDNs assume the default `cluster.local` cluster domain; replace it with your configured cluster domain if it differs.
 
 ## Understand What the Field Changes
 
@@ -104,7 +105,7 @@ kubectl -n data get endpointslice \
   -o jsonpath='{range .items[*].endpoints[*]}{.targetRef.name}{"\t"}{.addresses[*]}{"\tready="}{.conditions.ready}{"\tserving="}{.conditions.serving}{"\tterminating="}{.conditions.terminating}{"\n"}{end}'
 ~~~
 
-And from a cluster-DNS Pod:
+And from a diagnostic Pod that uses cluster DNS and has `dig` installed (use `AAAA` instead of `A` for an IPv6-only Service):
 
 ~~~bash
 dig +noall +answer ledger-peers.data.svc.cluster.local. A
@@ -133,10 +134,10 @@ spec:
     - name: client
       protocol: TCP
       port: 8080
-      targetPort: client
+      targetPort: 8080
 ~~~
 
-Peers use `ledger-*.ledger-peers.data.svc.cluster.local`. Ordinary clients use `ledger-client.data.svc.cluster.local` and receive the behavior of a normal ClusterIP Service backed by ready endpoints.
+Peers use `ledger-*.ledger-peers.data.svc.cluster.local`. Ordinary clients use `ledger-client.data.svc.cluster.local` and receive the normal readiness-aware routing behavior of a ClusterIP Service.
 
 ## Design Bootstrap to Tolerate Partial Availability
 
@@ -159,7 +160,7 @@ An unready process is now network-discoverable. Treat the peer port as a privile
 
 - use mutual authentication or another strong peer identity mechanism;
 - apply NetworkPolicy where the cluster network plugin enforces it;
-- expose only the peer port on the headless Service;
+- advertise only the peer port on the headless Service, but do not treat its port list as a firewall;
 - reject client protocol traffic on the peer listener;
 - make bootstrap operations idempotent;
 - rate-limit join attempts and log rejected identities.
