@@ -97,7 +97,7 @@ NetworkPolicy behavior for traffic to external IPs depends on the policy and CNI
 
 ## Apply and Verify Discovery
 
-Save both resources in `external-db.yaml`, then apply them:
+Ensure that the `data` namespace exists. Save both resources in `external-db.yaml`, then apply them:
 
 ~~~bash
 kubectl apply -f external-db.yaml
@@ -107,7 +107,7 @@ kubectl -n data get endpointslice \
   -l kubernetes.io/service-name=external-db -o yaml
 ~~~
 
-Query the Service record from inside the cluster:
+Assuming the cluster uses the common `cluster.local` DNS domain, query the Service record from inside the cluster. If your cluster uses a different domain, replace that suffix in the following queries:
 
 ~~~bash
 dig +noall +answer external-db.data.svc.cluster.local. A
@@ -146,7 +146,7 @@ A production controller should:
 
 The EndpointSlice API interprets an omitted `ready` value as true. Set it explicitly so an incomplete manifest does not accidentally publish an unhealthy address.
 
-For planned replacement, add the new healthy address, wait for DNS and client convergence, then mark or remove the old address. Clients still need bounded retries because DNS and connection pools can retain the previous IP.
+For planned replacement, add the new healthy address as a separate `endpoints` entry, wait for DNS and client convergence, then mark or remove the old endpoint. Clients still need bounded retries because DNS and connection pools can retain the previous IP.
 
 ## Use Multiple Slices When Needed
 
