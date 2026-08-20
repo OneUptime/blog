@@ -8,7 +8,7 @@ Description: Tune authoritative, success, and denial TTLs while measuring conver
 
 ---
 
-Lower DNS TTLs can make a headless Service converge faster after a Pod changes, but setting every cache to zero trades stale-answer risk for CPU, network, and synchronized query load. Tune from an explicit convergence objective and measure the complete resolver path.
+Lower DNS TTLs can make a headless Service converge faster after a Pod changes, but driving every cache horizon toward zero trades stale-answer risk for CPU, network, and synchronized query load. Tune from an explicit convergence objective and measure the complete resolver path.
 
 CoreDNS has two separate controls that are often confused:
 
@@ -19,14 +19,14 @@ NodeLocal DNSCache and application resolvers can add more cache layers beyond bo
 
 ## Inspect the Current Corefile and Answers
 
-Read the effective CoreDNS configuration:
+Read the Corefile stored in the standard CoreDNS ConfigMap:
 
 ~~~bash
 kubectl -n kube-system get configmap coredns \
   -o jsonpath='{.data.Corefile}{"\n"}'
 ~~~
 
-Query a representative headless Service repeatedly:
+From a representative application Pod, or a debug Pod that follows the same DNS path and has `dig` installed, query a representative headless Service repeatedly:
 
 ~~~bash
 for i in 1 2 3 4; do
@@ -58,7 +58,7 @@ kubernetes cluster.local in-addr.arpa ip6.arpa {
 }
 ~~~
 
-This makes Kubernetes-plugin responses carry a five-second TTL. Setting it to `0` prevents those records from being cached according to the plugin contract, but it also removes an important protection against repeated queries. Some application resolvers can impose their own caching policy regardless, so TTL zero does not prove instant client convergence.
+This makes Kubernetes-plugin responses carry a five-second TTL. Setting it to `0` makes the plugin emit TTL-zero responses. To keep CoreDNS's `cache` plugin from extending that value to its default five-second minimum, also set the relevant `success` and `denial` minimum TTLs to `0`, as in the examples below, or disable those caches. Some application resolvers can impose their own caching policy regardless, so TTL zero does not prove instant client convergence.
 
 Keep the authoritative TTL short enough for the rollout objective and long enough to absorb ordinary request volume. Five seconds is an example starting point, not a universal recommendation.
 
@@ -124,7 +124,7 @@ QPS = N / T
 
 Multiply by queried names, A and AAAA types, retries, search-path expansions, and environments. A thousand processes refreshing four names with A and AAAA every five seconds can generate roughly 1,600 planned queries per second before retries and search suffixes.
 
-Reduce load by:
+Reduce query volume and synchronized peaks by:
 
 - using one shared resolver or discovery loop per process;
 - coalescing simultaneous lookups;
@@ -160,8 +160,11 @@ kubectl -n kube-system get configmap coredns -o yaml \
 After editing, validate behavior in a canary or staging cluster first. If the Corefile includes the `reload` plugin, CoreDNS periodically detects and gracefully loads changes. Check logs and the reload failure metric. Some cluster management paths instead require or document a Deployment restart:
 
 ~~~bash
+# Only if the cluster's supported path requires a restart:
+kubectl -n kube-system rollout restart deployment/coredns
 kubectl -n kube-system rollout status deployment/coredns
-kubectl -n kube-system logs deployment/coredns --tail=200
+kubectl -n kube-system logs deployment/coredns \
+  --all-pods=true --prefix=true --tail=200
 ~~~
 
 Do not assume a successful ConfigMap update means the new Corefile loaded. Query the service, inspect logs, and verify every CoreDNS replica. Remember that provider-managed clusters may reconcile or overwrite direct changes during upgrades.
