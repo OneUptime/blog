@@ -8,7 +8,7 @@ Description: Treat browser WebSocket close events as policy inputs so clean tran
 
 ---
 
-A browser fires `close` whether the WebSocket ended cleanly or failed abruptly. `CloseEvent.wasClean` describes how the closing handshake completed. It does not mean that the application should stay disconnected forever.
+A browser fires `close` whether the WebSocket ended cleanly or failed abruptly. `CloseEvent.wasClean` indicates whether the connection closed after the WebSocket closing handshake completed. It does not mean that the application should stay disconnected forever.
 
 If the client is expected to maintain a live session, `onclose` must feed a reconnection state machine.
 
@@ -17,7 +17,7 @@ If the client is expected to maintain a live session, `onclose` must feed a reco
 The close event exposes three useful fields:
 
 - `code`, the WebSocket close status code
-- `reason`, an application-provided UTF-8 reason when present
+- `reason`, the UTF-8-decoded close reason provided by the server when present
 - `wasClean`, whether the connection closed cleanly
 
 A server restart might deliberately send code `1001` and complete a clean closing handshake. That is clean at the WebSocket layer, but a long-lived dashboard may still need to reconnect. Conversely, code `1008` can indicate a policy violation that retrying will not fix.
@@ -31,6 +31,7 @@ function shouldReconnect(event: CloseEvent, stoppedByUser: boolean): boolean {
   switch (event.code) {
     case 1000: // Normal closure
       return false; // Change to true for an always-on application session.
+    case 1002: // Protocol error
     case 1008: // Policy violation
       return false;
     case 1011: // Server internal error
@@ -41,7 +42,7 @@ function shouldReconnect(event: CloseEvent, stoppedByUser: boolean): boolean {
 }
 ```
 
-Close codes are signals, not complete truth. Browsers commonly report `1006` for abnormal closure, but `1006` is a reserved value and cannot be sent in a Close frame. Application-specific codes in the `3000` to `4999` range need an explicit contract between client and server.
+Close codes are signals, not complete truth. Browsers commonly report `1006` for abnormal closure, but `1006` is a reserved value and cannot be sent in a Close frame. The `3000` to `3999` range is reserved for registered library, framework, and application codes; `4000` to `4999` is for private use by prior agreement. In either range, the client still needs an explicit contract for retry behavior.
 
 ## Put `onclose` into a State Machine
 
@@ -49,14 +50,15 @@ Use one scheduled reconnect, cancel it on shutdown, and reset the failure streak
 
 ```typescript
 class ReconnectingSocket {
-  private socket?: WebSocket;
-  private reconnectTimer?: number;
+  private socket: WebSocket | undefined;
+  private reconnectTimer: number | undefined;
   private failures = 0;
-  private stopped = false;
+  private stopped = true;
 
   constructor(private readonly url: string) {}
 
   start(): void {
+    if (!this.stopped) return;
     this.stopped = false;
     this.connect();
   }
@@ -67,7 +69,9 @@ class ReconnectingSocket {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = undefined;
     }
-    this.socket?.close(1000, "client shutdown");
+    const socket = this.socket;
+    this.socket = undefined;
+    socket?.close(1000, "client shutdown");
   }
 
   private connect(): void {
@@ -77,19 +81,27 @@ class ReconnectingSocket {
     this.socket = socket;
 
     socket.onopen = () => {
+      if (this.socket !== socket) return;
       // If the protocol has an auth/ready acknowledgement, reset there instead.
       this.failures = 0;
     };
 
-    socket.onmessage = (event) => this.handleMessage(event.data);
+    socket.onmessage = (event) => {
+      if (this.socket !== socket) return;
+      this.handleMessage(event.data);
+    };
 
     socket.onerror = () => {
       // Observe only. The close event is the single reconnect trigger.
     };
 
     socket.onclose = (event) => {
-      if (this.socket === socket) this.socket = undefined;
-      if (!shouldReconnect(event, this.stopped)) return;
+      if (this.socket !== socket) return;
+      this.socket = undefined;
+      if (!shouldReconnect(event, this.stopped)) {
+        this.stopped = true;
+        return;
+      }
       this.scheduleReconnect();
     };
   }
@@ -133,4 +145,4 @@ The browser WebSocket API has no built-in reconnect, retry, or message replay me
 
 ## Conclusion
 
-A clean close only says that the closing handshake succeeded. Route every `close` event through explicit application policy, schedule at most one jittered reconnect, and stop retrying for user shutdowns or terminal protocol errors.
+A clean close only says that the connection closed after the WebSocket closing handshake completed. Route every `close` event through explicit application policy, schedule at most one jittered reconnect, and stop retrying for user shutdowns or terminal protocol errors.
