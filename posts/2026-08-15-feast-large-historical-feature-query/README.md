@@ -10,7 +10,7 @@ Description: Reduce large historical retrieval cost by pushing entities into the
 
 `get_historical_features` can be slow or memory-hungry for two independent reasons: the offline engine performs an expensive point-in-time join, or the client downloads a large result into local Pandas memory. Optimize those boundaries separately.
 
-The entity DataFrame controls both join cardinality and the time range Feast must inspect. A million redundant entity rows can be more expensive than a wide feature source, while `.to_df()` can exhaust the client after a warehouse query finishes successfully.
+The entity relation controls join cardinality and the logical point-in-time lookup window; whether that window prunes the physical feature-source scan depends on the offline-store implementation. A million redundant entity rows can be more expensive than a wide feature source, while `.to_df()` can exhaust the client after a warehouse query finishes successfully.
 
 ## Measure Query and Client Phases
 
@@ -24,11 +24,11 @@ Record:
 - download time and Python peak resident memory;
 - ODFV transformation time.
 
-Feast offline-store APIs return a retrieval job, and implementations commonly execute lazily when results are converted or persisted. A fast `get_historical_features(...)` call does not prove the actual query is fast.
+Feast offline-store APIs return a retrieval job, and implementations normally defer the main retrieval query until results are converted, exported, or persisted. A backend may still run schema or timestamp-range queries while constructing the job. A fast `get_historical_features(...)` call does not prove the main query is fast.
 
 ## Keep the Entity Relation in the Offline System
 
-Feast documentation accepts either a Pandas DataFrame or a SQL query for entities on supported SQL-backed paths. Prefer a query when labels already live in the same warehouse:
+Feast documentation accepts either a Pandas DataFrame or a SQL query for entities on supported SQL-backed paths. Prefer a query when labels already live in the same warehouse. The following example uses BigQuery-compatible SQL; adapt timestamp literals and identifier quoting to the selected backend:
 
 ```python
 entity_sql = """
@@ -55,15 +55,17 @@ If entities originate outside that system, load them into a staged table with a 
 
 Request only the fields in the model's FeatureService. Avoid selecting whole FeatureViews for convenience.
 
-Constrain entity timestamps to the intended dataset split. The FeatureView TTL then bounds feature-source lookback from those timestamps, but an unnecessarily long TTL increases scan range and may change modeling semantics. Do not shorten TTL solely for speed without validating feature validity.
+Constrain entity timestamps to the intended dataset split. A positive FeatureView TTL then bounds feature-source lookback from those timestamps; a zero TTL means no age limit. An unnecessarily long TTL increases scan range and may change modeling semantics. Do not shorten TTL solely for speed without validating feature validity.
 
-Remove accidental duplicates using the training example's true key. Keep repeated rows that represent real separate observations. A stable `observation_id` helps detect multiplication after joins.
+Remove accidental duplicates using the training example's true key. Keep repeated rows that represent real separate observations, but verify that the selected offline store preserves duplicate entity/time pairs; some implementations deduplicate them. If it does not, retrieve each distinct entity/time pair once and join the point-in-time features back to the original observations before applying any per-observation transformations. A stable `observation_id` lets you assert output cardinality.
 
 Precompute large transformations and rolling aggregations upstream. Feast's current FeatureView documentation notes that local on-demand transformations can scale poorly for offline retrieval.
 
 ## Avoid Pulling the Full Result into Pandas
 
 `.to_df()` materializes the complete result in a local DataFrame. For a large training set, prefer a retrieval-job export or persistence capability advertised by the selected offline store, such as export to a data warehouse or data lake. The functionality matrix differs by plugin.
+
+Confirm that the chosen path stays remote for the requested features. Python ODFVs are not executed remotely, and some backends fall back to `.to_df()` during export or persistence.
 
 `to_arrow()` can reduce some conversion overhead and preserve columnar representation, but it still returns an in-memory Arrow table unless the implementation provides batches or remote export. It is not automatic out-of-core execution.
 
