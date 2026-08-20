@@ -26,6 +26,8 @@ feature-repo/
     production/feature_store.yaml
 ```
 
+Run Feast from `feature-repo/` and select an overlay with the global option, for example `feast -f environments/staging/feature_store.yaml plan`, so Feast still scans the sibling `definitions/` tree.
+
 The definition package should be identical for a promotion. Environment configuration supplies different:
 
 - Feast project names;
@@ -66,7 +68,7 @@ Current CLI documentation says `feast apply`:
 
 It can therefore make external infrastructure changes and incur cloud cost. Only the deployment identity should have this authority.
 
-The same documentation warns that `apply` does not delete registry objects whose definitions were removed from Python. Deletion requires an explicit Feast delete path or SDK operation. Build a separate retirement workflow with dependency checks and review rather than hiding deletion inside routine promotion.
+In Feast 0.65.0, CLI `feast apply` treats the parsed repository as desired state: registry objects absent from the repository-managed object set are planned for deletion, and associated infrastructure may be removed. This differs from lower-level `FeatureStore.apply()`, which defaults to `partial=True`; SDK deletion requires `objects_to_delete` with `partial=False`. Gate CLI deletions behind dependency checks and review. Targeted retirement can use `feast delete <OBJECT_ID>` or explicit SDK methods.
 
 Also maintain `.feastignore`. Feast scans Python recursively, so an imperative script stored under the repository can be imported during apply unless excluded.
 
@@ -77,8 +79,8 @@ Drift can arise from manual applies, an old CI job, registry restoration, or two
 Before production apply:
 
 - dump or list registered objects using the pinned CLI;
-- compare their normalized names, schemas, sources, entities, TTLs, and services with the desired commit;
-- identify extra objects separately because apply will not remove them;
+- compare all user-controlled object-spec fields, including names, feature schemas, sources, entities, TTLs, online and offline flags, transformations, FeatureServices, and permissions, with the desired commit;
+- identify registry-only objects separately and review them as proposed deletions before apply;
 - confirm the production config resolves the intended project and endpoints;
 - fail if another deployment holds the environment lock.
 
@@ -103,15 +105,15 @@ Promotion verifies the definition against production-like infrastructure. It doe
 
 ## Account for Registry Caches
 
-Registry `cache_ttl_seconds` and feature-server registry refresh settings can delay a new definition. After apply, wait for the documented propagation bound or perform an approved refresh, then verify that each server instance reports or exhibits the new contract.
+Registry `cache_ttl_seconds` and feature-server registry refresh settings can delay a new definition. With positive refresh intervals, wait up to the documented propagation bound under normal operation or perform an approved refresh, then verify that each server instance reports or exhibits the new contract. Setting `cache_ttl_seconds` to zero disables SDK-driven expiry; without a separate server refresh interval, an explicit refresh or restart is required.
 
-During rolling deployment, old and new application versions may overlap. Add new FeatureServices and breaking FeatureViews before switching consumers. Retain old definitions through rollback.
+During rolling deployment, old and new application versions may overlap. Register separately named replacement FeatureServices and FeatureViews before switching consumers. Retain old definitions through rollback.
 
 ## Roll Back with the Same Discipline
 
-Reapply a known-good repository revision only after checking whether the failed release created new online infrastructure or wrote incompatible data. Because `apply` is not a deletion reconciler, a Git revert can leave extra registry objects. Treat cleanup as a separate reviewed action.
+Reapply a known-good repository revision only after checking whether the failed release created new online infrastructure or wrote incompatible data. Because CLI `feast apply` reconciles deletions, reapplying a pre-release revision can delete objects and associated infrastructure introduced by the failed release. It cannot undo incompatible feature values already written, so review data and infrastructure cleanup separately.
 
-The safest schema rollback is often traffic switching between versioned FeatureServices and FeatureViews, not mutating one name backward.
+The safest broadly supported schema rollback is often switching consumers between separately named, version-suffixed FeatureServices and FeatureViews, not mutating one name backward.
 
 ## Official Documentation
 
@@ -123,4 +125,4 @@ The safest schema rollback is often traffic switching between versioned FeatureS
 
 ## Conclusion
 
-Promote one immutable feature-repository revision, not a registry file. Apply it independently to production after production-like staging checks, compare semantic registry state, serialize definition writers, handle deletion explicitly, and allow for registry cache propagation.
+Promote one immutable feature-repository revision, not a registry file. Apply it independently to production after production-like staging checks, compare semantic registry state, serialize definition writers, review planned deletions explicitly, and allow for registry cache propagation.
