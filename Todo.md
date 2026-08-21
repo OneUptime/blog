@@ -81,7 +81,6 @@
 
 ## Flannel
 
-5. How to Remove Stale Calico Routes and CNI State Before Switching to Flannel
 6. Why Can Flannel Pods Communicate on One Node but Not Across Nodes? Testing VXLAN Port 8472
 7. How to Select the Correct Flannel Interface on Multi-NIC Nodes with `--iface` and `--iface-regex`
 8. How to Calculate the Right Flannel VXLAN MTU Behind a Cloud Network, VLAN, or VPN
