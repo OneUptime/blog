@@ -75,7 +75,6 @@
 ## Feast
 
 ## Headless Services
-16. How to Avoid a StatefulSet Bootstrap Deadlock When Peer DNS Requires Readiness
 17. How to Verify Headless Service Membership with `kubectl get endpointslice` and `dig`
 18. How Dual-Stack Headless Services Publish A and AAAA Records for Every Pod
 19. How to Give Indexed Job Pods Stable DNS Names with a Headless Service
