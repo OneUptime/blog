@@ -10,7 +10,7 @@ Description: Debug the tenant-to-host ServiceAccount translation, EKS webhook mu
 
 IRSA succeeds only when four identities line up: the tenant ServiceAccount, its translated control plane cluster ServiceAccount, the host Pod that EKS mutates, and the IAM role's OIDC trust conditions. In a vCluster, the most common mistake is trusting the tenant-visible namespace and name even though AWS sees the translated ServiceAccount in the EKS cluster.
 
-This guide targets vCluster **0.36** on Shared Nodes in an Amazon EKS control plane cluster. It covers IAM Roles for Service Accounts (IRSA), not EKS Pod Identity; AWS now documents both and recommends Pod Identity where it fits, but they use different agents, associations, and trust models.
+This guide targets vCluster **0.36** on Shared Nodes in an Amazon EKS control plane cluster. It covers IAM Roles for Service Accounts (IRSA), not EKS Pod Identity; AWS now documents both and recommends Pod Identity where it fits, but they use different credential-delivery components, configuration, and trust models.
 
 ## Understand Which Cluster Is the Identity Provider
 
@@ -52,6 +52,11 @@ While connected to the vCluster, create the annotated identity:
 
 ```yaml
 apiVersion: v1
+kind: Namespace
+metadata:
+  name: apps
+---
+apiVersion: v1
 kind: ServiceAccount
 metadata:
   name: s3-reader
@@ -78,7 +83,7 @@ spec:
       serviceAccountName: s3-reader
       containers:
         - name: aws-cli
-          image: public.ecr.aws/aws-cli/aws-cli:2
+          image: public.ecr.aws/aws-cli/aws-cli:2.36.28
           command: ["sh", "-c", "sleep 86400"]
 ```
 
@@ -171,7 +176,7 @@ Use an AWS SDK version that supports web identity credentials. Do not explicitly
 - **IMDS fallback:** without IRSA credentials, a Pod may obtain the node role if IMDS is reachable. Restrict IMDS. AWS notes that `hostNetwork: true` Pods always have IMDS access, although supported SDKs prefer configured IRSA credentials.
 - **Feature confusion:** `sync.toHost.pods.useSecretsForSATokens` changes how vCluster stores tenant Kubernetes API tokens; it is not the switch that enables the EKS IRSA projected token.
 
-Never print the token in shared logs. Inspect claims locally only when necessary, and rotate or recreate affected Pods after accidental exposure.
+Never print the token in shared logs. Inspect claims locally only when necessary. If a token is exposed, recreate the affected Pod to replace its mounted token, but treat the leaked JWT and any STS credentials obtained from it as usable until they expire; block new role assumptions and revoke active role sessions for immediate containment.
 
 ## Official Documentation
 
