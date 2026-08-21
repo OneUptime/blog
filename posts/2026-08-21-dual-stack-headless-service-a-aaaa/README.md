@@ -87,9 +87,9 @@ spec:
             periodSeconds: 5
 ~~~
 
-`RequireDualStack` rejects Service creation when the requested dual-stack configuration is unavailable. `PreferDualStack` requests both families on a dual-stack cluster but falls back to one on a single-stack cluster. Choose `PreferDualStack` when one family is an acceptable operating mode; choose `RequireDualStack` when silently losing one family would violate the application's contract.
+For a selector-based Service such as this one, `RequireDualStack` rejects Service creation when the cluster is not configured for dual-stack Services. `PreferDualStack` requests both families on a dual-stack cluster but falls back to one on a single-stack cluster. Choose `PreferDualStack` when one family is an acceptable operating mode; choose `RequireDualStack` when silently losing one family would violate the application's contract.
 
-The `ipFamilies` order sets the primary family. It does not promise DNS answer order or force a client to try that family first. Kubernetes does not let you change the primary family of an existing Service; you can conditionally add or remove a secondary family.
+The `ipFamilies` order sets the primary family. It does not promise DNS answer order or force a client to try that family first. For a Service with allocated ClusterIPs, Kubernetes does not let you change the primary family; you can conditionally add or remove a secondary family. A headless Service is an exception: because it has no family-specific Service VIP, its `ipFamilies` can be changed during an update, subject to the selected policy.
 
 ## Inspect the Headless Service State
 
@@ -167,7 +167,7 @@ Check these layers when only one family works:
 
 Headless DNS normally excludes unready endpoints. `publishNotReadyAddresses: true` includes them for bootstrap, but then every consumer of the Service's generated endpoint data must tolerate booting members.
 
-Kubernetes documents a special default for headless Services **without** selectors: when `ipFamilyPolicy` is omitted, it defaults to `RequireDualStack`. Do not build portable manifests around that surprising default. Set `SingleStack`, `PreferDualStack`, or `RequireDualStack` explicitly, and create separate manually managed IPv4 and IPv6 EndpointSlices with the correct Service association label.
+Kubernetes documents a special default for headless Services **without** selectors: when `ipFamilyPolicy` is omitted, it defaults to `RequireDualStack`. The API server permits this selectorless headless special case to list both families even when the cluster is configured for single-stack Services because its endpoints are managed independently. Do not build portable manifests around that surprising default. Set `SingleStack`, `PreferDualStack`, or `RequireDualStack` explicitly. When publishing both families, create separate manually managed IPv4 and IPv6 EndpointSlices with the correct Service association label.
 
 ## Official Documentation
 
