@@ -81,7 +81,6 @@
 
 ## Flannel
 
-11. How to Recover When a Reboot or NetworkManager Deletes `flannel.1` Routes
 12. How to Run Flannel with firewalld and nftables Without Dropping Forwarded Pod Traffic
 13. How to Verify `br_netfilter`, IP Forwarding, and the FORWARD Chain Before Blaming Flannel
 14. How to Fix `failed to find plugin "flannel" in path` by Aligning CNI Binary Directories
