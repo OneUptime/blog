@@ -81,7 +81,6 @@
 
 ## Flannel
 
-14. How to Fix `failed to find plugin "flannel" in path` by Aligning CNI Binary Directories
 15. How to Install Flannel in an Air-Gapped kubeadm Cluster with Pinned Images and CNI Binaries
 16. How to Detect Pod CIDR Collisions Between Flannel, Your LAN, and a Corporate VPN
 17. How to Preserve or Masquerade Pod Source IPs with Flannel `ip-masq` Settings
