@@ -14,7 +14,7 @@ A headless Service DNS lookup is the end of a reconciliation chain:
 Service selector -> matching Pods -> EndpointSlices -> cluster DNS -> client cache
 ~~~
 
-Start with the Kubernetes API and move toward DNS. `dig` can show what a client sees, but it cannot explain whether an address is missing because a label did not match, a Pod is unready, a port failed to resolve, CoreDNS lacks permissions, or an old negative response is cached.
+Start with the Kubernetes API and move toward DNS. `dig` can show what a client sees, but it cannot explain whether an address is missing because a label did not match or a Pod is unready, whether an SRV answer is missing because a named `targetPort` failed to resolve, or whether CoreDNS lacks permissions or an old negative response is cached.
 
 The examples below inspect a Service named `store-peers` in namespace `data`.
 
@@ -188,7 +188,7 @@ kubectl -n kube-system get configmap coredns -o yaml
 kubectl describe clusterrole system:coredns
 ~~~
 
-CoreDNS needs list/watch permission for Services, EndpointSlices, Pods, and namespaces. The CoreDNS `kubernetes` plugin's `noendpoints` option deliberately disables endpoint and headless-Service answers. A restricted `namespaces` or label configuration can also hide records.
+The standard `system:coredns` ClusterRole grants list/watch permission for Services, Endpoints, EndpointSlices, Pods, and namespaces. The CoreDNS `kubernetes` plugin's `noendpoints` option deliberately disables endpoint and headless-Service answers. A restricted `namespaces` or label configuration can also hide records.
 
 ### A fixed record does not appear immediately
 
