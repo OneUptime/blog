@@ -10,9 +10,9 @@ Description: Restore Flannel VXLAN routes after a reboot and prevent NetworkMana
 
 ## Introduction
 
-Flannel's VXLAN interface and remote Pod CIDR routes are runtime state. They should be recreated from Kubernetes Node information when `flanneld` starts; they are not normally static routes that an administrator persists by hand. After a reboot, an empty `/run/flannel`, a delayed underlay, a changed node address, or interference from NetworkManager can prevent that reconciliation.
+Flannel's VXLAN interface and remote Pod CIDR routes are runtime state. They should be recreated from Kubernetes Node information when `flanneld` starts; they are not normally static routes that an administrator persists by hand. After a reboot, a delayed underlay, a changed node address, or interference from NetworkManager can prevent that reconciliation.
 
-First confirm that the cluster really uses the Linux VXLAN backend. `host-gw` intentionally has no `flannel.1`; WireGuard, IPIP, UDP, and Windows backends create different devices and routes.
+First confirm that the cluster really uses the Linux VXLAN backend. `host-gw` intentionally has no `flannel.1`; WireGuard, IPIP, UDP, and Windows implementations create different devices and routes.
 
 ## Capture the Expected State
 
@@ -81,6 +81,8 @@ ip -4 route show
 
 `/run` is normally volatile. It being empty early in boot is expected; it must be repopulated after Flannel successfully initializes.
 
+`lsmod` lists dynamically loaded modules, so no match is not proof that support is missing when a feature is built into the kernel.
+
 Recent Flannel releases include logic to notice and recreate a missing VXLAN device. Older releases may require recreating the Flannel pod. Check the changelog and source for the pinned release instead of assuming that every version self-heals identically.
 
 ## Prove Whether NetworkManager Owns the Interfaces
@@ -97,14 +99,14 @@ sudo journalctl -u NetworkManager -b --no-pager \
 
 Evidence of a generated connection, address removal, route cleanup, or device activation around the failure makes NetworkManager a likely owner. If NetworkManager is not installed or does not mention the device, check `systemd-networkd`, cloud-init, network dispatcher scripts, security agents, and configuration-management jobs instead.
 
-## Mark Flannel's Devices Unmanaged
+## Mark Flannel and CNI Devices Unmanaged
 
-NetworkManager's official `keyfile.unmanaged-devices` setting makes matching devices strictly unmanaged. Create a narrow rule for the stable Flannel-owned devices:
+NetworkManager's official `keyfile.unmanaged-devices` setting makes matching devices strictly unmanaged. Append a narrow rule for the stable Flannel and CNI devices without replacing existing unmanaged-device rules:
 
 ```bash
 cat <<'EOF' | sudo tee /etc/NetworkManager/conf.d/90-flannel-unmanaged.conf
 [keyfile]
-unmanaged-devices=interface-name:flannel.1;interface-name:cni0
+unmanaged-devices+=interface-name:=flannel.1;interface-name:=cni0
 EOF
 
 sudo nmcli general reload conf
@@ -112,7 +114,7 @@ NetworkManager --print-config | grep -A3 -B2 unmanaged-devices
 nmcli device status
 ```
 
-Use the actual interface names for the selected backend. A glob such as `flannel*` is supported by current NetworkManager device-list syntax, but exact names reduce the chance of excluding an unrelated host interface.
+Use the actual interface names for the selected backend. A matcher such as `interface-name:flannel*` supports simple globbing in current NetworkManager device-list syntax, but exact names reduce the chance of excluding an unrelated host interface.
 
 Changing NetworkManager ownership can disrupt connectivity. Test on a cordoned canary node and keep out-of-band access. If a reload does not apply the ownership state to an existing device, schedule a NetworkManager restart or node reboot; do not restart the host network manager remotely without a recovery path.
 
@@ -124,6 +126,11 @@ After the underlay, modules, sysctls, and NetworkManager configuration are corre
 
 ```bash
 kubectl -n kube-flannel delete pod "$FLANNEL_POD"
+
+kubectl -n kube-flannel wait --for=create pod \
+  -l app=flannel \
+  --field-selector "spec.nodeName=${NODE}" \
+  --timeout=180s
 
 kubectl -n kube-flannel wait --for=condition=Ready pod \
   -l app=flannel \
@@ -145,6 +152,8 @@ Do not add Flannel routes to persistent NetworkManager profiles and do not add s
 
 ## Make Boot Prerequisites Persistent
 
+Persist `vxlan` and IPv4 forwarding. For the default upstream iptables configuration, also persist `br_netfilter` and the bridge iptables hook:
+
 ```bash
 cat <<'EOF' | sudo tee /etc/modules-load.d/flannel.conf
 br_netfilter
@@ -160,6 +169,8 @@ sudo modprobe br_netfilter
 sudo modprobe vxlan
 sudo sysctl --system
 ```
+
+An nftables-only design may not require the bridge-iptables settings; confirm the requirements of both Flannel and the Service proxy.
 
 Only add IPv6 settings when the cluster design uses IPv6. Ensure kubelet starts after the container runtime and that Flannel images are locally available or reachable during boot.
 
@@ -186,4 +197,4 @@ Only then roll the host configuration to the rest of the cluster.
 
 ## Conclusion
 
-Flannel VXLAN routes should be reconstructed from cluster state after boot. Restore the underlay and Flannel process first, then prove whether NetworkManager removed `flannel.1` or its routes. Mark only the Flannel-owned interfaces unmanaged, make modules and sysctls persistent, and validate a canary reboot. Static route and FDB workarounds merely create a second, stale source of truth.
+Flannel VXLAN routes should be reconstructed from cluster state after boot. Restore the underlay and Flannel process first, then prove whether NetworkManager removed `flannel.1` or its routes. Mark only the Flannel and CNI interfaces unmanaged, make modules and sysctls persistent, and validate a canary reboot. Static route and FDB workarounds merely create a second, stale source of truth.
