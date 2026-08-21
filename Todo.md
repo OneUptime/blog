@@ -75,7 +75,6 @@
 ## Feast
 
 ## Headless Services
-14. Do Headless Services Need Ports? How Named Ports Produce SRV Records
 15. How Does an Ingress Route to a Headless Service? Following EndpointSlices Instead of a ClusterIP
 16. How to Avoid a StatefulSet Bootstrap Deadlock When Peer DNS Requires Readiness
 17. How to Verify Headless Service Membership with `kubectl get endpointslice` and `dig`
