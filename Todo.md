@@ -75,7 +75,6 @@
 ## Feast
 
 ## Headless Services
-20. How to Build StatefulSet Headless Service FQDNs When the Cluster Domain Is Not `cluster.local`
 
 ## vCluster
 
