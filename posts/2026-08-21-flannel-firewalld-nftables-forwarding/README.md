@@ -15,7 +15,7 @@ Flannel, firewalld, and kube-proxy can all program Linux packet processing, but 
 - Flannel's data backend may be VXLAN, host-gw, WireGuard, or another supported backend.
 - Flannel can install forwarding and IP masquerade rules. Its current `EnableNFTables` option is explicitly documented as experimental and defaults to false.
 - firewalld uses zones and policies; current firewalld defaults to an nftables backend.
-- kube-proxy independently selects `iptables`, `nftables`, or `ipvs` mode, unless another Service proxy replaces it.
+- kube-proxy independently selects `iptables`, `nftables`, or `ipvs` mode unless another Service proxy replaces it; Kubernetes deprecated `ipvs` in v1.35.
 
 firewalld using nftables does not automatically move Flannel or kube-proxy to nftables. Likewise, an `iptables` command may be an nftables compatibility frontend. Diagnose the real stack before changing it.
 
@@ -46,7 +46,9 @@ kubectl -n kube-flannel get daemonset kube-flannel-ds \
 echo
 ```
 
-Read the Service proxy separately:
+An absent argument is not necessarily disabled: `--iptables-forward-rules` defaults to `true` and gates the selected iptables or nftables traffic manager, so Flannel normally installs ACCEPT rules for traffic sourced from or destined to the Flannel network. Account for those rules and netfilter hook ordering in the forwarding design.
+
+For kubeadm-managed clusters, read the Service proxy separately:
 
 ```bash
 kubectl -n kube-system get daemonset kube-proxy
@@ -55,7 +57,7 @@ kubectl -n kube-system get configmap kube-proxy \
 echo
 ```
 
-If the distribution has no kube-proxy, identify its replacement. Do not install kube-proxy on top of an eBPF or vendor Service implementation.
+Other distributions may package kube-proxy differently. If the distribution has no kube-proxy, identify its replacement. Do not install kube-proxy on top of an eBPF or vendor Service implementation.
 
 ## Separate Input From Forwarding
 
@@ -66,7 +68,7 @@ Flannel currently documents these defaults:
 - VXLAN: UDP 8472 on Linux unless `Backend.Port` overrides it.
 - UDP backend: UDP 8285.
 - WireGuard: its configured listen ports.
-- host-gw: no overlay UDP port, but direct node routing is required.
+- host-gw: no overlay UDP port, but direct Layer 2 connectivity between nodes is required.
 
 Open only the verified backend and source range. For example, after replacing the documentation ranges with the real node underlay range and zone:
 
@@ -97,7 +99,7 @@ sudo firewall-cmd --permanent --policy=k8s-pods-out \
   --set-target=ACCEPT
 ```
 
-This is a design example, not a universal policy. Replace `10.244.0.0/16`, review which destinations pods should reach, and use narrower egress zones or rich rules where required. New inbound connections from external networks to pods need their own explicit, security-reviewed direction; stateful reply traffic does not.
+This is a design example, not a universal policy. Replace `10.244.0.0/16`, review which destinations pods should reach, and use narrower egress zones or rich rules where required. The `ANY` symbolic zone matches every regular zone but excludes `HOST`, so this policy does not cover Pod-to-node connections; handle those with separately reviewed zone input rules or a `k8s-pods`-to-`HOST` policy. New inbound connections from external networks to pods need their own explicit, security-reviewed direction; stateful reply traffic does not.
 
 firewalld versions without policy objects require a different, distribution-supported design. Do not mix copied direct rules with zone policies without understanding rule priority.
 
@@ -137,14 +139,16 @@ sudo firewall-cmd --zone=<underlay-zone> --list-rich-rules
 sudo firewall-cmd --policy=k8s-pods-out --list-all
 ```
 
-Current firewalld's `FlushAllOnReload` default can replace runtime rules during reload, while Flannel and kube-proxy reconcile on their own schedules. Test a reload as an operational event; do not assume rules that worked before it survive correctly.
+A reload replaces firewalld's runtime configuration with its permanent configuration, so runtime-only changes are lost. With the current `FlushAllOnReload=yes` default, runtime-only interface bindings and direct rules are not retained either. The nftables backend normally flushes only firewalld's own table, but restoration behavior in mixed configurations is rule-manager- and version-dependent. Flannel's iptables manager checks its rules on `--iptables-resync`, five seconds by default, whereas current Flannel nftables mode does not run that periodic resync. Test a reload as an operational event; do not assume rules that worked before it survive correctly.
 
 ## Trace Drops Without Flushing Rules
 
-Run direct Pod IP tests across nodes while watching counters and logs:
+Run direct Pod IP tests across nodes while watching counters. The firewalld unit journal shows daemon and configuration errors; packet-denial messages appear in the kernel journal only when `LogDenied` is enabled:
 
 ```bash
+sudo firewall-cmd --get-log-denied
 sudo journalctl -u firewalld -b --no-pager | tail -200
+sudo journalctl -k -b --no-pager | tail -200
 sudo nft -a list ruleset
 sudo iptables -L FORWARD -n -v --line-numbers
 sudo tcpdump -ni <underlay-interface> udp port 8472
@@ -152,8 +156,8 @@ sudo tcpdump -ni <underlay-interface> udp port 8472
 
 Interpret the path:
 
-- No outer VXLAN packet arrives: upstream ACL or node-input rule.
-- VXLAN arrives but the inner packet is dropped: forwarding zone/policy, netfilter hook, or reverse-path issue.
+- No outer VXLAN packet appears in the underlay capture: inspect the sender path, upstream ACLs, and the selected interface and port. An INPUT-chain drop still appears in this capture.
+- An outer VXLAN packet appears but traffic is not decapsulated or forwarded: inspect the node-input allowance and VXLAN configuration first, then forwarding policy, other netfilter hooks, routing, and reverse-path filtering.
 - Direct Pod IPs work but ClusterIPs fail: inspect kube-proxy's mode-specific rules.
 - Pod egress works but source identity is lost: inspect Flannel and firewalld NAT ownership.
 
