@@ -28,8 +28,14 @@ policies:
       limits.cpu: "8"
       limits.memory: 16Gi
       requests.storage: 200Gi
+      requests.ephemeral-storage: 60Gi
+      limits.ephemeral-storage: 160Gi
       count/pods: 50
       count/persistentvolumeclaims: 20
+      count/services: 20
+      count/secrets: 100
+      count/configmaps: 100
+      count/endpoints: 40
       services.loadbalancers: 0
       services.nodeports: 0
 
@@ -67,21 +73,22 @@ Apply it through the deployment mechanism that owns the release:
 vcluster create team-a \
   --namespace team-a-vcluster \
   --connect=false \
+  --expose-local=false \
   --upgrade \
   --values vcluster.yaml
 ```
 
-Review the numbers against real workload requests and capacity. vCluster's published defaults are examples, not a substitute for sizing. In particular, a CPU or memory quota works predictably only when Pods declare requests and limits; the LimitRange supplies defaults for containers that omit them.
+Review the numbers against real workload requests and capacity. vCluster's published defaults are examples, not a substitute for sizing. Helm merges the `quota` map with the chart defaults, so make every retained default explicit and set unwanted default entries to `null`. In particular, a CPU or memory quota works predictably only when Pods declare requests and limits; the LimitRange supplies defaults for containers that omit them.
 
 ## Know What Each Setting Enforces
 
 `policies.podSecurityStandard: restricted` makes vCluster evaluate Pod specs against the Kubernetes Restricted Pod Security Standard before syncing them. This blocks common privilege paths such as privileged containers and direct `hostPath` volumes. It does not inspect the backend behind a PVC, so keep host PersistentVolume sync disabled unless a separate host admission policy constrains it.
 
-`policies.resourceQuota` and `policies.limitRange` create host-cluster objects in the vCluster release namespace. They govern the translated workload objects that consume resources there. They do not limit every object stored only in the tenant control plane-for example, a tenant can still create large numbers of API-only objects unless you also create a ResourceQuota inside the tenant cluster.
+`policies.resourceQuota` and `policies.limitRange` create host-cluster objects in the vCluster release namespace. The ResourceQuota counts all matching objects, and the LimitRange applies to every admitted container in that namespace, including the vCluster control plane as well as translated workloads; reserve overhead accordingly. They do not limit every object stored only in the tenant control plane-for example, a tenant can still create large numbers of API-only objects unless you also create a ResourceQuota inside the tenant cluster.
 
-`policies.networkPolicy.enabled` creates platform-managed NetworkPolicies for the vCluster control plane and its translated workloads in the host namespace. The policy is inert unless the control plane cluster's CNI actually enforces Kubernetes NetworkPolicy. Also note the v0.36 default: when this policy is enabled, workload public egress is enabled unless you explicitly set `workload.publicEgress.enabled: false` or configure narrower rules.
+`policies.networkPolicy.enabled` creates platform-managed NetworkPolicies for the vCluster control plane and its translated workloads in the host namespace. The policy is inert unless the control plane cluster's CNI actually enforces Kubernetes NetworkPolicy. Also note the v0.36 default: when this policy is enabled, workload public egress is enabled unless you explicitly set `workload.publicEgress.enabled: false` or narrow its `cidr` and `except` values.
 
-The final `sync.toHost.networkPolicies.enabled: false` is intentional. That setting controls whether NetworkPolicy objects authored by the tenant are translated to the host. It is separate from `policies.networkPolicy`. Tenant policies are additive with other Kubernetes NetworkPolicies, so a broad tenant allow rule can widen ordinary default-deny policy. Enable tenant-authored policy sync only behind a higher-precedence boundary such as AdminNetworkPolicy or host admission that constrains dangerous peers and empty peer lists.
+The final `sync.toHost.networkPolicies.enabled: false` is intentional. That setting controls whether NetworkPolicy objects authored by the tenant are translated to the host. It is separate from `policies.networkPolicy`. Tenant policies are additive with other Kubernetes NetworkPolicies, so a broad tenant allow rule can widen ordinary default-deny policy. Enable tenant-authored policy sync only when the host enforces a higher-precedence deny boundary-such as `Deny` rules in an Admin-tier `ClusterNetworkPolicy` (Network Policy API v1alpha2), or the maintained v1alpha1 `AdminNetworkPolicy`, with support confirmed in the host CNI-or when host admission constrains dangerous peers and rejects omitted or empty peer lists.
 
 ## Add Tenant-Internal Quotas and Defaults
 
@@ -122,7 +129,7 @@ These tenant objects complement the host policies; they do not replace them. A t
 
 ## Do Not Miss Namespace-Sync Coverage
 
-The baseline policy objects are permanently scoped to the vCluster release namespace. If `sync.toHost.namespaces.enabled` is enabled, tenant namespaces map to separate host namespaces. The baseline ResourceQuota, LimitRange, and NetworkPolicy do **not** follow them.
+The baseline policy objects are permanently scoped to the vCluster release namespace. If `sync.toHost.namespaces.enabled` is enabled, mapped tenant namespaces use separate host namespaces. The baseline ResourceQuota, LimitRange, and NetworkPolicy do **not** follow them. In vCluster 0.36, `sync.toHost.networkPolicies` is not supported with namespace sync, so tenant NetworkPolicy objects do not sync in that mode.
 
 For namespace-sync deployments, have the platform provision equivalent host ResourceQuota, LimitRange, and NetworkPolicy objects in every mapped namespace before workloads arrive. Treat namespace creation and policy creation as one operation. Verify coverage from the host context:
 
@@ -136,7 +143,7 @@ kubectl --context host get resourcequota,limitrange,networkpolicy \
 Test behavior rather than only reading rendered configuration:
 
 1. Create a compliant Pod without requests and confirm the translated host Pod receives LimitRange defaults.
-2. Exceed CPU, memory, object-count, and storage quota separately and confirm the API rejects each attempt.
+2. Exceed CPU, memory, object-count, and storage quota separately with direct Pod, PVC, or object requests. Confirm tenant-side quotas reject the request; for host-side quotas, confirm the tenant object reports a `Warning` `SyncError` and the translated host creation or update is denied. A Deployment itself can be accepted even when its later Pod creation fails.
 3. Submit Pods with `privileged: true`, `hostNetwork: true`, and a direct `hostPath` volume and confirm the configured Restricted policy rejects them.
 4. From a tenant Pod, test approved DNS and application traffic, another tenant's Pod or Service, and cloud metadata such as `169.254.169.254`.
 5. Inspect the actual host NetworkPolicies and repeat the tests after a CNI upgrade.
@@ -147,7 +154,7 @@ Use both negative and positive tests. A policy that blocks DNS, metrics, storage
 
 Keep the baseline in a required Platform template or another operator-owned deployment source so tenants cannot loosen `vcluster.yaml`. Add host admission for controls vCluster cannot fully express, including protected tolerations, host namespace mapping, runtime classes, unsafe PersistentVolumes, and ingress hostname ownership.
 
-Monitor quota utilization before hard limits turn a traffic spike into an outage. ResourceQuota limits admission of new or expanded objects; it does not evict existing Pods to make capacity. NetworkPolicy also has no portable deny logging, so use the CNI's flow observability when diagnosing unexpected reachability.
+Monitor quota utilization before hard limits turn a traffic spike into an outage. ResourceQuota limits admission of new or expanded objects; it does not evict existing Pods to make capacity. NetworkPolicy also has no portable deny logging, so use any flow observability provided by the CNI when diagnosing unexpected reachability.
 
 ## Official Documentation
 
