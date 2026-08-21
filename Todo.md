@@ -81,7 +81,6 @@
 
 ## Flannel
 
-12. How to Run Flannel with firewalld and nftables Without Dropping Forwarded Pod Traffic
 13. How to Verify `br_netfilter`, IP Forwarding, and the FORWARD Chain Before Blaming Flannel
 14. How to Fix `failed to find plugin "flannel" in path` by Aligning CNI Binary Directories
 15. How to Install Flannel in an Air-Gapped kubeadm Cluster with Pinned Images and CNI Binaries
