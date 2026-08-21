@@ -78,7 +78,6 @@
 
 ## vCluster
 
-12. How to Upgrade vCluster Across Minor Versions Without Breaking Resource Sync
 13. How to Check Host and Tenant Kubernetes Version Compatibility Before a vCluster Upgrade
 14. How to Debug vCluster Syncer Lag, Watch Timeouts, and `403 Forbidden` API Calls
 15. How to Run a Highly Available vCluster Control Plane with etcd and PodDisruptionBudgets
