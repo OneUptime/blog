@@ -22,7 +22,7 @@ Use a shared host controller when all of the following are true:
 - The controller watches the namespaces into which vCluster writes translated resources.
 - The controller's supported tenancy model permits multiple tenants.
 
-Use a controller per vCluster, Gateway API with imported shared Gateways, or separate data planes when tenants must not influence one another's routes.
+Use a controller per vCluster, Gateway API with imported shared Gateways and configured per-tenant `allowedRoutes` namespace and hostname restrictions, or separate data planes when tenants must not influence one another's routes.
 
 ## Enable Ingress Synchronization
 
@@ -45,13 +45,18 @@ vcluster create team-blue \
   --values vcluster.yaml
 ```
 
-Ingress synchronization is disabled by default. Services and Endpoints are enabled by default, so vCluster can translate an Ingress backend reference to the corresponding control-plane-cluster Service. Do not hard-code the translated Service name yourself; create the Ingress against the normal tenant Service name.
+Ingress synchronization is disabled by default. Services, Endpoints, and EndpointSlices are enabled by default, so the translated backend Service and its endpoints are available in the control plane cluster. Do not hard-code the translated Service name yourself; create the Ingress against the normal tenant Service name.
 
 ## Create the Tenant Workload and Ingress
 
 Apply the following while connected to the tenant cluster:
 
 ```yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: apps
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -69,7 +74,7 @@ spec:
     spec:
       containers:
         - name: web
-          image: nginx:1.29
+          image: nginx:1.30.4
           ports:
             - name: http
               containerPort: 80
@@ -131,7 +136,8 @@ Then inspect the selected Ingress and verify that its backend Service has ready 
 ```bash
 kubectl describe ingress -n team-blue-vcluster <translated-ingress-name>
 kubectl get endpointslice -n team-blue-vcluster \
-  -l kubernetes.io/service-name=<translated-service-name>
+  -l kubernetes.io/service-name=<translated-service-name> \
+  -o custom-columns='NAME:.metadata.name,ENDPOINTS:.endpoints[*].addresses[*],READY:.endpoints[*].conditions.ready'
 ```
 
 The controller must watch `team-blue-vcluster` (or each mapped namespace when namespace sync is enabled) and recognize `shared-nginx`. A controller restricted to another namespace will never reconcile the object even though synchronization succeeded.
@@ -147,7 +153,7 @@ Ingress is an infrastructure claim, not merely an application manifest. Enforce 
 - Restrict TLS Secret references and define which component issues certificates.
 - Apply ResourceQuota to bound LoadBalancer Services and other synced objects.
 
-vCluster patching can transform an Ingress during synchronization, but patches are an enterprise feature and should not replace host-side admission for security boundaries. Admission sees the final translated object and can evaluate conflicts across all tenants.
+vCluster patching can transform an Ingress during synchronization, but patches are an enterprise feature and should not replace host-side admission for security boundaries. A host-side validating webhook or policy engine with cluster-wide state sees the final translated object and can evaluate conflicts across all tenants.
 
 ## Troubleshoot in the Correct Layer
 
