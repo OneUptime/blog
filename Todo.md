@@ -78,7 +78,6 @@
 
 ## vCluster
 
-14. How to Debug vCluster Syncer Lag, Watch Timeouts, and `403 Forbidden` API Calls
 15. How to Run a Highly Available vCluster Control Plane with etcd and PodDisruptionBudgets
 16. How to Enforce ResourceQuota, LimitRange, Pod Security, and NetworkPolicy Around a vCluster Tenant
 17. Why a NetworkPolicy Inside vCluster May Not Isolate Host Traffic—and Where to Enforce It
