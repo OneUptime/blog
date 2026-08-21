@@ -43,7 +43,7 @@ Build an explicit route such as `0.33.x -> 0.34.x -> 0.35.x -> 0.36.x`. For each
 
 Two historical gates show why jumping is risky:
 
-- vCluster 0.29 upgraded etcd to 3.6. A cluster older than 0.24.2 must first reach at least 0.24.2 and remain in a 0.24.2–0.28.x release long enough to satisfy the documented etcd 3.5 prerequisite before moving to 0.29.
+- For tenants using vCluster-managed etcd, vCluster 0.29 upgraded etcd to 3.6. A tenant older than 0.24.2 must first reach a 0.24.2–0.28.x release. Before crossing to 0.29, follow the dedicated etcd 3.5-to-3.6 guide and use its safe patch-level path for embedded or deployed etcd, then verify every etcd member is healthy.
 - vCluster 0.20 introduced `vcluster.yaml` in place of the legacy values format and requires a conversion workflow.
 
 K3s support was removed in vCluster 0.33. Migrate a legacy K3s tenant to the K8s distro using the documented one-way migration before attempting that hop.
@@ -52,19 +52,22 @@ Backing store and distro choices have restricted migration paths. Do not change 
 
 ## Capture Recovery Points
 
-Create a vCluster control-plane snapshot and wait for `Completed`:
+For a running K8s-distribution tenant with a snapshot-supported backing store, create a vCluster control-plane snapshot and poll until `Completed`:
 
 ```bash
 vcluster snapshot create team-a \
+  --namespace team-a-vcluster \
   "s3://platform-backups/vcluster/team-a/pre-0.36-upgrade.tar.gz"
 
+# Re-run until STATUS is Completed.
 vcluster snapshot get team-a \
+  --namespace team-a-vcluster \
   "s3://platform-backups/vcluster/team-a/pre-0.36-upgrade.tar.gz"
 ```
 
-This snapshot does not include persistent-volume contents in v0.36. Use Velero or an application/provider backup for stateful workloads and verify both artifacts before the maintenance window.
+This snapshot does not include persistent-volume contents or cluster certificates in v0.36. Use Velero or an application/provider backup for stateful workloads. If the tenant uses an external MySQL or PostgreSQL database, back it up natively and avoid the vCluster CLI snapshot and restore commands. Verify every applicable artifact before the maintenance window.
 
-Also capture a small sync canary set in a dedicated tenant namespace: ConfigMap, Secret consumed by a Pod, Service, PVC if applicable, and one object for each optional syncer you rely on. Record their translated host objects by vCluster management labels.
+Also capture a small sync canary set in a dedicated tenant namespace: a Pod that consumes both a ConfigMap and a Secret, a Service, a PVC if applicable, and one object for each optional syncer you rely on. Record each counterpart on the other side; for objects synced to the control plane cluster, use the vCluster management labels and object annotations.
 
 ## Upgrade One Minor at a Time
 
@@ -85,18 +88,20 @@ The example shows the final hop. For a multi-minor route, repeat it separately f
 Watch the control plane rollout:
 
 ```bash
-kubectl get pods -n team-a-vcluster --watch
+kubectl get pods -n team-a-vcluster \
+  -l app=vcluster,release=team-a --watch
 kubectl get events -n team-a-vcluster \
-  --sort-by=.lastTimestamp
-kubectl logs -n team-a-vcluster <vcluster-pod> \
-  --since=10m
+  --sort-by=.metadata.creationTimestamp
+kubectl logs -n team-a-vcluster \
+  -l app=vcluster,release=team-a \
+  --all-containers --prefix --since=10m
 ```
 
 Wait for the tenant API, not merely the Pod phase:
 
 ```bash
-vcluster connect team-a -n team-a-vcluster --print > /tmp/team-a.kubeconfig
-kubectl --kubeconfig /tmp/team-a.kubeconfig get --raw=/readyz
+vcluster connect team-a -n team-a-vcluster -- \
+  kubectl get --raw=/readyz
 ```
 
 ## Validate Resource Synchronization After Every Hop
@@ -104,23 +109,24 @@ kubectl --kubeconfig /tmp/team-a.kubeconfig get --raw=/readyz
 For each canary, verify three things:
 
 1. The tenant object still has the expected spec and status.
-2. The translated control-plane object exists and references translated dependencies.
+2. Its counterpart exists on the other side and, where applicable, references translated dependencies.
 3. A change in either supported direction reconciles according to the documented ownership model.
 
 Useful checks include:
 
 ```bash
-# Tenant
-kubectl --kubeconfig /tmp/team-a.kubeconfig get pod,service,pvc -A
-kubectl --kubeconfig /tmp/team-a.kubeconfig get events -A \
-  --sort-by=.lastTimestamp
+# Tenant, through the CLI-managed connection
+vcluster connect team-a -n team-a-vcluster -- \
+  kubectl get pod,service,pvc,configmap,secret -A
+vcluster connect team-a -n team-a-vcluster -- \
+  kubectl get events -A --sort-by=.metadata.creationTimestamp
 
 # Control plane
-kubectl get pod,service,pvc -A \
-  -l vcluster.loft.sh/managed-by
+kubectl get pod,service,pvc,configmap,secret -A \
+  -l vcluster.loft.sh/name=team-a,vcluster.loft.sh/namespace=team-a-vcluster
 ```
 
-For Ingress and Gateway API, inspect `Accepted`, `ResolvedRefs`, and controller status conditions. For storage, inspect PVC events on both APIs. For imported resources, verify selector membership and read-only reconciliation. For custom resources, confirm the configured CRD storage version still exists and that only one version is configured.
+For Ingress, inspect `.status.loadBalancer` and controller events. For Gateway API Routes, inspect `Accepted`, `ResolvedRefs`, and other controller-reported conditions under `.status.parents[].conditions`; for Gateways, inspect `Accepted`, `Programmed`, addresses, and listener conditions. For storage, inspect PVC events on both APIs. For resources synced from the control plane cluster, verify selector or mapping membership and the configured one-way or sync-back behavior; if `sync.fromHost.nodes.syncBackChanges` is enabled, separately verify its permitted label and taint updates. For custom resources, confirm that the explicitly configured API version still exists, or that the CRD storage version exists when no version is specified, and that only one version of each custom resource is configured for sync.
 
 Look for repeated `Forbidden`, translation, patch-path, watch, or immutable-field errors in the vCluster logs. A healthy Pod with a hot reconcile loop is not a healthy upgrade.
 
@@ -141,6 +147,7 @@ If a hop fails, stop. Preserve logs and events, identify whether the documented 
 
 - [vCluster: Upgrade vCluster](https://www.vcluster.com/docs/vcluster/manage/upgrade/upgrade-version)
 - [vCluster: Lifecycle and supported versions](https://www.vcluster.com/docs/vcluster/manage/upgrade/supported_versions)
+- [vCluster: Safely upgrade etcd from 3.5 to 3.6](https://www.vcluster.com/docs/vcluster/learn-how-to/control-plane/container/safely-upgrade-etcd)
 - [vCluster: How synchronization works](https://www.vcluster.com/docs/vcluster/configure/vcluster-yaml/sync/)
 - [vCluster: Create snapshots](https://www.vcluster.com/docs/vcluster/manage/backup-restore/backup)
 - [vCluster: Migrate from K3s to Kubernetes](https://www.vcluster.com/docs/vcluster/manage/upgrade/distro-migration)
