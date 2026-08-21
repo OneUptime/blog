@@ -101,6 +101,13 @@ The grep should be empty unless a reviewed public reference is intentionally ret
 
 If `POD_CIDR` is not `10.244.0.0/16`, edit `net-conf.json` in this local manifest now. Do not fetch or apply `releases/latest` inside the air gap.
 
+After the mirrored image references and any Pod CIDR change have been reviewed, checksum the exact manifest that will be applied:
+
+```bash
+sha256sum kube-flannel-airgap.yml \
+  > kube-flannel-airgap.yml.sha256.local
+```
+
 ## Download and Verify CNI Binaries Per Architecture
 
 The upstream Flannel manifest installs only its own `flannel` executable. Download the official reference plugin archive for every node architecture:
@@ -142,7 +149,7 @@ sudo install -o root -g root -m 0755 \
   /opt/cni/bin/
 ```
 
-Confirm containerd or CRI-O actually searches `/opt/cni/bin`; align the runtime and manifest if the distribution uses another path. Do not install an amd64 archive on arm64.
+Confirm containerd or CRI-O actually searches `/opt/cni/bin` and reads CNI configuration from `/etc/cni/net.d`; align the runtime and the manifest's CNI `hostPath` values if the distribution uses other paths. Do not install an amd64 archive on arm64.
 
 ## Mirror kubeadm Images Separately
 
@@ -159,14 +166,17 @@ For a private registry, put `imageRepository` and `kubernetesVersion` in the ver
 kubeadm config images list --config kubeadm-airgap.yaml
 ```
 
-Mirror each required upstream image to the exact name produced by the private-repository configuration. Do not assume that a simple string replacement handles CoreDNS or etcd paths correctly. Verify pulls from each disconnected node through the CRI:
+Mirror each required upstream image to the exact name produced by the private-repository configuration. Configure the CRI on every node to use the mirrored `pause` reference from that list as its sandbox image before `kubeadm init`; kubeadm's `imageRepository` does not change the runtime's sandbox-image setting. Restart or reload the runtime as its documentation requires. Do not assume that a simple string replacement handles CoreDNS or etcd paths correctly. Verify pulls from each disconnected node through the CRI:
 
 ```bash
-sudo crictl pull <private-registry-image-reference>
+kubeadm config images list --config kubeadm-airgap.yaml |
+  while IFS= read -r image; do
+    sudo crictl pull "$image"
+  done
 sudo crictl images
 ```
 
-If there is no registry, import OCI archives into the CRI's correct image namespace and retain exactly the references used by the manifests. For containerd, Kubernetes images are normally visible in the `k8s.io` namespace; verify with `crictl images`, not only `ctr images list`.
+If there is no registry, import OCI archives into the CRI's correct image namespace and retain exactly the references used by kubeadm, the manifests, and the runtime's sandbox-image setting. For containerd, Kubernetes images are normally visible in the `k8s.io` namespace; verify with `crictl images`, not only `ctr images list`.
 
 ## Prepare Kernel and Runtime Prerequisites
 
@@ -213,8 +223,10 @@ Use the kubeadm API version supported by the installed kubeadm. The `podSubnet` 
 
 ## Apply Only the Reviewed Local Manifest
 
+Before using `kubectl`, configure cluster access with `/etc/kubernetes/admin.conf` as instructed by `kubeadm init`.
+
 ```bash
-sha256sum -c kube-flannel-v0.28.9.yml.sha256.local
+sha256sum -c kube-flannel-airgap.yml.sha256.local
 
 kubectl apply -f kube-flannel-airgap.yml
 kubectl -n kube-flannel rollout status daemonset/kube-flannel-ds \
@@ -222,7 +234,7 @@ kubectl -n kube-flannel rollout status daemonset/kube-flannel-ds \
 kubectl -n kube-flannel get pods -l app=flannel -o wide
 ```
 
-The checksum filename must correspond to the reviewed file. If you edited a copy for mirrored images, generate and approve a separate checksum for that final copy; the original manifest checksum will not match it.
+The checksum verifies the exact reviewed file that `kubectl` applies. Generate and approve it only after the mirrored image and CIDR edits are complete; the original manifest checksum will not match the edited copy.
 
 On each node verify:
 
