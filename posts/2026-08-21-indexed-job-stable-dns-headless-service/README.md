@@ -131,7 +131,7 @@ kubectl -n batch get endpointslice \
   -o yaml
 ~~~
 
-Then query from any running Pod using cluster DNS:
+Then query from a running Pod that has `dig` installed and uses cluster DNS:
 
 ~~~bash
 dig +noall +answer \
@@ -187,13 +187,13 @@ kubectl -n batch get endpointslice \
   -o yaml
 ~~~
 
-A common mistake is expecting the Pod resource name shown by `kubectl get pods` to be the DNS hostname. For Indexed mode, query `<job-name>-<index>.<service>...`. Also check that the Pod is still running, the Service selector matches, `subdomain` matches the Service, the namespace and cluster domain are correct, and the Pod uses `ClusterFirst` DNS rather than `Default` or an unconfigured `None` policy.
+A common mistake is expecting the Pod resource name shown by `kubectl get pods` to be the DNS hostname. For Indexed mode, query `<job-name>-<index>.<service>...`. Also check that the Pod is still running, the Service selector matches, `subdomain` matches the Service, the namespace and cluster domain are correct, and the Pod uses `ClusterFirst` DNS rather than `Default` or a `None` policy whose `dnsConfig` does not configure cluster DNS.
 
 ## Official Documentation
 
 - [Kubernetes Jobs and Indexed completion mode](https://kubernetes.io/docs/concepts/workloads/controllers/job/#completion-mode)
 - [Kubernetes Job with Pod-to-Pod communication](https://kubernetes.io/docs/tasks/job/job-with-pod-to-pod-communication/)
-- [Kubernetes DNS Pod hostname and subdomain fields](https://kubernetes.io/docs/concepts/services-networking/dns-pod-service/#pod-s-hostname-and-subdomain-fields)
+- [Kubernetes DNS Pod hostname and subdomain fields](https://kubernetes.io/docs/concepts/services-networking/dns-pod-service/#pod-hostname-and-subdomain-field)
 - [Kubernetes headless Services](https://kubernetes.io/docs/concepts/services-networking/service/#headless-services)
 - [Kubernetes automatic cleanup for finished Jobs](https://kubernetes.io/docs/concepts/workloads/controllers/ttlafterfinished/)
 
