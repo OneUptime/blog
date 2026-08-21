@@ -16,7 +16,7 @@ The upstream Flannel backend documentation currently recommends VXLAN and docume
 
 ## Prove the Failure With Pod IPs
 
-Create or select one ordinary pod on each of two Linux nodes:
+Create or select one ordinary pod in the same namespace on each of two Linux nodes whose selected client container includes `ping`:
 
 ```bash
 kubectl get pods --all-namespaces -o wide
@@ -30,7 +30,7 @@ POD_B_IP=$(kubectl -n "$NS" get pod "$POD_B" \
 kubectl -n "$NS" exec "$POD_A" -- ping -c 3 "$POD_B_IP"
 ```
 
-Use a real application port if ICMP is intentionally filtered. Test the destination Pod IP directly, not its ClusterIP. A ClusterIP adds kube-proxy and Service endpoints to the investigation.
+Use a real application port if ICMP is intentionally filtered. Test the destination Pod IP directly, not its ClusterIP. A ClusterIP adds Service proxying (usually kube-proxy) and Service endpoints to the investigation.
 
 Confirm that same-node pod-to-pod traffic works and that the failed pair really resides on different nodes:
 
@@ -46,8 +46,8 @@ kubectl -n kube-flannel get configmap kube-flannel-cfg \
 echo
 
 kubectl -n kube-flannel logs daemonset/kube-flannel-ds \
-  -c kube-flannel --tail=200 --prefix \
-  | grep -E 'VXLAN config|Using interface|public address|Backend type'
+  -c kube-flannel --all-pods=true --tail=200 --prefix \
+  | grep -E 'VXLAN config|Using interface|external address|Backend type'
 ```
 
 A default Linux configuration resembles:
@@ -61,7 +61,7 @@ A default Linux configuration resembles:
 }
 ```
 
-With no `Port` override, the Linux kernel default used by Flannel is currently 8472. If `Port` is set, test that value instead. UDP backend uses 8285; `host-gw` does not use a VXLAN UDP tunnel; WireGuard has its own configured listen ports. `flannel.1` and UDP 8472 are therefore not universal Flannel health checks.
+With no `Port` override, the Linux kernel default used by Flannel is currently 8472. If `Port` is set, test that value instead. UDP backend uses 8285; `host-gw` does not use a VXLAN UDP tunnel; WireGuard has its own configured listen ports. `flannel.1` and UDP 8472 are therefore not universal Flannel health checks. The examples below use the default VNI 1 device and port; substitute the device and port shown by the running configuration when they differ.
 
 ## Check the VXLAN Device and Remote Routes
 
@@ -75,7 +75,7 @@ bridge fdb show dev flannel.1
 ip neigh show dev flannel.1
 ```
 
-`ip -d link` reveals the VNI, local underlay address, and destination port. A remote node's Pod CIDR should have a route through `flannel.1`; the VXLAN forwarding database should map a remote VTEP MAC to that node's advertised underlay IP, and the neighbor table should map the remote subnet gateway to its VTEP MAC.
+`ip -d link` reveals the VNI, local underlay address, and destination port. For a peer using VXLAN, the remote node's Pod CIDR should have a route through `flannel.1` via a synthetic next hop at the remote Pod CIDR's base address. The VXLAN forwarding database should map the remote VTEP MAC to that node's advertised underlay IP, and the neighbor table should map the synthetic next hop to its VTEP MAC. With `DirectRouting` enabled, an on-link peer instead has a direct route via its advertised underlay IP, and no FDB or neighbor entry on `flannel.1` is expected for that peer.
 
 Compare those values with Kubernetes:
 
@@ -105,14 +105,14 @@ sudo tcpdump -ni flannel.1 "host <destination-pod-ip>"
 
 # Terminal 2 on the source node: outer VXLAN traffic.
 sudo tcpdump -ni <underlay-interface> \
-  "udp port 8472 and host <destination-node-underlay-ip>"
+  "udp port <vxlan-port> and host <destination-node-underlay-ip>"
 ```
 
 On the destination node:
 
 ```bash
 sudo tcpdump -ni <underlay-interface> \
-  "udp port 8472 and host <source-node-underlay-ip>"
+  "udp port <vxlan-port> and host <source-node-underlay-ip>"
 sudo tcpdump -ni flannel.1 "host <source-pod-ip>"
 ```
 
@@ -121,7 +121,7 @@ Interpret the observations:
 - Outer packets leave the source but never arrive at the destination: check cloud security groups, network ACLs, physical firewalls, and routing between node addresses.
 - Packets arrive at the underlay but do not appear on `flannel.1`: check the configured port and VNI, host firewall, VXLAN kernel support, and Flannel peer state.
 - The request reaches the destination pod but no reply returns: inspect the reverse route, reverse firewall policy, source selection, and asymmetric routing.
-- No outer packet leaves: inspect the source route, FDB, neighbor entry, interface choice, and Flannel logs.
+- No outer packet leaves and the peer is not using `DirectRouting`: inspect the source route, FDB, neighbor entry, interface choice, and Flannel logs.
 
 Packet captures may display checksum warnings because of NIC offload. That alone does not prove corruption; compare what the receiving node sees. Flannel's troubleshooting guide documents disabling `tx-checksum-ip-generic` on `flannel.1` for a specific NAT-related checksum problem, not as a universal first step.
 
@@ -141,21 +141,21 @@ Add a rich rule scoped to the trusted node underlay CIDR or to one peer `/32` at
 ```bash
 sudo firewall-cmd --permanent \
   --zone=<node-zone> \
-  --add-rich-rule='rule family="ipv4" source address="<peer-node-cidr>" port port="8472" protocol="udp" accept'
+  --add-rich-rule='rule family="ipv4" source address="<peer-node-cidr>" port port="<vxlan-port>" protocol="udp" accept'
 sudo firewall-cmd --reload
 sudo firewall-cmd --zone=<node-zone> --list-rich-rules
 ```
 
-Repeat the rule for every required peer or use a reviewed CIDR that contains only trusted node addresses. A plain `--add-port=8472/udp` is acceptable only when the zone itself is exclusively scoped to those trusted peers. Opening the UDP socket is not enough if forwarded Pod CIDR traffic is denied by zone policies. Inspect firewalld policies and the kernel FORWARD path separately. In a cloud, mirror the same narrowly scoped allowance in security groups and network ACLs for every node-to-node direction.
+Repeat the rule for every required peer or use a reviewed CIDR that contains only trusted node addresses. A plain `--add-port=<vxlan-port>/udp` is acceptable only when the zone itself is exclusively scoped to those trusted peers. Opening the UDP port is not enough if forwarded Pod CIDR traffic is denied by zone policies. Inspect firewalld policies and the kernel FORWARD path separately. In a cloud, mirror the same narrowly scoped allowance in security groups and network ACLs for every node-to-node direction.
 
 ## Check Less Obvious Underlay Problems
 
-If UDP 8472 arrives but traffic still fails, check:
+If traffic on the configured VXLAN UDP port arrives but pod communication still fails, check:
 
 ```bash
 sysctl net.ipv4.ip_forward
 sysctl net.ipv4.conf.all.rp_filter
-sysctl net.ipv4.conf.<underlay-interface>.rp_filter
+sysctl net/ipv4/conf/<underlay-interface>/rp_filter
 
 ip -s link show flannel.1
 ip -s link show <underlay-interface>
@@ -173,7 +173,7 @@ Test in increasing scope:
 1. Node underlay IP to node underlay IP.
 2. Cross-node Pod IP to Pod IP in both directions.
 3. TCP or UDP application traffic with small and large payloads.
-4. DNS and ClusterIP Services, which add kube-proxy to the path.
+4. DNS and ClusterIP Services, which add Service proxying to the path.
 
 Do not call the overlay fixed based only on `ping`; the production protocol and realistic packet sizes matter.
 
@@ -187,4 +187,4 @@ Do not call the overlay fixed based only on `ping`; the production protocol and 
 
 ## Conclusion
 
-When same-node pod traffic works but cross-node traffic fails, test the remote Pod IP and follow its encapsulation path. Confirm the actual backend, VNI, port, advertised node addresses, routes, FDB, and neighbor entries, then capture UDP 8472 on both underlay interfaces. Open only the configured node-to-node port and keep kube-proxy out of the test until Pod IP routing works.
+When same-node pod traffic works but cross-node traffic fails, test the remote Pod IP and follow its selected data path. Confirm the actual backend, VNI, port, advertised node addresses, routes, FDB, and neighbor entries, then capture the configured VXLAN UDP port on both underlay interfaces. Open only the configured node-to-node port and keep Service proxying out of the test until Pod IP routing works.
