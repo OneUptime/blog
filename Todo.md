@@ -81,7 +81,6 @@
 
 ## Flannel
 
-10. Why Can Flannel Pods Reach Pod IPs but Not ClusterIP Services? Checking kube-proxy and Hairpin Paths
 11. How to Recover When a Reboot or NetworkManager Deletes `flannel.1` Routes
 12. How to Run Flannel with firewalld and nftables Without Dropping Forwarded Pod Traffic
 13. How to Verify `br_netfilter`, IP Forwarding, and the FORWARD Chain Before Blaming Flannel
