@@ -10,13 +10,13 @@ Description: Follow one cross-node Flannel VXLAN packet through the pod bridge, 
 
 ## Introduction
 
-A Flannel VXLAN packet crosses two logical networks. The inner packet carries pod IP addresses. The outer packet carries node underlay addresses and a UDP/VXLAN header. Linux routing chooses the remote pod subnet, the VXLAN neighbor table resolves the remote subnet gateway to a VTEP MAC, and the VXLAN forwarding database maps that MAC to a remote node address.
+A Flannel VXLAN packet crosses two logical networks. The inner packet carries pod IP addresses. The outer packet carries node underlay addresses and a UDP/VXLAN header. Linux routing chooses the remote pod subnet, the VXLAN neighbor table maps the remote Flannel next-hop IP to the remote VXLAN device's MAC, and the VXLAN forwarding database maps that MAC to the remote VTEP's underlay address.
 
-Tracing all of those objects for one known source and destination turns “the overlay is broken” into a precise failing hop. This guide assumes Flannel's Linux VXLAN backend. `host-gw`, WireGuard, IPIP, UDP, Windows, and VXLAN `DirectRouting` can take different paths.
+Tracing all of those objects for one known source and destination turns “the overlay is broken” into a precise failing hop. This guide assumes Flannel's Linux IPv4 VXLAN backend with IPv4 as the cluster's primary Pod IP family. The examples use the Linux defaults `flannel.1` (VNI 1) and UDP 8472. If the deployed `Backend.VNI` or `Backend.Port` differs, replace every `flannel.1` occurrence with `flannel.<VNI>` and use the live `dstport` shown by `ip -d link`. `host-gw`, WireGuard, IPIP, UDP, Windows, IPv6, and VXLAN `DirectRouting` can take different paths.
 
 ## Choose One Reproducible Flow
 
-Select two ordinary pods on different nodes and record every address before capturing:
+Select two non-host-network pods on different nodes, ensure `POD_A` contains `ip` and `ping`, and record every address before capturing:
 
 ```bash
 NS=default
@@ -53,7 +53,7 @@ kubectl -n "$NS" exec "$POD_A" -- ip route show
 kubectl -n "$NS" exec "$POD_A" -- ip route get "$POD_B_IP"
 ```
 
-The pod should send the remote Pod IP through its CNI-provided default gateway. On `NODE_A`, the pod-side veth is connected to `cni0` in the normal Flannel bridge delegate configuration:
+The pod should send the remote Pod IP through its CNI-provided default gateway. On `NODE_A`, the host-side end of the pod's veth pair is connected to `cni0` in the normal Flannel bridge delegate configuration:
 
 ```bash
 ip -br link show
@@ -69,18 +69,18 @@ If the packet never reaches `cni0`, inspect the pod namespace, veth, local CNI s
 On `NODE_A`:
 
 ```bash
-ip route get "$POD_B_IP"
+ip route get "$POD_B_IP" from "$POD_A_IP" iif cni0
 ip -4 route show table main
 ip -s route show
 ```
 
-For VXLAN without direct routing, a route for `NODE_B`'s Pod CIDR should use `flannel.1`, commonly through the remote subnet gateway. Compare the route prefix with `NODE_B.spec.podCIDR`.
+The `from` and `iif` arguments make `ip route get` model a packet forwarded from the pod; a bare lookup models traffic originated by the node. For VXLAN without direct routing, a route for `NODE_B`'s Pod CIDR should use `flannel.1` through the remote Flannel next-hop IP, normally the base address of that Pod CIDR. Compare the route prefix with `NODE_B.spec.podCIDR`.
 
 If the route is absent, check Flannel's view of Node leases and its logs:
 
 ```bash
 kubectl -n kube-flannel logs daemonset/kube-flannel-ds \
-  -c kube-flannel --tail=300 --prefix
+  -c kube-flannel --all-pods=true --tail=300 --prefix
 
 kubectl get node "$NODE_B" -o json \
   | jq '{podCIDRs:.spec.podCIDRs, flannel:(.metadata.annotations | with_entries(select(.key | startswith("flannel."))))}'
@@ -103,21 +103,21 @@ These tables answer different questions:
 
 - The IP route says which next-hop IP and device should carry the remote Pod CIDR.
 - The neighbor table maps that next-hop IP to a VTEP MAC.
-- The forwarding database maps that VTEP MAC to the remote node underlay IP.
-- `ip -d link` shows the local VXLAN address, VNI, learning mode, and UDP destination port.
+- The forwarding database maps that VTEP MAC to the remote VTEP underlay address.
+- `ip -d link` shows the local VTEP underlay source address, VNI, learning mode, and UDP destination port.
 
-Flannel's current Linux VXLAN backend defaults to VNI 1, UDP 8472, and disabled kernel MAC learning unless configured otherwise. Treat live output and the pinned version as authoritative.
+Flannel's current Linux VXLAN backend defaults to VNI 1, UDP 8472, and disabled kernel MAC learning unless configured otherwise. Treat live output and your deployed Flannel version as authoritative.
 
 Find the relevant entries rather than judging the tables by their size:
 
 ```bash
-ip neigh show dev flannel.1 | grep '<remote-subnet-gateway>'
-bridge fdb show dev flannel.1 | grep '<remote-node-underlay-ip>'
+ip neigh show dev flannel.1 | grep '<remote-flannel-next-hop-ip>'
+bridge fdb show dev flannel.1 | grep '<remote-vtep-underlay-ip>'
 ```
 
-A failed or missing neighbor entry with a present route points toward lease/annotation reconciliation. An FDB entry targeting an obsolete node address points toward interface selection, a stale public IP annotation, or an incomplete peer update.
+Flannel normally programs peer neighbor and FDB entries as `PERMANENT`. With a present route, a missing peer neighbor (or a `FAILED` dynamic entry after that permanent state was lost) points toward stale or externally altered state or failed lease/annotation reconciliation. An FDB entry targeting an obsolete VTEP underlay address points toward interface selection, a stale public IP annotation, or an incomplete peer update.
 
-Do not “repair” the cluster by adding permanent neighbor or FDB entries. They are useful as temporary laboratory experiments only; Flannel must converge them from cluster state.
+Do not “repair” the cluster by adding permanent neighbor or FDB entries. They are useful as temporary laboratory experiments only; Flannel must program them from cluster state.
 
 ## Stage 4: Capture Inner and Outer Packets Together
 
@@ -128,14 +128,14 @@ sudo tcpdump -ni flannel.1 \
   "host ${POD_A_IP} and host ${POD_B_IP}"
 
 sudo tcpdump -ni <node-a-underlay-interface> \
-  "udp port 8472 and host <node-b-underlay-ip>"
+  "udp port <vxlan-udp-port> and host <node-b-underlay-ip>"
 ```
 
 On `NODE_B`:
 
 ```bash
 sudo tcpdump -ni <node-b-underlay-interface> \
-  "udp port 8472 and host <node-a-underlay-ip>"
+  "udp port <vxlan-udp-port> and host <node-a-underlay-ip>"
 
 sudo tcpdump -ni flannel.1 \
   "host ${POD_A_IP} and host ${POD_B_IP}"
@@ -144,7 +144,7 @@ sudo tcpdump -eni cni0 \
   "host ${POD_A_IP} and host ${POD_B_IP}"
 ```
 
-Use `-c`, `-G`, or a tightly scoped BPF expression in production so captures do not run indefinitely or collect unrelated tenant traffic. Packet captures can contain sensitive payloads; protect and remove any saved files under your incident-data policy.
+Use `-c` or an external time limit such as `timeout` in production so captures do not run indefinitely, and keep the BPF expression tightly scoped so you do not collect unrelated tenant traffic. If writing rotating save files with `-w`, combine `-G` with `-W` to bound the capture. Packet captures can contain sensitive payloads; protect and remove any saved files under your incident-data policy.
 
 ## Interpret the First Missing Observation
 
