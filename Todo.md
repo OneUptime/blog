@@ -78,7 +78,6 @@
 
 ## vCluster
 
-20. How to Sleep and Wake an Idle vCluster Without Breaking Ingress-Driven Wakeups
 
 ## Flannel
 
