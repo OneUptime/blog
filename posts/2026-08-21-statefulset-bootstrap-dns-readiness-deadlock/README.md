@@ -11,7 +11,7 @@ Description: Break the circular dependency between StatefulSet peer discovery an
 A stateful cluster can deadlock when its readiness rule and peer discovery depend on each other:
 
 1. a new Pod waits to discover and contact its peers before reporting ready;
-2. the headless Service normally publishes only ready endpoint addresses;
+2. cluster DNS for the headless Service normally publishes only ready endpoint addresses;
 3. cluster DNS therefore withholds the new Pod's peer record;
 4. peers cannot discover it, so the join condition never completes;
 5. the Pod never becomes ready.
@@ -128,9 +128,9 @@ spec:
             failureThreshold: 3
 ~~~
 
-The example reuses one concrete listener for both discovery and probe mechanics. Use the distinct peer and client ports and application-aware probes documented by your software. `Parallel` tells the StatefulSet controller not to wait for one Pod to become Running and Ready before launching the next. It preserves ordinal identities, but it removes ordered creation and deletion, so use it only when the application supports concurrent member startup and shutdown.
+The example reuses one concrete listener for both discovery and probe mechanics. Use the distinct peer and client ports and application-aware probes documented by your software. `Parallel` tells the StatefulSet controller not to wait for one Pod to become Running and Ready before launching the next. It preserves ordinal identities, but it allows Pods to be created and terminated concurrently during scaling, so use it only when the application supports concurrent member startup and shutdown.
 
-Changing only `publishNotReadyAddresses` cannot help `store-0` discover `store-1` when `OrderedReady` has not created `store-1`. Changing only `podManagementPolicy` creates all Pods, but the default headless Service can still hide their records until readiness. Applications that require all peers before readiness often need both settings.
+Changing only `publishNotReadyAddresses` cannot help `store-0` discover `store-1` when `OrderedReady` has not created `store-1`. Configuring `podManagementPolicy: Parallel` when creating the StatefulSet launches all desired Pods, but the default headless Service can still hide their records until readiness. The policy is immutable on an existing StatefulSet, so switching policies requires recreating the StatefulSet. Applications that require all peers before readiness often need both settings.
 
 ## Design Probes Around Local Health
 
@@ -161,7 +161,7 @@ Even with early publication, DNS can briefly return a cached negative result whe
 
 ## Verify Which Loop Is Blocking
 
-Check creation, readiness, EndpointSlices, and DNS in that order:
+Check creation, readiness, EndpointSlices, and DNS in that order. Run the final `dig` query from a Pod that uses cluster DNS, and replace `cluster.local` if the cluster uses a different domain:
 
 ~~~bash
 kubectl -n data get statefulset store -o yaml
