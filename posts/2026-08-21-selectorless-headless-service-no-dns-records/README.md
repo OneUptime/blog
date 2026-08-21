@@ -18,7 +18,7 @@ This is the key contrast:
 
 ## Create the Service and EndpointSlice Together
 
-The following example publishes two IPv4 backends under `database.data.svc.cluster.local`. It uses the same port number for `port` and `targetPort`, as Kubernetes requires for a selectorless headless Service.
+Assuming the `data` namespace already exists and the cluster domain is `cluster.local`, the following example publishes two IPv4 backends under `database.data.svc.cluster.local`. It uses the same port number for `port` and `targetPort`, as Kubernetes requires for a selectorless headless Service.
 
 ~~~yaml
 apiVersion: v1
@@ -68,11 +68,11 @@ Use a distinct `endpointslice.kubernetes.io/managed-by` value that identifies th
 
 The fields serve related but different purposes:
 
-- `Service.spec.ports[].port` is the Service port exposed to clients and advertised by a named-port SRV record;
-- `Service.spec.ports[].targetPort` identifies the backend port. For a headless Service without a selector, it must equal `port`;
-- `EndpointSlice.ports[].port` is the concrete port offered by the endpoints in that slice.
+- `Service.spec.ports[].port` declares the port in the Service contract. Its name and protocol define the named-port SRV query;
+- `Service.spec.ports[].targetPort` is ignored when `clusterIP: None`. For a headless Service without a selector, omit it or set it equal to `port`;
+- `EndpointSlice.ports[].port` is the concrete port offered by the endpoints in that slice. CoreDNS uses the matching endpoint port in each headless SRV answer.
 
-Keep the port names and protocols aligned as well. In the example, every layer describes a TCP port named `postgres` on `5432`. A slice with a different port name or protocol may not match the Service port that a consumer, DNS server, Ingress controller, or service proxy is trying to resolve.
+Keep the port names and protocols aligned as well. In the example, every layer describes a TCP port named `postgres` on `5432`. A different EndpointSlice port name or protocol prevents the corresponding SRV match and can break other port-aware consumers. An incorrect endpoint port number advertises that incorrect number in the SRV answer. These port mismatches do not suppress the Service's A or AAAA records, which depend on endpoint addresses and readiness.
 
 If the Service has several ports, give every Service port a unique name and represent each corresponding endpoint port accurately. EndpointSlices group endpoints by address family, protocol, and port combination, so a Service can legitimately have more than one slice.
 
@@ -106,7 +106,7 @@ The documentation address above is intentionally illustrative. Use addresses rou
 
 ## Check Readiness Before Blaming DNS
 
-Headless DNS normally publishes ready endpoint addresses. A slice that exists but contains only endpoints with `conditions.ready: false` will not provide the expected Service answers.
+Headless DNS publishes endpoint addresses whose `conditions.ready` value is true; an omitted value is interpreted as true. Kubernetes-managed slices mark endpoints ready when the Service sets `publishNotReadyAddresses: true`, and a custom slice manager must honor that Service contract itself. With the Service shown here, a slice containing only endpoints with `conditions.ready: false` will not provide the expected Service answers.
 
 For a manually managed endpoint, update readiness to reflect whether the backend should receive traffic:
 
@@ -120,7 +120,7 @@ Do not set `ready: true` merely to make a DNS test pass. DNS publication makes t
 
 ## Query the Exact Records
 
-From a Pod using cluster DNS, query the Service and its named port:
+From a Pod using cluster DNS, query the Service and its named port. Replace `cluster.local` if your cluster uses a different cluster domain:
 
 ~~~bash
 dig +noall +answer database.data.svc.cluster.local. A
@@ -144,7 +144,7 @@ kubectl -n kube-system get configmap coredns -o yaml
 kubectl -n kube-system logs -l k8s-app=kube-dns --tail=100
 ~~~
 
-Check the namespace, association label, `addressType`, endpoint readiness, address validity, Service `port`/`targetPort` equality, and EndpointSlice port. Also allow for DNS cache TTLs after fixing an earlier empty answer. CoreDNS must have permission to list and watch Services, namespaces, Pods, and EndpointSlices; missing EndpointSlice RBAC can cause resolution failures across many Services.
+Check the namespace, association label, `addressType`, endpoint readiness, address validity, Service `port`/`targetPort` equality, and EndpointSlice port. Also allow for DNS cache TTLs after fixing an earlier empty answer. For this lookup, CoreDNS must be able to list and watch Services, namespaces, and EndpointSlices. The standard `system:coredns` ClusterRole also grants access to Pods and legacy Endpoints; Pod access is needed by features such as `pods verified`. Missing EndpointSlice RBAC can cause resolution failures across many Services.
 
 ## Official Documentation
 
