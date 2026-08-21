@@ -105,7 +105,7 @@ nameserver 10.96.0.10
 options ndots:5
 ~~~
 
-Find the search suffix beginning with `svc.` and remove that literal prefix. Here, `svc.platform.example` reveals the cluster domain `platform.example`. Do not assume a domain has exactly two labels or derive it by taking the last two labels. Valid custom domains can be deeper, such as `k8s.eu.example.internal`.
+Find the standard namespace search suffix `<namespace>.svc.<cluster-domain>` and remove the literal `<namespace>.svc.` prefix. Here, `data.svc.platform.example` reveals the cluster domain `platform.example`. Do not assume a domain has exactly two labels or derive it by taking the last two labels. Valid custom domains can be deeper, such as `k8s.eu.example.internal`.
 
 Pod resolver state is an observation, not a universal configuration API. A Pod with `dnsPolicy: Default`, `dnsPolicy: None`, custom `dnsConfig.searches`, host networking, or a service-mesh DNS interceptor can show a different search list. Use a simple `ClusterFirst` diagnostic Pod if the application Pod is customized.
 
@@ -120,7 +120,7 @@ kubectl -n data exec dnsutils -- cat /etc/resolv.conf
 
 ## Confirm the Kubelet's Cluster Domain as an Administrator
 
-The kubelet configuration field is `clusterDomain`. Kubernetes documents that the kubelet uses it to add the cluster search domain to containers. A cluster administrator with access to the node proxy can inspect the live configuration:
+The kubelet configuration field is `clusterDomain`. Kubernetes documents that the kubelet uses it to add the cluster search domain to containers. When the kubelet's `configz` debug endpoint is enabled, a cluster administrator with access to the node proxy can inspect the live configuration:
 
 ~~~bash
 node_name="$(kubectl get pod -n data ledger-0 -o jsonpath='{.spec.nodeName}')"
@@ -176,9 +176,9 @@ kubectl -n data exec dnsutils -- \
   ledger-0.ledger-peers.data.svc.platform.example. A
 ~~~
 
-The trailing dot prevents search expansion. It is especially useful for diagnostics: without it, a high `ndots` setting can cause the resolver to try several suffixed variants before the intended name.
+The trailing dot makes the name unambiguously absolute. BIND `dig` uses the search list only when `+search` is enabled, as in the preceding short-name test. In ordinary resolver calls, or in `dig +search`, omitting the dot can let a high `ndots` setting trigger several suffixed queries before the unsuffixed name.
 
-For dual-stack Pods, query both:
+For a governing Service configured with both IP families, query both:
 
 ~~~bash
 kubectl -n data exec dnsutils -- \
