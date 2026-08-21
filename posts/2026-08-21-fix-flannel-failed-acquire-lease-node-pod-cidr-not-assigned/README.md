@@ -10,7 +10,7 @@ Description: Fix Flannel's node pod CIDR lease error by restoring Kubernetes nod
 
 ## Introduction
 
-The error `failed to acquire lease: node ... pod cidr not assigned` is precise. When Flannel runs with `--kube-subnet-mgr`, it reads the node's `.spec.podCIDR` or `.spec.podCIDRs`; it does not choose a per-node Pod range itself. The Kubernetes node IPAM controller must allocate that range first.
+The error `failed to acquire lease: node ... pod cidr not assigned` is precise. When Flannel runs with `--kube-subnet-mgr`, it requires the node's `.spec.podCIDR` and uses `.spec.podCIDRs` when present; it does not choose a per-node Pod range itself. Kubernetes must populate that range first, normally through the node IPAM controller.
 
 In a kubeadm cluster, supplying `--pod-network-cidr` during `kubeadm init` causes kubeadm to configure the controller manager with node-CIDR allocation. Installing Flannel after initializing kubeadm without that setting is the most common cause of this error.
 
@@ -18,7 +18,7 @@ In a kubeadm cluster, supplying `--pod-network-cidr` during `kubeadm init` cause
 
 ```bash
 kubectl -n kube-flannel get pods -l app=flannel -o wide
-kubectl -n kube-flannel logs daemonset/kube-flannel-ds \
+kubectl -n kube-flannel logs -l app=flannel \
   -c kube-flannel --tail=200 --prefix
 
 kubectl get nodes \
@@ -101,7 +101,7 @@ First verify capacity and uniqueness across the cluster:
 
 ```bash
 kubectl get nodes -o json \
-  | jq -r '.items[] | [.metadata.name, .spec.podCIDR, (.spec.podCIDRs // [])] | @tsv'
+  | jq -r '.items[] | [.metadata.name, .spec.podCIDR, (.spec.podCIDRs // [] | join(","))] | @tsv'
 
 kubectl get node worker-3 -o yaml | sed -n '/spec:/,/status:/p'
 ```
@@ -163,4 +163,4 @@ Finally, schedule a test pod on the repaired node and test both a local and a re
 
 ## Conclusion
 
-`node pod cidr not assigned` means Flannel is waiting for Kubernetes node IPAM. Restore `--allocate-node-cidrs` with the correct cluster CIDR, confirm every node has a unique subnet inside Flannel's network, and then restart the affected Flannel pod. Treat CIDR changes and manual patches as controlled network operations, not routine CNI cleanup.
+`node pod cidr not assigned` means Flannel is waiting for a Pod CIDR on the Node, normally allocated by Kubernetes node IPAM. Restore `--allocate-node-cidrs` with the correct cluster CIDR, confirm every node has a unique subnet inside Flannel's network, and then restart the affected Flannel pod. Treat CIDR changes and manual patches as controlled network operations, not routine CNI cleanup.
