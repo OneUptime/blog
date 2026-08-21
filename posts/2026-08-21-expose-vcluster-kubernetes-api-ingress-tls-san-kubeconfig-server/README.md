@@ -8,9 +8,9 @@ Description: Expose a vCluster API through an Ingress without certificate name e
 
 ---
 
-An Ingress can provide a stable endpoint for a vCluster Kubernetes API, but three pieces must agree: DNS must resolve the public hostname, the vCluster proxy certificate must contain that hostname as a Subject Alternative Name (SAN), and the kubeconfig must use the same URL. Fixing only the Ingress usually leaves clients failing with an x509 error or still connecting to `localhost`.
+An Ingress can provide a stable endpoint for a vCluster Kubernetes API, but three pieces must agree: DNS must resolve the public hostname, the vCluster proxy certificate must contain that hostname as a Subject Alternative Name (SAN), and the kubeconfig must use the same URL. Creating only an externally managed Ingress resource usually leaves clients failing with an x509 error or still connecting to `localhost`.
 
-This guide targets vCluster **0.36** with a container control plane on shared or private nodes. Ingress-based API exposure is still supported in this release, but vCluster recommends Gateway API `TLSRoute` for new deployments because ingress-nginx is deprecated upstream. Use this guide when an existing Ingress controller is part of your supported platform.
+This guide targets vCluster **0.36** with a container control plane on shared or private nodes. Ingress-based API exposure is still supported in this release, but vCluster recommends Gateway API `TLSRoute` for new deployments because ingress-nginx was retired upstream in March 2026. Use this guide when an existing Ingress controller is part of your supported platform.
 
 ## Understand the TLS Path
 
@@ -35,6 +35,8 @@ controlPlane:
   ingress:
     enabled: true
     host: api.dev.example.com
+    spec:
+      ingressClassName: nginx
     annotations:
       nginx.ingress.kubernetes.io/backend-protocol: HTTPS
       nginx.ingress.kubernetes.io/ssl-passthrough: "true"
@@ -45,9 +47,9 @@ exportKubeConfig:
   context: dev-vcluster
 ```
 
-`controlPlane.proxy.extraSANs` changes the certificate served by the vCluster proxy. `controlPlane.ingress.host` creates the routing rule. `exportKubeConfig.server` changes the server in the generated kubeconfig Secret. They solve separate problems and should intentionally contain the same hostname.
+`controlPlane.proxy.extraSANs` explicitly includes the hostname in the certificate served by the vCluster proxy. In vCluster 0.36, `controlPlane.ingress.host` both creates the routing rule and is added to the proxy certificate automatically, so repeating the hostname in `extraSANs` is safe but redundant and makes the intended SAN explicit. `exportKubeConfig.server` changes the server in the generated kubeconfig Secret.
 
-The annotations above are specific to ingress-nginx. Its controller must also be started with `--enable-ssl-passthrough`; merely adding the annotation is insufficient. For Traefik, Emissary, or another controller, use that implementation's documented TLS-passthrough configuration.
+The annotations above are specific to ingress-nginx, and `ingressClassName` must match the class installed in your cluster. Its controller must also be started with `--enable-ssl-passthrough`; merely adding the annotation is insufficient. For Traefik, Emissary, or another controller, use that implementation's documented TLS-passthrough configuration.
 
 Apply the configuration without opening a local connection:
 
@@ -108,11 +110,11 @@ openssl s_client \
   | openssl x509 -noout -subject -issuer -ext subjectAltName
 ```
 
-The SAN list must include `DNS:api.dev.example.com`. If the issuer is your edge Ingress CA instead of the vCluster CA, the controller is terminating TLS rather than passing it through.
+The SAN list must include `DNS:api.dev.example.com`. If the issuer is an edge CA instead of the vCluster CA, TLS is being terminated before it reaches vCluster, either by the controller or another edge proxy, rather than passed through end to end.
 
 Useful failure signals are:
 
-- `x509: certificate is valid for ... not api.dev.example.com`: `extraSANs` is missing, the vCluster was not upgraded, or a different certificate is being served.
+- `x509: certificate is valid for ... not api.dev.example.com`: neither `controlPlane.ingress.host` nor `extraSANs` includes the hostname, the vCluster was not upgraded, or a different certificate is being served.
 - `certificate signed by unknown authority`: the kubeconfig lacks the correct CA data or TLS is being terminated by another certificate authority.
 - `connection refused` or an HTTP 404: check DNS, the Ingress class, controller address, Service port, and passthrough support.
 - `Unauthorized`: transport works; now inspect the kubeconfig credential. For TLS termination at the Ingress, generate a service-account kubeconfig rather than relying on a client certificate.
