@@ -78,7 +78,6 @@
 
 ## vCluster
 
-10. How to Back Up a vCluster Control Plane and Workload Volumes Without Assuming One Snapshot Covers Both
 11. How to Clone or Restore a vCluster from an OCI Snapshot and Reapply `vcluster.yaml`
 12. How to Upgrade vCluster Across Minor Versions Without Breaking Resource Sync
 13. How to Check Host and Tenant Kubernetes Version Compatibility Before a vCluster Upgrade
