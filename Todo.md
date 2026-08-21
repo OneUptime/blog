@@ -81,7 +81,6 @@
 
 ## Flannel
 
-9. How to Trace a Flannel VXLAN Packet with Routes, FDB Entries, Neighbor Tables, and `tcpdump`
 10. Why Can Flannel Pods Reach Pod IPs but Not ClusterIP Services? Checking kube-proxy and Hairpin Paths
 11. How to Recover When a Reboot or NetworkManager Deletes `flannel.1` Routes
 12. How to Run Flannel with firewalld and nftables Without Dropping Forwarded Pod Traffic
