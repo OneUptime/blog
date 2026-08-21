@@ -8,7 +8,7 @@ Description: Deploy three vCluster control-plane replicas and a three-member etc
 
 ---
 
-A production vCluster needs availability at two layers: multiple control-plane replicas and a backing store that remains available when one member fails. Three vCluster replicas backed by three etcd members tolerate one component failure at each layer when scheduling and storage do not share the same failure domain.
+A production vCluster needs availability at two layers: multiple control-plane replicas and a backing store that remains available when one member fails. Three vCluster replicas backed by three etcd members tolerate one component failure at each layer when the replicas in each layer are distributed across distinct failure domains and the storage has equivalent durability.
 
 This guide targets vCluster **0.36** with the control plane running as Kubernetes Pods. HA and deployed or embedded etcd availability can depend on the vCluster edition; check the current feature matrix. HA protects against a Pod or eligible node failure, not a complete outage of the control plane cluster.
 
@@ -39,6 +39,7 @@ controlPlane:
           scheduling:
             topologySpreadConstraints:
               - maxSkew: 1
+                minDomains: 3
                 topologyKey: kubernetes.io/hostname
                 whenUnsatisfiable: DoNotSchedule
                 labelSelector:
@@ -51,6 +52,7 @@ controlPlane:
     scheduling:
       topologySpreadConstraints:
         - maxSkew: 1
+          minDomains: 3
           topologyKey: kubernetes.io/hostname
           whenUnsatisfiable: DoNotSchedule
           labelSelector:
@@ -65,7 +67,7 @@ controlPlane:
 
 The `release` label equals the Helm/vCluster release name in this example. If your release is not `team-a`, change both selectors. The built-in `controlPlane.advanced.podDisruptionBudget` selects the vCluster control-plane Pods; it does not create a second PDB for the deployed etcd StatefulSet.
 
-For zone-level failure tolerance, add a second topology constraint for `topology.kubernetes.io/zone` and ensure the storage backend can provision one volume in each selected zone. A hard `DoNotSchedule` constraint is preferable to silently co-locating replicas, but it leaves Pods Pending when the cluster lacks enough domains-an intentional capacity signal.
+For tolerance of any single zone failure, add a second hard topology constraint for `topology.kubernetes.io/zone` with `minDomains: 3`. Use a topology-aware StorageClass with `volumeBindingMode: WaitForFirstConsumer`, or suitable pre-provisioned volumes, so each PVC binds in its Pod's zone. The hard `DoNotSchedule` constraints leave Pods Pending when the cluster lacks three eligible domains. During maintenance, replacements also need a spare schedulable node that satisfies all topology and volume constraints.
 
 Apply the configuration:
 
@@ -117,16 +119,22 @@ Do not confuse this with `sync.toHost.podDisruptionBudgets.enabled`, which synch
 ```bash
 kubectl get pod -n team-a-vcluster \
   -o custom-columns='NAME:.metadata.name,NODE:.spec.nodeName,READY:.status.containerStatuses[*].ready'
-kubectl get statefulset -n team-a-vcluster
+kubectl get deployment,statefulset -n team-a-vcluster
 kubectl get pvc -n team-a-vcluster
 kubectl get pdb -n team-a-vcluster
 ```
 
 All etcd PVCs should be Bound and use a production StorageClass with suitable durability. A PDB cannot help if all three volumes depend on one failed storage appliance or zone.
 
-Verify the tenant API repeatedly through its stable Service or external endpoint:
+Because `--connect=false` does not write `/tmp/team-a.kubeconfig`, create it explicitly. Set `TEAM_A_ENDPOINT` to a stable Service or exposed endpoint that is reachable from the client and included in the vCluster serving certificate, then verify the tenant API repeatedly through that endpoint:
 
 ```bash
+TEAM_A_ENDPOINT=https://team-a.example.com
+vcluster connect team-a \
+  --namespace team-a-vcluster \
+  --server="$TEAM_A_ENDPOINT" \
+  --print > /tmp/team-a.kubeconfig
+
 for i in 1 2 3; do
   kubectl --kubeconfig /tmp/team-a.kubeconfig get --raw=/readyz
 done
@@ -148,7 +156,7 @@ Expected behavior:
 
 - At most one control-plane Pod and one etcd member become unavailable.
 - Both PDBs retain at least two matching available Pods.
-- Replacement Pods schedule on other eligible nodes and attach storage.
+- Replacement Pods schedule only when a spare eligible node has capacity; the etcd replacement also needs a node compatible with its PVC's volume topology.
 - The tenant API remains available through the Service; leader-elected controller work may pause briefly while leadership changes.
 - A second simultaneous eviction is blocked while it would violate a PDB.
 
@@ -162,12 +170,12 @@ Also test an involuntary Pod failure, backup and restore, and complete control p
 
 ## Capacity and Maintenance Rules
 
-- Keep capacity for a replacement Pod outside the failing node.
+- Keep capacity on a spare eligible node, including a node compatible with each PVC's volume topology.
 - Drain one failure domain at a time and wait for etcd membership and Pods to recover.
 - Use an odd etcd member count; adding a fourth does not increase tolerated failures.
 - Take regular vCluster snapshots, and protect workload volumes separately.
 - Alert on etcd quorum, leader changes, fsync latency, disk space, Pod availability, and PDB-blocked drains.
-- Ensure node autoscalers and disruption tools respect PDBs; forced termination settings can override them.
+- Ensure node autoscalers and disruption tools respect PDBs; forced termination settings can bypass them.
 
 ## Official Documentation
 
