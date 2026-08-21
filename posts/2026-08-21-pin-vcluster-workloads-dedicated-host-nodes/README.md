@@ -8,9 +8,9 @@ Description: Enforce a dedicated host-node selector for translated vCluster Pods
 
 ---
 
-A taint alone does not pin a workload to a node pool; it only repels Pods that lack a matching toleration. A node selector alone pins the tenant but does not stop unrelated host workloads from using the same nodes. A dedicated vCluster pool needs both, with vCluster enforcing the selector and injecting only the pool's exact toleration.
+A taint alone does not pin a workload to a node pool; it only repels Pods that lack a matching toleration. A node selector constrains scheduler placement to the tenant pool but does not stop unrelated host workloads from using the same nodes. A dedicated vCluster pool needs both, with vCluster enforcing the selector and injecting only the pool's exact toleration.
 
-This guide targets vCluster **0.36** with a containerized control plane and host-backed worker nodes. vCluster calls this Dedicated Nodes architecture: tenant workloads use a selected set of control plane cluster nodes, but still share that cluster's CNI and CSI. It is not the same as the Private Nodes mode in which workers join the tenant cluster directly.
+This guide targets vCluster **0.36** with a containerized control plane, the default host scheduler, and host-backed worker nodes. vCluster calls this a Dedicated Nodes configuration within the Shared Nodes architecture: tenant workloads use a selected set of control plane cluster nodes, but still share that cluster's CNI and CSI. It is not the same as the Private Nodes mode in which workers join the tenant cluster directly.
 
 ## Label and Taint the Host Node Pool
 
@@ -65,12 +65,13 @@ value: team-a
 effect: NoSchedule
 ```
 
-The labels under `sync.fromHost.nodes.selector.labels` serve two related purposes. They restrict which host Nodes are synchronized into the tenant view, and vCluster enforces those label pairs as a node selector on translated Pods that are scheduled by the host. A tenant Pod cannot broaden placement by omitting that selector or supplying a different value for the same key.
+The labels under `sync.fromHost.nodes.selector.labels` serve two related purposes. They restrict which host Nodes are synchronized into the tenant view, and vCluster enforces those label pairs as a node selector on translated Pods that are scheduled by the host. A host-scheduled tenant Pod cannot broaden placement by omitting that selector or supplying a different value for the same key. Reject tenant-authored `spec.nodeName` and Pod binding requests in this mode: direct node assignment bypasses the Kubernetes scheduler, including its node-selector and `NoSchedule` checks.
 
 Apply the configuration through the source that owns the release:
 
 ```bash
 vcluster create team-a \
+  --context host \
   --namespace team-a-vcluster \
   --connect=false \
   --upgrade \
@@ -92,7 +93,7 @@ Usually the control plane belongs on a platform infrastructure pool, not on the 
 Close that path with admission at both relevant layers:
 
 - Inside the tenant cluster, reject empty-key or wildcard tolerations and allow only a documented set. This sees the tenant Pod before vCluster adds its enforced toleration.
-- In the control plane cluster, reject translated Pods that tolerate protected infrastructure taints. Allow vCluster's exact tenant-pool toleration and Kubernetes node-condition tolerations needed for normal operation.
+- In the control plane cluster, reject translated Pods that tolerate protected infrastructure taints or are created with `spec.nodeName` already set. Allow vCluster's exact tenant-pool toleration and Kubernetes node-condition tolerations needed for normal operation.
 
 Keep host Node label and taint mutation permissions out of tenant identities. A selector is a placement mechanism, not a hard security boundary; an operator or compromised host identity that can relabel a node changes the eligible pool.
 
@@ -124,10 +125,11 @@ Inspect the translated host Pod's `spec.nodeSelector`, `spec.tolerations`, and `
 
 Then run negative tests:
 
-1. Remove capacity from the dedicated pool and confirm the Pod remains Pending rather than spilling into a general node pool.
+1. Remove capacity from the dedicated pool, then create a fresh Pod or delete and recreate `placement-check`. Confirm the new Pod remains Pending rather than spilling into a general node pool.
 2. Submit a tenant Pod that requests a conflicting value for the enforced selector and confirm the translated Pod still targets `team-a`.
 3. Create an unrelated host Pod without the toleration and confirm the taint keeps it off the dedicated pool.
 4. Submit a wildcard or protected-infrastructure toleration as the tenant and confirm admission rejects it.
+5. Submit a tenant Pod with `spec.nodeName` set, or attempt a Pod binding, and confirm admission rejects it.
 
 Use `kubectl describe pod` in both contexts to distinguish selector mismatch, untolerated taint, affinity, capacity, and storage topology failures. A Pending Pod can prove the boundary is working when no eligible capacity exists.
 
@@ -135,7 +137,7 @@ Use `kubectl describe pod` in both contexts to distinguish selector mismatch, un
 
 Add and validate replacement nodes before removing the label from existing ones. A running Pod is not automatically evicted merely because a node label changes, and a `NoSchedule` taint does not evict existing Pods. Use a deliberate drain, appropriate PodDisruptionBudgets, and enough spare capacity to relocate workloads.
 
-Autoscalers must preserve the exact label and taint on every new node. Audit the effective node set periodically; one mistakenly labeled infrastructure node silently becomes eligible for the tenant.
+Autoscalers must preserve the exact label and taint on every new node. Audit the effective node set periodically; one mistakenly labeled infrastructure node silently satisfies the tenant selector and can become eligible when no other scheduling constraint blocks it.
 
 ## Official Documentation
 
@@ -148,4 +150,4 @@ Autoscalers must preserve the exact label and taint on every new node. Audit the
 
 ## Conclusion
 
-Use the vCluster node selector to enforce the eligible host pool, taint that pool to repel unrelated workloads, and inject only its exact toleration as a string. Protect other taints with admission, schedule the control plane separately, and prove the boundary with spillover and wildcard-toleration tests.
+Use the vCluster node selector to enforce the eligible host pool, taint that pool to repel unrelated workloads, and inject only its exact toleration as a string. Protect other taints with admission, schedule the control plane separately, and prove the boundary with spillover, wildcard-toleration, and direct-assignment tests.
