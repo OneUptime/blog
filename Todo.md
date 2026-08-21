@@ -81,7 +81,6 @@
 
 ## Flannel
 
-7. How to Select the Correct Flannel Interface on Multi-NIC Nodes with `--iface` and `--iface-regex`
 8. How to Calculate the Right Flannel VXLAN MTU Behind a Cloud Network, VLAN, or VPN
 9. How to Trace a Flannel VXLAN Packet with Routes, FDB Entries, Neighbor Tables, and `tcpdump`
 10. Why Can Flannel Pods Reach Pod IPs but Not ClusterIP Services? Checking kube-proxy and Hairpin Paths
