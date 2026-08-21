@@ -14,6 +14,8 @@ Kubernetes normally exposes workloads through Services, Ingress, or Gateway APIs
 
 This design exposes ephemeral workload addresses as routed infrastructure. It does not provide Service load balancing, stable discovery, health-based endpoint selection, or NetworkPolicy by itself. Use it only when clients and operations are designed for those constraints.
 
+The commands below target Linux nodes and IPv4. For dual-stack clusters, enumerate `.spec.podCIDRs` and pair each CIDR with a reachable next hop of the same address family.
+
 ## Map Node Pod CIDRs to Reachable Node Addresses
 
 ```bash
@@ -31,7 +33,7 @@ worker-3  10.244.3.0/24  192.0.2.13
 
 Confirm that the listed node address is reachable from the external router. On multi-NIC nodes, Flannel's selected underlay address and Kubernetes `InternalIP` can differ; choose a documented next hop that forwards the destination Pod CIDR correctly.
 
-Check for duplicate or missing Node CIDRs before publishing routes. Flannel's Kubernetes subnet manager consumes `.spec.podCIDR`; it does not make duplicate assignments safe.
+Check for duplicate or missing Node CIDRs before publishing routes. Flannel's Kubernetes subnet manager consumes `.spec.podCIDRs` when present and otherwise falls back to `.spec.podCIDR`; it does not make duplicate assignments safe.
 
 ## Install Per-Node Routes on the External Router
 
@@ -48,7 +50,7 @@ These commands change live routing. Apply them only on the intended router with 
 
 Do not point the same Pod subnet at multiple unrelated nodes without a routing protocol and equal-cost design that understands ownership. Do not route the Service CIDR this way; ClusterIPs are virtual addresses implemented by kube-proxy or its replacement, not pod interfaces.
 
-An aggregate route such as `10.244.0.0/16` can point to a deliberate cluster gateway, which then follows Flannel routes to the owning node, but that gateway becomes an extra hop and failure domain. Per-node routes avoid that ambiguity for a small cluster.
+An aggregate route such as `10.244.0.0/16` can point to a deliberate cluster gateway, which then follows Flannel routes to the owning node, but that gateway becomes an extra hop and failure domain. With Flannel's default iptables masquerading, a non-owning Flannel node can also SNAT the request before forwarding it to the owner, hiding the external client address from the pod. Per-node routes avoid that behavior and the routing ambiguity for a small cluster.
 
 ## Verify the Owning Node's Local Route
 
@@ -63,18 +65,18 @@ sysctl net.ipv4.ip_forward
 
 With the usual Flannel bridge delegate, local pods attach to `cni0`, and the node routes their addresses through that bridge. The bridge may not exist until the first ordinary pod is created.
 
-For a remote Pod CIDR, a VXLAN node routes through `flannel.1`; `host-gw` uses a direct node next hop. Sending each external prefix to its owning node avoids unnecessary traversal of that inter-node path.
+For a remote Pod CIDR, the default VXLAN configuration routes through `flannel.1`; when VXLAN `DirectRouting` is enabled, peers on the same subnet use direct routes instead. `host-gw` uses a direct node next hop. Sending each external prefix to its owning node avoids unnecessary traversal of that inter-node path.
 
 ## Preserve Pod Source Addresses on Replies
 
-The default upstream Flannel manifest enables `--ip-masq`. A reply from a pod to an external client is destined outside the Flannel network and can therefore be masqueraded to the node address. The client connected to a Pod IP but sees a reply from another address, which breaks a direct routed session.
+The default upstream Flannel manifest enables `--ip-masq`. This masquerades new pod-initiated connections to destinations outside the Flannel network. Provided both directions traverse the owning node in the same conntrack zone, Flannel does not normally masquerade a reply on a connection initiated by an external client: current Flannel rules exempt the first external packet forwarded directly to that node's Pod CIDR, and Netfilter applies the first packet's resulting NAT decision to the rest of the connection.
 
-For direct bidirectional routing:
+Do not disable `--ip-masq` solely for client-initiated direct sessions; removing it can break ordinary pod egress when the upstream network has no return route to Pod CIDRs. If pods must also initiate new connections to the external client CIDR while retaining their Pod source addresses, use a version-tested, CIDR-scoped no-SNAT policy. If the design instead disables Flannel's global masquerading:
 
-1. Disable Flannel's outside-network `--ip-masq` behavior.
+1. Confirm that every affected destination has a return route to the Pod CIDRs before removing `--ip-masq`.
 2. Set `delegate.ipMasq` explicitly to false in the Flannel CNI configuration; otherwise the plugin derives the inverse of `FLANNEL_IPMASQ` and can ask the bridge delegate to masquerade.
-3. Roll the Flannel DaemonSet and recreate workload pods in a controlled window so the new subnet file and CNI configuration take effect.
-4. Inventory the resulting iptables or nftables rules. Disabling the flag does not guarantee that same-backend Flannel MASQ rules from the earlier configuration are removed; reconcile only identified stale rules with a version-tested, tightly scoped procedure, and never flush the NAT table.
+3. Roll the Flannel DaemonSet so the new subnet file and CNI configuration take effect. Recreate only workloads whose original CNI setup enabled delegate masquerading and therefore requires a new CNI `ADD`.
+4. Inventory the resulting iptables or nftables rules. Neither disabling the flag nor deleting pods after changing the delegate guarantees that Flannel and CNI MASQ rules from the earlier configuration are removed; reconcile only identified stale rules with a version-tested, tightly scoped procedure, and never flush the NAT table.
 5. Confirm that firewalld, an egress gateway, or a cloud NAT layer does not translate the same path.
 
 Verify at the external client or router:
@@ -85,6 +87,7 @@ sudo tcpdump -ni <external-interface> \
 ```
 
 Requests and replies should retain the external client and Pod IPs respectively.
+Repeat the capture on `cni0` or inside the pod to confirm that the request reaches the pod with the external client source intact.
 Use a new connection for this check because an existing conntrack entry can retain the old NAT decision.
 
 ## Permit Forwarding Without Trusting Everything
@@ -101,7 +104,7 @@ sudo nft list ruleset
 sudo firewall-cmd --get-active-zones 2>/dev/null || true
 ```
 
-Allow the external client CIDR to reach only the intended Pod CIDRs and ports, and allow stateful return traffic. Do not set a global `FORWARD ACCEPT` policy. If firewalld is active, model the traffic direction with zones and policies rather than adding transient rules that a reload removes.
+Allow the external client CIDR to reach only the intended Pod CIDRs and ports, and allow stateful return traffic. Do not set a global `FORWARD ACCEPT` policy. Flannel enables its forward-rule management by default and installs broad accepts for traffic to and from its network, so ensure that the narrower controls have effective ordering relative to those rules or enforce them on the upstream router. If firewalld is active, model the traffic direction with zones and policies rather than adding transient rules that a reload removes.
 
 Plain Flannel connectivity does not enforce Kubernetes NetworkPolicy. If pod-level policy is required, deploy and validate Flannel's documented optional network-policy component or another compatible enforcement design.
 
@@ -139,7 +142,7 @@ Test realistic packet sizes. Direct external paths and VXLAN paths can have diff
 
 ## Plan for Ephemeral Pods
 
-Pod IPs change when workloads are recreated. External clients need an authorized discovery mechanism and must tolerate endpoint churn. A headless Service can publish Pod IPs inside cluster DNS, but it does not automatically publish secure external DNS or remove the need for health checks.
+Pod IPs can change when workloads are recreated. External clients need an authorized discovery mechanism and must tolerate endpoint churn. A headless Service can publish Pod IPs inside cluster DNS, but it does not automatically publish secure external DNS or remove the need for health checks.
 
 For stable public or general application exposure, Services, Ingress, or Gateway are usually the better abstraction even when no cloud `LoadBalancer` exists. Direct Pod CIDR routing is best suited to controlled infrastructure integrations that need real pod addresses.
 
@@ -150,8 +153,10 @@ For stable public or general application exposure, Services, Ingress, or Gateway
 - [Flannel configuration and `--ip-masq`](https://github.com/flannel-io/flannel/blob/master/Documentation/configuration.md)
 - [Flannel CNI plugin delegate behavior](https://github.com/flannel-io/cni-plugin)
 - [Flannel backend routing behavior](https://github.com/flannel-io/flannel/blob/master/Documentation/backends.md)
+- [Netfilter NAT and connection-tracking behavior](https://netfilter.org/documentation/HOWTO/netfilter-hacking-HOWTO-3.html)
+- [Flannel NetworkPolicy integration](https://github.com/flannel-io/flannel/blob/master/Documentation/netpol.md)
 - [firewalld policy concepts](https://firewalld.org/documentation/man-pages/firewalld.policies)
 
 ## Conclusion
 
-Route an external network to Flannel pods by publishing each Node Pod CIDR through its owning node, enabling narrowly scoped forwarding, and preserving Pod IPs on replies at both Flannel and CNI delegate layers. Add lifecycle automation and security controls because Flannel does not advertise external routes, stabilize pod endpoints, or enforce policy by itself.
+Route an external network to Flannel pods by publishing each Node Pod CIDR through its owning node, enabling narrowly scoped forwarding, and verifying source addresses end to end. Keep client-initiated direct sessions distinct from pod-initiated egress when evaluating masquerading. Add lifecycle automation and security controls because Flannel does not advertise external routes, stabilize pod endpoints, or enforce policy by itself.
