@@ -30,7 +30,7 @@ kubectl -n "$NS" get endpointslice \
 kubectl -n "$NS" get pods -o wide --show-labels
 ```
 
-Extract one ready endpoint and the Service IP:
+Extract the Service IP and port, then inspect the ready endpoints:
 
 ```bash
 CLUSTER_IP=$(kubectl -n "$NS" get service "$SERVICE" \
@@ -48,7 +48,7 @@ Then compare:
 2. The client reaches the ClusterIP and Service port.
 3. The client resolves the Service DNS name.
 
-For an HTTP workload:
+For an IPv4 HTTP workload in a cluster using the default `cluster.local` DNS domain:
 
 ```bash
 kubectl -n "$NS" exec "$CLIENT" -- \
@@ -67,10 +67,10 @@ If the direct endpoint fails, return to CNI routing, NetworkPolicy, application 
 
 An empty EndpointSlice is not a networking failure. Check:
 
-- The Service selector exactly matches pod labels.
-- Endpoint ports match `targetPort`, including named ports.
-- Endpoint conditions show `ready: true`, unless the Service explicitly publishes not-ready addresses.
-- Pods pass readiness probes.
+- For a selector-based Service, every selector requirement matches the intended pod labels. Pods may have additional labels.
+- EndpointSlice ports match the Service's resolved `targetPort`; named target ports resolve against named container ports on the selected Pods.
+- Endpoint conditions show `ready: true` or omit `ready`, which consumers interpret as true. With `publishNotReadyAddresses: true`, controller-generated endpoints are treated as ready regardless of Pod readiness.
+- Pods are Ready and any configured readiness probes pass, unless non-ready endpoints are intentionally published.
 - The IP family of the client, Service, and endpoints is supported by the cluster.
 
 Inspect traffic policy too:
@@ -82,11 +82,11 @@ kubectl -n "$NS" get service "$SERVICE" \
 
 With `internalTrafficPolicy: Local`, kube-proxy only uses node-local endpoints for internal traffic. A client on a node without a local endpoint can observe a deliberate drop even though remote Pod IP connectivity works. Change that policy only if the required semantics are actually `Cluster`.
 
-Do not add a host route to the ClusterIP. Service virtual IPs are normally captured by proxy rules and are not assigned to a real interface.
+Do not add a host route to the ClusterIP. With kube-proxy, iptables and nftables modes capture Service virtual IPs in proxy rules, while IPVS mode binds them to the `kube-ipvs0` dummy interface; none requires a user-added Service route.
 
 ## Check the Service Proxy on the Client Node
 
-Find the client node:
+Find the client node. The kube-proxy commands below use kubeadm's standard namespace, DaemonSet, label, ConfigMap, and key names; adapt them if your distribution packages kube-proxy differently:
 
 ```bash
 CLIENT_NODE=$(kubectl -n "$NS" get pod "$CLIENT" \
@@ -113,7 +113,7 @@ kubectl -n kube-system get configmap kube-proxy \
 echo
 ```
 
-On the client node, the local health endpoint can reveal the active mode when enabled:
+On the client node, `/proxyMode` on the metrics listener can reveal the active mode, while `/healthz` on the health listener reports health when those listeners are enabled:
 
 ```bash
 curl -fsS http://127.0.0.1:10249/proxyMode
@@ -124,11 +124,13 @@ Linux kube-proxy can use `iptables`, `nftables`, or `ipvs`, depending on Kuberne
 
 ## Inspect the Correct Kernel Rules
 
-For iptables mode:
+Run these commands on the client node. If you opened a new shell there, set `CLUSTER_IP` to the Service IP in that shell first.
+
+For iptables mode, use `ip6tables-save` instead for an IPv6 Service:
 
 ```bash
 sudo iptables-save -t nat | grep -F "$CLUSTER_IP"
-sudo iptables-save -t filter | grep -E 'KUBE-(FORWARD|SERVICES|FIREWALL)'
+sudo iptables-save -t filter | grep -E 'KUBE-(FORWARD|SERVICES|PROXY-FIREWALL|FIREWALL)'
 ```
 
 For nftables mode:
@@ -158,6 +160,8 @@ sudo iptables -L FORWARD -n -v --line-numbers
 sudo nft list ruleset
 ```
 
+The forwarding sysctls and `iptables` command above are IPv4-specific. For IPv6, inspect `net.ipv6.conf.all.forwarding`, `net.bridge.bridge-nf-call-ip6tables`, and the corresponding IPv6 firewall rules; `nft list ruleset` lists both IPv4 and IPv6 nftables tables.
+
 Flannel can install default forward-accept rules when its `--iptables-forward-rules` option is enabled, but host firewall policy can still interfere. firewalld with an nftables backend and kube-proxy using iptables are distinct rule managers; inspect the full active ruleset and service logs before altering either.
 
 If restarting firewalld makes the issue appear, verify its runtime and permanent policies. A reload may replace runtime state, and current firewalld defaults to its nftables backend. Repair ownership and persistence rather than scheduling periodic rule flushes.
@@ -173,6 +177,8 @@ Compare four cases:
 3. A backend pod calls its own Service.
 4. The backend pod calls its own Pod IP directly.
 
+For a deterministic case 3, use a Service with only that backend. With multiple endpoints, kube-proxy can select another pod and hide the hairpin failure.
+
 If only case 3 fails, inspect the CNI delegate. The current upstream Flannel manifest includes `hairpinMode: true`:
 
 ```bash
@@ -180,13 +186,13 @@ sudo sed -n '1,220p' /etc/cni/net.d/10-flannel.conflist
 bridge link show master cni0
 ```
 
-Bridge hairpin is a per-port property applied when the interface is created. If you correct `hairpinMode` in the managed Flannel CNI configuration, restart the Flannel pod so its init container installs the config, and then recreate the affected workload pods through their controller. Merely editing the conflist does not retrofit existing veth ports.
+Bridge hairpin is a mutable per-port property that the bridge CNI plugin sets when it creates each host-side veth. If you correct `hairpinMode` in the managed Flannel CNI configuration, restart the Flannel pod so its init container installs the config, and then recreate the affected workload pods through their controller. Merely editing the conflist does not retrofit existing veth ports.
 
 Kube-proxy may also apply masquerading for hairpin flows depending on mode and topology. Check its logs and mode-specific rules; do not attribute every same-node Service failure to Flannel.
 
 ## Recover and Verify
 
-After fixing configuration, API access, firewall ownership, or kernel support, restart only the affected component:
+After fixing configuration, API access, firewall ownership, or kernel support, restart only the affected component. If kube-proxy needs a restart:
 
 ```bash
 kubectl -n kube-system delete pod "$PROXY_POD"
