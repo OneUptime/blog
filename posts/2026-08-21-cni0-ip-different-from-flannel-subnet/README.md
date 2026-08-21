@@ -10,7 +10,7 @@ Description: Safely repair a stale cni0 bridge whose gateway address no longer m
 
 ## Introduction
 
-The error `cni0 already has an IP address different from ...` comes from the local CNI bridge setup. The bridge already exists with a gateway address from one subnet, while the Flannel CNI plugin is now asking the delegated `bridge` plugin to use another subnet from `/run/flannel/subnet.env`.
+The error `cni0 already has an IP address different from ...` comes from the local CNI bridge setup. The bridge already exists with a gateway address/prefix different from the one the delegated `bridge` plugin now requests. In the upstream bridge plus `host-local` path, that requested gateway is derived from `/run/flannel/subnet.env`.
 
 This frequently follows a Pod CIDR change, a rebuilt cluster on reused hosts, a CNI migration, or a Node object recreation that received a new per-node CIDR. It is local stale state; deleting and reapplying the Flannel DaemonSet alone does not necessarily remove it.
 
@@ -36,7 +36,7 @@ ip -4 address show dev cni0
 ip -4 route show
 ```
 
-For a node assigned `10.244.2.0/24`, a normal upstream-style setup typically writes `FLANNEL_SUBNET=10.244.2.1/24`, and `cni0` uses that gateway address after the first ordinary pod is created. The exact prefix and address family depend on your configuration.
+For a node assigned `10.244.2.0/24`, a normal upstream-style setup typically writes `FLANNEL_SUBNET=10.244.2.1/24`, and `cni0` uses that gateway address after the first ordinary pod is created. These commands inspect IPv4; for an IPv6 mismatch, repeat the address and route checks with `ip -6` and compare `FLANNEL_IPV6_SUBNET`. The exact prefix and enabled address families depend on your configuration.
 
 Also verify that the cluster network agrees:
 
@@ -55,24 +55,42 @@ Check what is attached to the bridge:
 ```bash
 ip link show master cni0
 bridge link show master cni0
-sudo find /var/lib/cni/networks -mindepth 1 -maxdepth 2 -type f -print
 ```
 
 Do not infer that every veth is orphaned just because its name is unfamiliar. Match pod sandboxes through the container runtime:
 
 ```bash
-sudo crictl pods
-sudo crictl ps -a
+sudo crictl pods --no-trunc
+sudo crictl ps -a --no-trunc
 ```
 
-Use the runtime endpoint configured on that node if `crictl` cannot auto-detect it. If live workload sandboxes still use `cni0`, deleting the bridge will break their networking.
+Ensure `crictl` uses the runtime endpoint configured on that node, for example through `/etc/crictl.yaml` or `--runtime-endpoint`; fallback endpoint probing is deprecated. If live workload sandboxes still use `cni0`, deleting the bridge will break their networking.
 
-The local `host-local` plugin maintains allocated addresses on disk. In the upstream Flannel conflist the network name is commonly `cbr0`, so its state is commonly under `/var/lib/cni/networks/cbr0`; custom configurations can use a different name. Read the `name` field instead of assuming the directory.
+The local `host-local` plugin maintains allocated addresses on disk. By default, it stores them under `/var/lib/cni/networks/<network-name>`; the upstream Flannel network name is commonly `cbr0`. Custom configurations can change either the network `name` or `host-local`'s `ipam.dataDir`, so resolve both instead of assuming the path.
 
 ```bash
-sudo jq -r '.name' /etc/cni/net.d/10-flannel.conflist
-sudo ls -la /var/lib/cni/networks/cbr0
+HOST_LOCAL_DIR=$(
+  sudo jq -r '
+    .name as $name
+    | ([.plugins[]? | select(.type == "flannel") | .ipam.dataDir][0]
+       // .ipam.dataDir
+       // "") as $configuredDataDir
+    | (if $configuredDataDir == "" then
+         "/var/lib/cni/networks"
+       else
+         $configuredDataDir
+       end) as $dataDir
+    | "\($dataDir)/\($name)"
+  ' /etc/cni/net.d/10-flannel.conflist
+)
+printf 'host-local state: %s\n' "$HOST_LOCAL_DIR"
+sudo find "$HOST_LOCAL_DIR" -mindepth 1 -maxdepth 1 -type f -print
+sudo find "$HOST_LOCAL_DIR" -mindepth 1 -maxdepth 1 -type f \
+  ! -name lock ! -name 'last_reserved_ip.*' \
+  -exec grep -H . {} +
 ```
+
+Each IP-named allocation file contains the full CNI container or sandbox ID and may also contain the interface name. Correlate those values with the untruncated runtime output, using `crictl inspectp ID` where needed. `lock` and `last_reserved_ip.*` are metadata, not sandbox allocations.
 
 ## Perform a Controlled Node Repair
 
@@ -88,17 +106,37 @@ kubectl drain "$NODE" \
 
 Review disruption budgets and local-storage consequences before accepting drain options. Do not force-delete pods merely to get past an unsafe drain.
 
-On the drained node, stop kubelet so it cannot issue a CNI ADD while the state is being repaired:
+On a systemd-managed drained node whose service is named `kubelet`, stop it so it cannot request a new Pod sandbox, which would cause the container runtime to invoke CNI ADD while the state is being repaired. Use your Kubernetes distribution's equivalent service command on other installations.
 
 ```bash
 sudo systemctl stop kubelet
 
+# Resolve the state directory again if this is a new node shell.
+HOST_LOCAL_DIR=$(
+  sudo jq -r '
+    .name as $name
+    | ([.plugins[]? | select(.type == "flannel") | .ipam.dataDir][0]
+       // .ipam.dataDir
+       // "") as $configuredDataDir
+    | (if $configuredDataDir == "" then
+         "/var/lib/cni/networks"
+       else
+         $configuredDataDir
+       end) as $dataDir
+    | "\($dataDir)/\($name)"
+  ' /etc/cni/net.d/10-flannel.conflist
+)
+
 # Record the exact state before changing it.
-sudo crictl pods
+sudo crictl pods --no-trunc
+sudo crictl ps -a --no-trunc
 sudo ip -d address show dev cni0
 sudo ip link show master cni0
 sudo ip -4 route show
-sudo find /var/lib/cni/networks -mindepth 1 -maxdepth 2 -type f -print
+sudo find "$HOST_LOCAL_DIR" -mindepth 1 -maxdepth 1 -type f -print
+sudo find "$HOST_LOCAL_DIR" -mindepth 1 -maxdepth 1 -type f \
+  ! -name lock ! -name 'last_reserved_ip.*' \
+  -exec grep -H . {} +
 ```
 
 `kubectl drain --ignore-daemonsets` can leave non-host-network DaemonSet or static-pod sandboxes on the node. Correlate every remaining runtime sandbox and interface enslaved to `cni0`. Handle any live attachment through its controller or runtime's supported lifecycle, then repeat both checks. Do not delete the bridge while a live sandbox still uses it.
@@ -110,16 +148,16 @@ Delete only the confirmed stale bridge:
 sudo ip link delete cni0
 ```
 
-Deleting the bridge usually removes routes attached to it. Do not run `ip route flush` or delete `flannel.1`; Flannel owns the cross-node backend and will reconcile it.
+Deleting the bridge usually removes routes attached to it. Do not run `ip route flush` or delete `flannel.1`; it belongs to Flannel's cross-node backend and is outside this `cni0` repair.
 
 If the local host-local database refers only to drained, nonexistent sandboxes, preserve it as a backup instead of recursively deleting all CNI state:
 
 ```bash
-# Replace cbr0 if the conflist's name is different.
-# This moves one verified network directory and is recoverable.
+# HOST_LOCAL_DIR must be the exact directory resolved and inspected above.
+# This moves one verified network directory and is recoverable; never set it
+# to the parent data directory.
 STAMP=$(date +%Y%m%d%H%M%S)
-sudo mv /var/lib/cni/networks/cbr0 \
-  "/var/lib/cni/networks/cbr0.stale-${STAMP}"
+sudo mv "$HOST_LOCAL_DIR" "${HOST_LOCAL_DIR}.stale-${STAMP}"
 ```
 
 Skip that step if the directory is absent or if any listed allocation still belongs to a live sandbox. Never remove the entire `/var/lib/cni` tree as a generic fix.
@@ -138,9 +176,10 @@ kubectl get node "$NODE"
 `cni0` may remain absent until the next non-host-network pod is added. Create a small test pod pinned to the repaired node:
 
 ```bash
-kubectl run cni0-test --image=busybox:1.36 --restart=Never \
+kubectl run cni0-test --image=busybox:1.38.0 --restart=Never \
   --overrides="{\"spec\":{\"nodeName\":\"${NODE}\"}}" -- sleep 3600
 
+kubectl wait --for=condition=Ready pod/cni0-test --timeout=2m
 kubectl get pod cni0-test -o wide
 kubectl describe pod cni0-test
 ```
@@ -152,10 +191,17 @@ ip -4 address show dev cni0
 sudo cat /run/flannel/subnet.env
 ```
 
-The bridge address and `FLANNEL_SUBNET` should now agree. Test a remote Pod IP before uncordoning:
+In the upstream bridge plus `host-local` setup, the bridge address and `FLANNEL_SUBNET` should now agree. Choose a remote Pod that permits ICMP and test its IP before uncordoning:
 
 ```bash
-kubectl exec cni0-test -- ping -c 3 <remote-pod-ip>
+REMOTE_POD_IP=10.244.1.2  # Replace with a Pod IP on another node.
+kubectl exec cni0-test -- ping -c 3 "$REMOTE_POD_IP"
+```
+
+If the test succeeds, remove the test pod and uncordon the node:
+
+```bash
+kubectl delete pod cni0-test
 kubectl uncordon "$NODE"
 ```
 
@@ -164,8 +210,8 @@ kubectl uncordon "$NODE"
 A returning mismatch means something upstream keeps changing the requested subnet. Check for:
 
 - Node deletion and recreation with a new CIDR while old node-local state remains.
-- Multiple primary CNI conflists selected in filename order.
-- A Flannel `Network` value different from the controller-manager cluster CIDR.
+- Multiple CNI configuration files causing the container runtime to select an unintended primary configuration; containerd commonly uses lexicographic filename order, but selection is runtime-specific.
+- A Flannel `Network` value that does not contain the Node's assigned Pod CIDR, or otherwise conflicts with the controller-manager Pod CIDR range.
 - Automation restoring an old CNI configuration after boot.
 - A cloned machine image containing `/var/lib/cni` state.
 - Duplicate node names or duplicate Node CIDRs.
