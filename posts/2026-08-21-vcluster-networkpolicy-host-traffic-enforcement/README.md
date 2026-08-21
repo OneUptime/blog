@@ -80,7 +80,7 @@ policies:
         enabled: false
 ```
 
-This setting still needs an enforcing host CNI. It also covers only the vCluster release namespace. If namespace synchronization maps tenant namespaces into additional host namespaces, provision equivalent host policies in each mapped namespace.
+This setting still needs an enforcing host CNI. It also covers only the vCluster release namespace. In vCluster 0.36, `sync.toHost.networkPolicies` is not supported with `sync.toHost.namespaces`; tenant NetworkPolicy objects do not sync in namespace-sync mode. If namespace synchronization maps tenant namespaces into additional host namespaces, provision equivalent platform-owned host policies in each mapped namespace.
 
 ## Understand the Additive-Policy Trap
 
@@ -97,7 +97,7 @@ spec:
 
 vCluster scopes label-based Pod peers with tenant markers during translation, which helps prevent a tenant selector from matching another tenant's translated Pods. It cannot add tenant identity to an `ipBlock`, and a rule with no `to` or `from` peers matches all destinations or sources under Kubernetes semantics.
 
-If tenant-authored policies are synchronized, place the non-overridable platform boundary at a higher-priority layer, such as an AdminNetworkPolicy with `Deny` actions or a CNI-specific tier that precedes ordinary NetworkPolicy. Another option is host admission that rejects translated policies containing unrestricted `ipBlock` peers or ingress/egress rules with no peer list. BaselineAdminNetworkPolicy is intentionally overridable and is not a substitute for a mandatory deny boundary.
+If tenant-authored policies are synchronized, place the non-overridable platform boundary at a higher-priority layer, such as a Network Policy API `ClusterNetworkPolicy` with `spec.tier: Admin` and `Deny` actions when that API is installed and supported by the host network-policy implementation, or a CNI-specific tier that precedes ordinary NetworkPolicy. Another option is host admission that rejects translated policies containing an `ipBlock` peer outside an explicit allowlist or ingress/egress rules with no peer list. The Network Policy API `Baseline` tier is intentionally overridable and is not a substitute for a mandatory deny boundary.
 
 ## Test the Interfaces that Matter
 
@@ -108,7 +108,7 @@ Use a matrix rather than one `curl` command:
 | Tenant app Pod | Approved same-tenant Service | Allowed |
 | Tenant app Pod | DNS | Allowed |
 | Tenant A Pod | Tenant B Pod IP and Service | Denied |
-| Tenant Pod | Host management Service | Denied |
+| Tenant Pod | Host management Service | Denied; resident-node paths need a separate host control |
 | Tenant Pod | `169.254.169.254` cloud metadata | Denied |
 | Approved ingress path | Tenant Service | Allowed |
 
@@ -116,8 +116,8 @@ Run the client in the tenant, but observe the translated source Pod and host-sid
 
 Be explicit about networking outside the portable NetworkPolicy model:
 
-- Traffic from `hostNetwork: true` Pods is undefined by the Kubernetes NetworkPolicy specification and behavior varies by CNI. Deny host networking through Pod Security and admission.
-- NetworkPolicy covers the primary Pod interface. Multus or direct underlay secondary interfaces need their own isolation controls.
+- Standard NetworkPolicy always allows traffic to and from a Pod's resident node. Behavior involving `hostNetwork: true` Pods is otherwise undefined and varies by network plugin. Deny host networking through Pod Security Admission, and use an appropriate host or network-plugin control when resident-node traffic must be blocked.
+- Do not assume standard NetworkPolicy covers Multus or direct underlay secondary interfaces; enforce and test those interfaces separately.
 - Service, ingress, load balancer, and Gateway behavior can involve node-local, proxy, or controller traffic; test the exact path your CNI and controller implement.
 - Policies select Pods by labels. Verify the translated Pod has the labels the translated policy expects.
 
@@ -125,16 +125,17 @@ Be explicit about networking outside the portable NetworkPolicy model:
 
 First confirm that the host CNI enforces policy in a disposable namespace. Next establish platform-owned default-deny controls and explicit DNS, control-plane, metrics, storage, and ingress allowances. Test them with tenant policy sync still disabled. Only then decide whether tenants need to author their own host-effective policies.
 
-If they do, enable sync for a canary tenant, enforce policy-shape admission, and rerun cross-tenant and metadata tests. Keep the vCluster configuration in an operator-controlled template so the synchronization and platform policy settings cannot drift independently.
+If they do and namespace synchronization is disabled, enable sync for a canary tenant, enforce policy-shape admission, and rerun cross-tenant and metadata tests. Keep the vCluster configuration in an operator-controlled template so the synchronization and platform policy settings cannot drift independently.
 
 ## Official Documentation
 
 - [vCluster: Sync NetworkPolicies to the control plane cluster](https://www.vcluster.com/docs/vcluster/configure/vcluster-yaml/sync/to-host/networking/network-policies)
 - [vCluster: Managed network policy configuration](https://www.vcluster.com/docs/vcluster/configure/vcluster-yaml/policies/network-policy)
+- [vCluster: Namespace synchronization limitations](https://www.vcluster.com/docs/vcluster/configure/vcluster-yaml/sync/to-host/advanced/namespaces#networkpolicy-syncing-is-disabled)
 - [vCluster: Shared-node security hardening](https://www.vcluster.com/docs/vcluster/security/shared-nodes-hardening)
 - [vCluster: Shared Nodes quick start](https://www.vcluster.com/docs/vcluster/quick-start/shared-nodes)
 - [Kubernetes: Network policies](https://kubernetes.io/docs/concepts/services-networking/network-policies/)
-- [Kubernetes: AdminNetworkPolicy](https://kubernetes.io/docs/concepts/services-networking/network-policies/#adminnetworkpolicy)
+- [Kubernetes SIG Network Policy API: ClusterNetworkPolicy](https://network-policy-api.sigs.k8s.io/reference/spec/)
 
 ## Conclusion
 

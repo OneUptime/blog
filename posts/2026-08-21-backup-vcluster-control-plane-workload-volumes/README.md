@@ -133,7 +133,7 @@ velero restore logs team-a-restore-test
 
 Namespace remapping can be difficult for vCluster because cluster-scoped bindings and volumes may contain namespace references. Test the exact destination topology rather than assuming a backup can be moved to any namespace. For a changed name, namespace, or topology, follow vCluster's documented create or migration restore workflow instead of this in-place sequence.
 
-Calculate the effective recovery-point age from the oldest coordinated state component and measure the actual recovery duration through application validation—not merely until either tool reports completion—then verify both meet the documented recovery point and recovery time objectives.
+Calculate the effective recovery-point age from the oldest coordinated state component and measure the actual recovery duration through application validation-not merely until either tool reports completion-then verify both meet the documented recovery point and recovery time objectives.
 
 ## Official Documentation
 

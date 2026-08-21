@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Flannel, Calico, CNI Migration, Route, Troubleshooting
 
-Description: Migrate a node from Calico to Flannel by inventorying and safely removing stale Calico CNI configuration, interfaces, routes, and confirmed host-local IPAM state.
+Description: Migrate a node from Calico to Flannel by inventorying and safely removing stale Calico CNI configuration, interfaces, routes, and local IPAM state.
 
 ---
 

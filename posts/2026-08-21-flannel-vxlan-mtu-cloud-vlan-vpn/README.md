@@ -40,7 +40,7 @@ ip link show <vlan-or-vpn-interface>
 tracepath -n <peer-node-underlay-ip>
 ```
 
-The limiting value is the minimum Layer 3 MTU across the complete node-to-node path—the largest IP packet that can traverse it without fragmentation—not necessarily the MTU displayed by the physical NIC.
+The limiting value is the minimum Layer 3 MTU across the complete node-to-node path-the largest IP packet that can traverse it without fragmentation-not necessarily the MTU displayed by the physical NIC.
 
 ## Measure With Don't-Fragment Probes
 
@@ -162,7 +162,7 @@ Also test:
 - Retransmissions with `ss -ti`, packet capture, or application metrics.
 - `ip -s link` counters on pod veth, `cni0`, `flannel.1`, and underlay devices.
 
-If large direct Pod IP traffic to every EndpointSlice backend works but the same traffic through the ClusterIP fails, switch to Service, EndpointSlice, and service-proxy diagnosis—often kube-proxy; MTU is no longer the leading explanation.
+If large direct Pod IP traffic to every EndpointSlice backend works but the same traffic through the ClusterIP fails, switch to Service, EndpointSlice, and service-proxy diagnosis-often kube-proxy; MTU is no longer the leading explanation.
 
 ## Official Documentation
 

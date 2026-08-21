@@ -8,9 +8,9 @@ Description: Trace an Ingress backend from its Service port to ready EndpointSli
 
 ---
 
-An Ingress resource does not forward packets by itself. It declares HTTP routing rules, and an Ingress controller turns those rules into proxy or load-balancer configuration. The Ingress backend names a Service and one of its ports; it does not contain a Pod selector, ClusterIP, or endpoint list.
+An Ingress resource does not forward packets by itself. It declares HTTP routing rules, and an Ingress controller turns those rules into proxy or load-balancer configuration. A Service-backed Ingress backend names a Service and one of its ports; it does not contain a Pod selector, ClusterIP, or endpoint list.
 
-For a regular Service, a controller can choose between the Service ClusterIP and the Service's endpoints. For a headless Service, `.spec.clusterIP` is `None`, so a controller that supports headless backends must obtain ready backend addresses from the Service's EndpointSlices and route directly to those IP-and-port pairs.
+For a regular Service, a controller can choose between the Service ClusterIP and the Service's endpoints. For a headless Service, `.spec.clusterIP` is `None`, so a controller cannot route through a Service virtual IP. An EndpointSlice-based controller that supports headless backends must obtain usable backend addresses from all of the Service's EndpointSlices and route directly to those IP-and-port pairs.
 
 This behavior is controller-specific. The Kubernetes Ingress API is stable but frozen, and it does not require every implementation to support every headless-Service arrangement. Confirm support in your controller's documentation and test it before adopting the pattern.
 
@@ -19,6 +19,11 @@ This behavior is controller-specific. The Kubernetes Ingress API is stable but f
 The following objects put the Ingress, Service, and Pods in the same namespace:
 
 ~~~yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: apps
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -112,7 +117,7 @@ kubectl -n apps get endpointslice \
   -o yaml
 ~~~
 
-Do not pick one slice by an assumed generated name. A Service can have several slices, and the controller must join them to obtain the full backend set. Kubernetes separates slices by IP family, protocol, port number, and Service name; by default a controller-managed slice holds no more than 100 endpoints.
+Do not pick one slice by an assumed generated name. A Service can have several slices, and a controller that consumes EndpointSlices must join them to obtain the full backend set. Kubernetes separates slices by IP family, protocol, port number, and Service name; by default, the Kubernetes control plane creates and manages EndpointSlices with no more than 100 endpoints each.
 
 For each expected backend, verify:
 
@@ -125,7 +130,7 @@ For each expected backend, verify:
 
 ## Readiness Changes the Ingress Upstream Set
 
-For Pod-backed Services, EndpointSlice conditions reflect Pod lifecycle. `ready` generally means the endpoint is serving and not terminating. Ingress controllers normally exclude endpoints that are not ready, although exact terminating-endpoint behavior is implementation-specific.
+For selector-based Services backed by Pods, Kubernetes-managed EndpointSlice conditions reflect Pod lifecycle. `ready` generally means the endpoint is serving and not terminating. Ingress controllers normally exclude endpoints that are not ready, although exact terminating-endpoint behavior is implementation-specific.
 
 Check readiness and correlate Pod IPs:
 
@@ -139,14 +144,14 @@ Avoid `publishNotReadyAddresses: true` on a general HTTP backend merely to make 
 
 ## Understand Controller-Specific Modes
 
-Some controllers normally build their upstreams from Pod endpoints but offer an option to route through the Service ClusterIP instead. For example, the community ingress-nginx controller documents `nginx.ingress.kubernetes.io/service-upstream: "true"` as switching from endpoint lists to a single Service ClusterIP upstream.
+Some controllers normally build their upstreams from Pod endpoints but offer an option to route through the Service ClusterIP instead. For example, the now-retired community ingress-nginx controller documents `nginx.ingress.kubernetes.io/service-upstream: "true"` as switching from endpoint lists to a single Service ClusterIP upstream. The project was retired on March 24, 2026 and no longer receives releases, bug fixes, or security patches, so treat this as a behavior reference for existing deployments rather than a recommendation for new ones.
 
-That mode is incompatible with the basic premise of a headless Service because there is no ClusterIP to target. Do not enable a ClusterIP-upstream option on a headless backend unless the controller explicitly documents a special behavior for it.
+That annotation cannot provide its advertised single-ClusterIP upstream for a headless Service because there is no ClusterIP. In the final ingress-nginx release, v1.15.1, the failed ClusterIP lookup logs an error and falls back to EndpointSlice-derived endpoints. Do not assume that other controllers or versions provide the same fallback; confirm their documented behavior.
 
 Other controllers might reject a headless backend, resolve the Service DNS name, watch legacy Endpoints, or watch EndpointSlices. Kubernetes does not standardize those internal choices. The safe workflow is:
 
 1. read the documentation for the exact controller and version;
-2. check its RBAC includes list/watch access to EndpointSlices;
+2. if it consumes EndpointSlices, check that its RBAC includes list/watch access to them;
 3. inspect controller events and logs after applying the Ingress;
 4. verify its generated upstream configuration or metrics when supported;
 5. test backend removal by making one Pod unready and confirming new traffic stops reaching it.
@@ -193,7 +198,7 @@ For a selectorless headless Service, `port` must equal `targetPort`. Verify that
 
 ## Diagnose a 502 or 503
 
-A controller often returns 502 or 503 when the route matched but no usable upstream was configured. Inspect all layers:
+A controller may return 502 or 503 when the route matched but no usable upstream is available. Inspect all layers:
 
 ~~~bash
 kubectl -n apps get ingress web -o wide
@@ -201,7 +206,7 @@ kubectl -n apps get service web-headless -o yaml
 kubectl -n apps get endpointslice \
   -l kubernetes.io/service-name=web-headless \
   -o yaml
-kubectl -n apps get events --sort-by=.lastTimestamp
+kubectl -n apps get events --sort-by=.metadata.creationTimestamp
 ~~~
 
 Then inspect the controller in its own namespace:
@@ -221,8 +226,10 @@ Look for an unsupported headless Service, unresolved port name, empty ready endp
 - [Kubernetes EndpointSlices](https://kubernetes.io/docs/concepts/services-networking/endpoint-slices/)
 - [EndpointSlice v1 API reference](https://kubernetes.io/docs/reference/kubernetes-api/discovery/endpoint-slice-v1/)
 - [Ingress-NGINX Service Upstream behavior](https://kubernetes.github.io/ingress-nginx/user-guide/nginx-configuration/annotations/#service-upstream)
+- [Ingress-NGINX v1.15.1 ClusterIP fallback](https://github.com/kubernetes/ingress-nginx/blob/controller-v1.15.1/internal/ingress/controller/controller.go#L1115-L1173)
+- [Ingress-NGINX retirement status](https://kubernetes.io/blog/2026/04/22/kubernetes-v1-36-release/#ingress-nginx-retirement)
 - [Kubernetes Gateway API](https://kubernetes.io/docs/concepts/services-networking/gateway/)
 
 ## Conclusion
 
-An Ingress names a Service port; the controller decides how to reach it. With a headless Service there is no ClusterIP, so supporting controllers must derive upstream IP-and-port pairs from the complete set of ready EndpointSlices. Verify that behavior for the installed controller, keep Service and endpoint ports aligned, and debug the Ingress, Service, slices, and controller as one chain.
+A Service-backed Ingress names a Service port; the controller decides how to reach it. With a headless Service there is no ClusterIP, so controllers that consume EndpointSlices derive upstream IP-and-port pairs from ready endpoints across the complete set of slices. Verify that behavior for the installed controller, keep Service and endpoint ports aligned, and debug the Ingress, Service, slices, and controller as one chain.

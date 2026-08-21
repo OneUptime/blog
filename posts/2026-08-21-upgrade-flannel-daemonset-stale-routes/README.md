@@ -14,7 +14,7 @@ Flannel runs a control plane in each DaemonSet pod while most non-UDP backends u
 
 This guide assumes Flannel uses the Kubernetes subnet manager (`--kube-subnet-mgr`), as the upstream Kubernetes manifest does. For etcd-backed deployments, validate subnet ownership against the current Flannel leases in etcd instead of Kubernetes Node objects and annotations.
 
-A safe upgrade keeps the cluster Pod network and data-plane configuration—including the backend, VNI and port, interface and public-IP selection, MTU, and node CIDRs—unchanged, rolls one node at a time, and verifies peer routes against current Kubernetes Node objects and Flannel annotations. Treat changes to any of those settings as separate network work, not part of a routine image update.
+A safe upgrade keeps the cluster Pod network and data-plane configuration-including the backend, VNI and port, interface and public-IP selection, MTU, and node CIDRs-unchanged, rolls one node at a time, and verifies peer routes against current Kubernetes Node objects and Flannel annotations. Treat changes to any of those settings as separate network work, not part of a routine image update.
 
 ## Freeze the Upgrade Scope
 

@@ -1975,6 +1975,7 @@
 - Batch Scheduling
 - Batch Size
 - Batch Translation
+- Batch Workloads
 - Batch Writes
 - Batching
 - BatchSpanProcessor
@@ -2347,6 +2348,7 @@
 - Bridge fdb
 - Bridge Letter
 - Bridge Management
+- Bridge Netfilter
 - Bridge Network
 - Bridge Networking
 - Bridge Priority
@@ -3361,6 +3363,7 @@
 - CLUSTER DELSLOTSRANGE
 - Cluster Diagnostics
 - Cluster Discovery
+- Cluster Domain
 - Cluster Expansion
 - Cluster Extensions
 - CLUSTER FAILOVER
@@ -3458,7 +3461,9 @@
 - CNCF
 - CNF
 - CNI
+- CNI Bridge
 - CNI Chaining
+- CNI Migration
 - CO-RE
 - COALESCE
 - Coalescelist
@@ -8105,6 +8110,7 @@
 - Hadolint
 - Hadoop
 - Hairpin
+- Hairpin Mode
 - Hairpin NAT
 - HAL
 - Half-Open
@@ -8443,6 +8449,7 @@
 - Host_vars
 - Host-Based Authentication
 - Host-Based Routing
+- Host-Local IPAM
 - Host-to-Host
 - Hostapd
 - Hosted Control Planes
@@ -8998,6 +9005,7 @@
 - Index Tuning
 - Index Usage
 - index_granularity
+- Indexed Job
 - IndexedDB
 - Indexer
 - Indexer Management
@@ -9406,6 +9414,7 @@
 - IP Library
 - Ip link
 - IP Management
+- IP Masquerade
 - Ip monitor
 - IP Monitoring
 - Ip neigh
@@ -10374,6 +10383,7 @@
 - Linux Namespaces
 - Linux Networking
 - Linux Optimization
+- Linux Routing
 - Linux Security
 - Linux tc
 - Linux Virtual Server
@@ -11891,6 +11901,7 @@
 - Named Entity Recognition
 - Named IP Lists
 - Named Locations
+- Named Ports
 - Named Profiles
 - Named Resources
 - Named Volumes
@@ -12334,6 +12345,7 @@
 - Node Identity
 - Node Information
 - Node IP
+- Node IPAM
 - Node Labels
 - Node Lifecycle
 - Node Local DNS Cache
@@ -13357,6 +13369,7 @@
 - PECL
 - Peek Messages
 - Peer
+- Peer Communication
 - Peer Configuration
 - Peer Discovery
 - Peer Groups
@@ -13721,6 +13734,7 @@
 - Pod Disruption
 - Pod Disruption Budget
 - Pod Distribution
+- Pod DNS
 - Pod Eviction
 - Pod Garbage Collection
 - Pod Hardening
@@ -17911,6 +17925,7 @@
 - Submission
 - Submodules
 - Subnet Access
+- Subnet Configuration
 - Subnet conflict
 - Subnet Count
 - Subnet Design
@@ -19253,6 +19268,7 @@
 - UDM Search
 - UDP
 - UDP 500
+- UDP 8472
 - UDP Encapsulation
 - UDP Port
 - UdpSocket
@@ -19615,6 +19631,7 @@
 - VBS
 - VCenter
 - VCL
+- VCluster
 - VCN
 - VCore
 - VCS
