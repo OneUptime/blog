@@ -78,7 +78,6 @@
 
 ## vCluster
 
-16. How to Enforce ResourceQuota, LimitRange, Pod Security, and NetworkPolicy Around a vCluster Tenant
 17. Why a NetworkPolicy Inside vCluster May Not Isolate Host Traffic—and Where to Enforce It
 18. How to Debug AWS IRSA for ServiceAccounts Synced from vCluster to EKS
 19. How to Pin vCluster Workloads to Dedicated Host Nodes with Labels, Taints, and Tolerations
