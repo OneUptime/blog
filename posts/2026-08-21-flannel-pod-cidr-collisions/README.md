@@ -33,16 +33,23 @@ kubectl -n kube-system get configmap kubeadm-config \
 echo
 ```
 
-On a kubeadm control-plane node, confirm the effective flags rather than trusting stored configuration alone:
+On Kubernetes 1.33 or later, also list every ServiceCIDR object. Additional Service ranges can be added without changing kubeadm's stored configuration or the API server's default range:
+
+```bash
+kubectl get servicecidrs.networking.k8s.io \
+  -o custom-columns='NAME:.metadata.name,CIDRS:.spec.cidrs[*]'
+```
+
+On every kubeadm control-plane node, confirm the effective flags rather than trusting stored configuration alone:
 
 ```bash
 sudo grep -E -- \
-  '--(cluster-cidr|service-cluster-ip-range|node-cidr-mask-size)' \
+  '--(allocate-node-cidrs|cluster-cidr|service-cluster-ip-range|node-cidr-mask-size)' \
   /etc/kubernetes/manifests/kube-controller-manager.yaml \
   /etc/kubernetes/manifests/kube-apiserver.yaml
 ```
 
-Flannel's `Network`, controller-manager's cluster CIDR, and every Node Pod CIDR must describe one consistent Pod address space. The Service CIDR must be separate.
+For each enabled address family, Flannel's `Network` or `IPv6Network`, controller-manager's cluster CIDR, and every Node Pod CIDR must describe one consistent Pod address space. Every Service CIDR must be separate from the Pod and node address ranges.
 
 ### Host and underlay ranges
 
@@ -64,7 +71,8 @@ For NetworkManager-managed VPNs:
 
 ```bash
 nmcli connection show --active
-nmcli -f GENERAL,IP4,IP6 connection show <vpn-connection-name>
+VPN_CONNECTION='your-vpn-connection-name'
+nmcli -f GENERAL,IP4,IP6 connection show "$VPN_CONNECTION"
 ```
 
 Also export VPC route tables, transit-gateway routes, security appliance networks, peered clusters, and on-premises router prefixes. A host inventory cannot reveal a conflicting route that is installed only upstream.
@@ -94,7 +102,7 @@ for index, left in enumerate(names):
 PY
 ```
 
-Replace every example with real inventory data. Check IPv4 and IPv6 independently.
+Replace every example with real inventory data. The script reports relationships, not automatically faults: aggregate Pod ranges should agree, each per-node Pod CIDR should be contained within them without overlapping another node's Pod CIDR, and deliberately extended Service CIDRs can overlap. Treat overlap between independent address domains as a collision. Check IPv4 and IPv6 independently.
 
 ## Prove a Collision in the Live Route Decision
 
@@ -103,12 +111,14 @@ Choose a failing Pod IP and ask the kernel which route wins on the source node:
 ```bash
 POD_IP=10.244.20.17
 ip route get "$POD_IP"
-ip route show match "$POD_IP"
+ip route show table all match "$POD_IP"
 ```
 
-For a remote Flannel VXLAN pod, the result should normally use `flannel.1`. For `host-gw`, it should use the remote node next hop. If it instead uses `tun0`, `wg0`, a LAN interface, or a Docker bridge, the host chose the competing route.
+The plain `ip route get` lookup models host-originated traffic. If the failing packet is forwarded from a pod and policy routing uses packet attributes, repeat the lookup with its source and ingress interface (`from` and `iif`) plus any relevant `mark`, `vrf`, `ipproto`, or port selectors.
 
-Linux prefers the longest matching prefix before route metric. Flannel normally installs one route per remote node lease, such as `10.244.20.0/24`; a VPN's `10.244.20.0/25` therefore wins for addresses in that more-specific half of the subnet. If both competing routes are `/24`, longest-prefix matching does not decide between them: inspect policy rules, routing tables, metrics, protocols, and the actual `ip route get` result. A broad VPN route such as `10.240.0.0/12` normally loses to Flannel's remote `/24` for that destination, so changing only the default-route metric may not address the real collision.
+For a remote Flannel VXLAN pod, the `ip route get` result should normally use `flannel.1`. For `host-gw`, it should use the remote node next hop. If it instead uses `tun0`, `wg0`, a LAN interface, or a Docker bridge, the host chose the competing route.
+
+Linux evaluates routing-policy rules in priority order; within each table lookup, it prefers the longest matching prefix before route metric. A policy rule can therefore select a less-specific route from a different table. Flannel normally installs one route per remote node lease, such as `10.244.20.0/24`; when both routes are considered in the same table, a VPN's `10.244.20.0/25` wins for addresses in that more-specific half of the subnet. If both competing routes are `/24`, longest-prefix matching does not decide between them: inspect policy rules, routing tables, metrics, multipath next hops, and the actual `ip route get` result. A route's `proto` value identifies its origin; it is not a general route-selection tie-breaker. A broad VPN route such as `10.240.0.0/12` in the same table normally loses to Flannel's remote `/24` for that destination, so changing only the default-route metric may not address the real collision.
 
 Watch a VPN or network agent change the table:
 
@@ -122,8 +132,8 @@ Then connect or disconnect the VPN in a controlled test. Do not delete a corpora
 
 - Duplicate node Pod CIDRs cause two nodes to claim the same pod subnet; check for duplicates separately.
 - A wrong Flannel interface affects the outer node-to-node path even when Pod CIDRs do not overlap.
-- Missing UDP 8472 affects VXLAN between nodes but does not create a competing route.
-- Service CIDR failures with working Pod IPs point toward kube-proxy.
+- Blocking the configured VXLAN UDP port (8472 by default on Linux) affects encapsulated VXLAN traffic between nodes but does not create a competing route.
+- Service CIDR failures with working Pod IPs can point toward the Service proxy (`kube-proxy` in a default kubeadm deployment).
 - MTU problems usually allow small packets but fail larger ones.
 
 A route collision generally follows destination prefix boundaries and changes with route presence.
@@ -149,7 +159,7 @@ Before admitting a new node or network peer:
 1. Export Pod, Service, and Node CIDRs.
 2. Export all node route tables with and without VPNs.
 3. Query cloud and physical router tables.
-4. Run CIDR-aware pairwise overlap checks.
+4. Run CIDR-aware pairwise overlap checks and classify each result by address domain.
 5. Test representative addresses with `ip route get` on each node class.
 6. Repeat for both IP families and every connected cluster.
 
@@ -160,6 +170,7 @@ Treat network ranges as change-controlled cluster API, not installation defaults
 - [Kubernetes: Creating a cluster with kubeadm](https://kubernetes.io/docs/setup/production-environment/tools/kubeadm/create-cluster-kubeadm/#pod-network)
 - [Kubernetes cluster networking and non-overlapping ranges](https://kubernetes.io/docs/concepts/cluster-administration/networking/#kubernetes-ip-address-ranges)
 - [Kubernetes dual-stack configuration](https://kubernetes.io/docs/concepts/services-networking/dual-stack/)
+- [Kubernetes: Extend Service IP ranges](https://kubernetes.io/docs/tasks/network/extend-service-ip-ranges/)
 - [Flannel README and custom Pod CIDR requirement](https://github.com/flannel-io/flannel/blob/master/README.md)
 - [Flannel configuration reference](https://github.com/flannel-io/flannel/blob/master/Documentation/configuration.md)
 
