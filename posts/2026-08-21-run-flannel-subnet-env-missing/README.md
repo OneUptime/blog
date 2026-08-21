@@ -10,9 +10,9 @@ Description: Trace why Flannel's subnet.env file is absent by following the Daem
 
 ## Introduction
 
-`/run/flannel/subnet.env` is a hand-off file between two components. `flanneld` writes the node's network, subnet, MTU, and masquerade setting into the file. Later, when a container runtime invokes the Flannel CNI plugin for a pod, the plugin reads that file and constructs a delegated configuration-normally for the `bridge` and `host-local` plugins.
+`/run/flannel/subnet.env` is a hand-off file between two components. `flanneld` writes the cluster-wide Flannel network, the node's subnet, MTU, and masquerade setting into the file. Later, when a container runtime invokes the Flannel CNI plugin for a pod, the plugin reads that file and constructs configuration for a delegated interface plugin, `bridge` by default, with `host-local` as the default IPAM plugin.
 
-If the file is missing, the CNI error is downstream evidence. The root cause is usually earlier: the DaemonSet did not reach the node, an init container failed, `flanneld` could not read cluster configuration or acquire the node lease, or its `/run/flannel` hostPath is not the path the runtime sees.
+If the file is missing, the CNI error is downstream evidence. The root cause is usually earlier: the DaemonSet did not reach the node, an init container failed, `flanneld` could not read cluster configuration or acquire its Flannel subnet lease from the Node's Pod CIDR, or its `/run/flannel` hostPath is not the path the runtime sees.
 
 ## Understand the Initialization Sequence
 
@@ -36,14 +36,15 @@ kubectl -n kube-flannel get pods -l app=flannel -o wide
 
 FLANNEL_POD=$(kubectl -n kube-flannel get pods -l app=flannel \
   --field-selector "spec.nodeName=${NODE}" \
-  -o jsonpath='{.items[0].metadata.name}')
+  -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}' \
+  | head -n 1)
 
 kubectl -n kube-flannel get pod "$FLANNEL_POD" \
   -o jsonpath='{range .status.initContainerStatuses[*]}{.name}{"\t"}{.state}{"\n"}{end}'
 kubectl -n kube-flannel describe pod "$FLANNEL_POD"
 ```
 
-If no pod is returned, solve DaemonSet scheduling first. Check node selectors, taints and tolerations, OS labels, Pod Security admission, and image availability.
+If no pod is returned, solve DaemonSet scheduling or admission first. Check node selectors, taints and tolerations, OS labels, and Pod Security admission. If a pod exists but has not started, also check image availability.
 
 ## Separate Init-Container Failures From flanneld Failures
 
@@ -64,7 +65,7 @@ Typical branches are:
 - `failed to read net conf` points to the `kube-flannel-cfg` ConfigMap or its mount at `/etc/kube-flannel`.
 - `node ... pod cidr not assigned` means `.spec.podCIDR` is empty.
 - An interface-selection or backend error prevents Flannel from completing initialization and writing usable state.
-- Kubernetes API authorization or reachability errors prevent the subnet manager from observing Node leases.
+- Kubernetes API authorization or reachability errors prevent the subnet manager from getting its own Pod, listing or watching Node objects, or patching Node status and Flannel annotations.
 
 ## Verify the Inputs to the Subnet File
 
@@ -77,9 +78,16 @@ kubectl -n kube-flannel get configmap kube-flannel-cfg \
 echo
 
 kubectl get clusterrole flannel -o yaml
-kubectl auth can-i get nodes \
+kubectl auth can-i get "pods/${FLANNEL_POD}" \
+  -n kube-flannel \
   --as=system:serviceaccount:kube-flannel:flannel
-kubectl auth can-i patch nodes/status \
+kubectl auth can-i get "nodes/${NODE}" -A \
+  --as=system:serviceaccount:kube-flannel:flannel
+kubectl auth can-i list nodes -A \
+  --as=system:serviceaccount:kube-flannel:flannel
+kubectl auth can-i watch nodes -A \
+  --as=system:serviceaccount:kube-flannel:flannel
+kubectl auth can-i patch "nodes/${NODE}" --subresource=status -A \
   --as=system:serviceaccount:kube-flannel:flannel
 ```
 
@@ -105,7 +113,7 @@ kubectl -n kube-flannel get pod "$FLANNEL_POD" -o json \
   | jq '.spec.volumes, .spec.containers[].volumeMounts, .spec.initContainers[].volumeMounts'
 ```
 
-`/run` is commonly volatile and is recreated at boot. Its being empty immediately after a reboot is not itself corruption; the Flannel DaemonSet must start and repopulate the file. A persistent failure after Flannel is Ready deserves investigation.
+`/run` is commonly volatile and is recreated at boot. Its being empty immediately after a reboot is not itself corruption; the Flannel DaemonSet must start and repopulate the file. A persistent failure after `flanneld` logs that it wrote the subnet file deserves investigation. When the deployed manifest uses Flannel's `/readyz` readiness probe, Pod `Ready` indicates that traffic rules were installed and this `flanneld` process completed the initial subnet-file write; the probe does not continuously verify that the file still exists.
 
 If your deployment changed `--subnet-file`, the CNI config's `subnetFile` must point to the same host-visible path. The plugin default is `/run/flannel/subnet.env`. Mounting a different file only inside the Flannel container does not help the host runtime.
 
@@ -122,14 +130,20 @@ FLANNEL_IPMASQ=true
 
 Values vary with the node, backend, outer-interface MTU, and configuration. Do not copy this example onto a node. A fabricated subnet can duplicate another node, give pods the wrong MTU, or send traffic into a conflicting network.
 
-The CNI plugin uses these values to build its delegate configuration. By default it sets the delegated subnet from `FLANNEL_SUBNET`, supplies a route for the Flannel network, passes the MTU, and uses `host-local` IPAM. That means `subnet.env` does not contain individual pod leases; those allocations are local CNI state.
+The CNI plugin uses these values to build its delegate configuration. By default it populates the delegated IPAM ranges from `FLANNEL_SUBNET`, supplies a route for the Flannel network, passes the MTU, and uses `host-local` IPAM. That means `subnet.env` does not contain individual pod leases; those allocations are local CNI state.
 
 ## Recover After Fixing the Root Cause
 
-Once Pod CIDR, RBAC, mounts, images, kernel support, and backend configuration are correct, recreate only the affected DaemonSet pod:
+Once Pod CIDR, RBAC, mounts, images, kernel support, and backend configuration are correct, recreate only the affected DaemonSet pod. The selector-based `--for=create` wait below requires kubectl v1.33 or later; with an older client, repeat the pod lookup until the replacement appears before running the `Ready` wait:
 
 ```bash
 kubectl -n kube-flannel delete pod "$FLANNEL_POD"
+
+kubectl -n kube-flannel wait \
+  --for=create pod \
+  -l app=flannel \
+  --field-selector "spec.nodeName=${NODE}" \
+  --timeout=180s
 
 kubectl -n kube-flannel wait \
   --for=condition=Ready pod \
@@ -138,38 +152,34 @@ kubectl -n kube-flannel wait \
   --timeout=180s
 ```
 
-On the node, watch for an atomic file appearance and then check kubelet:
+After `flanneld` reports the write, confirm the atomically written file on the node and then check kubelet:
 
 ```bash
 sudo ls -l /run/flannel/subnet.env
 sudo cat /run/flannel/subnet.env
-sudo journalctl -u kubelet -b --no-pager | tail -150
+sudo journalctl -u kubelet -b --no-pager | tail -n 150
 ```
 
-Restart kubelet only if it still reports the old CNI state after the file and binaries are correct:
+No kubelet restart is required for a regenerated `subnet.env`; the Flannel CNI plugin reads the file on each new CNI `ADD`. On Kubernetes 1.24 and later, the container runtime, not kubelet, manages CNI configuration. If a changed CNI configuration is not picked up, inspect the container runtime's status and logs and follow its documented reload procedure.
 
-```bash
-sudo systemctl restart kubelet
-```
-
-Do not solve this error by deleting `/var/lib/cni`, `cni0`, or routes. Those actions do not make Flannel acquire a Node lease and can disrupt running pods.
+Do not solve this error by deleting `/var/lib/cni`, `cni0`, or routes. Those actions do not make Flannel acquire its subnet lease and can disrupt running pods.
 
 ## Verify With a Fresh Sandbox
 
 ```bash
 kubectl run subnet-env-test --image=busybox:1.36 --restart=Never \
-  --overrides="{\"spec\":{\"nodeName\":\"${NODE}\"}}" -- sleep 3600
+  --overrides="{\"apiVersion\":\"v1\",\"spec\":{\"nodeName\":\"${NODE}\"}}" -- sleep 3600
 
 kubectl get pod subnet-env-test -o wide
 kubectl describe pod subnet-env-test
 ```
 
-The pod receiving an address proves that the runtime could read the CNI config, execute all required plugins, read `subnet.env`, and allocate from the node subnet. Cross-node reachability is a separate backend and firewall test.
+When `10-flannel.conflist` is the runtime's active CNI configuration, the pod receiving an address proves that the runtime could read the config, execute all required plugins, read `subnet.env`, and allocate from the node subnet. Cross-node reachability is a separate backend and firewall test.
 
 ## Official Documentation
 
 - [Flannel CNI plugin: subnet file and delegation](https://github.com/flannel-io/cni-plugin)
-- [Flannel Kubernetes manifest architecture](https://github.com/flannel-io/flannel/blob/master/Documentation/kubernetes.md)
+- [Flannel upstream Kubernetes manifest](https://github.com/flannel-io/flannel/blob/v0.28.9/Documentation/kube-flannel.yml)
 - [Flannel configuration reference](https://github.com/flannel-io/flannel/blob/master/Documentation/configuration.md)
 - [Flannel troubleshooting guide](https://github.com/flannel-io/flannel/blob/master/Documentation/troubleshooting.md)
 - [CNI specification](https://github.com/containernetworking/cni/blob/main/SPEC.md)
