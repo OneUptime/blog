@@ -8,7 +8,7 @@ Description: Understand why a headless Service gives a Deployment a changing add
 
 ---
 
-A headless Service gives a workload a stable **Service** name, but it does not make the selected Pods stable. For a Deployment named `api`, the name `api.default.svc.cluster.local` can consistently return the current ready Pod IPs. The individual Deployment Pods remain replaceable ReplicaSet members with generated names, generated identities, and potentially new IP addresses after every replacement.
+A headless Service gives a workload a stable **Service** name, but it does not make the selected Pods stable. For a Deployment named `api`, the name `api.default.svc.cluster.local` can consistently resolve to the currently published ready Pod IPs, subject to DNS caching. The individual Deployment Pods remain replaceable ReplicaSet members with generated names, generated identities, and potentially new IP addresses after every replacement.
 
 That behavior is correct for stateless replicas. A client asks the Service for the current backend set and treats every answer as interchangeable. It becomes a problem only when an application tries to assign durable roles such as `member-0`, `member-1`, or `shard-2` to Deployment Pods.
 
@@ -61,34 +61,39 @@ spec:
             periodSeconds: 5
 ~~~
 
-Querying the Service name returns the published Pod addresses:
+Assuming the default `cluster.local` cluster domain, query the Service name from one of the Deployment Pods. The `agnhost` image includes `dig`, and an A query returns the published IPv4 Pod addresses:
 
 ~~~bash
-dig +noall +answer api.default.svc.cluster.local. A
+kubectl rollout status deployment/api -n default
 
-kubectl get pods \
+kubectl exec -n default deploy/api -- \
+  dig +noall +answer api.default.svc.cluster.local. A
+
+kubectl get pods -n default \
   -l app.kubernetes.io/name=api \
   -o 'custom-columns=NAME:.metadata.name,UID:.metadata.uid,IP:.status.podIP'
 ~~~
 
-Delete one Pod and let the Deployment replace it:
+Delete one Pod and watch until the Deployment creates a ready replacement. Stop the watch, then compare the identities again:
 
 ~~~bash
-kubectl delete pod <one-api-pod-name>
-kubectl rollout status deployment/api
+kubectl delete pod <one-api-pod-name> -n default
+kubectl get pods -n default \
+  -l app.kubernetes.io/name=api \
+  --watch
 
-kubectl get pods \
+kubectl get pods -n default \
   -l app.kubernetes.io/name=api \
   -o 'custom-columns=NAME:.metadata.name,UID:.metadata.uid,IP:.status.podIP'
 ~~~
 
-The Service name remains `api.default.svc.cluster.local`, but the replacement can have a different Pod name, UID, and IP. DNS follows the new EndpointSlice state; it does not preserve the removed Pod's identity.
+The Service name remains `api.default.svc.cluster.local`, but the replacement can have a different Pod name, UID, and IP. DNS records follow the new EndpointSlice state, although cached answers can briefly retain an old address; DNS does not preserve the removed Pod's identity.
 
 ## Endpoint-Scoped Names Are Not Stateful Identity
 
 CoreDNS can expose endpoint-scoped records beneath a headless Service. When an EndpointSlice has an explicit endpoint `hostname`, that hostname is used. Without one, CoreDNS normally derives an endpoint name from the dashed IP address; with the optional `endpoint_pod_names` directive, it may prefer the targeted Pod's name.
 
-Those records are useful diagnostics, but neither a dashed IP name nor a generated Deployment Pod name is a durable logical identifier. Both can change when the Deployment creates a replacement. Kubernetes' DNS documentation treats record layouts outside the documented Service and Pod hostname/subdomain forms as implementation details.
+Those records are useful diagnostics, but neither a dashed IP name nor a generated Deployment Pod name is a durable logical identifier. Both can change when the Deployment creates a replacement. Kubernetes defines endpoint-scoped records for headless Services, but does not define the fallback hostname format when an endpoint lacks `hostname`; the dashed-IP and optional Pod-name fallbacks are CoreDNS-specific.
 
 Setting this in a Deployment template does not solve uniqueness:
 
@@ -104,7 +109,11 @@ Every replica is created from the same template, so every replica would request 
 
 ## Use StatefulSet for Stable Replica Names
 
-StatefulSet preserves a sticky ordinal identity for every replica. Connect it to a governing headless Service with `spec.serviceName`:
+StatefulSet preserves a sticky ordinal identity for every replica. The two workload examples are alternatives, so remove the earlier Deployment and its Service before applying the StatefulSet, then connect the StatefulSet to a governing headless Service with `spec.serviceName`:
+
+~~~bash
+kubectl delete deployment,service api -n default
+~~~
 
 ~~~yaml
 apiVersion: v1
@@ -152,7 +161,7 @@ spec:
             periodSeconds: 5
 ~~~
 
-The controller creates `api-0`, `api-1`, and `api-2`. Their complete names are:
+The controller creates `api-0`, `api-1`, and `api-2`. Their stable service-scoped DNS names, published once each Pod is ready with this Service configuration, are:
 
 ~~~text
 api-0.api-peers.default.svc.<cluster-domain>
@@ -175,10 +184,10 @@ Use StatefulSet when:
 
 - peers need predictable ordinal hostnames;
 - storage must remain associated with a logical member;
-- startup, shutdown, or updates need ordering guarantees;
+- deployment, scaling, or rolling updates need the default ordering guarantees;
 - a protocol stores member identities in cluster metadata.
 
-A headless Service is not itself a reason to use StatefulSet. Stateless clients that can perform client-side discovery may legitimately use a Deployment plus headless Service. Conversely, using StatefulSet solely for a stable name adds ordered lifecycle behavior and sticky identity that the application must understand.
+A headless Service is not itself a reason to use StatefulSet. Stateless clients that can perform client-side discovery may legitimately use a Deployment plus headless Service. Conversely, using StatefulSet solely for a stable name adds sticky identity and, by default, ordered lifecycle behavior that the application must understand.
 
 ## Separate Peer Discovery from Client Traffic
 
@@ -189,6 +198,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: api-peers
+  namespace: default
 spec:
   clusterIP: None
   publishNotReadyAddresses: true
@@ -203,6 +213,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: api-client
+  namespace: default
 spec:
   selector:
     app.kubernetes.io/name: api
@@ -217,14 +228,15 @@ Use `api-peers` for identity and bootstrap; use `api-client` for readiness-gated
 ## Verify the Governing Relationship
 
 ~~~bash
-kubectl get statefulset api \
+kubectl get statefulset api -n default \
   -o jsonpath='{.spec.serviceName}{"\n"}'
 
-kubectl get endpointslice \
+kubectl get endpointslice -n default \
   -l kubernetes.io/service-name=api-peers \
   -o yaml
 
-dig +noall +answer api-0.api-peers.default.svc.cluster.local. A
+kubectl exec -n default pod/api-0 -- \
+  dig +noall +answer api-0.api-peers.default.svc.cluster.local. A
 ~~~
 
 If the Service-wide lookup works but the ordinal name does not, check that `spec.serviceName` exactly matches the same-namespace headless Service, the selectors match the Pod template labels, and readiness permits publication. A previously cached negative answer can also delay a newly created record for a few seconds.
