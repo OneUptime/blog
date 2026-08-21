@@ -10,11 +10,11 @@ Description: Import an administrator-owned Gateway into a vCluster and safely sy
 
 Gateway API separates infrastructure ownership from application routing. A platform team can operate the Gateway controller, listeners, certificates, and public addresses in the control plane cluster, while a tenant creates an `HTTPRoute` next to its Service inside vCluster. vCluster translates the route's Gateway and Service references when it synchronizes the route outward.
 
-This guide uses the stable vCluster **0.36** native Gateway API sync. Do not use generic custom-resource sync for core `Gateway`, `HTTPRoute`, `TLSRoute`, `ReferenceGrant`, or `BackendTLSPolicy` resources; vCluster provides reference-aware native sync for them.
+This guide uses the stable vCluster **0.36** native Gateway API sync and assumes a container-based control plane with Shared Nodes, the supported topology for this feature in 0.36. Do not use generic custom-resource sync for the supported `Gateway`, `HTTPRoute`, `TLSRoute`, `ReferenceGrant`, or `BackendTLSPolicy` resource kinds; vCluster provides reference-aware native sync for them.
 
 ## Prepare the Shared Gateway
 
-Install the Gateway API CRDs and a conformant Gateway controller in the control plane cluster. Create a `GatewayClass` and `Gateway` owned by the platform team, and label both for tenant visibility:
+Install the Gateway API v1.5.0-or-later CRDs and a compatible controller with Gateway and `HTTPRoute` support in the control plane cluster. Create a `GatewayClass` and `Gateway` owned by the platform team, and label both for tenant visibility:
 
 ```bash
 kubectl label gatewayclass shared-gateway \
@@ -24,7 +24,7 @@ kubectl label gateway public-web -n platform-gateways \
   platform.example.com/tenant-visible=true
 ```
 
-The Gateway listener must allow routes from the host namespace into which vCluster synchronizes them. In a production platform, use a namespace selector rather than `from: All`, and combine it with vCluster's imported-Gateway hostname and virtual namespace policy.
+The Gateway listener must allow routes from the host namespace into which vCluster synchronizes them. In a production platform, use a namespace selector rather than `from: All`, and combine it with vCluster's imported-Gateway hostname and virtual namespace policy. The test below also assumes an HTTPS listener on port 443 with a certificate valid for `api.team-blue.apps.example.com`.
 
 ## Configure Gateway Import and Route Sync
 
@@ -73,6 +73,12 @@ vcluster create team-blue \
   --upgrade \
   --connect=false \
   --values vcluster.yaml
+```
+
+Because automatic connection was disabled, connect to the tenant cluster before running tenant-side `kubectl` commands:
+
+```bash
+vcluster connect team-blue --namespace team-blue-vcluster
 ```
 
 ## Verify the Imported Gateway
@@ -141,32 +147,33 @@ kubectl apply -f route.yaml
 kubectl describe httproute web -n apps
 ```
 
-Look for `Accepted=True` and `ResolvedRefs=True` under `status.parents[*].conditions`. `Accepted=False` normally points to a listener or attachment-policy problem. `ResolvedRefs=False` normally points to a missing Service, invalid port, unsupported reference kind, or missing `ReferenceGrant` for a cross-namespace backend.
+Look for `Accepted=True` and `ResolvedRefs=True` under `status.parents[*].conditions`. If either condition is absent or false, inspect Warning events on the tenant route. vCluster can reject an unauthorized attachment or an unresolved or unsupported reference before host synchronization, so the conditions may be absent. For a route that reaches the host controller, `Accepted=False` can indicate that no listener permits the Route, no listener hostname or parent matches, or the Route uses an unsupported value or incompatible filters. `ResolvedRefs=False` indicates a reference problem such as a missing Service or Service port, unsupported backend kind or protocol, or a cross-namespace reference not permitted by a `ReferenceGrant`.
 
 No `ReferenceGrant` is required merely because a Route attaches to a Gateway in another namespace; Gateway listener `allowedRoutes` controls that relationship. A `ReferenceGrant` is required when a backend or other ordinary object reference crosses namespaces.
 
 ## Inspect the Translated Route
 
-On the control plane cluster, find the synchronized route by management labels and inspect the rewritten references:
+Switch back to the control plane cluster, then find the synchronized route by management labels and inspect the rewritten references:
 
 ```bash
+vcluster disconnect
+
 kubectl get httproute -A \
   -l vcluster.loft.sh/managed-by
 
-kubectl describe httproute -n team-blue-vcluster \
-  <translated-route-name>
+kubectl describe httproute web-x-apps-x-team-blue \
+  -n team-blue-vcluster
 ```
 
-The host route should reference the real `platform-gateways/public-web` Gateway and the translated host Service. Do not patch these generated references manually; the syncer owns them.
+With the default single-namespace sync used here, the host route should be in `team-blue-vcluster` and reference the real `platform-gateways/public-web` Gateway and the translated host Service. Do not patch these generated references manually; the syncer owns them.
 
-Point DNS for `api.team-blue.apps.example.com` to the Gateway address, then test the listener:
+Point DNS for `api.team-blue.apps.example.com` to one of the Gateway addresses, which may be an IP address or hostname, then test the listener:
 
 ```bash
 kubectl get gateway public-web -n platform-gateways \
   -o jsonpath='{.status.addresses[*].value}{"\n"}'
 
-curl --resolve api.team-blue.apps.example.com:443:<gateway-address> \
-  https://api.team-blue.apps.example.com/
+curl https://api.team-blue.apps.example.com/
 ```
 
 ## Troubleshooting Checklist
