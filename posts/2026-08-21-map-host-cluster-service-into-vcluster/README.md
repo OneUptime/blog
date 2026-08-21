@@ -24,7 +24,7 @@ control plane: shared-services/postgres-proxy
 tenant: platform-services/database
 ```
 
-vCluster creates and maintains the tenant-side Service. The backing workload remains in `shared-services` on the control plane cluster. Tenant Pods call `database.platform-services.svc.cluster.local` as if it were an ordinary Service in their own cluster.
+vCluster creates and maintains the tenant-side Service. The backing workload remains in `shared-services` on the control plane cluster. With the default `cluster.local` cluster domain, tenant Pods call `database.platform-services.svc.cluster.local` as if it were an ordinary Service in their own cluster.
 
 This does not copy Deployments, Pods, Secrets, NetworkPolicies, or credentials. It also does not bypass the host CNI: network policy and routing must allow the real traffic path.
 
@@ -35,12 +35,13 @@ Use the control plane cluster context:
 ```bash
 kubectl get service postgres-proxy -n shared-services -o yaml
 kubectl get endpointslice -n shared-services \
-  -l kubernetes.io/service-name=postgres-proxy
+  -l kubernetes.io/service-name=postgres-proxy \
+  -o yaml
 ```
 
 Confirm the Service has the port tenants should use and at least one ready endpoint. Replicating a Service with no endpoints produces a valid-looking tenant object that still cannot connect.
 
-For this example, assume the host Service exposes PostgreSQL on port 5432.
+For this example, assume the host Service exposes PostgreSQL on port 5432 and its backend Pods also listen on TCP port 5432.
 
 ## Configure Host-to-Tenant Service Replication
 
@@ -75,7 +76,8 @@ Connect to the tenant and inspect the replicated object:
 ```bash
 kubectl get service database -n platform-services -o yaml
 kubectl get endpointslice -n platform-services \
-  -l kubernetes.io/service-name=database
+  -l kubernetes.io/service-name=database \
+  -o yaml
 kubectl describe service database -n platform-services
 ```
 
@@ -88,18 +90,19 @@ kubectl run network-test \
   --restart=Never \
   --command -- sh -c '
     nslookup database.platform-services.svc.cluster.local
-    nc -vz database.platform-services.svc.cluster.local 5432
+    nc -vz -w 5 database.platform-services.svc.cluster.local 5432
   '
 
-kubectl logs network-test
-kubectl delete pod network-test
+kubectl logs --namespace default --follow \
+  --pod-running-timeout=2m network-test
+kubectl delete pod --namespace default network-test
 ```
 
 Use a pinned internal diagnostic image in restricted or air-gapped environments. A successful TCP connection verifies routing, not database authentication.
 
 ## Allow the Traffic Deliberately
 
-If vCluster-managed network isolation is enabled, add only the necessary host destination. The official service replication example supports adding workload egress rules under `policies.networkPolicy`:
+If vCluster-managed network isolation is enabled, scope egress to the necessary host namespace and port. The official service replication example supports adding workload egress rules under `policies.networkPolicy`:
 
 ```yaml
 policies:
