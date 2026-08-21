@@ -75,7 +75,6 @@
 ## Feast
 
 ## Headless Services
-15. How Does an Ingress Route to a Headless Service? Following EndpointSlices Instead of a ClusterIP
 16. How to Avoid a StatefulSet Bootstrap Deadlock When Peer DNS Requires Readiness
 17. How to Verify Headless Service Membership with `kubectl get endpointslice` and `dig`
 18. How Dual-Stack Headless Services Publish A and AAAA Records for Every Pod
