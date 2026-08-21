@@ -107,6 +107,9 @@ metadata:
   namespace: apps
 spec:
   secretName: web-tls
+  subject:
+    organizations:
+      - Example
   dnsNames:
     - web.apps.svc.cluster.local
   issuerRef:
@@ -124,7 +127,7 @@ kubectl wait certificate/web -n apps \
 kubectl get certificate,issuer,secret -n apps
 ```
 
-Use a CA, ACME, Vault, or other production issuer according to that issuer's official cert-manager documentation. A self-signed certificate proves resource translation, not production trust.
+To adapt this generic pattern to a CA, ACME, Vault, or another production issuer, add a reference patch for every `Issuer` field that names a namespaced resource, such as a Secret, and enable synchronization for each referenced kind. Then follow that issuer's official cert-manager documentation. A self-signed certificate proves resource translation, not production trust.
 
 ## Verify Both Sides
 
@@ -136,14 +139,17 @@ kubectl get secret web-tls -n apps \
   -o jsonpath='{.type}{"\n"}'
 ```
 
-In the control plane cluster, locate generated objects using vCluster management labels rather than hard-coding translated names:
+In the control plane cluster, use vCluster management labels to locate the tenant-origin objects rather than hard-coding translated names:
 
 ```bash
-kubectl get issuer,certificate,certificaterequest,secret -A \
+kubectl get issuer,certificate,certificaterequest -A \
   -l vcluster.loft.sh/managed-by
+kubectl get certificate -A \
+  -l vcluster.loft.sh/managed-by \
+  -o custom-columns='NAMESPACE:.metadata.namespace,CERTIFICATE:.metadata.name,SECRET:.spec.secretName,ISSUER:.spec.issuerRef.name'
 ```
 
-The host `Certificate.spec.secretName` and `issuerRef.name` should point at translated objects. Manual edits to host copies are reconciled away or reflected according to the sync rules; make changes through the tenant object or vCluster configuration.
+The generated TLS Secret is not guaranteed to carry the vCluster management label. Use the `NAMESPACE` and `SECRET` values from the second command to retrieve it directly. The host `Certificate.spec.secretName` and `issuerRef.name` should point at translated objects. Manual edits to host copies are reconciled away or reflected according to the sync rules; make changes through the tenant object or vCluster configuration.
 
 If the Certificate appears on the host but no tenant Secret arrives, inspect the host Certificate events and cert-manager logs first. Then inspect vCluster logs for child-resource discovery. Do not paper over the failure by syncing all host Secrets; that creates a much larger confidentiality boundary.
 
