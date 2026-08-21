@@ -75,7 +75,6 @@
 ## Feast
 
 ## Headless Services
-19. How to Give Indexed Job Pods Stable DNS Names with a Headless Service
 20. How to Build StatefulSet Headless Service FQDNs When the Cluster Domain Is Not `cluster.local`
 
 ## vCluster
