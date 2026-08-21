@@ -8,7 +8,7 @@ Description: Restore vCluster control-plane state from an OCI artifact, distingu
 
 ---
 
-vCluster can store a snapshot as an OCI artifact and use it either to restore an existing tenant cluster or to create a clone. In vCluster **0.36**, the artifact contains backing-store data, Helm release information, and saved configuration, but two caveats shape the runbook: persistent-volume contents are not included, and the saved `vcluster.yaml` is not automatically reapplied after restore.
+vCluster can store a snapshot as an OCI artifact and use it either to restore an existing tenant cluster or to create a clone. In vCluster **0.36**, the artifact contains backing-store data, Helm release information, and saved configuration, but persistent-volume contents are not included. An in-place `vcluster restore` does not reapply the saved configuration to the Helm release; when creating a clone, pass the reviewed destination configuration explicitly to override the snapshot's Helm values.
 
 Keep the reviewed `vcluster.yaml` in version control and protect workload data separately with Velero, provider tooling, or application-native backups.
 
@@ -18,9 +18,9 @@ Keep the reviewed `vcluster.yaml` in version control and protect workload data s
 | --- | --- | --- |
 | Clone to a new name/namespace | Recovery rehearsal, migration, forensics | External references and workload data still need isolation/restore |
 | Restore existing tenant | Roll back damaged control-plane state | Temporary downtime and replacement of current API state |
-| Create with restore plus changed config | Supported migration of selected settings | Some settings, including backing-store choices, have migration limits |
+| Create with restore plus changed config | Supported migration of selected settings | The backing-store type cannot be changed through snapshot and restore |
 
-An in-place restore pauses the vCluster, scales replica-controlled workload Pods down, runs a temporary restore Pod, and resumes workloads afterward. If it fails, retry the restore; do not continue operating an uncertain control-plane state.
+An in-place restore pauses the vCluster, scales all workload Pods down to zero, runs a temporary restore Pod, and resumes workloads afterward. If it fails, retry the restore; do not continue operating an uncertain control-plane state.
 
 ## Create and Verify the OCI Snapshot
 
@@ -52,33 +52,25 @@ kubectl get storageclass
 kubectl get crd
 ```
 
-The Git file is the intended state; rendered Helm values are diagnostic evidence. Also inventory Gateway or Ingress endpoints, DNS, host operators, Secrets, IAM roles, external databases, and the separate workload-data backup.
+The Git file is the intended state; computed Helm values are diagnostic evidence. Also inventory Gateway or Ingress endpoints, DNS, host operators, Secrets, IAM roles, external databases, and the separate workload-data backup.
 
 ## Clone to a New Tenant Cluster
 
-Create the destination from the snapshot:
-
-```bash
-vcluster create team-a-restore-test \
-  --namespace team-a-restore-test \
-  --restore \
-  "oci://ghcr.io/example-platform/vcluster-snapshots:team-a-2026-08-21" \
-  --connect=false
-```
-
-When a clone uses a new name or namespace, vCluster generates new certificates. That is expected; tenant clusters should not share cluster certificates.
-
-Reapply the destination's reviewed configuration explicitly:
+Create the destination from the snapshot and apply the reviewed destination configuration in the same operation. The supplied values override the values saved in the snapshot:
 
 ```bash
 vcluster create team-a-restore-test \
   --namespace team-a-restore-test \
   --upgrade \
+  --restore \
+  "oci://ghcr.io/example-platform/vcluster-snapshots:team-a-2026-08-21" \
   --connect=false \
   --values vcluster.yaml
 ```
 
-If the configuration changes a setting with a restricted migration path, stop and use the documented snapshot migration procedure rather than forcing the upgrade. vCluster 0.36 supports only specific backing-store migrations.
+When a clone uses a new name or namespace, vCluster generates new certificates. That is expected; tenant clusters should not share cluster certificates.
+
+If the reviewed configuration changes the backing-store type, stop. vCluster 0.36 does not support changing the backing-store type, including through snapshot and restore. The separately documented deployed-etcd-to-embedded-etcd migration changes the etcd deployment mode and is not a snapshot migration.
 
 Keep the clone isolated from production side effects:
 
@@ -127,6 +119,8 @@ kubectl --kubeconfig restore-test.kubeconfig get deployments,statefulsets -A
 kubectl --kubeconfig restore-test.kubeconfig get pvc -A
 ```
 
+If the CLI falls back to foreground port-forwarding, leave it running and execute the `kubectl` checks from another terminal. Alternatively, supply the clone's reachable test endpoint with `--server`.
+
 Verify:
 
 1. The API and control-plane components are healthy.
@@ -143,10 +137,10 @@ Delete a disposable clone only after its recovery evidence has been retained and
 ## Important Limitations
 
 - Sleeping tenant clusters must be running before a snapshot can be taken.
-- External control-plane databases require database-native backup and restore.
+- Before restoring onto an external control-plane database, take a database-native backup: `vcluster restore` deletes the existing database data before replaying the snapshot, and vCluster cannot roll the database back if the restore fails.
 - vCluster CLI snapshots do not back up persistent volumes in v0.36.
 - Cluster certificates are not included in v0.36 snapshots.
-- A failed `vcluster create --restore` automatically deletes the new tenant cluster; an in-place restore failure requires a retry.
+- If the restore phase of `vcluster create --restore` fails, vCluster attempts to delete the new tenant cluster automatically; verify cleanup. An in-place restore failure requires a retry.
 - Namespace changes can affect translated names, bindings, storage, and external policies even though the tenant API objects were restored.
 
 ## Official Documentation
