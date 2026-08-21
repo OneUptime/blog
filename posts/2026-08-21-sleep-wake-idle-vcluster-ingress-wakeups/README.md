@@ -10,7 +10,7 @@ Description: Configure vCluster 0.36 auto sleep while keeping application ingres
 
 Sleeping an idle vCluster saves compute only if users can wake it reliably. Kubernetes API access through vCluster Platform can trigger a wake, but application ingress needs a live routing path and Gateway API needs request-mirroring support. Treat wakeup as part of endpoint design, not as an incidental side effect of scaling Pods down.
 
-This guide targets vCluster **0.36** and vCluster Platform **4.11** with a containerized control plane on Shared Nodes. Automatic sleep is an **Enterprise-only** feature and the v0.36 documentation says it is intended for pre-production. Manual Platform sleep is free, but it does not provide inactivity detection and manual sleep does not wake automatically from activity.
+This guide targets vCluster **0.36** and vCluster Platform **4.11** with a containerized control plane on Shared Nodes. Automatic sleep is an **Enterprise-only** feature and the v0.36 documentation says it is intended for pre-production. Manual Platform sleep is free, but it does not provide inactivity-driven sleeping or schedules. A manually sleeping cluster can be woken explicitly, and `vcluster connect` performs a wake unless a `--prevent-wakeup` period is still active; manual sleep alone does not validate inactivity detection.
 
 ## Configure Auto Sleep in `vcluster.yaml`
 
@@ -43,7 +43,7 @@ vcluster create team-a \
 
 `afterInactivity` uses a Go-style duration; the largest unit is hours. The `exclude` selector keeps matching Deployments or StatefulSets running. Do not label ordinary application backends `sleep: no-thanks`, or they defeat the main cost-saving purpose.
 
-Platform-connected and standalone auto-sleep behavior differs. Without the Platform agent, the control plane remains active to observe activity and wake workloads. With the agent, Platform can shut the control plane down as well for greater savings.
+Auto-sleep behavior differs between agentless and Platform-agent-connected instances. Without the Platform agent, the control plane remains active to observe activity and wake workloads. With the agent, Platform can shut the control plane down as well for greater savings.
 
 ## Choose a Wake-Capable Routing Path
 
@@ -68,14 +68,18 @@ For new routing, prefer an actively maintained Ingress controller or Gateway API
 
 ## Keep the Wakeup Annotations Compatible
 
-Check the Platform `VirtualClusterInstance` and host namespace before testing:
+Check the Platform `VirtualClusterInstance` through the Platform management API and the tenant's namespace through the connected control plane cluster before testing:
 
 ```bash
-kubectl --context host get virtualclusterinstance team-a \
-  -n loft-p-PROJECT -o yaml
+vcluster platform connect management
+
+kubectl get virtualclusterinstance team-a \
+  -n p-PROJECT -o yaml
 
 kubectl --context host get namespace team-a-vcluster -o yaml
 ```
+
+Platform 4.x uses `p-` as the default project-namespace prefix. An installation upgraded from Platform 3.x can retain `loft-p-`, and an administrator can configure another prefix, so use the namespace from your Platform installation. The `host` context above is the connected control plane cluster, not the Platform management API context.
 
 The following user-configurable annotations change sleep behavior:
 
@@ -94,9 +98,21 @@ Application HTTP traffic is a different path. With a supported Ingress or integr
 
 ## Verify Gateway API Before Depending on It
 
+Gateway API sync is disabled by default. For a tenant-created `HTTPRoute` that should be published to the control plane cluster, enable HTTPRoute sync in the vCluster configuration:
+
+```yaml
+sync:
+  toHost:
+    gatewayApi:
+      httpRoutes:
+        enabled: true
+```
+
+Also import the control-plane `Gateway` and `GatewayClass` that the route should use, or enable synchronization for a tenant-created `Gateway`. Confirm the synchronized host route is accepted before testing sleep. vCluster 0.36 requires Gateway API CRDs **v1.5.0 or later** on the control plane cluster.
+
 Gateway API `HTTPRoute` wakeup depends on the selected Gateway controller supporting the `RequestMirror` filter. A controller may serve an HTTPRoute perfectly while lacking request mirroring; in that case the endpoint can work when awake but cannot automatically wake the sleeping tenant from HTTP traffic.
 
-Inspect the GatewayClass feature status and use a controller that advertises request mirroring. If a capable controller does not advertise it, Platform 4.11 supports an explicit allowlist on the connected `Cluster` object:
+Inspect `.status.supportedFeatures[].name` on the `GatewayClass` for `HTTPRouteRequestMirror` and use a controller that advertises request mirroring. If a capable controller does not advertise it, Platform 4.11 supports an explicit allowlist on the connected cluster's Platform management-plane `Cluster` object:
 
 ```yaml
 metadata:
@@ -105,7 +121,7 @@ metadata:
       gateway.example.com/controller
 ```
 
-Use the exact `GatewayClass.spec.controllerName`, and add it only after verifying the implementation really supports request mirroring. If Gateway API CRDs were installed after Platform started, restart Platform so it discovers and starts the sleep-mode controllers:
+Use the exact `GatewayClass.spec.controllerName`, and add it only after verifying the implementation really supports request mirroring. If Gateway API CRDs were installed on the connected control plane cluster after Platform started, restart the Platform deployment on that cluster so it discovers and starts the sleep-mode controllers:
 
 ```bash
 kubectl --context host rollout restart deployment/loft \
@@ -132,7 +148,7 @@ vcluster platform sleep vcluster team-a --project PROJECT_NAME
 vcluster platform wakeup vcluster team-a --project PROJECT_NAME
 ```
 
-Manual sleep does not detect activity or wake automatically, so it cannot prove the ingress-driven path. A positive manual sleep/wakeup test proves restoration; let auto sleep trigger naturally for a separate ingress or HTTPRoute wakeup test. The optional `--prevent-wakeup 0` flag forces indefinite manual sleep and is useful only when that is explicitly intended.
+Manual sleep bypasses inactivity detection, so separate what each test proves. A positive explicit manual sleep/wakeup test proves restoration, and `vcluster connect` can wake a manually sleeping cluster. Let auto sleep trigger naturally for a separate ingress or HTTPRoute wakeup test that also exercises inactivity detection. The optional `--prevent-wakeup 0` flag forces indefinite manual sleep and is useful only when that is explicitly intended.
 
 Monitor time-to-ready, failed first requests, replica restoration, and any controller reconciliation that removes Platform-managed rules. Run the test after upgrades to Platform, vCluster, the ingress or Gateway controller, and Gateway API CRDs.
 
