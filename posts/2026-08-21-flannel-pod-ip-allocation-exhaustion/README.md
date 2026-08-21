@@ -10,10 +10,10 @@ Description: Separate Kubernetes node-CIDR exhaustion from node-local CNI IP exh
 
 ## Introduction
 
-“Flannel stopped allocating IPs” can describe two different allocators in a standard Kubernetes installation:
+“Flannel stopped allocating IPs” can describe two different allocators in a common Flannel-on-Kubernetes installation:
 
-- Kubernetes' node IPAM controller allocates one `.spec.podCIDR` or `.spec.podCIDRs` range to each Node. Flannel's Kubernetes subnet manager consumes that assignment as its node lease.
-- The delegated CNI `host-local` plugin allocates individual pod addresses from that node range and records them on the node filesystem.
+- Kubernetes' node IPAM controller allocates one Pod CIDR per configured IP family to each Node, records the first in `.spec.podCIDR`, and records the full one- or two-entry list in `.spec.podCIDRs`. Flannel's Kubernetes subnet manager consumes those assignments as its node subnet leases.
+- The delegated CNI `host-local` plugin allocates individual pod addresses from those node ranges and records them on the node filesystem.
 
 Flannel itself does not allocate individual Pod IPs in this design. Diagnose the exact error before changing leases or deleting state.
 
@@ -23,7 +23,7 @@ Inspect the stuck pod and recent events:
 
 ```bash
 NS=default
-POD=<stuck-pod>
+POD=stuck-pod-name
 
 kubectl -n "$NS" describe pod "$POD"
 kubectl get events --all-namespaces --sort-by=.lastTimestamp \
@@ -34,16 +34,16 @@ Then read Flannel logs:
 
 ```bash
 kubectl -n kube-flannel logs daemonset/kube-flannel-ds \
-  -c kube-flannel --tail=300 --prefix
+  -c kube-flannel --all-pods=true --tail=300 --prefix
 ```
 
 Common branches are:
 
 - `node ... pod cidr not assigned`: node IPAM did not assign a node subnet.
-- `CIDRNotAvailable` in controller-manager events/logs: the cluster pool cannot provide another node subnet or allocation state conflicts.
-- `no IP addresses available in network: cbr0`: the node's `host-local` pool appears full.
-- An address-already-in-use error: duplicate local state, duplicate Node CIDR, or a stale bridge can be involved.
-- Flannel cannot acquire or watch its Kubernetes lease: API, RBAC, Node identity, or subnet configuration problem.
+- `CIDRNotAvailable` in Node events: with the in-tree `RangeAllocator`, at least one configured cluster CIDR has no unoccupied node prefix remaining.
+- `no IP addresses available in range set` (or, on older versions, `no IP addresses available in network: cbr0`): the node's `host-local` pool appears full.
+- An IP conflict, duplicate-allocation, or unexpected bridge-address error: inspect node-local IPAM and bridge state, and separately audit Node CIDRs.
+- Flannel cannot acquire its Node-derived subnet lease or watch annotated Node state through the Kubernetes API: API, RBAC, Node identity, or subnet configuration problem.
 
 ## Audit Node CIDRs for Missing and Duplicate Values
 
@@ -52,7 +52,7 @@ kubectl get nodes \
   -o custom-columns='NAME:.metadata.name,PODCIDR:.spec.podCIDR,PODCIDRS:.spec.podCIDRs[*]'
 ```
 
-Find duplicate nonempty IPv4 primary CIDRs:
+Find duplicate nonempty primary CIDRs:
 
 ```bash
 kubectl get nodes -o json | jq '
@@ -61,7 +61,7 @@ kubectl get nodes -o json | jq '
   | select(.[0].cidr != "" and length > 1)'
 ```
 
-For dual-stack, group each family in `.spec.podCIDRs` separately. Every node range must be unique and contained by Flannel's configured networks:
+For dual-stack, group each family in `.spec.podCIDRs` separately. For every address family enabled in Flannel, each Node range must be unique, non-overlapping, and contained by the corresponding configured network:
 
 ```bash
 kubectl -n kube-flannel get configmap kube-flannel-cfg \
@@ -69,7 +69,7 @@ kubectl -n kube-flannel get configmap kube-flannel-cfg \
 echo
 ```
 
-Duplicate CIDRs make two nodes advertise the same destination. Do not pick a winner by adding route metrics. Cordon and drain affected nodes, fix controller-manager allocation, and rebuild or rejoin the wrongly assigned node through the cluster's supported process. Changing `.spec.podCIDR` under running pods leaves `subnet.env`, `cni0`, local IPAM files, and routes inconsistent.
+Duplicate CIDRs make two nodes advertise the same destination. Do not pick a winner by adding route metrics. Cordon and drain affected nodes, then fix the allocator or provisioning source that created the duplicate through the cluster's supported recovery process. The in-tree `RangeAllocator` does not reference-count duplicate assignments: deleting either duplicate Node can release the shared allocator entry while the other Node still uses that CIDR. Reconcile the allocator state and re-audit uniqueness before rebuilding or rejoining the wrongly assigned node or adding Nodes. Assigned Node Pod CIDRs are immutable through the Kubernetes API; recreating a Node with a different CIDR while old pods or node-local state remain leaves `subnet.env`, `cni0`, local IPAM files, and routes inconsistent.
 
 ## Check Cluster-Level Node CIDR Capacity
 
@@ -92,29 +92,34 @@ For a newly built cluster, choose a sufficiently large non-overlapping `podSubne
 
 ## Measure the Per-Node host-local Pool
 
-Find the affected node and its subnet:
+Find the affected node and its subnet or subnets:
 
 ```bash
 NODE=$(kubectl -n "$NS" get pod "$POD" -o jsonpath='{.spec.nodeName}')
-kubectl get node "$NODE" -o jsonpath='{.spec.podCIDR}{"\n"}'
+kubectl get node "$NODE" -o jsonpath='{.spec.podCIDRs}{"\n"}'
 kubectl get pods --all-namespaces \
   --field-selector "spec.nodeName=${NODE}" -o wide
 ```
 
-On that node, read the installed network name:
+On that node, read the installed network name and host-local state parent:
 
 ```bash
-NETWORK_NAME=$(sudo jq -r '.name' /etc/cni/net.d/10-flannel.conflist)
-STATE_DIR="/var/lib/cni/networks/${NETWORK_NAME}"
+CNI_CONFIG=/etc/cni/net.d/10-flannel.conflist
+NETWORK_NAME=$(sudo jq -r '.name' "$CNI_CONFIG")
+DATA_DIR=$(sudo jq -r '
+  ([.plugins[] | select(.type == "flannel") | .ipam.dataDir][0]
+    // "/var/lib/cni/networks")
+' "$CNI_CONFIG")
+STATE_DIR="${DATA_DIR}/${NETWORK_NAME}"
 
 echo "$STATE_DIR"
 sudo find "$STATE_DIR" -mindepth 1 -maxdepth 1 -type f -printf '%f\n' \
   | sort -V
 ```
 
-Official `host-local` documentation says allocations are stored as files in `/var/lib/cni/networks/$NETWORK_NAME` unless `dataDir` overrides it. The directory also contains allocator metadata such as a last-reserved address; count IP-named files, not every file blindly.
+The delegated `host-local` IPAM's `dataDir` controls the state parent and defaults to `/var/lib/cni/networks`; the lookup above checks that override. The directory also contains allocator metadata such as a last-reserved address; count IP-named files, not every file blindly.
 
-For a default IPv4 `/24`, `host-local` normally allocates from `.2` through `.254` and uses `.1` as the gateway, subject to configured `rangeStart`, `rangeEnd`, and reserved values. Kubernetes' kubelet `maxPods` is often lower than that address capacity. A full `/24` with far fewer live pods strongly suggests leaked local records.
+For a default IPv4 `/24` without range overrides, `host-local` allocates from `.2` through `.254` and uses `.1` as the gateway. Configured `rangeStart`, `rangeEnd`, or `gateway` values change the effective pool. Kubernetes' kubelet `maxPods` is often lower than that address capacity. A full `/24` with far fewer live pods strongly suggests leaked local records.
 
 ## Match Allocation Files to Live Sandboxes
 
@@ -122,11 +127,11 @@ Inspect a small sample:
 
 ```bash
 sudo sed -n '1,5p' "${STATE_DIR}/<allocated-pod-ip>"
-sudo crictl pods
-sudo crictl ps -a
+sudo crictl pods --no-trunc
+sudo crictl ps -a --no-trunc
 ```
 
-The IP file records a container identity. Correlate it with runtime sandboxes and Kubernetes pods. Account for recently terminated pods and in-progress CNI DEL operations before declaring it orphaned.
+The IP file records the CNI container ID and, in current `host-local` releases, the interface name on the next line; older files can contain only the ID. Ensure `crictl` targets the same CRI endpoint as kubelet, then correlate the full ID with runtime sandboxes and Kubernetes pods. Account for recently terminated pods and in-progress CNI DEL operations before declaring it orphaned.
 
 Causes of leaked state include:
 
@@ -152,7 +157,7 @@ Review disruption budgets and local storage before accepting drain options. Afte
 
 ```bash
 sudo systemctl stop kubelet
-sudo crictl pods
+sudo crictl pods --no-trunc
 ```
 
 Back up the exact network directory:
@@ -183,7 +188,7 @@ If live demand truly exceeds the node pool, distribute pods across more nodes or
 
 ## Distinguish Kubernetes and etcd Subnet Modes
 
-The upstream Kubernetes manifest runs `--kube-subnet-mgr`; its Flannel leases reflect Kubernetes Node Pod CIDRs. Standalone Flannel can instead allocate subnet leases in etcd, with lease expiration and `--subnet-lease-renew-margin` behavior documented separately.
+The upstream Flannel Kubernetes manifest runs `--kube-subnet-mgr`; its Flannel leases reflect Kubernetes Node Pod CIDRs. Standalone Flannel can instead allocate subnet leases in etcd, with lease expiration and `--subnet-lease-renew-margin` behavior documented separately.
 
 Check the running arguments before applying etcd lease commands:
 
