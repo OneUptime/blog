@@ -78,7 +78,6 @@
 
 ## vCluster
 
-6. How to Share cert-manager with vCluster Using Generic CRD Syncing Instead of Installing It per Tenant
 7. How to Allowlist Host Secrets into vCluster with Reference Patches
 8. Why Is a vCluster PVC Pending? Debugging StorageClass Sync, Selectors, and Provisioners
 9. How to Restrict vCluster Tenants to Approved StorageClasses with Label Selectors
