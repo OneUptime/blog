@@ -81,7 +81,6 @@
 
 ## Flannel
 
-1. Why Does a Kubernetes Node Stay NotReady After Installing Flannel? A CNI Config and DaemonSet Checklist
 2. How to Fix Flannel `failed to acquire lease: node pod cidr not assigned`
 3. Why Is `/run/flannel/subnet.env` Missing? Tracing the Flannel CNI Initialization Path
 4. How to Fix `cni0 already has an IP Address Different from` the Flannel Subnet
