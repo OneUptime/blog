@@ -78,7 +78,6 @@
 
 ## vCluster
 
-2. How to Register a vCluster in Argo CD Without a Fragile Local Port-Forward
 3. How to Sync vCluster Ingresses to a Shared Host-Cluster Ingress Controller
 4. How to Publish vCluster Gateway API Routes Through a Host-Cluster Gateway
 5. How to Map a Host-Cluster Service into a vCluster Without Duplicating the Workload
