@@ -77,7 +77,7 @@ spec:
             periodSeconds: 5
 ~~~
 
-Create `database-credentials` through your normal secret-management workflow before applying the example. A production PostgreSQL readiness probe should use a database-aware check such as `pg_isready`; the TCP probe here keeps the networking example focused.
+Ensure the `data` and `frontend` namespaces exist, and create `database-credentials` with a `password` key in `data` through your normal secret-management workflow before applying the example. A production PostgreSQL readiness probe should use a database-aware check such as `pg_isready`; the TCP probe here keeps the networking example focused. This DNS-focused manifest does not configure PostgreSQL replication or persistent storage.
 
 The StatefulSet sets each Pod's hostname from its name and sets its subdomain from `spec.serviceName`. The resulting endpoint names are:
 
@@ -87,7 +87,7 @@ database-1.database.data.svc.<cluster-domain>
 database-2.database.data.svc.<cluster-domain>
 ~~~
 
-The Service-level name `database.data.svc.<cluster-domain>` returns the ready address set. Use it when any healthy member is acceptable. Use an endpoint-specific name only when the protocol requires a particular ordinal, such as a known leader, bootstrap member, or shard.
+The Service-level name `database.data.svc.<cluster-domain>` returns the ready address set. Use it when the application makes members interchangeable and any ready member is acceptable. Use an endpoint-specific name only when the protocol requires a particular ordinal, such as a known leader, bootstrap member, or shard.
 
 ## Query from Another Namespace
 
@@ -109,7 +109,7 @@ Now compare the names:
 kubectl -n frontend exec dnsutils -- \
   dig +search +noall +answer database A
 
-# The namespace-qualified relative name normally works through the search list.
+# In a typical Linux ClusterFirst Pod, this relative name works through the search list.
 kubectl -n frontend exec dnsutils -- \
   dig +search +noall +answer database.data A
 
@@ -122,7 +122,7 @@ kubectl -n frontend exec dnsutils -- \
   dig +noall +answer database-0.database.data.svc.cluster.local. A
 ~~~
 
-Replace `cluster.local` with the configured cluster domain. `database.data` is a convenient relative name in a normal `ClusterFirst` Pod, but the complete absolute name is safer in certificates, allowlists, monitoring, and application configuration because it does not depend on `/etc/resolv.conf`.
+Replace `cluster.local` with the configured cluster domain. These commands query IPv4 `A` records; query `AAAA` on an IPv6-only cluster, or query both types for a dual-stack Service. `database.data` is a convenient relative name in a typical Linux `ClusterFirst` Pod. For configuration, allowlists, and monitoring, prefer the full Service name. Add the final dot in DNS tools and other consumers that accept absolute-name syntax so the resolver cannot append search suffixes; for an X.509 DNS SAN, use the FQDN without the presentation-form final dot, such as `database.data.svc.cluster.local`.
 
 Remove the diagnostic Pod when finished:
 
@@ -136,17 +136,17 @@ The Service FQDN and endpoint FQDN answer different questions:
 
 | Query | Expected answer | Appropriate use |
 | --- | --- | --- |
-| `database.data.svc.<domain>` | All published endpoint IPs | Select any available replica |
+| `database.data.svc.<domain>` | All published endpoint IPs | Select any interchangeable member |
 | `database-0.database.data.svc.<domain>` | The current IP for ordinal 0 | Select one stable StatefulSet identity |
 | `_client._tcp.database.data.svc.<domain>` | SRV targets and port for the named Service port | Discover both endpoint names and port |
 
-Do not assume arbitrary Deployment Pod names appear beneath the Service name. A Pod-specific record needs a hostname/subdomain relationship or endpoint hostname. StatefulSet supplies this relationship automatically when `spec.serviceName` points to the governing headless Service.
+Do not assume arbitrary Deployment Pod names appear beneath the Service name. A predictable, portable hostname-based Pod record needs a hostname/subdomain relationship or an EndpointSlice endpoint hostname. StatefulSet supplies this relationship automatically when `spec.serviceName` points to the governing headless Service.
 
 ## Readiness Controls the Published Set
 
 By default, the Service name and per-Pod names publish ready endpoints. During startup, `database-0` can exist and have an IP while its DNS record is still absent because its readiness probe has not passed.
 
-For a peer-discovery Service whose members must find one another before becoming ready, consider:
+For peer discovery that must include existing Pods before they become ready, consider:
 
 ~~~yaml
 spec:
@@ -156,13 +156,13 @@ spec:
     app.kubernetes.io/name: database
 ~~~
 
-That choice exposes unready addresses to DNS and to consumers of the generated EndpointSlices. It does not make the database healthy. Keep a separate readiness-gated Service for ordinary client traffic when sending clients to booting members would be unsafe.
+That choice causes DNS to publish A/AAAA and SRV records for otherwise unready endpoints. In Kubernetes-generated EndpointSlices, it also forces `conditions.ready` to `true`; `conditions.serving` continues to reflect the backing Pod's actual Ready condition. It does not make the database healthy. If a StatefulSet Pod cannot become ready until later replicas exist, also set `spec.podManagementPolicy: Parallel` on the StatefulSet; the default `OrderedReady` policy waits for each predecessor to become Running and Ready before creating the next replica. Keep a separate readiness-gated Service for ordinary client traffic when sending clients to booting members would be unsafe.
 
 ## DNS Does Not Grant Network Access
 
 Namespace qualification solves naming only. A successful lookup can still be followed by a timeout when a NetworkPolicy, service mesh authorization rule, host firewall, or application listener blocks the connection.
 
-For clusters enforcing NetworkPolicy, allow the actual destination Pods and port. NetworkPolicy selectors are evaluated in the policy namespace, so a policy in `data` can select the database Pods and allow callers from namespaces carrying an explicit label:
+For clusters enforcing NetworkPolicy, allow the actual destination Pods and port. NetworkPolicies are namespaced: the top-level `podSelector` below selects database Pods in `data`, while the `namespaceSelector` allows callers from the namespace identified by Kubernetes' standard, immutable namespace-name label:
 
 ~~~yaml
 apiVersion: networking.k8s.io/v1
@@ -186,7 +186,7 @@ spec:
           port: 5432
 ~~~
 
-The network plugin must implement NetworkPolicy for this resource to have effect.
+The network plugin must implement NetworkPolicy for this resource to have effect. If Pods in `frontend` are also isolated for egress, their egress policies must allow TCP port 5432 to the database Pods as well.
 
 ## Diagnose a Cross-Namespace Failure
 
@@ -208,10 +208,10 @@ kubectl -n frontend exec dnsutils -- \
 
 kubectl -n frontend run tcp-check --rm -i --restart=Never \
   --image=busybox:1.36 --command -- \
-  nc -vz -w 3 database-0.database.data.svc.cluster.local 5432
+  nc -vz -w 3 database-0.database.data.svc.cluster.local. 5432
 ~~~
 
-An empty DNS answer points toward wrong names, no published endpoints, readiness gating, or DNS configuration. A correct address followed by a failed TCP test points toward routing, policy, or application health. Also remember that earlier negative responses can remain cached briefly after a Pod becomes publishable.
+An empty DNS answer points toward a wrong name or address family, no published endpoints, readiness gating, or DNS configuration. A correct address followed by a failed TCP test points toward routing, policy, or application health. Also remember that earlier negative responses can remain cached briefly after a Pod becomes publishable.
 
 ## Official Documentation
 
@@ -224,4 +224,4 @@ An empty DNS answer points toward wrong names, no published endpoints, readiness
 
 ## Conclusion
 
-Cross-namespace headless discovery uses the destination Service's namespace, not the caller's: `<service>.<namespace>.svc.<cluster-domain>`. Add the endpoint hostname in front when selecting one stable member, use an absolute trailing-dot name when search-path independence matters, and treat DNS resolution and network authorization as separate checks.
+Cross-namespace headless discovery uses the destination Service's namespace, not the caller's: `<service>.<namespace>.svc.<cluster-domain>`. Add the endpoint hostname in front when selecting one stable member, use the absolute trailing-dot form in DNS-aware consumers when search-path independence matters, and treat DNS resolution and network authorization as separate checks.
