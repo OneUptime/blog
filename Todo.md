@@ -81,7 +81,6 @@
 
 ## Flannel
 
-19. How to Upgrade the Flannel DaemonSet Without Leaving Stale Routes on Drained Nodes
 20. Why Did Flannel Stop Allocating Pod IPs? Diagnosing Subnet Lease Exhaustion and Duplicate Node CIDRs
 
 ## Apache Hudi
