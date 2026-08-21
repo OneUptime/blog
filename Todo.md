@@ -81,7 +81,6 @@
 
 ## Flannel
 
-17. How to Preserve or Masquerade Pod Source IPs with Flannel `ip-masq` Settings
 18. How to Route an External Network to Flannel Pod CIDRs Without a LoadBalancer
 19. How to Upgrade the Flannel DaemonSet Without Leaving Stale Routes on Drained Nodes
 20. Why Did Flannel Stop Allocating Pod IPs? Diagnosing Subnet Lease Exhaustion and Duplicate Node CIDRs
