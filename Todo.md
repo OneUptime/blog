@@ -78,7 +78,6 @@
 
 ## vCluster
 
-18. How to Debug AWS IRSA for ServiceAccounts Synced from vCluster to EKS
 19. How to Pin vCluster Workloads to Dedicated Host Nodes with Labels, Taints, and Tolerations
 20. How to Sleep and Wake an Idle vCluster Without Breaking Ingress-Driven Wakeups
 
