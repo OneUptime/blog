@@ -39,7 +39,7 @@ vcluster snapshot create team-a \
   --server-side-encryption AES256
 ```
 
-The CLI submits a snapshot request that the vCluster snapshot controller processes asynchronously. Wait for completion:
+The CLI submits a snapshot request that the vCluster snapshot controller processes asynchronously. Check the status and rerun the command until it reports `Completed`:
 
 ```bash
 vcluster snapshot get team-a \
@@ -54,25 +54,25 @@ Avoid inline credentials in snapshot URLs. vCluster documents that such values a
 
 Install Velero server components and the provider plugin in the control plane cluster according to the official Velero documentation. Choose one data path per storage type:
 
-- CSI snapshots when the CSI driver, `VolumeSnapshotClass`, and backup target support portable recovery.
-- Velero file-system backup with the node agent when snapshots are unavailable or not portable.
+- CSI snapshots without data movement when the CSI driver and `VolumeSnapshotClass` are configured and the durable provider snapshot remains accessible to the recovery cluster. If the volume bytes must be copied to backup object storage or recovered across providers, configure Velero CSI Snapshot Data Movement and use `--snapshot-move-data`.
+- Velero file-system backup with the node agent for volumes mounted by Pods when snapshots are unavailable or not portable.
 - Application-native exports for databases that require transaction-aware consistency.
 
 For the default single-namespace shared-node layout, a host-level Velero backup can target the vCluster release namespace:
 
 ```bash
-velero backup create team-a-workloads-2026-08-21 \
+velero backup create team-a-host-namespace-2026-08-21 \
   --include-namespaces=team-a-vcluster
 
-velero backup describe team-a-workloads-2026-08-21 --details
-velero backup logs team-a-workloads-2026-08-21
+velero backup describe team-a-host-namespace-2026-08-21 --details
+velero backup logs team-a-host-namespace-2026-08-21
 ```
 
-This follows the current vCluster Velero guide. Confirm the output lists the expected PVCs and volume backup or snapshot actions; a `Completed` phase with unexpected exclusions is not a successful data backup.
+This follows the current vCluster Velero guide, but it creates a whole-namespace backup rather than a volume-only artifact. It can include the vCluster workloads, configuration, control-plane state, and any control-plane PVC in that namespace. Confirm the output lists the expected PVCs and volume backup or snapshot actions; a `Completed` phase with unexpected exclusions is not a successful data backup.
 
-If you use namespace synchronization, tenant workloads can be translated into several control plane namespaces. Include every mapped namespace or use a deliberately designed tenant-level Velero workflow. Backing up only the vCluster release namespace in that topology can omit application objects and volumes.
+If you use namespace synchronization, tenant workloads can be translated into several control plane namespaces. Include the release namespace and every mapped host namespace in the host-level backup. Backing up only the vCluster release namespace in that topology can omit application objects and volumes.
 
-For file-system backup, configure the Velero node agent and use its documented opt-in annotations or `--default-volumes-to-fs-backup` policy. File-system backup and CSI snapshots have different performance, portability, and restore requirements; do not silently switch between them.
+For file-system backup, configure the Velero node agent and use its documented opt-in annotations or `--default-volumes-to-fs-backup` policy. File-system backup only protects volumes mounted by Pods; use another method for unmounted PVCs. File-system backup and CSI snapshots have different performance, portability, and restore requirements; do not silently switch between them.
 
 ## Make the Data Application-Consistent
 
@@ -109,38 +109,41 @@ Also inventory external prerequisites that neither artifact can create reliably:
 
 ## Test the Combined Restore
 
-Run an isolated restore exercise on a schedule:
+Run an isolated restore exercise on a schedule. Before restoring anything, establish a tested write fence that prevents tenant application Pods and controllers, CronJobs, queues, and external producers from running or writing. Keep it in place until all coordinated state is restored; disabling public routes alone is not sufficient. Choose the ordering based on the data artifact, and do not layer an unfiltered namespace-wide Velero restore over PVCs that the vCluster snapshot has already recreated. Velero skips existing resources by default, and its update policy does not restore data into an existing PVC. Only combine artifacts captured at a coordinated recovery point and tested as a pair: the host-level Velero artifact already contains control-plane state, so overlaying an unrelated vCluster snapshot can put Kubernetes objects and volume bytes at incompatible points in time.
 
-1. Restore or create the vCluster control plane from its snapshot.
-2. Reapply the pinned `vcluster.yaml`.
-3. Restore the Velero backup or provider/application backup according to that tool's ordering requirements.
-4. Confirm every expected PVC exists and becomes `Bound`.
-5. Confirm Pods attach and mount the restored volumes.
-6. Run application consistency and data-integrity checks.
-7. Restore external dependencies to a compatible point in time.
-8. Keep public routes disabled until validation finishes.
+1. Restore external host prerequisites, establish the write fence, and keep public routes disabled.
+2. For a host-level Velero namespace artifact, restore it into an empty target with the same vCluster name, release namespace, and mapped-namespace topology so Velero can recreate its PVCs and volumes while the fence remains active.
+3. After that Velero restore completes, use `vcluster restore` to apply the paired control-plane snapshot to the same vCluster release, then reapply the pinned `vcluster.yaml` while application workloads remain fenced.
+4. If you instead use a provider or application backup designed to populate existing volumes, restore or create the vCluster control plane first and follow that tool's documented ordering while maintaining the same fence.
+5. Restore external dependencies to a compatible point in time.
+6. Release application workloads in a controlled order while keeping public routes, external producers, and scheduled writers disabled.
+7. Confirm every expected PVC exists and becomes `Bound`, and confirm Pods attach and mount the restored volumes.
+8. Run application consistency and data-integrity checks.
+9. Remove the remaining write fence and enable public routes only after validation finishes.
 
-For a Velero artifact, the basic restore commands are:
+For the host-level Velero path, run the basic restore before applying the vCluster snapshot and only against the clean target topology established in the runbook:
 
 ```bash
 velero restore create team-a-restore-test \
-  --from-backup team-a-workloads-2026-08-21
+  --from-backup team-a-host-namespace-2026-08-21
 
 velero restore describe team-a-restore-test --details
 velero restore logs team-a-restore-test
 ```
 
-Namespace remapping can be difficult for vCluster because cluster-scoped bindings and volumes may contain namespace references. Test the exact destination topology rather than assuming a backup can be moved to any namespace.
+Namespace remapping can be difficult for vCluster because cluster-scoped bindings and volumes may contain namespace references. Test the exact destination topology rather than assuming a backup can be moved to any namespace. For a changed name, namespace, or topology, follow vCluster's documented create or migration restore workflow instead of this in-place sequence.
 
-Measure the recovery point objective from the oldest coordinated state component and the recovery time objective through application validation-not merely until either tool reports completion.
+Calculate the effective recovery-point age from the oldest coordinated state component and measure the actual recovery duration through application validation—not merely until either tool reports completion—then verify both meet the documented recovery point and recovery time objectives.
 
 ## Official Documentation
 
 - [vCluster: Create snapshots](https://www.vcluster.com/docs/vcluster/manage/backup-restore/backup)
 - [vCluster: Restore snapshots](https://www.vcluster.com/docs/vcluster/manage/backup-restore/restore)
 - [vCluster: Using Velero](https://www.vcluster.com/docs/vcluster/manage/backup-restore/velero)
-- [Velero: CSI snapshot support](https://velero.io/docs/main/csi/)
-- [Velero: File-system backup](https://velero.io/docs/main/file-system-backup/)
+- [Velero 1.18: CSI snapshot support](https://velero.io/docs/v1.18/csi/)
+- [Velero 1.18: CSI snapshot data movement](https://velero.io/docs/v1.18/csi-snapshot-data-movement/)
+- [Velero 1.18: File-system backup](https://velero.io/docs/v1.18/file-system-backup/)
+- [Velero 1.18: Restore reference](https://velero.io/docs/v1.18/restore-reference/)
 
 ## Conclusion
 
