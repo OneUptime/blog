@@ -81,7 +81,6 @@
 
 ## Flannel
 
-20. Why Did Flannel Stop Allocating Pod IPs? Diagnosing Subnet Lease Exhaustion and Duplicate Node CIDRs
 
 ## Apache Hudi
 
