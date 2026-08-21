@@ -81,7 +81,6 @@
 
 ## Flannel
 
-3. Why Is `/run/flannel/subnet.env` Missing? Tracing the Flannel CNI Initialization Path
 4. How to Fix `cni0 already has an IP Address Different from` the Flannel Subnet
 5. How to Remove Stale Calico Routes and CNI State Before Switching to Flannel
 6. Why Can Flannel Pods Communicate on One Node but Not Across Nodes? Testing VXLAN Port 8472
