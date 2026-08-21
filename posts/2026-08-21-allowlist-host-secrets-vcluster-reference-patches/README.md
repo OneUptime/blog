@@ -10,7 +10,7 @@ Description: Import only named host Secrets and keep custom-resource Secret refe
 
 Host-to-tenant Secret synchronization is powerful and therefore dangerous. A broad wildcard mapping such as `"shared-secrets/*": "platform/*"` can expose every Secret in the mapped control plane namespace. A safer design has two distinct controls: explicit entries in `mappings.byName` form the allowlist, and a reference patch tells vCluster how to rewrite a field in another synchronized object that points at an allowlisted Secret.
 
-This guide targets vCluster **0.36** on shared nodes. From-host Secret mapping itself is available independently, but the current v0.36 documentation marks `sync.fromHost.customResources` Enterprise-only; the fictional `DatabaseConnection` half of this example therefore requires a plan that includes custom-resource syncing. Native Kubernetes references such as a Pod's `envFrom.secretRef` are already understood by vCluster and do not need this custom patch.
+This guide targets vCluster **0.36** on shared nodes. From-host Secret mapping is available in the open-source tier. Custom-resource syncing and sync patches require the Pro image and vCluster Platform license validation, but v0.36 includes both in the no-cost Free tier as well as the paid tiers. Native Kubernetes references such as a Pod's `envFrom.secretRef` are already understood by vCluster and do not need this custom patch.
 
 ## Define the Data Boundary
 
@@ -32,11 +32,13 @@ Do not map broad wildcard namespaces merely for convenience. Select the smallest
 
 ## Create the Host Secret Safely
 
-Create it through your secret manager, External Secrets controller, Sealed Secrets workflow, or another controlled process. For a disposable lab only:
+Create it through your secret manager, External Secrets controller, Sealed Secrets workflow, or another controlled process. For a disposable lab only, save the control-plane context and use it explicitly:
 
 ```bash
-kubectl create namespace shared-secrets
-kubectl create secret generic team-a-db \
+export HOST_CTX="$(kubectl config current-context)"
+
+kubectl --context="${HOST_CTX}" create namespace shared-secrets
+kubectl --context="${HOST_CTX}" create secret generic team-a-db \
   --namespace shared-secrets \
   --from-literal=username=team-a \
   --from-literal=password='replace-me'
@@ -64,14 +66,15 @@ sync:
           byName:
             "shared-services/team-a-db": "platform/database"
         patches:
-          - path: spec.credentialsSecretRef.name
+          - path: spec.credentialsSecretRef
             reference:
               apiVersion: v1
               kind: Secret
-              namespacePath: spec.credentialsSecretRef.namespace
+              namePath: name
+              namespacePath: namespace
 ```
 
-The Secret mapping is the allowlist. The custom resource mapping imports one read-only host object. The reference patch declares that `spec.credentialsSecretRef.name` names a `v1/Secret`, and `namespacePath` points to the sibling namespace field. vCluster can then map `shared-secrets/team-a-db` to `platform/db-credentials` instead of leaving a broken host name in the tenant object.
+The Secret mapping is the allowlist. The custom resource mapping imports one read-only host object. The reference patch declares that `spec.credentialsSecretRef` is a structured `v1/Secret` reference. `namePath` and `namespacePath` identify the fields relative to that object. vCluster can then map `shared-secrets/team-a-db` to `platform/db-credentials` instead of leaving a broken host name in the tenant object.
 
 The CRD must already exist in the control plane cluster. vCluster copies the selected CRD into the tenant API and automatically adds the read permissions needed for configured from-host custom resources.
 
@@ -79,6 +82,7 @@ Apply the configuration:
 
 ```bash
 vcluster create team-a \
+  --context "${HOST_CTX}" \
   --namespace team-a-vcluster \
   --upgrade \
   --connect=false \
@@ -87,12 +91,19 @@ vcluster create team-a \
 
 ## Verify the Imported Objects
 
-In the tenant cluster:
+Keep the control-plane context active and define a helper that runs each `kubectl` command through a temporary tenant connection:
 
 ```bash
-kubectl get secret db-credentials -n platform
-kubectl get databaseconnection database -n platform -o yaml
-kubectl auth can-i update secret/db-credentials -n platform
+tenant_kubectl() {
+  vcluster connect team-a \
+    --context "${HOST_CTX}" \
+    --namespace team-a-vcluster \
+    -- kubectl "$@"
+}
+
+tenant_kubectl get secret db-credentials -n platform
+tenant_kubectl get databaseconnection database -n platform -o yaml
+tenant_kubectl auth can-i update secret/db-credentials -n platform
 ```
 
 The custom resource should contain the tenant-facing Secret name and namespace:
@@ -104,12 +115,12 @@ spec:
     namespace: platform
 ```
 
-From-host objects are read-only copies. Changes made inside the tenant do not persist back to the control plane cluster and will be reconciled. Rotate the source Secret through the platform-owned secret workflow, then verify the tenant copy's resource version and application reload behavior.
+The `auth can-i` result describes only the current tenant identity's RBAC and may be `yes` for a tenant administrator; it does not make the sync bidirectional. From-host objects are read-only copies. Changes made inside the tenant do not persist back to the control plane cluster and will be reconciled. Rotate the source Secret through the platform-owned secret workflow, then verify the tenant copy's resource version and application reload behavior.
 
 Compare only metadata or a digest when validating rotation; do not print plaintext values:
 
 ```bash
-kubectl get secret db-credentials -n platform \
+tenant_kubectl get secret db-credentials -n platform \
   -o jsonpath='{.metadata.resourceVersion}{"\n"}'
 ```
 
@@ -118,15 +129,17 @@ kubectl get secret db-credentials -n platform \
 Create another harmless Secret in the source namespace, then verify it does not appear in the tenant:
 
 ```bash
-kubectl create secret generic not-for-team-a \
+kubectl --context="${HOST_CTX}" create secret generic not-for-team-a \
   -n shared-secrets \
   --from-literal=test=value
 
-kubectl get secret not-for-team-a -n platform
+tenant_kubectl get secret not-for-team-a -n platform
 # Expected: NotFound
+
+kubectl --context="${HOST_CTX}" delete secret not-for-team-a -n shared-secrets
 ```
 
-Delete the lab Secret afterward. Also test RBAC inside the tenant: only the workload service account that needs the credential should be able to read it. Namespace membership alone is not an authorization policy.
+Also test RBAC inside the tenant. The Role below grants an application direct Kubernetes API `get` access to this one Secret. Pods using `envFrom` or a Secret volume do not need their ServiceAccount to have `get`; anyone who can create a Pod in `platform` can still mount and expose its Secrets, so restrict workload creation and use separate namespaces or admission controls where needed.
 
 ```yaml
 apiVersion: rbac.authorization.k8s.io/v1
@@ -141,12 +154,12 @@ rules:
     verbs: ["get"]
 ```
 
-Bind this Role to the intended ServiceAccount, not to every authenticated tenant user.
+When direct API access is required, bind this Role to the intended ServiceAccount, not to every authenticated tenant user.
 
 ## Common Failure Modes
 
 - The Secret does not appear: check the exact `host-namespace/name` mapping, vCluster RBAC, and control-plane logs.
-- The custom resource appears but retains the host Secret name: check the patch path and the referenced namespace field.
+- The custom resource appears but retains the host Secret name: check the structured patch path and the relative `namePath` and `namespacePath` fields.
 - The CR does not appear: confirm the CRD resource plural, version, scope, and mapping.
 - A tenant edit disappears: expected; from-host copies are read-only.
 - A second Secret unexpectedly appears: inspect for wildcard mappings, another sync rule, or an operator that independently copies it.
@@ -159,6 +172,7 @@ Reference patches preserve object relationships; they do not authorize access. K
 - [vCluster: Sync Secrets from the control plane cluster](https://www.vcluster.com/docs/vcluster/configure/vcluster-yaml/sync/from-host/secrets)
 - [vCluster: Sync custom resources from the control plane cluster](https://www.vcluster.com/docs/vcluster/configure/vcluster-yaml/sync/from-host/custom-resources)
 - [vCluster: Reference patches](https://www.vcluster.com/docs/vcluster/configure/vcluster-yaml/sync/patching)
+- [vCluster: Compare open source and Free tiers](https://www.vcluster.com/docs/vcluster/introduction/oss-vs-free)
 - [Kubernetes: Secrets](https://kubernetes.io/docs/concepts/configuration/secret/)
 - [Kubernetes: Using RBAC authorization](https://kubernetes.io/docs/reference/access-authn-authz/rbac/)
 
