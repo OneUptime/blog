@@ -14,7 +14,7 @@ Flannel needs a unique, mutually reachable node address for inter-host communica
 
 Choosing the wrong interface can produce an apparently healthy DaemonSet while cross-node pod traffic times out. Flannel may advertise an address reachable only from a management VLAN, choose the same NAT-side address on multiple virtual machines, or send VXLAN through a low-MTU VPN.
 
-Current Flannel supports exact `--iface` matches, `--iface-regex` matches, and `--iface-can-reach`. Their precedence matters: exact `--iface` candidates are tried first; regex candidates are used only if no exact candidate matches.
+Current Flannel supports exact `--iface` matches, `--iface-regex` matches, and, on Linux, `--iface-can-reach`. Their precedence matters: exact `--iface` candidates are tried first; regex candidates are used only if no exact candidate matches; reachability selection is used only if neither group matches.
 
 ## Inventory Routes and Addresses on Every Node
 
@@ -41,8 +41,8 @@ Check what Flannel chose now:
 
 ```bash
 kubectl -n kube-flannel logs daemonset/kube-flannel-ds \
-  -c kube-flannel --tail=300 --prefix \
-  | grep -E 'Determining IP|Using interface|Defaulting external|public address'
+  -c kube-flannel --all-pods=true --tail=300 --prefix \
+  | grep -E 'Determining (IP address|interface)|Searching for interface|Using interface|external address'
 
 kubectl get nodes -o wide
 ```
@@ -50,10 +50,10 @@ kubectl get nodes -o wide
 For a VXLAN backend, also inspect each node:
 
 ```bash
-ip -d link show flannel.1
+ip -d link show type vxlan
 ```
 
-The `local` address in the detailed VXLAN output should be the intended underlay endpoint.
+The `local` address on Flannel's VXLAN device should be the intended local tunnel source.
 
 ## Use `--iface` for an Exact, Stable Choice
 
@@ -114,7 +114,7 @@ This is useful only if the route is stable and representative of peer traffic. A
 These values can differ:
 
 - `--iface` selects the local interface used for inter-host communication.
-- `--public-ip` changes the address Flannel advertises to peers.
+- `--public-ip` changes the address Flannel advertises to peers. Without another interface-selection flag, Flannel also tries to find a local interface with that IP.
 - Kubernetes Node `InternalIP` is chosen by kubelet or the cloud provider.
 - Flannel's node annotations carry backend and advertised-address data.
 
@@ -143,11 +143,11 @@ After rollout, verify on every node:
 
 ```bash
 kubectl -n kube-flannel logs daemonset/kube-flannel-ds \
-  -c kube-flannel --tail=300 --prefix \
+  -c kube-flannel --all-pods=true --tail=300 --prefix \
   | grep -E 'Using interface|external address'
 
 ip route get <peer-selected-address>
-ip -d link show flannel.1
+ip -d link show type vxlan
 ```
 
 Then test cross-node Pod IP traffic in both directions and capture the configured backend port on the intended NIC.
