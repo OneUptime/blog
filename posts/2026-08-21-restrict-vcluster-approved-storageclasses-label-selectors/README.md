@@ -8,7 +8,7 @@ Description: Label approved host StorageClasses and use vCluster selectors to co
 
 ---
 
-StorageClass names often encode cost, encryption, replication, topology, or performance policy. Letting every tenant use every host class can expose unapproved backends or expensive tiers. vCluster 0.36 can import only host StorageClasses that match a Kubernetes label selector and reject PVC/PV synchronization for classes outside that set.
+StorageClass names often encode cost, encryption, replication, topology, or performance policy. Letting every tenant use every host class can expose unapproved backends or expensive tiers. vCluster 0.36 can import only host StorageClasses that match a Kubernetes label selector and gate PVC/PV synchronization for classes named in `spec.storageClassName`. Admission is still required to close the bypass paths described below.
 
 This guide targets vCluster **0.36** with a container control plane on shared nodes. It uses host-to-tenant StorageClass synchronization, not tenant-created StorageClasses synchronized outward.
 
@@ -79,7 +79,6 @@ Apply the configuration:
 vcluster create team-a \
   --namespace team-a-vcluster \
   --upgrade \
-  --connect=false \
   --values vcluster.yaml
 ```
 
@@ -91,12 +90,12 @@ When `sync.fromHost.storageClasses.enabled` is active:
 
 - Matching host StorageClasses appear read-only in the tenant cluster.
 - Tenant-created StorageClass objects are deleted by vCluster.
-- A PVC or PV naming a selected class can synchronize to the control plane cluster.
-- A PVC or PV naming an unselected class remains in the tenant API, is not synchronized, and receives a `SyncWarning` event.
+- A PVC naming a selected class can synchronize to the control plane cluster. If `sync.toHost.persistentVolumes.enabled` is enabled, the same selector also gates tenant-created PVs.
+- A PVC naming an unselected class remains in the tenant API, is not synchronized, and receives a `SyncWarning` event. If PV synchronization is enabled, the same behavior applies to a tenant-created PV.
 - Removing a label can remove the class from the tenant, but existing PVCs and PVs are not automatically deleted. They become orphaned and require deliberate cleanup.
-- A PVC or PV with empty `storageClassName` is allowed by the selector logic documented by vCluster.
+- The selector check does not reject a PVC whose `storageClassName` remains omitted or is explicitly `""`, or a PV with an empty class. Kubernetes may assign a default StorageClass to an omitted PVC; without the legacy annotation described below, explicit `""` opts out of dynamic provisioning.
 
-The final point matters: a selector is not a complete admission policy for classless/static storage. If the platform must prohibit empty `storageClassName`, add a validating admission rule in the tenant and/or control plane cluster.
+The final point matters: a selector is not a complete admission policy for classless/static storage. In vCluster 0.36, the selector check also does not inspect the deprecated `volume.beta.kubernetes.io/storage-class` annotation when `spec.storageClassName` is omitted or empty, even though vCluster and Kubernetes still recognize that annotation as a class request. To enforce a strict allowlist, add a validating admission rule in the tenant and/or control plane cluster that rejects this annotation on PVCs and PVs and requires an explicit, nonempty, approved `spec.storageClassName`.
 
 ## Test the Positive Path
 
@@ -155,7 +154,7 @@ kubectl apply -f denied-pvc.yaml
 kubectl describe pvc denied-data -n apps
 ```
 
-Expect a vCluster `SyncWarning` explaining that the claim did not match `sync.fromHost.storageClasses.selector`. On the control plane cluster, confirm there is no translated claim. Delete the disposable tenant claim after the test.
+Expect a vCluster `SyncWarning` explaining either that the host class could not be reached or that it did not match `sync.fromHost.storageClasses.selector`, depending on whether the class exists. On the control plane cluster, confirm there is no translated claim. Delete the disposable tenant claim after the test.
 
 ## Plan Changes Without Stranding Data
 
@@ -175,8 +174,8 @@ Do not rename a StorageClass in place; its name is how PVCs request it. Introduc
 Combine the selector with:
 
 - Host RBAC that reserves StorageClass administration for platform operators.
-- Admission that rejects empty or unapproved `storageClassName` values.
-- `policies.resourceQuota.quota.requests.storage` and `count/persistentvolumeclaims` limits.
+- Admission that rejects the deprecated `volume.beta.kubernetes.io/storage-class` annotation on PVCs and PVs and requires an explicit approved `spec.storageClassName`.
+- `policies.resourceQuota.enabled: true` with `quota` limits for the `requests.storage` and `count/persistentvolumeclaims` keys.
 - Cloud and CSI policy for encryption, allowed volume types, snapshots, and topology.
 - Monitoring for `SyncWarning`, Pending claims, provisioning errors, and capacity.
 
@@ -192,4 +191,4 @@ The selector controls synchronization; it cannot make an insecure StorageClass s
 
 ## Conclusion
 
-Mark approval on the host StorageClass, select only approved tiers in `vcluster.yaml`, and test both a permitted and denied claim. Treat label removal as a storage migration because vCluster preserves existing claims and volumes. Add admission for classless claims and quota for capacity so the selector forms one layer of a complete storage policy.
+Mark approval on the host StorageClass, select only approved tiers in `vcluster.yaml`, and test both a permitted and denied claim. Treat label removal as a storage migration because vCluster preserves existing claims and volumes. Add admission for classless claims and the legacy storage-class annotation, plus quota for capacity, so the selector forms one layer of a complete storage policy.
