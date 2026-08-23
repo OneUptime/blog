@@ -87,7 +87,6 @@
 
 ## MTTR
 
-14. How to Track Time to Mitigation Separately from Time to Permanent Resolution
 15. How to Decompose MTTR into Detection, Acknowledgment, Assembly, Diagnosis, and Mitigation Time
 16. How to Reduce MTTR with Automated Rollbacks and Feature-Flag Kill Switches Before Root-Cause Analysis
 17. How to Test Whether Runbooks Reduce MTTR Using Comparable Incident Cohorts
