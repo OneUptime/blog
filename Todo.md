@@ -87,7 +87,6 @@
 
 ## MTTR
 
-20. How to Pair MTTR with SLO Impact, Incident Frequency, Reactive Hours, and Recovery Success Rate
 
 ## API Testing
 
