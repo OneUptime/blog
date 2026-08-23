@@ -87,7 +87,6 @@
 
 ## MTTR
 
-6. Why Median, p75, and p90 Recovery Time Tell More Than Mean MTTR
 7. How to Add Sample Size and Confidence Bounds to MTTR Trend Reports
 8. How to Calculate Impact-Weighted Recovery Time from User-Minutes and Error-Budget Burn
 9. How to Build a Canonical Incident Timeline for MTTR from PagerDuty, Jira, Slack, and Observability Events
