@@ -84,7 +84,6 @@
 
 ## Apache Hudi
 
-10. How to Preserve Hudi Time Travel Beyond Cleaner Retention with Savepoints
 11. How to Evolve Hudi Schemas Safely: Add, Drop, Rename, and Widen Columns in Spark
 12. How to Fix Hudi Hive Sync “Schema Difference Found” on Partitioned Tables
 13. How to Sync Hudi to AWS Glue Without Exhausting Catalog Table Versions
