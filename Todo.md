@@ -84,7 +84,6 @@
 
 ## Apache Hudi
 
-7. How to Size Hudi Files and Write Parallelism for S3 Without Creating Tiny Files
 8. How to Checkpoint Hudi Incremental Queries by Completion Time Without Missing or Reprocessing Commits
 9. Hudi Incremental `latest_state` vs CDC: How to Return Final Rows or Every Before-and-After Change
 10. How to Preserve Hudi Time Travel Beyond Cleaner Retention with Savepoints
