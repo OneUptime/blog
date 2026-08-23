@@ -87,7 +87,6 @@
 
 ## MTTR
 
-2. How to Calculate MTTR Across Incident Reopens, Flapping Recoveries, and Multiple Impact Windows
 3. How to Measure MTTR When a Service Is Partially Restored Before Full Recovery
 4. Which Incidents Belong in MTTR? Handling False Positives, Planned Maintenance, Tests, and Near Misses
 5. How to Segment MTTR by Service, Severity, and Failure Mode Without Hiding Outliers
