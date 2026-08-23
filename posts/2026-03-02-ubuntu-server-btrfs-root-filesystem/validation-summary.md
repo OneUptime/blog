@@ -37,8 +37,14 @@ Tutorial / How-to guide
    - When you mount a Btrfs filesystem without specifying a subvolume, you get the top-level subvolume (ID 5), where the user-created subvolumes appear as directories named exactly as they were created (`@`, `@home`, `@snapshots`, `@var-log`). The `.snapshots` path only exists when the `@snapshots` subvolume is explicitly mounted there. The rollback `mv` therefore needs to reference `/mnt/@snapshots/root-...`.
    - **Fix**: Changed `/mnt/.snapshots/root-20240315-143022` to `/mnt/@snapshots/root-20240315-143022` and added a clarifying comment that snapshots live under the `@snapshots` subvolume at the top level. Also tweaked the preceding comment to clarify that the mount is of the top-level Btrfs subvolume.
 
+3. **Incorrect claim that the Subiquity installer creates `@` and `@home` subvolumes** (In the Subiquity Installer section).
+   The original post stated that "the installer will set up subvolumes" and that "Ubuntu typically creates" `@` and `@home`. Reported by an external contributor in https://github.com/OneUptime/blog/pull/163.
+   - Subiquity has never created Btrfs subvolumes. Canonical documents this explicitly under "Limitations and workarounds": the installer cannot configure Btrfs subvolumes (https://canonical-subiquity.readthedocs-hosted.com/en/latest/howto/configure-storage.html). The subiquity source contains no subvolume creation code, and curtin, which applies the storage config, has no Btrfs subvolume support either. Tracked as Launchpad bug #1881932, open since 2020. Subvolume creation did exist in the older debian-installer and Ubiquity installers via Ubuntu's patched `partman-btrfs`.
+   - A reader following the original text would have written an fstab referencing `subvol=@` against a disk with no `@`, producing an unbootable system.
+   - **Fix**: The paragraph now states plainly that Subiquity does not create subvolumes, tells the reader how to check (`sudo btrfs subvolume list /`), notes which installers did create them, and points at the "Manual Btrfs Setup" section as the way to build the layout - flagging that on the root disk this must be done before first boot. That section's lead-in was widened to name the flat-root conversion case.
+
 ## Review Notes
-- The Subiquity installer steps are accurate; Ubuntu's default Btrfs subvolume layout is `@` and `@home`.
+- The Subiquity partitioning steps are accurate, but Subiquity does not create Btrfs subvolumes; a fresh Ubuntu Server install lands on a flat Btrfs filesystem (top-level subvolume, ID 5). See Issue 3 below.
 - The claim that "GRUB's Btrfs support is limited" is somewhat dated — modern GRUB (2.04+) supports Btrfs with zstd, multi-device, and subvolumes — but keeping `/boot` on ext4 remains a common and defensible recommendation for simplicity and broad compatibility, so this was left unchanged.
 - The `ssd` mount option is auto-detected by modern kernels but is still valid to specify explicitly.
 - `btrfs-scrub@-.timer` correctly references the root filesystem via systemd path escaping (`/` → `-`).

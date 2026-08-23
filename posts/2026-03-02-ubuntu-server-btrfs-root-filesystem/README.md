@@ -35,16 +35,17 @@ At the storage configuration step:
 3. Create the boot partition (2GB, ext4, mounted at `/boot`) - keep `/boot` as ext4 because GRUB's Btrfs support is limited
 4. Create the root partition using the remaining space, formatted as Btrfs
 
-When formatting the root partition as Btrfs, subvolumes may or may not be set up depending on the installer.
-One or more ubuntu installers have been known to use this subvolume layout:
+When formatting the root partition as Btrfs, the Subiquity installer does not create subvolumes. Canonical documents this as a limitation - the installer cannot configure Btrfs subvolumes - so a fresh install leaves you with a single flat Btrfs filesystem mounted at `/`. Confirm what you actually have after the first boot with `sudo btrfs subvolume list /`, which prints nothing on a flat layout. Older Ubuntu installers did create subvolumes: the debian-installer and Ubiquity installers both used Ubuntu's patched `partman-btrfs` to create `@` and `@home`, and Kubuntu and Lubuntu still get them because Calamares supports subvolumes.
+
+The rest of this post assumes the conventional Ubuntu subvolume layout:
 - `@` - mounted at `/`
 - `@home` - mounted at `/home`
 
-This layout is useful because it allows snapshotting `/` without including `/home` in the snapshot (and vice versa).
+This subvolume layout is important because it allows snapshotting `/` without including `/home` in the snapshot (and vice versa). If the installer left you a flat filesystem, build the layout yourself with the commands in "Manual Btrfs Setup" below. On the root disk that has to happen before the first boot, from the installer shell or a live USB.
 
 ## Manual Btrfs Setup
 
-If doing a post-install reconfiguration or setting up a secondary disk:
+If you are converting a flat Btrfs root to subvolumes, doing a post-install reconfiguration, or setting up a secondary disk:
 
 ```bash
 # Format a partition as Btrfs
