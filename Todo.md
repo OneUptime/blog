@@ -84,7 +84,6 @@
 
 ## Apache Hudi
 
-12. How to Fix Hudi Hive Sync “Schema Difference Found” on Partitioned Tables
 13. How to Sync Hudi to AWS Glue Without Exhausting Catalog Table Versions
 14. How to Choose a Hudi Index: Bloom, Simple, Global, or Record-Level
 15. How to Enable Hudi Metadata and Column-Stats Indexes Without Overloading Writers
