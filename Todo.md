@@ -84,7 +84,6 @@
 
 ## Apache Hudi
 
-2. How to Stop Duplicate Apache Hudi Records Across Files and Partitions
 3. Apache Hudi Copy-on-Write vs Merge-on-Read: How to Choose from Update Rate, Read Latency, and Compaction Cost
 4. How to Run Asynchronous Hudi Compaction Without Blocking Spark Structured Streaming
 5. How to Tune Hudi Compaction with Delta-Commit and Log-Size Triggers
