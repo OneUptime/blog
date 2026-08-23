@@ -84,7 +84,6 @@
 
 ## Apache Hudi
 
-3. Apache Hudi Copy-on-Write vs Merge-on-Read: How to Choose from Update Rate, Read Latency, and Compaction Cost
 4. How to Run Asynchronous Hudi Compaction Without Blocking Spark Structured Streaming
 5. How to Tune Hudi Compaction with Delta-Commit and Log-Size Triggers
 6. How to Merge Small Hudi Parquet Files After `bulk_insert` Using Clustering
