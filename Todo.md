@@ -90,7 +90,6 @@
 
 ## API Testing
 
-8. How to Test Eventually Consistent APIs with Polling Instead of Fixed Sleeps
 9. How to Test an Asynchronous API That Returns `202 Accepted` and a Status URL
 10. How to Capture and Verify Webhooks in API Tests, Including Retries and Signatures
 11. How to Test Cursor Pagination for Missing, Duplicate, and Reordered Records
