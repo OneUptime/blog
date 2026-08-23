@@ -4790,3 +4790,233 @@
 18. How to Detect Secrets Hidden in Docker Image Configuration and Build History with Trivy Image-Config Scanners
 19. How to Suppress a Trivy Misconfiguration in an Uneditable Helm Subchart with a Path-Scoped Ignore Rule
 20. How to Verify Trivy Binaries and Container Images with Cosign Before Running Them in CI
+
+## Flux CD
+
+1. How to Bootstrap Flux CD Against a Private GitHub Repository with SSH or Token Authentication
+2. How to Force-Reconcile a Stuck Flux HelmRelease Without Making a Dummy Git Commit
+3. How to Debug a Flux Kustomization That Stays NotReady or Times Out During Health Checks
+4. How to Order CRDs, Operators, and Applications in Flux with dependsOn and CEL Ready Expressions
+5. How to Pass Large values.yaml Files to a Flux HelmRelease with ConfigMapGenerator and valuesFrom
+6. How to Configure HelmRelease Install and Upgrade Remediation for Automatic Rollbacks
+7. How to Debug Flux SOPS Decryption Failures Caused by Missing age Keys or Cloud KMS Permissions
+8. How to Fix Flux Image Automation When the Git Deploy Key Is Read-Only
+9. How to Update Multiple Container Images in One Flux ImageUpdateAutomation Commit
+10. How to Select SemVer, CalVer, and Regex Image Tags with Flux ImagePolicy
+11. How to Configure GitHub and GitLab Webhooks to Trigger Immediate Flux Reconciliation
+12. How to Troubleshoot Flux Slack, Teams, or Rocket.Chat Notifications That Never Arrive
+13. How to Ignore HPA- or VPA-Owned Fields Without Disabling Flux Drift Correction
+14. How to Tune Flux Reconciliation Timeouts, Retry Intervals, and Controller Workers for Large Clusters
+15. How to Rename or Move a Flux Kustomization Without Pruning Production Resources
+16. How to Secure a Multi-Tenant Flux Cluster with Namespace RBAC and ServiceAccount Impersonation
+17. How to Deploy Flux Kustomizations to Remote EKS, AKS, or GKE Clusters with Workload Identity
+18. How to Pull Git and OCI Sources from Private Registries with Custom CAs and mTLS in Flux
+19. How to Diagnose Flux SSH Errors Caused by known_hosts, Key Formats, and Repository URL Syntax
+20. How to Upgrade Flux Controllers Safely Without Re-Bootstrapping or Losing GitOps State
+
+## Knative
+
+1. How to Configure a Custom Domain for Knative Services with DomainMapping and DNS
+2. How to Enable Automatic HTTPS for Knative with cert-manager and Wildcard Certificates
+3. How to Debug a Knative Service Whose Route or Ingress Never Becomes Ready
+4. How to Fix a Knative Service That Refuses to Scale to Zero—or Immediately Scales Back Up
+5. How to Reduce Knative Cold Starts with minScale, Initial Scale, and Pod Retention
+6. How to Tune Knative Autoscaling with Soft vs. Hard Concurrency Limits
+7. How to Choose RPS or Concurrency Metrics—and KPA or HPA—for Knative Services
+8. How to Stop Knative Autoscaling Oscillation by Tuning Stable, Panic, and Scale-Down Windows
+9. How to Keep Long-Running Knative Requests Alive During Scale-Down and Pod Termination
+10. How to Roll Out Canary and Blue-Green Releases with Knative Revision Traffic Splits and Tags
+11. How to Pull Private Container Images in Knative with imagePullSecrets and ServiceAccounts
+12. How to Run gRPC and WebSocket Workloads on Knative Without Ingress Timeout Failures
+13. How to Fix Knative Broker/Trigger “address not set” and Subscriber DNS Errors
+14. How to Deliver Knative Events Across Namespaces with Broker and Trigger References
+15. How to Authenticate and Authorize CloudEvent Producers Before They Reach a Knative Broker
+16. How to Filter Knative Trigger Events by Multiple CloudEvent Attributes and CESQL
+17. How to Set Different Retry and Dead-Letter Policies for Each Knative Broker Trigger
+18. How to Debug Dropped Knative Events from Source to Channel, Broker, Trigger, and Sink
+19. How to Recover Knative KafkaSource Consumers After Rebalances Without Missing or Duplicating Events
+20. How to Scale Asynchronous Knative Workloads from Queue Depth with KafkaSource and KEDA
+
+## Harvester
+
+1. How to Size a Production Harvester Cluster: Nodes, Disks, CPU, Memory, and Longhorn Replicas
+2. How to Automate Harvester Bare-Metal Installation with PXE, config_url, and Stable Disk IDs
+3. How to Plan Harvester Management IPs and the VIP When Node IPs Cannot Be Changed Later
+4. How to Configure Harvester NIC Bonds and LACP Without Breaking Management Networking
+5. How to Build VLAN and Untagged VM Networks in Harvester with Correct Switch Trunking
+6. How to Give Harvester VMs Static IPs with cloud-init Without Conflicting DHCP Addresses
+7. How to Give NATed Harvester VMs Internet Access and Expose Selected Services Externally
+8. How to Add Secondary Disks and Create SSD/HDD Storage Classes with Harvester Disk Tags
+9. How to Set the Correct Longhorn Replica Count for Single-Node and Three-Node Harvester Clusters
+10. How to Recover Degraded Harvester Volumes When Longhorn Cannot Schedule Enough Replicas
+11. How to Remove a Harvester Node Safely Without Losing etcd Quorum or Volume Replicas
+12. How to Troubleshoot Harvester Live Migration Failures for Non-Migratable VMs
+13. How to Schedule Harvester VM Backups to S3 or NFS and Set Safe Retention Policies
+14. How to Restore a Harvester VM to Another Cluster Without Image or DHCP Identity Conflicts
+15. How to Fix Harvester VM Snapshot Failures Caused by QEMU Guest Agent Filesystem Freeze
+16. How to Import VMware, OpenStack, and OVA VMs into Harvester Without Running Out of Scratch Space
+17. How to Configure GPU, PCI, and USB Passthrough in Harvester—and Understand the Migration Tradeoff
+18. How to Add a Third-Party CSI Driver to Harvester with CDI Storage Profiles and Snapshot Classes
+19. How to Upgrade Harvester in an Air-Gapped Environment Along a Supported Version Path
+20. How to Unstick a Harvester Upgrade Blocked by Unhealthy Volumes, Active Backups, or Non-Migratable VMs
+
+## ScalarDB
+
+1. How to Configure ScalarDB Multi-Storage for MySQL and DynamoDB Local with Endpoint Override
+2. How to Run ScalarDB Against DynamoDB Local for Isolated Integration Tests
+3. How to Connect ScalarDB to Azure Cosmos DB and Troubleshoot Endpoint, Port, and Credential Errors
+4. How to Load a Transaction-Enabled ScalarDB Schema and Create the Coordinator Table Correctly
+5. How to Initialize and Reuse `DistributedTransactionManager` Without Leaking Backend Sessions
+6. How to Use Spring `@Transactional` with ScalarDB’s Custom Transaction Manager
+7. How to Coordinate ScalarDB Two-Phase Commit Across Microservices with Begin, Join, Prepare, and Commit
+8. How to Recover Safely from ScalarDB `UnknownTransactionStatusException` Without Duplicating Writes
+9. How to Handle ScalarDB `CommitException` with Rollback, Abort, and Bounded Retries
+10. How to Diagnose Consensus Commit Failures by Enabling Logs and Transaction Metadata
+11. How to Avoid `InvalidUsageException` When Deleting Records in ScalarDB Transactions
+12. How to Replace Deprecated ScalarDB `Put` Operations with `Insert`, `Upsert`, and `Update`
+13. How to Enforce Uniqueness with ScalarDB Conditional Mutations and Handle `NoMutationException`
+14. How to Paginate ScalarDB `Scan` Results with Limits and Continuation Keys
+15. How to Enable Cross-Partition Scans Per Operation Without Unexpectedly Weakening Transaction Isolation
+16. How to Choose ScalarDB Partition and Clustering Keys for Correct `Get` and Ordered `Scan` Operations
+17. How to Configure Cassandra Replication for ScalarDB Coordinator and Application Keyspaces
+18. How to Back Up and Restore ScalarDB Across Multiple Databases Without Breaking Transaction Consistency
+19. How to Migrate Cassandra Rows into Transaction-Enabled ScalarDB Without Writing Transaction Metadata by Hand
+20. How to Benchmark ScalarDB and Separate Storage Bottlenecks from Distributed-Transaction Overhead
+
+## SolarWinds
+
+1. How to Add SolarWinds Orion Nodes with the SDK and Assign Credentials, Pollers, and Custom Properties
+2. How to Trigger “Poll Now” Through the SolarWinds SWIS REST API or PowerShell
+3. How to Force Orion Resource Inventory and Enable Missing CPU and Memory Pollers
+4. How to Troubleshoot an Orion Node That Responds to Ping but Returns Unknown SNMP Status
+5. How to Automatically Discover New Volumes and Interfaces Without Monitoring Every Access Port
+6. How to Build a SAM Alert for a Stopped Windows Service and Include the Failed Component in Email
+7. How to Restart a Windows Service Automatically from a Component-Level SAM Alert
+8. How to Alert Only After Interface Utilization Stays Above a Threshold Without Repeating Every Minute
+9. How to Suppress Cascading Orion Alerts with Dependencies and Native Suppress Conditions
+10. How to Alert on a Custom SNMP OID with Universal Device Poller Thresholds
+11. How to Monitor an External Authenticated Website in SAM When It Has No Managed Node
+12. How to Fix a PowerShell Script That Works Locally but Fails in a SolarWinds SAM Monitor
+13. How to Monitor a Linux Spring Boot Process’s CPU and Memory with SolarWinds SAM
+14. How to Query Orion Node Status and Custom Properties with SWQL from Python or PowerShell
+15. How to Write SWQL Joins with Navigation Properties and Avoid Duplicate Orion Report Rows
+16. How to Export Paginated Orion SWIS API Results to CSV or Excel
+17. How to Migrate OrionSDK Scripts from Legacy SWIS Port 17778 to Port 17774
+18. How to Automate Orion Maintenance Mode Before Deployments and Resume Monitoring Afterwards
+19. How to Monitor the SolarWinds Platform Itself for Polling Engine and SQL Connectivity Failures
+20. How to Build Per-Site SLA and Availability Reports in Orion with SWQL
+
+## Autovacuum
+
+1. How to Verify PostgreSQL Autovacuum Is Enabled and Find Which Tables It Is Actually Maintaining
+2. How to Calculate Exactly When Autovacuum Will Trigger from Threshold and Scale Factor
+3. How to Tune Per-Table Autovacuum Settings for Large, High-Churn Tables
+4. How to Speed Up Autovacuum with `autovacuum_vacuum_cost_limit` and `autovacuum_vacuum_cost_delay`
+5. How to Size `autovacuum_max_workers` When Multiple Databases Compete for Workers
+6. How to Diagnose Dead Tuples That Autovacuum Cannot Remove Because of Long Transactions or Replication Slots
+7. How to Map a `pg_toast` Autovacuum Process Back to Its Parent Table
+8. How to Configure Insert-Triggered Autovacuum for Append-Only Tables
+9. How to Keep Autovacuum and Autoanalyze Effective on Partitioned Tables
+10. How to Reclaim Disk Space After Large Deletes Without Blocking on `VACUUM FULL`
+11. How to Control Autovacuum I/O So Foreground Queries Keep Their Latency SLOs
+12. How to Handle Autovacuum-versus-DDL Lock Conflicts Without Killing Anti-Wraparound Workers
+13. How to Log Every Slow or Skipped Autovacuum with `log_autovacuum_min_duration`
+14. How to Run Manual `VACUUM (ANALYZE)` After Bulk Loads Without Fighting Autovacuum
+15. How to Prevent Materialized View Bloat Caused by `REFRESH MATERIALIZED VIEW CONCURRENTLY`
+16. How to Fix Index Bloat That Autovacuum Cannot Reclaim with `REINDEX CONCURRENTLY` or `pg_repack`
+17. How to Tune Freeze Ages Before Emergency Anti-Wraparound Vacuums Begin
+18. How to Monitor and Prevent Multixact Wraparound with `datminmxid` and Freeze Settings
+19. How to Restore Index-Only Scans by Maintaining the Visibility Map with Vacuum
+20. How to Combine Fillfactor, HOT Updates, and Aggressive Autovacuum for Update-Heavy Tables
+
+## Serverless Databases
+
+1. How to Size a PostgreSQL Connection Pool for AWS Lambda, Vercel Functions, and Edge Runtimes
+2. How to Diagnose and Stop Serverless Database Connection Storms During Traffic Bursts
+3. How to Use Separate Pooled Runtime and Direct Migration URLs with Prisma
+4. How to Fix Prisma’s “Prepared Statement s0 Already Exists” Error Behind PgBouncer
+5. How to Choose Transaction Pooling vs. Session Pooling for Serverless PostgreSQL
+6. How to Tune `connect_timeout` and `pool_timeout` for a Database That Scales to Zero
+7. How to Prevent Cold-Resume Timeouts Without Keeping a Serverless Database Permanently Warm
+8. How to Debug Lambda-to-Aurora Connection Timeouts Across VPCs, Subnets, DNS, and Security Groups
+9. How to Detect and Reduce RDS Proxy Session Pinning in PostgreSQL and MySQL
+10. How to Make Database Transactions Retry-Safe Across Serverless Failovers and Transient Disconnects
+11. How to Run Backward-Compatible Schema Migrations While Old and New Serverless Functions Coexist
+12. How to Rebuild a Serverless Database Branch When Migration History Is Incomplete
+13. How to Restore Accidental Deletes with Point-in-Time Recovery Without Overwriting Production
+14. How to Test Serverless Database Backups with Automated Restore Drills
+15. How to Route Read-Heavy Serverless Workloads to Read Replicas Without Serving Stale Data
+16. How to Choose a Database Region for Low-Latency Edge and Multi-Region Applications
+17. How to Set Minimum and Maximum ACUs for Aurora Serverless v2 Without Cost Surprises
+18. How to Find the Connection or Health Check That Prevents Aurora Serverless from Auto-Pausing
+19. How to Load-Test a Serverless Database for Burst Concurrency, Scale Lag, and Pool Saturation
+20. How to Build a Local Development and Migration Workflow When Production Uses a Serverless Data API
+
+## procfs
+
+1. How to Calculate Total Linux CPU Usage from `/proc/stat` Without Treating Idle Time as Load
+2. How to Calculate a Process’s CPU Percentage from `/proc/PID/stat` Across Multiple Cores
+3. How to Calculate Used and Available RAM from `/proc/meminfo` Using `MemAvailable`
+4. How to Measure a Process’s Real Memory Footprint with RSS, PSS, and USS from `smaps_rollup`
+5. How to Compute Per-Process Disk I/O Rates from `/proc/PID/io` Without Confusing `rchar` with `read_bytes`
+6. How to Compute Per-Interface Network Throughput from `/proc/net/dev` Counter Deltas
+7. How to Map a TCP Socket in `/proc/net/tcp` to Its Owning PID and File Descriptor
+8. How to Find File Descriptor Leaks with `/proc/PID/fd`, `fdinfo`, and `/proc/PID/limits`
+9. How to Recover a Deleted File That a Linux Process Still Has Open Through `/proc/PID/fd`
+10. How to Identify a Process’s True Executable, Working Directory, Root, and Arguments Under `/proc/PID`
+11. How to Parse `/proc/PID/stat` and `cmdline` Safely When Names Contain Spaces, Parentheses, or NUL Bytes
+12. How to Convert `/proc/PID/stat` Start Ticks into a Wall-Clock Process Start Time
+13. How to Distinguish Zombies, Kernel Threads, Sleeping Tasks, and Blocked Tasks in `/proc/PID/status`
+14. How to Map Container PIDs to Host PIDs with `/proc/PID/status` and Namespace Links
+15. How to Mount a Private `/proc` Inside a New PID Namespace Without Exposing Host Processes
+16. How to Hide Other Users’ Processes with procfs `hidepid`, `gid`, and `subset=pid`
+17. How to Read, Change, and Persist Kernel Tunables from `/proc/sys` with `sysctl`
+18. How to Predict and Adjust the OOM Killer’s Victim Choice with `oom_score` and `oom_score_adj`
+19. How to Monitor CPU, Memory, and I/O Contention with `/proc/pressure` PSI Triggers
+20. How to Scan `/proc` Without Breaking on Exited Processes, Permission Errors, or PID Reuse
+
+## TiDB
+
+1. How to Migrate MySQL to TiDB Online with DM, Validate Consistency, and Cut Over Traffic
+2. How to Fix TiDB “Transaction Is Too Large” Without Hiding Oversized Batches
+3. How to Diagnose a Slow TiDB Query with Dashboard, EXPLAIN ANALYZE, and Coprocessor Timings
+4. How to Stop TiDB Auto-Increment Write Hotspots with AUTO_RANDOM and SHARD_ROW_ID_BITS
+5. How to Prevent TiDB Secondary-Index Hotspots Caused by Sequential Values
+6. How to Fix a TiDB Full Table Scan When a Composite Index Should Match
+7. How to Refresh TiDB Statistics and Detect a Stale or Wrong Query Plan
+8. How to Speed Up COUNT(*) in TiDB Without Adding a Misleading Index
+9. How to Choose Clustered vs. Nonclustered Primary Keys in TiDB Before a Large Import
+10. How to Import Terabytes with TiDB Lightning Without Small-Transaction or Checkpoint Failures
+11. How to Build TiDB Point-in-Time Recovery with BR Snapshot and Log Backups on S3
+12. How to Fix TiDB BR Restore Failures Caused by Collation, Clustered-Index, or System-Table Mismatches
+13. How to Configure TiDB Connection Pools Across Multiple SQL Nodes Without Stale Connections
+14. How to Fix TiDB Client “Unknown Charset ID 255” by Aligning Drivers and Collations
+15. How to Scale In a TiKV Node Safely and Remove Tombstone or Ghost Peers
+16. How to Add TiKV Capacity and Verify Regions Rebalance Instead of Creating New Hotspots
+17. How to Configure TiDB Placement Rules Across Availability Zones Without Losing Quorum
+18. How to Offload TiDB Reads with Follower Read and Bounded Staleness
+19. How to Diagnose TiCDC Replication Lag Before GC Removes Required History
+20. How to Perform a Rolling TiDB Upgrade with TiUP and Recover from Component Timeouts
+
+## Trino
+
+1. How to Deploy Trino Coordinators and Workers on Kubernetes with Reliable Discovery and Load Balancing
+2. How to Connect Trino to Iceberg on MinIO with a REST Catalog and Native S3 Properties
+3. How to Configure a Trino Iceberg Catalog for AWS Glue Without “Property Was Not Used” Errors
+4. How to Fix Trino Iceberg Table Creation When the Catalog Works but S3 Credentials Do Not
+5. How to Diagnose “Query Exceeded Per-Node Memory Limit” from Trino’s Top Consumers
+6. How to Replace Legacy Spill-to-Disk with Trino Fault-Tolerant Execution and an Exchange Manager
+7. How to Tune Trino Spill Paths, Compression, and Disk Limits Without Stalling Workers
+8. How to Choose Broadcast or Partitioned Joins in Trino with Accurate Table Statistics
+9. How to Fix Trino Dynamic Filtering When the Build Side or Connector Prevents Pushdown
+10. How to Verify Predicate, Projection, Aggregation, and Join Pushdown in a Trino Query Plan
+11. How to Speed Up Trino Cross-Catalog Joins When Connector Pushdown Stops at the Network Boundary
+12. How to Configure Trino Resource Groups for Fair Queuing, Concurrency, and Memory Isolation
+13. How to Drain and Autoscale Trino Workers Without Killing Running Queries
+14. How to Map Trino OAuth2 Users to Email Addresses with Microsoft Entra ID Claims and Scopes
+15. How to Fix Trino LDAP Login Behind a TLS-Terminating Load Balancer or Reverse Proxy
+16. How to Secure Trino Catalogs with File-Based Access Control, Row Filters, and Column Masks
+17. How to Diagnose BLOCKED Trino Queries with the Web UI, JMX Metrics, and OpenTelemetry
+18. How to Compact Small Iceberg Files Created by Frequent Trino Inserts
+19. How to Stop a Trino LIMIT Query from Scanning Every Partition Before Returning Rows
+20. How to Disable Trino Data and Metadata Caches for Repeatable Source-of-Truth Tests
