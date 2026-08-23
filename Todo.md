@@ -84,7 +84,6 @@
 
 ## Apache Hudi
 
-4. How to Run Asynchronous Hudi Compaction Without Blocking Spark Structured Streaming
 5. How to Tune Hudi Compaction with Delta-Commit and Log-Size Triggers
 6. How to Merge Small Hudi Parquet Files After `bulk_insert` Using Clustering
 7. How to Size Hudi Files and Write Parallelism for S3 Without Creating Tiny Files
