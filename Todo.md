@@ -90,7 +90,6 @@
 
 ## API Testing
 
-6. Should API Tests Create Fixtures Through the API or Load Data Directly into the Database?
 7. How to Clean Up API Test Data Without Deleting Another Parallel Test’s Records
 8. How to Test Eventually Consistent APIs with Polling Instead of Fixed Sleeps
 9. How to Test an Asynchronous API That Returns `202 Accepted` and a Status URL
