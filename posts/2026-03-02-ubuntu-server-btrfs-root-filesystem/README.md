@@ -35,11 +35,12 @@ At the storage configuration step:
 3. Create the boot partition (2GB, ext4, mounted at `/boot`) - keep `/boot` as ext4 because GRUB's Btrfs support is limited
 4. Create the root partition using the remaining space, formatted as Btrfs
 
-When formatting the root partition as Btrfs, the installer will set up subvolumes. Ubuntu typically creates:
+When formatting the root partition as Btrfs, subvolumes may or may not be set up depending on the installer.
+One or more ubuntu installers have been known to use this subvolume layout:
 - `@` - mounted at `/`
 - `@home` - mounted at `/home`
 
-This subvolume layout is important because it allows snapshotting `/` without including `/home` in the snapshot (and vice versa).
+This layout is useful because it allows snapshotting `/` without including `/home` in the snapshot (and vice versa).
 
 ## Manual Btrfs Setup
 
