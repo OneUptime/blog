@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: MTTR, Automated Rollback, Feature Flags, Canary Releases, Incident Response
+Tags: MTTR, Automated Rollback, Feature Flag, Canary Release, Incident Response
 
 Description: Design safe automated rollback and feature kill switches that reduce customer harm before root-cause analysis is complete.
 

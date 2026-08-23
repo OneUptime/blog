@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Apache Hudi, Incremental Queries, Checkpointing, Spark, Data Pipelines
+Tags: Apache Hudi, Incremental Queries, Checkpointing, Spark, Data Pipeline
 
 Description: Build bounded Hudi incremental reads with completion-time checkpoints that avoid timeline gaps and ambiguous restart boundaries.
 

@@ -2208,6 +2208,7 @@
 - Blog
 - Blogging Platform
 - Bloom Filter
+- Bloom Index
 - Bloom_filter
 - BloomFilter
 - BLPOP
@@ -2853,6 +2854,7 @@
 - Change Buffer
 - Change Data Capture
 - Change Detection
+- Change Failure
 - Change Failure Rate
 - Change Fatigue
 - Change Feed
@@ -3564,6 +3566,7 @@
 - Column Families
 - Column Modifier
 - Column Operations
+- Column Statistics
 - Column Store
 - Column Type
 - Column-Level Security
@@ -4872,6 +4875,7 @@
 - Data Services
 - Data Sharing
 - Data Skew
+- Data Skipping
 - Data Skipping Index
 - Data Source
 - Data Source Override
@@ -5304,6 +5308,7 @@
 - Deployment Pipeline
 - Deployment Planning
 - Deployment Preview
+- Deployment Recovery
 - Deployment Reports
 - Deployment Safety
 - Deployment Scripts
@@ -6647,6 +6652,7 @@
 - Event-Driven Autoscaling
 - Event-Gateway
 - Event-Processing
+- Event-Time Ordering
 - Eventarc
 - EventBridge
 - EventBridge Pipes
@@ -6736,6 +6742,7 @@
 - Expect Module
 - Expect_failures
 - Experiment
+- Experiment Design
 - Experiment Tracking
 - Experiment-tracking
 - Experimental
@@ -7075,6 +7082,7 @@
 - File Share
 - File Sharing
 - File Size
+- File Sizing
 - File Storage
 - File Sync
 - File Synchronization
@@ -7207,6 +7215,7 @@
 - Flamegraph
 - Flannel
 - Flapping
+- Flapping Alerts
 - Flash
 - Flash Memory
 - Flash Sale
@@ -8366,6 +8375,7 @@
 - HITRUST
 - Hive
 - Hive Metastore
+- Hive Sync
 - HKEYS
 - HL7
 - HL7 FHIR
@@ -8933,11 +8943,13 @@
 - Inbox Pattern
 - Incident
 - Incident Analysis
+- Incident Analytics
 - Incident Classification
 - Incident Communication
 - Incident Correlation
 - Incident Detection
 - Incident Escalation
+- Incident Frequency
 - Incident Investigation
 - Incident Learning
 - Incident Management
@@ -8973,6 +8985,7 @@
 - Incremental Migration
 - Incremental Models
 - Incremental Processing
+- Incremental Queries
 - Incremental Refresh
 - Incremental Sync
 - Incron
@@ -11109,6 +11122,7 @@
 - Merge Request
 - Merge_maps
 - merge_with_ttl_timeout
+- Merge-on-Read
 - Merge-Requests
 - Merged APIs
 - Mergers
@@ -11191,6 +11205,8 @@
 - Metadata Pool
 - Metadata Refresh
 - Metadata Server
+- Metadata Sync
+- Metadata Table
 - MetaField
 - MetalLB
 - Metaprogramming
@@ -11720,6 +11736,7 @@
 - Multi-SDK
 - Multi-Server
 - Multi-Service
+- Multi-Service Incidents
 - Multi-Session
 - Multi-Signal
 - Multi-Site
@@ -12860,6 +12877,7 @@
 - OpsCenter
 - OpsGenie
 - OpsLevel
+- Optimistic Concurrency Control
 - Optimistic DAD
 - Optimistic Lock
 - Optimistic Locking
@@ -13226,6 +13244,7 @@
 - Partial Encryption
 - Partial Failure
 - Partial Index
+- Partial Outage
 - Partial Resync
 - Partial Search
 - Partial Sorting
@@ -14876,6 +14895,7 @@
 - React-window
 - React.memo
 - Reactive
+- Reactive Hours
 - Reactive Messaging
 - Reactive Programming
 - Reactivity
@@ -14994,7 +15014,9 @@
 - Reconnection
 - Record
 - Record Lock
+- Record Merging
 - Record Types
+- Record-Level Index
 - Recording Rules
 - RecordTooLargeException
 - Recovery
@@ -15193,6 +15215,7 @@
 - Relevance Ranking
 - Reliability
 - Reliability Engineering
+- Reliability Metrics
 - Reliability Monitoring
 - Reliability Recommendations
 - Reliability Reviews
@@ -17294,6 +17317,7 @@
 - Spark Pools
 - Spark SQL
 - Spark Streaming
+- Spark Structured Streaming
 - Spark Tuning
 - Spark UI
 - SparkBar
@@ -19535,6 +19559,7 @@
 - User-Facing Analytics
 - User-Generated Content
 - User-management
+- User-Minutes
 - Useradd
 - UserDefaults
 - UseRef

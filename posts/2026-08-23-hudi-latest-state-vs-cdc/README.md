@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Apache Hudi, Change Data Capture, Incremental Queries, Spark, Data Pipelines
+Tags: Apache Hudi, Change Data Capture, Incremental Queries, Spark, Data Pipeline
 
 Description: Choose Hudi latest_state or CDC incremental queries based on whether consumers need final rows or committed table changes.
 

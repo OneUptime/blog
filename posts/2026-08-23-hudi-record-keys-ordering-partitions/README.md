@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Apache Hudi, Data Lakehouse, Spark, Upserts, Data Modeling
+Tags: Apache Hudi, Data Lakehouse, Spark, Upsert, Data Modeling
 
 Description: Learn how to model Hudi record keys, ordering fields, and partition paths so upserts remain deterministic and efficient.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Grafana, MTTR, Prometheus, Incident Analytics, Dashboards
+Tags: Grafana, MTTR, Prometheus, Incident Analytics, Dashboard
 
 Description: Build Grafana panels from one final duration per completed incident, with distributions, counts, tail percentiles, and open-incident context.
 

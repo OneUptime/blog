@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: MTTR, Runbooks, Experiment Design, Incident Response, SRE
+Tags: MTTR, Runbook, Experiment Design, Incident Response, SRE
 
 Description: Evaluate runbook effectiveness with comparable incident cohorts, exposure tracking, uncertainty, and recovery-quality guardrails.
 

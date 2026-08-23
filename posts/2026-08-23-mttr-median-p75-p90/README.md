@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: MTTR, Percentiles, Incident Analytics, SRE, Reliability Metrics
+Tags: MTTR, Percentile, Incident Analytics, SRE, Reliability Metrics
 
 Description: Use median and tail percentiles alongside mean recovery time to distinguish typical incidents from the slow recoveries that averages conceal.
 

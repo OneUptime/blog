@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: MTTR, Confidence Intervals, Statistics, Incident Analytics, SRE
+Tags: MTTR, Confidence Interval, Statistics, Incident Analytics, SRE
 
 Description: Add cohort counts and uncertainty intervals to recovery trends so sparse, skewed incident data does not imply false precision.
 

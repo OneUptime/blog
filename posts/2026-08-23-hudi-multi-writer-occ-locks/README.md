@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Apache Hudi, Optimistic Concurrency Control, Distributed Locks, Multi-Writer, Spark
+Tags: Apache Hudi, Optimistic Concurrency Control, Distributed Lock, Multi-Writer, Spark
 
 Description: Configure Hudi optimistic concurrency control with a shared distributed lock, lazy cleanup, retries, and conflict monitoring.
 

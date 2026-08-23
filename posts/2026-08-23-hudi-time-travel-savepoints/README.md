@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Apache Hudi, Time Travel, Savepoints, Data Retention, Disaster Recovery
+Tags: Apache Hudi, Time Travel, Savepoint, Data Retention, Disaster Recovery
 
 Description: Protect selected Hudi snapshots from cleaner retention with savepoints and operate their creation, validation, rollback, and deletion safely.
 

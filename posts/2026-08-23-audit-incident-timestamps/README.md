@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: MTTR, Data Quality, Time Zones, Incident Timeline, SRE
+Tags: MTTR, Data Quality, Time Zone, Incident Timeline, SRE
 
 Description: Detect missing, backfilled, duplicated, and clock-skewed incident events before timestamp defects become misleading recovery trends.
 

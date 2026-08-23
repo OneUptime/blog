@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Apache Hudi, Merge-on-Read, Amazon Athena, Trino, Query Engines
+Tags: Apache Hudi, Merge-on-Read, Amazon Athena, Trino, Query Engine
 
 Description: Query Hudi Merge-on-Read tables correctly by matching Athena snapshot support and Trino read-optimized support to compaction freshness.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: DORA Metrics, MTTR, Deployment Recovery, Change Failure, DevOps
+Tags: DORA Metric, MTTR, Deployment Recovery, Change Failure, DevOps
 
 Description: Keep DORA failed deployment recovery time distinct from broad incident MTTR and link production failures to changes with auditable evidence.
 

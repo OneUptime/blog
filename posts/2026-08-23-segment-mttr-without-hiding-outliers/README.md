@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: MTTR, Incident Analytics, Percentiles, SRE, Observability
+Tags: MTTR, Incident Analytics, Percentile, SRE, Observability
 
 Description: Segment recovery time by service, severity, and failure mode while retaining pooled trends, sample sizes, and visible outliers.
 

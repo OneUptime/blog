@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Apache Hudi, Deletes, Upserts, Change Data Capture, Spark
+Tags: Apache Hudi, Delete, Upsert, Change Data Capture, Spark
 
 Description: Apply mixed CDC upserts and hard deletes in one Hudi batch with a typed _hoodie_is_deleted control column and deterministic ordering.
 
