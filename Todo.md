@@ -84,7 +84,6 @@
 
 ## Apache Hudi
 
-17. How to Apply Upserts and Deletes in One Hudi Batch with `_hoodie_is_deleted`
 18. How to Ingest Late and Out-of-Order CDC Events into Hudi Without Overwriting Newer Rows
 19. How to Query Hudi Merge-on-Read Tables Correctly from Athena and Trino
 20. How to Match Hudi, Spark, Scala, and AWS Glue Bundle Versions to Avoid Class-Loading Failures
