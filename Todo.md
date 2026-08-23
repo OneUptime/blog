@@ -84,7 +84,6 @@
 
 ## Apache Hudi
 
-14. How to Choose a Hudi Index: Bloom, Simple, Global, or Record-Level
 15. How to Enable Hudi Metadata and Column-Stats Indexes Without Overloading Writers
 16. How to Configure Hudi Multi-Writer Concurrency with OCC and an External Lock Provider
 17. How to Apply Upserts and Deletes in One Hudi Batch with `_hoodie_is_deleted`
