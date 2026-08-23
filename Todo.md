@@ -87,7 +87,6 @@
 
 ## MTTR
 
-1. How to Define the MTTR Clock: Impact Start, Detection, Mitigation, Restoration, or Ticket Closure?
 2. How to Calculate MTTR Across Incident Reopens, Flapping Recoveries, and Multiple Impact Windows
 3. How to Measure MTTR When a Service Is Partially Restored Before Full Recovery
 4. Which Incidents Belong in MTTR? Handling False Positives, Planned Maintenance, Tests, and Near Misses
