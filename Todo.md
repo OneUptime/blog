@@ -4794,15 +4794,15 @@
 ## Flux CD
 
 1. How to Recover Flux Reconciliation After the Bootstrap Repository Is Renamed or Transferred
-2. How to Resume a Suspended Flux HelmRelease Safely After Its Chart Source Has Advanced
+2. How to Trigger Immediate Flux HelmRelease Upgrades When a `valuesFrom` ConfigMap or Secret Changes
 3. How to Debug a Flux Kustomization That Stays NotReady or Times Out During Health Checks
 4. How to Order CRDs, Operators, and Applications in Flux with dependsOn and CEL Ready Expressions
 5. How to Pass Large values.yaml Files to a Flux HelmRelease with ConfigMapGenerator and valuesFrom
-6. How to Keep Flux HelmRelease Remediation from Deleting Persistent Data After Repeated Failures
+6. How to Debug Flux HelmRelease Values When YAML Lists Are Replaced Instead of Merged
 7. How to Debug Flux SOPS Decryption Failures Caused by Missing age Keys or Cloud KMS Permissions
 8. How to Fix Flux Image Automation When the Git Deploy Key Is Read-Only
 9. How to Update Multiple Container Images in One Flux ImageUpdateAutomation Commit
-10. How to Filter Architecture Suffixes and Pre-Release Tags Before Flux ImagePolicy Applies SemVer Ordering
+10. How to Diagnose Flux `PruneFailed` When Kubernetes Finalizers Block Garbage Collection
 11. How to Configure GitHub and GitLab Webhooks to Trigger Immediate Flux Reconciliation
 12. How to Troubleshoot Flux Slack, Teams, or Rocket.Chat Notifications That Never Arrive
 13. How to Ignore HPA- or VPA-Owned Fields Without Disabling Flux Drift Correction
@@ -4810,7 +4810,7 @@
 15. How to Rename or Move a Flux Kustomization Without Pruning Production Resources
 16. How to Secure a Multi-Tenant Flux Cluster with Namespace RBAC and ServiceAccount Impersonation
 17. How to Deploy Flux Kustomizations to Remote EKS, AKS, or GKE Clusters with Workload Identity
-18. How to Scope Different TLS Secrets to Flux GitRepository and OCIRepository Sources Without Changing Global Trust
+18. How to Give Each Flux Kustomization a Separate Cloud Identity for SOPS Decryption
 19. How to Diagnose Flux SSH Errors Caused by known_hosts, Key Formats, and Repository URL Syntax
 20. How to Upgrade Flux Controllers Safely Without Re-Bootstrapping or Losing GitOps State
 
@@ -4829,7 +4829,7 @@
 11. How to Pull Private Container Images in Knative with imagePullSecrets and ServiceAccounts
 12. How to Run gRPC and WebSocket Workloads on Knative Without Ingress Timeout Failures
 13. How to Fix Knative Broker/Trigger “address not set” and Subscriber DNS Errors
-14. How to Authorize Cross-Namespace Knative Event Links with `knsubscribe`, OIDC, and EventPolicy
+14. How to Rewrite CloudEvent Attributes and Payloads with Knative EventTransform and JSONata
 15. How to Authenticate and Authorize CloudEvent Producers Before They Reach a Knative Broker
 16. How to Filter Knative Trigger Events by Multiple CloudEvent Attributes and CESQL
 17. How to Set Different Retry and Dead-Letter Policies for Each Knative Broker Trigger
