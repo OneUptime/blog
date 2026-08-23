@@ -84,7 +84,6 @@
 
 ## Apache Hudi
 
-20. How to Match Hudi, Spark, Scala, and AWS Glue Bundle Versions to Avoid Class-Loading Failures
 
 ## MTTR
 
