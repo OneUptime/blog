@@ -87,7 +87,6 @@
 
 ## MTTR
 
-4. Which Incidents Belong in MTTR? Handling False Positives, Planned Maintenance, Tests, and Near Misses
 5. How to Segment MTTR by Service, Severity, and Failure Mode Without Hiding Outliers
 6. Why Median, p75, and p90 Recovery Time Tell More Than Mean MTTR
 7. How to Add Sample Size and Confidence Bounds to MTTR Trend Reports
