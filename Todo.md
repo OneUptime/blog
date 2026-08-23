@@ -87,7 +87,6 @@
 
 ## MTTR
 
-15. How to Decompose MTTR into Detection, Acknowledgment, Assembly, Diagnosis, and Mitigation Time
 16. How to Reduce MTTR with Automated Rollbacks and Feature-Flag Kill Switches Before Root-Cause Analysis
 17. How to Test Whether Runbooks Reduce MTTR Using Comparable Incident Cohorts
 18. How to Attribute MTTR for Multi-Service Incidents Without Double-Counting a Shared Outage
