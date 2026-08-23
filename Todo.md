@@ -87,7 +87,6 @@
 
 ## MTTR
 
-7. How to Add Sample Size and Confidence Bounds to MTTR Trend Reports
 8. How to Calculate Impact-Weighted Recovery Time from User-Minutes and Error-Budget Burn
 9. How to Build a Canonical Incident Timeline for MTTR from PagerDuty, Jira, Slack, and Observability Events
 10. How to Audit Missing, Backfilled, and Time-Zone-Skewed Incident Timestamps Before Calculating MTTR
