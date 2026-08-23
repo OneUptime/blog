@@ -90,7 +90,6 @@
 
 ## API Testing
 
-10. How to Capture and Verify Webhooks in API Tests, Including Retries and Signatures
 11. How to Test Cursor Pagination for Missing, Duplicate, and Reordered Records
 12. How to Prove an Idempotency Key Prevents Duplicate Writes Under Concurrent Requests
 13. How to Test `ETag` and `If-Match` Handling for Concurrent API Updates
