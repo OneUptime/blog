@@ -90,7 +90,6 @@
 
 ## API Testing
 
-4. How to Test API Authorization for Roles, Tenants, and Object-Level Access
 5. How to Chain Dependent API Requests Without Making the Entire Test Suite Order-Dependent
 6. Should API Tests Create Fixtures Through the API or Load Data Directly into the Database?
 7. How to Clean Up API Test Data Without Deleting Another Parallel Test’s Records
