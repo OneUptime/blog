@@ -90,7 +90,6 @@
 
 ## API Testing
 
-1. Postman Collections or Tests in Code: When Does an API Suite Outgrow the GUI?
 2. How to Turn an OpenAPI Specification into API Tests Without Mistaking Schema Coverage for Behavior Coverage
 3. How to Refresh Expired OAuth Tokens in Parallel API Tests Without a Login Stampede
 4. How to Test API Authorization for Roles, Tenants, and Object-Level Access
