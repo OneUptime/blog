@@ -87,7 +87,6 @@
 
 ## MTTR
 
-13. How to Set a Recovery-Time Target from Service SLOs and RTOs Instead of Industry Benchmarks
 14. How to Track Time to Mitigation Separately from Time to Permanent Resolution
 15. How to Decompose MTTR into Detection, Acknowledgment, Assembly, Diagnosis, and Mitigation Time
 16. How to Reduce MTTR with Automated Rollbacks and Feature-Flag Kill Switches Before Root-Cause Analysis
