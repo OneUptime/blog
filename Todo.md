@@ -87,7 +87,6 @@
 
 ## MTTR
 
-18. How to Attribute MTTR for Multi-Service Incidents Without Double-Counting a Shared Outage
 19. How to Report MTTR Without Creating Perverse Incentives or Ranking Individual Responders
 20. How to Pair MTTR with SLO Impact, Incident Frequency, Reactive Hours, and Recovery Success Rate
 
