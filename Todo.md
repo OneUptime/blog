@@ -4793,16 +4793,16 @@
 
 ## Flux CD
 
-1. How to Bootstrap Flux CD Against a Private GitHub Repository with SSH or Token Authentication
-2. How to Force-Reconcile a Stuck Flux HelmRelease Without Making a Dummy Git Commit
+1. How to Recover Flux Reconciliation After the Bootstrap Repository Is Renamed or Transferred
+2. How to Resume a Suspended Flux HelmRelease Safely After Its Chart Source Has Advanced
 3. How to Debug a Flux Kustomization That Stays NotReady or Times Out During Health Checks
 4. How to Order CRDs, Operators, and Applications in Flux with dependsOn and CEL Ready Expressions
 5. How to Pass Large values.yaml Files to a Flux HelmRelease with ConfigMapGenerator and valuesFrom
-6. How to Configure HelmRelease Install and Upgrade Remediation for Automatic Rollbacks
+6. How to Keep Flux HelmRelease Remediation from Deleting Persistent Data After Repeated Failures
 7. How to Debug Flux SOPS Decryption Failures Caused by Missing age Keys or Cloud KMS Permissions
 8. How to Fix Flux Image Automation When the Git Deploy Key Is Read-Only
 9. How to Update Multiple Container Images in One Flux ImageUpdateAutomation Commit
-10. How to Select SemVer, CalVer, and Regex Image Tags with Flux ImagePolicy
+10. How to Filter Architecture Suffixes and Pre-Release Tags Before Flux ImagePolicy Applies SemVer Ordering
 11. How to Configure GitHub and GitLab Webhooks to Trigger Immediate Flux Reconciliation
 12. How to Troubleshoot Flux Slack, Teams, or Rocket.Chat Notifications That Never Arrive
 13. How to Ignore HPA- or VPA-Owned Fields Without Disabling Flux Drift Correction
@@ -4810,13 +4810,13 @@
 15. How to Rename or Move a Flux Kustomization Without Pruning Production Resources
 16. How to Secure a Multi-Tenant Flux Cluster with Namespace RBAC and ServiceAccount Impersonation
 17. How to Deploy Flux Kustomizations to Remote EKS, AKS, or GKE Clusters with Workload Identity
-18. How to Pull Git and OCI Sources from Private Registries with Custom CAs and mTLS in Flux
+18. How to Scope Different TLS Secrets to Flux GitRepository and OCIRepository Sources Without Changing Global Trust
 19. How to Diagnose Flux SSH Errors Caused by known_hosts, Key Formats, and Repository URL Syntax
 20. How to Upgrade Flux Controllers Safely Without Re-Bootstrapping or Losing GitOps State
 
 ## Knative
 
-1. How to Configure a Custom Domain for Knative Services with DomainMapping and DNS
+1. How to Route Multiple Knative Services Under One Domain with Path-Based Rules at the Ingress Layer
 2. How to Enable Automatic HTTPS for Knative with cert-manager and Wildcard Certificates
 3. How to Debug a Knative Service Whose Route or Ingress Never Becomes Ready
 4. How to Fix a Knative Service That Refuses to Scale to Zero—or Immediately Scales Back Up
@@ -4829,7 +4829,7 @@
 11. How to Pull Private Container Images in Knative with imagePullSecrets and ServiceAccounts
 12. How to Run gRPC and WebSocket Workloads on Knative Without Ingress Timeout Failures
 13. How to Fix Knative Broker/Trigger “address not set” and Subscriber DNS Errors
-14. How to Deliver Knative Events Across Namespaces with Broker and Trigger References
+14. How to Authorize Cross-Namespace Knative Event Links with `knsubscribe`, OIDC, and EventPolicy
 15. How to Authenticate and Authorize CloudEvent Producers Before They Reach a Knative Broker
 16. How to Filter Knative Trigger Events by Multiple CloudEvent Attributes and CESQL
 17. How to Set Different Retry and Dead-Letter Policies for Each Knative Broker Trigger
@@ -5006,7 +5006,7 @@
 4. How to Fix Trino Iceberg Table Creation When the Catalog Works but S3 Credentials Do Not
 5. How to Diagnose “Query Exceeded Per-Node Memory Limit” from Trino’s Top Consumers
 6. How to Replace Legacy Spill-to-Disk with Trino Fault-Tolerant Execution and an Exchange Manager
-7. How to Tune Trino Spill Paths, Compression, and Disk Limits Without Stalling Workers
+7. How to Size and Tune Trino Exchange Storage for Fault-Tolerant Queries on S3
 8. How to Choose Broadcast or Partitioned Joins in Trino with Accurate Table Statistics
 9. How to Fix Trino Dynamic Filtering When the Build Side or Connector Prevents Pushdown
 10. How to Verify Predicate, Projection, Aggregation, and Join Pushdown in a Trino Query Plan
