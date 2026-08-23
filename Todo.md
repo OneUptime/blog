@@ -87,7 +87,6 @@
 
 ## MTTR
 
-10. How to Audit Missing, Backfilled, and Time-Zone-Skewed Incident Timestamps Before Calculating MTTR
 11. DORA Failed Deployment Recovery Time vs Incident MTTR: How to Link Failures to Production Changes
 12. How to Build a Grafana MTTR Dashboard from Completed Incident Durations Instead of Live Gauges
 13. How to Set a Recovery-Time Target from Service SLOs and RTOs Instead of Industry Benchmarks
