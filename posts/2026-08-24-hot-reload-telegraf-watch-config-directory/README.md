@@ -53,7 +53,7 @@ The debounce interval waits after a change before reloading, allowing a short bu
 
 ## Enable Watching for the Packaged systemd Service
 
-InfluxData's package service reads additional command-line options from `/etc/default/telegraf` on Debian-family systems and `/etc/sysconfig/telegraf` on RPM-family systems. Set the relevant file to include:
+InfluxData's current DEB and RPM packages use a service unit that reads additional command-line options from `/etc/default/telegraf`. Set that file to include:
 
 ```bash
 TELEGRAF_OPTS="--watch-config notify --watch-debounce-interval 2s"
@@ -85,7 +85,7 @@ This check is not a full production proof. It may miss service-only timing, cred
 
 ## Publish Complete Files Atomically
 
-Create the new file with a suffix that Telegraf ignores, set ownership and mode, and rename it into place on the same filesystem:
+Create the new file with a suffix that configuration loading ignores, set ownership and mode, and rename it into place on the same filesystem. The directory watcher can still react to filesystem events for ignored suffixes, so run the copy and rename as one short deployment step:
 
 ```bash
 sudo install -o root -g telegraf -m 0640 \
