@@ -10,7 +10,7 @@ Description: Parse device event time explicitly, choose the correct epoch unit o
 
 When a device includes its own observation time, using Telegraf's receipt time changes ordering whenever networks buffer, retry, or deliver events late. Preserving the source timestamp requires three decisions to agree: the JSON path, the timestamp's unit or layout, and any precision applied later in the pipeline.
 
-A timestamp error is often syntactically valid. Treating milliseconds as seconds can place a point thousands of years away, while treating nanoseconds as milliseconds can overflow or produce an invalid time. A missing path can quietly fall back to the current time. Validate the emitted nanosecond timestamp, not just whether parsing succeeded.
+A timestamp error is often syntactically valid. Treating milliseconds as seconds can place a point thousands of years away, while treating nanoseconds as milliseconds can overflow or produce an invalid time. If `timestamp_path` is omitted, Telegraf uses the current time; a configured root path that is missing or null is a parse error in current releases. Validate the emitted nanosecond timestamp, not just whether parsing succeeded.
 
 ## Parse an RFC 3339 Device Timestamp
 
@@ -33,7 +33,6 @@ configure `json_v2` with a Go reference-time layout:
   topics = ["sensors/+/status"]
   data_format = "json_v2"
   precision = "1ns"
-  time_source = "metric"
 
   [[inputs.mqtt_consumer.json_v2]]
     measurement_name = "device_status"
@@ -83,7 +82,7 @@ The digit-count test is a diagnostic heuristic, not schema validation. Document 
 
 ## Treat Missing and Naive Times Deliberately
 
-For a root `timestamp_path`, `json_v2` uses the current time when the GJSON query returns nothing. That fallback can disguise a renamed or optional device property. Send fixtures with the property present, missing, null, and malformed, and decide whether fallback-to-receipt-time is acceptable for the application.
+If a root `timestamp_path` is omitted, `json_v2` uses the current time. If it is configured but the GJSON query is missing or resolves to null, current Telegraf returns a parse error instead of emitting a metric. A query that selects an array or object rather than one value retains the current time. Send fixtures with the property present, missing, null, malformed, and the wrong shape, and decide how the application should handle each case.
 
 For local strings with no offset, supply an IANA timezone:
 
@@ -95,11 +94,11 @@ timestamp_timezone = "Europe/London"
 
 `UTC` is the parser default. `Local` uses the Telegraf host's timezone and can make identical device data resolve differently across hosts, containers, or configuration changes. An IANA zone applies historical daylight-saving rules, but some wall times are ambiguous or nonexistent during clock transitions; fix the producer to send an offset whenever possible.
 
-For arrays of objects, put `timestamp_key`, `timestamp_format`, and `timestamp_timezone` on the relevant `[[...json_v2.object]]` table so each array element carries its own time.
+For arrays of objects, put `timestamp_key`, `timestamp_format`, and `timestamp_timezone` on the relevant `[[...json_v2.object]]` table so each array element carries its own time. An element missing `timestamp_key` retains the root timestamp, or the current time if no root timestamp was configured.
 
 ## Preserve Precision Through the Input
 
-The common input option `time_source = "metric"` is the default and leaves a parsed metric timestamp unchanged. `collection_start` and `collection_end` replace timestamps for polling inputs and are not used by service inputs such as MQTT.
+Telegraf leaves a parsed metric timestamp unchanged by default. Service inputs such as MQTT do not use `time_source`, so omit it from `mqtt_consumer`.
 
 The input `precision` option rounds timestamps. On a service input, coarse precision can make separate events land on the same measurement, tag set, and timestamp. `precision = "1ns"` makes the intent explicit for nanosecond preservation; choose a coarser value only when the source contract and destination schema allow it.
 
@@ -113,7 +112,7 @@ Run a fixture through the same parser and inspect line protocol:
 telegraf --config ./timestamp-test.conf --test --test-wait 10
 ```
 
-Because MQTT is a service input, publish the fixture during the wait window or test the parser through a file input using the same `json_v2` block. Convert the emitted nanoseconds independently and compare the result with the device's documented instant. Include a non-UTC offset, maximum supported fractional precision, consecutive events within one millisecond, and a daylight-saving boundary when local time is unavoidable.
+Because MQTT is a service input, publish the fixture during the wait window or test the parser through a file input using the same `json_v2` block. Test mode forces nanosecond precision for service-input events, so it validates MQTT parsing but not production rounding from a coarser input `precision`; check that with a short normal run and a file output. Convert the emitted nanoseconds independently and compare the result with the device's documented instant. Include a non-UTC offset, maximum supported fractional precision, consecutive events within one millisecond, and a daylight-saving boundary when local time is unavoidable.
 
 Finally, compare device clocks with a trusted time source. Correct parser syntax cannot repair a drifting producer clock.
 
