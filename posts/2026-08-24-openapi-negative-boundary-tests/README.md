@@ -35,6 +35,9 @@ Prefer a reviewed request example only after validating it against the schema. O
 
 ```yaml
 openapi: 3.2.0
+info:
+  title: Orders API
+  version: '1.0.0'
 paths:
   /orders:
     post:
@@ -87,15 +90,15 @@ Generate both valid boundaries and one focused invalid value where representable
 | `exclusiveMinimum: 0` | a documented representable value greater than 0 | `0` |
 | `minLength: 3` | exactly 3 code points | 2 code points |
 | `maxLength: 20` | exactly 20 code points | 21 code points |
-| `enum` | every declared value | same-type value outside enum |
+| `enum` | each declared value that also satisfies sibling constraints | same-type value outside enum that still satisfies sibling constraints |
 | `pattern` | a generated matching string | same-type non-matching string |
 | `minItems` / `maxItems` | arrays at both bounds | one item below or above |
-| `uniqueItems: true` | distinct elements | duplicate a valid element |
-| `additionalProperties: false` | declared properties only | add one unknown property |
+| `uniqueItems: true` | distinct elements | replace an element with an equal duplicate while preserving valid cardinality |
+| `additionalProperties: false` | names matched by adjacent `properties` or `patternProperties` only | add one property matched by neither |
 | parameter `required: true` | serialized valid value | omit parameter entirely |
 | required request body | valid body with declared media type | omit body |
 
-Numeric “just outside” values require care. For integers, `minimum - 1` and `maximum + 1` are straightforward within supported ranges. For arbitrary decimals and floating-point formats, do not invent a universal epsilon; use exact decimal or rational generation, or choose a clearly outside value the implementation can represent.
+Numeric “just outside” values require care. For integer schemas with integral bounds, `minimum - 1` and `maximum + 1` are straightforward within supported ranges. With non-integral bounds, use integer neighbors such as `ceil(minimum) - 1` and `floor(maximum) + 1`. For arbitrary decimals and floating-point formats, do not invent a universal epsilon; use arbitrary-precision decimal arithmetic (or exact rational arithmetic internally, emitting a finite JSON decimal), or choose a clearly outside value the implementation can represent.
 
 JSON Schema string length is defined in Unicode code points, while many languages expose UTF-16 code units or bytes. Include emoji and combining characters so a server does not accidentally enforce byte length when the schema promises character length.
 
@@ -114,7 +117,7 @@ Similarly, `format` is a non-validating annotation by default in JSON Schema and
 
 ## Exercise Composition Deliberately
 
-Composition needs targeted logic:
+Where representable, composition needs targeted logic:
 
 - `allOf`: the instance must satisfy every subschema; violate one branch while satisfying the others.
 - `anyOf`: a negative instance must fail every branch.
@@ -122,13 +125,13 @@ Composition needs targeted logic:
 - `not`: generate an instance that satisfies the forbidden subschema.
 - `if` / `then` / `else`: generate cases that take each branch and violate its selected constraint.
 
-Do not treat an OpenAPI discriminator as a substitute for schema validation. In OAS 3.2 it hints which `oneOf` or `anyOf` schema is expected; the schemas still determine validity. Test an unknown discriminator value, a known value with the wrong branch shape, and an instance that is ambiguous if the schema permits it.
+Do not treat an OpenAPI discriminator as a substitute for schema validation. In OAS 3.2 it hints which `oneOf` or `anyOf` schema is expected, while its `allOf` form is non-validating; the discriminator cannot change the schema's validation result. Test an unmapped discriminator value according to `mapping` and `defaultMapping`, a known value with the wrong branch shape, and an instance that is ambiguous if the schema permits it.
 
 Respect `readOnly` and `writeOnly` as annotations with direction-dependent application behavior. OpenAPI 3.2 allows the owning authority to ignore a read-only field in a request or treat it as an error. Only generate a rejection expectation if the API documents that choice.
 
 ## Serialize Parameters as OpenAPI Defines Them
 
-Validating the in-memory value is only half the request. Query, path, header, and cookie parameters use OpenAPI `style`, `explode`, `allowReserved`, and encoding rules. An array might become repeated keys, comma-separated text, or another representation depending on location and configuration.
+Validating the in-memory value is only half the request. Query, path, header, and cookie Parameter Objects that use `schema` have location-specific `style`, `explode`, and, where applicable, `allowReserved` and percent-encoding rules. OAS 3.2 also defines `in: querystring`, which describes the entire query string with `content` rather than those `schema`-based serialization fields. An array might become repeated keys, comma-separated text, or another representation depending on location and configuration.
 
 Generate separate tests for:
 
