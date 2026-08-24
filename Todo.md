@@ -1384,6 +1384,26 @@
 18. How to Validate a Payment Provider’s PCI Status and Collect AOC Evidence
 19. How to Build a PCI DSS Incident-Response Playbook for Cardholder Data Exposure
 20. How to Turn PCI DSS Evidence Collection into a Repeatable Engineering Workflow
+21. How to Write a PCI DSS 4.0.1 Targeted Risk Analysis for Controls with Flexible Frequencies
+22. How to Document a PCI DSS Customized Approach with a Controls Matrix and Testing Plan
+23. How to Determine Whether Your Company Is a Merchant, Service Provider, or Both Under PCI DSS
+24. How to Build a PCI DSS Responsibility Matrix for Cloud Providers and Other TPSPs
+25. How to Decide Whether an Identity, DNS, Code-Hosting, or Monitoring Vendor Is a PCI DSS TPSP
+26. How to Triage Thousands of Findings from PCI DSS Authenticated Internal Vulnerability Scans
+27. How to Scope a PCI DSS Penetration Test After a Significant Change
+28. How to Define the IP Inventory for Quarterly PCI DSS ASV Scans
+29. How to Prove That Your Systems Do Not Store PAN with Data-Discovery Sampling
+30. How to Set and Verify a PCI DSS Cardholder-Data Retention and Deletion Schedule
+31. How to Handle PAN in Backups, Snapshots, and Disaster-Recovery Copies
+32. How to Scope Call Recordings, DTMF Tones, and VoIP Systems Under PCI DSS—and Reduce Stored Card Data
+33. How to Meet PCI DSS 4.0.1 Requirement 3.5.1.2 When PAN Resides on Non-Removable Media
+34. How to Control Copy, Export, and Relocation of PAN from the Cardholder Data Environment
+35. How to Apply PCI DSS Anti-Malware Controls to Linux and Container Hosts
+36. How to Detect Unauthorized Wireless Access Points for PCI DSS Without Chasing Every Nearby SSID
+37. How to Build and Maintain PCI DSS Secure-Configuration Baselines with Documented Exceptions
+38. How to Prioritize and Install Critical PCI DSS Security Patches Within One Month
+39. How to Protect Application and System Account Credentials Under PCI DSS 4.0.1
+40. How to Review PCI DSS Security-Awareness Training Annually and Prove It Reflects New Threats
 
 ## Quotas
 
@@ -2482,6 +2502,26 @@
 18. Size and Tune YDB SDK Session Pools for Serverless Cold Starts and Overload
 19. Back Up and Restore YDB with Local Dumps, S3 Export, and Incremental Backup Collections
 20. Deploy YDB on Kubernetes Without PDisk Permission and Storage-Pool Failures
+21. How to Shut Down the YDB SDK Cleanly Without gRPC Teardown Crashes
+22. How to Avoid YDB SDK Breakage When Your Application Uses `fork()`
+23. How to Fix YDB “Active Sessions Limit Exceeded” Caused by Copied Session Handles
+24. How to Query Multiple YDB Databases from One C++ Application and Driver
+25. How to Set YDB Client Timeouts So Failed Nodes Do Not Stall Queries
+26. How to Run Parallel YDB C++ Queries Without “Pending Previous Query Completion”
+27. How to Reduce YDB “Transaction Locks Invalidated” Errors by Trimming Read Sets and Hot-Row Contention
+28. How to Prevent YDB’s “Exceeded Maximum Allowed Number of Active Transactions” Error
+29. How to Fix YDB “Datashard: Reply Size Limit Exceeded” on Large Reads and Joins
+30. How to Fix YDB “Datashard Program Size Limit Exceeded” During Batch Writes
+31. How to Select YDB Rows by Lists of Simple or Composite Primary Keys
+32. How to Make YDB Use an Index for Prefix Searches with `LIKE`
+33. How to Bind Typed `NULL` Parameters in the YDB Java SDK
+34. How to Insert JSON Strings into YDB Without Broken Quote Escaping
+35. How to Insert Only Missing Keys into YDB with `AS_TABLE` and `LEFT JOIN`
+36. How to Join YDB Tables to Parameter Lists Efficiently with `AS_TABLE`
+37. How to Turn a Large YDB Join into an Index Lookup Join
+38. How to Reduce YDB Transaction Latency by Combining Operations in One YQL Query
+39. How to Choose YDB Row Tables or Column Tables for Mixed OLTP and OLAP Workloads
+40. How to Restore YDB Autopartition Merging on Pre-22.2 Row Tables by Setting a Minimum Partition Count
 
 ## Direct Connect
 
@@ -4920,3 +4960,187 @@
 18. How to Compact Small Iceberg Files Created by Frequent Trino Inserts
 19. How to Stop a Trino LIMIT Query from Scanning Every Partition Before Returning Rows
 20. How to Disable Trino Data and Metadata Caches for Repeatable Source-of-Truth Tests
+
+## GraphScope
+
+1. How to Install GraphScope Locally Without Kubernetes and Verify the First Analytical Job
+2. How to Install GraphScope on Apple Silicon When gRPC, SciPy, or OpenBLAS Builds Fail
+3. How to Deploy GraphScope on a Self-Managed Kubernetes Cluster with Correct CPU and Memory Requests
+4. How to Debug a GraphScope Session Stuck While Pulling Images or Waiting for Pods
+5. How to Fix GraphScope Coordinator Timeouts Behind an Enterprise Proxy with `NO_PROXY`
+6. How to Find GraphScope Coordinator, Engine, and Vineyard Logs in Local and Kubernetes Deployments
+7. How to Clean Up Orphaned GraphScope Pods After a Helm Uninstall
+8. How to Fix NFS PersistentVolume Permission Denied Errors for GraphScope Store
+9. How to Mount Local Graph Files into GraphScope Engine Pods on Kind or Kubernetes
+10. How to Size `vineyard_shared_mem` and `k8s_engine_mem` for Large Graph Loads
+11. How to Load a Labeled Property Graph from CSV into GraphScope with Explicit IDs and Properties
+12. How to Load GraphScope Data from S3, OSS, or HDFS with the Loader API
+13. How to Build a GraphScope Graph Directly from pandas DataFrames or NumPy Arrays
+14. How to Project a Heterogeneous Property Graph Before Running SSSP or Other GraphScope Algorithms
+15. How to Close GraphScope Sessions and Release Graph Memory Without Deprecated `Graph.unload()`
+16. How to Port a NetworkX Workflow to GraphScope for Distributed Execution
+17. How to Package and Run a Custom C++ PIE Algorithm in GraphScope
+18. How to Create and Bulk-Load a Custom Graph in GraphScope Interactive
+19. How to Query GraphScope Interactive with Cypher and Neo4j-Compatible Clients
+20. How to Compile, Register, and Call a Parameterized Cypher Stored Procedure in GraphScope Interactive
+
+## KServe
+
+1. How to Fix a KServe InferenceService That Returns 404 Through Knative or Istio
+2. How to Diagnose 302 Redirects When Calling KServe Behind Kubeflow OIDC
+3. How to Trace Istio-to-Predictor Connection Resets in KServe
+4. How to Restore a Missing KServe `storage-initializer` When `/mnt/models` Is Empty
+5. How to Authenticate KServe to S3-Compatible Storage Without Putting Credentials in the InferenceService
+6. How to Serve XGBoost on KServe with a Custom Triton FIL ServingRuntime
+7. How to Expose and Test a KServe V2 gRPC Endpoint Through Knative or Standard Mode
+8. How to Configure Knative Scale Bounds with KServe `minReplicas` and `maxReplicas`
+9. How to Autoscale a Standard-Mode KServe InferenceService with KEDA and Prometheus Metrics
+10. How to Deploy an MLflow Model with KServe’s MLServer Runtime and V2 Protocol
+11. How to Deploy a Hugging Face Transformer on KServe with the vLLM Runtime
+12. How to Force KServe’s Hugging Face Backend When vLLM Does Not Support Your Model
+13. How to Fix KServe `Init:OOMKilled` by Tuning `storage-initializer` Resources
+14. How to Build a Custom Python Model Server That Implements KServe V2
+15. How to Create and Select a Custom ServingRuntime for a KServe InferenceService
+16. How to Run KServe in Standard Deployment Mode Without Knative
+17. How to Request GPUs and Pin KServe Predictors to GPU Node Pools
+18. How to Call KServe V2 Health, Metadata, and Inference APIs from Python
+19. How to Package Model Artifacts as an OCI Modelcar for KServe
+20. How to Deploy a Multi-GPU LLM with KServe LLMInferenceService and Tensor Parallelism
+
+## Golden Paths
+
+1. How to Choose the First High-Friction Workflow for Your Golden Path
+2. How to Turn Developer Interviews and Journey Maps into Golden Path Requirements
+3. How to Build a Backstage Golden Path That Creates a Repository, Pipeline, Catalog Entry, and Deployment
+4. How to Design a Golden Path Form with Safe Defaults and Progressive Disclosure
+5. How to Build Contract Tests for Golden Path Inputs, Outputs, and Backward Compatibility
+6. How to Make Golden Path Failures Actionable Without Exposing Raw Kubernetes and Helm Errors
+7. How to Add Ownership, Runbooks, and Observability to Every Scaffolded Service
+8. How to Add Data-Classification and Threat-Model Decisions to a Golden Path Before Provisioning
+9. How to Provision Databases and Kafka Topics Through Self-Service Golden Paths
+10. How to Compose Golden Paths from Reusable Building Blocks Instead of Copying Monolithic Templates
+11. How to Expose the Same Golden Path Through a Portal, CLI, and API Without Duplicating Logic
+12. How to Support Go, Java, Python, and Node.js Without Duplicating Your Golden Path
+13. How to Separate One-Time Scaffolding from Continuously Managed Golden Path Files
+14. How to Pass Secrets to a Golden Path at Runtime Without Writing Them into Generated Repositories
+15. How to Add Escape Hatches Without Turning a Golden Path into a Mandatory Golden Cage
+16. How to Define Golden Path Support Boundaries and Route Failures to the Right Team
+17. How to Decide When a Golden Path Is Ready to Graduate from Pilot to Supported Product
+18. How to Roll Back a Partially Completed Golden Path Without Deleting Shared Resources
+19. How to Retire a Golden Path Without Stranding Generated Services or Their Owners
+20. How to Set Reliability SLOs for Golden Path Provisioning and Deployment Workflows
+
+## Operator Framework
+
+1. How to Test OLM v1 CRD Upgrade Safety Checks Before Updating a `ClusterExtension`
+2. How to Regenerate CRDs, RBAC, and Bundle Manifests After Changing an Operator API
+3. How to Validate an Operator Bundle and Fix `operator-sdk bundle validate` Errors
+4. How to Write Operator SDK Scorecard Tests for Custom Resource Behavior
+5. How to Run an Operator SDK Controller Locally with `make run` Against a Kind Cluster
+6. How to Package an Existing Helm Chart as a Helm-Based Operator
+7. How to Configure Multiple Watched GVKs in an Ansible-Based Operator
+8. How to Build and Publish Multi-Architecture Operator Images and Bundle Metadata
+9. How to Fix an OLM CSV with `UnsupportedOperatorGroup` Caused by Mismatched Install Modes
+10. How to Keep an OLM Bundle’s CSV Permissions Minimal Without Breaking Installation
+11. How to Migrate a Legacy SQLite OLM Catalog to File-Based Catalog Format
+12. How to Detect and Repair Dead Ends in an OLM File-Based Catalog Upgrade Graph
+13. How to Pin an Operator to a Safe Version Range with an OLM v1 `ClusterExtension`
+14. How to Preview Every Resource in an OLM InstallPlan Before Approving It
+15. How to Troubleshoot a ClusterServiceVersion Stuck in Pending or Failed
+16. How to Diagnose an OLM Subscription That Never Creates an InstallPlan
+17. How to Resolve OLM Dependency and API-Ownership Conflicts Between Operators
+18. How to Refresh a CatalogSource When a New Operator Bundle Is Not Detected
+19. How to Uninstall an OLM-Managed Operator Without Orphaning Custom Resources or Deleting Data
+20. How to Grant Users Access to APIs Installed by an OLM v1 `ClusterExtension`
+
+## LMDB
+
+1. How to Design LMDB Access for One Writer and Many Concurrent Readers
+2. How to Refresh LMDB Read Transactions Without Serving Stale Snapshots
+3. How to Stop Long-Lived LMDB Readers from Causing Unbounded File Growth
+4. How to Batch LMDB Writes Without Hiding Data Behind an Uncommitted Transaction
+5. How to Share One LMDB Environment Safely Across Application Threads
+6. How to Diagnose and Clear Stale LMDB Reader Slots with `mdb_stat` and `reader_check`
+7. How to Use One LMDB Write Transaction Across Multiple Named Databases
+8. How to Store and Iterate Duplicate Values in a Named LMDB Database with `MDB_DUPSORT`
+9. How to Count and Enumerate LMDB Keys Without Loading Every Value
+10. How to Implement Efficient Prefix and Range Scans with an LMDB Cursor
+11. How to Diagnose `MDB_BAD_VALSIZE` from Invalid Keys, `MDB_DUPSORT` Values, and `MDB_DUPFIXED` Widths
+12. How to Create a Consistent Live LMDB Backup with `mdb_copy`
+13. How to Compact LMDB and Reclaim Disk Space After Large Deletes
+14. How to Test an LMDB Backup by Dumping Every Named Database and Restoring It with `mdb_load`
+15. How to Tune LMDB Random-Read Performance by Disabling Filesystem Readahead
+16. How to Use LMDB Zero-Copy Buffers Without Accessing Invalidated Memory
+17. How to Choose LMDB Sync Flags for the Required Data-Loss and Corruption Guarantees
+18. How to Handle `MapResizedError` When Another Process Expands an LMDB Environment
+19. How to Prevent `MDB_READERS_FULL` by Sizing `max_readers` for Peak Concurrent Transactions
+20. How to Encode Numeric LMDB Keys So Lexicographic Order Matches Numeric Order
+
+## Ephemeral Containers
+
+1. How to Choose Between an Ephemeral Container and a Copied Pod for Kubernetes Debugging
+2. How to Preserve a Failing Pod for Forensics Before Its Job or Controller Deletes It
+3. How to Diagnose `kubectl debug --target` When the Runtime Uses an Isolated PID Namespace
+4. How to Copy Files from a Distroless Container Through an Ephemeral Debug Container
+5. How to Mount an Existing Pod Volume in an Ephemeral Container with a Custom Debug Profile
+6. How to Capture a JVM Thread Dump from a Distroless Pod with an Ephemeral JDK Container
+7. How to Diagnose `ptrace` Denials from Seccomp, AppArmor, and Yama in an Ephemeral Container
+8. How to Run an Ephemeral Debug Container When the Pod Enforces `runAsNonRoot`
+9. How to Make `kubectl debug` Compatible with Baseline and Restricted Pod Security
+10. How to Audit Ephemeral-Container Injection with Kubernetes API Audit Logs
+11. How to Reuse a Pod’s Private-Registry Credentials for an Ephemeral Debug Image
+12. How to Pre-Pull and Verify Ephemeral Debug Images on Air-Gapped Kubernetes Nodes
+13. How to Keep a Copied Debug Pod on the Same Node as the Failure
+14. How to Control Probes and Init Containers in a `kubectl debug --copy-to` Pod
+15. How to Handle Ephemeral-Container API Update Conflicts Without Overwriting Existing Debug Containers
+16. How to Inspect `ephemeralContainerStatuses` When `kubectl debug` Never Attaches
+17. How to Read Logs and Exit Codes from a Finished Ephemeral Container
+18. How to Detect Ephemeral-Container Support Without Relying on the Removed `EphemeralContainers` Feature Gate
+19. How to Restart an Ephemeral Debugging Session When the Original Container Name Cannot Be Reused
+20. How to Manage CPU and Memory Risk When Ephemeral Containers Cannot Declare Resources
+
+## Polar Signals
+
+1. How to Upgrade Parca Server and Parca Agent Without Interrupting Profile Ingestion
+2. How to Send Parca Agent Profiles to Polar Signals Cloud with a Bearer Token and TLS
+3. How to Choose Between Parca Agent eBPF Profiling and pprof Scraping
+4. How to Configure Parca to Scrape Go pprof Endpoints with Kubernetes Service Discovery
+5. How to Prevent Concurrent Go pprof Scrapes from Returning HTTP 500 in Parca
+6. How to Troubleshoot a Parca Agent That Discovers No Processes or Sends No Profiles
+7. How to Verify Linux Kernel, BTF, and Privilege Requirements Before Running Parca Agent
+8. How to Relabel Kubernetes Metadata into Stable Service Names for Parca Queries
+9. How to Monitor Parca Agent Upload Queues and Detect Dropped Profiles
+10. How to Prevent Parca Metadata Labels from Exposing Process Arguments and Environment Secrets
+11. How to Verify ELF Build IDs Before Uploading Debug Information to Parca
+12. How to Supply Debug Symbols for Stripped Binaries with `parca-debuginfo`
+13. How to Secure Parca’s gRPC Write API with TLS and Authentication at a Reverse Proxy
+14. How to Expose Only Parca’s Write Endpoints Without Publishing the Web UI
+15. How to Query Parca Profiles with Label Selectors and Profile Types
+16. How to Compare Two Deployments with a Differential Flame Graph in Parca
+17. How to Filter a Parca Flame Graph by Function or Package Name
+18. How to Connect Parca to Grafana and Plan for the Parca Data Source Deprecation
+19. How to Measure and Tune Parca Server Memory with Active Storage, WAL, and On-Disk Indexes
+20. How to Export a Parca Profile in pprof Format for Offline Analysis and Sharing
+
+## Crash Reporting
+
+1. How to Capture Unhandled Exceptions and Native Crashes Without Triggering Recursive Handler Failures
+2. How to Build a Release-to-Symbol Manifest for dSYMs, PDBs, Source Maps, and Native Binaries
+3. How to Symbolicate an iOS `.ips` Crash Report with the Matching dSYM and Build UUID
+4. How to Fix Missing or Mismatched dSYMs in an Automated iOS Release Pipeline
+5. How to Deobfuscate Android Crash Reports with the Correct R8 or ProGuard Mapping File
+6. How to Symbolicate Android NDK Tombstones with `ndk-stack` and Unstripped Shared Libraries
+7. How to Symbolicate React Native Hermes Crashes with the Exact Metro Source Map for Each Release
+8. How to Decode Obfuscated Flutter Crash Stacks with `--split-debug-info` and `flutter symbolize`
+9. How to Generate Windows Minidumps Safely and Load the Exact PDBs for the Crashed Build
+10. How to Debug a Containerized Linux Crash with Host Core Dumps and Matching Image Symbols
+11. How to Collect Browser Process Crashes with the Reporting API—and Handle Limited Browser Support
+12. How to Queue Crash Reports Offline and Upload Them Reliably After the Application Restarts
+13. How to Test Crash Reporting End to End in Signed Release Builds Without Polluting Production Data
+14. How to Record a Bounded Breadcrumb Ring Buffer That Survives a Fatal Crash
+15. How to Reproduce a Production-Only Crash from Its Stack Trace, Device Metadata, and Release Context
+16. How to Detect and Suppress Crash Loops Without Hiding the First Actionable Report
+17. How to Prioritize Crashes by Affected Users, Crash-Free Sessions, and Regression Severity
+18. How to Detect a Crash Regression with Baselines, Release Cohorts, and Minimum-Volume Gates
+19. How to Apply Consent, Retention, Redaction, and Regional Routing to Mobile Crash Reports
+20. How to Attach Commit, Deployment, and Feature-Flag Context to Crash Reports Without High-Cardinality Noise
