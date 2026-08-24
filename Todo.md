@@ -96,7 +96,6 @@
 
 ## Database Monitoring
 
-19. How to Monitor Read-Only Workloads on SQL Server Availability Group Secondaries with Query Store
 20. How to Correlate Application Pool Checkout Latency with Database Session Saturation
 
 ## Trace Sampling
