@@ -96,7 +96,6 @@
 
 ## Database Monitoring
 
-12. How to Separate MySQL Query CPU Time from I/O and Lock Wait Time with Performance Schema Events
 13. How to Sample MongoDB Slow Operations with `slowms`, `sampleRate`, and Filters Without Overloading Production
 14. How to Detect MongoDB WiredTiger Saturation with Ticket Queues, Cache Eviction, and Dirty Bytes
 15. How to Redact SQL Text and Bind Values Before Sending Database Monitoring Data to a Shared Backend
