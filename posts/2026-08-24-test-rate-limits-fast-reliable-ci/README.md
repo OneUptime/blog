@@ -78,11 +78,13 @@ expect((await limiter.take('tenant:a')).allowed).toBe(true);
 
 Use the algorithm's exact epoch/window calculation in the expectation. Test one tick before, exactly at, and one tick after the boundary. If storage uses seconds while application time uses milliseconds, boundary tests should expose the rounding rule.
 
+Every time-dependent part of the tested path must use the injected time. Advancing `ManualClock` does not advance a remote counter store's server-side clock or TTL, so isolate or replace those time-based behaviors in component tests.
+
 Do not monkey-patch the test runner's clock and assume a remote service follows it. Either inject the clock into the in-process service or expose a protected test-control endpoint in a dedicated environment that changes the limiter's own clock.
 
 ## Keep HTTP Tests Small
 
-Configure a test policy such as three requests per one-second logical window. Give every test a unique partition identity so parallel workers cannot consume each other's quota:
+Configure a test policy such as three requests per one-second logical window. For a policy keyed by a test identity, give every test a unique identity so parallel workers cannot consume each other's quota. The example assumes Playwright's `use.baseURL` points to the test service:
 
 ```ts
 import { test, expect } from '@playwright/test';
@@ -95,7 +97,9 @@ test('maps an exhausted bucket to the documented HTTP contract', async ({ reques
   for (let expectedRemaining = 2; expectedRemaining >= 0; expectedRemaining--) {
     const response = await request.get('/v1/search', { headers });
     expect(response.status()).toBe(200);
-    expect(Number(response.headers()['x-ratelimit-remaining'])).toBe(expectedRemaining);
+    const remaining = response.headers()['x-ratelimit-remaining'];
+    expect(remaining).toMatch(/^\d+$/);
+    expect(Number(remaining)).toBe(expectedRemaining);
   }
 
   const blocked = await request.get('/v1/search', {
@@ -104,8 +108,11 @@ test('maps an exhausted bucket to the documented HTTP contract', async ({ reques
   });
   expect(blocked.status()).toBe(429);
 
-  const delay = Number(blocked.headers()['retry-after']);
-  expect(Number.isInteger(delay)).toBe(true);
+  const retryAfter = blocked.headers()['retry-after'];
+  expect(retryAfter).toMatch(/^\d+$/);
+
+  const delay = Number(retryAfter);
+  expect(Number.isSafeInteger(delay)).toBe(true);
   expect(delay).toBeGreaterThanOrEqual(0);
 });
 ```
@@ -124,34 +131,36 @@ Rate-limit bugs often occur in keys rather than counters. Prove:
 - routes that share a policy really share one counter;
 - an unrelated route remains unaffected;
 - credential rotation has the documented bucket behavior; and
-- proxy headers cannot spoof the identity unless a trusted proxy has normalized them.
+- client-supplied proxy headers cannot spoof the identity; only values selected through explicitly configured trusted proxy hops are accepted.
 
-Use unique fixture identities and clean them up. A random identity makes tests independent; querying limiter state by a safe test key makes failures diagnostic.
+Use unique fixture identities and clean them up. A random identity makes tests independent only when it covers every applicable key dimension and no broader shared quota also applies; querying limiter state by a safe test key makes failures diagnostic.
 
 ## Force Concurrent Requests
 
-A sequential limit test will not expose oversubscription. Pause several requests immediately before the atomic counter update, release them together, and assert that no more than the remaining quota succeeds:
+A sequential limit test will not expose oversubscription. Pause several requests immediately before the atomic counter update, release them together, and assert that no more than the remaining quota succeeds. With five units remaining, use an out-of-band test-control client to wait until every request is paused before releasing the gate:
 
 ```ts
-const responses = await Promise.all(
-  Array.from({ length: 20 }, () =>
-    request.post('/v1/jobs', {
-      headers: { ...headers, 'X-Test-Gate': gateId },
-      data: { kind: 'noop' },
-      failOnStatusCode: false,
-    })
-  )
+const pendingResponses = Array.from({ length: 20 }, () =>
+  request.post('/v1/jobs', {
+    headers: { ...headers, 'X-Test-Gate': gateId },
+    data: { kind: 'noop' },
+    failOnStatusCode: false,
+  })
 );
+
+await gate.waitForArrivals(gateId, 20);
+await gate.release(gateId);
+const responses = await Promise.all(pendingResponses);
 
 expect(responses.filter(r => r.status() === 202)).toHaveLength(5);
 expect(responses.filter(r => r.status() === 429)).toHaveLength(15);
 ```
 
-Use mutually isolated, harmless requests and inspect durable effects: exactly five jobs, not merely five `202` responses. Repeat through multiple service replicas and the real shared counter store in an integration tier. An in-memory limiter can be correct per process and wrong for the deployment.
+Like the identity override, the gate is test-only instrumentation. It must be unavailable to untrusted clients and have a bounded timeout that releases paused requests if the test aborts. Use mutually isolated, harmless requests and inspect durable effects: exactly five jobs, not merely five `202` responses. Repeat through multiple service replicas and the real shared counter store in an integration tier. An in-memory limiter can be correct per process and wrong for the deployment.
 
 ## Test Every Transition Directly
 
-For a token bucket, cover empty, one token remaining, empty, partial refill, full refill, and capacity cap. For a sliding window, place events just inside and just outside the lookback interval. For concurrent-request limiting, hold requests open with a barrier and release one slot at a time; elapsed request count is not the same as request rate.
+For a token bucket, cover full, one token remaining, empty, partial refill, full refill, and capacity cap. For a sliding window, place events just inside and just outside the lookback interval. For concurrent-request limiting, hold requests open with a barrier and release one slot at a time; elapsed request count is not the same as request rate.
 
 Also test:
 
@@ -170,6 +179,8 @@ Validate structured or provider-specific rate fields with a proper parser. Split
 Client behavior is a separate unit. Stub a sequence such as `429` with `Retry-After: 2`, followed by `200`, and inject a scheduler:
 
 ```ts
+import { expect, vi } from 'vitest';
+
 const sleep = vi.fn().mockResolvedValue(undefined);
 const result = await client.getWithRetry('/v1/data', { sleep });
 
@@ -181,7 +192,7 @@ Also cover HTTP-date parsing, missing or malformed `Retry-After`, maximum delay 
 
 ## Use a Small Deployed Smoke Test
 
-Keep one production-shaped integration check to prove the gateway, service replicas, and counter store are connected. Use a dedicated low quota, unique non-production identity, and bounded cleanup. Do not discover the real public quota by flooding it, and do not run stress traffic without explicit authorization.
+Keep one production-shaped integration check to exercise the gateway, service, and counter store together. Route or observe requests per replica when the check is intended to cover every replica. Use a dedicated low quota, unique non-production identity, and bounded cleanup. Do not discover the real public quota by flooding it, and do not run stress traffic without explicit authorization.
 
 On failure, report safe identity hash, policy name/version, logical time, response statuses, parsed retry delay, and observed remaining values. Never log API keys or bearer tokens.
 
