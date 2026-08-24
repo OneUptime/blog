@@ -1,4 +1,4 @@
-# Validation Summary: How to Route Different Telegraf Inputs to Separate Outputs with `tagpass`, `namepass`, and Aliases
+# Validation Summary: Route Telegraf Inputs with `tagpass` and `namepass`
 
 ## Status
 

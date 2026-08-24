@@ -1,4 +1,4 @@
-# How to Run `postgres_exporter` Without Superuser Using `pg_monitor` and File-Based Credentials
+# Run `postgres_exporter` Without Superuser Using `pg_monitor`
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

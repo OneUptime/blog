@@ -1,8 +1,8 @@
-# How to Identify the Blocking Query in PostgreSQL with `pg_blocking_pids()`, `pg_locks`, and Wait Events
+# Find PostgreSQL Blocking Queries with `pg_blocking_pids()`
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: PostgreSQL, Lock Monitoring, pg_blocking_pids, pg_locks, Wait Events
+Tags: PostgreSQL, Lock Monitoring, pg_blocking_pids, pg_locks, Wait Event
 
 Description: Trace PostgreSQL lock waits to their direct and root blockers using supported lock-manager functions, activity data, and carefully interpreted lock details.
 

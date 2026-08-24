@@ -1,4 +1,4 @@
-# Validation Summary: How to Debug a Telegraf Configuration That Works in the Shell but Fails as a systemd Service
+# Validation Summary: Debugging Telegraf Configs That Fail Under systemd
 
 ## Status
 

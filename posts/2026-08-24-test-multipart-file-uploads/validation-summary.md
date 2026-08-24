@@ -1,4 +1,4 @@
-# Validation Summary: How to Test Multipart File Uploads for Size Limits, Content Types, and Partial Failures
+# Validation Summary: How to Test Multipart Upload Limits, Types, and Partial Failures
 
 ## Status
 

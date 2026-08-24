@@ -1,4 +1,4 @@
-# How to Monitor Read-Only Workloads on SQL Server Availability Group Secondaries with Query Store
+# Monitor Read-Only SQL Server Workloads with Query Store
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

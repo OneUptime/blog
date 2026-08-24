@@ -1,4 +1,4 @@
-# Validation Summary: How to Fix Telegraf JSON `field type conflict` Errors Without Dropping New Points
+# Validation Summary: Fix Telegraf JSON `field type conflict` Without Dropping Points
 
 ## Status
 

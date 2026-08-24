@@ -1,4 +1,4 @@
-# Validation Summary: How to Alert on PostgreSQL Transaction-ID Wraparound Risk with `age(datfrozenxid)` and `autovacuum_freeze_max_age`
+# Validation Summary: Alert on PostgreSQL Transaction-ID Wraparound Risk
 
 ## Status
 

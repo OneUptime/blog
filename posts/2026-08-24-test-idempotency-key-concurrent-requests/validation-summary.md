@@ -1,4 +1,4 @@
-# Validation Summary: How to Prove an Idempotency Key Prevents Duplicate Writes Under Concurrent Requests
+# Validation Summary: How to Test Idempotency Keys Under Concurrent Requests
 
 ## Status
 validated

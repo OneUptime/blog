@@ -494,6 +494,7 @@
 - Admission Control
 - Admission Controller
 - Admission Policies
+- Admission Queues
 - Admission Webhook
 - ADO.NET
 - AdonisJS
@@ -2308,6 +2309,7 @@
 - Boulder
 - Bounce Rate
 - Boundary
+- Boundary Testing
 - Bounded Contexts
 - boundingRatio
 - Bounds Checking
@@ -2432,6 +2434,7 @@
 - Buf
 - Buffalo
 - Buffer
+- Buffer Cache
 - Buffer Engine
 - Buffer Pool
 - Buffer Pool Monitoring
@@ -2584,6 +2587,7 @@
 - Cache Configuration
 - Cache Consistency
 - Cache Control
+- Cache Eviction
 - Cache Hit Rate
 - Cache Invalidation
 - Cache Key
@@ -2683,6 +2687,7 @@
 - Capacity
 - Capacity Expansion
 - Capacity Management
+- Capacity Monitoring
 - Capacity Planning
 - Capacity Pools
 - Capacity Provider
@@ -4251,6 +4256,7 @@
 - countDocuments
 - countEqual
 - Counter
+- Counter Resets
 - Counter-Strike
 - Counter-Strike 2
 - Counters and Histograms
@@ -4288,6 +4294,7 @@
 - CPU Pinning
 - CPU Profiling
 - CPU Throttling
+- CPU Time
 - CPU Usage
 - CQL
 - CQRS
@@ -4919,6 +4926,7 @@
 - Database Access
 - Database Activity Monitoring
 - Database Administration
+- Database Alerts
 - Database Architecture
 - Database Automation
 - Database Backup
@@ -4961,6 +4969,7 @@
 - Database Partitioning
 - Database Per Service
 - Database Performance
+- Database Profiler
 - Database Programming
 - Database Proxy
 - Database Recovery
@@ -5058,6 +5067,7 @@
 - Date32
 - DateTime
 - DateTime64
+- datfrozenxid
 - Datree
 - DAU
 - DAX
@@ -7754,6 +7764,7 @@
 - Gitpod
 - GitRepo
 - GitRepository
+- GJSON
 - GKE
 - GKE Autopilot
 - Glacier
@@ -8675,6 +8686,7 @@
 - Hystrix
 - I/O
 - I/O Analysis
+- I/O Monitoring
 - I/O Optimization
 - I/O Schedulers
 - I/O Streams
@@ -8758,6 +8770,7 @@
 - IDisposable
 - IDistributedCache
 - Idle Cost
+- Idle in Transaction
 - Idle Resources
 - Idle Timeout
 - IdM
@@ -8774,6 +8787,7 @@
 - If
 - IF Function
 - IF NOT EXISTS
+- If-Match
 - IFB
 - Ifcfg
 - ifconfig
@@ -9056,6 +9070,7 @@
 - InfiniBand Diagnostics
 - Infinite Scroll
 - Infisical
+- InfluxData
 - InfluxDB
 - INFO
 - INFO Command
@@ -10396,6 +10411,7 @@
 - Linux Namespaces
 - Linux Networking
 - Linux Optimization
+- Linux Permissions
 - Linux Routing
 - Linux Security
 - Linux tc
@@ -10565,6 +10581,7 @@
 - Lock Expiration
 - Lock File
 - Lock Management
+- Lock Monitoring
 - Lock Renewal
 - LOCK TABLES
 - Lock Wait
@@ -11225,8 +11242,10 @@
 - Metric Alarms
 - Metric Alerts
 - Metric Explorer
+- Metric Parsing
 - Metric Relabeling
 - Metric Retention
+- Metric Routing
 - Metric Scraping
 - Metric Streams
 - Metric Views
@@ -11234,6 +11253,7 @@
 - Metrics Aggregation
 - Metrics Architecture
 - Metrics Baseline
+- Metrics Cardinality
 - Metrics Classification
 - Metrics Comparison
 - Metrics Conversion
@@ -11425,6 +11445,7 @@
 - Mobility Header
 - Mocha
 - Mock
+- Mock API
 - Mock Data
 - Mock Exporter
 - Mock Outputs
@@ -11788,6 +11809,7 @@
 - Multimedia
 - Multimodal AI
 - Multipart
+- Multipart Form Data
 - Multipart Forms
 - Multipass
 - Multipath
@@ -11894,6 +11916,7 @@
 - Mysqlcheck
 - MySqlConnector
 - mysqld
+- mysqld_exporter
 - mysqldump
 - MySQLi
 - Mysqlpump
@@ -12010,6 +12033,7 @@
 - Needs
 - NEG
 - Negative Caching
+- Negative Testing
 - Negative Tests
 - Neighbor Advertisement
 - Neighbor Cache
@@ -12877,6 +12901,7 @@
 - OpsCenter
 - OpsGenie
 - OpsLevel
+- Optimistic Concurrency
 - Optimistic Concurrency Control
 - Optimistic DAD
 - Optimistic Lock
@@ -13511,14 +13536,19 @@
 - pfSense
 - PG
 - PG Autoscaler
+- pg_blocking_pids
 - Pg_cron
 - Pg_dump
 - pg_hba.conf
 - Pg_hint_plan
+- pg_locks
 - Pg_partman
 - Pg_repack
 - Pg_resetwal
 - Pg_restore
+- pg_stat_activity
+- pg_stat_io
+- pg_stat_progress_vacuum
 - Pg_stat_statements
 - Pg_trgm
 - Pg_upgrade
@@ -13968,6 +13998,7 @@
 - Postfix
 - PostGIS
 - Postgres
+- postgres_exporter
 - PostgreSQL
 - PostgreSQL Database Engine
 - PostgreSQL Table Function
@@ -14627,6 +14658,7 @@
 - Query Concurrency
 - Query Correction
 - Query Depth
+- Query Digests
 - Query DSL
 - Query Engine
 - Query Execution
@@ -14923,6 +14955,7 @@
 - Read-Write Splitting
 - Read/Write Splitting
 - Readability
+- Readable Secondaries
 - ReadAffinity
 - Readahead
 - Readiness
@@ -16657,6 +16690,7 @@
 - Service Health
 - Service Hooks
 - Service Identity
+- Service Inputs
 - Service Invocation
 - Service IPs
 - Service Level Indicators
@@ -17617,6 +17651,7 @@
 - Star Schema
 - Star Wars Demo
 - Stargz
+- Starlark
 - Starlette
 - StarRocks
 - Start
@@ -17803,6 +17838,7 @@
 - Storage Profile
 - Storage Provisioner
 - Storage Queue
+- Storage Quota
 - Storage Ratios
 - Storage Read API
 - Storage Recovery
@@ -18579,6 +18615,7 @@
 - Test Filtering
 - Test Fixture
 - Test Framework
+- Test Generation
 - Test Infrastructure
 - Test Isolation
 - Test Kitchen
@@ -19057,6 +19094,7 @@
 - Transaction
 - Transaction Deduplication
 - Transaction Flows
+- Transaction ID Wraparound
 - Transaction Isolation
 - Transaction Log
 - Transaction Reconciliation

@@ -1,8 +1,8 @@
-# How to Give Containerized Telegraf Access to the Docker Socket Without Running `--privileged`
+# Access the Docker Socket from Telegraf Without `--privileged`
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Telegraf, Docker, Containers, Linux Permissions, Security
+Tags: Telegraf, Docker, Container, Linux Permissions, Security
 
 Description: Mount the Docker Unix socket and grant Telegraf its numeric host group ID while keeping the monitoring container unprivileged.
 

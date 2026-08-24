@@ -1,4 +1,4 @@
-# Validation Summary: How to Measure PostgreSQL Buffer-Cache Effectiveness Without Mistaking the OS Page Cache for Disk Reads
+# Validation Summary: Measure PostgreSQL Buffer-Cache Effectiveness Beyond Disk Reads
 
 ## Status
 validated

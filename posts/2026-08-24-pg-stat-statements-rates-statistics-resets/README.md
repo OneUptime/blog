@@ -1,8 +1,8 @@
-# How to Calculate `pg_stat_statements` Rates Without False Spikes After Statistics Resets
+# Calculate `pg_stat_statements` Rates Without Reset Spikes
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: PostgreSQL, pg_stat_statements, Prometheus, Counter Resets, Query Performance
+Tags: PostgreSQL, Pg_stat_statements, Prometheus, Counter Resets, Query Performance
 
 Description: Derive trustworthy per-query rates from `pg_stat_statements` by preserving reset epochs, detecting entry churn, and refusing invalid deltas.
 

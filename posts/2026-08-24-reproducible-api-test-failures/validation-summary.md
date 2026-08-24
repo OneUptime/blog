@@ -1,4 +1,4 @@
-# Validation Summary: How to Make API Test Failures Reproducible with Request, Response, Correlation ID, and Seed Capture
+# Validation Summary: How to Reproduce API Test Failures with Correlation IDs and Seeds
 
 ## Status
 validated

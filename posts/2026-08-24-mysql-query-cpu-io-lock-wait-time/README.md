@@ -1,8 +1,8 @@
-# How to Separate MySQL Query CPU Time from I/O and Lock Wait Time with Performance Schema Events
+# Separate MySQL Query CPU, I/O, and Lock Wait Time
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: MySQL, Performance Schema, Query Profiling, CPU Time, Wait Events
+Tags: MySQL, Performance Schema, Query Profiling, CPU Time, Wait Event
 
 Description: Decompose MySQL statement latency with version-aware CPU timers, statement lock measurements, nested wait events, and explicit limits on what Performance Schema can attribute.
 
@@ -10,7 +10,7 @@ Description: Decompose MySQL statement latency with version-aware CPU timers, st
 
 A statement's elapsed time is not its CPU time. It can spend time executing on CPU, reading files, waiting for a lock or latch, descheduled by the operating system, or inside work that is not instrumented.
 
-Performance Schema exposes some of these through different event families. The safe approach is to keep elapsed, CPU, statement lock, and nested-wait measurements separate—not to invent “I/O time” by subtracting one counter from another.
+Performance Schema exposes some of these through different event families. The safe approach is to keep elapsed, CPU, statement lock, and nested-wait measurements separate-not to invent “I/O time” by subtracting one counter from another.
 
 ## Start with version and instrumentation
 
@@ -126,7 +126,7 @@ GROUP BY s.THREAD_ID, s.EVENT_ID, s.DIGEST, w.EVENT_NAME
 ORDER BY wait_seconds DESC;
 ```
 
-This deliberately finds only waits whose immediate parent is the statement. A wait may instead be nested under a stage or under another wait—for example, file I/O can be nested within a table I/O event—before the chain reaches the statement. Exact attribution must traverse all retained parent links and must sample before the fixed-size history buffers overwrite any required row. Molecular parent waits can overlap their nested waits, so summing both levels double-counts time. Thread IDs and event IDs are not durable identifiers across server restarts.
+This deliberately finds only waits whose immediate parent is the statement. A wait may instead be nested under a stage or under another wait-for example, file I/O can be nested within a table I/O event-before the chain reaches the statement. Exact attribution must traverse all retained parent links and must sample before the fixed-size history buffers overwrite any required row. Molecular parent waits can overlap their nested waits, so summing both levels double-counts time. Thread IDs and event IDs are not durable identifiers across server restarts.
 
 For active incidents, join the `current` statement, stage, and wait tables and inspect `data_lock_waits` and `metadata_locks`. For long-term monitoring, prefer bounded per-digest statement counters plus resource-level wait counters; use event traces only for a sampled diagnostic window.
 
@@ -165,4 +165,4 @@ Raw `SQL_TEXT`, digest text, users, and object names can be sensitive. Restrict 
 
 ## Conclusion
 
-Keep MySQL statement elapsed time, thread CPU time, statement `LOCK_TIME`, and observed nested waits as separate measurements. Use version-gated digest counters for trends, wait summaries for resource classes, and short-lived event hierarchies for attribution—while leaving uninstrumented residual time explicitly unattributed.
+Keep MySQL statement elapsed time, thread CPU time, statement `LOCK_TIME`, and observed nested waits as separate measurements. Use version-gated digest counters for trends, wait summaries for resource classes, and short-lived event hierarchies for attribution-while leaving uninstrumented residual time explicitly unattributed.

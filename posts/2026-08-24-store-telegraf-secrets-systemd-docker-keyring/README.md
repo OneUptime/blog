@@ -1,8 +1,8 @@
-# How to Store Telegraf Tokens and Passwords with systemd Credentials, Docker Secrets, or the OS Keyring
+# Store Telegraf Secrets with systemd Credentials and Docker Secrets
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Telegraf, Secrets Management, systemd, Docker, Security
+Tags: Telegraf, Secrets Management, Systemd, Docker, Security
 
 Description: Replace plaintext Telegraf credentials with native secret stores and choose rotation and runtime behavior appropriate to each deployment model.
 

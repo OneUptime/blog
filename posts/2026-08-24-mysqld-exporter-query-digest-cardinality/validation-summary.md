@@ -1,4 +1,4 @@
-# Validation Summary: How to Bound `mysqld_exporter` Query-Digest Cardinality with Statement Limits and Time Windows
+# Validation Summary: Bound `mysqld_exporter` Query-Digest Cardinality
 
 ## Status
 

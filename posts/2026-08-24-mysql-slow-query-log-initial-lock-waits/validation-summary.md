@@ -1,4 +1,4 @@
-# Validation Summary: Why the MySQL Slow Query Log Is Not a Live Lock-Wait Trace-and What to Collect from Performance Schema Instead
+# Validation Summary: Why MySQL Slow Query Logs Miss Initial Lock Waits
 
 ## Status
 

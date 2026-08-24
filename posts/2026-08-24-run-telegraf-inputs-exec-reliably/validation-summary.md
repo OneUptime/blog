@@ -1,4 +1,4 @@
-# Validation Summary: How to Run Telegraf `inputs.exec` Reliably with Timeouts, Exit Codes, and Parser-Safe Output
+# Validation Summary: Run Telegraf `inputs.exec` Reliably with Parser-Safe Output
 
 ## Status
 

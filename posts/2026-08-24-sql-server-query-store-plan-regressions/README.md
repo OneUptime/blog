@@ -1,8 +1,8 @@
-# How to Detect SQL Server Plan Regressions by Comparing Query Store Runtime Intervals
+# Detect SQL Server Plan Regressions with Query Store Intervals
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: SQL Server, Query Store, Execution Plans, Performance Regression, Query Tuning
+Tags: SQL Server, Query Store, Execution Plan, Performance Regression, Query Tuning
 
 Description: Detect plan regressions with correctly aggregated Query Store intervals, execution-weighted latency and CPU, minimum-volume gates, and plan-change evidence.
 
@@ -12,7 +12,7 @@ Query Store preserves plans and aggregated runtime statistics across time window
 
 ## Normalize one row per plan, execution type, and interval
 
-`sys.query_store_runtime_stats` can contain more than one row for the same plan, execution type, and currently active interval—typically persisted data plus an in-memory row. Microsoft therefore requires aggregation by `plan_id`, `execution_type`, and `runtime_stats_interval_id` to get the actual interval state.
+`sys.query_store_runtime_stats` can contain more than one row for the same plan, execution type, and currently active interval-typically persisted data plus an in-memory row. Microsoft therefore requires aggregation by `plan_id`, `execution_type`, and `runtime_stats_interval_id` to get the actual interval state.
 
 This version-compatible query produces that shape:
 

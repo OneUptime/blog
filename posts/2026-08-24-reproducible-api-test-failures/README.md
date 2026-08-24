@@ -1,4 +1,4 @@
-# How to Make API Test Failures Reproducible with Request, Response, Correlation ID, and Seed Capture
+# How to Reproduce API Test Failures with Correlation IDs and Seeds
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

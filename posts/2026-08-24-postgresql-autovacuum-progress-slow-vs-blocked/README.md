@@ -1,8 +1,8 @@
-# How to Monitor PostgreSQL Autovacuum Progress and Tell a Slow Vacuum from a Blocked One
+# Monitor PostgreSQL Autovacuum Progress: Slow or Blocked?
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: PostgreSQL, Autovacuum, pg_stat_progress_vacuum, Wait Events, Database Maintenance
+Tags: PostgreSQL, Autovacuum, pg_stat_progress_vacuum, Wait Event, Database Maintenance
 
 Description: Monitor PostgreSQL vacuum phases across samples and distinguish normal scanning, cost delay, repeated index cycles, lock blocking, and cleanup constrained by old snapshots.
 

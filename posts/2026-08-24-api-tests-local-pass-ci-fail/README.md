@@ -1,8 +1,8 @@
-# Why Do API Tests Pass Locally but Fail in CI? Debugging URLs, Secrets, Clocks, and Shared State
+# Why API Tests Pass Locally but Fail in CI
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: API Testing, CI/CD, Playwright, GitHub Actions, Debugging, Test Isolation
+Tags: API Testing, CI/CD, Playwright, GitHub Action, Debugging, Test Isolation
 
 Description: Diagnose CI-only API failures by making endpoints, credentials, time assumptions, and parallel test state explicit and observable.
 

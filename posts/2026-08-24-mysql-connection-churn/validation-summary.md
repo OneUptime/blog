@@ -1,4 +1,4 @@
-# Validation Summary: How to Detect MySQL Connection Churn Before `Threads_connected` Reaches `max_connections`
+# Validation Summary: Detect MySQL Connection Churn Before Capacity Exhaustion
 
 ## Status
 

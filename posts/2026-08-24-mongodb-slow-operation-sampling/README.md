@@ -1,4 +1,4 @@
-# How to Sample MongoDB Slow Operations with `slowms`, `sampleRate`, and Filters Without Overloading Production
+# Sample MongoDB Slow Operations Without Overloading Production
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

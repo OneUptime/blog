@@ -1,4 +1,4 @@
-# How to Alert on PostgreSQL `idle in transaction` Sessions Before They Block VACUUM and DDL
+# Alert on PostgreSQL `idle in transaction` Before It Blocks VACUUM
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

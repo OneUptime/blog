@@ -1290,5 +1290,13 @@
   "kOps",
   "etcd Backup",
   "woodpecker-cli",
-  "bfcache"
+  "bfcache",
+  "datfrozenxid",
+  "mysqld_exporter",
+  "pg_blocking_pids",
+  "pg_locks",
+  "pg_stat_activity",
+  "pg_stat_io",
+  "pg_stat_progress_vacuum",
+  "postgres_exporter"
 ]

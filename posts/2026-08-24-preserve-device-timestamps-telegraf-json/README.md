@@ -1,8 +1,8 @@
-# How to Preserve Device Timestamps in Telegraf JSON Without Nanosecond, Time-Zone, or Precision Errors
+# Preserve Telegraf JSON Timestamps Without Precision Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Telegraf, JSON, Timestamps, IoT, InfluxDB
+Tags: Telegraf, JSON, Timestamp, IoT, InfluxDB
 
 Description: Parse device event time explicitly, choose the correct epoch unit or Go layout, and prevent later precision rounding from collapsing distinct metrics.
 

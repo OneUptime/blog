@@ -1,4 +1,4 @@
-# Validation Summary: How to Size and Monitor Telegraf Memory or Disk Buffers So Backend Outages Do Not Drop Metrics
+# Validation Summary: Size Telegraf Buffers to Survive Backend Outages
 
 ## Status
 validated

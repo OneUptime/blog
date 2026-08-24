@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: API Testing, Contract Testing, Pact, CI/CD, Microservices, API Compatibility
+Tags: API Testing, Contract Testing, Pact, CI/CD, Microservice, API Compatibility
 
 Description: Use consumer-generated contracts, provider verification, and deployment checks to catch API changes that would break real integrations before release.
 

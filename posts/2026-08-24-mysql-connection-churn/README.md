@@ -1,8 +1,8 @@
-# How to Detect MySQL Connection Churn Before `Threads_connected` Reaches `max_connections`
+# Detect MySQL Connection Churn Before Capacity Exhaustion
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: MySQL, Connection Pools, Performance Schema, Capacity Monitoring, Database Alerts
+Tags: MySQL, Connection Pool, Performance Schema, Capacity Monitoring, Database Alerts
 
 Description: Detect costly MySQL connection turnover with interval rates, thread-cache evidence, pool telemetry, and refusal counters before the simultaneous connection ceiling is exhausted.
 

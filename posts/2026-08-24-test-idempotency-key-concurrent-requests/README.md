@@ -1,8 +1,8 @@
-# How to Prove an Idempotency Key Prevents Duplicate Writes Under Concurrent Requests
+# How to Test Idempotency Keys Under Concurrent Requests
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: API Testing, Idempotency, Concurrency, HTTP API, Race Conditions, Playwright
+Tags: API Testing, Idempotency, Concurrency, HTTP API, Race Condition, Playwright
 
 Description: Test idempotency-key behavior with synchronized concurrent requests, durable side-effect assertions, payload conflicts, failures, and key expiry.
 

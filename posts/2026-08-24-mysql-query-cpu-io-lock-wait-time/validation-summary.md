@@ -1,4 +1,4 @@
-# Validation Summary: How to Separate MySQL Query CPU Time from I/O and Lock Wait Time with Performance Schema Events
+# Validation Summary: Separate MySQL Query CPU, I/O, and Lock Wait Time
 
 ## Status
 

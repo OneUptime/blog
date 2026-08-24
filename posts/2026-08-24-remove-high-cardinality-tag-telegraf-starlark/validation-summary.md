@@ -1,4 +1,4 @@
-# Validation Summary: How to Remove One High-Cardinality Tag from One Telegraf Measurement with `namepass` and Starlark
+# Validation Summary: Remove a High-Cardinality Telegraf Tag with Starlark
 
 ## Status
 validated

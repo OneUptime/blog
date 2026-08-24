@@ -1,4 +1,4 @@
-# Validation Summary: How to Sample MongoDB Slow Operations with `slowms`, `sampleRate`, and Filters Without Overloading Production
+# Validation Summary: Sample MongoDB Slow Operations Without Overloading Production
 
 ## Status
 

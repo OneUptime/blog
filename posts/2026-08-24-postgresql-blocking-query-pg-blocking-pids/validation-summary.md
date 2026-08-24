@@ -1,4 +1,4 @@
-# Validation Summary: How to Identify the Blocking Query in PostgreSQL with `pg_blocking_pids()`, `pg_locks`, and Wait Events
+# Validation Summary: Find PostgreSQL Blocking Queries with `pg_blocking_pids()`
 
 ## Status
 

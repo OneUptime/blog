@@ -1,4 +1,4 @@
-# Validation Summary: Why Does `pg_stat_activity` Look Frozen? Refreshing PostgreSQL Statistics Snapshots Correctly
+# Validation Summary: Refresh Frozen `pg_stat_activity` Statistics Snapshots Correctly
 
 ## Status
 

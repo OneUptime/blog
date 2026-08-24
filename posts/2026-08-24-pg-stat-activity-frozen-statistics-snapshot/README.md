@@ -1,4 +1,4 @@
-# Why Does `pg_stat_activity` Look Frozen? Refreshing PostgreSQL Statistics Snapshots Correctly
+# Refresh Frozen `pg_stat_activity` Statistics Snapshots Correctly
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

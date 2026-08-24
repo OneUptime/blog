@@ -1,4 +1,4 @@
-# Validation Summary: How to Calculate `pg_stat_statements` Rates Without False Spikes After Statistics Resets
+# Validation Summary: Calculate `pg_stat_statements` Rates Without Reset Spikes
 
 ## Status
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Telegraf, SNMP, Linux, systemd, Security
+Tags: Telegraf, SNMP, Linux, Systemd, Security
 
 Description: Give Telegraf only the Linux capability needed to bind UDP port 162, then verify trap delivery and MIB translation without granting full root privileges.
 

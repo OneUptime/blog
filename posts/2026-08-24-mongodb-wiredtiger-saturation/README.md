@@ -1,4 +1,4 @@
-# How to Detect MongoDB WiredTiger Saturation with Ticket Queues, Cache Eviction, and Dirty Bytes
+# Detect MongoDB WiredTiger Saturation Signals
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

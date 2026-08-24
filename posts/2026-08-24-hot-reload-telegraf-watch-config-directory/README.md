@@ -1,8 +1,8 @@
-# How to Hot-Reload Telegraf Configurations Safely with `--watch-config` and a Config Directory
+# Safely Hot-Reload Telegraf Configs with `--watch-config`
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Telegraf, Configuration Management, systemd, Operations, TOML
+Tags: Telegraf, Configuration Management, Systemd, Operation, TOML
 
 Description: Validate and atomically deploy Telegraf configuration fragments, then use the correct watch method and debounce settings for predictable reloads.
 

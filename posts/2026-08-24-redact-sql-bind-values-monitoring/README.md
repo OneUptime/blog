@@ -1,4 +1,4 @@
-# How to Redact SQL Text and Bind Values Before Sending Database Monitoring Data to a Shared Backend
+# Redact SQL Text and Bind Values Before Shared Monitoring
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -28,7 +28,7 @@ OpenTelemetry's database span conventions make the distinction explicit. `db.que
 
 ## Sanitize SQL with a parser, not a regular expression
 
-A compliant sanitizer replaces every literal type—not just quoted strings—with a placeholder such as `?`. That includes numeric, date/time, Boolean, interval, binary, and hexadecimal literals. It also needs to handle dialect-specific quoting, dollar strings, escaped text, comments, nested statements, and malformed input.
+A compliant sanitizer replaces every literal type-not just quoted strings-with a placeholder such as `?`. That includes numeric, date/time, Boolean, interval, binary, and hexadecimal literals. It also needs to handle dialect-specific quoting, dollar strings, escaped text, comments, nested statements, and malformed input.
 
 For example:
 

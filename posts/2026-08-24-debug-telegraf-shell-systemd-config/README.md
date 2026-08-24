@@ -1,8 +1,8 @@
-# How to Debug a Telegraf Configuration That Works in the Shell but Fails as a systemd Service
+# Debugging Telegraf Configs That Fail Under systemd
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Telegraf, systemd, Linux, Observability, Troubleshooting
+Tags: Telegraf, Systemd, Linux, Observability, Troubleshooting
 
 Description: Reproduce Telegraf under the service account and compare its exact configuration, environment, permissions, paths, and logs with the successful shell run.
 

@@ -1,4 +1,4 @@
-# How to Monitor SQL Server Query Store Quota Before It Silently Switches to Read-Only
+# Monitor SQL Server Query Store Quota Before Read-Only Mode
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -100,7 +100,7 @@ When Query Store becomes read-only:
 
 1. capture `sys.database_query_store_options`, database free space, recent growth, and capture settings;
 2. decode every reason bit;
-3. fix the applicable cause—database space, quota, memory pressure, or capture churn;
+3. fix the applicable cause-database space, quota, memory pressure, or capture churn;
 4. remove only confirmed obsolete Query Store data or raise a justified quota;
 5. request read-write operation and verify the actual state and new capture.
 

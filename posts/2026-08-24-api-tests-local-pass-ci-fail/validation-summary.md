@@ -1,4 +1,4 @@
-# Validation Summary: Why Do API Tests Pass Locally but Fail in CI? Debugging URLs, Secrets, Clocks, and Shared State
+# Validation Summary: Why API Tests Pass Locally but Fail in CI
 
 ## Status
 

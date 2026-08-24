@@ -1,4 +1,4 @@
-# Validation Summary: How to Monitor PostgreSQL Autovacuum Progress and Tell a Slow Vacuum from a Blocked One
+# Validation Summary: Monitor PostgreSQL Autovacuum Progress: Slow or Blocked?
 
 ## Status
 validated

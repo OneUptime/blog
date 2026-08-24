@@ -1,4 +1,4 @@
-# How to Test Multipart File Uploads for Size Limits, Content Types, and Partial Failures
+# How to Test Multipart Upload Limits, Types, and Partial Failures
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Measure PostgreSQL Buffer-Cache Effectiveness Without Mistaking the OS Page Cache for Disk Reads
+# Measure PostgreSQL Buffer-Cache Effectiveness Beyond Disk Reads
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

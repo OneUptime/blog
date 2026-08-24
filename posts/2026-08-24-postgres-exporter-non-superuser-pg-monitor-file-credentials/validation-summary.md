@@ -1,4 +1,4 @@
-# Validation Summary: How to Run `postgres_exporter` Without Superuser Using `pg_monitor` and File-Based Credentials
+# Validation Summary: Run `postgres_exporter` Without Superuser Using `pg_monitor`
 
 ## Status
 

@@ -1,4 +1,4 @@
-# Validation Summary: How to Monitor SQL Server Query Store Quota Before It Silently Switches to Read-Only
+# Validation Summary: Monitor SQL Server Query Store Quota Before Read-Only Mode
 
 ## Status
 

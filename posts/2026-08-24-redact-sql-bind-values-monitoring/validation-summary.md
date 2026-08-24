@@ -1,4 +1,4 @@
-# Validation Summary: How to Redact SQL Text and Bind Values Before Sending Database Monitoring Data to a Shared Backend
+# Validation Summary: Redact SQL Text and Bind Values Before Shared Monitoring
 
 ## Status
 

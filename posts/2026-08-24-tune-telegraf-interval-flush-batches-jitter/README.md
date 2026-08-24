@@ -1,4 +1,4 @@
-# How to Tune Telegraf `interval`, `flush_interval`, Batch Size, and Jitter for Steady Writes
+# Tune Telegraf Intervals, Batch Size, and Jitter for Steady Writes
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

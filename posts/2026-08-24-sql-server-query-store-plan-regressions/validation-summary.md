@@ -1,4 +1,4 @@
-# Validation Summary: How to Detect SQL Server Plan Regressions by Comparing Query Store Runtime Intervals
+# Validation Summary: Detect SQL Server Plan Regressions with Query Store Intervals
 
 ## Status
 validated

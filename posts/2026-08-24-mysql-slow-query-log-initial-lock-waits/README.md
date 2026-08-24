@@ -1,8 +1,8 @@
-# Why the MySQL Slow Query Log Is Not a Live Lock-Wait Trace-and What to Collect from Performance Schema Instead
+# Why MySQL Slow Query Logs Miss Initial Lock Waits
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: MySQL, Performance Schema, Slow Query Log, Lock Waits, Database Monitoring
+Tags: MySQL, Performance Schema, Slow Query Log, Lock Wait, Database Monitoring
 
 Description: Diagnose lock-bound MySQL statements by combining completion-oriented slow-log evidence, statement events, live lock relationships, and selectively enabled wait instrumentation.
 

@@ -1,4 +1,4 @@
-# How to Route Different Telegraf Inputs to Separate Outputs with `tagpass`, `namepass`, and Aliases
+# Route Telegraf Inputs with `tagpass` and `namepass`
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

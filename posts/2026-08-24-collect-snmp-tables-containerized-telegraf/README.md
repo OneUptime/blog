@@ -1,4 +1,4 @@
-# How to Collect SNMP Tables in Containerized Telegraf with `gosmi` and Custom MIB Paths
+# Collect SNMP Tables in Telegraf with `gosmi` and Custom MIBs
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

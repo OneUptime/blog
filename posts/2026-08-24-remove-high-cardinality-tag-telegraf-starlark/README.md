@@ -1,8 +1,8 @@
-# How to Remove One High-Cardinality Tag from One Telegraf Measurement with `namepass` and Starlark
+# Remove a High-Cardinality Telegraf Tag with Starlark
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Telegraf, Starlark, Cardinality, Metrics, InfluxDB
+Tags: Telegraf, Starlark, Cardinality, Metric, InfluxDB
 
 Description: Scope a Starlark processor to one measurement and safely remove one volatile tag without changing unrelated metrics.
 

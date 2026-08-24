@@ -1,4 +1,4 @@
-# How to Prevent Telegraf MQTT Data Loss with QoS, Persistent Sessions, and `max_undelivered_messages`
+# Prevent Telegraf MQTT Data Loss with QoS and Persistent Sessions
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

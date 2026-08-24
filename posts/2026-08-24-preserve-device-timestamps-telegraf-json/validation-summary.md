@@ -1,4 +1,4 @@
-# Validation Summary: How to Preserve Device Timestamps in Telegraf JSON Without Nanosecond, Time-Zone, or Precision Errors
+# Validation Summary: Preserve Telegraf JSON Timestamps Without Precision Errors
 
 ## Status
 

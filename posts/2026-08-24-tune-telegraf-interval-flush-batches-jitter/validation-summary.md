@@ -1,4 +1,4 @@
-# Validation Summary: How to Tune Telegraf `interval`, `flush_interval`, Batch Size, and Jitter for Steady Writes
+# Validation Summary: Tune Telegraf Intervals, Batch Size, and Jitter for Steady Writes
 
 ## Status
 

@@ -1,4 +1,4 @@
-# Validation Summary: How to Monitor Read-Only Workloads on SQL Server Availability Group Secondaries with Query Store
+# Validation Summary: Monitor Read-Only SQL Server Workloads with Query Store
 
 ## Status
 

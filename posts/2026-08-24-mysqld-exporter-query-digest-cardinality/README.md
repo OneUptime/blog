@@ -1,4 +1,4 @@
-# How to Bound `mysqld_exporter` Query-Digest Cardinality with Statement Limits and Time Windows
+# Bound `mysqld_exporter` Query-Digest Cardinality
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -37,7 +37,7 @@ The time limit is a freshness filter, not a rolling aggregation window. Counters
 
 ## Know which labels create series
 
-The collector labels statement metrics with schema, digest, and digest text. MySQL normalizes literals in a digest—values such as strings and numbers become parameter markers—but identifiers remain significant. Per-tenant table or schema names, generated SQL shapes, and changing identifier lists can therefore create many digests.
+The collector labels statement metrics with schema, digest, and digest text. MySQL normalizes literals in a digest-values such as strings and numbers become parameter markers-but identifiers remain significant. Per-tenant table or schema names, generated SQL shapes, and changing identifier lists can therefore create many digests.
 
 Truncating digest text reduces label bytes; it does not reduce the number of distinct digest labels. Dropping the text label in metric relabeling can reduce stored and remote-written label bytes and downstream exposure, but it does not shrink the exporter's HTTP scrape response; distinct digest hashes and schemas still create distinct series.
 

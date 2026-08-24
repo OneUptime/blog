@@ -1,4 +1,4 @@
-# Validation Summary: How to Correlate Application Pool Checkout Latency with Database Session Saturation
+# Validation Summary: Correlate Pool Checkout Latency with Database Session Saturation
 
 ## Status
 validated

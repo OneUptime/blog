@@ -1,4 +1,4 @@
-# Validation Summary: How to Collect SNMP Tables in Containerized Telegraf with `gosmi` and Custom MIB Paths
+# Validation Summary: Collect SNMP Tables in Telegraf with `gosmi` and Custom MIBs
 
 ## Status
 validated

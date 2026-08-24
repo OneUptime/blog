@@ -1,4 +1,4 @@
-# Validation Summary: How to Capture SQL Server Blocking Chains with Blocked Process Reports and Extended Events
+# Validation Summary: Capture SQL Server Blocking Chains with Extended Events
 
 ## Status
 validated

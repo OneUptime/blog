@@ -1,4 +1,4 @@
-# Validation Summary: How to Give Containerized Telegraf Access to the Docker Socket Without Running `--privileged`
+# Validation Summary: Access the Docker Socket from Telegraf Without `--privileged`
 
 ## Status
 validated

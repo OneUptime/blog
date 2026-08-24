@@ -1,4 +1,4 @@
-# How to Capture SQL Server Blocking Chains with Blocked Process Reports and Extended Events
+# Capture SQL Server Blocking Chains with Extended Events
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -10,7 +10,7 @@ Description: Capture durable SQL Server waiter-to-blocker evidence with a bounde
 
 Polling `sys.dm_exec_requests` can miss a blocking incident that begins and ends between samples. SQL Server's blocked process report asks the deadlock monitor to emit an event when a task has waited beyond a configured threshold; Extended Events can persist those reports for later chain reconstruction.
 
-This is thresholded, best-effort evidence—not a real-time notification for every lock wait.
+This is thresholded, best-effort evidence-not a real-time notification for every lock wait.
 
 ## Set a responsible reporting threshold
 
@@ -55,7 +55,7 @@ GO
 
 The rollover settings bound on-host storage. Confirm the SQL Server service account can write the directory, monitor target errors and disk space, and secure `.xel` files: event payloads include process details and input buffers that can contain sensitive SQL.
 
-On SQL Server 2022 and later, creating a session can be delegated with `CREATE ANY EVENT SESSION`; starting it additionally requires `ALTER ANY EVENT SESSION ENABLE` or its parent `ALTER ANY EVENT SESSION`. Earlier releases use `ALTER ANY EVENT SESSION` for both. Viewing session data requires server performance visibility—`VIEW SERVER PERFORMANCE STATE` on SQL Server 2022 and later, and `VIEW SERVER STATE` on earlier releases. Recheck permissions for Azure SQL Database and database-scoped Extended Events, whose syntax and target URL differ.
+On SQL Server 2022 and later, creating a session can be delegated with `CREATE ANY EVENT SESSION`; starting it additionally requires `ALTER ANY EVENT SESSION ENABLE` or its parent `ALTER ANY EVENT SESSION`. Earlier releases use `ALTER ANY EVENT SESSION` for both. Viewing session data requires server performance visibility-`VIEW SERVER PERFORMANCE STATE` on SQL Server 2022 and later, and `VIEW SERVER STATE` on earlier releases. Recheck permissions for Azure SQL Database and database-scoped Extended Events, whose syntax and target URL differ.
 
 ## Verify collection before an incident
 

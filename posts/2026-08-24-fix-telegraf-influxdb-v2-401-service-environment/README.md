@@ -1,8 +1,8 @@
-# How to Fix Telegraf `outputs.influxdb_v2` 401 Errors Caused by Missing Service Environment Variables
+# Fix Telegraf InfluxDB v2 401 Errors from Missing Service Variables
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Telegraf, InfluxDB, systemd, Authentication, Troubleshooting
+Tags: Telegraf, InfluxDB, Systemd, Authentication, Troubleshooting
 
 Description: Diagnose and fix InfluxDB v2 authorization failures by putting the correct token, organization, bucket, and URL in Telegraf's service environment.
 

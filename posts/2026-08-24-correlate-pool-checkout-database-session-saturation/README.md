@@ -1,8 +1,8 @@
-# How to Correlate Application Pool Checkout Latency with Database Session Saturation
+# Correlate Pool Checkout Latency with Database Session Saturation
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Connection Pools, Database Monitoring, HikariCP, Prometheus, Capacity Planning
+Tags: Connection Pool, Database Monitoring, HikariCP, Prometheus, Capacity Planning
 
 Description: Correlate pool acquisition delay with active borrowers, database sessions, waits, and connection churn to distinguish database saturation from application-held connections.
 
@@ -86,7 +86,7 @@ Correlate only pools and database endpoints that actually belong together. Carry
 
 Sum across every application instance before comparing with server totals. Ten pods with a 20-connection maximum can demand 200 sessions. The database includes administrators, jobs, proxies, and other services, so the two sides should not be expected to equal exactly.
 
-Use synchronized clocks, consistent scrape intervals, and a common five- or ten-minute window. Pool gauges are snapshots—HikariCP's Dropwizard gauges are cached at one-second resolution—and active, idle, and total can change while being read. Small arithmetic mismatches are normal; sustained patterns matter.
+Use synchronized clocks, consistent scrape intervals, and a common five- or ten-minute window. Pool gauges are snapshots-HikariCP's Dropwizard gauges are cached at one-second resolution-and active, idle, and total can change while being read. Small arithmetic mismatches are normal; sustained patterns matter.
 
 ## Interpret the combined patterns
 
@@ -131,4 +131,4 @@ Set a minimum checkout rate for percentiles, because a p95 based on a handful of
 
 ## Conclusion
 
-Measure pool acquisition and usage separately, aggregate application instances, and compare them with active—not merely open—database sessions and waits. The combined pattern reveals whether callers are queued behind slow database work, application-held connections, or physical connection creation, preventing a reflexive pool-size increase from moving the bottleneck downstream.
+Measure pool acquisition and usage separately, aggregate application instances, and compare them with active-not merely open-database sessions and waits. The combined pattern reveals whether callers are queued behind slow database work, application-held connections, or physical connection creation, preventing a reflexive pool-size increase from moving the bottleneck downstream.

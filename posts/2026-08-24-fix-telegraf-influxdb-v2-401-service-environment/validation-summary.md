@@ -1,4 +1,4 @@
-# Validation Summary: How to Fix Telegraf `outputs.influxdb_v2` 401 Errors Caused by Missing Service Environment Variables
+# Validation Summary: Fix Telegraf InfluxDB v2 401 Errors from Missing Service Variables
 
 ## Status
 

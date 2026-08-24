@@ -1,4 +1,4 @@
-# Validation Summary: How to Alert on PostgreSQL `idle in transaction` Sessions Before They Block VACUUM and DDL
+# Validation Summary: Alert on PostgreSQL `idle in transaction` Before It Blocks VACUUM
 
 ## Status
 

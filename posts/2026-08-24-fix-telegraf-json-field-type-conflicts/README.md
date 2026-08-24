@@ -1,4 +1,4 @@
-# How to Fix Telegraf JSON `field type conflict` Errors Without Dropping New Points
+# Fix Telegraf JSON `field type conflict` Without Dropping Points
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

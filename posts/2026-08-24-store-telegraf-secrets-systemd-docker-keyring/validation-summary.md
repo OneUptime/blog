@@ -1,4 +1,4 @@
-# Validation Summary: How to Store Telegraf Tokens and Passwords with systemd Credentials, Docker Secrets, or the OS Keyring
+# Validation Summary: Store Telegraf Secrets with systemd Credentials and Docker Secrets
 
 ## Status
 validated

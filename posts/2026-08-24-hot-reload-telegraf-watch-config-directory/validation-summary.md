@@ -1,4 +1,4 @@
-# Validation Summary: How to Hot-Reload Telegraf Configurations Safely with `--watch-config` and a Config Directory
+# Validation Summary: Safely Hot-Reload Telegraf Configs with `--watch-config`
 
 ## Status
 

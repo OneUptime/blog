@@ -1,4 +1,4 @@
-# How to Stop Telegraf StatsD Packet Drops with `number_workers_threads`, Queue, and Socket-Buffer Tuning
+# Stop Telegraf StatsD Packet Drops with Queue and Socket Tuning
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -12,18 +12,18 @@ UDP StatsD is intentionally lightweight: the sender does not establish a connect
 
 Tune in this order: measure, identify the first saturated stage, change one control, and replay a representative burst.
 
-## Map the Four Queues
+## Map the Four Stages
 
-A UDP metric crosses these boundaries:
+Traffic moves through four stages:
 
 1. the kernel receive buffer for the StatsD socket;
 2. Telegraf's pending datagram channel, sized by `allowed_pending_messages`;
-3. parser workers, counted by `number_workers_threads`; and
+3. the parser-worker pool and StatsD aggregation cache, with the worker pool sized by `number_workers_threads`; and
 4. each output's independent Telegraf buffer and remote backend.
 
 `read_buffer_size` requests the socket receive-buffer size. If that buffer fills before Telegraf reads it, the kernel drops datagrams. After a successful socket read, Telegraf tries to enqueue the datagram; if its pending channel is full, the plugin drops it and logs `Statsd message queue full`.
 
-Slow output writes are a later problem. They can fill `internal_write` buffers and drop parsed metrics, but increasing StatsD parser workers will not repair an undersized output buffer or slow destination.
+Slow output writes are a later problem. With the default in-memory buffer strategy, they can fill an output buffer (reported by `internal_write.buffer_size` and `buffer_limit`) and cause Telegraf to drop buffered metrics, but increasing StatsD parser workers will not repair an undersized output buffer or slow destination.
 
 ## Establish a Measured Baseline
 
@@ -41,11 +41,11 @@ On Linux, inspect the other layers during the same load window:
 
 ```bash
 netstat -su
-ss -u -a -m | grep ':8125'
+ss -u -a -m -n 'sport = :8125'
 journalctl -u telegraf --since '-10 minutes' --no-pager
 ```
 
-Track the host UDP receive-buffer error counter before and after a burst, the Telegraf plugin drop counter, queue depth, CPU saturation, garbage collection, and `internal_write` buffer fullness. Reconcile a uniquely named test counter at the sender and destination when possible.
+Run `netstat` and `ss` in the same network namespace as Telegraf. Track the namespace-wide UDP receive-buffer error counter before and after a burst, the Telegraf plugin drop counter, queue depth, CPU saturation, garbage collection, and output-buffer fullness (`internal_write.buffer_size` relative to `buffer_limit`). Reconcile a uniquely named test counter at the sender and destination when possible.
 
 ## Tune the Plugin as a System
 
@@ -86,19 +86,19 @@ net.core.rmem_max = 4194304
 
 Then reload the supported sysctl configuration, restart Telegraf so it recreates the socket, and use `ss -m` to inspect the effective socket memory. Linux may account socket memory differently from the application-requested number, so verify rather than assuming the configured byte value was applied exactly.
 
-Containers share the host kernel limit. Setting only the Telegraf container option does not bypass `rmem_max`, and changing a host sysctl is an infrastructure decision—not a reason to run the container privileged.
+Containers share the host kernel limit. Setting only the Telegraf container option does not bypass `rmem_max`, and changing a host sysctl is an infrastructure decision-not a reason to run the container privileged.
 
 ## Reduce Work Before Adding Capacity
 
 Client-side sampling such as `|@0.1` is part of the StatsD counter and timing protocols; use it only when the aggregation semantics tolerate sampling and the client applies it correctly. Pack several StatsD values into one datagram only within the sender, network, and receiver size limits. Oversized UDP datagrams can fragment and become more loss-prone.
 
-If reliable transport matters more than UDP latency, the plugin also supports `protocol = "tcp"` with `max_tcp_connections` and optional keepalives. TCP supplies delivery and backpressure properties that UDP lacks, but clients must support it and connection capacity becomes a new limit. Switching transports is an architecture change, not just a tuning flag.
+If TCP's transport-level ordering and retransmission matter more than UDP latency, the plugin also supports `protocol = "tcp"` with `max_tcp_connections` and optional keepalives. TCP supplies stream flow control, but Telegraf still drops a TCP line if its pending-message channel is full; `udp_packets_dropped` does not count that TCP-side loss. Clients must support TCP, and connection capacity becomes a new limit. Switching transports is an architecture change, not just a tuning flag.
 
-Reduce unnecessary tags and expensive percentile sets. Confirm that the collection/flush cadence fits the StatsD aggregation semantics and that output batch size, flush interval, and buffer capacity can absorb the resulting metrics.
+Reduce unnecessary tags and expensive percentile sets. Confirm that the StatsD collection interval fits its aggregation semantics and that output batch size, flush interval, and buffer capacity can absorb the resulting metrics.
 
 ## Prove the Result Under Bursts
 
-StatsD is a service input, so a short `--test` run may produce no output unless traffic arrives in its finite window. A production-like load test should use the normal daemon or a sufficiently long `--test-wait`, send a known count with the same packet sizes and tag shapes as real clients, and run long enough to include output flushes.
+StatsD is a service input whose aggregated metrics may not appear reliably with `--test`, `--test-wait`, or `--once`; in Telegraf 1.39.3, test and once modes perform their one gather before the `--test-wait` sleep. A production-like load test should use the normal daemon, send a known count with the same packet sizes and tag shapes as real clients, and run long enough to include StatsD collection intervals and output flushes.
 
 Success means all layers agree: no increase in kernel receive errors, no increase in `internal_statsd.udp_packets_dropped`, pending depth returns to normal after a burst, CPU has headroom, and output buffers do not approach their limits. Tune for the expected peak plus operational headroom, then alert on both kernel and Telegraf counters.
 
