@@ -93,7 +93,6 @@
 
 ## Telegraf
 
-15. How to Hot-Reload Telegraf Configurations Safely with `--watch-config` and a Config Directory
 16. How to Store Telegraf Tokens and Passwords with systemd Credentials, Docker Secrets, or the OS Keyring
 17. How to Preserve Device Timestamps in Telegraf JSON Without Nanosecond, Time-Zone, or Precision Errors
 18. How to Give Containerized Telegraf Access to the Docker Socket Without Running `--privileged`
