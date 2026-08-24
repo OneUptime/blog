@@ -93,7 +93,6 @@
 
 ## Telegraf
 
-7. How to Extract Measurement Names, Tags, and Fields from MQTT Topics in Telegraf
 8. How to Prevent Telegraf MQTT Data Loss with QoS, Persistent Sessions, and `max_undelivered_messages`
 9. How to Size and Monitor Telegraf Memory or Disk Buffers So Backend Outages Do Not Drop Metrics
 10. How to Tune Telegraf `interval`, `flush_interval`, Batch Size, and Jitter for Steady Writes
