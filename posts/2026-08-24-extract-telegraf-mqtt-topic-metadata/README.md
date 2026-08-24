@@ -33,15 +33,15 @@ For topics shaped as `sensors/<line>/<device>/temperature`:
     tags = "_/line/device/_"
 ```
 
-For topic `sensors/line-a/device-17/temperature` and payload `21.6`, the important output shape is:
+For topic `sensors/line-a/device-17/temperature` and payload `21.6`, the plugin-specific output shape, omitting global tags and the timestamp, is:
 
 ```text
-temperature,line=line-a,device=device-17 value=21.6
+temperature,device=device-17,line=line-a,topic=sensors/line-a/device-17/temperature value=21.6
 ```
 
 Each slash-delimited token in `measurement`, `tags`, and `fields` aligns with a topic level. `_` ignores a level. A name assigns that segment to the corresponding metric component.
 
-The `topic` inside a parsing block selects which subscribed topic pattern the mapping applies to. Define multiple blocks when subscriptions have different schemas.
+The `topic` inside a parsing block selects which incoming topics the mapping applies to. Define multiple blocks when subscriptions have different schemas. Every matching block runs in declaration order, so a later block can overwrite an earlier measurement or same-key tag or field.
 
 ## Extract Typed Fields from the Topic
 
@@ -66,11 +66,11 @@ Suppose a publisher sends an alarm value in the payload and encodes a threshold 
 
 The current Telegraf implementation accepts `int`, `uint`, and `float` in `topic_parsing.types`; a segment with no type entry remains a string. The rendered sample configuration currently says `unit`, but the v1.39.3 source and validation logic use `uint`. Treat that sample word as a documentation typo, check the source for the Telegraf version you deploy, and make numeric intent explicit so a threshold does not become a string unexpectedly.
 
-Topic-derived fields are added alongside fields parsed from the payload. Avoid giving both sources the same field key unless the overwrite behavior is deliberately tested.
+Topic-derived fields are applied after payload parsing, so a topic-derived field overwrites a payload field with the same key. Avoid giving both sources the same field key unless that overwrite is deliberate.
 
 ## Control the Full Topic Tag
 
-By default the MQTT consumer stores the complete topic in a tag named `topic`. That is useful for troubleshooting, but highly variable topic paths can increase series cardinality. Once positional tags are proven sufficient, disable it explicitly:
+By default the MQTT consumer stores the complete topic in a tag named `topic`. That is useful for troubleshooting, but highly variable topic paths can increase series cardinality. Once positional tags are proven sufficient, disable it explicitly in the parent `[[inputs.mqtt_consumer]]` table, before any nested `topic_parsing` table:
 
 ```toml
 topic_tag = ""
@@ -80,7 +80,7 @@ Do not discard the full topic until you have confirmed the extracted tags unique
 
 ## Handle Variable-Length Topics Carefully
 
-MQTT subscriptions use `+` for one topic level and `#` for any number of levels. Topic parsing also documents `_` for ignored levels and `#` for one variable-length portion, usable once per mapping. Variable schemas are harder to reason about and can map the wrong end segment after firmware changes.
+MQTT subscription filters use `+` for one topic level and a final `#` for zero or more levels. Topic parsing separately documents `_` for ignored levels and `#` for one variable-length portion, usable once per setting. Variable schemas are harder to reason about and can map the wrong end segment after firmware changes.
 
 Prefer separate explicit parsing blocks for each versioned topic layout:
 
@@ -95,7 +95,7 @@ Version the resulting tags or measurement when the semantic meaning changes, not
 
 ## Pivot Only When You Need Wide Metrics
 
-The official MQTT example shows topic segments such as `temp`, `rpm`, and `ph` becoming a `field` tag, followed by `processors.pivot` to turn the payload's `value` field into multiple fields on one measurement:
+The official MQTT consumer example shows topic segments such as `temp`, `rpm`, and `ph` becoming a `field` tag, followed by `processors.pivot` to rename each metric's payload `value` field from that tag:
 
 ```toml
 [[processors.pivot]]
@@ -103,7 +103,7 @@ The official MQTT example shows topic segments such as `temp`, `rpm`, and `ph` b
   value_key = "value"
 ```
 
-Pivoting is appropriate only when metrics share the same measurement, remaining tag set, and timestamp grouping. Otherwise, keep narrow metrics and preserve their natural event times.
+`pivot` transforms each metric independently and preserves its timestamp; it does not combine separate MQTT messages into one wide point. If one wide point is required, run `aggregators.merge` after `pivot` and ensure the metrics share the same measurement, remaining tag set, and timestamp, optionally using `round_timestamp_to`. Otherwise, keep narrow metrics and preserve their natural event times.
 
 ## Test the Mapping with Real Topics
 
@@ -118,6 +118,7 @@ Service inputs may not emit during a short one-shot test, so publish only after 
 - [Collect data from MQTT example](https://docs.influxdata.com/telegraf/v1/examples/collect-mqtt/)
 - [Value input data format](https://docs.influxdata.com/telegraf/v1/data_formats/input/value/)
 - [Pivot processor plugin](https://docs.influxdata.com/telegraf/v1/processor-plugins/pivot/)
+- [Merge aggregator plugin](https://docs.influxdata.com/telegraf/v1/aggregator-plugins/merge/)
 
 ## Conclusion
 
