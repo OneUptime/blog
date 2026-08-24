@@ -14,7 +14,7 @@ Current InfluxData documentation encourages migration from the deprecated `netsn
 
 ## Select `gosmi` Globally
 
-The translator is an agent setting and applies to all SNMP plugin types:
+The translator is an agent setting and applies to both SNMP input plugins (`inputs.snmp` and `inputs.snmp_trap`):
 
 ```toml
 [agent]
@@ -30,7 +30,7 @@ A Compose service can expose configuration and MIBs without baking secrets into 
 ```yaml
 services:
   telegraf:
-    image: telegraf:1.39
+    image: telegraf:1.39.3
     restart: unless-stopped
     volumes:
       - ./telegraf.conf:/etc/telegraf/telegraf.conf:ro
@@ -39,7 +39,7 @@ services:
       SNMP_COMMUNITY: "${SNMP_COMMUNITY}"
 ```
 
-Pin an image version compatible with the configuration instead of relying on a moving tag. Ensure every imported vendor and standard MIB is present beneath the mounted paths and readable by the container's Telegraf process.
+Pin an exact image version compatible with the configuration instead of relying on a moving tag. Ensure every imported vendor and standard MIB is present beneath the mounted paths and readable by the container's Telegraf process.
 
 The plugin's `path` setting is used by `gosmi` and is shared across all instances of all SNMP plugin types. Keep it consistent:
 
@@ -102,7 +102,7 @@ docker compose run --rm telegraf \
 
 Inspect errors for an unknown module, unresolved import, missing symbol, or permission failure. A MIB file named correctly can still fail when one of its `IMPORTS` modules is absent or has a mismatched module declaration.
 
-Numeric OIDs can isolate translation from transport: if a numeric OID works but the textual OID fails, focus on MIB loading. If both fail, check container DNS, routing, UDP/161 reachability, ACLs, version, credentials, timeout, and retries.
+A known numeric scalar OID, or explicit numeric table-column OIDs with the table-level `oid` omitted, can isolate translation from transport. A numeric table-level OID still needs MIB translation to discover its columns and indexes. If the numeric field works but the textual OID fails, focus on MIB loading. If both fail, check container DNS, routing, UDP/161 reachability, ACLs, version, credentials, timeout, and retries.
 
 ## Keep the Container Network in Scope
 
@@ -114,7 +114,7 @@ Capture packets on the appropriate host or container interface during diagnosis,
 
 - [SNMP input plugin](https://docs.influxdata.com/telegraf/v1/input-plugins/snmp/)
 - [Telegraf agent `snmp_translator` setting](https://docs.influxdata.com/telegraf/v1/configuration/agent/#snmp)
-- [Install and run the official Telegraf container](https://docs.influxdata.com/telegraf/v1/install/#install-telegraf-using-docker)
+- [Install and run the official Telegraf container](https://docs.influxdata.com/telegraf/v1/install/#download-and-install-telegraf)
 - [Docker Compose file reference](https://docs.docker.com/reference/compose-file/)
 
 ## Conclusion
