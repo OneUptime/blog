@@ -90,7 +90,6 @@
 
 ## API Testing
 
-12. How to Prove an Idempotency Key Prevents Duplicate Writes Under Concurrent Requests
 13. How to Test `ETag` and `If-Match` Handling for Concurrent API Updates
 14. How to Detect Breaking API Changes with Consumer-Driven Contract Tests
 15. How to Stop Mock APIs from Drifting Away from the Real Provider
