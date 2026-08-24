@@ -93,7 +93,6 @@
 
 ## Telegraf
 
-20. How to Stop Telegraf StatsD Packet Drops with `number_workers_threads`, Queue, and Socket-Buffer Tuning
 
 ## Database Monitoring
 
