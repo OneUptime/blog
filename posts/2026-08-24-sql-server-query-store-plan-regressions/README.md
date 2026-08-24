@@ -10,7 +10,7 @@ Description: Detect plan regressions with correctly aggregated Query Store inter
 
 Query Store preserves plans and aggregated runtime statistics across time windows, making it a strong source for regression detection. The comparison is only valid when rows inside each interval are aggregated correctly and averages are weighted by execution count.
 
-## Normalize one row per plan and interval
+## Normalize one row per plan, execution type, and interval
 
 `sys.query_store_runtime_stats` can contain more than one row for the same plan, execution type, and currently active interval—typically persisted data plus an in-memory row. Microsoft therefore requires aggregation by `plan_id`, `execution_type`, and `runtime_stats_interval_id` to get the actual interval state.
 
@@ -55,7 +55,7 @@ ORDER BY end_time DESC, avg_duration_us DESC;
 
 Durations and CPU fields are in microseconds; logical reads are page counts. The multiplication by `count_executions` is essential. `AVG(avg_duration)` gives a lightly used row the same weight as a row with thousands of executions.
 
-Keep `execution_type` separate. Normal, aborted, and exception executions describe different populations; most latency regressions start with `execution_type = 0`, while error-rate monitoring should retain the others.
+Keep `execution_type` separate. Regular, aborted, and exception executions describe different populations; most latency regressions start with `execution_type = 0`, while error-rate monitoring should retain the others.
 
 ## Compare completed, comparable windows
 
@@ -69,11 +69,11 @@ weighted average duration
 weighted average CPU
 weighted average logical reads
 maximum duration
-row-count distribution where available
+row-count summary statistics where available
 plan hash and plan ID
 ```
 
-Require minimum recent executions and an absolute latency increase as well as a ratio. A plan that rises from 50 microseconds to 100 microseconds has a 2× ratio but may be operationally irrelevant; a plan with one execution has little statistical support.
+Require minimum recent executions and an absolute latency floor as well as a ratio. A plan that rises from 50 microseconds to 100 microseconds has a 2× ratio but may be operationally irrelevant; a plan with one execution has little statistical support.
 
 A practical candidate policy is:
 
@@ -91,6 +91,8 @@ Use medians or robust historical bands in the monitoring backend when workload h
 Join a candidate to query and query-text metadata only during diagnosis:
 
 ```sql
+DECLARE @query_id bigint = 42; -- Replace 42 with the candidate query_id.
+
 SELECT q.query_id,
        q.query_hash,
        p.plan_id,
@@ -109,7 +111,7 @@ WHERE q.query_id = @query_id
 ORDER BY p.last_execution_time DESC;
 ```
 
-If a new `plan_id` or `query_plan_hash` coincides with worse duration, CPU, or reads for the same query, a plan regression is plausible. Inspect estimates, join order, access paths, memory grants, spills, parameter sensitivity, statistics changes, compatibility-level changes, and indexes.
+If a new `plan_id` or `query_plan_hash` coincides with worse duration, CPU, or reads for the same query, a plan regression is plausible. Inspect estimates, join order, access paths, memory grants, parameter sensitivity, statistics changes, compatibility-level changes, and indexes. Query Store retains an estimated plan, so confirm runtime-only evidence such as spills with an actual execution plan or other runtime instrumentation.
 
 A plan change is not required for a latency regression. The same plan can slow because data volume, parameters, concurrency, blocking, memory, storage, or replica role changed. Conversely, a new plan can be beneficial. Treat plan identity as evidence, not the alert by itself.
 
@@ -117,15 +119,15 @@ A plan change is not required for a latency regression. The same plan can slow b
 
 Query Store can remove old data through retention and size cleanup, so a missing baseline is “unknown,” not zero. State and quota monitoring must accompany regression detection.
 
-Capture is asynchronous, and the active interval can have both memory and disk rows. Delay evaluation, aggregate as shown above, and annotate Query Store configuration changes.
+Persistence to disk is asynchronous, and the active interval can have both memory and disk rows. Delay evaluation, aggregate as shown above, and annotate Query Store configuration changes.
 
 On versions that support Query Store for readable secondaries, runtime statistics include `replica_group_id`. Add it to every grouping and comparison so primary and secondary role workloads are not averaged together. Failover changes roles, and their performance characteristics can differ.
 
-Query text and plan XML can expose schema names, literals, or business details. Keep them out of routine metric labels, restrict permissions, and fetch them only through an audited diagnostic path. SQL Server 2022 and later use `VIEW DATABASE PERFORMANCE STATE` for these views; earlier supported versions use `VIEW DATABASE STATE`.
+Query text and plan XML can expose schema names, literals, or business details. Keep them out of routine metric labels, restrict permissions, and fetch them only through an audited diagnostic path. The runtime-statistics, interval, query, and plan views require `VIEW DATABASE PERFORMANCE STATE` on SQL Server 2022 and later; earlier supported versions require `VIEW DATABASE STATE`. `sys.query_store_query_text` instead requires `VIEW SERVER PERFORMANCE STATE` on SQL Server 2022 and later and `VIEW SERVER STATE` on earlier supported versions.
 
 ## Remediate as a controlled change
 
-Before forcing a previous plan or applying a Query Store hint:
+Before forcing a previous plan or, on SQL Server 2022 and later, applying a Query Store hint:
 
 1. replay or canary the candidate with representative parameters;
 2. confirm that the baseline plan remains valid for current data and indexes;
