@@ -8,13 +8,13 @@ Description: Configure MQTT and Telegraf's tracked delivery window together so d
 
 ---
 
-Reliable MQTT collection spans three boundaries: publisher to broker, broker to Telegraf, and Telegraf to every configured output. Raising a single setting cannot protect all three. Telegraf's MQTT consumer combines MQTT QoS and persistent sessions with tracking metrics, which delay broker acknowledgement until the derived metrics have been delivered to outputs.
+Reliable MQTT collection spans three boundaries: publisher to broker, broker to Telegraf, and Telegraf to each applicable configured output. Raising a single setting cannot protect all three. With `persistent_session = true`, Telegraf's MQTT consumer uses tracking metrics to delay broker acknowledgement until the metrics derived from a source message have been delivered to all applicable outputs.
 
 The result is strong loss resistance when the entire chain is configured coherently, but it is not a blanket exactly-once guarantee for the final database.
 
 ## Use QoS 1 or 2 with a Stable Session
 
-A practical baseline is:
+Assuming at least one output plugin is configured elsewhere, a practical input baseline is:
 
 ```toml
 [agent]
@@ -26,7 +26,7 @@ A practical baseline is:
   servers = ["ssl://broker.example.com:8883"]
   topics = ["factory/+/+/metrics"]
   qos = 1
-  client_id = "telegraf-factory-prod-01"
+  client_id = "telegrafFactoryProd01"
   persistent_session = true
   max_undelivered_messages = 2000
   max_reconnect_interval = "30s"
@@ -35,35 +35,37 @@ A practical baseline is:
   data_format = "influx"
 ```
 
-The publisher must also publish at QoS 1 or 2 for offline delivery to work as intended. A persistent session requires a non-empty, stable `client_id`; a random client ID creates a new identity after restart and cannot resume the old session.
+This configuration requires Telegraf 1.38.0 or later; older versions do not recognize `max_reconnect_interval`.
+
+For offline delivery to be guaranteed by MQTT 3.1.1, the publisher must also publish at QoS 1 or 2. A persistent session requires a non-empty, stable `client_id`; a random client ID creates a new identity after restart and cannot resume the old session.
 
 QoS meanings are:
 
 - QoS 0: at most once; a disconnect can lose a message.
 - QoS 1: at least once; duplicates are possible and consumers should be idempotent where business effects matter.
-- QoS 2: exactly once across the MQTT protocol exchange, with more handshake overhead.
+- QoS 2: exactly once for a single MQTT sender-to-receiver delivery flow, with more handshake overhead.
 
 Neither QoS 2 nor a persistent session makes arbitrary downstream database writes globally exactly once.
 
 ## Understand Telegraf's Tracked Window
 
-`inputs.mqtt_consumer` supports tracking metrics. Telegraf reads up to `max_undelivered_messages` messages that have not yet been confirmed as delivered by the outputs. This bounds the in-flight broker acknowledgements and applies backpressure when an output is slow or unavailable.
+`inputs.mqtt_consumer` supports tracking metrics. With persistent sessions enabled, Telegraf allows up to `max_undelivered_messages` source messages that successfully produce metrics to await output delivery confirmation before broker acknowledgement. Messages that fail payload or topic parsing, or produce no metrics, are acknowledged and not retried. This bounds the number of in-flight broker messages awaiting acknowledgement and applies backpressure when an output is slow or unavailable.
 
-Size the value with `metric_batch_size` in mind. The plugin documentation warns that a value that is too high can continuously feed output batches, while a value that is too low may prevent broker messages from reaching a useful flush. Start with at least enough room for complete output batches and load-test the actual ratio of MQTT messages to emitted metrics.
+Size the value with `metric_batch_size` in mind. The plugin documentation warns that a value that is too high can continuously feed output batches, while a value that is too low may prevent broker messages from reaching a useful flush. Start with enough source messages to produce complete output batches and load-test the actual ratio of MQTT messages to emitted metrics.
 
 Do not confuse this setting with `metric_buffer_limit`:
 
 - `max_undelivered_messages` bounds source messages awaiting tracked delivery;
 - `metric_batch_size` bounds metrics in one output write; and
-- `metric_buffer_limit` bounds unsent metrics independently for each output.
+- `metric_buffer_limit` bounds unsent metrics independently for each output when using the default memory buffer strategy.
 
 One MQTT payload can produce multiple Telegraf metrics, so measure rather than assuming a one-to-one ratio.
 
 ## Protect Offline Periods at the Broker
 
-With `persistent_session = true`, Telegraf tells the client not to clear its session. The broker can retain qualifying messages while that client is disconnected. The plugin requires `client_id`, and the subscriber and publisher QoS must be 1 or 2 for offline message delivery.
+With `persistent_session = true`, Telegraf tells the client not to clear its session. The broker can queue qualifying messages while that client is disconnected. The plugin requires `client_id`; for protocol-guaranteed offline delivery, both the published QoS and the broker-granted subscription QoS must be 1 or 2. A broker may also queue matching QoS 0 messages, but MQTT 3.1.1 does not require it.
 
-There is a notable configuration caveat: the resumed persistent session uses its initial subscriptions. The Telegraf documentation warns that changing `topics` while reusing the same client ID may not subscribe to new topics after reconnect or restart. Coordinate a session reset or a new versioned client ID when the subscription set changes, and account for what happens to queued messages for the old identity.
+As of Telegraf 1.38.0, the plugin re-subscribes the configured topics after every successful connection, so added topics take effect. A resumed broker session can still retain subscriptions removed from the Telegraf configuration because the plugin does not unsubscribe them. Reset or delete the old broker session, or use a new versioned client ID, when removing or replacing topic filters, and account for queued messages tied to the old identity.
 
 Broker-side session expiry, queue limits, storage capacity, and per-client policies are outside Telegraf. Configure and monitor them explicitly.
 
@@ -98,4 +100,4 @@ Test failure modes by stopping the output, disconnecting Telegraf, publishing th
 
 ## Conclusion
 
-Loss-resistant MQTT ingestion requires QoS on both publisher and consumer, a stable persistent client identity, a tracked in-flight window sized with output batches, and adequate per-output buffers. Monitor broker and Telegraf queues together, expect duplicates with at-least-once delivery, and prove recovery with sequence-based outage tests.
+Loss-resistant MQTT ingestion requires QoS 1 or 2 for both published messages and broker-granted subscriptions, a stable persistent client identity, a tracked in-flight window sized with output batches, and adequate per-output buffers. Monitor broker and Telegraf queues together, expect duplicates with at-least-once delivery, and prove recovery with sequence-based outage tests.
