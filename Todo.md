@@ -96,7 +96,6 @@
 
 ## Database Monitoring
 
-10. How to Bound `mysqld_exporter` Query-Digest Cardinality with Statement Limits and Time Windows
 11. How to Detect MySQL Connection Churn Before `Threads_connected` Reaches `max_connections`
 12. How to Separate MySQL Query CPU Time from I/O and Lock Wait Time with Performance Schema Events
 13. How to Sample MongoDB Slow Operations with `slowms`, `sampleRate`, and Filters Without Overloading Production
