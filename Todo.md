@@ -90,7 +90,6 @@
 
 ## API Testing
 
-20. How to Make API Test Failures Reproducible with Request, Response, Correlation ID, and Seed Capture
 
 ## Telegraf
 
