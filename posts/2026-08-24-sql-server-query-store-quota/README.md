@@ -22,7 +22,7 @@ SELECT actual_state_desc,
        current_storage_size_mb,
        max_storage_size_mb,
        CAST(100.0 * current_storage_size_mb
-            / NULLIF(max_storage_size_mb, 0) AS decimal(6,2))
+            / NULLIF(max_storage_size_mb, 0) AS decimal(19,2))
          AS quota_used_percent,
        readonly_reason,
        size_based_cleanup_mode_desc,
@@ -48,6 +48,8 @@ Common bits include:
 | 262,144 | In-memory items waiting for persistence reached a limit |
 | 524,288 | The database reached its disk-size limit |
 
+Interpret bit 8 together with the state columns. When Query Store capture on readable secondary replicas is enabled on a supported platform, both states are `READ_CAPTURE_SECONDARY` and bit 8 remains set; that is an expected capture state, not a failure.
+
 Test a bit with bitwise AND rather than equality:
 
 ```sql
@@ -60,7 +62,7 @@ FROM sys.database_query_store_options;
 
 Bit 262,144 can be temporary while pending items flush. It still deserves monitoring, especially if it persists or recurs under load.
 
-## Alert before the hard limit
+## Alert before the configured limit
 
 Use two complementary alerts:
 
@@ -118,6 +120,7 @@ Query Store catalog views require database-level performance visibility. SQL Ser
 - [SQL Server `sys.database_query_store_options`](https://learn.microsoft.com/en-us/sql/relational-databases/system-catalog-views/sys-database-query-store-options-transact-sql?view=sql-server-ver17)
 - [Best practices for managing Query Store](https://learn.microsoft.com/en-us/sql/relational-databases/performance/manage-the-query-store?view=sql-server-ver17)
 - [SQL Server Query Store usage scenarios](https://learn.microsoft.com/en-us/sql/relational-databases/performance/query-store-usage-scenarios?view=sql-server-ver17)
+- [Query Store for readable secondary replicas](https://learn.microsoft.com/en-us/sql/relational-databases/performance/query-store-for-secondary-replicas?view=sql-server-ver17)
 - [`ALTER DATABASE SET` Query Store options](https://learn.microsoft.com/en-us/sql/t-sql/statements/alter-database-transact-sql-set-options?view=sql-server-ver17#query-store)
 - [Query Store stored procedures](https://learn.microsoft.com/en-us/sql/relational-databases/system-stored-procedures/query-store-stored-procedures-transact-sql?view=sql-server-ver17)
 
