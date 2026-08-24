@@ -31,7 +31,7 @@ The SNMP translator is an agent-wide setting. The built-in `gosmi` backend is th
 
 `service_address` must use `udp://`; this plugin does not provide a TCP trap listener. Omitting the local address binds all interfaces, so use a specific address such as `udp://192.0.2.10:162` when the host should not listen everywhere.
 
-The `path` value is shared by all instances of all Telegraf SNMP plugin types. Supply the vendor MIBs and their imported dependencies at readable paths. Numeric OIDs still work when textual translation fails, which makes them useful for isolating a MIB problem from a network problem.
+The `path` value is shared by all instances of all Telegraf SNMP plugin types. Supply the vendor MIBs and their imported dependencies at readable paths. The plugin must translate the trap and varbind OIDs. If lookup fails, it logs the numeric OID and does not emit that trap metric, so use the log to distinguish a MIB problem from a network problem.
 
 For SNMPv3, change `version` to `"3"` and configure `sec_name`, `sec_level`, authentication, and privacy options. The plugin supports secret references for `sec_name`, `auth_password`, and `priv_password`. SNMPv1 and v2c communities appear on emitted metrics as a tag, so restrict access to the resulting telemetry.
 
@@ -56,7 +56,9 @@ A systemd drop-in keeps the permission with the service definition instead of th
 ```ini
 # sudo systemctl edit telegraf
 [Service]
+AmbientCapabilities=
 AmbientCapabilities=CAP_NET_BIND_SERVICE
+CapabilityBoundingSet=
 CapabilityBoundingSet=CAP_NET_BIND_SERVICE
 ```
 
@@ -68,7 +70,7 @@ sudo systemctl restart telegraf
 systemctl show telegraf -p User -p AmbientCapabilities -p CapabilityBoundingSet
 ```
 
-Keep `User=telegraf` in effect. `AmbientCapabilities` passes the one capability to the process, while `CapabilityBoundingSet` prevents it from acquiring capabilities outside that set. If another enabled input genuinely needs a different capability, account for it explicitly before narrowing the bounding set.
+Keep `User=telegraf` in effect. The empty assignments reset any earlier capability lists because repeated positive assignments are merged. `AmbientCapabilities` then passes the one capability to the process, while `CapabilityBoundingSet` prevents it from acquiring capabilities outside that set. If another enabled input genuinely needs a different capability, account for it explicitly before narrowing the bounding set.
 
 ## Option 3: Listen Above 1024 and Forward
 
@@ -84,15 +86,16 @@ This keeps Telegraf capability-free, but the forwarding rule becomes part of the
 
 ## Verify the Failure Domain
 
-First confirm that only one process owns the port and that Telegraf stayed unprivileged:
+First confirm that only one process owns the configured listener port and that Telegraf's live process stayed unprivileged. Use port 1162 in the first command if you selected Option 3:
 
 ```bash
-sudo ss -lunp | grep ':162 '
+sudo ss -lunp 'sport = :162'
 systemctl show telegraf -p User -p MainPID
-journalctl -u telegraf -n 100 --no-pager
+ps -o pid=,user=,uid= -p "$(systemctl show --property=MainPID --value telegraf)"
+sudo journalctl -u telegraf -n 100 --no-pager
 ```
 
-A bind failure usually says permission denied or address already in use. Once the socket exists, send a known test trap from an allowed source and inspect Telegraf's output. Check host and network firewalls in both directions and remember that traps are UDP: there is no connection handshake proving delivery.
+A bind failure usually says permission denied or address already in use. Once the socket exists, send a known test trap from an allowed source and inspect Telegraf's output. Check host and network firewalls for egress at the sender and ingress at the receiver. Traps are unconfirmed UDP notifications, so no acknowledgement proves delivery; if you test an inform request, also verify the return path for its response.
 
 `inputs.snmp_trap` is a service input. A plain `--test` invocation can exit before a trap arrives, and even `--test-wait` only creates a finite reception window. For production-like verification, run the service with a temporary safe file output, send a uniquely identifiable trap, and confirm its `source`, `version`, OID-derived tags, and fields.
 
