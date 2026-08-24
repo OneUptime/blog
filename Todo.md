@@ -93,7 +93,6 @@
 
 ## Telegraf
 
-4. How to Route Different Telegraf Inputs to Separate Outputs with `tagpass`, `namepass`, and Aliases
 5. How to Parse Nested JSON Arrays in Telegraf with `json_v2` and GJSON Paths
 6. How to Fix Telegraf JSON `field type conflict` Errors Without Dropping New Points
 7. How to Extract Measurement Names, Tags, and Fields from MQTT Topics in Telegraf
