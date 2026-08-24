@@ -93,7 +93,6 @@
 
 ## Telegraf
 
-9. How to Size and Monitor Telegraf Memory or Disk Buffers So Backend Outages Do Not Drop Metrics
 10. How to Tune Telegraf `interval`, `flush_interval`, Batch Size, and Jitter for Steady Writes
 11. How to Run Telegraf `inputs.exec` Reliably with Timeouts, Exit Codes, and Parser-Safe Output
 12. How to Collect SNMP Tables in Containerized Telegraf with `gosmi` and Custom MIB Paths
