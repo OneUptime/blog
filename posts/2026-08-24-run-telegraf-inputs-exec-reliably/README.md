@@ -8,7 +8,7 @@ Description: Turn an external command into a predictable Telegraf input by bound
 
 ---
 
-`inputs.exec` runs configured commands on each collection interval and parses their standard output. Reliability depends on two contracts: the process must finish with the intended exit status before `timeout`, and stdout must contain only data valid for the selected `data_format`.
+`inputs.exec` runs configured commands on each collection interval and parses their standard output. Reliability depends on two contracts: command execution must obey the intended timeout and exit-status policy, and stdout must contain only data valid for the selected `data_format`.
 
 The plugin defaults to JSON for historical reasons, unlike many parser-capable inputs that default to Influx line protocol. Always set the format explicitly.
 
@@ -17,6 +17,7 @@ The plugin defaults to JSON for historical reasons, unlike many parser-capable i
 ```toml
 [[inputs.exec]]
   alias = "queue_depth_probe"
+  interval = "15s"
   commands = [
     ["/usr/local/libexec/queue-metrics", "--format", "influx"],
   ]
@@ -26,7 +27,7 @@ The plugin defaults to JSON for historical reasons, unlike many parser-capable i
   data_format = "influx"
 ```
 
-Current plugin configuration supports commands expressed as arrays of the executable and its arguments. This avoids relying on shell parsing for ordinary commands. If a pipeline, redirection, wildcard, or other shell feature is truly required, invoke the shell explicitly and treat the command string as code that requires careful quoting and review.
+Telegraf 1.39.0 and later versions support commands expressed as arrays of the executable and its arguments. This avoids relying on shell parsing for ordinary commands. If a pipeline, redirection, argument wildcard, or other shell feature is truly required, invoke the shell explicitly and treat the command string as code that requires careful quoting and review. The plugin itself can expand a glob in the executable path.
 
 Use absolute paths for the executable, interpreters, configuration, and data files. The packaged Linux service runs as the `telegraf` user, with a different environment and working directory from an interactive login.
 
@@ -41,25 +42,52 @@ set -eu
 depth=$(/usr/bin/queuectl --quiet depth)
 case "$depth" in
   ''|*[!0-9]*)
-    printf '%s\n' 'E! queuectl returned a non-integer depth' >&2
+    printf '%s\n' 'E! queuectl did not return a non-negative decimal integer' >&2
     exit 2
     ;;
 esac
 
+while [ "${depth#0}" != "$depth" ]; do
+  depth=${depth#0}
+done
+[ -n "$depth" ] || depth=0
+
+out_of_range=false
+if [ "${#depth}" -gt 19 ]; then
+  out_of_range=true
+elif [ "${#depth}" -eq 19 ]; then
+  first_digit=${depth%"${depth#?}"}
+  if [ "$first_digit" -eq 9 ]; then
+    remaining_digits=${depth#?}
+    upper_block=${remaining_digits%?????????}
+    lower_block=${remaining_digits#?????????}
+    if [ "$upper_block" -gt 223372036 ] ||
+       { [ "$upper_block" -eq 223372036 ] &&
+         [ "$lower_block" -gt 854775807 ]; }; then
+      out_of_range=true
+    fi
+  fi
+fi
+
+if [ "$out_of_range" = true ]; then
+  printf '%s\n' 'E! queuectl depth is outside the signed 64-bit range' >&2
+  exit 2
+fi
+
 printf 'queue_depth,queue=payments value=%si\n' "$depth"
 ```
 
-The `i` suffix makes the field an integer in Influx line protocol. A banner, debug message, warning, or blank malformed record on stdout can make parsing fail. Send diagnostics to stderr.
+The `i` suffix makes the field a signed 64-bit integer in Influx line protocol. The normalization and range check keep the emitted value within that grammar. A banner, debug message, warning, or other malformed record on stdout can make parsing fail. Blank or whitespace-only line-protocol lines are ignored. Send diagnostics to stderr.
 
-With `log_stderr = true`, Telegraf relays stderr line by line. Prefix a message with `E!`, `W!`, `I!`, `D!`, or `T!` to choose its Telegraf log level; unprefixed stderr is logged as error by default.
+With `log_stderr = true`, Telegraf logs captured stderr when a run proceeds to parsing, including successful runs and errors allowed by `ignore_error = true`. Prefix a retained line with `E!`, `W!`, `I!`, `D!`, or `T!`, followed by a space, to choose its Telegraf log level; unprefixed stderr is logged as error by default. For formats other than Nagios, an execution error with `ignore_error = false` returns before this prefix handling and retained stderr is included in the input error regardless of `log_stderr`. Unless debug logging is enabled, the current runner truncates captured stderr at 512 bytes and at the first newline when that newline follows nonempty text.
 
 ## Treat Timeouts as a Data-Quality Boundary
 
-`timeout` applies to each command. Set it below the input's scheduling interval and below the freshness deadline, while leaving room for normal worst-case latency. A timeout that is too high lets stuck children consume resources and delay collection. One that is too low creates avoidable gaps during routine service latency.
+`timeout` applies to each command. Set it below the input's scheduling interval and below the freshness deadline, while leaving room for normal worst-case latency. On Unix, reaching the timeout starts termination: Telegraf sends `SIGTERM` to the process group and process, then allows up to five more seconds before escalating to `SIGKILL` if the command is still running. A clean exit after `SIGTERM` is treated as success, so include that grace period when the gather must fit inside its interval. A timeout that is too high lets stuck children consume resources and delay collection. One that is too low creates avoidable gaps during routine service latency.
 
-Make external clients use their own shorter connection and request timeouts where possible. Telegraf's timeout is the final process boundary, not a substitute for granular network timeouts.
+Make external clients use their own shorter connection and request timeouts where possible. Telegraf's timeout is the outer process watchdog, not a substitute for granular network timeouts.
 
-Monitor gather time and gather timeouts through `inputs.internal`, and ensure the child process is terminated as expected during an outage test.
+Monitor `internal_gather.gather_time_ns` and `internal_gather.errors` through `inputs.internal`. Its `gather_timeouts` field counts gathers that exceed the scheduling interval, not expirations of `inputs.exec.timeout`. Also ensure the child process is terminated as expected during an outage test.
 
 ## Decide What a Non-Zero Exit Means
 
@@ -69,22 +97,22 @@ The safe default is:
 ignore_error = false
 ```
 
-A non-zero exit is then an input error. If `ignore_error = true`, Telegraf continues and parses stdout despite the non-zero status. Use that only for a documented tool whose non-zero code still accompanies complete, trustworthy metrics. It is dangerous when a command prints a partial result before failing.
+For ordinary formats such as Influx and JSON, a non-zero exit is then an input error and stdout is not parsed. The Nagios parser is a deliberate exception because it uses the command's exit status as metric state. If `ignore_error = true`, Telegraf continues and parses captured stdout despite an execution error, including a non-zero status or timeout. Use that only when, for every ignored failure mode, captured stdout is either empty or contains complete, trustworthy metrics. It is dangerous when a command prints a partial result before failing.
 
 Do not emit a fake zero merely to keep dashboards continuous. Either emit a separate health/error metric with honest semantics or let the gather error remain observable.
 
-## Supply a Minimal Explicit Environment
+## Supply Explicit Environment Overrides
 
-Use the plugin's `environment` option for non-secret command settings:
+Use the plugin's `environment` option to pin non-secret command settings:
 
 ```toml
 environment = [
-  "LANG=C",
+  "LC_ALL=C",
   "QUEUE_CONFIG=/etc/queue/readonly.conf",
 ]
 ```
 
-Locale affects decimal separators, date strings, and command output. A stable `LANG` avoids shell-versus-service parsing differences. Keep secrets out of logs and prefer a credential file or mechanism appropriate to the child tool, readable only by the service account.
+The option augments Telegraf's inherited process environment rather than replacing it; entries override inherited variables with the same names. Locale affects decimal separators, date strings, and command output. `LC_ALL=C` fixes all locale categories even if an inherited `LC_*` variable is set. Keep secrets out of logs and prefer a credential file or mechanism appropriate to the child tool, readable only by the service account.
 
 Verify permissions as the real user:
 
