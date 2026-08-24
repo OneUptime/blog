@@ -12,9 +12,11 @@ Description: Detect costly MySQL connection turnover with interval rates, thread
 
 Connection churn still consumes TCP, TLS, authentication, thread, and session-initialization work. It can cause tail latency or exhaust an intermediary before MySQL's simultaneous connection count looks alarming.
 
+The server variables in this post cover classic MySQL protocol connections. X Protocol uses separate `Mysqlx_*` status variables and the `mysqlx_max_connections` limit.
+
 ## Collect the cumulative evidence
 
-Use global status. Plain `SHOW STATUS` can return session values and is the wrong source for a server-wide alert:
+Use explicit global status for a server-wide alert. Plain `SHOW STATUS` defaults to session scope; the variables selected below are global-only, but stating `GLOBAL` avoids ambiguity:
 
 ```sql
 SHOW GLOBAL STATUS
@@ -32,7 +34,8 @@ SHOW GLOBAL VARIABLES
 WHERE Variable_name IN (
   'max_connections',
   'thread_cache_size',
-  'connect_timeout'
+  'connect_timeout',
+  'thread_handling'
 );
 ```
 
@@ -44,9 +47,9 @@ Interpret them separately:
 - `Threads_created` counts threads created to handle connections;
 - `Aborted_connects` counts failed attempts to connect;
 - `Connection_errors_max_connections` counts refusals because the limit was reached;
-- `Max_used_connections` is the peak simultaneous usage since startup.
+- `Max_used_connections` is a high-water mark since startup or the last `FLUSH STATUS`, which rebases it to the current number of open connections.
 
-These counters are cumulative since server start or reset. Export their raw values and calculate rates from successive successful samples. Reject intervals after a restart or counter decrease.
+`Connections`, `Threads_created`, `Aborted_connects`, and `Connection_errors_max_connections` accumulate since server start. `Threads_connected` and `Threads_running` are gauges, while `Max_used_connections` is a high-water mark rather than a counter to difference. Export the raw values and calculate rates for the event counters from successive successful samples. Reject intervals after a restart or unexpected counter decrease.
 
 ## Derive churn and thread-cache pressure
 
@@ -60,9 +63,9 @@ cache_miss_share   = delta(Threads_created) / delta(Connections)
 connection_use     = Threads_connected / max_connections
 ```
 
-Return no ratio when the denominator is zero. MySQL's documentation suggests `Threads_created / Connections` as an indication of thread-cache misses; the interval ratio responds faster than the lifetime value. It is not a direct measure of application pool misses because `Connections` also includes failed attempts.
+Return no ratio when the denominator is zero. With the default `one-thread-per-connection` handler, MySQL's documentation suggests `Threads_created / Connections` as an indication of thread-cache misses; the interval ratio responds faster than the lifetime value. It is not a direct measure of application pool misses because `Connections` also includes failed attempts. With MySQL Enterprise Thread Pool (`thread_handling = loaded-dynamically`), connections and execution threads are decoupled, so this ratio is not a thread-cache miss measure.
 
-A high attempt rate with a low `Threads_connected` gauge is the signature that a point-in-time connection alert misses. A rising `Threads_created` rate shows that the server is also creating worker threads rather than reusing cached ones. Increasing `thread_cache_size` can reduce thread creation, but it does not fix a disabled pool, excessively short connection lifetime, DNS/TLS problems, or retry storms.
+A high attempt rate with a low `Threads_connected` gauge is the signature that a point-in-time connection alert misses. With the default handler, a rising `Threads_created` rate shows that the server is also creating connection threads rather than reusing cached ones. Under that handler, increasing `thread_cache_size` can reduce thread creation, but it does not fix a disabled pool, excessively short connection lifetime, DNS/TLS problems, or retry storms.
 
 ## Add the client-side half
 
@@ -88,9 +91,9 @@ Use multiple conditions rather than a single percentage:
 - abort or connection-error counters increase;
 - `Threads_connected / max_connections` is consuming the capacity reserved for failover and operations.
 
-Require a sustained interval and minimum traffic. A deployment naturally opens warm pools; a short burst that settles is different from continuous turnover. Compare against the sum of pool maxima across every service and instance, including failover replicas, because configuration can permit more simultaneous borrowers than the database can accept.
+Require a sustained interval and minimum traffic. A deployment naturally opens warm pools; a short burst that settles is different from continuous turnover. For each possible database target, including a replica that may be promoted, compare its capacity with the sum of maxima for all service-instance pools that can connect to it concurrently after failover.
 
-MySQL normally permits one extra connection beyond `max_connections` for an account with `CONNECTION_ADMIN` (or the deprecated `SUPER`) so an administrator can diagnose the server. Do not include that emergency path in application capacity. `Connection_errors_max_connections` is already late evidence that normal clients were refused.
+MySQL normally permits one extra connection beyond `max_connections` for an account with `CONNECTION_ADMIN` (or the deprecated `SUPER`) so an administrator can diagnose the server. Do not include that emergency path in application capacity. `Connection_errors_max_connections` is already late evidence that a client was refused because the server limit was reached.
 
 ## Diagnose common patterns
 
@@ -98,11 +101,11 @@ MySQL normally permits one extra connection beyond `max_connections` for an acco
 |---|---|
 | High attempt rate, stable low concurrency, high physical opens | Pool disabled or connections retired too aggressively |
 | High attempts and `Aborted_connects`, low opens in the app | Authentication, network, TLS, or retry problem |
-| Rising `Threads_created` with attempts | Thread cache cannot reuse workers at that turnover rate |
+| Rising `Threads_created` with attempts | With the default handler, the thread cache cannot reuse connection threads at that turnover rate |
 | High pool pending and high `Threads_connected` | Genuine concurrency or database latency is holding connections |
 | High MySQL attempts but stable application pools | Proxy, health check, job, or another client is the source |
 
-Confirm with connection error subclasses, server logs, network telemetry, and a bounded client trace. Do not diagnose purely from a ratio: workload and architecture determine whether a rate is expensive.
+Confirm with the global `Connection_errors_*` counters, the per-host error columns in `performance_schema.host_cache` when the host cache is enabled, server logs, network telemetry, and a bounded client trace. Do not diagnose purely from a ratio: workload and architecture determine whether a rate is expensive.
 
 ## Official Documentation
 
