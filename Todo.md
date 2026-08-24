@@ -90,7 +90,6 @@
 
 ## API Testing
 
-14. How to Detect Breaking API Changes with Consumer-Driven Contract Tests
 15. How to Stop Mock APIs from Drifting Away from the Real Provider
 16. How to Generate Useful Negative and Boundary Tests from an OpenAPI Schema
 17. How to Test Rate Limits Without Making the CI Suite Slow or Unreliable
