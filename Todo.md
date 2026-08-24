@@ -96,7 +96,6 @@
 
 ## Database Monitoring
 
-15. How to Redact SQL Text and Bind Values Before Sending Database Monitoring Data to a Shared Backend
 16. How to Monitor SQL Server Query Store Quota Before It Silently Switches to Read-Only
 17. How to Detect SQL Server Plan Regressions by Comparing Query Store Runtime Intervals
 18. How to Capture SQL Server Blocking Chains with Blocked Process Reports and Extended Events
