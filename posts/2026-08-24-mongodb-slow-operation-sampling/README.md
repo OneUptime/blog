@@ -23,7 +23,7 @@ db.setProfilingLevel(1, {
 })
 ```
 
-At level 1, operations exceeding `slowms` are candidates and `sampleRate` selects a random fraction between 0 and 1. At level 2, the profiler captures all operations; do not expect `slowms`, `sampleRate`, or a filter to bound profiler volume. It is rarely an appropriate production setting.
+At level 1, operations exceeding `slowms` are candidates and `sampleRate` selects a random fraction between 0 and 1. At level 2, full operation logging is enabled for both the profiler and the diagnostic log; do not expect `slowms`, `sampleRate`, or a filter to bound volume. It is rarely an appropriate production setting.
 
 To leave the profiler off while configuring the diagnostic log:
 
@@ -42,11 +42,11 @@ Inspect the current database's effective values with:
 db.getProfilingStatus()
 ```
 
-Profiling level is database-specific. The slow-operation threshold also affects diagnostic logging across the `mongod`, so a change made while connected to one database can have broader logging consequences.
+When set through `db.setProfilingLevel()`, the profiling level and filter are database-specific. In contrast, `slowms` and `sampleRate` are global to the process, so changing either affects diagnostic logging and level 1 profilers without filters across the `mongod`.
 
 ## Understand what “slow” measures
 
-MongoDB qualifies slow operations using `workingMillis`: time it spends working on the operation. Time waiting for locks or flow control does not cause an operation to cross the slow threshold. End-to-end client latency can therefore be high even when the operation is not sampled as slow.
+Starting in MongoDB 8.0, MongoDB qualifies slow operations using `workingMillis`: time it spends working on the operation. Earlier releases use total operation latency. In 8.0 and later, time waiting for locks or flow control does not cause an operation to cross the slow threshold. End-to-end client latency can therefore be high even when the operation is not sampled as slow. The slow-query diagnostic log reports `workingMillis` and total `durationMillis`, while profiler documents report elapsed time as `millis`.
 
 Correlate profiler or log evidence with:
 
@@ -59,9 +59,9 @@ Starting in MongoDB 8.0, `workingMillis` can also be used in a profiler filter. 
 
 ## Treat filters as an alternative policy
 
-A filter does not combine with `slowms` and `sampleRate`. When a profiling filter is set, those two settings no longer affect either the profiler or slow-query diagnostic log; only matching operations are selected.
+At profiling levels 0 and 1, a filter does not combine with `slowms` and `sampleRate`. When a profiling filter is set, those two settings no longer affect either the profiler, if enabled, or slow-query diagnostic log; only matching operations are selected.
 
-For example, on MongoDB 8.0 or later:
+For example, on MongoDB 8.0 or later, while connected to the `orders` database:
 
 ```javascript
 db.setProfilingLevel(1, {
@@ -76,7 +76,7 @@ db.setProfilingLevel(1, {
 
 Do not add `sampleRate: 0.1` and expect this result set to be sampled. The filter makes the sampling option ineffective. If the filter matches too broadly, the profiler and diagnostic log can receive every matching operation.
 
-Test a filter against representative profiler-shaped documents, estimate its match rate, and add a separate collector-side sampling or rate limit if probabilistic reduction is still required. Remember that level 2 ignores the filter.
+Test a filter on a version-matched non-production deployment, estimate its match rate, and add a separate collector-side sampling or rate limit if probabilistic reduction is still required. Remember that level 2 ignores the filter.
 
 ## Bound storage and exposure
 
@@ -92,7 +92,6 @@ db.system.profile.find(
     ns: 1,
     op: 1,
     millis: 1,
-    workingMillis: 1,
     planCacheShapeHash: 1,
     planCacheKey: 1,
     docsExamined: 1,
@@ -117,16 +116,16 @@ For a temporary investigation:
 4. watch log throughput, profiler turnover, disk, CPU, and latency;
 5. restore the previous settings and confirm them.
 
-For a permanent policy, express `operationProfiling.mode`, `slowOpThresholdMs`, and `slowOpSampleRate` in the deployment configuration. Keep `logLevel` in mind: at higher diagnostic log levels, normal operation logging behavior differs from the default slow-operation sampling policy.
+For a permanent policy, express `operationProfiling.mode` and either `operationProfiling.slowOpThresholdMs` with `operationProfiling.slowOpSampleRate` or `operationProfiling.filter` in the deployment configuration. Keep `logLevel` in mind: at higher diagnostic log levels, normal operation logging behavior differs from the default slow-operation sampling policy.
 
 ## Official Documentation
 
 - [MongoDB `db.setProfilingLevel()`](https://www.mongodb.com/docs/manual/reference/method/db.setProfilingLevel/)
 - [MongoDB Database Profiler management](https://www.mongodb.com/docs/manual/tutorial/manage-the-database-profiler/)
 - [MongoDB profiler output](https://www.mongodb.com/docs/manual/reference/database-profiler/)
-- [MongoDB self-managed configuration options](https://www.mongodb.com/docs/manual/reference/configuration-options/#operation-profiling-options)
+- [MongoDB self-managed configuration options](https://www.mongodb.com/docs/manual/reference/configuration-options/#operationprofiling-options)
 - [MongoDB diagnostic log messages](https://www.mongodb.com/docs/manual/reference/log-messages/)
 
 ## Conclusion
 
-Use `slowms` and `sampleRate` together only when no profiler filter is active, keep `mongos` at profiling level 0, and remember that slow qualification uses working time rather than every source of client latency. Bound the investigation by time, volume, storage, and access, then restore or persist the intended configuration explicitly.
+Use `slowms` and `sampleRate` together only when no profiler filter is active, keep `mongos` at profiling level 0, and remember that on MongoDB 8.0 and later slow qualification uses working time rather than every source of client latency. Bound the investigation by time, volume, storage, and access, then restore or persist the intended configuration explicitly.
