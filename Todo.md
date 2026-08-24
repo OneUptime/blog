@@ -93,7 +93,6 @@
 
 ## Telegraf
 
-12. How to Collect SNMP Tables in Containerized Telegraf with `gosmi` and Custom MIB Paths
 13. How to Receive SNMP Traps on Port 162 with Telegraf Without Running It as Root
 14. How to Remove One High-Cardinality Tag from One Telegraf Measurement with `namepass` and Starlark
 15. How to Hot-Reload Telegraf Configurations Safely with `--watch-config` and a Config Directory
