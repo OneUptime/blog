@@ -96,7 +96,6 @@
 
 ## Database Monitoring
 
-18. How to Capture SQL Server Blocking Chains with Blocked Process Reports and Extended Events
 19. How to Monitor Read-Only Workloads on SQL Server Availability Group Secondaries with Query Store
 20. How to Correlate Application Pool Checkout Latency with Database Session Saturation
 
