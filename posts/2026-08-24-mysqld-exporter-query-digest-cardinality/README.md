@@ -24,7 +24,7 @@ The exporter defaults currently include a 250-row statement limit, a 86,400-seco
 --collect.perf_schema.eventsstatements.exclude_schemas=tenant_scratch
 ```
 
-Repeat `exclude_schemas` for additional application schemas. The collector already excludes `mysql`, `performance_schema`, and `information_schema`.
+The `exclude_schemas` flag requires `mysqld_exporter` 0.19.0 or later. Repeat it for additional application schemas. The collector already excludes `mysql`, `performance_schema`, and `information_schema`.
 
 Read the flags precisely:
 
@@ -39,7 +39,7 @@ The time limit is a freshness filter, not a rolling aggregation window. Counters
 
 The collector labels statement metrics with schema, digest, and digest text. MySQL normalizes literals in a digest—values such as strings and numbers become parameter markers—but identifiers remain significant. Per-tenant table or schema names, generated SQL shapes, and changing identifier lists can therefore create many digests.
 
-Truncating digest text reduces label bytes; it does not reduce the number of distinct digest labels. Dropping the text label in metric relabeling can reduce payload and exposure, but distinct digest hashes and schemas still create distinct series.
+Truncating digest text reduces label bytes; it does not reduce the number of distinct digest labels. Dropping the text label in metric relabeling can reduce stored and remote-written label bytes and downstream exposure, but it does not shrink the exporter's HTTP scrape response; distinct digest hashes and schemas still create distinct series.
 
 Estimate the source population before enabling the collector:
 
@@ -65,11 +65,11 @@ SHOW GLOBAL STATUS LIKE 'Performance_schema_digest_lost';
 SHOW GLOBAL VARIABLES LIKE 'performance_schema_digests_size';
 ```
 
-`performance_schema_digests_size` sets the maximum number of digest summary rows and is configured at server startup. When the table has no room for another digest, MySQL aggregates unrepresented statements into a row whose digest fields are `NULL` and increments `Performance_schema_digest_lost`. Making the table smaller is therefore a lossy source-side bound, not a free optimization.
+`performance_schema_digests_size` sets the maximum number of digest summary rows and is configured at server startup. When the table has no room for another digest, MySQL aggregates unrepresented statements into a special catch-all row with `SCHEMA_NAME` and `DIGEST` set to `NULL` and increments `Performance_schema_digest_lost`. Making the table smaller is therefore a lossy source-side bound, not a free optimization.
 
 ## Budget for churn, not only one scrape
 
-With a limit of 100, one target exposes at most 100 selected digest rows in one scrape, but the top 100 can change from scrape to scrape. Prometheus retains old series until they age out under the server's retention policy. A rotating workload can thus create far more than 100 series over a day.
+With a limit of 100, one target exposes at most 100 selected digest rows in one scrape, but the top 100 can change from scrape to scrape. Prometheus marks series that disappear from a successful scrape as stale, so they stop appearing in instant queries, while their historical samples remain stored until retention cleanup. A rotating workload can thus create far more than 100 distinct stored series over the retention period.
 
 Estimate an upper budget as:
 
@@ -78,7 +78,7 @@ targets × distinct selected schema/digest pairs over retention
         × metrics emitted per digest
 ```
 
-Measure `count` of active and newly observed series in Prometheus rather than assuming the row limit is the final number. Test with production-like SQL diversity and the actual scrape interval.
+Measure currently queryable series with PromQL `count(...)`, and track the target-level `scrape_series_added` metric for the approximate number of new series in each scrape, rather than assuming the row limit is the final number. Test with production-like SQL diversity and the actual scrape interval.
 
 ## Choose limits from the monitoring objective
 
@@ -90,7 +90,7 @@ A useful rollout sequence is:
 4. monitor exporter scrape duration, response size, Prometheus head series, and digest loss;
 5. raise the limit only when missing lower-ranked queries has a demonstrated operational cost.
 
-The collector sorts by cumulative `SUM_TIMER_WAIT`, so a historically expensive digest can dominate whenever it remains fresh. Use rates of the exported counters for dashboards and reset-aware alerting. A digest-table truncation removes its rows, and a server restart rebuilds Performance Schema state; reject intervals across either boundary rather than turning a decrease into a spike. MySQL does not evict an existing digest row merely because `performance_schema_digests_size` is full: it aggregates unrepresented statements into the `NULL` digest row and increments `Performance_schema_digest_lost`.
+The collector sorts by cumulative `SUM_TIMER_WAIT`, so a historically expensive digest can dominate whenever it remains fresh. Use `rate()` or `increase()` on the exported counters for dashboards and reset-aware alerting; both adjust for detectable counter resets. A digest-table truncation removes its rows, and a server restart rebuilds Performance Schema state. Exclude known windows spanning either boundary only when exact interval accounting is required. MySQL does not evict an existing digest row merely because `performance_schema_digests_size` is full: it aggregates unrepresented statements into the `NULL` digest row and increments `Performance_schema_digest_lost`.
 
 For investigations that require full fidelity, query Performance Schema on demand or export samples to a system designed for high-cardinality traces. Prometheus is best used for a stable, bounded operational view.
 
@@ -98,7 +98,7 @@ For investigations that require full fidelity, query Performance Schema on deman
 
 Although MySQL digest text replaces literals, identifiers and SQL structure can still reveal customer names, internal table names, or business operations. Restrict the exporter's database account and metrics endpoint, encrypt transport, and evaluate whether `digest_text` should leave the database network at all.
 
-Pin and test an exporter release. The current upstream exporter documents MySQL 5.6 or later, but collector fields are version-gated; for example, CPU-related statement fields are available only on MySQL versions that expose them. Unknown flags can prevent startup, so validate the exact binary rather than copying flags from another release.
+Pin and test an exporter release. The current upstream exporter documents MySQL 5.6 or later, but the collector's SQL is version-gated; for example, it selects `SUM_CPU_TIME` only for Oracle MySQL 8.0.28 or later. Unknown flags can prevent startup, so validate the exact binary rather than copying flags from another release.
 
 ## Official Documentation
 
