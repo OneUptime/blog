@@ -96,7 +96,6 @@
 
 ## Database Monitoring
 
-11. How to Detect MySQL Connection Churn Before `Threads_connected` Reaches `max_connections`
 12. How to Separate MySQL Query CPU Time from I/O and Lock Wait Time with Performance Schema Events
 13. How to Sample MongoDB Slow Operations with `slowms`, `sampleRate`, and Filters Without Overloading Production
 14. How to Detect MongoDB WiredTiger Saturation with Ticket Queues, Cache Eviction, and Dirty Bytes
