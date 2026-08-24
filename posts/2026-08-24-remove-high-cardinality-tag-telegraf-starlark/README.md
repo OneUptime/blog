@@ -37,7 +37,7 @@ def apply(metric):
 '''
 ```
 
-The exact measurement title belongs in `namepass`; values are glob patterns, so `http_*` would deliberately select a wider set. A metric excluded by a processor selector bypasses that processor and proceeds to the next pipeline stage—it is not dropped.
+The exact measurement title belongs in `namepass`; values are glob patterns, so `http_*` would deliberately select a wider set. A metric excluded by a processor selector bypasses that processor and proceeds to the next pipeline stage-it is not dropped.
 
 Telegraf exposes `metric.tags` as a dict-like object. The current implementation supports `pop`, which removes the key and returns its previous value. The membership check makes the script safe when a matching metric does not contain `request_id`. This matters because a Starlark execution error causes Telegraf to drop the affected metric.
 
@@ -45,7 +45,7 @@ Always return `metric`. Returning `None`, or reaching the end without returning 
 
 ## Confirm the Transformation Before Deployment
 
-Create a minimal staging configuration with representative line protocol, the processor, and a file output. Telegraf test mode runs inputs and processors but does not execute outputs:
+Create a minimal staging configuration with representative line protocol and the processor. Telegraf test mode runs inputs, processors, and aggregators, prints the resulting metrics to standard output, and does not execute configured outputs:
 
 ```bash
 telegraf --config ./candidate.conf --test
@@ -57,7 +57,7 @@ Verify all three cases:
 2. `http_request` without the tag passes without error.
 3. another measurement containing `request_id` remains unchanged.
 
-Run with debug logging during a controlled rollout and watch for errors from `processors.starlark`. If the pipeline uses aggregators, keep the script idempotent—as this one is—and review the agent's processor-before/after-aggregator settings. In current Telegraf releases, processors can run in both pipeline positions depending on those settings; the documented default for `skip_processors_after_aggregators` is scheduled to change in Telegraf 1.40.
+Run with debug logging during a controlled rollout and watch for errors from `processors.starlark`. If the pipeline uses aggregators, keep the script idempotent-as this one is-and review the agent's processor-before/after-aggregator settings. In current Telegraf releases, processors can run in both pipeline positions depending on those settings; the documented default for `skip_processors_after_aggregators` is scheduled to change in Telegraf 1.40.
 
 ## Know When Starlark Is Unnecessary
 
