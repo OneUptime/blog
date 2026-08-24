@@ -46,6 +46,7 @@ Telegraf's plugin requires systemd 250 or later. The default package unit uses `
 Create an encrypted credential without putting its plaintext in shell history:
 
 ```bash
+sudo install -d -m 0700 -o root -g root /etc/credstore.encrypted
 sudo systemd-creds setup
 systemd-ask-password -n | \
   sudo systemd-creds encrypt - \
@@ -79,6 +80,7 @@ Then attach the secret in Compose:
 services:
   telegraf:
     image: telegraf:1.39
+    user: "${USERID}:${GROUPID}"
     secrets:
       - influxdb_token
     volumes:
@@ -89,7 +91,9 @@ secrets:
     file: ./secrets/influxdb_token
 ```
 
-The Docker store is read-only from Telegraf. With `dynamic = true`, it can pick up runtime changes only for secrets provided through Compose `file` or `external` definitions; environment-backed Compose secrets do not support that dynamic behavior. Keep the source file out of Git and restrict its permissions.
+Before starting Compose, set `USERID` and `GROUPID` to the numeric owner and group of `./secrets/influxdb_token`; for a file owned by your current account, run `USERID=$(id -u) GROUPID=$(id -g) docker compose up -d`. Compose implements file-backed secrets as bind mounts and ignores per-secret `uid`, `gid`, and `mode`, so the container identity must be able to read the restricted source file.
+
+The Docker store is read-only from Telegraf. With `dynamic = true`, Telegraf rereads the mounted file on later accesses by a consuming plugin. In ordinary Compose, this can expose in-place changes to a `file`-backed secret; an `environment` secret is materialized when the container is created. External-secret update behavior depends on the deployment platform; Docker Swarm secrets are immutable, so rotation replaces the secret and redeploys the task. Keep the source file out of Git and restrict its permissions.
 
 ## The Native OS Keyring
 
@@ -106,10 +110,10 @@ Set a value through Telegraf so it uses the configured store:
 
 ```bash
 telegraf --config /etc/telegraf/telegraf.conf \
-  secrets set keyring_secrets influxdb_token 'SECRET_VALUE'
+  secrets set keyring_secrets influxdb_token
 ```
 
-The official command accepts the value as its third positional argument. Supplying it literally can expose it through shell history or process inspection, so prefer an interactive wrapper or platform-native credential tool that does not place plaintext on the command line.
+Telegraf also accepts the value as a third positional argument, but supplying it literally can expose it through shell history or process inspection. Omit it, as above, to use Telegraf's hidden interactive prompt.
 
 With `dynamic = false`, values are read once at startup. `dynamic = true` asks a plugin for the current value whenever it accesses the secret, which can enable rotation without restart when the consuming plugin performs later accesses. It does not guarantee that every plugin reconnects immediately.
 
@@ -129,7 +133,7 @@ Also apply basic controls:
 
 ## Choose by Runtime Boundary
 
-Use systemd credentials for a package-managed Linux service, Docker Secrets for orchestrated containers, and the OS keyring for a stable host identity with an available native keyring. The choice should match who starts Telegraf and how credentials rotate—not merely which syntax is shortest.
+Use systemd credentials for a package-managed Linux service, Docker Secrets for orchestrated containers, and the OS keyring for a stable host identity with an available native keyring. The choice should match who starts Telegraf and how credentials rotate-not merely which syntax is shortest.
 
 ## Official Documentation
 
