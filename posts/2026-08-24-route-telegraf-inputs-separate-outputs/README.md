@@ -14,7 +14,7 @@ Use `namepass` when measurement names define the route. Use `tagpass` when a sta
 
 ## Route by an Explicit Input Tag
 
-Tag metrics at the input and filter each output on that tag:
+Tag metrics at the input and filter each output on that tag. This example assumes a configured Telegraf secret store with `id = "secrets"` containing a secret named `influx_token`:
 
 ```toml
 [[inputs.cpu]]
@@ -101,7 +101,7 @@ When two instances have the same plugin name, an error such as `outputs.influxdb
   # ...
 ```
 
-Telegraf uses the alias in logs, and internal per-output statistics can be distinguished by instance. Each output also owns its buffer and retries independently, so one unavailable destination does not redefine the other output's routing.
+Telegraf uses the alias in logs, and `[[inputs.internal]]` includes it as a tag on per-output statistics so repeated instances can be distinguished. Each output also owns its buffer and retries independently, so one unavailable destination does not redefine the other output's routing.
 
 ## Prove Every Route
 
@@ -114,7 +114,7 @@ Create a small matrix before deployment:
 | missing `route` tag | documented fallback or deliberate drop |
 | unknown `route` value | documented fallback or deliberate drop |
 
-Use `--test` to inspect metric names and tags after inputs and processors. Because test mode does not run outputs, also use a staging destination or temporary file outputs with the same filters to prove final routing. Watch Telegraf's `internal_write` statistics and aliased logs after deployment.
+Use `--test` to inspect metric names and tags after inputs and processors. Because test mode does not run outputs, also use a staging destination or temporary file outputs with the same filters to prove final routing. Enable `[[inputs.internal]]` with a matching route, or send its metrics to a separate monitoring output, then watch `internal_write` statistics and aliased logs after deployment.
 
 ## Official Documentation
 
