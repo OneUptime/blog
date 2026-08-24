@@ -93,7 +93,6 @@
 
 ## Telegraf
 
-3. How to Fix Telegraf `outputs.influxdb_v2` 401 Errors Caused by Missing Service Environment Variables
 4. How to Route Different Telegraf Inputs to Separate Outputs with `tagpass`, `namepass`, and Aliases
 5. How to Parse Nested JSON Arrays in Telegraf with `json_v2` and GJSON Paths
 6. How to Fix Telegraf JSON `field type conflict` Errors Without Dropping New Points
