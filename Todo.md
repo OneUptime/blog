@@ -93,7 +93,6 @@
 
 ## Telegraf
 
-19. How to Debug Telegraf HTTP 400 Responses When the Same Request Works with curl
 20. How to Stop Telegraf StatsD Packet Drops with `number_workers_threads`, Queue, and Socket-Buffer Tuning
 
 ## Database Monitoring
