@@ -112,7 +112,7 @@ RFC 7578 says a part without `Content-Type` defaults to `text/plain`; for file c
 
 If the service performs signature or magic-byte detection, assert the detected type, not only the declared type. If it performs a full decoder or antivirus scan asynchronously, distinguish upload acceptance from later quarantine or rejection. Never execute or render untrusted fixtures during a unit test.
 
-When the type is unsupported, RFC 9110 defines `415 Unsupported Media Type`, but the API must document whether that applies to the whole request media type, a file part, or both. Assert the service's published mapping rather than assuming all part errors are `415`.
+RFC 9110 defines `415 Unsupported Media Type` for refusing a request because its content format is unsupported; the cause can be the indicated `Content-Type` or `Content-Encoding`, or direct inspection of the data. Document whether the API returns it for an unsupported top-level request media type, an unsupported file part detected within the multipart body, or both. Assert the service's published mapping rather than assuming all part errors are `415`.
 
 ## Define Partial-Failure Semantics
 
@@ -136,7 +136,7 @@ In both models, test a storage failure after bytes were written but before metad
 
 ## Test Malformed Multipart Framing Separately
 
-High-level `FormData` libraries intentionally create valid bodies. Use a low-level HTTP client or raw socket fixture for protocol-negative cases:
+High-level `FormData` libraries intentionally create valid bodies. Use a low-level HTTP client or raw socket fixture when you need byte-for-byte control over malformed framing and parser-edge cases:
 
 - missing boundary parameter;
 - header boundary different from body delimiter;
@@ -144,12 +144,12 @@ High-level `FormData` libraries intentionally create valid bodies. Use a low-lev
 - truncated part body;
 - malformed `Content-Disposition`;
 - part without required `name`;
-- duplicated names and ordered fields;
+- repeated field names to verify order preservation and non-coalescing;
 - excessive part headers or part count;
 - forbidden or deprecated part headers; and
-- boundary-like bytes inside file content.
+- near-miss boundary-like byte sequences that are not valid delimiter lines inside file content.
 
-RFC 7578 says senders should not generate `Content-Transfer-Encoding` for HTTP multipart parts, and limits supported part headers. A robust parser should reject or ignore unsupported metadata according to the service policy without crashing.
+RFC 7578 says senders should not generate `Content-Transfer-Encoding` for multipart parts in HTTP contexts. It supports only `Content-Disposition`, optional `Content-Type`, and, in limited circumstances, `Content-Transfer-Encoding`; other part header fields must not be included and receivers must ignore them. Test that unsupported well-formed headers are ignored safely, while malformed header syntax is handled without crashing.
 
 These tests must bypass any helper that silently repairs the body. Cap the bytes and time for every malformed request so a parser waiting for a delimiter cannot hang CI.
 
@@ -168,15 +168,15 @@ The service should generate its own storage key, retain a sanitized display name
 
 ## Verify Streaming and Cleanup
 
-Run cases with and without `Content-Length` if the supported stack allows chunked transfer. Verify the service enforces limits while streaming rather than buffering an unlimited body first. A rejection should stop reading or drain safely according to server/framework needs and release temporary resources.
+At the HTTP/1.1 layer, run cases with `Content-Length` and with `Transfer-Encoding: chunked` if the supported stack allows it. For HTTP/2 or HTTP/3, test requests without `Content-Length`; those versions delimit content with frames rather than chunked transfer coding. Playwright's `APIRequestContext` buffers and serializes multipart bodies before sending them and sets `Content-Length`, so use a streaming-capable low-level client for chunked or genuinely streamed cases. Verify the service enforces limits while streaming rather than buffering an unlimited body first. A rejection should stop reading or drain safely according to server/framework needs and release temporary resources.
 
 Expose test diagnostics such as sanitized original name, bytes accepted, failure phase, storage object count, and cleanup result. Do not attach uploaded confidential data to CI reports. Hash fixture contents when identity evidence is sufficient.
 
 ## Official Documentation
 
 - [RFC 7578: `multipart/form-data`](https://www.rfc-editor.org/rfc/rfc7578.html)
-- [RFC 9110: 413 Content Too Large](https://www.rfc-editor.org/rfc/rfc9110.html#name-content-too-large)
-- [RFC 9110: 415 Unsupported Media Type](https://www.rfc-editor.org/rfc/rfc9110.html#name-unsupported-media-type)
+- [RFC 9110: 413 Content Too Large](https://www.rfc-editor.org/rfc/rfc9110.html#section-15.5.14)
+- [RFC 9110: 415 Unsupported Media Type](https://www.rfc-editor.org/rfc/rfc9110.html#section-15.5.16)
 - [Playwright APIRequestContext multipart option](https://playwright.dev/docs/api/class-apirequestcontext#api-request-context-post)
 - [OpenAPI 3.2 multipart encoding](https://spec.openapis.org/oas/v3.2.0.html#encoding-multipart-media-types)
 
