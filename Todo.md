@@ -93,7 +93,6 @@
 
 ## Telegraf
 
-1. How to Test Telegraf Service Inputs When `--test` Produces No Metrics
 2. How to Debug a Telegraf Configuration That Works in the Shell but Fails as a systemd Service
 3. How to Fix Telegraf `outputs.influxdb_v2` 401 Errors Caused by Missing Service Environment Variables
 4. How to Route Different Telegraf Inputs to Separate Outputs with `tagpass`, `namepass`, and Aliases
