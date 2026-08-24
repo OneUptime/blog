@@ -33,6 +33,8 @@ ORDER BY created_at DESC, id DESC
 LIMIT :page_size_plus_one
 ```
 
+This row-comparison shorthand assumes both sort columns are non-null. Nullable sort keys need explicit `NULLS FIRST` or `NULLS LAST` semantics and a matching null-aware boundary predicate.
+
 The public cursor should still be opaque. Google AIP-158 says page tokens must be opaque and URL-safe; base64-encoding transparent implementation fields is not sufficient opacity. Tests should pass the token back unchanged, not decode it and build the next request themselves.
 
 Seed records with deliberately awkward values:
@@ -43,14 +45,14 @@ Seed records with deliberately awkward values:
 - enough records for one full page, one partial page, and an empty collection; and
 - Unicode and null values in any supported secondary sort fields.
 
-An API that allows client-selected sorting must either include the full sort definition in its cursor or reject attempts to change it on later pages.
+An API that allows client-selected sorting should bind the cursor to the full sort definition, either inside the opaque token or in server-side state, and reject attempts to change it on later pages.
 
 ## Prove the Quiescent Baseline
 
-First run with no writers. Read the authoritative expected IDs directly from the test database or fixture builder using the documented sort, then traverse the public API. This TypeScript example uses Playwright's request fixture:
+First run with no writers. Read the authoritative expected IDs directly from the test database or fixture builder using the documented sort, then traverse the public API. This TypeScript example uses Playwright's request fixture and assumes a configured `baseURL`; the application-specific `seedEventsWithTiedTimestamps()` helper returns the expected IDs in documented order:
 
 ```ts
-import { test, expect, APIRequestContext } from '@playwright/test';
+import { test, expect, type APIRequestContext } from '@playwright/test';
 
 type Item = { id: string; createdAt: string };
 type Page = { items: Item[]; nextCursor: string | null };
@@ -98,14 +100,14 @@ Also guard against an infinite loop. A repeated non-terminal cursor, a bounded-p
 
 ## Test Every Page Size and Boundary
 
-For a fixture of `N` records, test sizes `1`, `2`, `N - 1`, `N`, `N + 1`, the documented default, and the documented maximum. Verify:
+For a fixture of `N > 1` records, test sizes `1`, `2`, `N - 1`, `N`, `N + 1`, the documented default, and the documented maximum. Verify:
 
 - concatenated IDs equal the authoritative ordered fixture;
 - no ID appears twice;
 - each adjacent pair follows the documented comparator;
 - the final page uses the documented terminal signal;
 - an empty collection terminates immediately; and
-- invalid, expired, or tampered cursors produce the documented client error rather than a server error.
+- invalid, expired, or tampered cursors produce the API's documented response, normally a client error rather than an internal server error.
 
 Changing filters, tenant, or sort direction while reusing a cursor should not silently cross query scopes. AIP-158 expects subsequent pagination arguments other than page size to match and recommends an invalid-argument error otherwise. If your API intentionally supports other behavior, encode that behavior in its contract and tests.
 
@@ -119,29 +121,30 @@ For descending `(created_at, id)` order, cover this matrix:
 | --- | --- | --- |
 | insert before the cursor | normally not observed in this forward walk | not observed |
 | insert after the cursor | may be observed once | not observed |
-| delete an item already returned | no duplicate and no unrelated skip | original snapshot item remains visible |
+| delete an item already returned | no duplicate and no unrelated skip | remaining traversal is unchanged; the item is not returned again |
 | delete an unseen item | item is absent; unrelated items remain once | original snapshot item remains visible |
-| update an immutable, non-sort field | same identity remains once, representation depends on contract | snapshot representation remains |
+| update a mutable field that affects neither sorting nor filtering | same identity remains once, representation depends on contract | snapshot representation remains |
 | move an unseen item across the cursor by changing its sort key | behavior must be documented; a live walk can miss it | original snapshot position remains |
 | move a returned item after the cursor | a naive live implementation can duplicate it | original snapshot position remains |
 
-The last two cases reveal an important limitation: keyset pagination cannot by itself promise exactly-once traversal when the sort key is mutable. The service must use an immutable traversal key, preserve a snapshot/version in the cursor, or explicitly document live weak consistency. Tests should enforce the chosen promise, not an impossible combination.
+The last two cases reveal an important limitation: keyset pagination cannot by itself promise exactly-once traversal when the sort key is mutable. The service must use an immutable traversal key, bind the cursor to a retained or reconstructible snapshot/version, or explicitly document live weak consistency. Tests should enforce the chosen promise, not an impossible combination.
 
 ## Detect Reordering, Not Just Duplicates
 
-A set comparison catches missing and duplicate identities but loses order. Keep the full sequence and compare every adjacent pair using the same comparator as the contract. For descending timestamps with descending IDs:
+A set comparison can reveal missing or unexpected identities but erases duplicates and order. Keep the full sequence, track duplicate IDs separately, and compare every adjacent pair using the same comparator as the contract:
 
 ```ts
-function expectDescending(items: Item[]) {
+function expectOrdered(
+  items: Item[],
+  compareInApiOrder: (left: Item, right: Item) => number,
+) {
   for (let i = 1; i < items.length; i++) {
-    const previous = [items[i - 1].createdAt, items[i - 1].id];
-    const current = [items[i].createdAt, items[i].id];
-    expect(previous.join('\u0000') > current.join('\u0000')).toBe(true);
+    expect(compareInApiOrder(items[i - 1], items[i])).toBeLessThan(0);
   }
 }
 ```
 
-In real code, implement the exact type-aware comparator rather than joining strings. Normalize timestamps only as the API specifies, and do not assume database collation equals JavaScript string ordering.
+`compareInApiOrder` must return a negative number when its left item belongs before its right item. For descending timestamps and IDs, implement the API's exact timestamp precision and time-zone normalization, null placement, and ID collation; do not assume database collation equals JavaScript string ordering.
 
 Run the same fixture repeatedly with randomized insertion order. A query that orders only by the non-unique timestamp may look stable on one database plan and reorder ties after an index, vacuum, or deployment change.
 
