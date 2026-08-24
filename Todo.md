@@ -96,7 +96,6 @@
 
 ## Database Monitoring
 
-16. How to Monitor SQL Server Query Store Quota Before It Silently Switches to Read-Only
 17. How to Detect SQL Server Plan Regressions by Comparing Query Store Runtime Intervals
 18. How to Capture SQL Server Blocking Chains with Blocked Process Reports and Extended Events
 19. How to Monitor Read-Only Workloads on SQL Server Availability Group Secondaries with Query Store
