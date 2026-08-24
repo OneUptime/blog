@@ -96,7 +96,6 @@
 
 ## Database Monitoring
 
-2. How to Alert on PostgreSQL `idle in transaction` Sessions Before They Block VACUUM and DDL
 3. How to Identify the Blocking Query in PostgreSQL with `pg_blocking_pids()`, `pg_locks`, and Wait Events
 4. How to Calculate `pg_stat_statements` Rates Without False Spikes After Statistics Resets
 5. How to Run `postgres_exporter` Without Superuser Using `pg_monitor` and File-Based Credentials
