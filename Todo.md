@@ -96,7 +96,6 @@
 
 ## Database Monitoring
 
-7. How to Alert on PostgreSQL Transaction-ID Wraparound Risk with `age(datfrozenxid)` and `autovacuum_freeze_max_age`
 8. How to Measure PostgreSQL Buffer-Cache Effectiveness Without Mistaking the OS Page Cache for Disk Reads
 9. Why the MySQL Slow Query Log Misses Initial Lock Waits—and What to Collect from Performance Schema Instead
 10. How to Bound `mysqld_exporter` Query-Digest Cardinality with Statement Limits and Time Windows
