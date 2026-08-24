@@ -12,7 +12,7 @@ WiredTiger saturation is not one percentage. A full-looking cache may be healthy
 
 ## Use the metric path for the server version
 
-MongoDB 8.0 introduced execution-admission metrics under:
+MongoDB 8.0 introduced execution-admission metrics at the following path. Run these checks against each `mongod`; `mongos` does not expose a WiredTiger cache or the storage execution ticket pool:
 
 ```javascript
 const s = db.serverStatus()
@@ -39,7 +39,9 @@ queues.execution.write.totalTickets
 
 These field names are literal object paths; use bracket notation in code for WiredTiger fields that contain spaces.
 
-Older dashboards commonly read ticket data from `wiredTiger.concurrentTransactions`. Do not silently map that legacy location to the 8.0 queue schema: names and semantics differ. Branch collectors by MongoDB major version and retain a version label on recording rules.
+MongoDB 8.3 adds a `lowPriority` pool and the `usesPrioritization` field. When prioritization is enabled, collect the same queue counters plus `available` and `totalTickets` from each read and write `lowPriority` object; otherwise a low-priority backlog can be missed.
+
+Older dashboards commonly read ticket data from `wiredTiger.concurrentTransactions`. Do not silently map that legacy location to the 8.0 queue schema: names and semantics differ. Branch collectors by the exact `serverStatus` schema and server release, and retain a version label on recording rules.
 
 ## Do not alert on low `available` alone
 
@@ -47,21 +49,21 @@ Beginning with MongoDB 7.0, the storage engine dynamically adjusts concurrent re
 
 The stronger signals are:
 
-- a nonzero `normalPriority.queueLength` that persists;
+- a nonzero `queueLength` in a collected priority pool that persists;
 - positive deltas of `addedToQueue` and `totalTimeQueuedMicros`;
-- rising average queue time per newly queued operation;
+- rising average queue time for waits that left the queue;
 - application latency rising over the same interval.
 
-Calculate average newly observed queue time only from matched counter deltas:
+Calculate average queue time for waits removed during the interval only from matched counter deltas:
 
 ```text
-avg_queue_seconds =
+avg_removed_queue_seconds =
   delta(totalTimeQueuedMicros) / delta(removedFromQueue) / 1e6
 ```
 
-Return no value when no operations left the queue. Queue-time accumulation corresponds more closely to completed removals than new arrivals, especially while backlog changes. Reject intervals after restart or counter decrease. A queue can drain between scrapes, so cumulative queue arrivals, removals, and time are necessary alongside the instantaneous length.
+Return no value when `delta(removedFromQueue)` is zero. The queued-time counter and `removedFromQueue` advance when a queued wait ends, including a canceled wait, so this is an interval average for queue departures rather than arrivals. Reject intervals after restart or counter decrease. A queue can drain between scrapes, so cumulative queue arrivals, removals, and time are necessary alongside the instantaneous length.
 
-Changing `storageEngineConcurrentReadTransactions` or `storageEngineConcurrentWriteTransactions` overrides the dynamic algorithm. Treat a manual ticket setting as a controlled experiment with a rollback plan, not a routine response to low availability.
+On MongoDB 8.0, setting `storageEngineConcurrentReadTransactions` or `storageEngineConcurrentWriteTransactions` at startup selects fixed concurrency instead of dynamic adjustment; a runtime change is rejected while dynamic adjustment is active. MongoDB recommends working with Support before disabling dynamic ticket adjustment. Treat a manual ticket setting as a controlled experiment with a rollback plan, not a routine response to low availability.
 
 ## Add the WiredTiger cache picture
 
@@ -79,6 +81,7 @@ application threads page read from disk to cache time (usecs)
 application threads page write from cache to disk time (usecs)
 application threads page read from disk to cache count
 application threads page write from cache to disk count
+application thread time evicting (usecs)
 eviction currently operating in aggressive mode
 pages queued for urgent eviction
 ```
@@ -88,23 +91,27 @@ WiredTiger exposes many more eviction fields and some names change across releas
 Useful interval calculations include:
 
 ```text
-cache_used_fraction  = bytes_currently_in_cache / maximum_bytes_configured
-dirty_fraction       = tracked_dirty_bytes / maximum_bytes_configured
-page_read_rate       = delta(pages_read_into_cache) / seconds
-page_write_rate      = delta(pages_written_from_cache) / seconds
-app_read_wait_share  = delta(app_read_time_usec) / interval_usec
+cache_used_fraction       = bytes_currently_in_cache / maximum_bytes_configured
+dirty_fraction            = tracked_dirty_bytes / maximum_bytes_configured
+page_read_rate            = delta(pages_read_into_cache) / seconds
+page_write_rate           = delta(pages_written_from_cache) / seconds
+urgent_eviction_rate      = delta(pages_queued_for_urgent_eviction) / seconds
+app_read_io_time_share    = delta(app_read_time_usec) / interval_usec
+app_eviction_time_share   = delta(app_eviction_time_usec) / interval_usec
 ```
 
-The last value is aggregated application-thread time and can exceed 1 when multiple threads wait concurrently. It is not wall-clock utilization.
+The two `*_time_share` values normalize aggregated application-thread time by wall time and can exceed 1 when multiple threads perform the work concurrently. They are not wall-clock or device utilization.
+
+`pages queued for urgent eviction` is a cumulative event counter, so evaluate its delta or rate rather than its absolute value. In MongoDB 8.0's bundled WiredTiger, `eviction currently operating in aggressive mode` is a current 0–100 score rather than a Boolean, and aggressive mode begins at 10. Verify that interpretation against the exact bundled WiredTiger build.
 
 ## Recognize an eviction bottleneck
 
 Evidence for meaningful saturation strengthens when several signals move together:
 
 - execution queue length and queue-time rate stay elevated;
-- application threads increasingly perform eviction or wait for cache reads/writes;
+- application threads spend increasing time evicting pages or performing page-read/page-write I/O;
 - dirty bytes remain high instead of being checkpointed and evicted;
-- urgent or aggressive eviction indicators persist;
+- the urgent-eviction rate stays elevated or the aggressive-mode score stays at or above the build's threshold;
 - block-device latency, queue depth, and write throughput deteriorate;
 - operation latency rises and throughput stops scaling.
 
@@ -116,13 +123,13 @@ MongoDB also relies on the filesystem cache. Do not size WiredTiger by assuming 
 
 One practical alert requires, for several minutes:
 
-1. read or write `queueLength > 0`, or a significant queue-time rate;
+1. any collected read or write `queueLength > 0`, or a significant queue-time rate;
 2. increasing `addedToQueue` and application latency;
-3. at least one pressure confirmation such as application-thread eviction time, persistent dirty bytes, urgent eviction, or storage latency.
+3. at least one pressure confirmation such as increasing application-thread eviction or page-I/O time, a persistently elevated dirty fraction, a sustained urgent-eviction rate or aggressive-mode score, or elevated storage latency.
 
 Keep reads and writes separate; a saturated write path can coexist with available read tickets. Annotate checkpoints, backups, initial sync, index builds, compaction, and bulk loads.
 
-Collect `serverStatus` with an account limited to the monitoring privileges needed. Avoid very high-frequency collection of the entire multi-megabyte document; request or transform only the relevant fields and measure monitoring overhead.
+Collect `serverStatus` with an account limited to the monitoring privileges needed. Avoid very high-frequency collection of the entire large response. Use version-supported field exclusions to reduce the response, transform only the relevant fields before export, and measure monitoring overhead.
 
 ## Official Documentation
 
@@ -134,4 +141,4 @@ Collect `serverStatus` with an account limited to the monitoring privileges need
 
 ## Conclusion
 
-On MongoDB 8.0 and later, read execution admission from `serverStatus().queues.execution`; on older releases, use the documented version-specific source. Alert on persistent queued reads or writes and growing queue time—not low ticket availability alone—and confirm the condition with dirty-cache, eviction, storage, and application-latency evidence.
+On MongoDB 8.0 and later, read execution admission from `serverStatus().queues.execution` and include every active priority pool; on older releases, use the documented version-specific source. Alert on persistent queued reads or writes and growing queue time-not low ticket availability alone-and confirm the condition with dirty-cache, eviction, storage, and application-latency evidence.
