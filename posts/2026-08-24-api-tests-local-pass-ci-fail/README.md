@@ -27,6 +27,16 @@ function requiredUrl(name: string): URL {
   if (!['http:', 'https:'].includes(url.protocol)) {
     throw new Error(`${name} must use HTTP or HTTPS`);
   }
+  if (
+    url.username ||
+    url.password ||
+    url.href.includes('?') ||
+    url.href.includes('#')
+  ) {
+    throw new Error(`${name} must not include credentials, a query, or a fragment`);
+  }
+
+  url.pathname = `${url.pathname.replace(/\/+$/, '')}/`;
   return url;
 }
 
@@ -37,7 +47,7 @@ console.info(JSON.stringify({
 }));
 ```
 
-Log the origin and non-sensitive path prefix, not query credentials. Verify:
+Keep credentials and query parameters out of the base URL. Log only the origin and a deliberately non-sensitive path prefix. Verify:
 
 - scheme, host, port, and base path;
 - whether the test runs on the VM host or inside a job container;
@@ -48,7 +58,7 @@ Log the origin and non-sensitive path prefix, not query credentials. Verify:
 
 Use an explicit readiness probe that checks an application-ready endpoint, not merely an open TCP port. Cap the wait and print the final safe response. A server can accept connections while migrations or dependencies are still unavailable.
 
-Playwright supports `baseURL` in configuration and a `webServer` command for locally managed services. Make local and CI configuration flow through the same code:
+Playwright supports `baseURL` in configuration and the `webServer` configuration option for locally managed services. It resolves request URLs with the standard `URL` constructor, so the helper above preserves a path prefix with a trailing slash and requests use relative paths without a leading slash. Make local and CI configuration flow through the same code:
 
 ```ts
 import { defineConfig } from '@playwright/test';
@@ -66,17 +76,18 @@ A retry can collect evidence or identify flakiness, but it must not turn the fir
 
 ## Make Missing Secrets Fail Clearly
 
-On a workstation, credentials may come from a keychain, shell profile, cached login, or `.env`. CI secrets have repository, organization, environment, event, and workflow permissions.
+On a workstation, credentials may come from a keychain, shell profile, cached login, or `.env`. GitHub Actions secrets can be scoped at repository, organization, or environment level; their availability also depends on the triggering event and whether they are passed to a reusable workflow.
 
-GitHub Actions specifically documents that secrets other than `GITHUB_TOKEN` are not passed to workflows triggered from forked repositories; secrets are also not automatically passed to reusable workflows. Referencing an unset secret expression yields an empty string.
+GitHub Actions specifically documents that secrets other than `GITHUB_TOKEN` are not passed to the runner when a workflow is triggered from a forked repository; secrets are also not automatically passed to reusable workflows. Referencing an unset secret expression yields an empty string.
 
-Pass the secret explicitly to the test step and validate only presence and safe metadata:
+Pass the secret explicitly to the test step and validate its presence without printing credential-derived metadata:
 
 ```yaml
 - name: Run API tests
   env:
     API_BASE_URL: ${{ vars.TEST_API_BASE_URL }}
     API_TOKEN: ${{ secrets.TEST_API_TOKEN }}
+    ALLOWED_SERVER_SKEW_MS: ${{ vars.TEST_ALLOWED_SERVER_SKEW_MS }}
   run: npx playwright test tests/api
 ```
 
@@ -86,7 +97,6 @@ if (!token) throw new Error('API_TOKEN is unavailable for this workflow event');
 
 console.info(JSON.stringify({
   tokenPresent: true,
-  tokenLength: token.length,
 }));
 ```
 
@@ -106,7 +116,7 @@ Clock-related CI failures commonly involve:
 - second-versus-millisecond units;
 - timestamp precision or rounding;
 - token expiry and not-before claims;
-- date-only values parsed in different zones; and
+- date-only values and timestamps that omit an explicit offset;
 - assertions that allow no network or scheduling delay.
 
 Log timestamps as ISO 8601 UTC plus the source of each value:
@@ -122,13 +132,39 @@ console.info(JSON.stringify({
 For domain logic, inject a clock and set exact instants. For an integration assertion, compare within a justified interval based on request start and response end:
 
 ```ts
-const before = Date.now();
-const response = await request.post('/v1/jobs', { data: { kind: 'test' } });
-const after = Date.now();
-const createdAt = Date.parse((await response.json()).createdAt);
+const rawAllowedServerSkewMs = process.env.ALLOWED_SERVER_SKEW_MS;
+const allowedServerSkewMs = Number(rawAllowedServerSkewMs);
+if (
+  !rawAllowedServerSkewMs ||
+  !/^\d+$/.test(rawAllowedServerSkewMs) ||
+  !Number.isSafeInteger(allowedServerSkewMs)
+) {
+  throw new Error('ALLOWED_SERVER_SKEW_MS must be a non-negative integer');
+}
 
-expect(createdAt).toBeGreaterThanOrEqual(before - ALLOWED_SERVER_SKEW_MS);
-expect(createdAt).toBeLessThanOrEqual(after + ALLOWED_SERVER_SKEW_MS);
+const before = Date.now();
+const response = await request.post('./v1/jobs', { data: { kind: 'test' } });
+const after = Date.now();
+expect(response.status()).toBe(201);
+
+const body: unknown = await response.json();
+const rawCreatedAt = body && typeof body === 'object' && 'createdAt' in body
+  ? body.createdAt
+  : undefined;
+if (
+  typeof rawCreatedAt !== 'string' ||
+  !/(?:Z|[+-]\d{2}:\d{2})$/i.test(rawCreatedAt)
+) {
+  throw new Error('createdAt must include Z or an explicit UTC offset');
+}
+
+const createdAt = Date.parse(rawCreatedAt);
+if (!Number.isFinite(createdAt)) {
+  throw new Error('createdAt is not a valid timestamp');
+}
+
+expect(createdAt).toBeGreaterThanOrEqual(before - allowedServerSkewMs);
+expect(createdAt).toBeLessThanOrEqual(after + allowedServerSkewMs);
 ```
 
 Do not solve a deterministic domain test with a large tolerance. Control time there. Use tolerance only where separate real clocks are part of the integration.
@@ -152,18 +188,25 @@ Common shared-state failures include:
 Derive unique values from test identity and a run identifier:
 
 ```ts
+import { randomUUID } from 'node:crypto';
+import { test, expect } from '@playwright/test';
+
+const localWorkerId = randomUUID();
+
 test('creates an order', async ({ request }, testInfo) => {
   const runId = process.env.GITHUB_RUN_ID;
   const runAttempt = process.env.GITHUB_RUN_ATTEMPT ?? '1';
-  const run = runId ? `${runId}-${runAttempt}` : `local-${process.pid}`;
-  const reference = `order-${run}-${testInfo.testId}`;
+  const run = runId ? `${runId}-${runAttempt}` : `local-${localWorkerId}`;
+  const reference = `order-${run}-${testInfo.testId}-${testInfo.retry}`;
 
-  const response = await request.post('/v1/orders', {
+  const response = await request.post('./v1/orders', {
     data: { clientReference: reference, sku: 'sku-42' },
   });
   expect(response.status()).toBe(201);
 });
 ```
+
+`GITHUB_RUN_ID` is unique only within a repository and is shared by every job in a workflow. If the same test can run from multiple repositories or jobs against one backend, also include an encoded repository and job or matrix discriminator. `GITHUB_RUN_ATTEMPT` distinguishes workflow reruns; `testInfo.retry` distinguishes Playwright retries.
 
 Use a collision-safe encoding or hash if the API has length or character constraints. Clean up only records carrying the current run's ownership marker. Prefer API-supported namespaces or per-worker accounts over global database truncation.
 
@@ -202,13 +245,13 @@ GitHub's default variables include `CI=true`, workspace, run, job, ref, and SHA 
 
 ## Preserve the First Failure
 
-Configure traces, structured request/response evidence, service logs, and test attachments before adding retries. Current Playwright trace options include retaining the first failure as well as tracing retries. The Trace Viewer can show request and response headers and bodies, so treat traces as sensitive artifacts with access controls and retention.
+Configure traces, structured request/response evidence, service logs, and test attachments before adding retries. Current Playwright trace options include retaining the first failure as well as tracing retries. The Trace Viewer can show request and response headers and bodies, so treat traces as sensitive artifacts with access controls and retention. Playwright does not provide a trace option that redacts network headers or bodies; avoid raw traces for flows whose contents cannot be retained.
 
-Redact authorization, cookies, API keys, signed URLs, and sensitive body fields. Prefer an allowlist of captured headers to a blacklist. Record body size and digest when the body itself is not safe.
+In custom logs and attachments, redact authorization, cookies, API keys, signed URLs, and sensitive body fields. Prefer an allowlist of captured headers to a blacklist. Record only body size when the body itself is not safe; a stable unkeyed digest can leak equality and permit guessing of low-entropy content.
 
 For every failed API call, preserve:
 
-- method and resolved URL without sensitive query values;
+- method and resolved URL with userinfo rejected and sensitive path and query components redacted;
 - safe request headers and bounded redacted body;
 - response status, safe headers, and bounded redacted body;
 - correlation or trace ID;
@@ -222,7 +265,7 @@ An `ECONNREFUSED` with resolved `127.0.0.1:3000` needs a different investigation
 
 Print one sanitized reproduction command or container invocation in the artifact. Use the same test filter, worker count, shard, environment shape, runtime image, and service versions. Never embed a token in the command line or artifact; require the operator to supply it securely.
 
-If exact local reproduction is impossible, add a short-lived diagnostic job that runs the isolated test with verbose safe logging and artifact capture in the same CI network. Remove extra logging once evidence is sufficient.
+If exact local reproduction is impossible, add a short-lived diagnostic job that runs the isolated test with verbose safe logging and artifact capture using the same CI network topology and configuration. Remove extra logging once evidence is sufficient.
 
 ## A Practical Triage Order
 
