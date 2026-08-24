@@ -29,7 +29,9 @@ GRANT CONNECT ON DATABASE postgres TO postgres_exporter;
 GRANT pg_monitor TO postgres_exporter;
 ```
 
-Set the password through a secret-management workflow or an interactive `psql` `\password postgres_exporter` command rather than putting a literal into a checked-in migration or shell history.
+Because the HBA rule below requires SCRAM, ensure `password_encryption` is `scram-sha-256` when the password is set. PostgreSQL 10 through 13 defaulted this setting to `md5`; an MD5-stored verifier cannot authenticate against a `scram-sha-256` record. Use a secret-management workflow or, in an interactive administrator `psql` session, run `SET password_encryption = 'scram-sha-256';` and then `\password postgres_exporter` rather than putting a literal into a checked-in migration or shell history.
+
+`CONNECT` is granted to `PUBLIC` by default on a database, so the explicit grant above is often redundant and does not deny this role access to other databases. Effective database scope depends on the database ACLs and the complete HBA policy.
 
 `pg_monitor` is a predefined role and is itself a member of `pg_read_all_settings`, `pg_read_all_stats`, and `pg_stat_scan_tables`. That supplies broad monitoring visibility, including normally restricted activity fields. It does not grant superuser, table write, role administration, or replication privileges.
 
@@ -39,14 +41,14 @@ For PostgreSQL 9.6 and older, `pg_monitor` does not exist. The exporter document
 
 ## Restrict connection scope
 
-Allow this role to connect only from the exporter network and require modern password authentication and TLS as appropriate:
+Add a narrowly scoped rule for the intended exporter path and require modern password authentication and TLS as appropriate:
 
 ```text
 # pg_hba.conf
 hostssl  postgres  postgres_exporter  10.30.4.18/32  scram-sha-256
 ```
 
-Reload PostgreSQL after editing `pg_hba.conf`. Use the exporter service's stable subnet or identity rather than a broad public range. The TLS mode must match your certificate design; `sslmode=require` encrypts but does not verify server identity, while `verify-full` verifies the chain and hostname when the client trust material is configured.
+`pg_hba.conf` uses the first matching record. Place this rule before broader records, audit the full file including included and `local` records, and add per-role `reject` records where necessary so another rule cannot admit this role from a different address or to a different database. Reload PostgreSQL after editing `pg_hba.conf`. Use the exporter service's stable address or a tightly scoped subnet rather than a broad public range. The TLS mode must match your certificate design; `sslmode=require` encrypts but does not verify server identity, while `verify-full` verifies the chain and hostname when the client trust material is configured.
 
 Confirm the effective grant without using the exporter process:
 
@@ -56,7 +58,7 @@ SELECT rolname, rolsuper, rolcreaterole, rolcreatedb,
 FROM pg_roles
 WHERE rolname = 'postgres_exporter';
 
-SELECT pg_has_role('postgres_exporter', 'pg_monitor', 'MEMBER');
+SELECT pg_has_role('postgres_exporter', 'pg_monitor', 'USAGE');
 ```
 
 ## Use the exporter's password-file interface
@@ -97,7 +99,7 @@ Environment=DATA_SOURCE_PASS_FILE=%d/postgres-password
 ExecStart=/usr/local/bin/postgres_exporter
 ```
 
-`%d` expands to the service credential directory in supported systemd versions. Protect the source credential and test the unit on the deployed systemd release.
+`LoadCredential=` and the `%d` credential-directory specifier are available in systemd 247 and later. Protect the source credential and test the unit on the deployed systemd release.
 
 ## Avoid the common secret leaks
 
@@ -127,11 +129,13 @@ Then validate from the monitoring path:
 curl --fail --silent http://127.0.0.1:9187/metrics >/dev/null
 ```
 
-Check exporter logs and Prometheus's `up` metric. A successful HTTP response can still contain collector errors or omit a family due to database permissions. Also set `PG_EXPORTER_COLLECTION_TIMEOUT` below the Prometheus scrape timeout with enough normal headroom, so slow collection does not accumulate database connections.
+Check exporter logs, Prometheus's `up` metric, and the exporter health series `pg_up`, `pg_exporter_last_scrape_error`, and `pg_scrape_collector_success`. Prometheus's `up` only confirms that Prometheus scraped the exporter; a successful HTTP response can still coincide with database or collector errors or omit a family due to database permissions. Also set `PG_EXPORTER_COLLECTION_TIMEOUT` below the Prometheus scrape timeout with enough normal headroom, so slow collection does not accumulate database connections.
 
 ## Rotate without widening privileges
 
-Write a new secret version atomically through the orchestrator, restart or roll the exporter if it reads the file only during connection setup, and confirm a successful scrape before revoking the old credential. Test the behavior of the exact exporter release; a replaced mounted file does not guarantee an existing database connection reauthenticates immediately.
+In v0.19.1, the `DATA_SOURCE_*_FILE` values are read once at process startup and retained in the in-memory connection string. Coordinate the PostgreSQL password change with atomically publishing the same value, then recreate the Compose container, roll the Kubernetes workload, or restart the systemd service and confirm a newly authenticated scrape. Replacing the mounted file alone does not update either existing connections or later connections opened by the same exporter process.
+
+A PostgreSQL role stores only one password verifier, so old and new passwords cannot overlap for the same login. If your rotation design provides overlap, such as by alternating between two login roles, confirm successful collector metrics before revoking the old credential.
 
 Credential rotation does not require granting superuser. If a collector fails after an upgrade, identify the precise view or function and compare it with official collector requirements before adding privileges.
 
