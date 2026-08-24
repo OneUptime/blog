@@ -96,7 +96,6 @@
 
 ## Database Monitoring
 
-20. How to Correlate Application Pool Checkout Latency with Database Session Saturation
 
 ## Trace Sampling
 
