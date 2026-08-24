@@ -93,7 +93,6 @@
 
 ## Telegraf
 
-11. How to Run Telegraf `inputs.exec` Reliably with Timeouts, Exit Codes, and Parser-Safe Output
 12. How to Collect SNMP Tables in Containerized Telegraf with `gosmi` and Custom MIB Paths
 13. How to Receive SNMP Traps on Port 162 with Telegraf Without Running It as Root
 14. How to Remove One High-Cardinality Tag from One Telegraf Measurement with `namepass` and Starlark
