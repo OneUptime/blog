@@ -24,7 +24,7 @@ For fleet monitoring, the useful minimum is usually:
 
 Do not export bind values by default. Do not use raw SQL as a metric label: it exposes data and creates unbounded cardinality.
 
-OpenTelemetry's stable database span conventions make the distinction explicit. `db.query.summary` should be low-cardinality and contain no dynamic or sensitive data. Non-parameterized `db.query.text` should be collected by default only when all literals have been sanitized. `db.query.parameter.<key>` is opt-in and instrumentation should not capture it by default because it can contain PII or secrets.
+OpenTelemetry's database span conventions make the distinction explicit. `db.query.summary` should be low-cardinality and contain no dynamic or sensitive data. Non-parameterized `db.query.text` should be collected by default only when all literals have been sanitized. `db.query.parameter.<key>` is a Development, opt-in attribute, and instrumentation should not capture it by default because it can contain PII or secrets.
 
 ## Sanitize SQL with a parser, not a regular expression
 
@@ -50,13 +50,13 @@ WHERE email = ?
   AND tenant_id = ?;
 ```
 
-OpenTelemetry says already parameterized query text should not be sanitized; its placeholders are valuable, while the parameter attributes are the sensitive part. A parser failure must fail closed: omit query text or replace it with a constant, record a redaction-failure counter, and retain a non-reversible internal fingerprint if policy permits.
+OpenTelemetry says already parameterized query text should not be sanitized; its placeholders are valuable, while the parameter attributes are the sensitive part. A parser failure must fail closed: omit query text or replace it with a constant, record a redaction-failure counter, and retain only a policy-approved keyed fingerprint for internal correlation if operationally necessary.
 
 Normalization does not guarantee anonymity. Object names and SQL comments may identify tenants or reveal business operations. MySQL digests replace literals but retain identifiers; PostgreSQL normalized statements and other vendor fingerprints have their own version-specific rules. Threat-model each source rather than calling every digest “safe.”
 
 ## Enforce a collector deny boundary
 
-If spans can arrive with unsafe attributes, an OpenTelemetry Collector Contrib transform processor can remove them before the shared exporter:
+If spans can arrive with unsafe attributes, the following OpenTelemetry Collector Contrib transform-processor excerpt can remove them before the shared exporter. The receiver, batch processor, and exporter definitions are omitted:
 
 ```yaml
 processors:
@@ -72,14 +72,14 @@ service:
     traces:
       receivers: [otlp]
       processors: [transform/redact_database, batch]
-      exporters: [otlp/shared_backend]
+      exporters: [otlp_grpc/shared_backend]
 ```
 
-`db.statement` is the legacy attribute that may coexist during semantic-convention migration. The regex removes all stable-prefix parameter keys instead of guessing parameter names.
+`db.statement` is the legacy attribute that may coexist during semantic-convention migration. The regex removes all keys under the `db.query.parameter.` prefix instead of guessing parameter names.
 
 This policy intentionally drops all query text. A more permissive pipeline may retain `db.query.text` only when the producing instrumentation is explicitly allowlisted and supplies a verified sanitized marker. Do not try to infer safety from the presence of `?`; a raw query can contain both placeholders and literal secrets.
 
-Pin the collector version and test the exact OTTL syntax. Current transform-processor documentation applies its modern configuration style to recent releases, and a configuration that fails to load protects nothing. With `error_mode: propagate`, transformation errors reject affected telemetry instead of silently forwarding it; decide and test the desired failure behavior for your availability model.
+Pin the collector version and test the exact OTTL syntax. Current transform-processor documentation applies its modern configuration style to releases 0.120.0 and later, and invalid OTTL prevents the Collector from loading the configuration. With `error_mode: propagate`, a runtime transformation error is returned up the pipeline and the affected payload is dropped instead of being forwarded; decide and test the desired failure behavior for your availability model.
 
 ## Handle metrics, logs, and vendor data too
 
@@ -90,7 +90,7 @@ Redaction is not only a tracing problem:
 - inspect exception messages and stack traces for echoed SQL or values;
 - suppress URLs containing credentials and connection strings;
 - avoid recording plan XML/JSON or profiler documents in a broadly accessible log sink;
-- review exemplars because they link metrics to detailed traces.
+- review exemplars because they can preserve filtered attributes and link metrics to detailed traces.
 
 Hashing a bind value is often unsafe. Emails, IDs, postal codes, and Boolean values can be recovered by dictionary attack, and a stable hash enables cross-service tracking. Prefer deletion or an approved keyed-tokenization service with rotation and access controls.
 
