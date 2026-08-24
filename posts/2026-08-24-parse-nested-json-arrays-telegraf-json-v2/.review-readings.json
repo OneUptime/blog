@@ -1,0 +1,19 @@
+{
+  "batch": {
+    "site": "london",
+    "readings": [
+      {
+        "device": "sensor-17",
+        "kind": "temperature",
+        "value": 21.6,
+        "observed_at": 1787560200123
+      },
+      {
+        "device": "sensor-18",
+        "kind": "temperature",
+        "value": "22.1",
+        "observed_at": 1787560201123
+      }
+    ]
+  }
+}

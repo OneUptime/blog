@@ -1,0 +1,7 @@
+{
+  "batch": {
+    "site": "london",
+    "devices": ["a", "b"],
+    "values": [10, 20]
+  }
+}
