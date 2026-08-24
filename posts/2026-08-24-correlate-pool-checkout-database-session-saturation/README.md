@@ -21,33 +21,33 @@ HikariCP's official Dropwizard metrics distinguish:
 - `TotalConnections`, `IdleConnections`, and `ActiveConnections` gauges;
 - `PendingConnections`: threads currently awaiting a connection.
 
-HikariCP's `maximumPoolSize` includes both idle and in-use connections. When the pool has reached that size and has no idle connection, `getConnection()` blocks for at most `connectionTimeout` before throwing.
+HikariCP's `maximumPoolSize` includes both idle and in-use connections. With the default `allowPoolSuspension=false` configuration, when the pool has reached that size and has no idle connection, `getConnection()` blocks for at most `connectionTimeout` before throwing.
 
-Micrometer, Dropwizard-to-Prometheus bridges, and framework versions expose different metric names and sometimes different histogram types. Normalize them into an internal schema such as:
+Micrometer, Dropwizard-to-Prometheus bridges, HikariCP's Prometheus trackers, and framework versions expose different metric names and distribution types. Select or configure an integration that emits aggregatable histogram buckets before normalizing them into an internal schema such as the following. Client-side summary quantiles cannot be converted into buckets after collection.
 
 ```text
-db_pool_checkout_seconds_bucket{service,instance,pool,database}
-db_pool_checkout_timeouts_total{service,instance,pool,database}
-db_pool_connections_active{service,instance,pool,database}
-db_pool_connections_idle{service,instance,pool,database}
-db_pool_connections_max{service,instance,pool,database}
-db_pool_connections_pending{service,instance,pool,database}
-db_pool_usage_seconds_bucket{service,instance,pool,database}
-db_pool_physical_connections_created_total{...}
+db_pool_checkout_seconds_bucket{service,deployment,instance,pool,database,cluster,role}
+db_pool_checkout_timeouts_total{service,deployment,instance,pool,database,cluster,role}
+db_pool_connections_active{service,deployment,instance,pool,database,cluster,role}
+db_pool_connections_idle{service,deployment,instance,pool,database,cluster,role}
+db_pool_connections_max{service,deployment,instance,pool,database,cluster,role}
+db_pool_connections_pending{service,deployment,instance,pool,database,cluster,role}
+db_pool_usage_seconds_bucket{service,deployment,instance,pool,database,cluster,role}
+db_pool_physical_connection_attempts_total{...}
 ```
 
-For a classic Prometheus histogram, calculate a fleet-aggregated percentile from bucket rates:
+For a classic Prometheus histogram whose instances use the same bucket boundaries, calculate a fleet-aggregated percentile from bucket rates while retaining the labels that identify a capacity domain:
 
 ```promql
 histogram_quantile(
   0.95,
-  sum by (le, service, pool, database) (
+  sum by (le, service, pool, database, cluster, role) (
     rate(db_pool_checkout_seconds_bucket[5m])
   )
 )
 ```
 
-Do not average per-instance precomputed p95 values. Histograms can be aggregated through buckets; client-side summary quantiles generally cannot.
+Do not average per-instance precomputed p95 values. Compatible histogram buckets can be aggregated; client-side summary quantiles cannot.
 
 ## Measure sessions and work at the database
 
@@ -68,14 +68,15 @@ SELECT count(*) FILTER (
        ) AS active_sessions,
        count(*) FILTER (
          WHERE backend_type = 'client backend'
+           AND state = 'active'
            AND wait_event IS NOT NULL
-       ) AS waiting_sessions,
+       ) AS active_waiting_sessions,
        max(limits.max_connections) AS max_connections
 FROM pg_stat_activity
 CROSS JOIN limits;
 ```
 
-`state = 'active'` means the backend is executing a query, but it can still be waiting; `wait_event` distinguishes that condition. Keep idle and `idle in transaction` sessions separate. Reserve capacity for superuser or reserved roles, replication, maintenance, failover, and other services rather than treating `max_connections` as the application budget.
+`state = 'active'` means the backend is executing a query, but it can still be waiting; `wait_event` distinguishes that condition. Applying both predicates prevents idle clients waiting on `ClientRead` from being classified as waiting work. Run the collector as a superuser or a role with `pg_read_all_stats` (such as `pg_monitor`) so state and wait data for all sessions are visible. Keep idle and `idle in transaction` sessions separate. Reserve `max_connections` capacity for superuser or reserved roles, maintenance, failover, and other client services rather than treating it as the application budget; account for WAL senders separately through `max_wal_senders`.
 
 For MySQL, use global `Threads_connected`, `Threads_running`, connection rates, and `max_connections`; for SQL Server use current user sessions and requests with the applicable worker and resource waits. Preserve the same semantic split: open sessions are not the same as actively executing work.
 
