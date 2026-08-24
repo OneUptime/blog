@@ -36,7 +36,7 @@ provider build -> versioned OpenAPI -> generated mock
               -> implementation conformance check
 ```
 
-Both are useful and can coexist. The critical invariant is that the mock and the real-provider check consume the same immutable contract version.
+Both are useful and can coexist. The critical invariant is that the Pact mock produces the exact pact the provider verifies, or that the OpenAPI mock and provider check consume the same immutable contract version.
 
 ## Remove Independent Hand-Written Responses
 
@@ -61,7 +61,7 @@ Fail fast on unknown operations, unexpected request bodies, and exhausted scenar
 
 ## Close the Pact Loop
 
-With Pact, the consumer test should use the production client adapter against the Pact mock and assert consumer behavior. A successful test emits the interaction. The provider verifier then sets up the named provider state and sends the contract request through the provider's real HTTP boundary.
+With Pact, the consumer test should use the production client adapter against the Pact mock and assert consumer behavior. A successful test emits the interaction. The provider verifier then invokes any named provider-state handler and replays the contract request against the provider's request-handling stack.
 
 Pact matching rules let examples vary without weakening the required shape. Match an ID or timestamp by type or pattern when the consumer does not need the exact example. Match a literal enum, status, or header when behavior depends on it.
 
@@ -81,7 +81,7 @@ Publish the pact with the consumer commit and verification with the provider com
 
 An OpenAPI-generated mock stays structurally aligned only if the description itself stays aligned. Publish the OpenAPI document from the provider release process and test the implementation against it:
 
-- validate the description and resolve references using its declared OAS version and JSON Schema dialect;
+- validate the description and resolve references using its declared OAS version and the effective schema rules, including any applicable JSON Schema dialect;
 - exercise operations against the provider with valid and invalid generated cases;
 - validate real response status, media type, headers, and body against the described response;
 - fail when an implemented route is missing from the description or a described critical route is absent from the build; and
@@ -89,11 +89,11 @@ An OpenAPI-generated mock stays structurally aligned only if the description its
 
 Pin consumers to a digest or release version rather than downloading an unqualified `latest` at test time. Otherwise yesterday's consumer commit can produce different mock behavior today.
 
-OpenAPI describes interface shapes and serialization well, but not every temporal rule. OAuth flows, eventual consistency, idempotency retention, rate-limit accounting, webhook retries, and multi-step state transitions need explicit scenario tests or another contract mechanism.
+OpenAPI describes interface shapes and serialization well, but not every temporal rule. End-to-end OAuth behavior, eventual consistency, idempotency retention, rate-limit accounting, webhook retries, and multi-step state transitions need explicit scenario tests or another contract mechanism.
 
 ## Validate Mock Scenarios at Startup
 
-Every configured mock response should be checked against the response schema for its operation, status, and media type. Every expected request should use OpenAPI parameter serialization rules before body validation.
+Every configured mock response should be matched to the described response for its operation and status, then checked against the applicable media type and schema when present. Every expected request should use OpenAPI parameter serialization rules before body validation.
 
 For each scenario, store provenance:
 
@@ -123,7 +123,7 @@ A schema-valid mock can still lie. Add stateful scenarios for behavior consumers
 - asynchronous status transitions; and
 - documented error codes and problem bodies.
 
-Implement the smallest deterministic state machine that serves the consumer test. Then run equivalent acceptance scenarios against the provider or capture them as consumer contracts. Do not simulate arbitrary undocumented provider internals.
+Implement the smallest deterministic state machine that serves the consumer test. Then run equivalent acceptance scenarios against the provider, and capture each standalone request/response expectation as a consumer contract when appropriate. Do not simulate arbitrary undocumented provider internals.
 
 Latency and failure injection are client-resilience tools, not evidence of provider behavior. Label synthetic `500`, timeout, truncated body, and disconnect modes as test scenarios so nobody mistakes them for a provider guarantee.
 
