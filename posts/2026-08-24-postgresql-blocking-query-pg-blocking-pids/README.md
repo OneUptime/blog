@@ -27,7 +27,7 @@ WITH blocker_edges AS (
 SELECT e.waiter_pid,
        wa.usename AS waiter_user,
        wa.application_name AS waiter_application,
-       clock_timestamp() - wa.query_start AS wait_age,
+       clock_timestamp() - wa.query_start AS waiter_query_age,
        wa.wait_event_type,
        wa.wait_event,
        left(wa.query, 300) AS waiter_query,
@@ -49,7 +49,7 @@ Do not filter only on `wait_event = 'relation'`. Row-lock contention commonly su
 
 ## Follow a chain to the head blocker
 
-A direct blocker can itself be blocked. This recursive query retains every path and prevents a malformed cycle from recursing forever:
+A direct blocker can itself be blocked. This recursive query retains every path and prevents a cycle from recursing forever:
 
 ```sql
 WITH RECURSIVE edges AS (
@@ -71,8 +71,7 @@ WITH RECURSIVE edges AS (
          c.path || e.blocker_pid
   FROM chains AS c
   JOIN edges AS e ON e.waiter_pid = c.blocker_pid
-  WHERE e.blocker_pid <> 0
-    AND NOT e.blocker_pid = ANY(c.path)
+  WHERE NOT e.blocker_pid = ANY(c.path)
 )
 SELECT c.waiter_pid,
        c.blocker_pid,
@@ -106,7 +105,8 @@ SELECT l.pid,
        d.datname,
        l.locktype,
        l.mode,
-       CASE WHEN l.database = (SELECT oid
+       CASE WHEN l.database = 0
+              OR l.database = (SELECT oid
                                FROM pg_database
                                WHERE datname = current_database())
             THEN l.relation::regclass::text
@@ -128,13 +128,13 @@ ORDER BY l.waitstart NULLS LAST;
 
 `waitstart` can briefly be null immediately after the wait begins. The columns that identify a lock depend on `locktype`; do not assume `relation` is populated. The guarded cast avoids resolving another database's relation OID against the current database's catalogs. Advisory locks, transaction-ID locks, object locks, page locks, and relation locks use different identity fields.
 
-`pg_locks` also has snapshot caveats. Fast-path locks are obtained from individual backends without freezing all backend lock state simultaneously, and predicate-lock-manager data is not acquired atomically with the regular lock manager. Expect momentary inconsistencies during high churn. This is another reason to use `pg_blocking_pids()` for the edge and `pg_locks` for explanation.
+`pg_locks` also has snapshot caveats. Fast-path lock data is gathered from individual backends without freezing all backend lock state simultaneously, and predicate-lock-manager data is not acquired atomically with the regular lock manager. Expect momentary inconsistencies during high churn. This is another reason to use `pg_blocking_pids()` for the edge and `pg_locks` for explanation.
 
 ## Decide which SQL text matters
 
 For a waiting backend, `query` is the statement attempting the lock. For a blocker that is `idle in transaction`, `query` is only its most recently executed statement. That statement may have acquired the lock, but the complete business operation can span several statements. Use `xact_start`, `application_name`, client identity, and trace correlation to find the owner.
 
-Query text is truncated at `track_activity_query_size`, whose default is 1024 bytes. Raising it affects shared memory and only takes effect after restart. Query visibility across users requires `pg_read_all_stats` or `pg_monitor`; otherwise sensitive columns can be null.
+Query text is truncated at `track_activity_query_size`, whose default is 1024 bytes. Raising it affects shared memory and only takes effect after restart. Users can see full details for sessions owned by roles they belong to. Seeing full details for sessions owned by unrelated roles requires superuser privileges or `pg_read_all_stats` (included in `pg_monitor`); otherwise many security-restricted columns can be null.
 
 ## Alert and remediate safely
 
