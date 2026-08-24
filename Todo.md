@@ -96,7 +96,6 @@
 
 ## Database Monitoring
 
-5. How to Run `postgres_exporter` Without Superuser Using `pg_monitor` and File-Based Credentials
 6. How to Monitor PostgreSQL Autovacuum Progress and Tell a Slow Vacuum from a Blocked One
 7. How to Alert on PostgreSQL Transaction-ID Wraparound Risk with `age(datfrozenxid)` and `autovacuum_freeze_max_age`
 8. How to Measure PostgreSQL Buffer-Cache Effectiveness Without Mistaking the OS Page Cache for Disk Reads
