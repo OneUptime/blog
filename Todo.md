@@ -93,7 +93,6 @@
 
 ## Telegraf
 
-13. How to Receive SNMP Traps on Port 162 with Telegraf Without Running It as Root
 14. How to Remove One High-Cardinality Tag from One Telegraf Measurement with `namepass` and Starlark
 15. How to Hot-Reload Telegraf Configurations Safely with `--watch-config` and a Config Directory
 16. How to Store Telegraf Tokens and Passwords with systemd Credentials, Docker Secrets, or the OS Keyring
