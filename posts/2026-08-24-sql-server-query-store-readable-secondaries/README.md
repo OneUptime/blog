@@ -42,9 +42,9 @@ FOR SECONDARY
 SET QUERY_STORE = ON (OPERATION_MODE = READ_WRITE);
 ```
 
-The `FOR SECONDARY` syntax can be valid even when older SSMS IntelliSense marks it as an error; Microsoft notes that SSMS versions before 21 do not recognize it correctly. Server execution and the subsequent state check are authoritative.
+The `FOR SECONDARY` syntax can be valid even when SSMS IntelliSense marks it as an error. Microsoft notes that SSMS versions before 21 do not recognize it correctly and that IntelliSense does not recognize it for SQL Server 2022. Server execution and the subsequent state check are authoritative.
 
-To disable secondary capture without turning off the primary's Query Store:
+To disable secondary capture without turning off the primary's Query Store, connect to the `master` database on the primary and run:
 
 ```sql
 ALTER DATABASE [Orders]
@@ -75,7 +75,7 @@ readonly_reason    = 8
 
 Reason 8 means the database is a secondary replica; in this state it is expected, not a Query Store quota failure. Alert on deviation from this exact intended state, stale secondary intervals despite routed traffic, or growing internal messaging backlog.
 
-Current builds expose transport health through:
+On SQL Server 2025 (17.x) and supported Azure SQL Database configurations, current builds expose Query Store messaging queue length and memory usage through:
 
 ```sql
 SELECT pending_message_count,
@@ -83,7 +83,7 @@ SELECT pending_message_count,
 FROM sys.database_query_store_internal_state;
 ```
 
-Baseline these values and correlate persistent growth with HADR transport health, redo, send/receive queues, network latency, and Query Store persistence on the primary.
+`pending_message_count` is the number of messages waiting on the primary for the replica from whose perspective the view is queried. Baseline these values and correlate persistent growth with HADR transport health, log-send and redo queues, send/receive throughput, network latency, and Query Store persistence on the primary.
 
 ## Segment every workload by replica role
 
@@ -124,7 +124,7 @@ ORDER BY avg_cpu_ms DESC;
 
 The execution-weighted averages are important. Also aggregate duplicate rows for the active interval by plan, execution type, interval, and replica group before using that interval in an alert.
 
-On SQL Server 2025 and supported Azure SQL platforms, `sys.query_store_replicas` maps `replica_group_id` to `role_type` and `replica_name`. The view records roles observed over time; after failover it can have rows for the same replica in multiple roles. In SQL Server, `replica_name` can be `NULL`, so retain role IDs and topology metadata from the availability group.
+On SQL Server 2025 (17.x) and Azure SQL Database, `sys.query_store_replicas` maps `replica_group_id` to `role_type` and `replica_name`. The view records roles observed over time; after failover it can have rows for the same replica in multiple roles. In SQL Server, `replica_name` can be `NULL`, so retain role IDs and topology metadata from the availability group.
 
 ## Account for failover and transport cost
 
@@ -143,7 +143,7 @@ Negative query or plan IDs on a secondary are temporary in-memory placeholders. 
 
 Role aggregation means two local secondaries serving the same secondary role can be combined rather than distinguished as individual hosts. Keep separate infrastructure and routing telemetry when per-node diagnosis is required.
 
-Query Store catalog views require `VIEW DATABASE PERFORMANCE STATE` on SQL Server 2022 and later. Query text and plans are sensitive, so use least privilege and do not make them metric labels.
+Most Query Store views used here require `VIEW DATABASE PERFORMANCE STATE` on SQL Server 2022 and later. `sys.database_query_store_internal_state` instead requires `VIEW DATABASE STATE`, while `sys.query_store_query_text` requires `VIEW SERVER PERFORMANCE STATE` on SQL Server 2022 and later. Query text and plans are sensitive, so use least privilege and do not make them metric labels.
 
 ## Official Documentation
 
