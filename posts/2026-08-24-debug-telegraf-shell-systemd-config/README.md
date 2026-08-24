@@ -19,38 +19,38 @@ Inspect the installed unit and its effective properties instead of assuming they
 ```bash
 systemctl cat telegraf
 systemctl show telegraf \
-  --property=User,Group,ExecStart,WorkingDirectory,Environment,EnvironmentFiles
+  --property=User,Group,SupplementaryGroups,ExecStart,WorkingDirectory,Environment,EnvironmentFiles
 systemctl status telegraf
-journalctl --unit telegraf --since '15 minutes ago'
+sudo journalctl --unit telegraf --since '15 minutes ago'
 ```
 
-InfluxData's Linux packages normally load `/etc/telegraf/telegraf.conf` and `/etc/telegraf/telegraf.d`, run as the `telegraf` user and group, and log to the journal unless `[agent].logfile` redirects logs. Debian-family packages normally read `/etc/default/telegraf`; RPM-family packages normally read `/etc/sysconfig/telegraf`. Inspect the installed unit because local packaging and overrides can change those paths.
+InfluxData's official `.deb` and `.rpm` packages normally load `/etc/telegraf/telegraf.conf` and `/etc/telegraf/telegraf.d`, run as the `telegraf` user and group, and log to the journal unless `[agent].logfile` redirects logs. Both package formats read `/etc/default/telegraf`. Inspect the installed unit because downstream packaging and overrides can change those paths.
 
 If your shell command names only one file while systemd also loads a directory, you are not testing the same configuration. Every file ending in `.conf` in a configured directory is loaded; a stale plugin definition can therefore fail only in service mode.
 
 ## Reproduce the Service User and Environment
 
-Run a non-destructive test as the service account with a deliberately small environment:
+Run a non-destructive test as the service account with a deliberately small environment and the unit's working directory. The official unit leaves `WorkingDirectory` unset, so the system-service default is `/`; replace `/` after `-C` if the effective unit sets another directory:
 
 ```bash
-sudo -u telegraf env -i \
-  PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
+sudo -u telegraf env -i -C / \
+  PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin \
   /usr/bin/telegraf \
   --config /etc/telegraf/telegraf.conf \
   --config-directory /etc/telegraf/telegraf.d \
   --test
 ```
 
-This exposes dependencies on your login user's home directory, shell initialization, current directory, `PATH`, proxy variables, credentials, or group membership. Service inputs can legitimately produce no metrics in this finite test; use the same command with `--test-wait <seconds>` and inject an event, or test their normal running mode.
+`env -i` makes this a stricter diagnostic baseline, not an exact copy of the unit's environment: systemd also supplies account variables and reads the unit's `Environment=` and `EnvironmentFile=` settings. `sudo -u` also does not reproduce unit-only `Group=` or `SupplementaryGroups=` overrides. Add those values and credentials securely when you need a closer user-and-environment comparison. The baseline exposes dependencies on your login user's home directory, shell initialization, current directory, `PATH`, proxy variables, credentials, or group membership. Service inputs can legitimately produce no metrics in this finite test; use the same command with `--test-wait <seconds>` and inject an event, or test their normal running mode.
 
 Do not reproduce a failure by running the service as root. That hides the permissions problem and broadens Telegraf's authority.
 
 ## Make Environment Requirements Explicit
 
-Telegraf expands `${VARIABLE}` references before parsing TOML. For packaged Linux services, define those variables in the environment file named by the installed unit—normally `/etc/default/telegraf` on Debian-family systems or `/etc/sysconfig/telegraf` on RPM-family systems—not only in `.bashrc`, an exported shell, or a root-only profile:
+Telegraf expands `${VARIABLE}` references in quoted TOML string values while loading the configuration. For InfluxData's packaged Linux service, define those variables in the environment file named by the installed unit. The official `.deb` and `.rpm` packages use `/etc/default/telegraf`; do not define them only in `.bashrc`, an exported shell, or a root-only profile:
 
 ```bash
-# /etc/default/telegraf (Debian) or /etc/sysconfig/telegraf (RPM)
+# /etc/default/telegraf (official .deb and .rpm packages)
 INFLUX_URL="https://influx.example.com"
 INFLUX_TOKEN="replace-with-secret-management"
 INFLUX_ORG="operations"
@@ -96,25 +96,27 @@ Use absolute paths in plugin configurations and scripts. If supplementary group 
 
 ## Compare Network and Runtime Namespaces
 
-A shell-level `curl` can succeed while Telegraf fails because it uses a proxy, CA bundle, client certificate, DNS setup, source address, or container/network namespace that the service lacks. Run connectivity checks as `telegraf`, but never put a token directly on a shared command line:
+A shell-level `curl` can succeed while Telegraf fails because it uses a proxy, CA bundle, client certificate, DNS setup, source address, or container/network namespace that the service lacks. Check basic prerequisites as `telegraf`, but never put a token directly on a shared command line:
 
 ```bash
 sudo -u telegraf getent hosts influx.example.com
 sudo -u telegraf test -r /etc/ssl/certs/company-ca.pem
 ```
 
-Enable debug logging temporarily with `[agent] debug = true` or the `--debug` flag, restart, and read the journal. Restore the normal log level after collecting evidence.
+These commands check name resolution and CA-file readability as `telegraf`; they do not enter the service's network or mount namespaces or reproduce unit sandboxing. If the unit configures runtime isolation, inspect those directives and run the relevant checks in the service's namespaces.
+
+Temporarily set `debug = true` in the `[agent]` table, or add `--debug` to the service's arguments; then restart and read the journal. Restore the normal log level after collecting evidence.
 
 ## Apply the Fix Through a Supported Service Path
 
-Use the package environment file for ordinary variables and `systemctl edit telegraf` for durable unit overrides. Do not edit the vendor unit under `/usr/lib/systemd/system` or `/lib/systemd/system`, because package upgrades can replace it.
+Use the package environment file for ordinary variables and `sudo systemctl edit telegraf` for durable unit overrides. Do not edit the vendor unit under `/usr/lib/systemd/system` or `/lib/systemd/system`, because package upgrades can replace it.
 
 Then verify the same path systemd uses:
 
 ```bash
 sudo systemctl restart telegraf
 sudo systemctl status telegraf
-journalctl --unit telegraf --since '2 minutes ago'
+sudo journalctl --unit telegraf --since '2 minutes ago'
 ```
 
 Finally, confirm metrics at the output. `--test` does not execute outputs, so a successful test cannot prove authentication or writes.
