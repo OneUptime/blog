@@ -8,9 +8,9 @@ Description: Interpret PostgreSQL cache-hit statistics correctly by separating s
 
 ---
 
-The familiar PostgreSQL cache-hit ratio compares blocks found in PostgreSQL shared buffers with blocks PostgreSQL had to read. It does not compare memory with physical disk.
+The familiar database-wide PostgreSQL cache-hit ratio compares blocks found in PostgreSQL relation buffers with blocks that were not found there. For permanent and unlogged relations, those hits are in `shared_buffers`; temporary relations use per-session local buffers. It does not compare memory with physical disk.
 
-When PostgreSQL requests a block that is absent from shared buffers, the operating system might satisfy the read from its page cache without touching storage. PostgreSQL's documentation explicitly says its I/O statistics do not distinguish data fetched from disk from data already resident in the kernel page cache. Calling every `blks_read` a physical disk read leads to false diagnoses.
+When PostgreSQL requests a block that is absent from its own buffers, the operating system might satisfy the read from its page cache without touching storage. PostgreSQL's documentation explicitly says its I/O statistics do not distinguish data fetched from disk from data already resident in the kernel page cache. Calling every `blks_read` a physical disk read leads to false diagnoses.
 
 ## Calculate a valid interval ratio
 
@@ -25,10 +25,10 @@ FROM pg_stat_database
 WHERE datname IS NOT NULL;
 ```
 
-`blks_hit` counts blocks already found in PostgreSQL's buffer cache. `blks_read` counts blocks read through PostgreSQL's read path, including reads the kernel can serve from memory. Calculate the ratio from counter deltas over the same interval:
+`blks_hit` counts blocks already found in PostgreSQL's relation buffers. `blks_read` is the corresponding count of fetched blocks for which no relation-buffer hit was recorded. That includes reads the kernel can serve from memory and some requests PostgreSQL satisfies by zero-filling a buffer rather than reading existing contents. These database counters also include accesses to temporary relations, whose pages use per-session local buffers rather than `shared_buffers`. Calculate the ratio from counter deltas over the same interval:
 
 ```text
-shared_buffer_hit_ratio =
+database_buffer_hit_ratio =
   delta(blks_hit) / (delta(blks_hit) + delta(blks_read))
 ```
 
@@ -41,7 +41,8 @@ This is a request ratio, not a byte ratio, latency measure, or probability that 
 Database totals mix user tables, indexes, catalogs, maintenance, and different access patterns. Use `pg_statio_user_tables` to identify where buffer requests occur:
 
 ```sql
-SELECT schemaname,
+SELECT relid,
+       schemaname,
        relname,
        heap_blks_read,
        heap_blks_hit,
@@ -52,11 +53,11 @@ SELECT schemaname,
        tidx_blks_read,
        tidx_blks_hit
 FROM pg_statio_user_tables
-ORDER BY heap_blks_read + idx_blks_read DESC
+ORDER BY heap_blks_read + COALESCE(idx_blks_read, 0) DESC
 LIMIT 30;
 ```
 
-Again, store samples and compare deltas. A large sequential scan can intentionally stream through a buffer-access strategy rather than displacing the whole cache. A low hit ratio during a backup, analytics scan, bulk load, or vacuum is not equivalent to a low hit ratio for latency-sensitive point lookups.
+This query is a lifetime cumulative snapshot. For interval rankings, collect all relation rows keyed by `relid`, compare valid deltas, and only then rank and limit the results; collecting only the cumulative top 30 can miss a newly hot relation. A large sequential scan can intentionally stream through a buffer-access strategy rather than displacing the whole cache. A low hit ratio during a logical backup, analytics scan, bulk load, or vacuum is not equivalent to a low hit ratio for latency-sensitive point lookups.
 
 For per-query attribution, `pg_stat_statements` exposes shared block hit and read counters. Its entries can reset or be evicted, and query IDs are not stable across major versions, so the same continuity rules apply.
 
@@ -64,9 +65,9 @@ For per-query attribution, `pg_stat_statements` exposes shared block hit and rea
 
 Enable `track_io_timing` only after measuring overhead on the target operating system; PostgreSQL notes that repeatedly reading the clock can be expensive on some systems. When enabled, database and statement statistics include time spent waiting for reads and writes.
 
-Current PostgreSQL releases also provide `pg_stat_io`, grouped by backend type, I/O object, and context. It reports operations, bytes, and timing where the corresponding timing setting is enabled. Use it to distinguish normal client reads from bulk-read, vacuum, checkpointer, and other contexts.
+PostgreSQL 16 and later also provide `pg_stat_io`, grouped by backend type, I/O object, and context. It reports operation counts and timing where the corresponding timing setting is enabled. PostgreSQL 18 added direct `read_bytes`, `write_bytes`, and `extend_bytes` totals; PostgreSQL 16 and 17 instead expose `op_bytes` for deriving byte totals. Use its separate dimensions to compare `client backend` with `checkpointer` activity and to compare `normal`, `bulkread`, `vacuum`, and other I/O contexts.
 
-A rise in `blks_read` with near-zero read wait can be served from the OS page cache or fast storage. A smaller number of reads with high read time can be more damaging. PostgreSQL still cannot prove page-cache residency from these database counters, so correlate with operating-system block-device IOPS, bytes, latency, queue depth, filesystem cache pressure, and major page faults.
+With timing enabled throughout the interval, a rise in `blks_read` with near-zero read wait can reflect reads served from the OS page cache or fast storage, or buffer requests that needed no read because PostgreSQL zero-filled the page. A smaller number of reads with high read time can be more damaging. PostgreSQL still cannot prove page-cache residency from these database counters, so correlate with operating-system block-device IOPS, bytes, latency, queue depth, filesystem cache pressure, and major page faults.
 
 ## Inspect shared-buffer residency carefully
 
@@ -88,7 +89,7 @@ ORDER BY count(*) DESC
 LIMIT 30;
 ```
 
-Use `pg_relation_filenode()` rather than `pg_class.relfilenode` directly because mapped system catalogs store zero in `pg_class.relfilenode`. This illustrative relation join still has limitations: tablespaces, forks, shared relations, dropped or rewritten files, and reused file nodes require careful handling. Prefer the extension's summary and usage functions when they answer the question. Buffer contents also change while the view is read; it is a diagnostic sample, not an exact historical inventory.
+Use `pg_relation_filenode()` rather than `pg_class.relfilenode` directly because mapped system catalogs store zero in `pg_class.relfilenode`. This illustrative relation join still has limitations: tablespaces, forks, shared relations, dropped or rewritten files, and reused file nodes require careful handling. On PostgreSQL 16 and later, prefer the extension's summary and usage functions when they answer the question. Buffer contents also change while the view is read; it is a diagnostic sample, not an exact historical inventory.
 
 `pg_buffercache` sees PostgreSQL shared buffers only. It cannot tell whether an absent relation page is present in the OS page cache.
 
@@ -109,7 +110,7 @@ A query can have a 100 percent shared-buffer hit ratio and still be slow because
 
 Plot these together over the same interval:
 
-- shared-buffer hit and read rates;
+- relation-buffer hit and read rates;
 - the interval hit ratio, with request volume;
 - read bytes and read wait by `pg_stat_io` context and backend type;
 - storage latency, IOPS, throughput, and queue depth;
@@ -131,4 +132,4 @@ Version dashboards with the PostgreSQL major release. `pg_stat_io` first appeare
 
 ## Conclusion
 
-Treat PostgreSQL's hit ratio as the fraction of buffer requests satisfied by `shared_buffers`, not as a disk-read ratio. Calculate it from reset-aware interval deltas, segment it by workload, add I/O time and operating-system storage evidence, and use query-level diagnostics before changing cache or memory settings.
+Treat PostgreSQL's database-wide hit ratio as the fraction of buffer requests satisfied by PostgreSQL relation buffers, not as a disk-read ratio. For permanent and unlogged relations those are `shared_buffers`; temporary relations use local buffers. Calculate the ratio from reset-aware interval deltas, segment it by workload, add I/O time and operating-system storage evidence, and use query-level diagnostics before changing cache or memory settings.
