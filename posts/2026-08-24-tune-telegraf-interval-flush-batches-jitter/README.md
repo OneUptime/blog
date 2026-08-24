@@ -25,7 +25,7 @@ Telegraf has two separate clocks. Polling inputs gather on `interval`; outputs w
 
 Current Telegraf defaults use a 10-second collection interval, 1,000-metric batch, 10,000-metric memory buffer per output, and 10-second flush interval. `round_interval = true` aligns collection to interval boundaries.
 
-Service inputs such as MQTT, StatsD, and HTTP listeners emit when data arrives; their plugin interval generally does not schedule incoming events. Apply collection tuning to polling inputs and output tuning to the combined pipeline.
+MQTT consumers and HTTP listeners are service inputs that emit when data arrives, so their plugin interval does not schedule incoming events. StatsD also listens continuously, but publishes its cached aggregates on the collection interval. Apply collection tuning to polling inputs and plugin-specific service aggregators, and output tuning to the combined pipeline.
 
 ## Measure Metrics per Collection and per Second
 
@@ -50,6 +50,11 @@ Individual polling inputs can override the agent interval:
   agents = ["udp://switch-01.example.com:161"]
   version = 2
   community = "${SNMP_COMMUNITY}"
+  agent_host_tag = "source"
+
+  [[inputs.snmp.field]]
+    oid = ".1.3.6.1.2.1.1.3.0"
+    name = "uptime"
 ```
 
 Keep the collection duration comfortably below the scheduled interval and monitor `gather_time_ns` and `gather_timeouts`.
@@ -89,7 +94,7 @@ With `round_interval = true`, thousands of agents can poll at the same wall-cloc
   flush_jitter = "10s"
 ```
 
-Each input sleeps for a random time within `collection_jitter` before gathering. Each output adds a random delay within `flush_jitter`. The maximum time between timed flushes is `flush_interval + flush_jitter`, so include the extra latency in alert and freshness budgets.
+Each input sleeps for a random time within `collection_jitter` before gathering. Each output adds a random delay within `flush_jitter`. The nominal delay between scheduled flushes is at most `flush_interval + flush_jitter`; a slow or blocked output write can extend the actual gap. Include the jitter in alert and freshness budgets.
 
 Jitter smooths synchronization; it does not increase backend throughput. If buffers rise continuously, fix the sustained rate mismatch.
 
@@ -116,4 +121,4 @@ A larger batch reduces request count but increases individual request cost and r
 
 ## Conclusion
 
-Tune collection for signal value and source cost, then tune flush and batch settings for the destination's efficient request envelope. Add jitter to de-synchronize fleets, account for its latency, and use internal metrics to prove that buffers remain flat and drops stay at zero under peak—not merely average—load.
+Tune collection for signal value and source cost, then tune flush and batch settings for the destination's efficient request envelope. Add jitter to de-synchronize fleets, account for its latency, and use internal metrics to prove that buffers remain flat and drops stay at zero under peak-not merely average-load.
