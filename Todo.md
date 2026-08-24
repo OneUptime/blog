@@ -96,7 +96,6 @@
 
 ## Database Monitoring
 
-8. How to Measure PostgreSQL Buffer-Cache Effectiveness Without Mistaking the OS Page Cache for Disk Reads
 9. Why the MySQL Slow Query Log Misses Initial Lock Waits—and What to Collect from Performance Schema Instead
 10. How to Bound `mysqld_exporter` Query-Digest Cardinality with Statement Limits and Time Windows
 11. How to Detect MySQL Connection Churn Before `Threads_connected` Reaches `max_connections`
