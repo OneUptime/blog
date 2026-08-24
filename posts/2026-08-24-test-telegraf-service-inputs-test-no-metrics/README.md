@@ -43,7 +43,7 @@ curl -i --request POST 'http://127.0.0.1:8080/telegraf' \
   --data-binary 'service_input_probe,run_id=manual value=1i'
 ```
 
-The first terminal should print a `service_input_probe` metric. Apply the same pattern to MQTT, StatsD, SNMP traps, or a socket listener: start Telegraf, publish one known message through the real protocol, and inspect the resulting metric.
+The first terminal should print a `service_input_probe` metric. Apply the same pattern to MQTT, SNMP traps, or a socket listener: start Telegraf, publish one known message through the real protocol, and inspect the resulting metric. Ordinary StatsD metric packets are buffered until the next gather, so use the short normal run with `outputs.file` described below; a packet sent during `--test-wait` may not be printed.
 
 ## Read an Empty Test in Layers
 
@@ -52,7 +52,7 @@ An empty result can mean several different things:
 1. **Nothing reached the listener.** Confirm the source address, port, protocol, subscription, firewall, container port mapping, and broker ACL.
 2. **The event arrived too late.** Increase `--test-wait` and generate the event only after Telegraf logs that service inputs have started.
 3. **Parsing rejected the payload.** Match `data_format` and every parser option to the bytes sent. A successful TCP connection does not imply a valid metric.
-4. **A filter removed it.** Temporarily inspect `namepass`, `namedrop`, `tagpass`, `tagdrop`, `metricpass`, and field/tag modifiers on the input and processors.
+4. **The metric was filtered or transformed.** Inspect `namepass`, `namedrop`, `tagpass`, `tagdrop`, `metricpass`, and field/tag modifiers on the input, plus processors that can drop or rename the metric. Selector filters on a processor only make a nonmatching metric bypass that processor; they do not drop it.
 5. **The plugin does not cooperate with a finite run.** InfluxData warns that `--test`, `--test-wait`, and `--once` may not produce output for every service input. Test the normal long-running process instead.
 
 Enable debug logging while diagnosing startup, connections, and parser errors:
