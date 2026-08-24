@@ -90,7 +90,6 @@
 
 ## API Testing
 
-18. How to Test Multipart File Uploads for Size Limits, Content Types, and Partial Failures
 19. Why Do API Tests Pass Locally but Fail in CI? Debugging URLs, Secrets, Clocks, and Shared State
 20. How to Make API Test Failures Reproducible with Request, Response, Correlation ID, and Seed Capture
 
