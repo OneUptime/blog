@@ -93,7 +93,6 @@
 
 ## Telegraf
 
-6. How to Fix Telegraf JSON `field type conflict` Errors Without Dropping New Points
 7. How to Extract Measurement Names, Tags, and Fields from MQTT Topics in Telegraf
 8. How to Prevent Telegraf MQTT Data Loss with QoS, Persistent Sessions, and `max_undelivered_messages`
 9. How to Size and Monitor Telegraf Memory or Disk Buffers So Backend Outages Do Not Drop Metrics
