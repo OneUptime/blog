@@ -29,10 +29,10 @@ Telegraf substitutes environment variables before parsing TOML. String substitut
 
 ## Put Variables Where the Package Service Reads Them
 
-InfluxData's Debian-family package service normally reads `/etc/default/telegraf`, while its RPM-family package service normally reads `/etc/sysconfig/telegraf`. Inspect `systemctl cat telegraf` and define the values in the environment file named by the installed unit rather than only exporting them in a shell:
+InfluxData's current `.deb` and `.rpm` package units read `/etc/default/telegraf`. Inspect `systemctl cat telegraf` and define the values in the environment file named by the installed unit rather than only exporting them in a shell:
 
 ```bash
-# /etc/default/telegraf (Debian) or /etc/sysconfig/telegraf (RPM)
+# /etc/default/telegraf
 INFLUX_URL="https://influx.example.com"
 INFLUX_TOKEN="replace-with-the-real-token"
 INFLUX_ORG="operations"
@@ -63,8 +63,8 @@ systemctl show telegraf --property=ExecStart,Environment,EnvironmentFiles
 Check for these mismatches:
 
 - a custom unit that does not read the environment file you edited;
-- `TELEGRAF_OPTS` pointing to another configuration;
-- an override defining an older token;
+- `TELEGRAF_OPTS` adding extra `--config` or `--config-directory` sources;
+- a drop-in that changes the environment-file list or otherwise supplies an older token;
 - multiple `.conf` files defining separate InfluxDB outputs; or
 - accidental whitespace or quote characters copied into the token value.
 
@@ -84,7 +84,7 @@ Test the API from the same host and service context, taking care not to expose t
 
 ## Understand Why `--test` Can Mislead
 
-This command validates gathering and prints metrics:
+With the required variables supplied to the process through a protected mechanism, this command validates gathering and prints metrics. A manual `sudo -u` invocation does not load the systemd unit's environment file:
 
 ```bash
 sudo -u telegraf /usr/bin/telegraf \
