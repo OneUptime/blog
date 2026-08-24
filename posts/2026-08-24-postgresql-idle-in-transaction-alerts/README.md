@@ -36,9 +36,11 @@ WHERE state IN ('idle in transaction',
 ORDER BY xact_start;
 ```
 
-`query_start` is the start of the last query when a session is not active, so it is not the cleanest idle-duration clock. `backend_xmin` identifies a retained visibility horizon when one exists, but a null value does not prove the session is harmless: the transaction can still hold locks.
+`query_start` is the start of the last query when a session is not active, so it is not the cleanest idle-duration clock. `backend_xmin` identifies a retained visibility horizon when one exists, but a null value does not prove an `idle in transaction` session is harmless: the transaction can still hold locks. For `idle in transaction (aborted)`, use `state_change` to age the failed state; the transaction itself has already aborted, so `xact_start`, `backend_xid`, and `backend_xmin` can be null.
 
-Run the monitor as a short autocommit query. PostgreSQL holds an activity snapshot stable inside a monitoring transaction, so a poller that accidentally leaves its own transaction open can report an unchanged age or state.
+A monitoring role needs `pg_read_all_stats` or superuser access to see all activity fields for other users' sessions; without it, security-restricted columns can be null.
+
+Run the monitor as a short autocommit query. PostgreSQL holds current activity information stable after its first access inside a monitoring transaction, so a poller that leaves its own transaction open can report stale state and activity timestamps. `clock_timestamp()` still advances, so calculated ages can continue growing from those stale timestamps.
 
 ## Find actual blocking impact
 
@@ -53,7 +55,7 @@ WITH waiters AS (
   CROSS JOIN LATERAL unnest(pg_blocking_pids(a.pid)) AS b(blocker_pid)
 )
 SELECT w.waiter_pid,
-       clock_timestamp() - w.waiter_query_start AS wait_age,
+       clock_timestamp() - w.waiter_query_start AS waiter_query_age,
        w.blocker_pid,
        blocker.state AS blocker_state,
        clock_timestamp() - blocker.xact_start AS blocker_xact_age,
@@ -65,9 +67,11 @@ LEFT JOIN pg_stat_activity AS blocker
 ORDER BY w.waiter_query_start;
 ```
 
-`pg_blocking_pids()` includes both a session holding a conflicting lock and a session ahead in the lock wait queue. A blocker PID of zero represents a prepared transaction; it will not have a `pg_stat_activity` row, so inspect `pg_prepared_xacts`.
+`waiter_query_age` is the current statement's age and only an upper bound on how long it has waited for a lock; use `pg_locks.waitstart` when you need the heavyweight-lock wait start time.
 
-For vacuum impact, correlate old transactions with dead tuples and maintenance recency:
+`pg_blocking_pids()` includes both a session holding a conflicting lock and a session ahead in the lock wait queue whose requested lock conflicts with the waiter's request. A blocker PID of zero represents a prepared transaction; it will not have a `pg_stat_activity` row, so inspect `pg_prepared_xacts`.
+
+For vacuum impact, correlate old transactions with estimated dead-tuple counts and maintenance recency:
 
 ```sql
 SELECT schemaname,
