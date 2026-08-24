@@ -8,7 +8,7 @@ Description: Translate metric rate and outage objectives into a tested Telegraf 
 
 ---
 
-Every Telegraf output has its own buffer. When a write fails, metrics remain pending and the output retries on a later flush. With the default memory strategy, a full buffer overwrites the oldest metrics with new ones. With the disk strategy, pending metrics survive process restarts, but the write-ahead logs can grow until the filesystem fills.
+Every Telegraf output has its own buffer. When a retryable write fails, metrics remain pending and the output retries on a later flush. With the default memory strategy, a full buffer overwrites the oldest metrics with new ones. With the disk strategy, pending metrics survive process restarts, but the write-ahead logs can grow until the filesystem fills.
 
 Buffering buys recovery time; it does not fix a destination that cannot catch up.
 
@@ -46,6 +46,8 @@ The limit is per output. Two outputs with the same configured limit can consume 
   bucket = "metrics"
 ```
 
+The token reference assumes that a secret store with `id = "secrets"` is configured and contains the `influx_token` secret.
+
 Telegraf writes batches of at most `metric_batch_size` on each flush, or sooner when a full batch is ready. The buffer limit should accommodate the outage objective plus normal batching and recovery variation. Check the destination's payload and rate limits before increasing batch size.
 
 Memory buffering is fast and bounded, but queued metrics disappear if Telegraf stops. A large buffer can also trigger container or system memory limits before it reaches its configured metric count.
@@ -61,7 +63,7 @@ Memory buffering is fast and bounded, but queued metrics disappear if Telegraf s
   buffer_disk_sync = true
 ```
 
-Disk mode creates a separate subdirectory for each output and stores pending metrics in a write-ahead log. After restart, Telegraf drains existing log entries before new metrics. `buffer_disk_sync = true` is the durability default; disabling sync may improve performance but risks losing metrics buffered during the last flush interval in a power failure.
+As of Telegraf 1.39.3, disk mode is still marked experimental. It creates a separate subdirectory for each output and stores pending metrics in a write-ahead log. After restart, Telegraf drains existing log entries before new metrics. `buffer_disk_sync = true` is the durability default; disabling sync may improve performance but risks losing metrics buffered during the last flush interval in a power failure.
 
 The critical limitation is explicit in current InfluxData documentation: **Telegraf does not limit how much disk space these files use.** Disk buffering is not made safe by setting a large `metric_buffer_limit`. Put `buffer_directory` on a monitored filesystem with an operational capacity policy, protect it from unrelated workloads, and alert well before free space is exhausted.
 
@@ -80,10 +82,11 @@ Enable the internal input:
 Current Telegraf self-metrics expose `internal_write` per-output fields including:
 
 - `buffer_size`: metrics currently pending;
-- `buffer_limit`: configured buffer capacity where applicable; and
-- `metrics_dropped`: metrics the output has dropped.
+- `buffer_limit`: configured `metric_buffer_limit`; it is an enforced metric capacity for memory buffering but does not cap disk buffering;
+- `metrics_dropped`: metrics dropped from the buffer without being sent; and
+- `metrics_rejected`: metrics the output removes after the service or serializer rejects them.
 
-Alert when `buffer_size` climbs persistently toward `buffer_limit`, and page on any increase in `metrics_dropped`. Use `alias` on repeated output instances so the internal metrics and logs identify the affected destination.
+For memory mode, alert when `buffer_size` climbs persistently toward `buffer_limit`. For either strategy, alert on a persistently growing backlog and page on any increase in `metrics_dropped` or `metrics_rejected`. Use `alias` on repeated output instances so the internal metrics and logs identify the affected destination.
 
 For disk mode, filesystem byte and inode monitoring is mandatory because Telegraf itself does not cap disk use. For memory mode, monitor process RSS, cgroup or container memory headroom, restarts, and OOM events.
 
@@ -97,7 +100,7 @@ If destination capacity is less than or equal to incoming traffic, the buffer ne
 
 With representative traffic:
 
-1. Record the starting received, written, dropped, buffer, memory, and disk values.
+1. Record the starting received, written, rejected, dropped, buffer, memory, and disk values.
 2. Block or stop one staging destination for the target outage duration.
 3. Confirm only that output's backlog rises and no drops occur.
 4. Restart Telegraf if restart durability is in scope.
