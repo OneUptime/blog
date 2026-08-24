@@ -93,7 +93,6 @@
 
 ## Telegraf
 
-17. How to Preserve Device Timestamps in Telegraf JSON Without Nanosecond, Time-Zone, or Precision Errors
 18. How to Give Containerized Telegraf Access to the Docker Socket Without Running `--privileged`
 19. How to Debug Telegraf HTTP 400 Responses When the Same Request Works with curl
 20. How to Stop Telegraf StatsD Packet Drops with `number_workers_threads`, Queue, and Socket-Buffer Tuning
