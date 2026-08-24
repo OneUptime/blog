@@ -96,7 +96,6 @@
 
 ## Database Monitoring
 
-4. How to Calculate `pg_stat_statements` Rates Without False Spikes After Statistics Resets
 5. How to Run `postgres_exporter` Without Superuser Using `pg_monitor` and File-Based Credentials
 6. How to Monitor PostgreSQL Autovacuum Progress and Tell a Slow Vacuum from a Blocked One
 7. How to Alert on PostgreSQL Transaction-ID Wraparound Risk with `age(datfrozenxid)` and `autovacuum_freeze_max_age`
