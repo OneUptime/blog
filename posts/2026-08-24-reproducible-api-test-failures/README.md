@@ -67,30 +67,46 @@ Use a versioned machine-readable schema. A practical record contains:
 }
 ```
 
-Capture the resolved URL, not only `/v1/orders`, but remove user information and sensitive query values. Store exact body bytes or a typed body only when policy allows it. A digest and size can prove identity when content cannot be retained.
+Capture the resolved URL, not only `/v1/orders`, but remove user information and sensitive query values. Store exact body bytes or a typed body only when policy allows it. A digest and size can later verify a candidate body with high confidence, but they cannot reconstruct it or authenticate its origin. Treat digests of sensitive or guessable data as sensitive; use an approved keyed HMAC when the threat model requires protected equality checks.
 
 ## Capture at One HTTP Wrapper
 
-Centralize API calls so every test receives the same redaction, timing, correlation, and attachment behavior. This Playwright-oriented sketch records JSON requests, buffers a bounded response, and always attaches bounded evidence for each call. A production fixture can instead retain the records in memory and attach them from `afterEach` only when `testInfo.status !== testInfo.expectedStatus`:
+Centralize API calls so every test receives the same redaction, timing, correlation, and attachment behavior. This Playwright-oriented sketch records redacted JSON request evidence with per-body caps, buffers the response, and attaches a record for each call. A production fixture can instead retain the records in memory and attach them from `afterEach` only when `testInfo.status !== testInfo.expectedStatus`:
 
 ```ts
-import { APIRequestContext, TestInfo } from '@playwright/test';
-import crypto from 'node:crypto';
+import type { APIRequestContext, TestInfo } from '@playwright/test';
+import { createHash, randomUUID } from 'node:crypto';
+import { performance } from 'node:perf_hooks';
 
-const SAFE_RESPONSE_HEADERS = new Set([
-  'content-type', 'content-length', 'date', 'etag',
+const MAX_EVIDENCE_BODY_BYTES = 64_000;
+const MAX_EVIDENCE_HEADER_VALUE_BYTES = 4_000;
+
+const APPROVED_RESPONSE_HEADERS = new Set([
+  'content-type', 'content-length', 'content-encoding', 'date',
   'retry-after', 'x-request-id', 'traceparent',
 ]);
 
 function selectHeaders(headers: Record<string, string>) {
   return Object.fromEntries(
     Object.entries(headers)
-      .filter(([name]) => SAFE_RESPONSE_HEADERS.has(name.toLowerCase()))
+      .filter(([name]) => APPROVED_RESPONSE_HEADERS.has(name.toLowerCase()))
+      .map(([name, value]) => [
+        name.toLowerCase(),
+        redactAndBoundHeaderValue(
+          name.toLowerCase(),
+          value,
+          MAX_EVIDENCE_HEADER_VALUE_BYTES
+        ),
+      ])
   );
 }
 
 function sha256(value: Buffer | string) {
-  return crypto.createHash('sha256').update(value).digest('hex');
+  return createHash('sha256').update(value).digest('hex');
+}
+
+function normalizeError(error: unknown) {
+  return error instanceof Error ? error : new Error(String(error));
 }
 
 async function callApi(
@@ -98,71 +114,102 @@ async function callApi(
   testInfo: TestInfo,
   input: { method: string; url: string; data?: unknown; seed?: number }
 ) {
-  const clientRequestId = crypto.randomUUID();
+  const clientRequestId = randomUUID();
   const baseUrl = process.env.API_BASE_URL;
   if (!baseUrl) throw new Error('API_BASE_URL is required');
+  const resolvedUrl = new URL(input.url, baseUrl).toString();
 
   const requestHeaders: Record<string, string> = {
     'X-Request-ID': clientRequestId,
   };
   if (input.data !== undefined) requestHeaders['Content-Type'] = 'application/json';
 
-  const started = Date.now();
+  const startedAt = new Date().toISOString();
+  const started = performance.now();
+  let callError: Error | undefined;
   let evidence: Record<string, unknown> = {
     request: {
       method: input.method,
-      url: new URL(input.url, baseUrl).toString(),
+      url: redactUrl(resolvedUrl),
       headers: Object.fromEntries(
         Object.entries(requestHeaders).map(([name, value]) => [name.toLowerCase(), value])
       ),
-      body: input.data === undefined ? null : redactJson(input.data),
+      body: input.data === undefined
+        ? null
+        : redactAndBoundJson(input.data, MAX_EVIDENCE_BODY_BYTES),
     },
     correlation: { clientRequestId },
     random: { seed: input.seed ?? null },
   };
 
   try {
-    const response = await request.fetch(input.url, {
+    const response = await request.fetch(resolvedUrl, {
       method: input.method,
       data: input.data,
       headers: requestHeaders,
       failOnStatusCode: false,
+      maxRedirects: 0,
       maxRetries: 0,
     });
 
-    const raw = await response.body();
+    const responseHeaders = response.headers();
+    const contentType = responseHeaders['content-type'];
+    const decodedBody = await response.body();
+    const bodyPolicyContext = {
+      url: resolvedUrl,
+      status: response.status(),
+      contentType,
+    };
     evidence = {
       ...evidence,
       response: {
         status: response.status(),
-        headers: selectHeaders(response.headers()),
-        body: redactAndBound(raw, response.headers()['content-type'], 64_000),
-        bodyBytes: raw.length,
-        bodySha256: sha256(raw),
+        headers: selectHeaders(responseHeaders),
+        body: redactAndBound(
+          decodedBody,
+          contentType,
+          MAX_EVIDENCE_BODY_BYTES
+        ),
+        decodedBodyBytes: mayStoreBodyLength(bodyPolicyContext)
+          ? decodedBody.length
+          : null,
+        decodedBodySha256: mayStoreBodyDigest(bodyPolicyContext)
+          ? sha256(decodedBody)
+          : null,
       },
-      timing: { durationMs: Date.now() - started },
+      timing: { startedAt, durationMs: performance.now() - started },
     };
 
     return { response, evidence };
   } catch (error) {
     evidence = {
       ...evidence,
-      transportError: sanitizeError(error),
-      timing: { durationMs: Date.now() - started },
+      callError: sanitizeError(error),
+      timing: { startedAt, durationMs: performance.now() - started },
     };
-    throw Object.assign(error as Error, { apiEvidence: evidence });
+    callError = Object.assign(normalizeError(error), { apiEvidence: evidence });
+    throw callError;
   } finally {
-    await testInfo.attach('api-evidence.json', {
-      body: Buffer.from(JSON.stringify(evidence, null, 2)),
-      contentType: 'application/json',
-    });
+    try {
+      await testInfo.attach('api-evidence.json', {
+        body: Buffer.from(JSON.stringify(evidence, null, 2)),
+        contentType: 'application/json',
+      });
+    } catch (attachmentError) {
+      if (!callError) throw normalizeError(attachmentError);
+      Object.assign(callError, {
+        evidenceAttachmentError: sanitizeError(attachmentError),
+      });
+    }
   }
 }
 ```
 
-`redactJson`, `redactAndBound`, and `sanitizeError` must be real policy-enforcing functions, not placeholders shipped as protection. Preserve the buffered body if later assertions need it; avoid consuming a one-shot stream in a generic interceptor.
+`APPROVED_RESPONSE_HEADERS` must reflect a service-specific policy. A header-name allowlist alone does not make opaque or server-controlled values safe to persist. `redactAndBoundHeaderValue`, `redactUrl`, `redactAndBoundJson`, `redactAndBound`, `mayStoreBodyLength`, `mayStoreBodyDigest`, and `sanitizeError` must be real policy-enforcing functions, not placeholders shipped as protection. The bounded helpers must mark truncation explicitly. Preserve the buffered body if later assertions need it; avoid consuming a one-shot stream in a generic interceptor.
 
-Playwright's `testInfo.attach()` accepts a body or file and content type. Its Trace Viewer can also expose request and response bodies and headers, so apply the same artifact access and retention policy to traces.
+`APIResponse.body()` returns the complete buffer after Playwright's supported content decoding, so the cap above bounds only the stored evidence, not download or memory use. The `decodedBodyBytes` and `decodedBodySha256` fields describe those decoded bytes, not a compressed wire representation. Use a client or transport with a streaming response-size limit when untrusted responses may be large. This sketch also disables automatic redirects so one record maps to one HTTP exchange; if redirect behavior is under test, capture every hop instead.
+
+Playwright's `testInfo.attach()` accepts a body or file and content type. Its Trace Viewer can expose the original request and response bodies and headers independently of this wrapper, so wrapper redaction does not sanitize traces. Disable tracing for tests whose traffic cannot be retained, or protect the entire trace with access and retention controls appropriate to the captured data.
 
 ## Capture Logical and Serialized Requests
 
@@ -193,7 +240,7 @@ Capture:
 - outbound valid `traceparent` and its trace ID;
 - returned request/correlation headers;
 - service and trace backend environment; and
-- whether sampling was requested.
+- the outbound sampled flag and any local sampling decision.
 
 The sampled flag is not a guarantee that a trace was retained. A trace ID is still valuable in logs when services include it, but the replay bundle should remain useful if telemetry was dropped.
 
@@ -211,16 +258,23 @@ Never put personal data or authentication material in `traceparent` or `tracesta
 - fault selection; and
 - model-based command generation.
 
-Property-based tools may require more than the seed. Current fast-check failure output includes a seed and shrink path; replaying the minimal counterexample uses both. Model-based command tests can also require a `replayPath`.
+Property-based tools may require more than the seed. For a predicate counterexample failure, current fast-check output includes a seed and counterexample path; replaying the minimal counterexample uses both. Model-based command tests can also require a `replayPath`. Inside an async test, validate the captured parameters and await the assertion:
 
 ```ts
-fc.assert(
+const seedText = process.env.FC_SEED?.trim();
+const path = process.env.FC_PATH?.trim();
+const seed = Number(seedText);
+if (!seedText || !Number.isInteger(seed) || !path) {
+  throw new Error('FC_SEED and FC_PATH are required for replay');
+}
+
+await fc.assert(
   fc.asyncProperty(orderArbitrary, async order => {
     await exerciseOrder(order);
   }),
   {
-    seed: Number(process.env.FC_SEED),
-    path: process.env.FC_PATH,
+    seed,
+    path,
     endOnFailure: true,
   }
 );
@@ -256,7 +310,7 @@ Record secrets only by availability and logical credential identity, such as `te
 
 ## Redact Before Persistence
 
-Redaction after uploading an artifact is too late. Apply it in memory before logs, attachments, traces, or reporter output.
+Redaction after uploading an artifact is too late. Apply it in memory before application-controlled logs, attachments, or reporter output. As noted above, Playwright traces require separate handling because they can capture traffic independently of these helpers.
 
 Prefer allowlists for headers. At minimum exclude authorization, proxy authorization, cookies, API keys, signatures, CSRF tokens, and signed URL query parameters. For bodies, use schema-aware field paths and deny capture entirely for credentials, health records, payment data, and arbitrary file content.
 
@@ -270,7 +324,7 @@ Defend against:
 - secret values echoed by the server; and
 - custom assertion messages that stringify the original object.
 
-Bound every body by bytes, keep original length and digest, and mark truncation explicitly. Encrypt sensitive-but-approved artifacts, restrict CI access, and set retention according to data classification.
+Bound stored evidence for every policy-approved body by bytes, retain length and digest fields only where policy permits them, and mark truncation explicitly. Encrypt sensitive-but-approved artifacts, restrict CI access, and set retention according to data classification.
 
 ## Generate a Safe Reproduction Recipe
 
