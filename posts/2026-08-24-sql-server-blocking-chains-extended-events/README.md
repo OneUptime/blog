@@ -14,7 +14,7 @@ This is thresholded, best-effort evidence—not a real-time notification for eve
 
 ## Set a responsible reporting threshold
 
-The `blocked process threshold (s)` setting accepts 0 or 5 through 86,400 seconds. Zero, the default, disables reports. Microsoft recommends at least 5 seconds because the deadlock monitor normally wakes every 5 seconds:
+Use `0`, the default, for `blocked process threshold (s)` to disable reports, or `5` through `86,400` seconds to enable them. Values `1` through `4` can be configured but generate no reports. Microsoft recommends at least 5 seconds because the deadlock monitor normally wakes every 5 seconds:
 
 ```sql
 EXEC sys.sp_configure 'show advanced options', 1;
@@ -55,7 +55,7 @@ GO
 
 The rollover settings bound on-host storage. Confirm the SQL Server service account can write the directory, monitor target errors and disk space, and secure `.xel` files: event payloads include process details and input buffers that can contain sensitive SQL.
 
-On SQL Server 2022 and later, creating a session can be delegated with `CREATE ANY EVENT SESSION`; earlier releases use `ALTER ANY EVENT SESSION`. Viewing session data requires server performance visibility—`VIEW SERVER PERFORMANCE STATE` on SQL Server 2022 and later, and `VIEW SERVER STATE` on earlier releases. Recheck permissions for Azure SQL Database and database-scoped Extended Events, whose syntax and target URL differ.
+On SQL Server 2022 and later, creating a session can be delegated with `CREATE ANY EVENT SESSION`; starting it additionally requires `ALTER ANY EVENT SESSION ENABLE` or its parent `ALTER ANY EVENT SESSION`. Earlier releases use `ALTER ANY EVENT SESSION` for both. Viewing session data requires server performance visibility—`VIEW SERVER PERFORMANCE STATE` on SQL Server 2022 and later, and `VIEW SERVER STATE` on earlier releases. Recheck permissions for Azure SQL Database and database-scoped Extended Events, whose syntax and target URL differ.
 
 ## Verify collection before an incident
 
@@ -95,19 +95,19 @@ Each report contains a blocked-process section and a blocking-process section. P
 ```text
 event timestamp
 database and resource
-waiter process identifier and SPID
-blocker process identifier and SPID
+waiter process identifier, SPID, batch ID (SBID), and execution-context ID (ECID)
+blocker SPID, SBID, and ECID
 wait time and wait resource
-transaction count and transaction start time
+transaction identifier, count, and start time when present
 status, client application, host, login
 input buffers after redaction
 ```
 
-Build a directed edge from waiter to blocker for reports in a narrow time bucket. Repeatedly follow the blocker if that SPID appears as a waiter in another edge; the terminal node is the head blocker observed in that snapshot.
+Build a directed edge from waiter to blocker for reports in a narrow time bucket. Repeatedly follow the blocker if its time-scoped SPID/SBID/ECID tuple appears as a waiter in another edge; the terminal node is the head blocker observed in that snapshot.
 
-Do not key a long-lived graph by SPID alone. Session IDs are reused. Include event time, the report's process identifier, transaction timing, database, and resource. Reports arrive at slightly different times, so a reconstructed graph is an approximation of changing server state.
+Do not key a long-lived graph by SPID alone. Session IDs are reused. Include event time, SPID/SBID/ECID, transaction identifiers and timing, database and resource, and the waiter's process identifier when present. Reports arrive at slightly different times, so a reconstructed graph is an approximation of changing server state.
 
-Sample `sys.dm_exec_requests`, `sys.dm_tran_locks`, `sys.dm_os_waiting_tasks`, and transaction DMVs alongside the event for current context. Keep deadlock monitoring separate: a deadlock is resolved automatically and is captured by the `xml_deadlock_report` event, including the system `health` session, rather than by waiting indefinitely for the blocked-process threshold.
+Sample `sys.dm_exec_requests`, `sys.dm_tran_locks`, `sys.dm_os_waiting_tasks`, and transaction DMVs alongside the event for current context. Keep deadlock monitoring separate: SQL Server resolves a deadlock by choosing a victim, and the built-in `system_health` session captures the `xml_deadlock_report` event by default rather than waiting for the blocked-process threshold.
 
 ## Alert and respond safely
 
