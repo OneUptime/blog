@@ -47,7 +47,7 @@ ORDER BY a.query_start;
 
 The database filter is important because relation OIDs are only meaningful within their database; casting another database's `relid` to `regclass` can resolve to an unrelated local object. Run this relation-resolving query once in each monitored database, or retain `datid` and numeric `relid` without casting in a cluster-wide collector.
 
-PostgreSQL 17 renamed `max_dead_tuples` to `max_dead_tuple_bytes`, renamed `num_dead_tuples` to `num_dead_item_ids`, added `dead_tuple_bytes`, and added index progress columns. Generate the query for the server major version. PostgreSQL 18 additionally exposes `delay_time` when `track_cost_delay_timing` is enabled.
+PostgreSQL 17 renamed `max_dead_tuples` to `max_dead_tuple_bytes`, renamed `num_dead_tuples` to `num_dead_item_ids`, added `dead_tuple_bytes`, and added index progress columns. Generate the query for the server major version. PostgreSQL 18 additionally adds `delay_time`; it reports milliseconds spent sleeping due to cost-based delay when `track_cost_delay_timing` is enabled, and zero otherwise.
 
 `VACUUM FULL` does not appear here because it rewrites a table; its progress is in `pg_stat_progress_cluster`.
 
@@ -60,16 +60,16 @@ Other phases have different progress signals:
 - `vacuuming indexes`: inspect `indexes_processed` on PostgreSQL 17+, not heap percentage.
 - `vacuuming heap`: `heap_blks_vacuumed` advances, sometimes in jumps because blocks without dead tuples are skipped.
 - `cleaning up indexes`: index cleanup is in progress after the heap scan.
-- `truncating heap`: PostgreSQL is trying to return empty pages at the end of the relation; it can need a relation lock.
+- `truncating heap`: PostgreSQL is trying to return empty pages at the end of the relation. Truncation requires an `ACCESS EXCLUSIVE` lock; while waiting to acquire it, a worker reports `wait_event_type = 'Timeout'` and `wait_event = 'VacuumTruncate'`, not `wait_event_type = 'Lock'`.
 - `performing final cleanup`: statistics and the free space map are being finalized.
 
-`index_vacuum_count` greater than one is not a reset. A vacuum can perform multiple index-vacuum cycles when `maintenance_work_mem`, or `autovacuum_work_mem` for autovacuum, cannot hold all dead tuple identifiers found during one pass.
+`index_vacuum_count` greater than one is not a reset. A vacuum can perform multiple index-vacuum cycles when `maintenance_work_mem`, or `autovacuum_work_mem` for autovacuum when it is not `-1`, cannot hold all dead tuple identifiers found during one pass.
 
 Store samples keyed by database, relation OID, PID, and `query_start`. Calculate progress over actual elapsed time. A PID alone can be reused after a backend exits.
 
 ## Identify a lock-blocked worker
 
-The clearest lock signal is an active worker with `wait_event_type = 'Lock'`. Resolve its direct blockers:
+The clearest queued heavyweight-lock signal is an active worker with `wait_event_type = 'Lock'`. Resolve its direct blockers:
 
 ```sql
 SELECT vacuum.pid AS vacuum_pid,
@@ -98,7 +98,7 @@ Autovacuum normally avoids prolonged disruption by yielding to certain conflicti
 A worker is making progress when the phase-appropriate counter changes across samples. Explain slow movement with its wait event and resource metrics:
 
 - `IO` waits plus storage latency suggest read or write pressure.
-- a vacuum-delay timeout or rising PostgreSQL 18 `delay_time` indicates configured cost throttling;
+- `wait_event_type = 'Timeout'` with `wait_event = 'VacuumDelay'`, or rising PostgreSQL 18 `delay_time`, indicates configured cost throttling;
 - repeated index cycles suggest constrained vacuum work memory and many dead items;
 - progress with high system I/O can be healthy maintenance competing with foreground work;
 - a stable counter for one sample can simply mean the worker is in another phase.
@@ -115,10 +115,14 @@ SELECT pid,
        application_name,
        state,
        clock_timestamp() - xact_start AS xact_age,
+       backend_xid,
+       age(backend_xid) AS xid_age,
+       backend_xmin,
        age(backend_xmin) AS xmin_age
 FROM pg_stat_activity
-WHERE backend_xmin IS NOT NULL
-ORDER BY age(backend_xmin) DESC NULLS LAST;
+WHERE backend_xid IS NOT NULL
+   OR backend_xmin IS NOT NULL
+ORDER BY greatest(age(backend_xid), age(backend_xmin)) DESC NULLS LAST;
 ```
 
 Also inspect old prepared transactions and replication slots, which can retain horizons outside ordinary client activity. A high `n_dead_tup` in `pg_stat_user_tables` is an estimate and is updated asynchronously; it is useful for trends, not a live count of what the current vacuum can remove.
@@ -127,11 +131,11 @@ Also inspect old prepared transactions and replication slots, which can retain h
 
 Useful alerts include:
 
-- lock wait sustained beyond the normal DDL/DML overlap window;
+- queued `Lock` wait or `VacuumTruncate` wait sustained beyond the normal DDL/DML overlap window;
 - no phase-appropriate counter movement across several successful scrapes;
 - repeated index cycles together with growing dead tuples;
 - an anti-wraparound worker blocked or disappearing before completion;
-- old `backend_xmin`, prepared transactions, or replication-slot horizons;
+- old `backend_xid` or `backend_xmin`, prepared transactions, or replication-slot horizons;
 - autovacuum cancellations or long durations in logs.
 
 Enable `log_autovacuum_min_duration` at an appropriate threshold to retain completion and problem evidence, but budget log volume. Pair each alert with database, relation, phase, query start, and worker PID in annotations rather than using ephemeral values as time-series labels.
@@ -146,4 +150,4 @@ Enable `log_autovacuum_min_duration` at an appropriate threshold to retain compl
 
 ## Conclusion
 
-Judge vacuum health from changes across samples. A `Lock` wait with blocker PIDs is blocked; moving phase counters with I/O or cost delay is slow but active; and an old visibility horizon can limit cleanup without stopping the scan. Preserve version-specific column handling and treat anti-wraparound work as a safety operation.
+Judge vacuum health from changes across samples. A queued `Lock` wait with blocker PIDs is blocked, while `VacuumTruncate` identifies lock-constrained truncation; moving phase counters with I/O or cost delay is slow but active; and an old visibility horizon can limit cleanup without stopping the scan. Preserve version-specific column handling and treat anti-wraparound work as a safety operation.
