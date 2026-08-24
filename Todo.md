@@ -96,7 +96,6 @@
 
 ## Database Monitoring
 
-9. Why the MySQL Slow Query Log Misses Initial Lock Waits—and What to Collect from Performance Schema Instead
 10. How to Bound `mysqld_exporter` Query-Digest Cardinality with Statement Limits and Time Windows
 11. How to Detect MySQL Connection Churn Before `Threads_connected` Reaches `max_connections`
 12. How to Separate MySQL Query CPU Time from I/O and Lock Wait Time with Performance Schema Events
