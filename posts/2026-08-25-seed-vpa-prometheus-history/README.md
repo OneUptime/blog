@@ -76,7 +76,7 @@ Usage series identify old Pods, but VPA also needs their workload-selection labe
 - Pod name under `--pod-name-label`; and
 - Pod labels with the prefix configured by `--pod-label-prefix`.
 
-The defaults assume a relabeled Pod scrape such as `up{job="kubernetes-pods"}` with labels like `kubernetes_namespace`, `kubernetes_pod_name`, and `pod_label_app`. A kube-state-metrics installation may instead use `kube_pod_labels` with `namespace`, `pod`, and `label_app`; configure all four flags together.
+The defaults assume a relabeled Pod scrape such as `up{job="kubernetes-pods"}` with labels like `kubernetes_namespace`, `kubernetes_pod_name`, and `pod_label_app`. A kube-state-metrics installation may instead use `kube_pod_labels` with `namespace`, `pod`, and `label_app`; configure all four flags together. Current kube-state-metrics releases do not expose these label metrics by default, so enable every selector label, for example with `--metric-labels-allowlist='pods=[app]'`. Kube-state-metrics also converts unsupported characters in Kubernetes label keys to underscores, while VPA only strips `label_`; confirm that each recovered key exactly matches the target selector key.
 
 ```yaml
 - '--metric-for-pod-labels=kube_pod_labels[8d]'
