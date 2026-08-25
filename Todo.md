@@ -102,7 +102,6 @@
 
 ## VPA
 
-14. Why VPA Cannot Manage Static or Bare Pods: Fixing an Unsupported targetRef
 15. How LimitRanges and ResourceQuotas Alter—or Reject—VPA Recommendations
 16. How to Tune VPA Eviction Tolerance, Updater Interval, and Eviction Rate for Production
 17. How to Troubleshoot the VPA Admission Webhook: CA Bundles, Certificates, and Mutation Failures
