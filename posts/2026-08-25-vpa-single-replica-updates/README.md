@@ -16,7 +16,7 @@ VPA normally refuses to evict a single-replica workload because the updater's gl
 kubectl -n accounts get vpa ledger -o yaml
 kubectl -n accounts get deploy ledger -o jsonpath='{.spec.replicas}{"\n"}'
 kubectl -n accounts get pod -l app=ledger \
-  -o custom-columns=NAME:.metadata.name,OWNER_KIND:.metadata.ownerReferences[0].kind,OWNER:.metadata.ownerReferences[0].name,READY:.status.containerStatuses[*].ready
+  -o 'custom-columns=NAME:.metadata.name,OWNER_KIND:.metadata.ownerReferences[?(@.controller==true)].kind,OWNER:.metadata.ownerReferences[?(@.controller==true)].name,READY:.status.containerStatuses[*].ready'
 kubectl -n accounts get pdb -o wide
 kubectl -n kube-system logs deploy/vpa-updater --since=30m
 ```
@@ -25,7 +25,7 @@ Check four separate decisions:
 
 1. `updateMode` must allow a lifetime update. `Off` and `Initial` do not.
 2. The number of live replicas must meet `minReplicas`.
-3. VPA's internal replica-group budget must permit the update attempt; if the path uses eviction, every matching PodDisruptionBudget must also permit it.
+3. VPA's internal replica-group budget must permit the update attempt; if the path uses eviction, the Pod must match at most one PodDisruptionBudget, and that PDB must permit it. Multiple matching PDBs block eviction.
 4. VPA must identify a managing controller that can recreate an evicted Pod.
 
 For `Recreate` and an `InPlaceOrRecreate` fallback, the updater calls the Kubernetes Eviction API. A PDB with `maxUnavailable: 0`, `minAvailable: 1`, or `minAvailable: 100%` therefore blocks eviction of a healthy one-replica workload. Lowering VPA's replica minimum does not override that PDB. A successful in-place `/resize` does not call the Eviction API, so Kubernetes does not consult the PDB for that patch.
@@ -76,7 +76,7 @@ spec:
 
 This overrides the global updater flag for this VPA. It does not promise zero downtime and does not bypass a PDB. If eviction succeeds, there is an interval with no application Pod while the Deployment creates and readies a replacement.
 
-Changing the global updater argument to `--min-replicas=1` affects every VPA handled by that updater and is therefore broader than the per-VPA field.
+Changing the global updater argument to `--min-replicas=1` affects every VPA handled by that updater that does not set its own `minReplicas`, and is therefore broader than the per-VPA field.
 
 ## Verify Direct Controller Ownership
 
