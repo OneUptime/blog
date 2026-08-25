@@ -75,29 +75,30 @@ Reduce the exposure by:
 - avoiding frequent autoscaling of the stateful tail tier;
 - using stable endpoint membership where practical;
 - staggering Collector and policy changes; and
-- considering upstream `groupbytrace` when complete-trace atomic dispatch is worth its own buffering cost, as suggested by the load-balancing exporter documentation for routing stability.
+- considering upstream `groupbytrace` when atomically dispatching each buffered trace group after a bounded wait is worth its buffering cost, provided spans for the trace reach the same upstream Collector instance, as suggested by the load-balancing exporter documentation for routing stability.
 
 There is no zero-loss rolling procedure based solely on a termination grace period when spans for one trace can still arrive after its route changes.
 
 ## Give Graceful Shutdown Enough Time
 
-Kubernetes `terminationGracePeriodSeconds` must cover:
+Kubernetes `terminationGracePeriodSeconds` starts before any `preStop` hook and must cover:
 
-1. receiver shutdown and queued ingestion calls;
-2. pending-trace evaluation chosen by the shutdown policy;
-3. processors after tail sampling;
-4. batch flush and exporter queue drain; and
-5. network retries within the intended bound.
+1. `preStop` hook execution and any routing-drain delay;
+2. receiver shutdown and queued ingestion calls;
+3. pending-trace evaluation chosen by the shutdown policy;
+4. processors after tail sampling;
+5. batch flush and any in-memory exporter queue drain; and
+6. in-flight and final export attempts up to their configured timeout.
 
 Observe real shutdown duration at peak pending volume. A large forced drain can create a burst of sampled traces and overwhelm the exporter just as the pod is terminating.
 
-A PodDisruptionBudget and one-at-a-time rollout reduce simultaneous state loss. Readiness and endpoint-removal hooks need to be coordinated with the upstream load-balancing resolver; a fixed sleep without evidence of route convergence is not a guarantee.
+A PodDisruptionBudget limits simultaneous eviction-based voluntary disruptions but does not constrain Deployment or StatefulSet rolling upgrades. Separately, waiting for each old pod to finish terminating before starting the next replacement reduces simultaneous state loss. Readiness and endpoint-removal hooks need to be coordinated with the upstream load-balancing resolver; a fixed sleep without evidence of route convergence is not a guarantee.
 
 ## Do Not Rely on Tail Storage for Restart Recovery
 
 The alpha Pebble tail-storage extension currently clears its configured database on startup. It can move pending batches off heap during a process lifetime but does not restore them after restart. Decision caches are also in-memory and restart empty.
 
-If restart durability is a requirement, place a durable queue before the stateful tier and design replay semantics explicitly. Replaying spans after restart still needs stable trace-ID routing and protection against duplicates; current `tail_storage` does not supply that workflow.
+If restart durability is a requirement, use a replayable durable buffer before the stateful tier and design retention, acknowledgment, and replay semantics explicitly; a normal upstream persistent sending queue cannot reconstruct spans that the tail tier already acknowledged before restarting. Replaying spans after restart still needs stable trace-ID routing and protection against duplicates; current `tail_storage` does not supply that workflow.
 
 ## Test Rollouts as a Data-Correctness Event
 
