@@ -14,7 +14,7 @@ A span can therefore contain `http.response.status_code=500` while its OpenTelem
 
 ## Inspect Both Fields
 
-A correct modern HTTP server failure commonly looks like:
+On a correctly instrumented modern HTTP server failure, the two fields relevant to this sampling decision commonly look like:
 
 ```text
 span.attributes["http.response.status_code"] = 500
@@ -47,7 +47,7 @@ The evaluator scans every span in the accumulated trace. The problem is field po
 
 ## Fix Instrumentation First
 
-Upgrade the relevant HTTP instrumentation and verify it follows the stable semantic conventions. For custom spans, set the OpenTelemetry status to error when the operation meets the documented error rules. Fixing the source benefits every backend and processor, not only this tail sampler.
+Upgrade the relevant HTTP instrumentation and verify it follows the current HTTP semantic conventions. For custom spans, set the OpenTelemetry status to error when the operation meets the documented error rules. Fixing the source benefits every backend and processor, not only this tail sampler.
 
 Do not blindly convert every 4xx to error. A server-side 404 can be a normal existence check, while the corresponding client span may classify it differently. Follow the span kind and application context.
 
@@ -95,14 +95,14 @@ This mutates telemetry and can override an intentionally set status, so apply it
 
 ## Check Timing and Upstream Sampling
 
-Even a correctly marked error can be missed if:
+Tail sampling can still fail to retain the intended complete error trace if:
 
-- the SDK head sampler did not record it;
-- the error span reached another tail-sampling replica;
-- it arrived after the decision window; or
-- an early `span-ingest` decision finalized the trace first.
+- the SDK head sampler did not record the relevant span;
+- spans from the trace were split across tail-sampling replicas;
+- the error span arrived after the decision window; or
+- a `span-ingest` drop decision finalized the trace before the error arrived.
 
-Use `trace-complete`, trace-ID affinity, and a measured wait when the policy must see errors anywhere in the trace. Inspect `sampling_late_span_age` and decision-cache behavior.
+Use `trace-complete`, trace-ID affinity, and a measured wait when the policy must see errors anywhere in the trace. Inspect `otelcol_processor_tail_sampling_sampling_late_span_age` and decision-cache behavior.
 
 ## Reproduce with a Four-Case Fixture
 

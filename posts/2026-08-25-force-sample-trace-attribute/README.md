@@ -75,11 +75,11 @@ A safer flow is:
 4. the Collector removes or ignores untrusted user-provided versions; and
 5. an audit metric counts forced traces.
 
-Keep the hard do-not-sample marker controlled by an even stronger trust boundary. If it protects sensitive data, sampling is only one defense: redact at instrumentation or an earlier processor so data is not exposed in Collector memory, logs, or other branches before the tail drop.
+Keep the hard do-not-sample marker controlled by an even stronger trust boundary. If it protects sensitive data, sampling is only one defense: redact at instrumentation to keep the data out of Collector memory, or at the earliest processor in every applicable Collector pipeline to minimize exposure in buffers, logs, and other branches before the tail drop.
 
 ## Preserve Whole-Trace Precedence
 
-Use `trace-complete` and a wait that covers relevant spans. If the do-not-sample marker arrives after a force-sampled decision, a decision cache makes the late batch follow the already sampled outcome; it cannot retroactively delete exported spans.
+Use `trace-complete` and a wait that covers relevant spans. If the do-not-sample marker arrives after a force-sampled decision, late spans follow that decision while it remains in memory; configure `decision_cache.sampled_cache_size` to preserve the sampled outcome after eviction. Neither path can retroactively delete exported spans.
 
 Trace-ID routing is equally important. A force marker on one tail-sampling replica and a hard-drop marker on another produces incomplete evidence. Use the documented trace-ID load-balancing tier.
 
