@@ -24,7 +24,7 @@ spec:
     kind: Deployment
     name: api
   updatePolicy:
-    updateMode: Off
+    updateMode: "Off"
   resourcePolicy:
     containerPolicies:
       - containerName: app
@@ -57,10 +57,10 @@ resourcePolicy:
     - containerName: "*"
       controlledValues: RequestsOnly
     - containerName: envoy
-      mode: Off
+      mode: "Off"
 ```
 
-There can be one entry per named container and one wildcard. A named policy overrides the wildcard for that container. `mode: Off` removes that container from recommendations entirely; it is not the same as preserving limits while recommending requests.
+There can be one entry per named container and one wildcard. A named policy overrides the wildcard for that container. `mode: "Off"` removes that container from recommendations entirely; it is not the same as preserving limits while recommending requests.
 
 After a new or recreated Pod is admitted, verify both fields:
 
@@ -70,15 +70,15 @@ kubectl -n platform get pod -l app=api -o json | jq \
 kubectl -n platform get vpa api -o yaml
 ```
 
-The requests should follow the VPA target within policy bounds. Limits should retain the values that admission produced from the workload template and any other mutating policy.
+The applied requests should reflect the VPA recommendation after policy processing and any capping for existing container limits or `LimitRange` minimum and maximum values. With `RequestsOnly`, a recommendation above an existing container limit is capped to that limit, so the applied request can be lower than the target shown in VPA status. Limits should retain the values that admission produced from the workload template and any other mutating policy.
 
 ## Understand the QoS Consequence
 
-Kubernetes derives Pod QoS from request and limit relationships:
+Kubernetes derives Pod QoS from CPU and memory request and limit relationships. For the container-level resource model that VPA currently supports:
 
-- a `Guaranteed` Pod has equal CPU and memory requests and limits for every container;
-- a Pod with at least one request or limit that is not fully Guaranteed is normally `Burstable`;
-- a Pod with neither requests nor limits is `BestEffort`.
+- a `Guaranteed` Pod has nonzero CPU and memory requests and limits for every container, with each request equal to its corresponding limit;
+- a Pod that is not `Guaranteed` and has at least one CPU or memory request or limit in a container is `Burstable`;
+- a Pod with no CPU or memory requests or limits in any container is `BestEffort`.
 
 If VPA changes only requests on newly created Pods, the resulting QoS can differ from the unmutated template. For a running Pod, in-place resize cannot change its original QoS class. A requests-only change that would break request-equals-limit on a `Guaranteed` Pod must be recreated or redesigned; it cannot be applied in place merely because limits stay fixed.
 
@@ -91,7 +91,7 @@ kubectl -n platform get pod -l app=api \
 
 ## Account for LimitRange Defaults and Ratios
 
-`RequestsOnly` means VPA does not mutate limits. It does not disable Kubernetes admission policy. A namespace `LimitRange` can inject a default limit into a Pod that omitted one, and can reject a request that violates minimum, maximum, or max-limit-to-request ratio constraints.
+`RequestsOnly` means VPA does not mutate limits. It does not disable Kubernetes admission policy. A namespace `LimitRange` can inject a default limit into each container that omitted one, and can reject a request that violates minimum, maximum, or max-limit-to-request ratio constraints.
 
 ```bash
 kubectl -n platform get limitrange -o yaml
