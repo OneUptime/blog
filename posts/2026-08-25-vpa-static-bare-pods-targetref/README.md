@@ -8,7 +8,7 @@ Description: Explain why VPA requires a supported top-level controller, distingu
 
 ---
 
-VPA is designed around a workload controller, not an arbitrary Pod name. Its `targetRef` identifies a controller, VPA reads that controller's selector to group Pods, and an updater eviction relies on the controller to create a replacement. A bare Pod has no such owner. A static Pod is managed directly by kubelet from a node-local manifest and is represented in the API only by a mirror Pod.
+VPA is designed around a workload controller, not an arbitrary Pod name. Its `targetRef` identifies a controller, VPA reads that controller's selector to group Pods, and an updater eviction relies on the controller to create a replacement. A bare Pod has no such owner. A static Pod is managed directly by kubelet from a filesystem-hosted manifest or a configured URL. When kubelet can reach the API server and is authorized, it represents the static Pod there with a mirror Pod.
 
 ## Recognize the Unsupported Shapes
 
@@ -24,10 +24,10 @@ A bare Pod typically has no controller owner reference. A static Pod's mirror Po
 
 Common symptoms include:
 
-- `ConfigUnsupported=True` with a targetRef message;
-- `NoPodsMatched=True` when the target selector cannot be resolved or matches nothing;
-- an API error because `kind: Pod` has no suitable `/scale` selector; or
-- a recommendation that is never applied to an unmanaged Pod.
+- `ConfigUnsupported=True` when `targetRef` cannot be resolved or is not the topmost supported target;
+- `NoPodsMatched=True` when the selector used by the VPA matches no Pods;
+- a VPA log or status message that `kind: Pod` is an unhandled target because it has no usable `/scale` selector; or
+- no recommendation for an unsupported target.
 
 Upstream VPA's known limitations explicitly state that it does not update Pods not run under a controller. The controller fetcher also rejects a Node as a valid owner.
 
@@ -74,6 +74,8 @@ spec:
               memory: 512Mi
 ```
 
+Before applying this manifest, plan the cutover: either delete or relabel the original bare Pod first, or add another selector and template label that the bare Pod does not have. Do not leave the bare Pod matching the Deployment and VPA selector.
+
 Then target the Deployment:
 
 ```yaml
@@ -88,7 +90,7 @@ spec:
     kind: Deployment
     name: singleton
   updatePolicy:
-    updateMode: Off
+    updateMode: "Off"
 ```
 
 Use `Off` first. A one-replica Deployment is now structurally manageable, but the updater still defaults to `--min-replicas=2`; automatic recreation can cause downtime and needs an explicit availability decision.
@@ -97,11 +99,11 @@ Choose a StatefulSet instead when stable network identity or per-Pod persistent 
 
 ## Handle Static Pods at Their Source
 
-Static Pod specs live in a kubelet manifest directory or are delivered from a configured URL. The API server cannot update that source. Editing a mirror Pod is ineffective because kubelet reconciles from the local manifest.
+Static Pod specs come from `staticPodPath` (a manifest directory or a single file) or `staticPodURL`. The API server cannot update that source. Editing a mirror Pod is ineffective because kubelet reconciles from the configured static-Pod source.
 
 For control-plane static Pods, follow the cluster distribution's supported resource configuration and upgrade process. Do not attach a VPA to kube-apiserver, etcd, or scheduler mirror Pods and expect mutation. If a non-control-plane static workload should be autoscaled, migrate it to an API-managed controller first.
 
-Static Pod resource changes usually require editing the node-local manifest, after which kubelet restarts the Pod. Validate node capacity and control-plane quorum before making such a change.
+Static Pod resource changes usually require updating the configured source, often a node-local manifest, after which kubelet restarts the Pod. Validate node capacity, control-plane availability, and, when changing etcd, etcd quorum before making such a change.
 
 ## Target the Topmost Supported Owner
 
@@ -113,7 +115,7 @@ kubectl -n legacy get pod -l app=singleton -o json | jq \
 kubectl -n legacy get rs -l app=singleton -o yaml
 ```
 
-For custom resources, implement `/scale` with `.status.selector` and ensure Pods are directly owned as documented by VPA. An operator CR that owns a Deployment which owns Pods is indirect ownership and is not a supported custom target; target the Deployment unless the operator integration is designed differently.
+For custom resources, implement `/scale` so the returned Scale populates `.status.selector`, and ensure Pods are directly owned as documented by VPA. An operator CR that owns a Deployment which owns Pods is an unsupported indirect custom target. Target the Deployment only if it is the topmost well-known or scalable controller; if the parent CR is itself scalable, the ownership or operator integration must change before VPA can support the workload.
 
 ## Official Documentation
 
