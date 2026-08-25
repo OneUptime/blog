@@ -8,7 +8,7 @@ Description: Predict how namespace limits, defaults, ratios, and quota interact 
 
 ---
 
-VPA can recommend and apply a resource shape that later meets another admission decision. `LimitRange` validates per-object minima, maxima, defaults, and limit-to-request ratios. `ResourceQuota` validates aggregate namespace consumption. A VPA status target can exist even when the next mutated Pod would be rejected by one of those policies.
+VPA can recommend and apply a resource shape that later meets another admission decision. `LimitRange` applies defaults and validates per-object minima, maxima, and limit-to-request ratios. `ResourceQuota` validates aggregate namespace consumption. A VPA status target can exist even when the next mutated Pod would be rejected by one of those policies.
 
 ## Map the Admission Path
 
@@ -28,7 +28,7 @@ Do not assume one universal order among mutating admission plugins and webhooks:
 kubectl -n payments get limitrange -o yaml
 kubectl -n payments get resourcequota -o yaml
 kubectl -n payments describe resourcequota
-kubectl -n payments get events --sort-by=.lastTimestamp | tail -n 60
+kubectl -n payments events | tail -n 60
 ```
 
 A compute `LimitRange` can:
@@ -56,7 +56,7 @@ spec:
     kind: Deployment
     name: checkout
   updatePolicy:
-    updateMode: Off
+    updateMode: "Off"
   resourcePolicy:
     containerPolicies:
       - containerName: app
@@ -71,32 +71,32 @@ spec:
 
 Choose `minAllowed` and `maxAllowed` inside the LimitRange envelope. The VPA features documentation states that VPA tries to cap recommendations between LimitRange minimum and maximum. If a VPA resource policy conflicts, VPA policy wins and can set values outside the LimitRange; admission can then reject the Pod. Resolve the conflict instead of relying on one controller's ordering.
 
-With default `RequestsAndLimits`, VPA preserves the original limit-to-request ratio. A request that fits the maximum can still produce a proportional limit that exceeds `max.memory` or consumes `limits.memory` quota. With `RequestsOnly`, a fixed limit and changing request can violate `maxLimitRequestRatio`. Model both fields.
+With default `RequestsAndLimits`, VPA preserves the original limit-to-request ratio. For a non-conflicting LimitRange, VPA normally adjusts the request so the proportional limit fits the maximum. A conflicting VPA policy can override that cap and produce a limit above `max.memory`; even a valid proportional limit can consume `limits.memory` quota. With `RequestsOnly`, a fixed limit and changing request can violate `maxLimitRequestRatio`. Model both fields.
 
 ## Include the `/resize` Admission Path
 
-An in-place resize is also an API admission request; it does not bypass namespace policy. LimitRanger checks a Pod `/resize` request against the namespace's applicable minimum and maximum values. ResourceQuota accounts for pending resizes using the maximum of desired requests (except when the resize is marked `Infeasible`), actual requests, and allocated requests. This prevents a requested scale-down from releasing quota before kubelet has actually applied it.
+An in-place resize is also an API admission request; it does not bypass namespace policy. LimitRanger applies the Pod LimitRange checks, including applicable minimum, maximum, and `maxLimitRequestRatio` constraints, to a Pod `/resize` request. For request quota, ResourceQuota accounts for pending resizes using the maximum of desired requests (except when the resize is marked `Infeasible`), actual requests, and allocated requests. For limit quota, it similarly uses the maximum of desired and actual limits, omitting desired limits when the resize is `Infeasible`. This prevents a requested scale-down from releasing quota before kubelet has actually applied it.
 
-If LimitRange or ResourceQuota rejects the `/resize` patch, the request never reaches kubelet. Current VPA handles that error differently by mode:
+If LimitRange or ResourceQuota rejects the `/resize` patch, the update is not persisted and kubelet never sees it. VPA 1.7.1 handles that error differently by mode:
 
-- alpha `InPlace` records the failed attempt but remains eviction-free; and
-- `InPlaceOrRecreate` records the failed in-place attempt and queues the Pod for fallback eviction.
+- alpha `InPlace` logs the failure and increments its failed-update metric but remains eviction-free; ordinary LimitRange and ResourceQuota rejections are not cached as infeasible and may be retried on later reconciliations; and
+- `InPlaceOrRecreate` records the same failure metric and adds the Pod to the fallback-eviction candidates, subject to normal eviction checks.
 
 Fallback is not a policy escape hatch. The replacement Pod can be rejected by the same LimitRange or quota constraint after the old Pod is evicted. Pretest both the candidate resource shape and quota headroom before enabling a fallback-capable mode.
 
 ## Budget Quota for the Peak Concurrent Shape
 
-For each rollout or recreation scenario, calculate:
+For each hard quota key and each rollout or recreation scenario, calculate:
 
 ```text
-existing namespace usage
-+ replacement Pod requests and limits
-+ expected rollout overlap
-+ operational reserve
-<= hard quota
+observed namespace usage for that key
++ candidate Pod usage not yet included in observed usage
++ other expected concurrent additions for that key
++ operational reserve for that key
+<= hard quota for that key
 ```
 
-An eviction normally removes the old Pod before its replacement, but terminating Pods, other controllers, surge rollouts, and concurrent VPA actions can change timing. Do not set quota equal to steady-state arithmetic with zero margin.
+An eviction starts deletion before the controller creates a replacement, but graceful termination means the old Pod can still exist and count toward quota when the replacement is admitted. Surge rollouts, other controllers, and concurrent VPA actions can add more overlap. Do not set quota equal to steady-state arithmetic with zero margin.
 
 Alert on quota utilization and admission failures:
 
