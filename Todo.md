@@ -102,7 +102,6 @@
 
 ## VPA
 
-6. Why VPA Cannot Downsize Memory In Place: resizePolicy and Eviction Fallback Explained
 7. How to Keep VPA from Changing Container Limits with controlledValues: RequestsOnly
 8. Why VPA Multiplies Resource Limits When Requests Rise: Preserved Request-to-Limit Ratios Explained
 9. How to Exclude Sidecars from VPA or Manage CPU and Memory Per Container
