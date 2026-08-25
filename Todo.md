@@ -102,7 +102,6 @@
 
 ## VPA
 
-10. How to Export VPA Target, Lower, Upper, and Uncapped Recommendations to Prometheus
 11. How to Seed VPA with Prometheus History After a Recommender Restart
 12. How to Right-Size Short-Lived Jobs and CronJobs When VPA Lacks Enough History
 13. How to Run VPA Safely for StatefulSets and Databases Without Surprise Downtime
