@@ -8,13 +8,13 @@ Description: Apply and validate a hard per-trace size guard before giant traces 
 
 ---
 
-`num_traces` limits how many trace IDs the tail-sampling processor tracks, but it does not limit the size of any one trace. A fan-out bug, retry loop, high-volume span events, or oversized attributes can let a single trace consume disproportionate memory, storage I/O, policy time, and export bandwidth.
+`num_traces` limits how many live trace entries the tail-sampling processor keeps, but it does not limit the size of any one trace. A fan-out bug, retry loop, high-volume span events, or oversized attributes can let a single trace consume disproportionate memory, storage I/O, policy time, and export bandwidth.
 
 Current Collector Contrib provides `maximum_trace_size_bytes` as a per-trace safety rail. A value of zero disables the rail. Once an undecided trace grows strictly larger than the configured value, the processor marks it not sampled immediately and increments the dedicated too-large metric.
 
 ## Configure a Deliberate Per-Trace Limit
 
-This example rejects pending traces after they exceed 2 MiB of accumulated OTLP protobuf data:
+This example rejects a pending trace after the sum of its protobuf-encoded, per-trace `ResourceSpans` fragments exceeds 2 MiB:
 
 ```yaml
 processors:
@@ -39,7 +39,7 @@ processors:
 
 The size check occurs before the normal timed policy decision. It is therefore stronger than a normal `NotSampled` vote: an `always_sample`, error, force-sample, or latency policy does not rescue a trace that crosses the size guard while still undecided.
 
-The processor tracks size as Collector `pdata` is ingested, using protobuf-marshaler size calculations for resource-span batches. The configured number is not Collector heap bytes, compressed wire bytes, JSON export size, or the final backend storage footprint.
+On ingestion, the processor splits each incoming `ResourceSpans` by trace ID, copies the resource and scope metadata into a per-trace fragment, and adds `ptrace.ProtoMarshaler.ResourceSpansSize` for that fragment to the trace's running total. The configured number is not Collector heap bytes, compressed wire bytes, the complete uncompressed OTLP request size, JSON export size, or the final backend storage footprint.
 
 ## Pick a Limit from Real Trace Sizes
 
@@ -48,12 +48,12 @@ Do not choose the pod memory limit divided by `num_traces`. Most traces are smal
 A practical procedure is:
 
 1. Capture representative OTLP protobuf traffic before tail sampling.
-2. Group it by trace ID and calculate accumulated protobuf size per trace.
+2. For each incoming `ResourceSpans`, split spans by trace ID as the processor does, then sum `ResourceSpansSize` for each resulting per-trace fragment.
 3. Separate legitimate large workflows from malformed or runaway traces.
 4. Choose a boundary above the largest trace the backend and operators genuinely need.
 5. Replay traces immediately below, exactly at, and just above the boundary.
 
-The implementation drops when accumulated size is greater than the threshold, not when it is equal. Because size is added a received resource-span batch at a time, the trace can overshoot the limit by the size of the last batch before it is rejected.
+The implementation drops when accumulated size is greater than the threshold, not when it is equal. The check runs after a per-trace `ResourceSpans` fragment is received and sized but before that crossing fragment is appended to tail storage, so the running total can overshoot the limit by up to the fragment's accounted size.
 
 If legitimate batch jobs are much larger than interactive requests, one global limit may be inappropriate. Route those workloads to a separately sized tail-sampling tier or fix instrumentation that emits unbounded events. The setting is processor-wide, not policy- or service-specific.
 
@@ -65,15 +65,15 @@ Alert on:
 rate(otelcol_processor_tail_sampling_traces_dropped_too_large[5m]) > 0
 ```
 
-The metric tells you how many traces crossed the limit, not which service caused them or their attempted final size. Correlate the first occurrence with Collector logs and temporary, access-controlled capture at an upstream tier. Avoid routinely logging full trace payloads because attributes and events can contain sensitive data.
+The metric counts too-large drop events; it does not identify the service or report the accounted size at the crossing. Correlate the first occurrence with Collector logs and temporary, access-controlled capture at an upstream tier. Avoid routinely logging full trace payloads because attributes and events can contain sensitive data.
 
 Also watch Collector RSS, CPU, decision-timer latency, storage usage, refused spans, and exporter queue behavior. A limit protects future accumulation after it trips; parsing and receiving the batch that crosses it still costs work.
 
-The alpha `processor.tailsamplingprocessor.metricstatcountbytessampled` feature gate exposes per-policy sampled/not-sampled byte counters in current Contrib builds. That telemetry can help quantify policy output, but it is not a replacement for the too-large counter and may change across upgrades.
+The alpha `processor.tailsamplingprocessor.metricstatcountbytessampled` feature gate exposes per-policy sampled/not-sampled byte counters in current Contrib builds. That telemetry can help quantify per-policy decision byte volume, but it is not a replacement for the too-large counter and may change across upgrades.
 
 ## Distinguish the Other Byte Controls
 
-`bytes_limiting` limits accepted trace bytes over time with a token bucket. Its `burst_capacity` also prevents a trace larger than the bucket from passing that policy. It is a policy vote, however; another top-level sampling policy can still keep the trace.
+`bytes_limiting` uses a token bucket to limit the rate of trace bytes that the policy votes to sample. Its `burst_capacity` also prevents a trace larger than the bucket from passing that policy. It is a policy vote, however; another top-level sampling policy can still keep the trace.
 
 `maximum_trace_size_bytes` is different:
 
@@ -86,18 +86,18 @@ Experimental `tail_storage` moves pending batches to a storage extension, but gi
 
 ## Account for `span-ingest` Decisions
 
-The current implementation applies the size guard while the trace's final decision is still unspecified. In `span-ingest` mode, a policy can sample a trace early; later batches then follow that final decision and are no longer pending for the pre-decision size check.
+The current implementation applies the size guard while the trace's final decision is still unspecified. In `span-ingest` mode, a policy can sample a trace early; while that decision remains in the live entry or sampled-decision cache, later batches follow it and are no longer pending for the pre-decision size check.
 
-`trace-complete` keeps the guard active until its scheduled decision and therefore gives a stronger pending-trace bound than an early sampled outcome in `span-ingest`. It is still not an absolute completed-trace bound: a late batch arriving after the trace-complete decision also follows the existing sampled decision without reopening the size check. Enforce a downstream limit when every exported batch must be covered.
+`trace-complete` keeps the guard active until its scheduled decision and therefore gives a stronger pending-trace bound than an early sampled outcome in `span-ingest`. It is still not an absolute completed-trace bound: a late batch arriving after the trace-complete decision also follows the existing sampled decision without reopening the size check while that decision remains live or cached. Enforce a downstream limit when every exported batch must be covered.
 
-Decision caches should still be configured. Once an oversized trace is rejected, late batches should inherit the non-sampled decision instead of starting a fresh accumulation after the live entry is evicted.
+Decision caches should still be configured. Once an oversized trace is rejected, `non_sampled_cache_size` lets late batches inherit the non-sampled decision instead of starting a fresh accumulation after the live entry is evicted. Because the cache is finite, the same trace ID can start a new accumulation after its LRU entry is also evicted.
 
 ## Test Failure Behavior
 
 Generate a trace with bounded synthetic attributes and add spans until it crosses the selected threshold. Confirm that:
 
 - nothing from a trace that crosses the threshold before its `trace-complete` decision reaches the trace exporter;
-- the too-large counter increments once for the trace;
+- the too-large counter increments once while the non-sampled decision remains cached;
 - a later span is discarded through the remembered non-sampled decision;
 - ordinary traces continue through without a decision-latency spike; and
 - no sensitive diagnostic payload is left behind.
@@ -113,4 +113,4 @@ Repeat with the largest single OTLP request allowed by the receiver and with mul
 
 ## Conclusion
 
-Set `maximum_trace_size_bytes` from measured protobuf trace sizes and a clear definition of the largest useful trace. It is a pre-decision per-trace circuit breaker, not a throughput limiter or exact heap cap. Monitor every trip, retain non-sampled decisions for late batches, and test the special early-finalization behavior before using it with `span-ingest`.
+Set `maximum_trace_size_bytes` from measured per-trace totals that reproduce the processor's `ResourceSpansSize` accounting and a clear definition of the largest useful trace. It is a pre-decision per-trace circuit breaker, not a throughput limiter or exact heap cap. Monitor every trip, retain non-sampled decisions for late batches, and test the special early-finalization behavior before using it with `span-ingest`.
