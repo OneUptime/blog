@@ -99,7 +99,6 @@
 
 ## Trace Sampling
 
-19. Why an HTTP 500 Trace Can Miss a `status_code: ERROR` Tail-Sampling Policy
 20. How to Handle Pending Tail-Sampling Decisions During Collector Shutdowns and Rolling Deployments
 
 ## VPA
