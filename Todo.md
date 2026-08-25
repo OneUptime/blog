@@ -102,7 +102,6 @@
 
 ## VPA
 
-5. How to Use InPlaceOrRecreate VPA and Diagnose a Disabled InPlacePodVerticalScaling Feature Gate
 6. Why VPA Cannot Downsize Memory In Place: resizePolicy and Eviction Fallback Explained
 7. How to Keep VPA from Changing Container Limits with controlledValues: RequestsOnly
 8. Why VPA Multiplies Resource Limits When Requests Rise: Preserved Request-to-Limit Ratios Explained
