@@ -15,14 +15,14 @@ VPA and Cluster Autoscaler solve adjacent problems. VPA changes Pod requests fro
 Cluster Autoscaler does not invent arbitrary instance types; it expands preconfigured node groups. For every VPA-managed workload, verify that at least one eligible node template can fit:
 
 ```text
-sum of all container requests
-+ Pod overhead
-+ DaemonSet requests on the new node
+the workload Pod's effective scheduling request
+  (including app, sidecar, init-container, Pod-level, and Pod-overhead rules)
++ applicable DaemonSet and static Pod requests on the new node
 + safety margin
 <= node allocatable
 ```
 
-Then apply node selection, required affinity, taints/tolerations, zones, architecture, volume topology, ports, and extended resources. A large node in an excluded pool cannot help.
+Then apply node selection, required affinity, taints/tolerations, zones, architecture, volume topology, host-port conflicts, and extended resources. A large node in an excluded pool cannot help.
 
 ```bash
 kubectl get nodes -o json | jq -r \
@@ -31,7 +31,7 @@ kubectl -n inference get deploy model-server -o yaml
 kubectl get daemonset -A -o wide
 ```
 
-Upstream VPA explicitly warns that a recommendation can exceed the largest node's allocatable capacity. Cluster Autoscaler cannot fix that. Set per-container `maxAllowed` and, if appropriate, global recommender maximums derived from the largest eligible allocatable node minus overhead.
+Upstream VPA explicitly warns that a recommendation can exceed node capacity. Cluster Autoscaler cannot help when the resulting Pod exceeds every eligible expandable node template. Set per-container `maxAllowed` and, if appropriate, global recommender maximums derived from the largest eligible node template's allocatable capacity minus overhead.
 
 ```yaml
 resourcePolicy:
@@ -48,9 +48,9 @@ Remember that bounds are per container. Validate their sum with sidecars.
 
 With `Recreate`, VPA evicts a Pod and its controller creates a replacement with larger requests. If the scheduler marks that replacement unschedulable, Cluster Autoscaler can evaluate it and add a suitable node. This is a clear capacity signal but creates a service-risk interval while the Pod is Pending.
 
-With `InPlaceOrRecreate`, a running Pod can report `PodResizePending` as `Deferred` or `Infeasible` because its current node lacks capacity. Current VPA may fall back to eviction immediately for infeasible work, after more than 5 minutes deferred, or after more than 1 hour in progress. The replacement can then become an unschedulable Pod that triggers node provisioning.
+Both in-place modes require Kubernetes 1.33+ with `InPlacePodVerticalScaling` enabled. With `InPlaceOrRecreate`, a running Pod can report `PodResizePending` as `Deferred` or `Infeasible` because its current node lacks capacity. Current VPA may fall back to eviction once infeasibility is observed, after more than 5 minutes deferred, or after more than 1 hour in progress. The replacement can then become an unschedulable Pod that triggers node provisioning.
 
-With alpha `InPlace`, VPA never evicts; VPA 1.7 requires `--feature-gates=InPlace=true` on both the admission controller and updater. An infeasible resize remains on the running Pod until a lower recommendation permits retry. Kubernetes node autoscaling is documented as reacting to unschedulable Pods, while this Pod is already running; therefore, inferring from those mechanics, a deferred in-place resize should not be assumed to trigger Cluster Autoscaler. Provision headroom separately or choose a fallback-capable strategy.
+With alpha `InPlace`, VPA never evicts; VPA 1.7 additionally requires `--feature-gates=InPlace=true` on both the admission controller and updater. VPA records an infeasible attempt and normally retries only after a recommendation lowers at least one resource; the record is in memory, so an updater restart permits one retry. Kubernetes node autoscaling is documented as reacting to unschedulable Pods, while this Pod is already running; therefore, inferring from those mechanics, a deferred in-place resize should not be assumed to trigger Cluster Autoscaler. Provision headroom separately or choose a fallback-capable strategy.
 
 ## Protect Availability During Scale-Up Latency
 
@@ -68,7 +68,7 @@ VPA cannot guarantee that an evicted Pod is successfully recreated. A permitted 
 
 ```bash
 kubectl -n inference describe pod model-server-xxxxx
-kubectl -n inference get events --sort-by=.lastTimestamp | tail -n 60
+kubectl -n inference events | tail -n 60
 kubectl -n kube-system logs deploy/cluster-autoscaler --since=30m
 kubectl -n kube-system logs deploy/vpa-updater --since=30m
 ```
@@ -82,7 +82,7 @@ Classify the failure:
 - `NotTriggerScaleUp`: inspect the Cluster Autoscaler reason for each group.
 - admission rejection with no Pod object: inspect LimitRange, ResourceQuota, Pod-level resources, and VPA webhook; Cluster Autoscaler never sees a rejected Pod.
 
-Watch the VPA `uncappedTarget` against `target`. Persistent clipping means the workload demands more than policy permits, even if scheduling stays green.
+Watch the VPA `uncappedTarget` against `target`. If `uncappedTarget` persistently exceeds `target`, an upper policy bound is clipping workload demand; if it is lower, `minAllowed` may be raising `target`.
 
 ## Avoid an Unreliable DaemonSet Feedback Loop
 
@@ -97,7 +97,7 @@ In a staging node group with production-equivalent labels, taints, limits, and q
 3. confirm `FailedScheduling` appears;
 4. confirm Cluster Autoscaler selects the intended node group;
 5. measure time until Ready; and
-6. verify a smaller group or wrong zone is not chosen.
+6. verify groups with insufficient capacity or incompatible topology are rejected.
 
 Repeat after changing node images, DaemonSets, affinity, or maximum VPA bounds.
 
