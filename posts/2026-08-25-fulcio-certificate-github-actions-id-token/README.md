@@ -8,7 +8,7 @@ Description: Use least-privilege GitHub Actions permissions and a patched Cosign
 
 ---
 
-GitHub Actions can request a short-lived OIDC ID token without storing a signing secret. Cosign detects the Actions environment, requests a token with audience `sigstore`, creates an ephemeral key, asks Fulcio for a certificate, signs the artifact, and records the result in Sigstore's transparency services.
+GitHub Actions can request a short-lived OIDC ID token without storing a signing secret. Cosign detects the Actions environment, creates an ephemeral key, requests a token with audience `sigstore`, asks Fulcio for a certificate, signs the artifact, and records the result in Sigstore's transparency services.
 
 The permission that enables this is `id-token: write`. Despite the word `write`, it does not grant repository write access; it only permits the job to request an OIDC token. Registry pushes and source checkout need separate permissions.
 
@@ -69,7 +69,7 @@ jobs:
 
 Update action versions and immutable commit pins with your dependency-management process. The explicit Cosign version above is significant as of August 2026: the official Cosign advisory for the legacy-bundle identity-verification vulnerability requires v3.1.3 or v2.6.5. The standardized bundle path is not affected, but signing and verification runners should still use a patched release.
 
-For repositories other than `ghcr.io/example/widget`, change the image name and ensure the token has permission to push there. `packages: write` is required for GHCR publication, not for requesting Fulcio's certificate.
+For repositories other than `ghcr.io/example/widget`, change the image name and ensure the token has permission to push there. `packages: write` is required when publishing to GHCR with `GITHUB_TOKEN` as above, not for requesting Fulcio's certificate.
 
 ## Sign the Digest, Not the Tag
 
@@ -90,7 +90,7 @@ Publish the bundle beside the archive. A detached signature without its certific
 
 ## What GitHub and Cosign Do
 
-With `id-token: write`, GitHub exposes two runner variables to authorized steps: `ACTIONS_ID_TOKEN_REQUEST_URL` and `ACTIONS_ID_TOKEN_REQUEST_TOKEN`. A requester calls the URL with a desired audience. The Actions toolkit equivalent is:
+With `id-token: write`, GitHub makes two runner variables available within the authorized job: `ACTIONS_ID_TOKEN_REQUEST_URL` and `ACTIONS_ID_TOKEN_REQUEST_TOKEN`. A requester calls the URL with a desired audience. The Actions toolkit equivalent is:
 
 ```javascript
 const idToken = await core.getIDToken('sigstore');
@@ -98,13 +98,15 @@ const idToken = await core.getIDToken('sigstore');
 
 Cosign performs that request internally in a supported Actions environment. Do not fetch and print the token just to prove it exists. If you must diagnose a custom integration, request `audience=sigstore`, inspect only locally, and mask or discard the bearer token immediately.
 
-The GitHub token issuer is:
+The default GitHub.com token issuer, unless an enterprise custom issuer is enabled, is:
 
 ```text
 https://token.actions.githubusercontent.com
 ```
 
-Fulcio validates that issuer, the `sigstore` audience, token timing, and GitHub-specific claims. For current GitHub certificates, Fulcio derives the SAN from `job_workflow_ref`, producing a URI like:
+Enterprise Cloud administrators can configure an issuer at `https://token.actions.githubusercontent.com/<enterpriseSlug>` instead. In that case, verification must pin the exact configured issuer.
+
+Fulcio verifies the token signature and configured issuer, requires the `sigstore` audience, checks expiration and `nbf` when present, and extracts the configured GitHub claims. For current GitHub certificates, Fulcio derives the SAN from `job_workflow_ref`, producing a URI like:
 
 ```text
 https://github.com/example/widget/.github/workflows/release.yml@refs/tags/v1.2.3
@@ -124,7 +126,7 @@ cosign verify \
   'ghcr.io/example/widget@sha256:REPLACE_WITH_DIGEST'
 ```
 
-Anchor regular expressions at both ends and escape literal dots. If releases must come from one immutable workflow revision, use an exact identity or additionally enforce the build-signer digest and repository metadata with a policy-aware verifier.
+Anchor regular expressions at both ends and escape literal dots. If releases must come from one immutable workflow revision, use an exact identity whose ref is a full commit SHA, or enforce the Build Signer Digest and repository metadata with a policy-aware verifier.
 
 Reusable workflows need special attention. `job_workflow_ref` identifies the workflow actually executing the job, which can be a reusable workflow, while Build Config URI identifies the initiating top-level workflow. Decide which one your policy trusts and inspect the certificate's SAN and Fulcio OID extensions before writing the rule.
 
@@ -134,7 +136,7 @@ The ability to obtain an OIDC token is not itself authorization to publish a rel
 
 Protect the signing job with controls such as:
 
-- release tags created from protected branches;
+- release tags restricted by a tag ruleset and pointing to commits reachable from protected branches;
 - a protected GitHub environment with required reviewers;
 - immutable action commit pins;
 - no execution of fork-controlled scripts before signing;
