@@ -50,7 +50,7 @@ spec:
     kind: Deployment
     name: encoder
   updatePolicy:
-    updateMode: Off
+    updateMode: "Off"
   resourcePolicy:
     containerPolicies:
       - containerName: app
@@ -66,7 +66,7 @@ kubectl -n media get pod -l app=encoder -o json | jq '.items[].spec.containers[]
 kubectl -n media get vpa encoder -o yaml
 ```
 
-The workload template usually retains the declared values; the VPA admission webhook mutates each newly created Pod. Therefore compare a live Pod, not only the Deployment template.
+With `Off` as shown, the recommender populates VPA status but does not apply its resource recommendations to Pods. In an applying mode such as `Initial` or `Recreate`, the workload template usually retains the declared values while the VPA admission webhook mutates newly created Pods. Therefore, when updates are enabled, compare a live Pod, not only the Deployment template.
 
 ## Preserve Limits Instead When Appropriate
 
@@ -76,7 +76,7 @@ Switch the relevant container policy to:
 controlledValues: RequestsOnly
 ```
 
-VPA will then adjust requests and leave limits as admitted from the template or another policy. This is often preferable for a deliberate memory ceiling, but it changes the request-to-limit headroom and can interact with QoS and LimitRange ratios.
+When recommendations are applied, VPA will then adjust requests and leave limits as admitted from the template or another policy. This is often preferable for a deliberate memory ceiling, but it changes the request-to-limit headroom and can interact with QoS and LimitRange ratios.
 
 You can also control only one resource:
 
@@ -110,26 +110,26 @@ Capacity review must therefore include both outcomes:
 
 ## Check LimitRange and ResourceQuota Before Recreation
 
-VPA attempts to conform recommendations to namespace LimitRanges. However, when an explicit VPA resource policy conflicts with a LimitRange, VPA policy wins, and the API server may reject the resulting Pod.
+VPA post-processes recommendations against CPU and memory minimum and maximum constraints in `Container`- and `Pod`-type LimitRanges. It does not currently account for `maxLimitRequestRatio`, which the API server still enforces. When an explicit VPA resource policy conflicts with a LimitRange minimum or maximum, VPA policy wins, and the API server may reject the resulting Pod.
 
 ```bash
 kubectl -n media get limitrange,resourcequota -o yaml
 kubectl -n media describe resourcequota
-kubectl -n media get events --sort-by=.lastTimestamp | tail -n 50
+kubectl -n media events | tail -n 50
 ```
 
 Pay particular attention to:
 
 - per-container maximum limits;
 - `maxLimitRequestRatio` rules;
-- namespace `limits.cpu` and `limits.memory` quota; and
-- Pod-level resource envelopes, which current upstream VPA does not support.
+- namespace `requests.cpu`, `requests.memory`, `limits.cpu`, and `limits.memory` quotas; and
+- Pod-level `.spec.resources` requests and limits, which current upstream VPA does not support.
 
-An updater eviction followed by an admission rejection can leave a replacement missing. Test the largest permitted resource shape with server-side dry-run and a canary before enabling `Recreate`.
+An updater eviction followed by an admission rejection can leave a replacement missing. Server-side dry-run a representative Pod manifest containing the calculated requests and limits in the target namespace, then use a canary before enabling `Recreate`.
 
 ## Consider In-Place Resize Constraints
 
-Proportional changes may update request and limit simultaneously. An in-place resize cannot change the Pod's original QoS class. Memory-limit decreases have version- and `resizePolicy`-dependent behavior, while an increase can be deferred or infeasible on a node without capacity. `InPlaceOrRecreate` can eventually fall back to eviction; `InPlace` does not.
+Proportional changes may update request and limit simultaneously. An in-place resize cannot change the Pod's original QoS class. Memory-limit decreases have version- and `resizePolicy`-dependent behavior, while a request increase can be deferred or infeasible on a node without capacity. `InPlaceOrRecreate` can eventually fall back to eviction; the alpha `InPlace` mode in VPA 1.7+ (with the VPA `InPlace` feature gate enabled) does not. Both modes require Kubernetes in-place Pod resize support.
 
 ## Official Documentation
 
