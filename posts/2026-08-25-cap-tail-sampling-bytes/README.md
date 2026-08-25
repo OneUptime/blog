@@ -36,7 +36,7 @@ The bucket starts with burst capacity and refills continuously. Short intervals 
 
 ## Make It the Only Positive Vote for a Decision-Path Cap
 
-Top-level tail-sampling policies do not form an all-must-pass chain. In the absence of a hard `drop` decision, any top-level `Sampled` vote is enough to keep the trace. This does **not** enforce a byte cap:
+Top-level tail-sampling policies do not form an all-must-pass chain. Unless a hard `drop` or deprecated `InvertNotSampled` result takes precedence, any top-level `Sampled` vote is enough to keep the trace. This does **not** enforce a byte cap:
 
 ```yaml
 processors:
@@ -76,7 +76,7 @@ The byte limiter reports itself stateful, so the processor rejects it with `samp
 
 With `num_shards` greater than one, the configured sustained byte rate is divided across shards. `burst_capacity` is deliberately not divided because a whole trace is evaluated on one shard and still needs to fit. The aggregate instantaneous burst allowance can therefore grow to roughly the per-shard burst multiplied by shard count.
 
-Every Collector replica owns an independent bucket. A 1 MiB/s setting on six replicas permits approximately 6 MiB/s sustained across the tier, assuming balanced traffic. Divide a fleet budget deliberately and leave room for uneven trace-ID distribution.
+On each Collector replica, each configured `bytes_limiting` policy gets an independent bucket per shard. A 1 MiB/s setting on six replicas permits approximately 6 MiB/s sustained across the tier, assuming balanced traffic. Divide a fleet budget deliberately and leave room for uneven trace-ID distribution.
 
 ## Compare Related Policies
 
@@ -89,9 +89,9 @@ Use byte limiting for egress or cost budgets dominated by payload size. Use the 
 
 ## Observe and Load-Test the Bucket
 
-The generated `count_traces_sampled` metric reports decisions by policy. Current Contrib also offers a feature-gated alpha `count_bytes_sampled` metric through `processor.tailsamplingprocessor.metricstatcountbytessampled`.
+The generated development metric `otelcol_processor_tail_sampling_count_traces_sampled` reports per-policy votes. The alpha feature gate `processor.tailsamplingprocessor.metricstatcountbytessampled`, disabled by default, enables the development metric `otelcol_processor_tail_sampling_count_bytes_sampled`. The byte metric uses the processor's accumulated `ResourceSpansSize()` bookkeeping rather than the exact `TracesSize()` token charge, and it records per-policy votes rather than final exported bytes.
 
-Replay a distribution containing small, typical, and near-burst traces. Verify long-run selected protobuf bytes, short burst behavior, large-trace rejection, and results across all shards and replicas. Token buckets are arrival-order sensitive: a large trace can be rejected while smaller traces arriving later fit the remaining tokens.
+Replay a distribution containing small, typical, and near-burst traces. Verify long-run selected `TracesSize()` bytes directly, short burst behavior, large-trace rejection, and results across all shards and replicas. Token buckets are arrival-order sensitive: a large trace can be rejected while smaller traces arriving later fit the remaining tokens.
 
 ## Official Documentation
 
