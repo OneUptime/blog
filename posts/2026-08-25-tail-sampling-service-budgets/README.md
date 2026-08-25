@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Tail Sampling, OpenTelemetry Collector, Rate Allocation, Capacity Planning
 
-Description: Allocate a composite span-per-second sampling budget among service classes, with ordered matching, whole-trace charging, and replica-aware limits.
+Description: Allocate a composite span-per-second sampling budget among service classes, with ordered matching, decision-time trace charging, and replica-aware limits.
 
 ---
 
 The tail-sampling `composite` policy combines ordered classifiers with a `max_total_spans_per_second` budget and percentage allocations. It is useful when one noisy service should not consume the entire sampled-span allowance.
 
-Despite the common shorthand “trace budget,” the limiter accounts in spans per wall-clock second. A trace is accepted or rejected as a whole based on its span count.
+Despite the common shorthand “trace budget,” the limiter accounts in spans per wall-clock second. At each decision, the accumulated spans for a trace are accepted or rejected together and charged by their count. Spans arriving after a sampled decision are not part of that charge.
 
 ## Allocate Every Class Explicitly
 
@@ -47,11 +47,11 @@ processors:
               percent: 30
 ```
 
-The intended allocations are 400, 300, and 300 sampled spans per second. In current Collector Contrib source, evaluator construction follows the order of `composite_sub_policy`; the retained `policy_order` field is decoded but is not consulted by the helper. Keep both lists aligned for compatibility with other versions, but do not expect `policy_order` to reorder a differently ordered `composite_sub_policy` in the current release. List every subpolicy in `rate_allocation`.
+The intended allocations are 400, 300, and 300 sampled spans per second. In Collector Contrib v0.159.0, evaluator construction follows the order of `composite_sub_policy`; the retained `policy_order` field is decoded but is not consulted by the helper. Keep both lists aligned with the documented configuration model, but do not expect `policy_order` to reorder a differently ordered `composite_sub_policy` in that release. List every subpolicy in `rate_allocation`.
 
-Current helper code assigns an omitted subpolicy an equal-share default; a zero or negative percentage is treated the same way. Mixing positive percentages with defaulted entries can make the effective sum surprising. Make every allocation explicitly positive and keep their total at or below 100%.
+As of v0.159.0, helper code assigns an omitted subpolicy an equal-share default; a zero or negative percentage is treated the same way. Releases through v0.158.0 instead left an omitted subpolicy with zero capacity. Mixing positive percentages with defaulted entries can make the effective sum surprising. Use a unique name for each subpolicy, make every allocation explicitly positive, and keep their total at or below 100%.
 
-That last constraint is important in the current implementation. Admission compares the selected subpolicy's counter with both its allocation and `max_total_spans_per_second`; it does not maintain a separate sum of all subpolicy counters. Allocations totaling at most 100% are what make the configured maximum an aggregate ceiling across classes.
+That last constraint is important in the v0.159.0 implementation. Admission compares the selected subpolicy's counter with both its allocation and `max_total_spans_per_second`; it does not maintain a separate sum of all subpolicy counters. With one allocation per uniquely named subpolicy, allocations totaling at most 100% are what make the configured maximum an aggregate ceiling across classes for spans charged at decision time.
 
 ## Understand Ordered Classification
 
@@ -59,7 +59,7 @@ The composite evaluator walks subpolicies in order. The first matching subpolicy
 
 That behavior is what prevents an exhausted checkout class from consuming `other-services` capacity. It also means order is material when a trace matches several classes.
 
-The counters reset at the start of a new Unix second. This is not a smoothing token bucket. Output can be bursty at second boundaries, and unused allocation is not automatically borrowed by an earlier class whose budget is exhausted.
+The counters reset on the first evaluation after the Unix second changes. This is not a smoothing token bucket. Output can be bursty at second boundaries, and unused allocation is not automatically borrowed by an earlier class whose budget is exhausted.
 
 ## Define “Service” for a Distributed Trace
 
@@ -71,15 +71,17 @@ Test missing and conflicting classification values. The final `always_sample` su
 
 ## Account for Whole-Trace Charging
 
-For each matching trace, the evaluator calculates:
+For each matching trace at decision time, the evaluator calculates:
 
 ```text
 new sampled count = spans already charged this second + trace span count
 ```
 
-It accepts only if the new value fits the allocated spans per second. A 450-span checkout trace cannot fit a 400-span allocation even at the beginning of a second. Smaller traces that arrive later may still fit because a rejected trace does not consume the counter.
+It accepts only if the new value fits the allocated spans per second. A checkout trace with 450 spans accumulated before its decision cannot fit a 400-span allocation even at the beginning of a second. Smaller traces that arrive later may still fit because a rejected trace does not consume the counter.
 
-Use `maximum_trace_size_bytes` and a span-count policy when giant traces need separate protection. Composite allocation controls span count, not serialized bytes or backend cost.
+`trace.SpanCount` is only the count known when evaluation runs. Late spans that arrive while a sampled decision is retained or cached are forwarded without another composite evaluation or counter increment; after the decision is forgotten, a late batch can be evaluated as a new partial trace. Allow headroom and monitor late spans because total exported spans can therefore exceed the configured rate.
+
+`maximum_trace_size_bytes` provides an early byte-size drop before a sampling decision. For a hard span-count exclusion, put a `span_count` matcher inside a top-level `drop` policy; a standalone top-level `span_count` policy is only a positive sampling vote. Composite allocation controls span count, not serialized bytes or backend cost.
 
 ## Combine Priority and Hard Exclusions Carefully
 
@@ -97,7 +99,7 @@ Use `trace-complete`. Composite rate allocation is temporal state, and whole-tra
 
 ## Observe Attribution and Utilization
 
-Enable the alpha `processor.tailsamplingprocessor.recordpolicy` gate in a test environment to add `tailsampling.composite_policy` for accepted traces. Per-policy trace metrics show the top-level composite vote, while sampled span counters require their own alpha feature gate.
+Enable the alpha `processor.tailsamplingprocessor.recordpolicy` gate in a test environment to record `tailsampling.composite_policy` on the instrumentation scopes present when a composite subpolicy accepts a trace. Late spans forwarded under an existing sampled decision do not receive that composite-subpolicy attribution. Per-policy trace metrics show the top-level composite vote. The `otelcol_processor_tail_sampling_count_spans_sampled` metric likewise counts spans presented to each top-level policy evaluation, not deduplicated exporter output, and requires the separate alpha `processor.tailsamplingprocessor.metricstatcountspanssampled` gate.
 
 Track source spans by budget class independently so you can distinguish an exhausted allocation from absent traffic. Replay traces at second boundaries and across replicas, and verify the exact retained trace IDs and span totals.
 
@@ -112,4 +114,4 @@ Track source spans by budget class independently so you can distinguish an exhau
 
 ## Conclusion
 
-Use one ordered composite policy, explicit allocations totaling no more than 100%, and a final catch-all to partition a sampled-span budget. Define trace ownership explicitly, because distributed traces contain several services. Finally, multiply limits across replicas and remember that whole traces, not fractional spans, consume each per-second allocation.
+Use one ordered composite policy, explicit allocations totaling no more than 100%, and a final catch-all to partition a sampled-span budget. Define trace ownership explicitly, because distributed traces contain several services. Finally, multiply limits across replicas and remember that all spans known for an admitted trace are charged together at decision time; later spans are not recharged.
