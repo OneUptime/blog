@@ -102,7 +102,6 @@
 
 ## VPA
 
-8. Why VPA Multiplies Resource Limits When Requests Rise: Preserved Request-to-Limit Ratios Explained
 9. How to Exclude Sidecars from VPA or Manage CPU and Memory Per Container
 10. How to Export VPA Target, Lower, Upper, and Uncapped Recommendations to Prometheus
 11. How to Seed VPA with Prometheus History After a Recommender Restart
