@@ -8,7 +8,7 @@ Description: Diagnose Fulcio OIDC failures systematically by checking discovery,
 
 ---
 
-Fulcio token errors are easiest to solve when you separate five questions: who issued the token, who it was issued for, which principal it represents, whether it is valid now, and whether the certificate requester controls the submitted private key.
+Fulcio token errors are easiest to solve when you separate five questions: who issued the token, who it was issued for, which principal it represents, whether it is valid now, and whether the certificate requester controls the private key corresponding to the submitted public key.
 
 The claims `iss`, `aud`, `sub`, `exp`, and optional `nbf` answer only part of those questions. Provider-specific claims and the token's cryptographic signature matter too. Decoding a JWT is useful for diagnosis, but decoded JSON is not evidence that the token is authentic.
 
@@ -45,17 +45,17 @@ https://id.example.com/
 https://id.example.com/tenant-a
 ```
 
-Do not assume Fulcio removes a slash or path. Compare the token value with the configured `oidc-issuers` entry and its `issuer-url`. Then retrieve discovery metadata from the token issuer:
+Do not assume Fulcio normalizes a slash or path when comparing issuer identifiers. Compare the token value with the exact `oidc-issuers` entry and its `issuer-url`, or, for a dynamic issuer, with the intended `meta-issuers` pattern. Then retrieve discovery metadata from the token issuer:
 
 ```bash
 OIDC_ISSUER='https://id.example.com'
 
 curl --fail --silent --show-error \
-  "$OIDC_ISSUER/.well-known/openid-configuration" |
+  "${OIDC_ISSUER%/}/.well-known/openid-configuration" |
   jq '{issuer, jwks_uri, id_token_signing_alg_values_supported}'
 ```
 
-The discovery document's `issuer` must agree with the issuer being verified. Confirm Fulcio can reach the discovery and JWKS URLs, resolve DNS, validate their TLS chains, and traverse any required proxy. For an internal issuer signed by a private TLS CA, configure Fulcio's supported `ca-cert`; do not use an insecure TLS bypass.
+The shell expansion removes a terminal slash only when constructing the discovery URL; it does not normalize the issuer identifier. The discovery document's `issuer` must exactly match the concrete issuer being verified. Confirm Fulcio can reach the discovery and JWKS URLs, resolve DNS, validate their TLS chains, and traverse any required proxy. For an internal issuer signed by a private TLS CA, configure Fulcio's supported `ca-cert`; do not use an insecure TLS bypass.
 
 Federated email issuers are a special case. A Fulcio configuration can use `issuer-claim` to take the identity-provider issuer from another JSON claim. When debugging, distinguish the JWT issuer used for signature verification from the issuer identity ultimately written to the certificate.
 
@@ -71,7 +71,7 @@ Fulcio's official configuration convention uses `client-id: sigstore`, so the to
 {"aud": ["sigstore", "another-client"]}
 ```
 
-A token for a cloud API, registry, or default GitHub organization audience is not interchangeable with a Fulcio token. GitHub Actions uses the repository owner's URL as its default audience unless the requester asks for another one. Cosign's GitHub provider requests the `sigstore` audience automatically; custom code must do so explicitly, for example with `core.getIDToken('sigstore')`.
+A token for a cloud API, registry, or default GitHub repository-owner audience is not interchangeable with a Fulcio token. GitHub Actions uses the repository owner's URL as its default audience unless the requester asks for another one. Cosign's GitHub provider requests the `sigstore` audience automatically; custom code must do so explicitly, for example with `await core.getIDToken('sigstore')`.
 
 If a private Fulcio deployment uses another `client-id`, both the OIDC token request and Fulcio configuration must use that exact value. Changing the client ID is a trust-domain decision, not a client-side workaround.
 
@@ -84,13 +84,13 @@ If a private Fulcio deployment uses another `client-id`, both the OIDC token req
 - For an email issuer, the verified `email` claim becomes the SAN and is normally the proof-of-possession challenge.
 - For Kubernetes, nested `kubernetes.io` claims determine the service-account SAN.
 
-The default proof-of-possession challenge is `sub` for most non-email identities. If the client signs a different value, or signs with a key other than the one submitted to Fulcio, a perfectly valid JWT will still be rejected. Check the Fulcio configuration endpoint for the issuer's advertised challenge claim before constructing a low-level request.
+The default proof-of-possession challenge is `sub` for most non-email identities. If the client signs a different value, or signs with a private key that does not correspond to the public key submitted to Fulcio, a perfectly valid JWT will still be rejected. Check the Fulcio configuration endpoint for the issuer's advertised challenge claim before constructing a low-level request.
 
 For GitHub, also remember that the default `sub` changes shape according to job context. It can include a branch, pull request, tag, or environment. GitHub.com repositories created after July 15, 2026 use the immutable default format containing owner and repository IDs; older repositories keep the previous format unless they opt in, and renames or transfers after that date also move to the immutable format. This rollout does not apply to GitHub Enterprise Server. A customized GitHub `sub` template affects the raw token subject, but it does not rewrite Fulcio's documented `job_workflow_ref` SAN mapping.
 
 ## Check `exp`, `iat`, and `nbf` Against the Server Clock
 
-Fulcio requires `exp` and `iat`; `nbf` is optional. Read them as Unix seconds and compare them with the clock on the Fulcio server, not just the developer laptop:
+Fulcio's documented token contract requires `exp` and `iat`; `nbf` is optional. Read them as Unix seconds and compare them with the clock on the Fulcio server, not just the developer laptop:
 
 ```bash
 date -u +%s
@@ -101,7 +101,7 @@ Interpret the claims as follows:
 
 - `exp`: the token must not be expired when Fulcio validates it;
 - `nbf`: when present, the current verifier dependency allows five minutes of clock-skew leeway before rejecting a token as too early; and
-- `iat`: Fulcio's documented token contract requires the claim, but the current verifier records it without applying an issuance-age or future-time cutoff.
+- `iat`: the documented contract requires the claim, but the current verifier does not reject a missing, old, or future `iat`; when present, it parses and records it.
 
 Keep tokens compliant with the documented contract and clocks synchronized; do not treat the current `iat` behavior or `nbf` leeway as a security policy that every release will preserve.
 
@@ -111,7 +111,7 @@ Do not “fix” timing errors by making tokens long-lived. Short validity reduc
 
 ## Verify the JWS Header and Issuer Keys
 
-Inspect the JWT header for `kid` and `alg`. The issuer's `jwks_uri` must expose the referenced key, and the algorithm must be accepted by the OIDC verifier. Common operational failures include:
+Inspect the JWT header for `alg` and, when present, `kid`. The issuer's `jwks_uri` must expose a key that verifies the signature, any `kid` must match that key, and the algorithm must be accepted by the OIDC verifier. Common operational failures include:
 
 - the issuer rotated keys but Fulcio cannot refresh JWKS;
 - an internal cache serves stale discovery or keys;
@@ -127,8 +127,8 @@ After standard validation, Fulcio constructs a provider-specific principal. A fa
 
 | Issuer type | Important additional inputs |
 | --- | --- |
-| email | `email`, `email_verified: true` unless an explicitly supported private configuration safely replaces that check |
-| GitHub Actions | `job_workflow_ref` plus workflow, repository, ref, SHA, runner, and related CI claims used by the configured templates |
+| email | `email`; `email_verified` must be true unless a trusted private issuer that verifies email through its own process is deliberately configured with `skip-email-verification: true` |
+| GitHub Actions | `job_workflow_ref` plus `workflow`, `repository`, `ref`, `sha`, `runner_environment`, and related CI claims used by the configured templates |
 | SPIFFE | URI `sub` with a trust domain exactly matching `spiffe-trust-domain` |
 | Kubernetes | nested namespace and service-account claims under `kubernetes.io` |
 | generic CI provider | every token claim referenced by the configured SAN and extension templates |
@@ -140,13 +140,13 @@ Fulcio templates use missing-key errors. A renamed or omitted CI claim can there
 Work from the outside inward:
 
 1. Can Fulcio reach the issuer's discovery URL and JWKS over trusted TLS?
-2. Does the compact JWS have three parts, a recognized algorithm, and a known `kid`?
+2. Does the compact JWS have three parts, a recognized algorithm, and, when present, a `kid` matching an issuer key?
 3. Does its signature validate with current issuer keys?
-4. Does `iss` exactly select the intended configured issuer?
+4. Does `iss` select the intended exact issuer entry or permitted `meta-issuers` pattern?
 5. Does `aud` contain that issuer entry's `client-id`?
 6. Are `exp`, `nbf`, and `iat` consistent with the Fulcio node's time?
 7. Are provider-specific identity and template claims present and correctly typed?
-8. Does the proof of possession use the advertised challenge and submitted key?
+8. Does the proof of possession sign the advertised challenge with the private key corresponding to the submitted public key?
 
 Also inspect Fulcio's `/api/v2/configuration` response and structured server logs. Log a request correlation ID, configured issuer name, and safe error classification—not the JWT, email, or full claims object.
 
