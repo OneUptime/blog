@@ -8,7 +8,7 @@ Description: Configure SDK head sampling so decision-relevant spans reach the Co
 
 ---
 
-An SDK sampler runs when a span is created. If it returns `DROP`, the span is not recording and normal span processors and exporters do not deliver a completed span to the Collector. A tail sampler cannot infer that missing span later, even if the operation eventually returns HTTP 500 or throws an exception.
+An SDK sampler runs when a span is created. If it returns `DROP`, the span is not recording and normal span processors and exporters do not deliver a completed span to the Collector. A tail sampler cannot reconstruct or evaluate that missing span later, even if the operation eventually returns HTTP 500 or throws an exception.
 
 Tail sampling can select only from telemetry that survived every upstream stage.
 
@@ -43,7 +43,7 @@ This matters at public edges and migration boundaries. A request from an externa
 Choose the boundary deliberately:
 
 - preserve the parent decision when end-to-end trace consistency is more important and the upstream sampler is trusted;
-- configure language-specific ParentBased branches so `remoteParentNotSampled` records when the internal tail tier needs visibility; or
+- configure language-specific ParentBased branches so `remoteParentNotSampled` returns `RECORD_AND_SAMPLE`—for example, by delegating to `AlwaysOn`—when the internal tail tier needs visibility; or
 - use `AlwaysOn` at a controlled boundary, understanding that upstream portions can remain absent and sampled flags can change within the distributed trace.
 
 The standard environment names do not expose every ParentBased branch in every SDK. Custom programmatic sampler configuration may be required. Document the resulting partial-trace behavior.
@@ -63,7 +63,7 @@ The tail sampler's `trace_flags` policy can preserve traces whose sampled flag w
 
 ## Size the Full-Fidelity Path
 
-Moving from 10% head sampling to an all-recording upstream path can multiply SDK CPU, allocation, export bandwidth, Collector ingestion, and pending tail state. Roll out in stages:
+Moving from 10% head sampling to an all-sampled (`RECORD_AND_SAMPLE`) upstream path can multiply SDK CPU, allocation, export bandwidth, Collector ingestion, and pending tail state. Roll out in stages:
 
 1. Measure spans, trace IDs, and bytes per second at the current rate.
 2. Estimate the all-on multiplier and verify SDK batch queues.
@@ -71,11 +71,11 @@ Moving from 10% head sampling to an all-recording upstream path can multiply SDK
 4. Recalculate `num_traces`, memory or tail storage, decision caches, and exporter queues.
 5. Set `maximum_trace_size_bytes` and overload alerts.
 
-Tail sampling moves cost downstream; it does not make recording every span free.
+Tail sampling moves cost downstream; it does not make recording and exporting every span free.
 
 ## Verify with a Deliberately Unsampled Error
 
-Create a test endpoint whose root head decision is known. Under an AlwaysOff or zero-ratio configuration, trigger an error and confirm no span reaches a debug receiver before tail sampling. Then switch to the intended sampler and verify the error policy retains it:
+Create a test endpoint whose root head decision is known and whose error path sets the span status to `ERROR`. Under an AlwaysOff or zero-ratio configuration, trigger the error and confirm no span reaches a `debug` exporter in a parallel diagnostic pipeline that bypasses tail sampling. Then switch to the intended sampler and verify the error policy retains it:
 
 ```yaml
 processors:
@@ -99,4 +99,4 @@ Repeat with a sampled remote parent and an unsampled remote parent. This exposes
 
 ## Conclusion
 
-Use an all-recording, consistently propagated SDK path when tail policies must see every possible error or slow trace. `parentbased_always_on` is the standard starting point, but audit remote unsampled parents and every processor before the tail tier. Then capacity-plan the much larger full-fidelity stream—the Collector cannot sample data that never arrives.
+Use an all-sampled (`RECORD_AND_SAMPLE`), consistently propagated SDK path when tail policies must see every possible error or slow trace. `parentbased_always_on` is the standard starting point, but audit remote unsampled parents and every processor before the tail tier. Then capacity-plan the much larger full-fidelity stream—the Collector cannot sample data that never arrives.
