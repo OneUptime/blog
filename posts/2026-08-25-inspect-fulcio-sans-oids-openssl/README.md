@@ -75,7 +75,7 @@ The certificate profile also requires a Subject Key Identifier and an Authority 
 Use the full text output because OpenSSL does not have friendly names for every Sigstore private OID:
 
 ```bash
-openssl x509 -in fulcio-leaf.pem -noout -text |
+openssl x509 -in fulcio-leaf.pem -noout -text -certopt ext_parse |
   less
 ```
 
@@ -101,9 +101,9 @@ Search inside `less` for `1.3.6.1.4.1.57264`. Important modern Fulcio extensions
 | `1.3.6.1.4.1.57264.1.23` | Deployment Environment |
 | `1.3.6.1.4.1.57264.1.24` | Raw OIDC Token Subject |
 
-Extensions `.1.8` through `.1.24` are DER-encoded UTF8String values. Modern OpenSSL releases generally display the decoded string below the numeric OID. If a platform renders dots or escapes instead, do not strip bytes heuristically in a production policy; use an ASN.1-aware X.509 library and require a UTF8String.
+Extensions `.1.8` through `.1.24` are DER-encoded UTF8String values. The `ext_parse` option asks OpenSSL to ASN.1-parse unsupported extensions, so these values should appear on a `UTF8STRING` line. Without it, OpenSSL commonly renders the DER tag and length as dots or escapes before the printable payload. Do not scrape either text format in a production policy; use an ASN.1-aware X.509 library and require a UTF8String.
 
-The older issuer and GitHub-specific OIDs `.1.1` through `.1.6` contain raw, non-DER strings and are deprecated. Historical certificates may still need them. OID `.1.7` identifies Fulcio's username `otherName` SAN rather than a normal extension value.
+The older issuer and GitHub-specific OIDs `.1.1` through `.1.6` contain raw, non-DER strings and are deprecated, so `ext_parse` typically reports `Error in encoding` for them. Fulcio still emits `.1.1`, and its GitHub Actions configuration also populates `.1.2` through `.1.6`, for backward compatibility. OID `.1.7` identifies Fulcio's username `otherName` SAN rather than a normal extension value.
 
 ## Identify the SAN Type
 
@@ -124,22 +124,21 @@ X509v3 Subject Alternative Name: critical
     URI:spiffe://build.example.com/release/signer
 ```
 
-Do not read the SAN without the issuer. A verifier must bind the SAN to Issuer V2 (`.1.8`), because two OIDC providers can assert the same textual subject.
+Do not read the SAN without the issuer. A verifier must bind the SAN to the authenticated OIDC issuer—normally Issuer V2 (`.1.8`), with the deprecated issuer extension (`.1.1`) supported for legacy compatibility—because two OIDC providers can assert the same textual subject.
 
 For GitHub Actions, the URI SAN comes from `job_workflow_ref`; it is also the Build Signer URI. The raw GitHub `sub`, branch or environment context, initiating workflow, and source repository are separate extensions. A SAN alone cannot describe all provenance decisions.
 
 ## Inspect the Embedded SCT
 
-Fulcio prefers an embedded SCT from its certificate-transparency log. In OpenSSL text output, look for the Google Certificate Transparency extension:
+Fulcio prefers an embedded SCT from its certificate-transparency log. In OpenSSL text output, look for:
 
 ```text
 CT Precertificate SCTs
-1.3.6.1.4.1.11129.2.4.2
 ```
 
-The SCT is a signed promise from a particular log to include the certificate. Seeing bytes in this extension is not enough: a Sigstore verifier validates the SCT with a trusted CT log key distributed through trusted root metadata. The SCT does not prove that the artifact signature was made during the certificate lifetime; Rekor or accepted RFC 3161 timestamp evidence supplies signed time for that purpose.
+The underlying RFC 6962 embedded-SCT extension OID is `1.3.6.1.4.1.11129.2.4.2`. The SCT is a signed promise from a particular log to include the certificate. Seeing bytes in this extension is not enough: a Sigstore verifier validates the SCT with a trusted CT log key distributed through trusted root metadata. The SCT does not prove that the artifact signature was made during the certificate lifetime; a verified Rekor v1 inclusion promise (the signed entry timestamp) or accepted RFC 3161 timestamp evidence supplies signed time for that purpose.
 
-Private Fulcio backends can return a detached SCT rather than embed one, and support is backend-dependent. Inspect the bundle or API response as well as the leaf when diagnosing a private deployment.
+Every Fulcio signing backend supports returning a detached SCT, while embedded-SCT support is backend-dependent. A detached SCT is returned alongside the certificate chain in the Fulcio API response; the standardized Sigstore bundle has no field for it, and Cosign does not store it. Preserve and inspect the original API response as well as the leaf when diagnosing a private deployment.
 
 ## Diagnose the Chain at the Correct Time
 
@@ -149,13 +148,13 @@ If you have an authenticated root and intermediate, OpenSSL can diagnose path co
 INTEGRATED_TIME='1787652300'
 
 openssl verify \
-  -CAfile fulcio-roots.pem \
+  -trusted fulcio-roots.pem \
   -untrusted fulcio-intermediates.pem \
   -attime "$INTEGRATED_TIME" \
   fulcio-leaf.pem
 ```
 
-Use a time proven by validated transparency or timestamp evidence, not a value copied from an untrusted JSON field. Obtain public Sigstore trust material through its TUF root rather than downloading a root certificate from the same endpoint under investigation.
+The `-trusted` option limits trust anchors to the supplied roots instead of also consulting default platform stores. Use a Rekor `integratedTime` only after validating the v1 inclusion promise that signs it; an inclusion proof alone does not authenticate that field. Alternatively, use the time from validated RFC 3161 evidence. Do not copy a time from an untrusted JSON field. Obtain public Sigstore trust material through its TUF root rather than downloading a root certificate from the same endpoint under investigation.
 
 This command only diagnoses X.509 path and time validity. It still does not establish:
 
@@ -187,7 +186,7 @@ For incident response, record:
 - validity interval;
 - Build Signer, Build Config, source repository, and immutable digest extensions;
 - SCT log ID and timestamp as decoded by a validating Sigstore tool; and
-- Rekor log index and integrated time from a validated bundle.
+- Rekor log index, and integrated time only when authenticated by a verified inclusion promise.
 
 Keep the original bundle unchanged. Derived PEM and text output are convenient evidence, but they are not substitutes for the signed bytes.
 
@@ -195,11 +194,11 @@ Keep the original bundle unchanged. Derived PEM and text output are convenient e
 
 - [Sigstore bundle format and certificate field](https://docs.sigstore.dev/about/bundle/)
 - [Fulcio OID directory and encoding rules](https://github.com/sigstore/fulcio/blob/main/docs/oid-info.md)
-- [Fulcio certificate specification](https://github.com/sigstore/fulcio/blob/main/docs/certificate-specification.md)
+- [Fulcio certificate specification](https://github.com/sigstore/architecture-docs/blob/main/fulcio-spec.md)
 - [Fulcio certificate-transparency design](https://github.com/sigstore/fulcio/blob/main/docs/ctlog.md)
 - [Fulcio OIDC SAN mappings](https://github.com/sigstore/fulcio/blob/main/docs/oidc.md)
 - [Cosign verification documentation](https://docs.sigstore.dev/cosign/verifying/verify/)
 
 ## Conclusion
 
-Extract the DER leaf from the signed bundle, inspect its empty Subject, critical SAN, code-signing usage, issuer, modern Fulcio OIDs, and SCT, and preserve the original bytes. Then make the actual trust decision with a Sigstore verifier that validates the artifact, chain, identity, signed time, and transparency evidence together.
+Extract the DER leaf from the Sigstore bundle, inspect its empty Subject, critical SAN, code-signing usage, issuer, modern Fulcio OIDs, and SCT, and preserve the original bytes. Then make the actual trust decision with a Sigstore verifier that validates the artifact, chain, identity, signed time, and transparency evidence together.
