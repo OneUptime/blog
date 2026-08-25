@@ -102,7 +102,6 @@
 
 ## VPA
 
-19. How to Coordinate VPA with Cluster Autoscaler When Right-Sized Pods Need Larger Nodes
 20. How to Account for Startup Spikes and OOM Events in VPA Memory Recommendations
 
 ## Fulcio
