@@ -102,7 +102,6 @@
 
 ## VPA
 
-16. How to Tune VPA Eviction Tolerance, Updater Interval, and Eviction Rate for Production
 17. How to Troubleshoot the VPA Admission Webhook: CA Bundles, Certificates, and Mutation Failures
 18. How to Read VPA RecommendationProvided, NoPodsMatched, and LowConfidence Conditions
 19. How to Coordinate VPA with Cluster Autoscaler When Right-Sized Pods Need Larger Nodes
