@@ -99,7 +99,6 @@
 
 ## Trace Sampling
 
-5. How to Use `decision_wait_after_root_received` to Reduce Tail-Sampling Delay Without Truncating Long Traces
 6. How to Protect the OpenTelemetry Collector from Giant Traces with `maximum_trace_size_bytes`
 7. How to Cap Tail-Sampled Output by Bytes per Second Instead of Trace or Span Count
 8. How to Move Tail-Sampling State Out of Memory with the Experimental `tail_storage` Extension
