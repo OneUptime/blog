@@ -8,12 +8,12 @@ Description: Size the OpenTelemetry tail-sampling window, live-trace capacity, a
 
 ---
 
-The OpenTelemetry Collector tail-sampling processor has three different kinds of capacity. `decision_wait` controls how long a new trace normally remains pending, `num_traces` limits how many trace IDs can be live at once, and the two decision caches remember completed decisions after span data is released. Treating those settings as interchangeable is a common source of memory incidents and split traces.
+This guide assumes the default `sampling_strategy: trace-complete`, which evaluates accumulated trace data on the timer path. In that mode, the OpenTelemetry Collector tail-sampling processor has three different kinds of capacity. `decision_wait` controls how long a new trace normally remains pending, `num_traces` limits how many trace IDs can be live at once, and the two decision caches remember completed decisions after span data is released. Treating those settings as interchangeable is a common source of memory incidents and split traces.
 
 The useful starting model is:
 
 ```text
-live trace slots ~= new trace IDs/second x effective wait seconds
+undecided trace-slot requirement ~= new trace IDs/second x effective wait seconds
 decision-cache entries ~= decisions/second x desired remembrance seconds
 pending span bytes ~= spans/second x effective wait x measured bytes/span
 ```
@@ -44,10 +44,10 @@ If root spans normally arrive last, `decision_wait_after_root_received` can acce
 
 ## Calculate `num_traces`
 
-Suppose a shard group sees a peak of 2,400 new trace IDs per second, the selected wait is 20 seconds, and you want 30% burst headroom:
+Suppose one Collector replica sees a peak of 2,400 new trace IDs per second, the selected wait is 20 seconds, and you want 30% burst headroom:
 
 ```text
-2,400 x 20 x 1.30 = 62,400 live trace slots
+2,400 x 20 x 1.30 = 62,400 slots for the undecided working set
 ```
 
 Round up and test, for example:
@@ -72,11 +72,11 @@ processors:
 
 `expected_new_traces_per_sec` is an allocation hint. It does not admit, reject, or rate-limit traces. `num_traces` is the live-trace bound. When the bound is reached and `block_on_overflow` is false, the oldest live trace is evicted to make room.
 
-With `num_shards` greater than one, the processor divides `num_traces` and the expected-rate hint across shards. Enforcement is approximate: skew can fill one shard before the aggregate total is reached. Measure each Collector replica, and remember that every replica has its own state.
+With `num_shards` greater than one, the processor divides `num_traces`, the expected-rate hint, and both decision-cache sizes across shards. Enforcement is approximate: skew can fill one shard's live-trace or cache allocation before the aggregate total is reached. Measure each Collector replica, and remember that every replica has its own state.
 
 ## Size the Two Decision Caches Separately
 
-The sampled and non-sampled caches are count-bounded LRU caches. They have no time-to-live setting. Their effective remembrance time depends on how quickly entries of each decision class are inserted.
+The sampled and non-sampled caches are count-bounded LRU caches. They have no time-to-live setting. Their effective remembrance time depends on how quickly entries of each decision class are inserted and on cache hits, which refresh LRU recency.
 
 If 240 traces/s are kept and 2,160 traces/s are dropped, remembering roughly ten minutes of decisions requires approximately:
 
@@ -85,7 +85,7 @@ sampled:     240 x 600 =   144,000 entries
 non-sampled: 2,160 x 600 = 1,296,000 entries
 ```
 
-A reasonable rounded configuration is:
+Add the rounded cache sizes to the preceding processor configuration:
 
 ```yaml
 processors:
@@ -98,7 +98,7 @@ processors:
 
 The caches hold decisions, not buffered span bodies, but they still consume memory. Size them from the separate keep/drop throughputs. The upstream configuration comments recommend making an effective cache at least an order of magnitude larger than `num_traces`; real late-arrival requirements and decision ratios should refine that rule.
 
-There is an important current-implementation detail behind that separation. When the relevant decision cache is active, the processor inserts the decision and removes the completed trace entry and its buffered data. With the default size-zero no-op caches, a completed entry remains in the live trace structure until the circular capacity turns over, so late spans can still inherit its decision there. The pending-bytes formula above is therefore an undecided-working-set estimate, not a complete heap estimate for a cache-disabled configuration; already-decided entries can remain part of the `num_traces` inventory.
+There is an important current-implementation detail behind that separation. When the relevant decision cache is active, the processor inserts the decision and removes the completed trace entry and its buffered data. With the default size-zero no-op caches and `block_on_overflow: false`, a completed entry remains in the live trace structure until the circular capacity turns over, so late spans can still inherit its decision there. The pending-bytes formula above is therefore an undecided-working-set estimate, not a complete heap estimate for a cache-disabled configuration; already-decided entries can remain part of the `num_traces` inventory.
 
 ## Validate the Whole Memory Envelope
 
@@ -113,9 +113,9 @@ Watch these processor metrics together:
 - `otelcol_processor_tail_sampling_early_releases_from_cache_decision`; and
 - `otelcol_processor_tail_sampling_sampling_decision_timer_latency`.
 
-The late-span age histogram covers late spans handled while the completed decision is still in the live trace structure. Cache hits take a separate fast path and increment `early_releases_from_cache_decision` instead, without contributing an age observation, so use both metrics when sizing decision caches.
+The late-span age histogram covers late spans handled while the completed decision is still in the live trace structure. Cache hits take a separate fast path and increment `early_releases_from_cache_decision` instead, without contributing an age observation, so use both metrics when sizing decision caches. Spans that arrive after both the live entry and its cached decision are gone look like a new trace and appear in neither late-span signal.
 
-Set `maximum_trace_size_bytes` as a separate per-trace safety rail if giant traces threaten the memory model. Experimental `tail_storage` can move pending span bodies to an extension, but it does not remove the need to size live trace metadata, caches, disk, or throughput.
+Set `maximum_trace_size_bytes` as a separate per-trace safety rail if giant traces threaten the memory model. Experimental `tail_storage` can move pending span bodies to an extension, but it requires `--feature-gates=+processor.tailsamplingprocessor.tailstorageextension` and cannot be combined with `num_shards` greater than one. It does not remove the need to size live trace metadata, caches, disk, or throughput.
 
 ## Official Documentation
 
