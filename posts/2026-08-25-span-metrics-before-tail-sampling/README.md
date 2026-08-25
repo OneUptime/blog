@@ -80,7 +80,7 @@ The component's current preferred name is `span_metrics`. The older `spanmetrics
 
 ## Define What “Complete Population” Means
 
-This topology counts all spans that reach the OTLP receiver. It cannot restore spans dropped by an SDK head sampler, an upstream probabilistic processor, a failed exporter, or a previous Collector tier. For unbiased request rate, generate metrics before every selective sampling stage or use native application request metrics.
+This topology derives metrics from every span accepted and forwarded through the `traces/red-source` branch; its `memory_limiter` can refuse data before it reaches the connector. When sampled spans carry valid probability-sampling information, the connector can statistically account for compatible SDK or upstream probabilistic sampling; otherwise, those upstream drops remain invisible. It cannot recover telemetry lost because of an upstream exporter failure or hard drops in a previous Collector tier. For unbiased request rate when adjusted counts are unavailable or invalid, generate metrics before every selective sampling stage or use native application request metrics.
 
 Also choose the span kind and dimensions appropriate for the dashboard. Counting both CLIENT and SERVER spans as “requests” double-counts one distributed interaction. The connector's defaults separate series by `span.kind`, `span.name`, service, status, and Collector instance; queries must select the intended operation side.
 
@@ -102,13 +102,13 @@ Limit cardinality at its source: use low-cardinality span names and route templa
 
 ## When Post-Sampling Metrics Can Be Adjusted
 
-The current connector can derive stochastic adjusted counts from valid OpenTelemetry probability-sampling information in W3C `tracestate`. Current tail sampling has an alpha `usetracestate` feature gate that can propagate effective thresholds for matched policies.
+The current connector can derive stochastic adjusted counts from valid OpenTelemetry probability-sampling information in W3C `tracestate`. Current tail sampling has an alpha, off-by-default `processor.tailsamplingprocessor.usetracestate` feature gate that can propagate effective thresholds for sampling policies that vote to sample.
 
 That path is useful but version-sensitive and only correct when every sampling stage preserves valid probability semantics. Pre-tail metrics remain the simpler, stable choice for operational RED dashboards, especially with hard drops, incomplete upstream telemetry, or custom rules whose inclusion probability is unknown.
 
 ## Validate with a Controlled Workload
 
-Send a workload whose selected SERVER-operation series has exactly one server span per request: 10,000 successes, 100 failures, and a known duration distribution. Configure tail sampling to keep all failures and 5% of successes. For that specific `span.kind` and `span.name` series, verify that:
+Send a workload whose selected `SERVER` operation has exactly one server span per request: 10,000 successes, 100 failures whose OpenTelemetry span status is `ERROR`, and a known duration distribution. Configure tail sampling to keep all failures, every trace matching the slow policy, and a 5% baseline sample of the remainder. For that `service.name`, `span.kind`, and `span.name` slice, aggregating or filtering the default `status.code` and `collector.instance.id` dimensions as appropriate, verify that:
 
 - pre-tail calls approximate 10,100;
 - pre-tail failures approximate 100;
