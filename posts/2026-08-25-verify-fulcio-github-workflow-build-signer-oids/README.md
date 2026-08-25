@@ -10,7 +10,7 @@ Description: Distinguish the executing workflow, initiating workflow, source rep
 
 A valid Fulcio certificate proves that an accepted OIDC issuer authenticated a workload. It does not automatically prove that the workload was the one your release policy intended. For GitHub Actions, verify the certificate's issuer and SAN, then use the modern Fulcio extensions to distinguish the executing build instructions, the initiating workflow, the source repository, and their immutable revisions.
 
-The most important fields are Build Signer URI (`1.3.6.1.4.1.57264.1.9`) and Build Signer Digest (`1.3.6.1.4.1.57264.1.10`). They are provider-neutral replacements for the older GitHub-only workflow OIDs.
+The most important fields are Build Signer URI (`1.3.6.1.4.1.57264.1.9`) and Build Signer Digest (`1.3.6.1.4.1.57264.1.10`). They are part of the provider-neutral extension suite that replaces the older GitHub-only workflow OIDs.
 
 ## Understand the Two Workflow Identities
 
@@ -44,16 +44,16 @@ Current Fulcio maps GitHub token claims as follows:
 | `.1.20` | Build Trigger | `event_name` |
 | `.1.21` | Run Invocation URI | repository Actions run URL plus attempt |
 | `.1.22` | Source Repository Visibility at Signing | `repository_visibility` |
-| `.1.23` | Deployment Environment | `environment`, possibly empty |
+| `.1.23` | Deployment Environment | `environment` when present; extension omitted otherwise |
 | `.1.24` | Token Subject | raw `sub` |
 
 All of these OIDs begin with Sigstore's private enterprise number `1.3.6.1.4.1.57264`. The short `.1.x` notation in the table is only an abbreviation.
 
-The `aud`, `exp`, optional `nbf`, and `iat` claims are used to validate the token and are not copied to dedicated certificate extensions. Do not expect to recover the original JWT or its complete claim set from the certificate.
+The `aud` and `exp` claims, plus `nbf` when present, participate in token validation; `iat` records the token's issuance time. None is copied to a dedicated certificate extension. Do not expect to recover the original JWT or its complete claim set from the certificate.
 
 ## Inspect a Standardized Bundle
 
-For a Cosign v3 standardized JSON bundle, extract the leaf certificate without assuming whether the producer used the single-certificate or chain representation:
+For standardized JSON bundles, extract the leaf certificate while supporting both the v0.3 single-certificate representation used by current Cosign v3 public-infrastructure bundles and the v0.1/v0.2 chain representation:
 
 ```bash
 jq -er '
@@ -67,7 +67,7 @@ openssl x509 -inform DER -in fulcio-leaf.der -out fulcio-leaf.pem
 openssl x509 -in fulcio-leaf.pem -noout -text
 ```
 
-Look for an empty Subject, a URI SAN, code-signing extended key usage, the issuer OID, and OIDs `.1.9` through `.1.24`. Modern values are DER-encoded UTF8 strings, so current OpenSSL versions normally render them beneath their numeric OIDs.
+Look for an empty Subject, a URI SAN, code-signing extended key usage, the issuer OID, and the applicable OIDs in the `.1.9` through `.1.24` range; `.1.23` is absent when the job has no deployment environment. Modern values are DER-encoded UTF8String values. `openssl x509 -text` exposes their readable contents beneath the numeric OIDs, but often prefixes them with punctuation representing the DER tag and length bytes; treat this as inspection output, not exact parsing.
 
 For example, the relevant evidence might be:
 
@@ -82,7 +82,7 @@ Build Config URI:
   https://github.com/acme/widget/.github/workflows/release.yml@refs/tags/v1.8.0
 
 Build Config Digest:
-  91ab...e602
+  a404...9c0d
 
 Source Repository URI:
   https://github.com/acme/widget
@@ -95,7 +95,7 @@ This says that `acme/widget` initiated a release through its top-level workflow,
 
 ## Build a Strong Verification Policy
 
-Start with normal Sigstore cryptographic verification. Since GitHub's SAN is the Build Signer URI, an exact Cosign identity check validates the executing workflow identity:
+Start with normal Sigstore cryptographic verification. The following example uses GitHub.com's default issuer. Since GitHub's SAN is the Build Signer URI, an exact Cosign identity check validates the executing workflow identity:
 
 ```bash
 cosign verify \
@@ -112,13 +112,13 @@ For higher assurance, the policy should assert a tuple rather than one string:
 
 | Policy dimension | Recommended certificate evidence |
 | --- | --- |
-| OIDC authority | Issuer V2 equals `https://token.actions.githubusercontent.com` |
+| OIDC authority | Issuer V2 equals the exact expected GitHub issuer; the default is `https://token.actions.githubusercontent.com` |
 | signing implementation | Build Signer URI equals the approved reusable workflow |
 | immutable signer revision | Build Signer Digest is an allowlisted commit SHA |
 | caller | Build Config URI matches the approved top-level workflow |
 | immutable caller revision | Build Config Digest is reviewed or resolves to the protected release commit |
 | source | Source Repository URI and immutable repository ID match the intended repository |
-| source revision | Source Repository Digest equals the artifact build revision |
+| source revision | Source Repository Digest equals the expected run-triggering revision |
 | trigger | Build Trigger and Source Repository Ref match release policy |
 | execution | Runner Environment is allowed; Run Invocation URI is retained for investigation |
 
@@ -133,15 +133,15 @@ A practical policy often checks both:
 - readable URI for the expected organization, repository, and workflow path;
 - immutable repository/owner identifier to survive or detect renames;
 - immutable workflow digest against an allowlist, release commit, or reviewed provenance statement; and
-- source digest against the exact artifact build input.
+- source digest against the expected run-triggering revision, with the trusted workflow or provenance binding the artifact to that source.
 
 Do not assume every provider formats a digest as a bare hexadecimal SHA. Fulcio's OID guide explicitly allows providers to emit provider-specific formats. Apply GitHub-specific formatting rules only after pinning the GitHub issuer.
 
 ## Handle Reusable Workflow Upgrades
 
-If callers use `@v4`, the SAN and Build Signer URI contain that ref while Build Signer Digest changes when `v4` moves. Decide whether this is acceptable:
+If callers reference a reusable workflow as `@v4` and GitHub resolves `v4` as a tag, the SAN and Build Signer URI end in `@refs/tags/v4` while Build Signer Digest changes when the tag moves. Decide whether this is acceptable:
 
-- **Release-channel trust:** allow the `@v4` URI and require the digest to be reachable from the protected `v4` release policy.
+- **Release-channel trust:** allow the `@refs/tags/v4` URI and require the digest to be reachable from the protected `v4` release policy.
 - **Immutable trust:** call the reusable workflow by commit SHA and require that exact SHA.
 - **Controlled rotation:** maintain an allowlist of reviewed signer digests and remove old entries only after all artifacts needing verification remain supportable.
 
@@ -151,7 +151,7 @@ Do not require the current target of a mutable ref to equal an old certificate's
 
 Fulcio OIDs `.1.2` through `.1.6` contain GitHub trigger, SHA, workflow name, repository, and ref. They are deprecated in favor of provider-generic extensions starting at `.1.8`. The old workflow name is mutable and is not the same thing as a workflow file identity.
 
-Historical certificates can contain the deprecated fields, so archival verifiers may need compatibility logic. New policy should prefer Build Signer, Build Config, Source Repository, and Token Subject extensions. Do not reject an old artifact solely because a modern field did not exist when its valid certificate was issued; version the policy by certificate or log time.
+Fulcio's current GitHub configuration still emits the deprecated fields for compatibility, and historical certificates can contain them, so archival verifiers may need compatibility logic. New policy should prefer Build Signer, Build Config, Source Repository, and Token Subject extensions. Do not reject an old artifact solely because a modern field did not exist when its valid certificate was issued; version the policy by certificate or log time.
 
 ## Official Documentation
 
@@ -164,4 +164,4 @@ Historical certificates can contain the deprecated fields, so archival verifiers
 
 ## Conclusion
 
-For GitHub Actions, the SAN and Build Signer URI identify the executing workflow, while Build Config fields identify its caller and Source Repository fields identify what was built. Verify the GitHub issuer, exact signer URI, and immutable digests as one policy tuple—especially when reusable workflows separate the release caller from the signing implementation.
+For GitHub Actions, the SAN and Build Signer URI identify the executing workflow, while Build Config fields identify its caller and Source Repository fields identify the source context GitHub reported for the run. Verify the GitHub issuer, exact signer URI, and immutable digests as one policy tuple—especially when reusable workflows separate the release caller from the signing implementation.
