@@ -99,7 +99,6 @@
 
 ## Trace Sampling
 
-2. How to Fix `sampling_trace_dropped_too_early` Without Blindly Adding Collector Memory
 3. How to Keep Late-Arriving Spans from Splitting One Trace into Conflicting Sampling Decisions
 4. OpenTelemetry `trace-complete` vs `span-ingest`: Which Tail-Sampling Strategy Fits Your Pipeline?
 5. How to Use `decision_wait_after_root_received` to Reduce Tail-Sampling Delay Without Truncating Long Traces
