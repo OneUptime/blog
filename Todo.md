@@ -99,7 +99,6 @@
 
 ## Trace Sampling
 
-14. Why Tail Sampling Cannot Recover an Error Trace Dropped by the SDK—and How to Set the Upstream Sampler
 15. How to Keep Probabilistic Sampling Deterministic Across Collectors by Pinning `hash_seed`
 16. How to Preserve Unbiased Request-Rate Metrics When Tail Sampling Favors Errors and Slow Traces
 17. How to Enforce Per-Service Trace Budgets with Composite Tail-Sampling Rate Allocation
