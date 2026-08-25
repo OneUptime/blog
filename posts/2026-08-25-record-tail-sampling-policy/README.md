@@ -57,14 +57,14 @@ The official tail-sampling documentation defines:
 | Key | Meaning |
 | --- | --- |
 | `tailsampling.policy` | Configured top-level policy associated with the sampled outcome |
-| `tailsampling.composite_policy` | Composite subpolicy that selected the trace |
+| `tailsampling.composite_policy` | Composite subpolicy recorded by a composite policy that returned a sampled decision |
 | `tailsampling.cached_decision` | Marks release through a remembered sampled decision |
 
 The current implementation writes these through instrumentation-scope attributes on the outgoing `ScopeSpans` structures. Some backends flatten scope attributes into searchable trace metadata; others do not. Inspect an exported OTLP payload before writing queries that assume they are ordinary span attributes.
 
-The README describes `tailsampling.policy` as present on normally sampled traces and documents special behavior for decision-cache paths. Current source retains the policy name in cache metadata when available and marks cached releases with `tailsampling.cached_decision=true`, but older releases and empty cache metadata can differ. Treat the cache marker as the reliable explanation that this batch reused a prior outcome.
+The README describes `tailsampling.policy` as present on normally sampled traces and documents special behavior for decision-cache paths. Current source retains the top-level policy name in cache metadata when available and marks cached releases with `tailsampling.cached_decision=true`, but older releases and empty cache metadata can differ. The cache does not retain the composite subpolicy, so a cached late batch does not restore `tailsampling.composite_policy`. Treat the cache marker as the reliable explanation that this batch reused a prior outcome.
 
-There is also a current no-cache edge case. A late batch can find a sampled final decision while that trace entry still remains in the live `num_traces` structure; that path forwards the batch directly without policy re-evaluation, but it does not add the cache marker or reapply the policy attribute. Do not treat absence of all three keys as proof that tail sampling did not retain a batch.
+There is also a current no-cache edge case. A late batch can find a sampled final decision while that trace entry still remains in the live in-memory trace map governed by `num_traces`; that path forwards the batch directly without policy re-evaluation, but it does not add the cache marker or reapply the policy attribute. Do not treat absence of all three keys as proof that tail sampling did not retain a batch.
 
 ## Know Which Policy Gets Credit
 
@@ -77,13 +77,13 @@ Therefore:
 - a later matching policy does not replace the first attribution; and
 - a hard drop means the trace is not exported, so there is no retained trace to annotate.
 
-For a composite policy, the top-level key identifies the composite and `tailsampling.composite_policy` identifies the subpolicy that was allowed by the allocation logic.
+When `tailsampling.policy` names a composite, `tailsampling.composite_policy` identifies the subpolicy that its allocation logic allowed. With the default `sample_on_first_match: false`, however, composite evaluators write the subpolicy attribute as they run, while the processor assigns top-level credit to the first policy that sampled. A later matching composite can therefore leave a composite subpolicy beside an earlier non-composite top-level policy, and the last of multiple matching composites can overwrite the subpolicy value. Use `sample_on_first_match: true` or mutually exclusive matches if you require the two keys to form an unambiguous pair during normal evaluation.
 
-Choose policy order to reflect the explanation you want. A common order is hard drops first automatically, then exceptional rules such as errors, then latency, then a probabilistic baseline.
+The processor moves top-level `drop` policies to the front automatically. Among non-drop policies, choose the order to reflect the explanation you want; a common order is exceptional rules such as errors, then latency, then a probabilistic baseline.
 
 ## Use Metrics for the Full Vote Picture
 
-Attribution answers “which policy got credit for this exported trace?” It does not answer “which other policies also matched?” Use the generated policy counters for that:
+The top-level attribution answers “which policy got credit for this exported trace?” It does not answer “which other policies also matched?” Use the generated policy counters for that:
 
 ```promql
 sum by (policy, decision) (
@@ -106,7 +106,7 @@ When `sample_on_first_match` is enabled or a drop short-circuits, later policies
 Send one fixed trace for each policy and one late batch for a sampled trace. Capture OTLP immediately after tail sampling with a controlled debug or test exporter and verify:
 
 1. the top-level policy name is correct;
-2. composite attribution appears only for composite decisions;
+2. composite attribution reflects the expected composite match, including overlap behavior when full evaluation is enabled;
 3. the late batch has the cache marker;
 4. the production exporter preserves scope attributes; and
 5. backend indexing does not turn these values into uncontrolled cardinality.
@@ -126,4 +126,4 @@ The generated component documentation marks `recordpolicy` alpha. Pin a Collecto
 
 ## Conclusion
 
-Enable `recordpolicy` when trace-level explanations justify an alpha feature, give policies stable names, and interpret the recorded value as first-policy attribution rather than a complete match set. Verify scope-attribute preservation through the real exporter and pair the annotation with per-policy and final-decision metrics.
+Enable `recordpolicy` when trace-level explanations justify an alpha feature, give policies stable names, and interpret `tailsampling.policy` as first-policy attribution rather than a complete match set. Verify scope-attribute preservation through the real exporter and pair the annotation with per-policy and final-decision metrics.
