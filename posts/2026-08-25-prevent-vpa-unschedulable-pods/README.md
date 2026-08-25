@@ -20,6 +20,7 @@ kubectl get nodes -o json | jq -r \
 
 kubectl -n analytics get deploy reports -o yaml
 kubectl get nodes --show-labels
+kubectl get nodes -o custom-columns='NAME:.metadata.name,TAINTS:.spec.taints'
 ```
 
 Use `.status.allocatable`, not VM vCPU and RAM, because Kubernetes reserves some capacity. Then restrict the candidate set using the Pod's `nodeSelector`, required node affinity, taints and tolerations, architecture, topology, storage attachment rules, and any extended resources. The largest node in the cluster is irrelevant if the Pod cannot select it.
@@ -28,10 +29,10 @@ For every eligible node shape, reserve:
 
 - requests of DaemonSet Pods that will run on that node;
 - kube-system or fixed workload headroom appropriate to the node pool;
-- all non-VPA or excluded sidecars in the Pod; and
+- requests of all non-VPA or excluded concurrently running containers; and
 - a safety margin for rollout overlap and capacity drift.
 
-For a Pod with several VPA-managed containers, add their maxima. VPA's global maximum flags and `maxAllowed` are container-level controls; two individually valid 8 GiB recommendations can still make a 16 GiB Pod that does not fit a 14 GiB allocatable node.
+For a Pod with several VPA-managed containers, add their maxima to that concurrent-container total. Then calculate the effective Pod request for each resource, using Kubernetes's init-container accounting and adding any RuntimeClass Pod overhead, before comparing it with the remaining node capacity. VPA's global maximum flags and `maxAllowed` are container-level controls; two individually valid 8 GiB recommendations can still make a 16 GiB Pod that does not fit a 14 GiB allocatable node.
 
 ## Apply Per-Container Bounds
 
@@ -49,7 +50,7 @@ spec:
     kind: Deployment
     name: reports
   updatePolicy:
-    updateMode: Off
+    updateMode: "Off"
   resourcePolicy:
     containerPolicies:
       - containerName: app
@@ -60,10 +61,10 @@ spec:
           cpu: "6"
           memory: 20Gi
       - containerName: telemetry
-        mode: Off
+        mode: "Off"
 ```
 
-`target` observes these resource-policy bounds. `uncappedTarget` shows the usage-based target before `minAllowed` or `maxAllowed` is applied. Alert when `uncappedTarget` remains above a cap: clipping prevents an unschedulable Pod but also signals that the workload may need a larger node class, horizontal scaling, or application work.
+`target` observes these resource-policy bounds. `uncappedTarget` shows the usage-based target before `minAllowed` or `maxAllowed` is applied. Alert when `uncappedTarget` remains above a cap: clipping keeps that recommendation within the cap, but it also signals that the workload may need a larger node class, horizontal scaling, or application work.
 
 Use separate bounds for every material sidecar. A wildcard policy is convenient but can hide the sum-of-containers problem.
 
@@ -81,6 +82,8 @@ The official VPA example recommends deriving these from the largest node's alloc
 
 Global caps are a last line of defense, not a workload-specific capacity model. They remain per-container, apply across node pools, and cannot account for affinity or the other containers in a Pod.
 
+If the alpha CPU Startup Boost feature is enabled, include the boosted CPU request in the envelope: recommendation `maxAllowed` does not cap the boost, which can be capped separately with the admission controller's `--max-allowed-cpu-boost` flag.
+
 ## Include Admission Policies and Namespace Capacity
 
 Scheduling is only one gate. A replacement Pod can be rejected before scheduling because:
@@ -92,20 +95,20 @@ Scheduling is only one gate. A replacement Pod can be rejected before scheduling
 ```bash
 kubectl -n analytics get limitrange,resourcequota -o yaml
 kubectl -n analytics describe resourcequota
-kubectl -n analytics get events --sort-by=.lastTimestamp | tail -n 50
+kubectl -n analytics events | tail -n 50
 ```
 
-VPA tries to cap recommendations to LimitRange bounds, but an explicit VPA resource policy wins if the two conflict. The API server can then reject the Pod. Align the policies rather than depending on admission order.
+When applying a recommendation, VPA tries to keep the resulting requests and limits within LimitRange bounds, but an explicit VPA resource policy wins if the two conflict. The API server can then reject the Pod. Align the policies rather than depending on admission order.
 
 ## Test the Largest Mutated Pod Before Enabling Updates
 
-Before changing `updateMode`, construct a Pod manifest using the maximum requests VPA can apply and submit it through server-side dry-run in the target namespace:
+Before changing `updateMode`, construct a Pod manifest using the maximum requests and resulting limits VPA can apply and submit it through server-side dry-run in the target namespace:
 
 ```bash
 kubectl create --dry-run=server -n analytics -f reports-max-pod.yaml -o yaml
 ```
 
-Then use a canary workload or one controlled recreation to prove scheduling on every required zone and node pool. Watch for `FailedScheduling` events and confirm the node autoscaler's simulated node templates can fit the full Pod.
+Then use canary Pods constrained in turn to each required zone and node pool, or use one controlled recreation to prove the specific placement path it receives. Watch for `FailedScheduling` events and confirm the node autoscaler's simulated node templates can fit the full Pod.
 
 Cluster Autoscaler can add a node only from configured node groups. It cannot help when the Pod exceeds the largest template, when the group has reached maximum size, when cloud capacity is unavailable, or when scheduling constraints exclude every expandable group.
 
