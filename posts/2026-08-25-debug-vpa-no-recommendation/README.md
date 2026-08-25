@@ -8,7 +8,7 @@ Description: Debug an empty VPA recommendation systematically by checking status
 
 ---
 
-An empty `.status.recommendation` means the recommender has not produced usable per-container CPU and memory estimates. Start with the VPA status, then follow the same data path as the recommender: resolve `targetRef`, match Pods from the controller selector, fetch container samples from `metrics.k8s.io`, and aggregate enough current or restored history.
+An empty `.status.recommendation` means the recommender has not produced usable per-container CPU and memory estimates. Start with the VPA status, then follow the same data path as the recommender: resolve `targetRef`, match Pods from the controller selector, fetch container samples from `metrics.k8s.io` with the default metrics client, and aggregate enough current or restored history.
 
 ## Read Conditions Before Reading Logs
 
@@ -21,7 +21,7 @@ kubectl -n storefront get vpa catalog \
 Interpret the important conditions precisely:
 
 - `RecommendationProvided=False` means no current recommendation exists.
-- `NoPodsMatched=True` means the resolved target selector matches no Pods.
+- `NoPodsMatched=True` means the recommender currently matches no Pods. If `ConfigUnsupported=True` is also present, fix target resolution first.
 - `ConfigUnsupported=True` means VPA cannot use the target or configuration.
 - `FetchingHistory=True`, when present, means history loading is still in progress.
 
@@ -51,10 +51,10 @@ spec:
     kind: Deployment
     name: catalog
   updatePolicy:
-    updateMode: Off
+    updateMode: "Off"
 ```
 
-Upstream VPA knows how to read selectors for Deployments, ReplicaSets, StatefulSets, DaemonSets, ReplicationControllers, Jobs, and CronJobs. For another custom controller, it uses the `/scale` subresource and needs a non-empty `.status.selector`. VPA also requires the target to be the topmost supported or scalable controller in the Pod ownership chain; targeting a ReplicaSet owned by a Deployment can produce `ConfigUnsupported`.
+Upstream VPA knows how to read selectors for Deployments, ReplicaSets, StatefulSets, DaemonSets, ReplicationControllers, Jobs, and CronJobs. For another custom controller, it uses the `/scale` subresource, needs a non-empty `.status.selector`, and requires the custom resource to own the Pods directly. VPA also requires the target to be the topmost supported or scalable controller in the Pod ownership chain; targeting a ReplicaSet owned by a Deployment can produce `ConfigUnsupported`.
 
 ## Prove That the Selector Matches Running Pods
 
@@ -62,7 +62,7 @@ Read the controller selector instead of guessing it from a Service:
 
 ```bash
 kubectl -n storefront get deployment catalog \
-  -o jsonpath='{.spec.selector.matchLabels}{"\n"}'
+  -o jsonpath='{.spec.selector}{"\n"}'
 kubectl -n storefront get pods -l app=catalog --show-labels
 kubectl -n storefront get pods -l app=catalog \
   -o custom-columns=NAME:.metadata.name,PHASE:.status.phase,OWNER_KIND:.metadata.ownerReferences[0].kind,OWNER:.metadata.ownerReferences[0].name
@@ -72,7 +72,7 @@ Use the real selector, including every expression. A Service selector is not aut
 
 ## Query the Resource Metrics API Directly
 
-VPA requires a resource metrics source such as Metrics Server. `kubectl top` is a useful first check, but query the API directly to retain errors and per-container data:
+By default, VPA uses the resource metrics API, commonly served by Metrics Server. `kubectl top` is a useful first check, but query the API directly to retain errors and per-container data:
 
 ```bash
 kubectl get apiservice v1beta1.metrics.k8s.io
@@ -87,7 +87,7 @@ The default recommender fetches fresh samples every minute (`--recommender-inter
 
 ## Check Recommender Selection and Logs
 
-A VPA with no `.spec.recommenders` is handled by the default recommender. If a name is configured, exactly one recommender with the same `--recommender-name` must be running:
+A VPA with no `.spec.recommenders` is handled by the default recommender. If a name is configured, a recommender with the same `--recommender-name` must be running; do not run multiple active recommenders with the same name:
 
 ```bash
 kubectl -n storefront get vpa catalog -o jsonpath='{.spec.recommenders}{"\n"}'
@@ -106,7 +106,7 @@ kubectl -n storefront get verticalpodautoscalercheckpoints.autoscaling.k8s.io
 kubectl -n storefront get verticalpodautoscalercheckpoints.autoscaling.k8s.io -o yaml
 ```
 
-If the recommender uses `--storage=prometheus`, it loads historical cAdvisor data from Prometheus at startup instead of checkpoints. Check for `Initializing VPA from history provider`, query errors, label mismatches, and the configured history flags. Prometheus history supplements startup state; fresh samples still come from the resource metrics API.
+If the recommender uses `--storage=prometheus`, it loads historical cAdvisor data from Prometheus at startup instead of checkpoints. The `Initializing VPA from history provider` message is emitted only with `--v=3` or higher. Check that message, query errors, label mismatches, and the configured history flags. Prometheus history initializes historical state; with the default metrics client, fresh samples still come from the resource metrics API.
 
 Do not expect history for a container renamed in the Pod template to appear under the new name. An excluded container with `containerPolicies[].mode: Off` intentionally has no recommendation.
 

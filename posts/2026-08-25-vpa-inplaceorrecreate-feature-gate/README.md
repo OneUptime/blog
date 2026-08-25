@@ -14,7 +14,7 @@ Description: Configure VPA InPlaceOrRecreate safely and diagnose version, featur
 
 The current upstream requirements are version-specific:
 
-- Kubernetes 1.33 or later is required. `InPlacePodVerticalScaling` was beta and enabled by default in 1.33–1.34, then became stable and enabled by default in 1.35.
+- Kubernetes 1.33 or later is required. `InPlacePodVerticalScaling` was beta and enabled by default in 1.33–1.34, then became stable and always enabled from 1.35.
 - `InPlaceOrRecreate` was alpha in VPA 1.4, beta in 1.5, and GA in 1.6.
 - VPA 1.4 required `--feature-gates=InPlaceOrRecreate=true` on the admission controller and updater. It became enabled by default in 1.5, and that VPA-side gate was removed in 1.7.
 
@@ -26,7 +26,7 @@ kubectl -n kube-system get deploy vpa-updater vpa-admission-controller \
   -o jsonpath='{range .items[*]}{.metadata.name}{" image="}{.spec.template.spec.containers[0].image}{" args="}{.spec.template.spec.containers[0].args}{"\n"}{end}'
 ```
 
-Managed Kubernetes services may control feature gates. Confirm the control-plane and every kubelet version and configuration through the provider's supported interface; a mixed or older node pool can make behavior vary by Pod placement.
+Managed Kubernetes services may control feature gates. Confirm the API server, scheduler, and every kubelet version and configuration through the provider's supported interface; a mixed or older node pool can make behavior vary by Pod placement.
 
 ## Configure an Explicit VPA and Resize Policy
 
@@ -76,7 +76,7 @@ spec:
     updateMode: InPlaceOrRecreate
 ```
 
-`NotRequired` is the default when a resize policy is omitted. Making it explicit documents whether a container restart is acceptable. The Pod's overall `restartPolicy` and per-resource resize policy must be compatible; for example, a Pod with `restartPolicy: Never` cannot request `RestartContainer`.
+`NotRequired` is the default when a resize policy is omitted. Making it explicit documents whether Kubernetes should require a container restart for that resource resize. The Pod's overall `restartPolicy` and per-resource resize policy must be compatible; for example, a Pod with `restartPolicy: Never` cannot request `RestartContainer`.
 
 ## Observe Desired, Actual, and Resize Status
 
@@ -84,7 +84,7 @@ During a resize, the desired resources in `spec` can differ from the resources a
 
 ```bash
 kubectl -n processing get pod worker-xxxxx -o yaml
-kubectl -n processing get events --sort-by=.lastTimestamp | tail -n 40
+kubectl -n processing events --for pod/worker-xxxxx
 kubectl -n kube-system logs deploy/vpa-updater --since=30m
 ```
 
@@ -95,32 +95,32 @@ Look for:
 - `PodResizeInProgress`: allocation is being applied.
 - an unchanged `status.containerStatuses[*].resources`: desired values have not reached the runtime yet.
 
-On Kubernetes 1.35+, compare the Pod and condition `observedGeneration` fields to the current `.metadata.generation` so an old resize condition is not mistaken for the latest attempt.
+On Kubernetes 1.34+ (or 1.33 with `PodObservedGenerationTracking` enabled), compare the Pod and condition `observedGeneration` fields to the current `.metadata.generation` so an old resize condition is not mistaken for the latest attempt.
 
 ## Understand VPA Fallback
 
 Current upstream `InPlaceOrRecreate` falls back to eviction when:
 
-- kubelet reports the resize as infeasible;
+- kubelet reports the resize as infeasible, reports an error, or sets an unrecognized resize condition;
 - a deferred resize remains unresolved for more than 5 minutes;
 - an in-progress resize remains unresolved for more than 1 hour;
-- the resize subresource request errors; or
+- the in-place update attempt returns an error, including a `/resize` request error; or
 - the proposed resources would change the Pod's immutable QoS class.
 
 VPA's internal replica/tolerance accounting gates in-place attempts by default. A successful `/resize` does not call the Eviction API, so Kubernetes does not consult a PodDisruptionBudget for that patch. Fallback eviction is subject to both VPA replica restrictions and the Eviction API, including PodDisruptionBudgets. A successful fallback also requires a healthy admission webhook so the recreated Pod receives the recommendation.
 
 ## Isolate a Gate Problem from a Capacity Problem
 
-If no Pod spec is patched at all, check VPA version, updater logs, update eligibility, and RBAC on `pods/resize`. If the spec changes and `PodResizePending` appears, the API and gate are working; diagnose node capacity or resize constraints instead.
+If no Pod spec is patched at all, check VPA version, updater logs, update eligibility, and RBAC on `pods/resize`. If the spec changes and `PodResizePending` appears, the `/resize` API and that node's kubelet resize path are working; diagnose node capacity or resize constraints instead.
 
 A controlled manual resize test can verify the cluster mechanism independently of VPA. With kubectl 1.32 or later:
 
 ```bash
-kubectl -n processing patch pod worker-xxxxx --subresource=resize --type=merge -p \
+kubectl -n processing patch pod worker-xxxxx --subresource=resize --type=strategic -p \
   '{"spec":{"containers":[{"name":"app","resources":{"requests":{"cpu":"600m","memory":"1Gi"},"limits":{"cpu":"1","memory":"2Gi"}}}]}}'
 ```
 
-Use a disposable workload and a feasible value. If the API rejects the `resize` subresource, verify Kubernetes version, feature-gate enablement on the API server and kubelets, authorization, and provider support.
+Use a disposable workload and a feasible value. If the API rejects the `resize` subresource, inspect the server error and verify Kubernetes version, feature-gate enablement on the API server, scheduler, and kubelets, authorization, provider support, admission policy, and request constraints such as QoS preservation.
 
 Also remember in-place limitations: CPU and memory only, no QoS class transition, no Windows Pod support, no non-restartable init or ephemeral container resize, and restrictions with static CPU or memory manager policies. Upstream VPA updates all regular containers in the Pod together rather than partially resizing a subset.
 
@@ -149,4 +149,4 @@ Despite their `_total` suffixes, the `updatable` and `vpas_with_*` series are ga
 
 ## Conclusion
 
-Use `InPlaceOrRecreate` only after aligning Kubernetes and VPA versions, confirming the cluster gate across control plane and nodes, and choosing explicit restart policies. A rejected `/resize` points to version, gate, or RBAC; a pending resize points to capacity or kubelet constraints; and an eviction is an intentional fallback that still needs disruption budget and webhook safety.
+Use `InPlaceOrRecreate` only after aligning Kubernetes and VPA versions, confirming the cluster gate across control plane and nodes, and choosing explicit restart policies. A rejected `/resize` points to version, gate, RBAC, admission, or request-validation constraints; a pending resize points to capacity or kubelet constraints; and an eviction is an intentional fallback that still needs disruption budget and webhook safety.
