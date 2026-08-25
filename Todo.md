@@ -102,7 +102,6 @@
 
 ## VPA
 
-13. How to Run VPA Safely for StatefulSets and Databases Without Surprise Downtime
 14. Why VPA Cannot Manage Static or Bare Pods: Fixing an Unsupported targetRef
 15. How LimitRanges and ResourceQuotas Alter—or Reject—VPA Recommendations
 16. How to Tune VPA Eviction Tolerance, Updater Interval, and Eviction Rate for Production
