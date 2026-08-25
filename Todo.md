@@ -99,7 +99,6 @@
 
 ## Trace Sampling
 
-20. How to Handle Pending Tail-Sampling Decisions During Collector Shutdowns and Rolling Deployments
 
 ## VPA
 
