@@ -8,7 +8,7 @@ Description: Launch and inspect Fulcio's versioned local Compose stack, understa
 
 ---
 
-Fulcio's repository includes a convenient local stack for development, but its exact services and CA backend are version-dependent. The current `main` Compose file runs Fulcio with a repository file-backed test root, a local Dex identity provider, and a Tesseract certificate-transparency service. The setup guide still describes an older/default ephemeral-CA and Trillian topology.
+Fulcio's repository includes a convenient local stack for development, but its exact services and CA backend are version-dependent. The current `main` Compose file runs Fulcio with a repository file-backed test root and a Tesseract certificate-transparency service, and also starts a local Dex service that the default Fulcio issuer file does not register. The setup guide still describes an older/default ephemeral-CA and Trillian topology.
 
 Inspect the files in the release or commit you actually check out. Neither a process-generated ephemeral root nor the private key shipped in a public test repository is suitable for production.
 
@@ -45,6 +45,8 @@ CT static reader  localhost:8000
 CA backend        fileca
 ```
 
+The listed `localhost` addresses are convenient host access URLs, not loopback-only bindings. Because the Compose mappings omit a host IP, Docker publishes them on all host interfaces by default. Use a loopback-bound override or firewall rules when the lab must not be reachable from the network.
+
 The metrics host port can be changed with `FULCIO_METRICS_PORT`. The identity YAML mount can be changed with `FULCIO_CONFIG`. Treat both as version-specific conveniences from the checked-out Compose file.
 
 ## Start and Check the Stack
@@ -65,22 +67,24 @@ curl --fail --silent \
   jq .
 ```
 
-Fetch the lab root only for inspection or explicitly bootstrapped local test trust:
+Extract the root from the lab's first trust-bundle chain only for inspection or explicitly bootstrapped local test trust:
 
 ```bash
-curl --fail \
-  --output fulcio-lab-root.pem \
-  http://localhost:5555/api/v1/rootCert
+curl --fail --silent --show-error \
+  http://localhost:5555/api/v2/trustBundle |
+  jq --exit-status --raw-output \
+    '.chains[0].certificates[-1]' \
+  > fulcio-lab-root.pem
 
 openssl x509 -in fulcio-lab-root.pem -noout \
   -subject -issuer -fingerprint -sha256 -dates
 ```
 
-Do not teach a production verifier to download and trust whatever `/api/v1/rootCert` returns. Real trust roots must arrive through an authenticated bootstrap, normally TUF or a controlled trusted-root document.
+Do not teach a production verifier to download and trust whatever a live `/api/v2/trustBundle` endpoint returns. Real trust roots must arrive through an authenticated bootstrap, normally TUF or a controlled trusted-root document.
 
 ## Understand the Current Compose Services
 
-Current `main` mounts `config/identity/config.yaml` into Fulcio and starts local Dex for browser-based test authentication. It starts Tesseract as the CT service, with a repository-provided CT key and a named volume for log storage. A separate static reader serves the stored CT data.
+Current `main` mounts `config/identity/config.yaml` into Fulcio and starts a local Dex service with a mock connector. The default issuer file does not include Dex's `http://dex-idp:8888/auth` issuer, so using Dex for browser-based tests requires a matching `FULCIO_CONFIG` and issuer routing that is reachable from both the browser and containers. The stack starts Tesseract as the CT service, with a repository-provided CT key and a named volume for log storage. A separate static reader serves the stored CT data.
 
 The Fulcio service currently starts with arguments equivalent to:
 
@@ -141,15 +145,15 @@ export SIGSTORE_ROOT_FILE="$PWD/fulcio-lab-root.pem"
 export SIGSTORE_CT_LOG_PUBLIC_KEY_FILE="$PWD/config/ctfe/pubkey.pem"
 ```
 
-It also demonstrates selecting local Fulcio with `--fulcio-url http://localhost:5555`. These flags and environment variables use Cosign's legacy/custom-component path and are explicitly described as non-production. Cosign v3's preferred custom-infrastructure path is a versioned signing configuration plus trusted-root material; a complete private signing system also needs appropriate Rekor and/or timestamp services.
+It also demonstrates selecting local Fulcio with `--fulcio-url http://localhost:5555`. The environment variables are explicitly described as non-production. In Cosign v3, the direct `--fulcio-url` flag is deprecated, and the signing-configuration path is enabled by default; a legacy direct-URL invocation must also set `--use-signing-config=false`. Cosign v3's preferred custom-infrastructure path is a versioned signing configuration plus trusted-root material; a complete private signing system also needs appropriate Rekor and/or timestamp services.
 
-The Fulcio Compose stack alone is not a complete production Sigstore deployment. In particular, Fulcio CT records certificate issuance, while Rekor records artifact signing events and signed integrated time.
+The Fulcio Compose stack alone is not a complete production Sigstore deployment. In particular, Fulcio CT records certificate issuance, while Rekor records artifact signing metadata. Rekor v1's signed entry timestamp covers its integrated time; Rekor v2 relies on a separate RFC 3161 timestamp authority.
 
 When a local signing test fails, check:
 
 - Dex issuer URLs are reachable from both browser and containers;
-- the requested token audience is `sigstore` or the configured client ID;
-- the issuer appears in `/api/v2/configuration`;
+- the requested token audience matches Fulcio's configured client ID (`sigstore` for the repository's default issuers; the bundled Dex client ID is `fulcio`);
+- the issuer, including local Dex if used, appears in `/api/v2/configuration`;
 - the root file matches the currently running CA instance;
 - the CT public key matches the current CT service; and
 - Cosign's release supports the selected custom-infrastructure flags or signing config.
@@ -167,7 +171,7 @@ A production Fulcio deployment should use:
 - a protected KMS, HSM, KMS-encrypted Tink keyset, or managed CA backend appropriate to the threat model;
 - an intermediate certificate beneath a protected root where practical;
 - authenticated, versioned OIDC issuer configuration;
-- an embedded-SCT-capable backend and monitored CT log, or a documented private audit alternative;
+- a CT-capable backend and monitored CT log, preferably with embedded SCTs, or a documented private audit alternative;
 - trusted-root distribution through TUF or controlled Sigstore trust documents;
 - separate Rekor/timestamp infrastructure required by the client verification design; and
 - backups, rotation, access controls, observability, and an incident runbook.
@@ -180,11 +184,14 @@ Pin Fulcio and its deployment manifests to releases. `main` is valuable evidence
 
 - [Fulcio local setup and signing backends](https://github.com/sigstore/fulcio/blob/main/docs/setup.md)
 - [Current Fulcio Docker Compose stack](https://github.com/sigstore/fulcio/blob/main/docker-compose.yml)
+- [Fulcio v2 API definition](https://github.com/sigstore/fulcio/blob/main/fulcio.proto)
 - [Fulcio ephemeral CA implementation](https://github.com/sigstore/fulcio/blob/main/pkg/ca/ephemeralca/ephemeral.go)
 - [Fulcio server flags](https://github.com/sigstore/fulcio/blob/main/cmd/app/serve.go)
 - [Fulcio certificate-transparency design](https://github.com/sigstore/fulcio/blob/main/docs/ctlog.md)
 - [Fulcio signing-backend architecture and production restrictions](https://github.com/sigstore/architecture-docs/blob/main/fulcio-spec.md#62-signing)
-- [Cosign custom infrastructure configuration](https://docs.sigstore.dev/cosign/signing/overview/#custom-infrastructure)
+- [Cosign custom infrastructure configuration](https://docs.sigstore.dev/cosign/system_config/custom_components/)
+- [Sigstore timestamp behavior for Rekor and timestamp authorities](https://docs.sigstore.dev/cosign/verifying/timestamps/)
+- [Docker Compose published-port syntax](https://docs.docker.com/reference/compose-file/services/#ports)
 
 ## Conclusion
 
