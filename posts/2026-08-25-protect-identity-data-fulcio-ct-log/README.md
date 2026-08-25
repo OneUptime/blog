@@ -56,7 +56,7 @@ Use a canary identity containing no real personal or secret names, issue a stagi
 
 ```bash
 openssl x509 -in fulcio-leaf.pem -noout \
-  -subject -issuer -ext subjectAltName -text
+  -subject -issuer -text
 ```
 
 Search for the full Sigstore OID arc `1.3.6.1.4.1.57264`, not only the SAN. A certificate that has a safe-looking workflow SAN can still expose repository or environment data in its extensions.
@@ -71,7 +71,7 @@ For public automated releases, a CI workflow URI usually expresses policy better
 https://github.com/acme/widget/.github/workflows/release.yml@refs/tags/v1.2.3
 ```
 
-It avoids exposing a personal account and lets verifiers authorize reviewed build instructions. It still exposes the repository and workflow path, so it is appropriate only when those values are intended to be public.
+It avoids exposing a personal account and lets verifiers authorize a governed workflow identity. It still exposes the repository and workflow path, so it is appropriate only when those values are intended to be public.
 
 Do not solve email privacy by creating a misleading shared mailbox unless the identity provider and organizational policy genuinely govern it as the signing principal. A verifier must be able to understand who or what controls the identity.
 
@@ -92,26 +92,26 @@ Use purpose-built claim names with defined formats. Review identity-provider and
 
 ## Use a Private Trust Domain for Confidential Work
 
-If the signing identity or artifact relationship is confidential, operate a private Sigstore deployment or use another signing architecture whose audit model fits the requirement. A private Fulcio deployment needs:
+If the signing identity or artifact relationship is confidential, operate a private Sigstore deployment or use another signing architecture whose audit model fits the requirement. A production private Sigstore deployment should address:
 
 - a durable, protected CA signing backend;
-- a private OIDC issuer and deliberately minimal identity mapping;
-- private Rekor and CT services, or an explicitly documented equivalent audit log for private CA deployments;
-- trusted-root distribution, preferably through private TUF or current trusted-root documents;
+- a trusted OIDC issuer and deliberately minimal identity mapping;
+- a private CT log or documented equivalent CA audit mechanism, plus an accepted private timestamping path and any signature-transparency service required by verifier policy;
+- authenticated distribution of current `trusted_root` and `signing_config` documents, preferably through private TUF or another secure out-of-band channel;
 - access control, retention, monitoring, and incident-response policy; and
 - a clear separation from public and staging roots.
 
-“Private” must cover the logs and metadata distribution, not only the Fulcio HTTP endpoint. Pointing private Fulcio at a public CT log or public Rekor still publishes the information.
+“Private” must cover the logs and metadata distribution, not only the Fulcio HTTP endpoint. Configuring private Fulcio to use a public CT log that accepts its CA chain, or configuring signing clients to upload to public Rekor, still publishes the submitted information.
 
 The Fulcio architecture allows private deployments to use another audit mechanism when public transparency is not necessary. That is a conscious security tradeoff: without independently monitored transparency, CA mis-issuance is harder to detect.
 
 ## Why `--tlog-upload=false` Is Not a Privacy Fix
 
-Cosign has supported modes that omit Rekor upload for some signing paths, but that does not stop public Fulcio from submitting its certificate to Fulcio's CT log. It also removes the normal Rekor signed time used to prove an ephemeral certificate was used while valid, unless another accepted timestamp is present.
+In current Cosign, omit Rekor by using a signing configuration with no transparency-log service; the older `--tlog-upload=false` flag is deprecated and is incompatible with the default signing-config path. Neither choice stops public Fulcio from submitting its certificate or precertificate to Fulcio's CT log. Omitting Rekor removes its public log-inclusion evidence. Rekor v1 provided a signed `integratedTime`, but Rekor v2 does not provide signed time, so verification after an ephemeral certificate expires requires another accepted timestamp, such as an RFC 3161 timestamp.
 
 Likewise, suppressing an interactive consent prompt with `--yes` only makes automation non-interactive. It does not make the transparency entries private.
 
-If policy forbids publication, fail before obtaining a public Fulcio certificate. Do not issue first and attempt to redact the bundle afterward; the logs already hold the original certificate.
+If policy forbids publication, fail before obtaining a public Fulcio certificate. Do not issue first and attempt to redact the bundle afterward; Fulcio CT already holds the certificate or precertificate, including its identity metadata, and any completed Rekor upload has already exposed its signing material.
 
 ## Respond to an Accidental Disclosure
 
