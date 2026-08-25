@@ -53,7 +53,7 @@ spec:
     kind: CronJob
     name: nightly-rollup
   updatePolicy:
-    updateMode: Off
+    updateMode: "Off"
   resourcePolicy:
     containerPolicies:
       - containerName: rollup
@@ -63,10 +63,10 @@ spec:
           memory: 1Gi
         maxAllowed:
           cpu: "8"
-          memory: 16Gi
+          memory: 4Gi
 ```
 
-The upstream selector fetcher derives a CronJob selector from labels on `jobTemplate.spec.template`. Use stable, unique labels there. If two unrelated batch shapes share the same selector labels, their history can be mixed; if labels change every run, useful history cannot aggregate.
+The upstream selector fetcher derives a CronJob selector from labels on `jobTemplate.spec.template`. Use stable, unique labels there. If two unrelated batch shapes share the same selector labels, their history can be mixed; if those template labels change every run, useful history cannot aggregate.
 
 ## Observe Several Representative Runs
 
@@ -80,7 +80,7 @@ kubectl -n data top pod -l workload-class=daily-rollup --containers
 
 Run enough normal and peak inputs to cover the workload's real variation. VPA weights CPU samples and aggregates memory peaks; one tiny test run is not representative of month-end, backfill, or unusually large partitions.
 
-The recommendation bounds become wide with short history by design. Current recommender logic uses history-length confidence multipliers so the updater is less eager to force changes from sparse samples. Treat `target` as evidence to review, not proof that the next unseen input fits.
+The recommendation bounds become wide with short history by design. Current recommender logic widens the bounds using a confidence metric based on both the span and count of historical CPU samples, so the updater is less eager to force changes from sparse samples. Treat `target` as evidence to review, not proof that the next unseen input fits.
 
 ## Apply at Creation, Not Mid-Run
 
@@ -94,7 +94,7 @@ spec:
 
 The VPA admission webhook applies the current target when a new Job Pod is created, and the updater does not evict it later. That avoids turning a rightsizing action into a failed or duplicated batch attempt.
 
-`Recreate` can evict a running Job Pod. The Job controller may count failures and retries according to `backoffLimit`, `podFailurePolicy`, completion mode, and application semantics. Use it only after proving the job is idempotent and the retry behavior is intentional.
+`Recreate` can evict a running Job Pod when the updater's eviction checks permit it. An eviction can cause the Job controller to create a replacement Pod and, by default, count the disruption toward `.spec.backoffLimit`; `.spec.podFailurePolicy` can ignore the `DisruptionTarget` condition, and Indexed Jobs can use `.spec.backoffLimitPerIndex`. Use it only after proving the job is idempotent and the retry behavior is intentional.
 
 Because Job Pods commonly use `restartPolicy: Never`, they cannot declare a container `resizePolicy` of `RestartContainer`. This limits memory resize choices. A short Job also often finishes before an in-place update is useful, making creation-time mutation the clearer mechanism.
 
@@ -116,14 +116,16 @@ Keep application-level safeguards:
 
 The default recommender stores aggregate state in `VerticalPodAutoscalerCheckpoint` objects. Do not delete and recreate the VPA for every run if you want continuity.
 
-For clusters that already retain cAdvisor metrics, `--storage=prometheus` can seed the recommender at startup. Prometheus must retain completed Pod CPU, memory, identity labels, and the stable CronJob template labels. Metrics Server exposes only current resource samples and is not a historical database.
+For clusters that retain compatible cAdvisor metrics, `--storage=prometheus` can load history when the recommender starts. Configure `--prometheus-address`, set `--history-resolution` fine enough to sample these short runs (the upstream default is `1h`), and use a historical range-vector query for `--metric-for-pod-labels` whose Pod identity labels and label prefix match your Prometheus schema. The provider needs completed-Pod CPU and memory series plus Pod-label history containing the stable CronJob template labels. Metrics Server exposes only the latest resource samples and is not a historical database.
+
+The `checkpoint` and `prometheus` storage modes are alternatives: Prometheus mode does not maintain `VerticalPodAutoscalerCheckpoint` objects.
 
 ```bash
 kubectl -n data get verticalpodautoscalercheckpoints.autoscaling.k8s.io
 kubectl -n kube-system logs deploy/vpa-recommender --since=20m
 ```
 
-Aggressive `ttlSecondsAfterFinished` or short Prometheus retention does not erase samples already aggregated into a healthy checkpoint, but it can reduce forensic data and Prometheus-based reseeding. Verify the storage mode you actually use.
+In checkpoint mode, aggressive `ttlSecondsAfterFinished` does not erase samples already serialized into a healthy checkpoint, but it can reduce forensic data. Short Prometheus retention reduces the history available for Prometheus-based reloads. Verify the storage mode you actually use.
 
 ## Official Documentation
 
