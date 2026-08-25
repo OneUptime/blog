@@ -18,7 +18,7 @@ kubectl get vpa -A -o json | jq -r '
   [.metadata.namespace,
    .metadata.name,
    (.metadata.generation|tostring),
-   (.status.observedGeneration // 0 | tostring),
+   (.status.observedGeneration // "<unset>" | tostring),
    ([.status.conditions[]? | "\(.type)=\(.status):\(.reason // "")"] | join(",")),
    ([.status.recommendation.containerRecommendations[]?.containerName] | join(","))]
   | @tsv'
@@ -31,34 +31,35 @@ kubectl -n storefront get vpa catalog -o yaml
 kubectl -n storefront describe vpa catalog
 ```
 
-Compare status `observedGeneration` with metadata `generation`. If status is behind, the recommender has not yet reported against the latest spec. The API also defines an optional `observedGeneration` on each condition, but the current default recommender's condition builder leaves it unset. A custom recommender or another version may populate it; use the condition-level value only when it is actually present.
+The top-level status `observedGeneration` is optional, although the current default recommender populates it. When it is present, compare it with metadata `generation`. If status is behind, the recommender has not yet reported against the latest spec; if it is unset, do not treat it as generation zero. The API also defines an optional `observedGeneration` on each condition, but the current default recommender's condition builder leaves it unset. A custom recommender or another version may populate it; use the condition-level value only when it is actually present.
 
 ## `RecommendationProvided`
 
 The API type means the recommender was able to calculate a recommendation.
 
-- `True` means `.status.recommendation` exists. It does not mean the updater applied it, the admission webhook is healthy, or a Pod was resized.
-- `False` means there is no current recommendation. If Pods match, investigate resource metrics, history, excluded containers, and recommender selection.
+- `True` means `.status.recommendation.containerRecommendations` has at least one entry. It does not mean the updater applied it, the admission webhook is healthy, or a Pod was resized.
+- `False` means there is no current container recommendation, even though `.status.recommendation` may serialize as an empty object. If Pods match, investigate resource metrics, history, excluded containers, and recommender selection.
 - If the condition is absent, avoid assuming either state; inspect VPA/recommender version and status age.
 
-Current default recommender logic sets `RecommendationProvided=True` whenever it retains a recommendation. It can remain true while `NoPodsMatched=True` if historical state still provides a recommendation. That combination is valid and should not be flattened into one “healthy” boolean.
+Current default recommender logic sets `RecommendationProvided=True` whenever it has at least one container recommendation. It can remain true while `NoPodsMatched=True` if historical state still provides a recommendation. That combination is valid and should not be flattened into one “healthy” boolean.
 
 ## `NoPodsMatched`
 
-`NoPodsMatched=True` means the target selector currently matches no Pods. Current upstream reason and message are `NoPodsMatched` and `No pods match this VPA object`.
+`NoPodsMatched=True` means the default recommender's tracked matching-Pod count is zero. Its Pod watch excludes `Pending` Pods, while retained `Succeeded` or `Failed` Pods still count until they are deleted. Current upstream reason and message are `NoPodsMatched` and `No pods match this VPA object`.
 
-Check the target and its authoritative selector:
+Check the target and its authoritative selector, replacing the Deployment kind and name below if the reported target differs:
 
 ```bash
 kubectl -n storefront get vpa catalog \
   -o jsonpath='{.spec.targetRef.apiVersion}{" "}{.spec.targetRef.kind}{" "}{.spec.targetRef.name}{"\n"}'
 kubectl -n storefront get deployment catalog -o yaml
-kubectl -n storefront get pods --show-labels
+kubectl -n storefront get pods \
+  --field-selector='status.phase!=Pending' --show-labels
 ```
 
-This condition can be expected when a CronJob has no active Pod or a workload intentionally scales to zero. Alert only when the workload should have running Pods, or combine it with target desired replicas and schedule state.
+This condition can be expected when a CronJob has no retained non-Pending Pod or a workload intentionally scales to zero. A completed CronJob Pod that has not been deleted can keep the condition absent even when no Pod is active. Alert only when the workload should have running Pods, or combine it with target desired replicas and schedule state.
 
-When Pods match again, the current recommender deletes the active `NoPodsMatched` condition instead of retaining it with `False`. Dashboards must handle both absent and false representations.
+When the tracked matching-Pod count becomes positive, the current recommender deletes the active `NoPodsMatched` condition instead of retaining it with `False`. Dashboards must handle both absent and false representations.
 
 ## `LowConfidence`
 
@@ -73,7 +74,7 @@ kubectl -n storefront get vpa catalog \
   -o jsonpath='{.spec.recommenders}{"\n"}'
 ```
 
-It may come from an older release, a custom recommender, or retained status. Use its reason, message, transition time, and generation rather than inventing a numeric confidence threshold. Current default recommendation bounds themselves widen with short history through confidence multipliers, so a large lower-to-upper range is the practical sparse-history signal even without `LowConfidence`.
+It may come from a custom or vendor-modified recommender, or from status retained after another producer wrote it. Use its reason, message, transition time, and any observed generation rather than inventing a numeric confidence threshold. Current default recommendation bounds themselves widen with short history through confidence multipliers, so a large lower-to-upper range can be a sparse-history signal even without `LowConfidence`; confirm it with sample history because usage percentiles and policy bounds also affect the range.
 
 ## Read Related Conditions
 
@@ -83,9 +84,9 @@ The current API also declares:
 - `ConfigDeprecated`: configuration still works but will stop being supported; and
 - `ConfigUnsupported`: recommendations will not be provided for this configuration.
 
-`ConfigUnsupported` deserves priority over metrics debugging. It commonly identifies an unreadable targetRef, an indirect/non-topmost controller target, an unsupported API version, or another invalid configuration. Read its message.
+`ConfigUnsupported` deserves priority over metrics debugging. It commonly identifies a missing or unreadable targetRef, a target that cannot be resolved to a well-known or scalable controller, an indirect/non-topmost controller target, or another invalid configuration. Read its message.
 
-The API also declares `FetchingHistory` for a recommender that is loading additional samples. Current upstream default-recommender source declares and checks this condition but contains no path that sets it, so do not depend on seeing it during startup. If another recommender or version does set `FetchingHistory=True`, the checkpoint writer skips that VPA while the condition is active so thin state does not overwrite restored history.
+The API also declares `FetchingHistory` for a recommender that is loading additional samples. Current upstream default-recommender source declares and checks this condition but contains no path that sets it, so do not depend on seeing it during startup. If another producer does set `FetchingHistory=True`, the checkpoint writer skips that VPA while the condition is active so incomplete in-memory state is not checkpointed while history is loading.
 
 ## Build Alerts Around Actions
 
@@ -94,7 +95,7 @@ Useful conditions include context:
 - `RecommendationProvided != True` for longer than a normal recommender and metrics warm-up, while desired replicas are above zero;
 - `NoPodsMatched=True` while the target has available replicas;
 - `ConfigUnsupported=True` immediately;
-- VPA status generation behind metadata generation for several loops; and
+- VPA status generation behind metadata generation for several loops, when the status field is populated; and
 - recommendation bounds or target absent for a required container.
 
 Export conditions and recommendations separately. A recommendation metric going absent must not be interpreted as zero CPU or memory.
@@ -110,4 +111,4 @@ Export conditions and recommendations separately. A recommendation metric going 
 
 ## Conclusion
 
-`RecommendationProvided` answers whether a recommendation exists, `NoPodsMatched` answers whether the target currently selects Pods, and `LowConfidence` is a declared condition that the current default recommender does not set. Preserve status, reason, message, and generation, allow valid condition combinations, and use recommendation width plus history evidence when assessing current confidence.
+`RecommendationProvided` answers whether at least one container recommendation exists, `NoPodsMatched` answers whether the default recommender tracks any matching non-Pending Pods, and `LowConfidence` is a declared condition that the current default recommender does not set. Preserve status, reason, message, and generation, allow valid condition combinations, and use recommendation width plus history evidence when assessing current confidence.
