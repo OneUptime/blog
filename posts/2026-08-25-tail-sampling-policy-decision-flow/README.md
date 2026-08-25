@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Tail Sampling, OpenTelemetry Collector, Sampling Policies, Observability
 
-Description: Understand final tail-sampling precedence, hard drop policies, soft non-matches, nested policy logic, and the effects of early policy evaluation.
+Description: Understand final tail-sampling precedence, hard drop policies, soft non-matches, nested policy logic, and the effects of early policy exit.
 
 ---
 
-It is tempting to read a tail-sampling `policies` list as `policy_a OR policy_b OR policy_c`. That is close for ordinary positive policies, but it misses the most important rule: a `Dropped` decision vetoes every sampled vote. It also ignores nested `and`, `not`, and `composite` semantics and optional early evaluation.
+It is tempting to read a tail-sampling `policies` list as `policy_a OR policy_b OR policy_c`. That is close for ordinary positive policies, but it misses the most important rule: a `Dropped` decision vetoes every sampled vote. It also ignores nested `and`, `not`, and `composite` semantics and optional early exit.
 
 ## Start with the Final Precedence
 
@@ -20,7 +20,7 @@ For current non-deprecated decisions, the processor's trace-complete flow is:
 
 An ordinary `NotSampled` means “this policy did not select the trace.” It does not mean “no policy may select it.” This is why a top-level route policy that does not match cannot suppress a separate error policy.
 
-Deprecated inverted decision types add historical precedence rules and are another reason to migrate `invert_match` to explicit wrappers.
+`InvertSampled` and `InvertNotSampled` remain deprecated compatibility decision types, but current built-in `invert_match` policies emit ordinary `Sampled` or `NotSampled`; prefer explicit `not` or `drop` wrappers for clearer intent.
 
 ## Build Hard Vetoes with `drop`
 
@@ -54,7 +54,7 @@ processors:
 
 An error trace with `app.do_not_sample=true` is dropped. An error trace without that attribute is sampled. A routine trace is sampled only if the probabilistic policy selects it.
 
-Within one `drop` wrapper, every `drop_sub_policy` must return a matching sampled outcome before the wrapper emits `Dropped`. That makes the list an AND. Put alternative exact values in one attribute policy or use separate top-level drop policies for independent vetoes.
+Within one `drop` wrapper, every `drop_sub_policy` must return a matching sampled outcome before the wrapper emits `Dropped`. That makes the list an AND. Put alternative exact string values in one `string_attribute` policy or use separate top-level drop policies for independent vetoes.
 
 Current processor loading moves all top-level drop policies ahead of non-drop policies while preserving their relative groups. Evaluation stops as soon as a drop returns `Dropped`.
 
@@ -63,19 +63,19 @@ Current processor loading moves all top-level drop policies ahead of non-drop po
 - `and` returns sampled only when all its subpolicies match. Its non-match is still a soft top-level `NotSampled`.
 - `not` flips `Sampled` and `NotSampled` for one wrapped policy. It creates a positive complement, not a hard veto.
 - `drop` returns `Dropped` when all its subpolicies match.
-- `composite` checks ordered subpolicies and applies span-per-second allocations; it emits one top-level vote.
+- `composite` checks `composite_sub_policy` entries in their listed order and applies span-per-second allocations; it emits one top-level vote.
 
 For example, “sample slow checkout traces” belongs in `and`. “sample traces that are not health checks” can use `not`. “never export prohibited traces” requires `drop`.
 
 ## Decide Whether to Use `sample_on_first_match`
 
-The default false setting evaluates all policies unless a drop short-circuits. With `sample_on_first_match: true`, evaluation stops after the first sampled policy. Because current loading places drop policies first, a top-level hard drop still gets its chance before ordinary samples.
+In `trace-complete` mode, the default false setting evaluates all policies unless a drop short-circuits. With `sample_on_first_match: true`, evaluation stops after the first sampled policy. Because current loading places drop policies first, a top-level hard drop still gets its chance before ordinary samples. `span-ingest` uses its own terminal and pending decision flow and does not consult this option.
 
-Early matching can reduce decision time for expensive policy lists, but it changes diagnostics and interactions with stateful policies:
+Early matching can reduce policy-evaluation time for expensive policy lists, but it changes diagnostics and interactions with stateful policies:
 
 - later policy vote metrics are not recorded for that trace;
 - later token buckets or composite allocations are not consulted;
-- `recordpolicy` attributes identify the first sampled policy reached; and
+- with the `processor.tailsamplingprocessor.recordpolicy` feature gate enabled, `tailsampling.policy` identifies the first top-level sampled policy reached; and
 - policy order among non-drop policies becomes operationally significant.
 
 Keep it false until a replay proves that skipped evaluations are harmless.
@@ -94,7 +94,7 @@ sum by (policy) (
 )
 ```
 
-That is not the final trace retention rate. A trace counted as sampled for the error policy can later be vetoed by a drop policy—although current drop-first ordering often means later policies are never evaluated in that case. Use `global_count_traces_sampled` for final decisions and compare exporter output when validating rules.
+That is not the final trace retention rate: it measures how often each evaluated policy votes to sample, and short-circuited policies are absent from the denominator. With current drop-first ordering, a matching top-level drop prevents later non-drop policies from being evaluated. Use `otelcol_processor_tail_sampling_global_count_traces_sampled` for final decisions and compare exporter output when validating rules.
 
 ## Test a Decision Matrix
 
