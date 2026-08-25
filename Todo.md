@@ -105,7 +105,6 @@
 
 ## Fulcio
 
-7. Email, URI, Kubernetes, and SPIFFE Identities in Fulcio: Which SAN Will Be Issued?
 8. How to Avoid Publishing Sensitive Email or Repository Identity Data in Fulcio’s Public CT Log
 9. How to Monitor Fulcio’s Certificate Transparency Log for Unauthorized Certificates for Your Identity
 10. How to Run Fulcio Locally with Docker Compose—and Why the Ephemeral CA Is Test-Only
