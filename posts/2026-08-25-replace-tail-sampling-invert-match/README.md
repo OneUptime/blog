@@ -45,7 +45,7 @@ That outer `NotSampled` is not a global veto. A separate top-level error, latenc
 
 ## Use `drop` for a Hard Exclusion
 
-If health traces must never leave this processor, use a positive matcher inside `drop`:
+If a health-route match must veto every keep policy in the same decision, use a positive matcher inside `drop`:
 
 ```yaml
 processors:
@@ -76,7 +76,7 @@ The subpolicy list has AND behavior, not OR behavior. To drop either of several 
 
 ## Preserve Error Exceptions Deliberately
 
-Sometimes the actual requirement is “drop routine health traces, but retain a health trace if any child span errors.” Encode the absence of an error as another condition of the drop:
+Sometimes the actual requirement is “drop routine health traces, but retain a health trace if any span has `ERROR` status.” Keep the separate top-level `errors` policy, and encode the absence of an error as another condition of the drop:
 
 ```yaml
 - name: drop-successful-health
@@ -98,7 +98,7 @@ Sometimes the actual requirement is “drop routine health traces, but retain a 
               status_codes: [ERROR]
 ```
 
-Use `trace-complete` and a sufficient decision window for this absence test. An error child arriving after the decision cannot reverse an already dropped trace.
+Use `sampling_strategy: trace-complete` and a sufficient `decision_wait` for this and any other trace-wide absence test. A span with `ERROR` status arriving after the decision cannot reverse an already dropped trace.
 
 ## Audit Missing-Attribute Semantics
 
@@ -118,7 +118,7 @@ If “key must exist and not equal X” is required, combine an explicit presenc
 
 Run the old and new configurations against a recorded, non-sensitive trace-ID corpus in separate staging Collectors. Compare final exported trace IDs, not only per-policy votes.
 
-The `count_traces_sampled` metric has `policy` and `decision` attributes in current generated telemetry. A policy voting not sampled does not prove the trace was dropped; use `global_count_traces_sampled` and exporter output for final outcomes. Deprecated inversion decisions and feature gates have evolved across releases, so test the exact source and version being deployed.
+The `otelcol_processor_tail_sampling_count_traces_sampled` metric has `policy`, `sampled`, and `decision` attributes in current generated telemetry. A policy voting not sampled does not prove the trace was dropped; use `otelcol_processor_tail_sampling_global_count_traces_sampled` for aggregate processor decisions and exporter output for final per-trace outcomes. Deprecated inversion decisions and feature gates have evolved across releases, so test the exact source and version being deployed.
 
 Remove `invert_match` only after the missing-key and multi-policy cases match the intended—not necessarily the historical—behavior.
 
