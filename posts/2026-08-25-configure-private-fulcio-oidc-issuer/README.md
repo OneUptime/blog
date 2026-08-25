@@ -24,11 +24,11 @@ curl --fail --silent --show-error \
   jq '{issuer, jwks_uri, id_token_signing_alg_values_supported}'
 ```
 
-Use TLS with a publicly trusted certificate or configure Fulcio's `ca-cert` for an internal issuer CA. Do not disable TLS verification. The discovery metadata's `issuer`, the token's effective issuer, and Fulcio's configured issuer must agree.
+Use TLS with a publicly trusted certificate or put the PEM-encoded internal issuer CA certificate in Fulcio's `ca-cert` field. Do not disable TLS verification. The discovery metadata's `issuer`, the token's standard `iss`, and Fulcio's configured issuer URL must agree.
 
 Register or configure the OIDC client so its ID tokens contain the audience Fulcio expects. Sigstore conventionally uses the client ID `sigstore`; an access token for an unrelated API is not a substitute for an ID token.
 
-At minimum, tokens need `aud`, `iss`, `exp`, and `iat`, plus the identity claims required by the selected issuer type. An optional `nbf` is also enforced when present by the token verification path. Keep token lifetimes short and runner clocks synchronized.
+At minimum, OIDC ID tokens need `aud`, `iss`, `sub`, `exp`, and `iat`, plus the identity claims required by the selected issuer type. An optional `nbf` is also enforced when present, with a five-minute clock-skew allowance in Fulcio's currently pinned token verifier. Keep token lifetimes short and runner clocks synchronized.
 
 ## Configure a Verified Email Issuer
 
@@ -49,6 +49,7 @@ The token must include:
 ```json
 {
   "iss": "https://id.example.com",
+  "sub": "builder-1234",
   "aud": "sigstore",
   "email": "builder@example.com",
   "email_verified": true,
@@ -112,18 +113,20 @@ For a non-CI identity type not already implemented by Fulcio, configuration alon
 
 Fulcio's current server flag for the issuer YAML is `--config-path`; its default path is `/etc/fulcio-config/config.yaml`. A production launch might include:
 
-```text
-fulcio-server serve
-  --host=0.0.0.0
-  --port=5555
-  --grpc-port=5554
-  --config-path=/etc/fulcio-config/config.yaml
-  --ca=kmsca
-  --kms-resource=awskms://...
-  --kms-cert-chain-path=/etc/fulcio/ca-chain.pem
-  --ct-log-url=https://ct.example.com/example-log
+```bash
+fulcio-server serve \
+  --host=0.0.0.0 \
+  --port=5555 \
+  --grpc-port=5554 \
+  --config-path=/etc/fulcio-config/config.yaml \
+  --ca=kmsca \
+  --kms-resource=awskms://... \
+  --kms-cert-chain-path=/etc/fulcio/ca-chain.pem \
+  --ct-log-url=https://ct.example.com/example-log \
   --ct-log-public-key-path=/etc/fulcio/ct-public-key.pem
 ```
+
+Fulcio's HTTP listener does not terminate TLS. Put it behind a TLS-terminating ingress or reverse proxy before exposing it as an HTTPS service, and keep the gRPC listener private or configure `--grpc-tls-certificate` and `--grpc-tls-key` when exposing it.
 
 Pin this configuration to the exact Fulcio release you deploy: flags and config fields can evolve. Supply credentials through the workload identity or secret mechanism for the chosen KMS, not in command-line arguments checked into source control.
 
@@ -131,7 +134,7 @@ An OIDC configuration does not make an ephemeral or repository-shipped CA suitab
 
 ## Validate Before Issuing Real Certificates
 
-After startup, inspect the public configuration endpoint rather than assuming the file was loaded:
+After startup, confirm the expected issuer, audience, and type through the public configuration endpoint rather than assuming the file was loaded:
 
 ```bash
 curl --fail --silent --show-error \
@@ -145,7 +148,7 @@ Then run positive and negative tests with synthetic identities:
 | valid token, `aud: sigstore`, known issuer | certificate issued with the expected SAN and issuer extension |
 | correct issuer, wrong audience | rejected |
 | unconfigured issuer | rejected |
-| expired or not-yet-valid token | rejected |
+| expired token or `nbf` more than five minutes in the future | rejected |
 | missing required email or CI claim | rejected |
 | valid token, proof signed by another key | rejected |
 | valid token with unexpected SAN input | rejected or mapped to the configured value, never accepted unchecked |
@@ -154,7 +157,7 @@ Inspect the resulting certificate with OpenSSL and verify a signed test artifact
 
 ## Distribute the Whole Trust Domain
 
-Private Cosign clients need more than `--fulcio-url`. They need authenticated Fulcio roots/intermediates, CT log public keys, Rekor keys, and service endpoints. The preferred design is a private TUF repository or current Sigstore trusted-root and signing-configuration documents distributed through a controlled channel.
+Current Cosign clients need both service configuration and authenticated trust material; the legacy `--fulcio-url` flag is deprecated. Distribute a signing-configuration document with the private service endpoints to signing hosts and a trusted-root document with the Fulcio roots/intermediates, CT log public keys, and Rekor keys to verification hosts. Prefer a private TUF repository for distributing changing verification material; otherwise, distribute these documents through a controlled channel.
 
 Do not fetch a root from the same unauthenticated endpoint you are trying to trust during verification. Bootstrap it out of band. Keep production, staging, and developer roots separate so a test certificate cannot satisfy a production policy.
 
