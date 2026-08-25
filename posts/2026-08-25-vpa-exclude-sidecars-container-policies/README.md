@@ -24,11 +24,11 @@ spec:
     kind: Deployment
     name: orders
   updatePolicy:
-    updateMode: Off
+    updateMode: "Off"
   resourcePolicy:
     containerPolicies:
       - containerName: istio-proxy
-        mode: Off
+        mode: "Off"
       - containerName: "*"
         mode: Auto
         controlledResources: [cpu, memory]
@@ -41,7 +41,7 @@ spec:
           memory: 8Gi
 ```
 
-`mode: Off` disables recommendations for that container. The VPA API intentionally omits containers in `Off` mode from `.status.recommendation.containerRecommendations`; an absent sidecar recommendation is therefore expected.
+`mode: "Off"` disables recommendations for that container. The VPA API intentionally omits containers in `Off` mode from `.status.recommendation.containerRecommendations`; an absent sidecar recommendation is therefore expected.
 
 The wildcard applies only to containers without a named policy. There can be at most one policy for each name and one `containerName: "*"` entry.
 
@@ -85,18 +85,28 @@ Check injector upgrades for name changes. A wildcard can unintentionally start m
 
 ## Treat Native Sidecars Differently
 
-Kubernetes native sidecars are restartable init containers under `.spec.initContainers`, not regular entries in `.spec.containers`. Current upstream VPA recommender source records init-container names and deliberately drops their metric samples. The VPA recommendation API is for regular container recommendations.
+Kubernetes native sidecars are restartable init containers under `.spec.initContainers`, not regular entries in `.spec.containers`. Current upstream VPA records init-container names in its internal Pod state and deliberately drops their real-time metric samples. Its admission controller and updater currently operate only on regular containers in `.spec.containers`.
 
 Therefore, do not assume a `containerPolicies` entry will right-size a restartable init sidecar. Give native sidecars explicit static requests and limits, verify behavior against the VPA version you deploy, and monitor upstream support. The named policy examples above apply to conventional sidecars represented as regular containers.
 
 ## Include Excluded Sidecars in Scheduling Math
 
-Excluding a sidecar from VPA does not remove its resources from the Pod. The scheduler considers the Pod's aggregate requests. When setting `maxAllowed` for the main container, reserve capacity for every excluded container and for Pod overhead.
+Excluding a sidecar from VPA does not remove its resources from the Pod. The scheduler considers the Pod's effective requests, including regular containers, restartable init sidecars, init-container peaks, and Pod overhead. When setting `maxAllowed` for the main container, account for the complete effective Pod request. Inspect the final Pod's inputs to that calculation:
 
 ```bash
 kubectl -n commerce get pod -l app=orders -o json | jq '
-  .items[].spec.containers[] |
-  {name, cpu: .resources.requests.cpu, memory: .resources.requests.memory}'
+  .items[] |
+  {
+    containers: [
+      .spec.containers[] |
+      {name, cpu: .resources.requests.cpu, memory: .resources.requests.memory}
+    ],
+    initContainers: [
+      (.spec.initContainers // [])[] |
+      {name, restartPolicy, cpu: .resources.requests.cpu, memory: .resources.requests.memory}
+    ],
+    overhead: (.spec.overhead // {})
+  }'
 ```
 
 A common failure is to cap the application at the largest-node envelope and then add an excluded proxy on top, producing a Pod that cannot fit.
@@ -109,11 +119,11 @@ Requests-only per-container changes can also change the QoS shape of newly creat
 
 ## Roll Out Safely
 
-Keep `updateMode: Off` while validating:
+Keep `updateMode: "Off"` while validating:
 
 - every final regular container has the intended named or wildcard policy;
 - excluded containers retain explicit resources;
-- per-container targets sum to a schedulable Pod;
+- the Pod's effective requests, including init containers and overhead, fit an available node;
 - LimitRange and quota accept the combined request and limit values; and
 - another admission webhook does not overwrite VPA's mutation.
 
@@ -130,4 +140,4 @@ Then choose `Initial`, `Recreate`, or a supported in-place mode based on accepta
 
 ## Conclusion
 
-Use exact named policies for exceptions and a wildcard only for the default behavior you truly want. `mode`, `controlledResources`, `controlledValues`, and bounds solve different problems. Validate final injected container names, account for excluded sidecars in Pod capacity, and treat restartable init sidecars as a separate, currently untracked case in upstream VPA.
+Use exact named policies for exceptions and a wildcard only for the default behavior you truly want. `mode`, `controlledResources`, `controlledValues`, and bounds solve different problems. Validate final injected container names, account for excluded sidecars in Pod capacity, and treat restartable init sidecars as a separate case that current upstream VPA does not right-size.
