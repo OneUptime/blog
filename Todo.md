@@ -105,7 +105,6 @@
 
 ## Fulcio
 
-3. Why Fulcio Rejects an OIDC Token: Debugging iss, aud, sub, exp, and nbf Claims
 4. How to Request a Fulcio Certificate from GitHub Actions with id-token: write
 5. How to Verify the Exact CI Workflow Behind a Fulcio Certificate Using Build Signer OIDs
 6. How to Inspect Fulcio SANs and Sigstore OID Extensions with OpenSSL
