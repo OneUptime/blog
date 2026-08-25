@@ -99,7 +99,6 @@
 
 ## Trace Sampling
 
-16. How to Preserve Unbiased Request-Rate Metrics When Tail Sampling Favors Errors and Slow Traces
 17. How to Enforce Per-Service Trace Budgets with Composite Tail-Sampling Rate Allocation
 18. How to Force-Sample One OpenTelemetry Trace with an Attribute While Preserving a Hard Do-Not-Sample Rule
 19. Why an HTTP 500 Trace Can Miss a `status_code: ERROR` Tail-Sampling Policy
