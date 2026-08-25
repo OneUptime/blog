@@ -8,7 +8,7 @@ Description: Choose and verify Fulcio SAN identities by understanding how verifi
 
 ---
 
-Fulcio certificates have an empty X.509 Subject. The authenticated identity is carried in a critical Subject Alternative Name (SAN), and its representation depends on the configured OIDC issuer type.
+Fulcio-issued leaf certificates have an empty X.509 Subject. The authenticated identity is carried in a critical Subject Alternative Name (SAN), and its representation depends on the configured OIDC issuer type.
 
 Do not assume the OIDC `sub` claim is always copied into the SAN. Email uses a verified `email`; Kubernetes derives a service-account URI from nested claims; GitHub CI derives a workflow URI; and only some identity types use `sub` directly. The configured mapping, not the JWT field name alone, determines the certificate identity.
 
@@ -18,7 +18,7 @@ Do not assume the OIDC `sub` claim is always copied into the SAN. Email uses a v
 | --- | --- | --- |
 | `email` | `email` plus `email_verified: true` | `email:user@example.com` |
 | `uri` | absolute URI in `sub`, constrained by `subject-domain` | the `sub` value as a URI SAN |
-| `kubernetes` | namespace and service-account data under `kubernetes.io` | `URI:https://kubernetes.io/namespaces/NAMESPACE/serviceaccounts/SERVICE_ACCOUNT` |
+| `kubernetes` | `kubernetes.io.namespace` and `kubernetes.io.serviceaccount.name` | `URI:https://kubernetes.io/namespaces/NAMESPACE/serviceaccounts/SERVICE_ACCOUNT` |
 | `spiffe` | SPIFFE ID in `sub`, constrained by `spiffe-trust-domain` | the `spiffe://...` value as a URI SAN |
 | `username` | username in `sub`, plus `subject-domain` | an `otherName` SAN containing `sub!subject-domain` under Fulcio OID `.1.7` |
 | `ci-provider` | provider claims and configured SAN template | normally a URI naming the responsible build instructions |
@@ -33,6 +33,7 @@ An email issuer token must include:
 {
   "aud": "sigstore",
   "iss": "https://id.example.com",
+  "sub": "account-12345",
   "email": "developer@example.com",
   "email_verified": true,
   "iat": 1787652000,
@@ -80,7 +81,7 @@ The SAN becomes:
 URI:https://users.example.com/builders/release-bot
 ```
 
-Current Fulcio validates that the token subject's hostname exactly matches the configured subject hostname. It also requires the subject-domain and issuer schemes to match and constrains their domains. The operator adding this configuration is expected to prove control of both issuer and subject domains.
+Current Fulcio validates that the token subject's hostname exactly matches the configured subject hostname. At configuration load, it also requires the subject-domain and issuer schemes to match and compares the last two hostname labels; current source notes that this check is not public-suffix-aware. The operator adding this configuration is expected to prove control of both issuer and subject domains.
 
 Do not configure a shared public domain you do not control or accept arbitrary URI hosts from the token. The SAN is a policy identifier, so choose a stable path structure and define normalization, case, escaping, and rename behavior in the issuer contract.
 
@@ -111,7 +112,7 @@ The documented SAN is:
 URI:https://kubernetes.io/namespaces/release/serviceaccounts/signer
 ```
 
-The pod name and UID do not appear in that SAN. Cluster separation comes from the OIDC issuer: managed clusters commonly have cluster-specific issuer URLs. This is why verifier policy must pair the Kubernetes SAN with the exact expected cluster issuer. Trusting only the generic `https://kubernetes.io/...` URI can accidentally trust a service account with the same namespace and name in another cluster.
+Only the namespace and service-account name appear in that SAN; the pod fields and service-account UID do not. Cluster separation comes from the OIDC issuer: managed clusters commonly have cluster-specific issuer URLs. This is why verifier policy must pair the Kubernetes SAN with the exact expected cluster issuer. Trusting only the generic `https://kubernetes.io/...` URI can accidentally trust a service account with the same namespace and name in another cluster.
 
 The Kubernetes token presented to Fulcio must be audience-bound for the configured client ID, conventionally `aud: sigstore`. Restrict which pods can request that signing identity and which artifacts the resulting service-account SAN is authorized to sign.
 
@@ -178,11 +179,12 @@ openssl x509 -in fulcio-leaf.pem -noout \
   -ext subjectAltName
 ```
 
-Then verify an artifact with both the exact identity and issuer:
+Then verify an artifact with both the exact identity and issuer. For the private Sigstore deployment used in this example, point Cosign at that deployment's trust material; with a Sigstore TrustedRoot file:
 
 ```bash
 cosign verify-blob artifact.tar.gz \
   --bundle artifact.sigstore.json \
+  --trusted-root trusted-root.json \
   --certificate-identity \
     'spiffe://build.example.com/release/signer' \
   --certificate-oidc-issuer \
@@ -202,4 +204,4 @@ Anchor any required regular expression and test rejection for a neighboring name
 
 ## Conclusion
 
-Fulcio makes identity type explicit in the SAN: verified email, controlled URI, Kubernetes service-account URI, SPIFFE ID, username `otherName`, or a templated CI workflow URI. Choose the representation that matches the principal, keep it stable and non-sensitive, and always verify it together with the exact OIDC issuer.
+Fulcio represents the configured identity in the SAN as a verified email, controlled URI, Kubernetes service-account URI, SPIFFE ID, username `otherName`, or a templated CI workflow URI. Choose the representation that matches the principal, keep it stable and non-sensitive, and always verify it together with the exact OIDC issuer.
