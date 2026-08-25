@@ -105,7 +105,6 @@
 
 ## Fulcio
 
-6. How to Inspect Fulcio SANs and Sigstore OID Extensions with OpenSSL
 7. Email, URI, Kubernetes, and SPIFFE Identities in Fulcio: Which SAN Will Be Issued?
 8. How to Avoid Publishing Sensitive Email or Repository Identity Data in Fulcio’s Public CT Log
 9. How to Monitor Fulcio’s Certificate Transparency Log for Unauthorized Certificates for Your Identity
