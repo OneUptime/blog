@@ -99,7 +99,6 @@
 
 ## Trace Sampling
 
-11. How to Record Which OpenTelemetry Tail-Sampling Policy Kept Each Trace with `recordpolicy`
 12. How to Drop Liveness and Readiness Traces Without Hiding Errors in Their Child Spans
 13. Where to Place the Span Metrics Connector Relative to Tail Sampling to Avoid Biased RED Metrics
 14. Why Tail Sampling Cannot Recover an Error Trace Dropped by the SDK—and How to Set the Upstream Sampler
