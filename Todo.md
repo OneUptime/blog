@@ -102,7 +102,6 @@
 
 ## VPA
 
-15. How LimitRanges and ResourceQuotas Alter—or Reject—VPA Recommendations
 16. How to Tune VPA Eviction Tolerance, Updater Interval, and Eviction Rate for Production
 17. How to Troubleshoot the VPA Admission Webhook: CA Bundles, Certificates, and Mutation Failures
 18. How to Read VPA RecommendationProvided, NoPodsMatched, and LowConfidence Conditions
