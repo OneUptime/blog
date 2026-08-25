@@ -99,7 +99,6 @@
 
 ## Trace Sampling
 
-18. How to Force-Sample One OpenTelemetry Trace with an Attribute While Preserving a Hard Do-Not-Sample Rule
 19. Why an HTTP 500 Trace Can Miss a `status_code: ERROR` Tail-Sampling Policy
 20. How to Handle Pending Tail-Sampling Decisions During Collector Shutdowns and Rolling Deployments
 
