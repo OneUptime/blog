@@ -99,7 +99,6 @@
 
 ## Trace Sampling
 
-13. Where to Place the Span Metrics Connector Relative to Tail Sampling to Avoid Biased RED Metrics
 14. Why Tail Sampling Cannot Recover an Error Trace Dropped by the SDK—and How to Set the Upstream Sampler
 15. How to Keep Probabilistic Sampling Deterministic Across Collectors by Pinning `hash_seed`
 16. How to Preserve Unbiased Request-Rate Metrics When Tail Sampling Favors Errors and Slow Traces
