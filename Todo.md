@@ -102,7 +102,6 @@
 
 ## VPA
 
-3. How to Prevent VPA Recommendations from Making Pods Unschedulable on Available Node Sizes
 4. Why Won’t VPA Update a Single-Replica Pod? Check minReplicas, PodDisruptionBudgets, and Controller Ownership
 5. How to Use InPlaceOrRecreate VPA and Diagnose a Disabled InPlacePodVerticalScaling Feature Gate
 6. Why VPA Cannot Downsize Memory In Place: resizePolicy and Eviction Fallback Explained
