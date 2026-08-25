@@ -1,4 +1,4 @@
-# Validation Summary: How to Run Fulcio Locally with Docker Compose—and Why the Ephemeral CA Is Test-Only
+# Validation Summary: Run Fulcio Locally with Docker Compose and an Ephemeral Test CA
 
 ## Status
 validated

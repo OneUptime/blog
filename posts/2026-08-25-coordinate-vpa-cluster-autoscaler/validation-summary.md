@@ -1,4 +1,4 @@
-# Validation Summary: How to Coordinate VPA with Cluster Autoscaler When Right-Sized Pods Need Larger Nodes
+# Validation Summary: Coordinate VPA with Cluster Autoscaler for Larger Pods
 
 ## Status
 validated

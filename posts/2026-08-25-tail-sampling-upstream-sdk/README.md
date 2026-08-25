@@ -1,4 +1,4 @@
-# Why Tail Sampling Cannot Recover an Error Trace Dropped by the SDK—and How to Set the Upstream Sampler
+# Why Tail Sampling Cannot Recover Traces Dropped by the SDK
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -43,7 +43,7 @@ This matters at public edges and migration boundaries. A request from an externa
 Choose the boundary deliberately:
 
 - preserve the parent decision when end-to-end trace consistency is more important and the upstream sampler is trusted;
-- configure language-specific ParentBased branches so `remoteParentNotSampled` returns `RECORD_AND_SAMPLE`—for example, by delegating to `AlwaysOn`—when the internal tail tier needs visibility; or
+- configure language-specific ParentBased branches so `remoteParentNotSampled` returns `RECORD_AND_SAMPLE`-for example, by delegating to `AlwaysOn`-when the internal tail tier needs visibility; or
 - use `AlwaysOn` at a controlled boundary, understanding that upstream portions can remain absent and sampled flags can change within the distributed trace.
 
 The standard environment names do not expose every ParentBased branch in every SDK. Custom programmatic sampler configuration may be required. Document the resulting partial-trace behavior.
@@ -99,4 +99,4 @@ Repeat with a sampled remote parent and an unsampled remote parent. This exposes
 
 ## Conclusion
 
-Use an all-sampled (`RECORD_AND_SAMPLE`), consistently propagated SDK path when tail policies must see every possible error or slow trace. `parentbased_always_on` is the standard starting point, but audit remote unsampled parents and every processor before the tail tier. Then capacity-plan the much larger full-fidelity stream—the Collector cannot sample data that never arrives.
+Use an all-sampled (`RECORD_AND_SAMPLE`), consistently propagated SDK path when tail policies must see every possible error or slow trace. `parentbased_always_on` is the standard starting point, but audit remote unsampled parents and every processor before the tail tier. Then capacity-plan the much larger full-fidelity stream-the Collector cannot sample data that never arrives.

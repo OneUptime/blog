@@ -1,4 +1,4 @@
-# How to Protect the OpenTelemetry Collector from Giant Traces with `maximum_trace_size_bytes`
+# Protect the OpenTelemetry Collector with `maximum_trace_size_bytes`
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,8 +1,8 @@
-# How to Monitor Fulcio’s Certificate Transparency Log for Unauthorized Certificates for Your Identity
+# Monitor Fulcio's CT Log for Unauthorized Identity Certificates
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Fulcio, Sigstore, Certificate Transparency, Rekor Monitor, GitHub Actions, Incident Detection, Supply Chain Security
+Tags: Fulcio, Sigstore, Certificate Transparency, Rekor Monitor, GitHub Action, Incident Detection, Supply Chain Security
 
 Description: Continuously scan Fulcio CT shards for email, workflow, issuer, and OID matches, preserve checkpoints, reconcile every issuance with an authorized release, and respond to unexpected certificates.
 

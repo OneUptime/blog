@@ -1,4 +1,4 @@
-# Validation Summary: Email, URI, Kubernetes, and SPIFFE Identities in Fulcio: Which SAN Will Be Issued?
+# Validation Summary: Fulcio Email, URI, Kubernetes, and SPIFFE SAN Identities
 
 ## Status
 

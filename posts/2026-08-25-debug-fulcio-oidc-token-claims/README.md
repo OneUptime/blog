@@ -148,7 +148,7 @@ Work from the outside inward:
 7. Are provider-specific identity and template claims present and correctly typed?
 8. Does the proof of possession sign the advertised challenge with the private key corresponding to the submitted public key?
 
-Also inspect Fulcio's `/api/v2/configuration` response and structured server logs. Log a request correlation ID, configured issuer name, and safe error classification—not the JWT, email, or full claims object.
+Also inspect Fulcio's `/api/v2/configuration` response and structured server logs. Log a request correlation ID, configured issuer name, and safe error classification-not the JWT, email, or full claims object.
 
 ## Official Documentation
 
@@ -163,4 +163,4 @@ Also inspect Fulcio's `/api/v2/configuration` response and structured server log
 
 ## Conclusion
 
-Treat a rejected token as a pipeline of checks, not a single JWT mystery. Verify discovery and signature first, then exact issuer, intended audience, time window, provider-specific identity claims, and proof of possession—while keeping the bearer token out of every log and ticket.
+Treat a rejected token as a pipeline of checks, not a single JWT mystery. Verify discovery and signature first, then exact issuer, intended audience, time window, provider-specific identity claims, and proof of possession-while keeping the bearer token out of every log and ticket.

@@ -1,4 +1,4 @@
-# How to Cap Tail-Sampled Output by Bytes per Second Instead of Trace or Span Count
+# How to Cap Tail-Sampled Output by Bytes per Second
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -56,7 +56,7 @@ When the bucket rejects an error trace, the status policy can still sample it. T
 
 To ensure that every ordinary positive policy decision is charged to one bucket, keep `bytes_limiting` as the only positive top-level sampler. Hard `drop` policies may coexist because they can only remove traces. If you need content priority and one shared byte budget, test the architecture carefully: multiple `and` policies with separate byte limiters create separate buckets, and the composite policy allocates spans per second, not bytes.
 
-Even this layout is not an absolute egress cap. After a trace has been sampled, later batches that find its live decision or sampled decision-cache entry are forwarded without re-running `bytes_limiting`. Use a downstream byte-aware queue, gateway, or backend quota when every exported byte—including late spans—must be bounded.
+Even this layout is not an absolute egress cap. After a trace has been sampled, later batches that find its live decision or sampled decision-cache entry are forwarded without re-running `bytes_limiting`. Use a downstream byte-aware queue, gateway, or backend quota when every exported byte-including late spans-must be bounded.
 
 ## Understand What Is Counted
 

@@ -1,4 +1,4 @@
-# How to Handle Pending Tail-Sampling Decisions During Collector Shutdowns and Rolling Deployments
+# Handle Pending Tail-Sampling Decisions During Rolling Deployments
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

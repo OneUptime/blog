@@ -1,4 +1,4 @@
-# How to Run Fulcio Locally with Docker Compose—and Why the Ephemeral CA Is Test-Only
+# Run Fulcio Locally with Docker Compose and an Ephemeral Test CA
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -98,7 +98,7 @@ The Fulcio service currently starts with arguments equivalent to:
 
 Those values are deliberately convenient for a public development repository. The signing key and password are known to every reader of the repository. Persistence across a restart does not make them secure.
 
-The setup guide's statement that Compose uses an ephemeral CA and Trillian reflects another version of the lab. This is why copying commands from `main` documentation into a pinned older release—or assuming `main` is stable production configuration—causes confusing mismatches.
+The setup guide's statement that Compose uses an ephemeral CA and Trillian reflects another version of the lab. This is why copying commands from `main` documentation into a pinned older release-or assuming `main` is stable production configuration-causes confusing mismatches.
 
 ## Run the Explicit Ephemeral Mode
 

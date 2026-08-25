@@ -1,4 +1,4 @@
-# OpenTelemetry `trace-complete` vs `span-ingest`: Which Tail-Sampling Strategy Fits Your Pipeline?
+# OpenTelemetry `trace-complete` vs `span-ingest` Tail Sampling
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# Where to Place the Span Metrics Connector Relative to Tail Sampling to Avoid Biased RED Metrics
+# Place Span Metrics Before Tail Sampling to Avoid Biased RED Metrics
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

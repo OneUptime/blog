@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Fulcio, Sigstore, Cosign, GitHub Actions, OIDC, Container Signing, CI/CD
+Tags: Fulcio, Sigstore, Cosign, GitHub Action, OIDC, Container Signing, CI/CD
 
 Description: Use least-privilege GitHub Actions permissions and a patched Cosign release to request a sigstore-audience OIDC token, sign an immutable image digest, and verify the exact workflow identity.
 

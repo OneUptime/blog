@@ -1,4 +1,4 @@
-# How to Size OpenTelemetry Tail Sampling `decision_wait`, `num_traces`, and Decision Caches from Real Traffic
+# How to Size OpenTelemetry Tail Sampling from Real Traffic
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

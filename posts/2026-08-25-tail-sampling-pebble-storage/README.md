@@ -1,4 +1,4 @@
-# How to Move Tail-Sampling State Out of Memory with the Experimental `tail_storage` Extension
+# Move Tail-Sampling State to the Experimental `tail_storage` Extension
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -69,7 +69,7 @@ The extension must appear in `service.extensions`; declaring it at the top level
 
 ## Treat the Directory as Ephemeral
 
-The official extension documentation is explicit: persistence across Collector restarts is not yet supported. On startup, the extension drops existing data in its configured directory while the on-disk schema is under development.
+The official extension documentation is explicit: persistence across Collector restarts is not yet supported. On startup, the extension drops all stored trace data from the Pebble database under its configured directory while the on-disk schema is under development.
 
 Consequences include:
 
@@ -86,9 +86,9 @@ Use a stable writable mount to control disk capacity and I/O isolation, but trea
 
 Set a limit below the filesystem's real capacity and retain space for compaction, filesystem metadata, logs, and operating-system needs. Monitor bytes, inodes, write latency, I/O errors, and Collector logs. An append failure means the processor cannot safely assume that batch is available for the eventual decision.
 
-In the current processor path, an extension append error is logged but is not returned to the OTLP sender for that batch. The later policy decision can therefore see only the batches that were stored successfully; do not assume an upstream retry will repair a full-disk or I/O-error event. Treat the error log and storage health as an immediate correctness signal and design failover outside this alpha interface.
+In the current processor path, an extension append error is logged but is not returned to the OTLP sender for that batch. The processor has already updated the trace's in-memory span-count and size metadata, so those totals can include a batch whose span bodies were not stored. In `trace-complete`, later evaluation can therefore receive incomplete `ReceivedBatches`; in `span-ingest`, a later terminal sample decision can forward a trace that omits earlier batches whose appends failed. Do not assume an upstream retry will repair a full-disk or I/O-error event. Treat the error log and storage health as an immediate correctness signal and design failover outside this alpha interface.
 
-The directory should be writable only by the Collector service account. Do not share one Pebble directory between replicas or processes. Local storage also means a pod rescheduled to another node has no usable shared sampling state—which is consistent with the current startup-clearing limitation anyway.
+The directory should be writable only by the Collector service account. Do not share one Pebble directory between replicas or processes. Local storage also means a pod rescheduled to another node has no usable shared sampling state-which is consistent with the current startup-clearing limitation anyway.
 
 ## Keep Trace-ID Affinity and Live Metadata Capacity
 
@@ -100,9 +100,9 @@ Current validation rejects `num_shards` greater than one when `tail_storage` is 
 
 ## Choose the Sampling Strategy Separately
 
-The official Pebble example uses `span-ingest`. It can finalize simple terminal matches early and write only still-pending batches to storage. Its policy semantics differ from the default: policies see one incoming batch at a time, stateful evaluators are rejected, and pending cleanup does not re-evaluate the accumulated trace.
+The official Pebble example uses `span-ingest`. It can finalize simple terminal matches early and write only still-pending batches to storage. Its policy semantics differ from the default: policies see only the current incoming batch's span bodies, while span-count and size metadata remain cumulative; stateful evaluators are rejected; and pending cleanup does not re-evaluate the accumulated trace.
 
-`trace-complete` remains appropriate when policies need a whole-trace view. Tail storage can reduce where its pending span bodies reside, but decisions still wait and disk I/O becomes part of the critical path. Benchmark both semantics with real batch ordering.
+`trace-complete` remains appropriate when policies need an accumulated-trace view at decision time. Tail storage can reduce where its pending span bodies reside, but decisions still wait and disk I/O becomes part of the critical path. Benchmark both semantics with real batch ordering.
 
 ## Plan the Failure Boundary
 

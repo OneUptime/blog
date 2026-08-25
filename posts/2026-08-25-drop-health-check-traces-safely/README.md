@@ -1,8 +1,8 @@
-# How to Drop Liveness and Readiness Traces Without Hiding Errors in Their Child Spans
+# Drop Health-Check Traces Without Hiding Child-Span Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Tail Sampling, Kubernetes, Health Checks, Distributed Tracing
+Tags: OpenTelemetry, Tail Sampling, Kubernetes, Health Check, Distributed Tracing
 
 Description: Drop only successful health-check traces by combining a route match with the absence of any error span, while preserving error traces through a hard-veto-safe policy.
 
@@ -73,7 +73,7 @@ Some platforms use `/healthz`, `/livez`, or `/readyz`. Add the exact route templ
 
 ## Require a Whole-Trace View
 
-Use `trace-complete` for this rule. The logic proves an absence—no error anywhere—which is only meaningful after enough of the trace has arrived. In `span-ingest`, policies see one incoming batch at a time, and pending cleanup does not re-evaluate all accumulated batches. A route batch can arrive before a later error batch.
+Use `trace-complete` for this rule. The logic proves an absence-no error anywhere-which is only meaningful after enough of the trace has arrived. In `span-ingest`, policies see one incoming batch at a time, and pending cleanup does not re-evaluate all accumulated batches. A route batch can arrive before a later error batch.
 
 Choose `decision_wait` from first-to-last arrival measurements. Optionally use a measured `decision_wait_after_root_received` to accelerate decisions after root arrival; it does not extend the original `decision_wait` deadline. A decision cache keeps later batches consistent with the original decision only while the trace ID remains cached, but it cannot revise a premature drop when the late batch contains the error.
 
@@ -83,7 +83,7 @@ Route every trace ID to one tail-sampling instance. If the root and error child 
 
 The `status_code` policy examines the OpenTelemetry span `Status.Code`, not HTTP attributes. `http.response.status_code: 500` is an attribute; it does not automatically become `StatusCode=ERROR` inside the Collector.
 
-Current HTTP semantic conventions say 5xx spans should have error status, but instrumentation defects, old libraries, manual spans, or transformations can leave it unset. Inspect representative probe failures. If necessary, fix status in instrumentation. If status cannot be fixed, use the same tested OTTL failure predicate—including `http.response.status_code >= 500` and any domain-specific failure attributes—in both places: negate it inside `drop-successful-probes` and add a top-level retention policy. A positive policy alone cannot override `Dropped`.
+Current HTTP semantic conventions say 5xx spans should have error status, but instrumentation defects, old libraries, manual spans, or transformations can leave it unset. Inspect representative probe failures. If necessary, fix status in instrumentation. If status cannot be fixed, use the same tested OTTL failure predicate-including `http.response.status_code >= 500` and any domain-specific failure attributes-in both places: negate it inside `drop-successful-probes` and add a top-level retention policy. A positive policy alone cannot override `Dropped`.
 
 Remember that HTTP server 4xx responses are normally left with unset span status unless application context says they are errors. Decide whether an unhealthy readiness response represented as 4xx should be retained and, if so, include it in both the negated drop predicate and the positive retention policy.
 

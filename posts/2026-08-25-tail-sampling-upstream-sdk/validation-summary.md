@@ -1,4 +1,4 @@
-# Validation Summary: Why Tail Sampling Cannot Recover an Error Trace Dropped by the SDK—and How to Set the Upstream Sampler
+# Validation Summary: Why Tail Sampling Cannot Recover Traces Dropped by the SDK
 
 ## Status
 

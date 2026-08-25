@@ -1,4 +1,4 @@
-# Validation Summary: How to Preserve Unbiased Request-Rate Metrics When Tail Sampling Favors Errors and Slow Traces
+# Validation Summary: Preserve Unbiased Request Metrics with Selective Tail Sampling
 
 ## Status
 

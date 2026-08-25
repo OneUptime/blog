@@ -1,4 +1,4 @@
-# Validation Summary: How to Size OpenTelemetry Tail Sampling `decision_wait`, `num_traces`, and Decision Caches from Real Traffic
+# Validation Summary: How to Size OpenTelemetry Tail Sampling from Real Traffic
 
 ## Status
 

@@ -1,4 +1,4 @@
-# How to Fix `sampling_trace_dropped_too_early` Without Blindly Adding Collector Memory
+# How to Fix `sampling_trace_dropped_too_early` Without Adding Memory
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# Validation Summary: How to Replace Deprecated `invert_match` Tail-Sampling Rules with `drop` and `not` Policies
+# Validation Summary: Replace Deprecated `invert_match` with Tail-Sampling `drop` and `not`
 
 ## Status
 

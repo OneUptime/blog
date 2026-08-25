@@ -1,4 +1,4 @@
-# How to Debug a VPA with No Recommendation: Metrics Server, TargetRef, and Container History Checks
+# Debug a VPA with No Recommendation
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

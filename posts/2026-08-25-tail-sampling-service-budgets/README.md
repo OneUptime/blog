@@ -1,4 +1,4 @@
-# How to Enforce Per-Service Trace Budgets with Composite Tail-Sampling Rate Allocation
+# Enforce Per-Service Trace Budgets with Composite Tail Sampling
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

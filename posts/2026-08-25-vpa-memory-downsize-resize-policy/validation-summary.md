@@ -1,4 +1,4 @@
-# Validation Summary: Why VPA Cannot Downsize Memory In Place: resizePolicy and Eviction Fallback Explained
+# Validation Summary: Why VPA Cannot Downsize Memory In Place
 
 ## Status
 

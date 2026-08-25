@@ -1,4 +1,4 @@
-# Email, URI, Kubernetes, and SPIFFE Identities in Fulcio: Which SAN Will Be Issued?
+# Fulcio Email, URI, Kubernetes, and SPIFFE SAN Identities
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -50,7 +50,7 @@ X509v3 Subject Alternative Name: critical
 
 The raw `sub` can be an opaque account identifier and does not replace the verified email for this issuer type. Fulcio's normal proof-of-possession challenge for email identities is the `email` claim.
 
-Current Fulcio source includes a version-dependent `skip-email-verification` configuration for trusted internal providers that perform equivalent verification but do not emit the standard claim. That option weakens an explicit signal and should be used only after documenting the provider's guarantee and checking the deployed Fulcio version—not as a blanket fix for unverified email.
+Current Fulcio source includes a version-dependent `skip-email-verification` configuration for trusted internal providers that perform equivalent verification but do not emit the standard claim. That option weakens an explicit signal and should be used only after documenting the provider's guarantee and checking the deployed Fulcio version-not as a blanket fix for unverified email.
 
 Email SANs in public Fulcio certificates are written to public transparency infrastructure. If a personal or internal address must not become public, do not use it with the public instance.
 

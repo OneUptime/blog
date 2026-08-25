@@ -1,4 +1,4 @@
-# Validation Summary: Why Did VPA Change Its Recommendation but Not Recreate the Pod? Understanding Bounds and Eviction Thresholds
+# Validation Summary: Why VPA Changes Recommendations Without Recreating Pods
 
 ## Status
 

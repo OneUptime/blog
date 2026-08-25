@@ -1,4 +1,4 @@
-# Validation Summary: How to Monitor Fulcio’s Certificate Transparency Log for Unauthorized Certificates for Your Identity
+# Validation Summary: Monitor Fulcio's CT Log for Unauthorized Identity Certificates
 
 ## Status
 validated

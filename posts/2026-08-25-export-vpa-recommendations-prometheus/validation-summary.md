@@ -1,4 +1,4 @@
-# Validation Summary: How to Export VPA Target, Lower, Upper, and Uncapped Recommendations to Prometheus
+# Validation Summary: Export VPA Recommendation Bounds to Prometheus
 
 ## Status
 

@@ -1,4 +1,4 @@
-# How to Force-Sample One OpenTelemetry Trace with an Attribute While Preserving a Hard Do-Not-Sample Rule
+# Force-Sample a Trace While Preserving a Hard Do-Not-Sample Rule
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

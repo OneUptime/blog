@@ -1,4 +1,4 @@
-# Validation Summary: How to Read VPA RecommendationProvided, NoPodsMatched, and LowConfidence Conditions
+# Validation Summary: Read VPA Recommendation and Pod-Matching Conditions
 
 ## Status
 validated

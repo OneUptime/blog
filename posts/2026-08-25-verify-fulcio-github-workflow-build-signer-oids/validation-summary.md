@@ -1,4 +1,4 @@
-# Validation Summary: How to Verify the Exact CI Workflow Behind a Fulcio Certificate Using Build Signer OIDs
+# Validation Summary: Verify a Fulcio Certificate's GitHub Workflow with Build Signer OIDs
 
 ## Status
 

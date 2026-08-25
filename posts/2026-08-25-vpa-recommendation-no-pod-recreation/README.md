@@ -1,4 +1,4 @@
-# Why Did VPA Change Its Recommendation but Not Recreate the Pod? Understanding Bounds and Eviction Thresholds
+# Why VPA Changes Recommendations Without Recreating Pods
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

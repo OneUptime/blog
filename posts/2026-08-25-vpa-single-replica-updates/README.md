@@ -1,4 +1,4 @@
-# Why Won’t VPA Update a Single-Replica Pod? Check minReplicas, PodDisruptionBudgets, and Controller Ownership
+# Why VPA Does Not Update a Single-Replica Pod
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -80,7 +80,7 @@ Changing the global updater argument to `--min-replicas=1` affects every VPA han
 
 ## Verify Direct Controller Ownership
 
-VPA does not update unmanaged Pods. It also validates that `targetRef` identifies the topmost supported or scalable controller. For a Deployment, target the Deployment—not its transient ReplicaSet:
+VPA does not update unmanaged Pods. It also validates that `targetRef` identifies the topmost supported or scalable controller. For a Deployment, target the Deployment-not its transient ReplicaSet:
 
 ```yaml
 targetRef:

@@ -1,4 +1,4 @@
-# Validation Summary: How to Avoid Publishing Sensitive Email or Repository Identity Data in Fulcio’s Public CT Log
+# Validation Summary: Protect Identity Data in Fulcio's Public CT Log
 
 ## Status
 

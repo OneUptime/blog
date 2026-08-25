@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Vertical Pod Autoscaler, Jobs, CronJobs, Resource Sizing
+Tags: Kubernetes, Vertical Pod Autoscaler, Job, CronJob, Resource Sizing
 
 Description: Build useful VPA history across short Job runs, apply recommendations at Pod creation, and protect early executions with stable labels, conservative bounds, and external history.
 

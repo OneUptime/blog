@@ -1,4 +1,4 @@
-# How to Keep Probabilistic Sampling Deterministic Across Collectors by Pinning `hash_seed`
+# Keep Probabilistic Sampling Deterministic with `hash_seed`
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

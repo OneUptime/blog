@@ -1,4 +1,4 @@
-# How to Use InPlaceOrRecreate VPA and Diagnose a Disabled InPlacePodVerticalScaling Feature Gate
+# Use InPlaceOrRecreate VPA and Diagnose a Disabled Feature Gate
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

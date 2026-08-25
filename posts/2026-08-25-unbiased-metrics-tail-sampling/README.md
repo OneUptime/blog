@@ -1,4 +1,4 @@
-# How to Preserve Unbiased Request-Rate Metrics When Tail Sampling Favors Errors and Slow Traces
+# Preserve Unbiased Request Metrics with Selective Tail Sampling
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -124,7 +124,7 @@ X509v3 Subject Alternative Name: critical
     URI:spiffe://build.example.com/release/signer
 ```
 
-Do not read the SAN without the issuer. A verifier must bind the SAN to the authenticated OIDC issuer—normally Issuer V2 (`.1.8`), with the deprecated issuer extension (`.1.1`) supported for legacy compatibility—because two OIDC providers can assert the same textual subject.
+Do not read the SAN without the issuer. A verifier must bind the SAN to the authenticated OIDC issuer-normally Issuer V2 (`.1.8`), with the deprecated issuer extension (`.1.1`) supported for legacy compatibility-because two OIDC providers can assert the same textual subject.
 
 For GitHub Actions, the URI SAN comes from `job_workflow_ref`; it is also the Build Signer URI. The raw GitHub `sub`, branch or environment context, initiating workflow, and source repository are separate extensions. A SAN alone cannot describe all provenance decisions.
 

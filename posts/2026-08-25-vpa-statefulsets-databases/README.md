@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Vertical Pod Autoscaler, StatefulSet, Databases, High Availability
+Tags: Kubernetes, Vertical Pod Autoscaler, StatefulSet, Database, High Availability
 
 Description: Introduce VPA to StatefulSets and databases with observation, bounded per-container policy, quorum-aware disruption controls, controlled rollout, and explicit fallback decisions.
 

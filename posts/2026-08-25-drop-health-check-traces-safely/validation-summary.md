@@ -1,4 +1,4 @@
-# Validation Summary: How to Drop Liveness and Readiness Traces Without Hiding Errors in Their Child Spans
+# Validation Summary: Drop Health-Check Traces Without Hiding Child-Span Errors
 
 ## Status
 

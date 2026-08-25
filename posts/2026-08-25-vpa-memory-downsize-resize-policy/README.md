@@ -1,4 +1,4 @@
-# Why VPA Cannot Downsize Memory In Place: resizePolicy and Eviction Fallback Explained
+# Why VPA Cannot Downsize Memory In Place
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

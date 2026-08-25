@@ -1,4 +1,4 @@
-# Validation Summary: How to Handle Pending Tail-Sampling Decisions During Collector Shutdowns and Rolling Deployments
+# Validation Summary: Handle Pending Tail-Sampling Decisions During Rolling Deployments
 
 ## Status
 

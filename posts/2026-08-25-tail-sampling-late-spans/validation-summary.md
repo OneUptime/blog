@@ -1,4 +1,4 @@
-# Validation Summary: How to Keep Late-Arriving Spans from Splitting One Trace into Conflicting Sampling Decisions
+# Validation Summary: How to Keep Late Spans from Splitting Tail-Sampling Decisions
 
 ## Status
 

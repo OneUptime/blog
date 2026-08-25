@@ -1,4 +1,4 @@
-# Validation Summary: How to Keep VPA from Changing Container Limits with controlledValues: RequestsOnly
+# Validation Summary: Keep VPA from Changing Limits with `RequestsOnly`
 
 ## Status
 validated

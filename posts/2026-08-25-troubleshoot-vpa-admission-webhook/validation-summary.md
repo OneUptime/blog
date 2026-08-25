@@ -1,4 +1,4 @@
-# Validation Summary: How to Troubleshoot the VPA Admission Webhook: CA Bundles, Certificates, and Mutation Failures
+# Validation Summary: Troubleshoot VPA Admission Webhook Mutation Failures
 
 ## Status
 validated

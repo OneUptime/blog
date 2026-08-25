@@ -2826,6 +2826,7 @@
 - Certificate Debugging
 - Certificate Expiration
 - Certificate Expiry
+- Certificate Inspection
 - Certificate Management
 - Certificate Manager
 - Certificate Monitoring
@@ -2834,6 +2835,7 @@
 - Certificate Revocation
 - Certificate Rotation
 - Certificate Signing Request
+- Certificate Transparency
 - Certificate Verification
 - Certificate-Based Access
 - Certificate-chain
@@ -3990,6 +3992,7 @@
 - Container Parser
 - Container Patterns
 - Container Platform
+- Container Policies
 - Container Ports
 - Container Recovery
 - Container Recreation
@@ -8379,6 +8382,7 @@
 - histogram Function
 - Historical Data
 - Historical Features
+- Historical Metrics
 - History
 - History Tables
 - History Tracking
@@ -8946,6 +8950,7 @@
 - In-Memory Grid
 - In-Memory Storage
 - In-Memory Volume
+- In-Place Resize
 - In-Place Upgrade
 - In-Toto
 - In-Tree Cloud Provider
@@ -13410,6 +13415,7 @@
 - PDU Session
 - Peak Load
 - Pearson Correlation
+- Pebble
 - PECL
 - Peek Messages
 - Peer
@@ -14201,6 +14207,7 @@
 - Private Network
 - Private Networking
 - Private Peering
+- Private PKI
 - Private Pools
 - Private Registry
 - Private Repositories
@@ -14299,6 +14306,7 @@
 - Production Logging
 - Production ML
 - Production Monitoring
+- Production Operations
 - Production Parity
 - Production Readiness
 - Production Readiness Review
@@ -14857,6 +14865,7 @@
 - Raspberry-pi
 - Raspberry-pi-5
 - Rate
+- Rate Allocation
 - Rate Cards
 - Rate Limit
 - Rate Limiter
@@ -15217,6 +15226,7 @@
 - reinterpret
 - Rekognition
 - Rekor
+- Rekor Monitor
 - Relabeling
 - Relation
 - Relational
@@ -15512,6 +15522,7 @@
 - Resource Management
 - Resource Manager
 - Resource Mapping
+- Resource Metrics
 - Resource Modules
 - Resource Monitoring
 - Resource Names
@@ -15537,6 +15548,7 @@
 - Resource Restoration
 - Resource Scheduling
 - Resource Sharing
+- Resource Sizing
 - Resource Standards
 - Resource Tagging
 - Resource Targeting
@@ -16335,6 +16347,7 @@
 - SDK Configuration
 - SDK Integrations
 - SDK Limits
+- SDK Sampling
 - SDK Setup
 - SDK Testing
 - SDK v2
@@ -17665,6 +17678,7 @@
 - Startup Latency
 - Startup optimization
 - Startup Order
+- Startup Performance
 - Startup Probes
 - Startup Scripts
 - Startup Time
@@ -17981,6 +17995,7 @@
 - Subelements
 - subgid
 - Subiquity
+- Subject Alternative Name
 - Submariner
 - Submission
 - Submodules
@@ -18596,6 +18611,7 @@
 - Terrascan
 - Terrateam
 - Terratest
+- Tesseract
 - Test
 - Test Analytics
 - Test Automation

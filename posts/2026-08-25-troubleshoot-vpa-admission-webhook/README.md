@@ -1,4 +1,4 @@
-# How to Troubleshoot the VPA Admission Webhook: CA Bundles, Certificates, and Mutation Failures
+# Troubleshoot VPA Admission Webhook Mutation Failures
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -8,7 +8,7 @@ Description: Trace VPA Pod mutation from webhook registration through Service en
 
 ---
 
-The VPA admission controller is a mutating admission webhook on the Pod creation path. It finds the controlling VPA and patches the new Pod's resources from the current target. If it is registered incorrectly, unreachable, untrusted, or unable to find the VPA, the recommender can look healthy while replacement Pods start with old resources—or fail to start at all.
+The VPA admission controller is a mutating admission webhook on the Pod creation path. It finds the controlling VPA and patches the new Pod's resources from the current target. If it is registered incorrectly, unreachable, untrusted, or unable to find the VPA, the recommender can look healthy while replacement Pods start with old resources-or fail to start at all.
 
 ## Establish the Failure Mode Safely
 

@@ -1,4 +1,4 @@
-# Validation Summary: Why Multiple Tail-Sampling Policies Do Not Behave Like a Simple OR—and How Drop Vetoes Work
+# Validation Summary: How Tail-Sampling Policy Precedence and Drop Vetoes Work
 
 ## Status
 validated

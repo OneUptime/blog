@@ -1,10 +1,10 @@
-# How to Avoid Publishing Sensitive Email or Repository Identity Data in Fulcio’s Public CT Log
+# Protect Identity Data in Fulcio's Public CT Log
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Fulcio, Sigstore, Certificate Transparency, Privacy, OIDC, Cosign, Supply Chain Security
 
-Description: Prevent accidental identity disclosure by inventorying Fulcio certificate fields before signing, choosing non-sensitive workload identities, and using a private trust domain when public transparency is incompatible with privacy requirements.
+Description: Prevent identity disclosure by auditing Fulcio certificate fields, choosing non-sensitive workload identities, and using private trust when public transparency conflicts with privacy.
 
 ---
 

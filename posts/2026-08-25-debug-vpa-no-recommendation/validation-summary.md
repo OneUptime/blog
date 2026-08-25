@@ -1,4 +1,4 @@
-# Validation Summary: How to Debug a VPA with No Recommendation: Metrics Server, TargetRef, and Container History Checks
+# Validation Summary: Debug a VPA with No Recommendation
 
 ## Status
 

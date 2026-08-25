@@ -1,4 +1,4 @@
-# Validation Summary: How to Cap Tail-Sampled Output by Bytes per Second Instead of Trace or Span Count
+# Validation Summary: How to Cap Tail-Sampled Output by Bytes per Second
 
 ## Status
 

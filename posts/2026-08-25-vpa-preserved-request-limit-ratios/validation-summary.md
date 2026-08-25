@@ -1,4 +1,4 @@
-# Validation Summary: Why VPA Multiplies Resource Limits When Requests Rise: Preserved Request-to-Limit Ratios Explained
+# Validation Summary: Why VPA Preserves Request-to-Limit Ratios
 
 ## Status
 validated

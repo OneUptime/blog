@@ -1,8 +1,8 @@
-# How to Verify the Exact CI Workflow Behind a Fulcio Certificate Using Build Signer OIDs
+# Verify a Fulcio Certificate's GitHub Workflow with Build Signer OIDs
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Fulcio, Sigstore, GitHub Actions, OIDC, X.509, Cosign, CI/CD, Supply Chain Security
+Tags: Fulcio, Sigstore, GitHub Action, OIDC, X.509, Cosign, CI/CD, Supply Chain Security
 
 Description: Distinguish the executing workflow, initiating workflow, source repository, and immutable revisions in a GitHub Fulcio certificate using its SAN and modern Build Signer OID extensions.
 
@@ -164,4 +164,4 @@ Fulcio's current GitHub configuration still emits the deprecated fields for comp
 
 ## Conclusion
 
-For GitHub Actions, the SAN and Build Signer URI identify the executing workflow, while Build Config fields identify its caller and Source Repository fields identify the source context GitHub reported for the run. Verify the GitHub issuer, exact signer URI, and immutable digests as one policy tuple—especially when reusable workflows separate the release caller from the signing implementation.
+For GitHub Actions, the SAN and Build Signer URI identify the executing workflow, while Build Config fields identify its caller and Source Repository fields identify the source context GitHub reported for the run. Verify the GitHub issuer, exact signer URI, and immutable digests as one policy tuple-especially when reusable workflows separate the release caller from the signing implementation.

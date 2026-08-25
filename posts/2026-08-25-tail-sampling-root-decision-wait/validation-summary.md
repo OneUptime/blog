@@ -1,4 +1,4 @@
-# Validation Summary: How to Use `decision_wait_after_root_received` to Reduce Tail-Sampling Delay Without Truncating Long Traces
+# Validation Summary: Reduce Tail-Sampling Delay with `decision_wait_after_root_received`
 
 ## Status
 

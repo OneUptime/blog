@@ -1,4 +1,4 @@
-# How to Prevent VPA Recommendations from Making Pods Unschedulable on Available Node Sizes
+# Prevent VPA Recommendations from Making Pods Unschedulable
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

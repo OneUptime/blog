@@ -8,7 +8,7 @@ Description: Make VPA sizing resilient to startup CPU bursts and memory OOMs by 
 
 ---
 
-Startup demand is easy to under-sample. A brief CPU burst can be averaged down in the resource-metrics window—or missed when a short-lived container ends before a usable sample—and a process can hit its memory limit before a normal sample captures the peak. VPA combines sampled usage history with observed OOM events, but upstream explicitly says it reacts to most—not all—OOM situations. Protect startup with policy as well as learned history.
+Startup demand is easy to under-sample. A brief CPU burst can be averaged down in the resource-metrics window-or missed when a short-lived container ends before a usable sample-and a process can hit its memory limit before a normal sample captures the peak. VPA combines sampled usage history with observed OOM events, but upstream explicitly says it reacts to most-not all-OOM situations. Protect startup with policy as well as learned history.
 
 ## Understand the Default Signals
 
@@ -22,7 +22,7 @@ kubectl -n kube-system get deploy vpa-recommender -o yaml
 kubectl -n kube-system logs deploy/vpa-recommender --since=30m
 ```
 
-Compare recommendation history with container restart reason, startup duration, working set, and request/limit—not just a single `kubectl top` snapshot.
+Compare recommendation history with container restart reason, startup duration, working set, and request/limit-not just a single `kubectl top` snapshot.
 
 ## Know What an OOM Adds
 
@@ -73,7 +73,7 @@ spec:
 
 `minAllowed` keeps the recommendation above a tested startup floor while evidence accumulates; with `updateMode: "Off"`, preserve the actual floor in the workload's request. When VPA applies recommendations, use `maxAllowed` to preserve schedulability, but alert when `uncappedTarget` exceeds it; a cap that repeatedly causes OOM only conceals demand.
 
-`RequestsOnly` leaves a deliberately configured memory limit unchanged. If VPA controls limits too, it preserves the original request-to-limit ratio. Review application heap/buffer configuration whenever requests or limits move—VPA does not retune JVM, database, or runtime settings inside the container.
+`RequestsOnly` leaves a deliberately configured memory limit unchanged. If VPA controls limits too, it preserves the original request-to-limit ratio. Review application heap/buffer configuration whenever requests or limits move-VPA does not retune JVM, database, or runtime settings inside the container.
 
 ## Customize OOM Behavior Only with the Alpha Gate
 
@@ -93,7 +93,7 @@ A larger bump reacts faster but can amplify a misdiagnosed OOM or exceed availab
 
 ## Use CPU Startup Boost for CPU, Not Memory
 
-VPA 1.7 introduces alpha CPU Startup Boost. At admission, it multiplies the nonzero VPA-recommended CPU request—or the Pod's original CPU request when no recommendation is available—or adds a quantity to that base. After the Pod becomes Ready and `durationSeconds` elapses, the updater attempts to remove the boost in place:
+VPA 1.7 introduces alpha CPU Startup Boost. At admission, it multiplies the nonzero VPA-recommended CPU request-or the Pod's original CPU request when no recommendation is available-or adds a quantity to that base. After the Pod becomes Ready and `durationSeconds` elapses, the updater attempts to remove the boost in place:
 
 ```yaml
 spec:

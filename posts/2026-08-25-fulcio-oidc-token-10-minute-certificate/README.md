@@ -1,4 +1,4 @@
-# How Fulcio Turns an OIDC Identity Token into a 10-Minute Code-Signing Certificate
+# How Fulcio Issues a 10-Minute Certificate from an OIDC Token
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -8,7 +8,7 @@ Description: Follow the complete Fulcio issuance path from a short-lived OIDC to
 
 ---
 
-Fulcio does not turn an OIDC token into a reusable signing credential. It uses the token to authenticate one certificate request, binds the authenticated identity to a client-generated public key, and returns a short-lived X.509 code-signing certificate. The Sigstore public Fulcio service currently issues certificates valid for exactly 10 minutes.
+Fulcio does not turn an OIDC token into a long-lived signing credential. It uses the token to authenticate a certificate request, binds the authenticated identity to a client-generated public key, and returns a short-lived X.509 code-signing certificate. The Sigstore public Fulcio service currently issues certificates valid for exactly 10 minutes.
 
 That distinction is the core of Sigstore's identity-based, or “keyless,” model. There is still a private key, but a client such as Cosign generates it ephemerally instead of asking an operator to distribute and rotate a long-lived signing key.
 
@@ -19,13 +19,13 @@ The normal sequence is:
 1. Cosign generates an ephemeral key pair in the signing process.
 2. Cosign obtains an OIDC ID token whose audience contains `sigstore`.
 3. The client sends Fulcio the token and either a public key plus a signed proof-of-possession challenge or a PKCS#10 certificate signing request.
-4. Fulcio validates the token against the configured issuer, including its signature, audience, issuer, time claims, and issuer-specific identity claims.
+4. Fulcio validates the token against the configured issuer, including its signature, audience, issuer, expiration, optional not-before time, and issuer-specific identity claims.
 5. Fulcio verifies that the requester controls the private key corresponding to the submitted public key.
 6. Fulcio maps trusted token claims to a Subject Alternative Name (SAN) and Sigstore-specific X.509 extensions.
-7. Fulcio signs a short-lived leaf certificate and submits its precertificate to the configured certificate-transparency (CT) log. The returned Signed Certificate Timestamp (SCT) is normally embedded in the final certificate.
-8. Cosign signs the artifact with the ephemeral private key, records the signing event in Rekor, and discards the private key.
+7. Fulcio creates and signs a short-lived precertificate, submits it to the configured certificate-transparency (CT) log, and uses the returned Signed Certificate Timestamp (SCT) to issue the final leaf certificate with the SCT normally embedded.
+8. Cosign signs the artifact with the ephemeral private key, obtains the configured RFC 3161 timestamp, records the signing event in Rekor, and discards the private key.
 
-An OIDC token is authentication input, not the artifact signature and not the certificate itself. A stolen token can be dangerous while it remains valid, but it does not reveal the ephemeral private key that signed a completed artifact.
+An OIDC token is authentication input, not the artifact signature and not the certificate itself. A stolen token can be replayed while it remains valid to obtain a certificate for an attacker-controlled key, but it does not reveal the ephemeral private key that signed a completed artifact.
 
 ## What Fulcio Validates
 
@@ -40,9 +40,9 @@ Every supported token needs at least these standard claims:
 }
 ```
 
-The `iss` value must resolve to a configured issuer, and the token must verify with that issuer's published keys. `aud` must match the configured client ID, conventionally `sigstore`. Fulcio's provider-specific code then requires the claims used to identify the principal. An email issuer, for example, requires `email` and `email_verified: true`; GitHub Actions requires workflow claims such as `job_workflow_ref`.
+The `iss` value must resolve to a configured issuer, and the token must verify with that issuer's published keys. `aud` must match the configured client ID, conventionally `sigstore`. Fulcio's provider-specific code then requires the claims used to identify the principal. By default, an email issuer requires `email` and `email_verified: true`; a trusted private deployment can explicitly skip the `email_verified` check. GitHub Actions requires workflow claims such as `job_workflow_ref`.
 
-Fulcio also checks proof of possession. With the public-key request form, the client signs an issuer-defined challenge value—normally the token's `sub`, or `email` for an email identity. With a CSR, the CSR signature proves control of the private key. This prevents someone from requesting a certificate for an unrelated public key with a captured token.
+Fulcio also checks proof of possession. With the public-key request form, the client signs a Fulcio-configured challenge value-normally the token's `sub`, or `email` for an email identity. With a CSR, the CSR signature proves control of the private key. This prevents issuance for a public key whose corresponding private key the requester does not control. It does not prevent bearer-token replay with a newly generated key.
 
 Never debug this flow by printing a complete bearer token into a CI log. Decode a redacted copy locally to inspect claim names, then verify the original only through the issuer and Fulcio.
 
@@ -60,15 +60,15 @@ The leaf also has critical digital-signature key usage and code-signing extended
 
 ## Why Ten Minutes Is Enough
 
-The certificate's ten-minute lifetime limits how long its ephemeral key and authenticated identity binding can be used. It does **not** mean consumers have only ten minutes to verify a release.
+The certificate's ten-minute lifetime limits the interval in which a signature under its key-to-identity binding must be shown to have existed. It does not make the private key cryptographically stop working at expiry, and it does **not** mean consumers have only ten minutes to verify a release.
 
-For long-term verification, the Sigstore bundle carries the certificate and signed transparency metadata. A verifier checks that the Rekor integrated time or an accepted RFC 3161 timestamp falls inside the leaf certificate's validity interval. It also validates the artifact signature, the Fulcio chain from trusted Sigstore material, the identity and issuer policy, and the relevant transparency-log proof or promise.
+For long-term verification, the Sigstore bundle carries the certificate and signed verification metadata. A verifier checks that an accepted RFC 3161 timestamp-or, for Rekor v1 only, an `integratedTime` authenticated by a verified Signed Entry Timestamp (SET)-falls inside the validity interval of every certificate in the path. It also validates the artifact signature, the Fulcio chain from trusted Sigstore material, the identity and issuer policy, and the relevant transparency-log proof or promise.
 
 Therefore, this is not equivalent to running `openssl verify` against an expired leaf at the current wall clock. Use a Sigstore verifier that understands the bundle and trusted log material. Do not disable transparency checks merely to make an expired certificate pass.
 
 ## Try the Flow with Cosign
 
-With a current, patched Cosign release, sign a local file into the standardized bundle format:
+With Cosign v3.1.3-the current patched release at publication-sign a local file into the standardized bundle format:
 
 ```bash
 printf 'release payload\n' > artifact.txt
@@ -77,7 +77,7 @@ cosign sign-blob artifact.txt \
   --yes
 ```
 
-On a developer workstation, Cosign opens or prints an OIDC authentication flow. In a supported CI environment such as GitHub Actions, it can obtain a workload token automatically. The bundle contains the artifact signature, leaf certificate, and verification metadata; keep it beside the artifact.
+On a developer workstation, Cosign opens or prints an OIDC authentication flow. In a supported CI environment such as GitHub Actions, it can obtain a workload token automatically; GitHub Actions must grant the workflow or job `id-token: write`. The bundle contains the artifact signature, leaf certificate, and verification metadata; keep it beside the artifact.
 
 Verify against an explicit identity and issuer rather than accepting any valid Fulcio identity:
 
@@ -101,7 +101,7 @@ Use the exact SAN actually issued and pin the workflow, tag, branch, or digest s
 Two logs play different roles:
 
 - Fulcio's CT log makes certificate issuance publicly auditable and returns an SCT for the certificate.
-- Rekor records the artifact signing event and supplies a signed time that lets verifiers establish that the signature existed while the short-lived certificate was valid.
+- Rekor records the artifact signing event and supplies verifiable inclusion evidence. Rekor v1 can additionally authenticate an `integratedTime` with an SET; Rekor v2 does not timestamp entries, so v2 signing relies on a trusted RFC 3161 timestamp authority.
 
 An SCT is not an artifact timestamp, and a Fulcio certificate alone does not prove which artifact was signed. Conversely, a Rekor entry containing a certificate does not remove the need to validate the Fulcio chain, SAN, issuer extension, and certificate-transparency evidence according to the active trusted root.
 
@@ -109,7 +109,7 @@ An SCT is not an artifact timestamp, and a Fulcio certificate alone does not pro
 
 When issuance or verification fails, check each boundary separately:
 
-- confirm the token's `iss` exactly matches a configured issuer;
+- confirm the token's `iss` matches a configured fixed issuer or an allowed meta-issuer pattern;
 - confirm `aud` contains the expected client ID, usually `sigstore`;
 - compare `iat`, optional `nbf`, and `exp` with an NTP-synchronized clock;
 - verify required provider-specific claims are present;

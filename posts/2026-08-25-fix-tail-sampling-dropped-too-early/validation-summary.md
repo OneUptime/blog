@@ -1,4 +1,4 @@
-# Validation Summary: How to Fix `sampling_trace_dropped_too_early` Without Blindly Adding Collector Memory
+# Validation Summary: How to Fix `sampling_trace_dropped_too_early` Without Adding Memory
 
 ## Status
 

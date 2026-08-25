@@ -1,4 +1,4 @@
-# Validation Summary: How to Keep Probabilistic Sampling Deterministic Across Collectors by Pinning `hash_seed`
+# Validation Summary: Keep Probabilistic Sampling Deterministic with `hash_seed`
 
 ## Status
 validated

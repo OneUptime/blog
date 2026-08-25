@@ -1,4 +1,4 @@
-# How to Use `decision_wait_after_root_received` to Reduce Tail-Sampling Delay Without Truncating Long Traces
+# Reduce Tail-Sampling Delay with `decision_wait_after_root_received`
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

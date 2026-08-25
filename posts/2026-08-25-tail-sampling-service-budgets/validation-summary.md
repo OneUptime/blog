@@ -1,4 +1,4 @@
-# Validation Summary: How to Enforce Per-Service Trace Budgets with Composite Tail-Sampling Rate Allocation
+# Validation Summary: Enforce Per-Service Trace Budgets with Composite Tail Sampling
 
 ## Status
 

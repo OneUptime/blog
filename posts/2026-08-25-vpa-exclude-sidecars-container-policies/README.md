@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Vertical Pod Autoscaler, Sidecars, Container Policies, Resource Management
+Tags: Kubernetes, Vertical Pod Autoscaler, Sidecar, Container Policies, Resource Management
 
 Description: Use named and wildcard VPA container policies to exclude sidecars or control CPU, memory, requests, limits, and bounds independently for each regular container.
 

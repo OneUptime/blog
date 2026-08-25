@@ -1,4 +1,4 @@
-# Validation Summary: Why Won’t VPA Update a Single-Replica Pod? Check minReplicas, PodDisruptionBudgets, and Controller Ownership
+# Validation Summary: Why VPA Does Not Update a Single-Replica Pod
 
 ## Status
 

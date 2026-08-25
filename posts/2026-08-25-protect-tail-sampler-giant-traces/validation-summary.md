@@ -1,4 +1,4 @@
-# Validation Summary: How to Protect the OpenTelemetry Collector from Giant Traces with `maximum_trace_size_bytes`
+# Validation Summary: Protect the OpenTelemetry Collector with `maximum_trace_size_bytes`
 
 ## Status
 

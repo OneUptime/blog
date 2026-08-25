@@ -1,4 +1,4 @@
-# Validation Summary: Where to Place the Span Metrics Connector Relative to Tail Sampling to Avoid Biased RED Metrics
+# Validation Summary: Place Span Metrics Before Tail Sampling to Avoid Biased RED Metrics
 
 ## Status
 

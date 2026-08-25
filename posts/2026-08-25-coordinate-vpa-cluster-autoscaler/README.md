@@ -1,4 +1,4 @@
-# How to Coordinate VPA with Cluster Autoscaler When Right-Sized Pods Need Larger Nodes
+# Coordinate VPA with Cluster Autoscaler for Larger Pods
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# Validation Summary: How to Use InPlaceOrRecreate VPA and Diagnose a Disabled InPlacePodVerticalScaling Feature Gate
+# Validation Summary: Use InPlaceOrRecreate VPA and Diagnose a Disabled Feature Gate
 
 ## Status
 

@@ -1,8 +1,8 @@
-# How to Export VPA Target, Lower, Upper, and Uncapped Recommendations to Prometheus
+# Export VPA Recommendation Bounds to Prometheus
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Vertical Pod Autoscaler, Prometheus, kube-state-metrics, Monitoring
+Tags: Kubernetes, Vertical Pod Autoscaler, Prometheus, Kube-state-metrics, Monitoring
 
 Description: Export every VPA recommendation bound from custom-resource status with kube-state-metrics, correct units and labels, and Prometheus queries that expose clipping and update headroom.
 

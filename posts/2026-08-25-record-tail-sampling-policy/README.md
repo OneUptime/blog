@@ -1,4 +1,4 @@
-# How to Record Which OpenTelemetry Tail-Sampling Policy Kept Each Trace with `recordpolicy`
+# Record Which Tail-Sampling Policy Kept a Trace with `recordpolicy`
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

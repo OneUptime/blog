@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Vertical Pod Autoscaler, Static Pods, Controllers, Troubleshooting
+Tags: Kubernetes, Vertical Pod Autoscaler, Static Pods, Controller, Troubleshooting
 
 Description: Explain why VPA requires a supported top-level controller, distinguish bare and static Pods, and migrate or retarget workloads so recommendations can be applied safely.
 

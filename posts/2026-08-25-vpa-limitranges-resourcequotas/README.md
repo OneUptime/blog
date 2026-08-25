@@ -1,4 +1,4 @@
-# How LimitRanges and ResourceQuotas Alter—or Reject—VPA Recommendations
+# How LimitRanges and ResourceQuotas Alter-or Reject-VPA Recommendations
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

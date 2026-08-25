@@ -1,4 +1,4 @@
-# Validation Summary: How to Prevent VPA Recommendations from Making Pods Unschedulable on Available Node Sizes
+# Validation Summary: Prevent VPA Recommendations from Making Pods Unschedulable
 
 ## Status
 

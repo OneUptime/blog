@@ -1,4 +1,4 @@
-# How to Keep Late-Arriving Spans from Splitting One Trace into Conflicting Sampling Decisions
+# How to Keep Late Spans from Splitting Tail-Sampling Decisions
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

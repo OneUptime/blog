@@ -1,8 +1,8 @@
-# How to Keep VPA from Changing Container Limits with controlledValues: RequestsOnly
+# Keep VPA from Changing Limits with `RequestsOnly`
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Vertical Pod Autoscaler, Resource Requests, Resource Limits, Configuration
+Tags: Kubernetes, Vertical Pod Autoscaler, Resource Requests, Resource Limit, Configuration
 
 Description: Configure VPA to right-size CPU and memory requests while preserving container limits, with practical policies and caveats for QoS, LimitRanges, HPA, and in-place resize.
 

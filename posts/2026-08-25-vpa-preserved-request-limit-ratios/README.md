@@ -1,8 +1,8 @@
-# Why VPA Multiplies Resource Limits When Requests Rise: Preserved Request-to-Limit Ratios Explained
+# Why VPA Preserves Request-to-Limit Ratios
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Vertical Pod Autoscaler, Resource Limits, Resource Requests, Capacity Planning
+Tags: Kubernetes, Vertical Pod Autoscaler, Resource Limit, Resource Requests, Capacity Planning
 
 Description: Explain VPA's default proportional limit scaling, show the request-to-limit calculation, and control its effects with RequestsOnly, bounds, and namespace policy.
 

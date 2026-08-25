@@ -1,4 +1,4 @@
-# How to Replace Deprecated `invert_match` Tail-Sampling Rules with `drop` and `not` Policies
+# Replace Deprecated `invert_match` with Tail-Sampling `drop` and `not`
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -120,7 +120,7 @@ Run the old and new configurations against a recorded, non-sensitive trace-ID co
 
 The `otelcol_processor_tail_sampling_count_traces_sampled` metric has `policy`, `sampled`, and `decision` attributes in current generated telemetry. A policy voting not sampled does not prove the trace was dropped; use `otelcol_processor_tail_sampling_global_count_traces_sampled` for aggregate processor decisions and exporter output for final per-trace outcomes. Deprecated inversion decisions and feature gates have evolved across releases, so test the exact source and version being deployed.
 
-Remove `invert_match` only after the missing-key and multi-policy cases match the intended—not necessarily the historical—behavior.
+Remove `invert_match` only after the missing-key and multi-policy cases match the intended-not necessarily the historical-behavior.
 
 ## Official Documentation
 
@@ -132,4 +132,4 @@ Remove `invert_match` only after the missing-key and multi-policy cases match th
 
 ## Conclusion
 
-Replace `invert_match` with `not` when the complement is another positive sampling choice. Use `drop` when matching data must veto every keep rule. Explicitly test missing attributes, multiple span values, other top-level policies, and late errors—the migration is about preserving intent, not merely changing YAML syntax.
+Replace `invert_match` with `not` when the complement is another positive sampling choice. Use `drop` when matching data must veto every keep rule. Explicitly test missing attributes, multiple span values, other top-level policies, and late errors-the migration is about preserving intent, not merely changing YAML syntax.

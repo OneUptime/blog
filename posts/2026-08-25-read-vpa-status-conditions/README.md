@@ -1,4 +1,4 @@
-# How to Read VPA RecommendationProvided, NoPodsMatched, and LowConfidence Conditions
+# Read VPA Recommendation and Pod-Matching Conditions
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

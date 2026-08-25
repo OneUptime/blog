@@ -1,4 +1,4 @@
-# Validation Summary: How to Record Which OpenTelemetry Tail-Sampling Policy Kept Each Trace with `recordpolicy`
+# Validation Summary: Record Which Tail-Sampling Policy Kept a Trace with `recordpolicy`
 
 ## Status
 validated
