@@ -102,7 +102,6 @@
 
 ## VPA
 
-20. How to Account for Startup Spikes and OOM Events in VPA Memory Recommendations
 
 ## Fulcio
 
