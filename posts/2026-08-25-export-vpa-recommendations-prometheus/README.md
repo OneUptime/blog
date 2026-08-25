@@ -8,11 +8,11 @@ Description: Export every VPA recommendation bound from custom-resource status w
 
 ---
 
-VPA stores per-container `target`, `lowerBound`, `upperBound`, and `uncappedTarget` in the `VerticalPodAutoscaler` custom resource. The recommender's own `/metrics` endpoint exposes component health and counts, not one time series for every recommendation value. Export the custom-resource status with kube-state-metrics Custom Resource State Metrics.
+VPA stores per-container `target`, `lowerBound`, `upperBound`, and `uncappedTarget` in the `VerticalPodAutoscaler` custom resource. The recommender's own `/metrics` endpoint exposes component-level and aggregate quality metrics, not one time series for every VPA and container recommendation. Export the custom-resource status with kube-state-metrics Custom Resource State Metrics.
 
 ## Use Custom Resource State Metrics
 
-kube-state-metrics removed VerticalPodAutoscaler from its default resources in v2.9.0. Configure the `autoscaling.k8s.io/v1` CRD explicitly. This compact configuration exports CPU and memory for all four fields:
+kube-state-metrics removed its deprecated experimental built-in VPA metrics in v2.9.0. Configure the `autoscaling.k8s.io/v1` CRD explicitly. This compact configuration exports CPU and memory for all four fields:
 
 ```yaml
 kind: CustomResourceStateMetrics
@@ -115,21 +115,31 @@ args:
   - --custom-resource-state-config-file=/etc/customresourcestate/config.yaml
 ```
 
-Mount the configuration from a ConfigMap or your deployment mechanism. The kube-state-metrics service account must be able to list and watch VPA objects:
+Mount the configuration from a ConfigMap or your deployment mechanism. The kube-state-metrics service account must be able to list and watch both CRD definitions and VPA objects:
 
 ```yaml
+- apiGroups: [apiextensions.k8s.io]
+  resources: [customresourcedefinitions]
+  verbs: [list, watch]
 - apiGroups: [autoscaling.k8s.io]
   resources: [verticalpodautoscalers]
   verbs: [list, watch]
 ```
 
-Modify the existing kube-state-metrics ClusterRole through its chart or manifests rather than creating overlapping ownership. Restart kube-state-metrics after changing the file, and check logs for discovery, RBAC, path, or quantity-conversion errors.
+Modify the existing kube-state-metrics ClusterRole through its chart or manifests rather than creating overlapping ownership. Current kube-state-metrics releases reload changes to the mounted file automatically; check logs for reload, discovery, RBAC, path, or quantity-conversion errors.
 
 ```bash
 kubectl auth can-i --as=system:serviceaccount:monitoring:kube-state-metrics \
   list verticalpodautoscalers.autoscaling.k8s.io --all-namespaces
+kubectl auth can-i --as=system:serviceaccount:monitoring:kube-state-metrics \
+  watch verticalpodautoscalers.autoscaling.k8s.io --all-namespaces
+kubectl auth can-i --as=system:serviceaccount:monitoring:kube-state-metrics \
+  list customresourcedefinitions.apiextensions.k8s.io
+kubectl auth can-i --as=system:serviceaccount:monitoring:kube-state-metrics \
+  watch customresourcedefinitions.apiextensions.k8s.io
 kubectl -n monitoring logs deploy/kube-state-metrics --since=15m
 kubectl -n monitoring port-forward deploy/kube-state-metrics 8080:8080
+# In another terminal:
 curl -s localhost:8080/metrics | grep kube_verticalpodautoscaler_status_recommendation
 ```
 
@@ -144,7 +154,7 @@ kube_verticalpodautoscaler_status_recommendation_containerrecommendations_upperb
 kube_verticalpodautoscaler_status_recommendation_containerrecommendations_uncappedtarget_memory
 ```
 
-Find recommendations clipped by a memory policy:
+Find memory targets capped by a maximum policy:
 
 ```promql
 kube_verticalpodautoscaler_status_recommendation_containerrecommendations_uncappedtarget_memory
@@ -159,13 +169,13 @@ kube_verticalpodautoscaler_status_recommendation_containerrecommendations_target
   / 1024 / 1024 / 1024
 ```
 
-Compare target with current requests by joining the VPA series to kube-state-metrics Pod/container request metrics using namespace, target, and container labels. Do not join only on `container`; common names such as `app` and `sidecar` collide across workloads.
+Compare target with current requests only after mapping each Pod to the VPA target through kube-state-metrics owner metrics. Use `kube_pod_owner` and, for Deployment targets, traverse `kube_replicaset_owner`; then normalize the resolved owner labels to `target_kind` and `target_name`. Because the VPA series is per target and container while request series are per Pod and container, use an explicit one-to-many match on `namespace`, `target_kind`, `target_name`, `container`, `resource`, and `unit`. Do not join only on `container`; common names such as `app` and `sidecar` collide across workloads.
 
 ## Handle Optional and Missing Status Correctly
 
-All recommendation fields are API status, and several are optional. A VPA with no recommendation produces no value series for these paths. A container with `mode: Off` is intentionally absent. `uncappedTarget` can be absent on versions or states that do not populate it.
+All recommendation fields are API status, and several are optional. A VPA with no recommendation produces no value series for these paths. A container covered by a `containerPolicies` entry with `mode: Off` is intentionally absent. `uncappedTarget` can be absent on versions or states that do not populate it.
 
-Use a per-object status or condition export to distinguish “zero” from “not present.” `vpa_recommender_vpa_objects_count` can corroborate aggregate state by label, but it does not identify the affected VPA or container. Never coerce a missing recommendation to zero resource demand.
+Prometheus distinguishes a zero-valued series from an absent one. Export the `RecommendationProvided` condition for object-level recommendation state, but it cannot explain the absence of a specific container, resource, or optional field. `vpa_recommender_vpa_objects_count` can corroborate aggregate state by label, but it does not identify the affected VPA or container. Never coerce a missing recommendation to zero resource demand.
 
 Keep labels bounded. Namespace, VPA, target, container, resource, and unit are useful; copying arbitrary annotations or all workload labels can create unnecessary cardinality.
 
