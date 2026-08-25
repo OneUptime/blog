@@ -105,7 +105,6 @@
 
 ## Fulcio
 
-9. How to Monitor Fulcio’s Certificate Transparency Log for Unauthorized Certificates for Your Identity
 10. How to Run Fulcio Locally with Docker Compose—and Why the Ephemeral CA Is Test-Only
 11. How to Back a Production Fulcio CA with AWS KMS, Google Cloud KMS, Azure Key Vault, or Vault
 12. How to Configure Fulcio as an Intermediate CA Beneath an Offline Root
