@@ -99,7 +99,6 @@
 
 ## Trace Sampling
 
-7. How to Cap Tail-Sampled Output by Bytes per Second Instead of Trace or Span Count
 8. How to Move Tail-Sampling State Out of Memory with the Experimental `tail_storage` Extension
 9. How to Replace Deprecated `invert_match` Tail-Sampling Rules with `drop` and `not` Policies
 10. Why Multiple Tail-Sampling Policies Do Not Behave Like a Simple OR—and How Drop Vetoes Work
