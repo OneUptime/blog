@@ -99,7 +99,6 @@
 
 ## Trace Sampling
 
-3. How to Keep Late-Arriving Spans from Splitting One Trace into Conflicting Sampling Decisions
 4. OpenTelemetry `trace-complete` vs `span-ingest`: Which Tail-Sampling Strategy Fits Your Pipeline?
 5. How to Use `decision_wait_after_root_received` to Reduce Tail-Sampling Delay Without Truncating Long Traces
 6. How to Protect the OpenTelemetry Collector from Giant Traces with `maximum_trace_size_bytes`
