@@ -105,7 +105,6 @@
 
 ## Fulcio
 
-11. How to Back a Production Fulcio CA with AWS KMS, Google Cloud KMS, Azure Key Vault, or Vault
 12. How to Configure Fulcio as an Intermediate CA Beneath an Offline Root
 13. How to Use a PKCS#11 HSM as Fulcio’s Certificate-Signing Backend
 14. How to Rotate a File-Backed Fulcio Signing Key and Certificate Chain Without Restarting the Server
