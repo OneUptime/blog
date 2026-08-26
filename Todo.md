@@ -118,7 +118,6 @@
 
 ## SSL Monitoring
 
-10. How to Inventory and Monitor Wildcard Certificates Across Every Deployment Location
 
 ## CockroachDB Operator
 
