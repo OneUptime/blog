@@ -111,7 +111,6 @@
 
 ## CockroachDB Operator
 
-8. How to Rotate CockroachDB Operator Node and Client Certificates with cert-manager
 9. How to Secure the CockroachDB Operator Admission Webhooks with Your Own CA
 10. Why Is the CockroachDB Operator Ready Before Its Admission Webhook Accepts Requests?
 11. How to Run the CockroachDB Operator Under Kubernetes Restricted Pod Security
