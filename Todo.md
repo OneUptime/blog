@@ -128,7 +128,6 @@
 8. How to Monitor OCSP Stapling and Certificate Revocation Without Treating notAfter as Enough
 9. How to Check Every SAN on a Multi-Domain Certificate—and Detect Missing Hostnames After Renewal
 10. How to Inventory and Monitor Wildcard Certificates Across Every Deployment Location
-12. Why Internal and External SSL Monitors Disagree: Split DNS, Firewalls, CDNs, and Load Balancers
 13. How to Detect Different TLS Certificates Served over IPv4 and IPv6
 14. How to Monitor the Origin Certificate Behind a CDN or TLS-Terminating Load Balancer
 15. How to Design Warning and Critical Certificate-Expiry Alerts Without Notification Storms
