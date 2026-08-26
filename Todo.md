@@ -118,7 +118,6 @@
 
 ## SSL Monitoring
 
-9. How to Check Every SAN on a Multi-Domain Certificate—and Detect Missing Hostnames After Renewal
 10. How to Inventory and Monitor Wildcard Certificates Across Every Deployment Location
 
 ## CockroachDB Operator
