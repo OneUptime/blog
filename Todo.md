@@ -111,7 +111,6 @@
 
 ## CockroachDB Operator
 
-20. How to Create SQL Users and Client Certificates in an Operator-Managed CockroachDB Cluster
 
 ## Google Cloud
 
