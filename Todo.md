@@ -128,7 +128,6 @@
 8. How to Monitor OCSP Stapling and Certificate Revocation Without Treating notAfter as Enough
 9. How to Check Every SAN on a Multi-Domain Certificate—and Detect Missing Hostnames After Renewal
 10. How to Inventory and Monitor Wildcard Certificates Across Every Deployment Location
-20. What Should an SSL Monitor Validate Besides Expiry? Hostname, Trust Chain, Revocation, and Key Strength
 
 ## CockroachDB Operator
 
