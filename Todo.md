@@ -118,7 +118,6 @@
 
 ## SSL Monitoring
 
-3. Why Blackbox Exporter Reports x509: Certificate Signed by Unknown Authority: Monitoring Private CAs Safely
 4. How to Monitor TLS Certificates Inside Kubernetes Secrets Before They Reach an Ingress
 5. How to Monitor SMTP, IMAP, LDAP, and FTP Certificates That Require STARTTLS
 6. How to Monitor mTLS Endpoints with a Client Certificate and Private Key
