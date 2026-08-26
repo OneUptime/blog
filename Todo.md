@@ -118,7 +118,6 @@
 
 ## SSL Monitoring
 
-5. How to Monitor SMTP, IMAP, LDAP, and FTP Certificates That Require STARTTLS
 6. How to Monitor mTLS Endpoints with a Client Certificate and Private Key
 7. How to Detect an Incomplete or Expiring Intermediate Certificate Chain Before Clients Fail
 8. How to Monitor OCSP Stapling and Certificate Revocation Without Treating notAfter as Enough
