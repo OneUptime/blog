@@ -128,7 +128,6 @@
 8. How to Monitor OCSP Stapling and Certificate Revocation Without Treating notAfter as Enough
 9. How to Check Every SAN on a Multi-Domain Certificate—and Detect Missing Hostnames After Renewal
 10. How to Inventory and Monitor Wildcard Certificates Across Every Deployment Location
-15. How to Design Warning and Critical Certificate-Expiry Alerts Without Notification Storms
 16. How to Discover Untracked Certificates Before They Expire: Network Scanning vs CA Inventory
 17. How to Monitor Certificates Stored in Windows Certificate Stores, Java Keystores, and PEM Files
 18. How to Alert When Automated Let’s Encrypt Renewal Succeeds but the Service Still Serves the Old Certificate
