@@ -118,7 +118,6 @@
 
 ## SSL Monitoring
 
-1. Why Your SSL Monitor Sees the Wrong Certificate: Send the Correct SNI Hostname
 2. How to Alert on probe_ssl_earliest_cert_expiry with Prometheus Blackbox Exporter
 3. Why Blackbox Exporter Reports x509: Certificate Signed by Unknown Authority: Monitoring Private CAs Safely
 4. How to Monitor TLS Certificates Inside Kubernetes Secrets Before They Reach an Ingress
