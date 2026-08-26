@@ -105,7 +105,6 @@
 
 ## Fulcio
 
-20. How to Troubleshoot Fulcio Proof-of-Possession Failures and CSR Key Mismatches
 
 ## SSL Monitoring
 
