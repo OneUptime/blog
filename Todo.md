@@ -111,7 +111,6 @@
 
 ## CockroachDB Operator
 
-17. How to Set a Custom Scheduler and PriorityClass for CockroachDB Operator Pods
 18. How to Choose a CockroachDB Image Version Supported by Your Operator Release
 19. How to Run the CockroachDB Operator Outside the Default Namespace Without Broken Service DNS
 20. How to Create SQL Users and Client Certificates in an Operator-Managed CockroachDB Cluster
