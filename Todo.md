@@ -141,7 +141,6 @@
 
 ## CockroachDB Operator
 
-1. How to Diagnose a CockroachDB Operator Scale-Down Stuck After Node Decommissioning
 2. Why Upscaling During a CockroachDB Operator Downscale Can Leave a Node in `DECOMMISSIONING`
 3. How to Stop CockroachDB Operator Scale-Down from Orphaning or Reusing the Wrong PVC
 4. How to Upgrade CockroachDB with the Operator Without an OOMKilled `vcheck` Job
