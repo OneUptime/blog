@@ -105,7 +105,6 @@
 
 ## Fulcio
 
-18. How to Configure Embedded SCTs for a Self-Hosted Fulcio Certificate Transparency Log
 19. How to Validate a Fulcio Root and Intermediate Chain Against Sigstore’s Certificate Profile
 20. How to Troubleshoot Fulcio Proof-of-Possession Failures and CSR Key Mismatches
 
