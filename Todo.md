@@ -111,7 +111,6 @@
 
 ## CockroachDB Operator
 
-11. How to Run the CockroachDB Operator Under Kubernetes Restricted Pod Security
 12. How to Fix `Permission Denied` on `/cockroach/cockroach-data` in Operator-Managed Pods
 13. How to Expand CockroachDB Storage When the Operator Does Not Resize the PVC
 14. How to Expose CockroachDB SQL and the DB Console Through Separate Ingresses
