@@ -111,7 +111,6 @@
 
 ## CockroachDB Operator
 
-10. Why Is the CockroachDB Operator Ready Before Its Admission Webhook Accepts Requests?
 11. How to Run the CockroachDB Operator Under Kubernetes Restricted Pod Security
 12. How to Fix `Permission Denied` on `/cockroach/cockroach-data` in Operator-Managed Pods
 13. How to Expand CockroachDB Storage When the Operator Does Not Resize the PVC
