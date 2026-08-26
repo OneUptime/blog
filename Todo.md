@@ -105,7 +105,6 @@
 
 ## Fulcio
 
-16. How to Fix x509: Certificate Signed by Unknown Authority Across Public, Staging, and Private Fulcio
 17. Why Cosign Cannot Verify a Private Fulcio Certificate Without Rekor and CT Log Trust Material
 18. How to Configure Embedded SCTs for a Self-Hosted Fulcio Certificate Transparency Log
 19. How to Validate a Fulcio Root and Intermediate Chain Against Sigstore’s Certificate Profile
