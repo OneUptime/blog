@@ -111,7 +111,6 @@
 
 ## CockroachDB Operator
 
-13. How to Expand CockroachDB Storage When the Operator Does Not Resize the PVC
 14. How to Expose CockroachDB SQL and the DB Console Through Separate Ingresses
 15. How to Spread Operator-Managed CockroachDB Pods Evenly Across Availability Zones
 16. How to Add Init Containers, Sidecars, and Volumes with the CockroachDB Operator `podTemplate`
