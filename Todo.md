@@ -141,7 +141,6 @@
 
 ## CockroachDB Operator
 
-3. How to Stop CockroachDB Operator Scale-Down from Orphaning or Reusing the Wrong PVC
 4. How to Upgrade CockroachDB with the Operator Without an OOMKilled `vcheck` Job
 5. How to Roll Back a CockroachDB Operator Major Upgrade Before Auto-Finalization
 6. How to Migrate from the Public CockroachDB Operator Without Deleting StatefulSets or PVCs
