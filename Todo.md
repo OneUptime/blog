@@ -111,7 +111,6 @@
 
 ## CockroachDB Operator
 
-15. How to Spread Operator-Managed CockroachDB Pods Evenly Across Availability Zones
 16. How to Add Init Containers, Sidecars, and Volumes with the CockroachDB Operator `podTemplate`
 17. How to Set a Custom Scheduler and PriorityClass for CockroachDB Operator Pods
 18. How to Choose a CockroachDB Image Version Supported by Your Operator Release
