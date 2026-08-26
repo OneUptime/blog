@@ -141,7 +141,6 @@
 
 ## CockroachDB Operator
 
-5. How to Roll Back a CockroachDB Operator Major Upgrade Before Auto-Finalization
 6. How to Migrate from the Public CockroachDB Operator Without Deleting StatefulSets or PVCs
 7. How to Supply a Custom CA to the CockroachDB Operator Without Breaking Readiness Probes
 8. How to Rotate CockroachDB Operator Node and Client Certificates with cert-manager
