@@ -111,7 +111,6 @@
 
 ## CockroachDB Operator
 
-19. How to Run the CockroachDB Operator Outside the Default Namespace Without Broken Service DNS
 20. How to Create SQL Users and Client Certificates in an Operator-Managed CockroachDB Cluster
 
 ## Google Cloud
