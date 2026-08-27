@@ -10,7 +10,7 @@ Description: Explain why disk-backed emptyDir shows its backing filesystem in df
 
 For a default, disk-backed `emptyDir`, Kubernetes creates a directory on the node storage used by kubelet and mounts it into the container. It does not normally create a new filesystem whose superblock has the requested `sizeLimit`. As a result, `df -h /scratch` reports the capacity and free space of the backing node filesystem, not the limit on that one directory.
 
-The limit still matters. When local storage capacity isolation is active on a supported node layout, kubelet measures the volume's use and evicts the Pod after the disk-backed `emptyDir` exceeds its configured size. This is asynchronous accounting and eviction, not a synchronous block quota that must make `write(2)` return `ENOSPC` at the exact byte boundary.
+The limit still matters. When local storage capacity isolation and volume statistics collection are active on a supported node layout, kubelet measures the volume's use and evicts the Pod after the disk-backed `emptyDir` exceeds its configured size. This is asynchronous accounting and eviction, not a synchronous block quota that must make `write(2)` return `ENOSPC` at the exact byte boundary.
 
 ## `df` and `du` Answer Different Questions
 
@@ -25,7 +25,7 @@ spec:
   restartPolicy: Never
   containers:
     - name: writer
-      image: registry.k8s.io/busybox:1.36.1
+      image: registry.k8s.io/e2e-test-images/busybox:1.36.1-1
       command: ["sh", "-c"]
       args:
         - |
@@ -67,11 +67,11 @@ Kubernetes can apply local ephemeral-storage isolation only when kubelet can mea
 
 The current kubelet configuration retains the `LocalStorageCapacityIsolation` control. If an environment disables that capability because its filesystem usage cannot be detected correctly, users should not rely on container `ephemeral-storage` limits or disk-backed `emptyDir.sizeLimit`.
 
-Even with correct measurement, another workload can fill the shared node filesystem first. Kubernetes documents that an `emptyDir` may run out of available space before reaching its own `sizeLimit` because logs, image data, and other overlays share the backing storage.
+Even with correct measurement, another workload can fill the shared node filesystem first. Kubernetes documents that an `emptyDir` may run out of available space before reaching its own `sizeLimit` because other users of the same backing filesystem, such as logs or image overlays, can consume the available space.
 
 ## Project Quotas Improve Measurement, Not Enforcement
 
-Kubernetes also has project-quota-based local storage monitoring. In current Kubernetes documentation this feature is beta, disabled by default, and requires a suitable XFS or ext4 filesystem plus user namespaces. It is faster and accounts for deleted-but-still-open files more accurately than directory scans.
+Kubernetes also has project-quota-based local storage monitoring. In current Kubernetes documentation the `LocalStorageCapacityIsolationFSQuotaMonitoring` feature is beta and disabled by default. Using it requires enabling that feature gate, enabling project quotas on a suitable backing filesystem such as XFS or ext4, and running Pods in a user namespace, normally with `spec.hostUsers: false`. It is faster and accounts for deleted-but-still-open files more accurately than directory scans.
 
 The crucial caveat is explicit: Kubernetes uses project quotas to monitor storage use, not to enforce limits. Kubelet still acts on the measured usage through its eviction path. Enabling quota monitoring does not turn disk-backed `emptyDir.sizeLimit` into a guaranteed hard filesystem quota.
 
@@ -83,7 +83,7 @@ With `medium: Memory`, kubelet mounts a tmpfs. A tmpfs has an actual mount size,
 
 Do not use tmpfs merely to make `df` display a smaller number. It changes the consumed resource from disk to memory and can cause OOM kills.
 
-If an application requires a provisioned scratch filesystem with a fixed capacity and hard capacity semantics, use a generic ephemeral volume backed by an appropriate StorageClass. Its `volumeClaimTemplate.resources.requests.storage` creates a PVC-backed volume. That capacity is distinct from the Pod's local `ephemeral-storage` accounting.
+If an application requires a provisioned scratch filesystem with a fixed capacity and hard capacity semantics, use a generic ephemeral volume backed by an appropriate StorageClass. The `volumeClaimTemplate` causes Kubernetes to create a PVC-backed volume, and `volumeClaimTemplate.spec.resources.requests.storage` requests the capacity. That capacity is distinct from the Pod's local `ephemeral-storage` accounting.
 
 ## Validate the Intended Limit
 
@@ -110,4 +110,4 @@ Access to `nodes/proxy` is privileged. Grant it only to trusted operators or col
 
 ## Conclusion
 
-`df -h` shows the shared backing filesystem because disk-backed `emptyDir` is a directory, not a dedicated limited filesystem. Kubelet enforces `sizeLimit` by measuring volume use and evicting the Pod, subject to supported filesystem layout and measurement delay. Use generic ephemeral storage when an application needs fixed provisioned capacity.
+`df -h` shows the shared backing filesystem because disk-backed `emptyDir` is a directory, not a dedicated limited filesystem. Kubelet enforces `sizeLimit` by measuring volume use and evicting the Pod, subject to supported filesystem layout, enabled volume statistics collection, and measurement delay. Use generic ephemeral storage when an application needs fixed provisioned capacity.
