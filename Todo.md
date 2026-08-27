@@ -114,7 +114,6 @@
 
 ## Google Cloud
 
-14. How to Fix `iam.serviceAccounts.getAccessToken` 403 in GKE Workload Identity
 15. How to Fix Cloud Run Shared VPC `Permission Denied on Subnetwork` by Granting the Service Agent
 16. Why a Cloud Run VPC Connector Fails with `Resource Readiness Deadline Exceeded` Across Regions
 17. How to Fix `Request Had Insufficient Authentication Scopes` on a GCE VM with Correct IAM Roles
