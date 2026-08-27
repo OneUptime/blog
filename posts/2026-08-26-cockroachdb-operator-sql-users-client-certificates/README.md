@@ -72,7 +72,7 @@ kubectl -n crdb-prod get crdbcluster orders-db -o json \
 
 ## Issue a certificate for the exact SQL username
 
-For ordinary certificate authentication, the certificate identity must map to the SQL principal. The straightforward convention is a certificate Common Name exactly equal to the username, including case: `app_client`.
+For ordinary certificate authentication, the certificate identity must map to the SQL principal. CockroachDB SQL usernames are case-insensitive, so use the normalized SQL username as the certificate Common Name: `app_client`.
 
 When the cluster uses cert-manager, create a separate `Certificate` for the application user. The database chart currently creates a `root` client Certificate for its own administrative use; it does not generate this object for you.
 
@@ -112,7 +112,7 @@ kubectl -n crdb-prod wait certificate/app-client \
 kubectl -n crdb-prod get secret app-client-tls
 ```
 
-cert-manager stores the leaf certificate and private key as `tls.crt` and `tls.key`. Treat that Secret as the application user's login credential: restrict RBAC, avoid broad namespace-wide Secret reads, encrypt Kubernetes Secrets at rest, and do not copy the client CA's private key into the application namespace.
+cert-manager stores the signed certificate chain, with the leaf first and any available intermediates after it, and the private key as `tls.crt` and `tls.key`. Treat that Secret as the application user's login credential: restrict RBAC, avoid broad namespace-wide Secret reads, and encrypt Kubernetes Secrets at rest. Do not mount or grant application workloads access to the client CA's private key. A built-in CA `Issuer` keeps its signing Secret in the Issuer's namespace; use a `ClusterIssuer` or remote issuer if the signing key must remain outside the application namespace.
 
 If the cluster uses one CA for node and client certificates, that CA is provided through `caConfigMapName`, as assumed here. With the less-recommended split-CA arrangement, the application certificate must be signed by the CA identified by `clientCaConfigMapName`, while the application's `sslrootcert` must contain the node/server CA identified by `nodeCaConfigMapName`. The first CA authenticates the client to CockroachDB; the second lets the client authenticate CockroachDB's node certificate. Publish and mount those as separate ConfigMaps instead of reusing the client CA in both directions. The operator's `rootSqlClientSecretName` is specifically the credential used for the `root` SQL user and administrative actions. Do not overwrite or reuse it for `app_client`.
 
@@ -127,7 +127,13 @@ metadata:
   name: orders-api
   namespace: crdb-prod
 spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: orders-api
   template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: orders-api
     spec:
       containers:
         - name: api
@@ -169,7 +175,7 @@ The host in the URL must be one of the node certificate's DNS names. The current
 
 ## Use an external CA when cert-manager is not the issuer
 
-An offline or external client CA can issue the same identity. With CockroachDB's CLI, an authorized signing environment can run:
+An offline or external client CA can issue the same identity. With the matching public CA certificate stored as `certs/ca.crt` for a shared CA, or `certs/ca-client.crt` for a split client CA, an authorized signing environment can run:
 
 ```bash
 cockroach cert create-client app_client \
@@ -177,12 +183,13 @@ cockroach cert create-client app_client \
   --ca-key=/secure/client-ca.key
 ```
 
-Distribute only `client.app_client.crt`, `client.app_client.key`, and the public CA certificate. Keep the CA key out of Kubernetes and application containers. If your PKI produces certificates itself, follow CockroachDB's documented client-certificate requirements and validate the resulting subject and chain before storing the leaf credential as a Secret.
+Distribute only `client.app_client.crt`, `client.app_client.key`, and the public CA certificate. Keep the CA key out of Kubernetes and application containers. If your PKI produces certificates itself, follow CockroachDB's documented client-certificate requirements and validate the resulting subject and chain before storing the client credential as a Secret.
 
 Useful checks are:
 
 ```bash
 openssl x509 -in client.app_client.crt -noout -subject -issuer -dates
+# For a split CA, verify against ca-client.crt instead.
 openssl verify -CAfile ca.crt client.app_client.crt
 kubectl -n crdb-prod describe certificate app-client
 ```
@@ -193,7 +200,7 @@ A valid chain alone is insufficient when its identity maps to the wrong user. Li
 
 cert-manager renews the Secret before expiry, but the application must observe the updated files or reconnect with a reloaded TLS configuration. Test that behavior before relying on automatic renewal.
 
-The SQL principal and certificate also have separate lifecycles. Removing privileges or dropping/disabling the SQL user stops that identity from logging in even if a previously issued certificate has not expired. Rotating the certificate does not change SQL grants. For incident response, revoke or replace the credential according to your PKI and disable the SQL principal immediately; do not wait for operator reconciliation to manage an application certificate it did not issue.
+The SQL principal and certificate also have separate lifecycles. Revoking privileges limits authorization but does not itself prevent login. Dropping the user or setting it to `NOLOGIN` prevents new logins even if a previously issued certificate has not expired; cancel existing sessions separately when necessary. Rotating the certificate does not change SQL grants, and replacing the Secret does not invalidate a copied old certificate. For incident response, disable the SQL principal immediately and revoke the compromised certificate through a mechanism CockroachDB is configured to enforce, such as OCSP; do not wait for operator reconciliation to manage an application certificate it did not issue.
 
 ## Official Documentation
 
@@ -208,4 +215,4 @@ The SQL principal and certificate also have separate lifecycles. Removing privil
 
 ## Conclusion
 
-Create the SQL principal with idempotent `postInitSQL` only during bootstrap, and manage later changes through a migration workflow. Issue a separate client certificate whose identity is `app_client` from the CA CockroachDB trusts, mount the exact leaf, key, and public CA files, and connect with `verify-full`. The GA operator manages its administrative `root` credential; application-user issuance, renewal consumption, privilege lifecycle, and incident response remain explicit platform responsibilities.
+Create the SQL principal with idempotent `postInitSQL` only during bootstrap, and manage later changes through a migration workflow. Issue a separate client certificate whose identity is `app_client` from the CA CockroachDB trusts, mount the client certificate chain, key, and public CA files, and connect with `verify-full`. The GA operator manages its administrative `root` credential; application-user issuance, renewal consumption, privilege lifecycle, and incident response remain explicit platform responsibilities.
