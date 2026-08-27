@@ -40,7 +40,7 @@ offline root certificate
 
 Do not put a Fulcio-issued ten-minute leaf in this file. If Fulcio signs directly as a root, the file contains that self-signed root only.
 
-The current `kmsca` implementation loads both signer and chain once. It does not watch the chain file. A provider key version change therefore needs a coordinated Fulcio restart with a chain whose first certificate certifies the selected version.
+The current `kmsca` implementation constructs the signer and loads the chain once. It does not watch the chain file, but an alias or unversioned provider reference can still resolve to new key material beneath that signer. Pin the resource; selecting a new pinned key or version needs a coordinated Fulcio restart with a chain whose first certificate certifies it.
 
 ## Create a Dedicated Asymmetric Signing Key
 
@@ -53,9 +53,9 @@ Use a different key for each environment and purpose. Do not reuse a TLS, Rekor,
 | Azure Key Vault | `azurekms://acme-prod.vault.azure.net/fulcio-intermediate/VERSION` |
 | HashiCorp Vault Transit | `hashivault://fulcio-intermediate` |
 
-Pin an immutable key ARN or version wherever the provider and driver support it. An AWS alias, unversioned Google or Azure name, or Vault key's current version can move to a different public key. A CA certificate cannot move with it automatically.
+Pin an immutable key ARN or version wherever the provider and driver support it. An AWS alias or an unversioned Google or Azure name can move to a different public key. Fulcio's `hashivault://` resource cannot select a Transit key version, so use a new named Transit key for each CA generation. A CA certificate cannot move to new key material automatically.
 
-The Sigstore certificate profile recommends ECDSA P-384 or stronger, or RSA-4096, for a root or intermediate. Confirm the exact key algorithm works end to end with the Fulcio release and provider driver you pin. Typical provider choices are an AWS `SIGN_VERIFY` asymmetric key, a Google Cloud `ASYMMETRIC_SIGN` key version, an Azure EC/RSA key with `sign` and `verify` operations, or a Vault Transit ECDSA/RSA signing key.
+The Sigstore certificate profile recommends ECDSA P-384 or stronger, or RSA-4096, for a root or intermediate. Confirm the exact key algorithm works end to end with the Fulcio release and provider driver you pin. Typical provider choices are an AWS `SIGN_VERIFY` asymmetric key, a Google Cloud `ASYMMETRIC_SIGN` key version, an Azure ECDSA key with the `sign` operation, or a Vault Transit ECDSA/RSA signing key.
 
 For example, the provider-native creation commands can start with:
 
@@ -78,7 +78,7 @@ az keyvault key create \
   --name fulcio-intermediate \
   --kty EC-HSM \
   --curve P-384 \
-  --ops sign verify
+  --ops sign
 
 # Vault Transit
 vault secrets enable transit
@@ -103,7 +103,7 @@ Export only the public key and take it to the root-signing ceremony. Issue an in
 - a lifetime no longer than the root, with roughly three years suggested; and
 - preferably the same signature scheme as the root.
 
-The certificate's SubjectPublicKeyInfo must be byte-for-byte the public key for the exact KMS key version Fulcio will open. Preserve a ceremony record containing the provider resource, public-key fingerprint, certificate fingerprint, serial, validity interval, approvers, and generated chain.
+The certificate's SubjectPublicKeyInfo must represent the same public key as the exact KMS key version Fulcio will open. Preserve a ceremony record containing the provider resource, public-key fingerprint, certificate fingerprint, serial, validity interval, approvers, and generated chain.
 
 Build the runtime chain with the signer first:
 
@@ -132,13 +132,13 @@ Use the provider's workload identity instead of long-lived credentials:
 - managed identity or workload identity federation for Azure; or
 - a short-lived, renewable Vault token obtained from an appropriate workload auth method.
 
-Scope authorization to one key. For Google Cloud this normally includes `cloudkms.cryptoKeyVersions.useToSign` and `cloudkms.cryptoKeyVersions.viewPublicKey`. For Azure, use data-plane crypto permissions rather than control-plane Contributor access. For Vault Transit, grant only the required key read and `transit/sign/fulcio-intermediate/*` update paths, adjusted for the configured mount.
+Scope authorization to one key. For a pinned Google Cloud version, this includes `cloudkms.cryptoKeys.get`, `cloudkms.cryptoKeyVersions.get`, `cloudkms.cryptoKeyVersions.viewPublicKey`, and `cloudkms.cryptoKeyVersions.useToSign`; an unversioned URI needs `cloudkms.cryptoKeyVersions.list` instead of `cloudkms.cryptoKeyVersions.get`. For Azure, grant only data-plane key `get` and `sign` permissions rather than control-plane Contributor access. For Vault Transit, grant only the required key read and `transit/sign/fulcio-intermediate/*` update paths, adjusted for the configured mount.
 
 Never put a Vault token, cloud secret, or file-backed service-account key in the command line or image. Ensure the provider's TLS endpoint is authenticated; do not use insecure TLS bypass environment variables.
 
 ## Start Fulcio with a Pinned Resource
 
-An AWS example is:
+An AWS example is below. Configure `AWS_REGION=eu-west-1` or the same Region in shared SDK configuration; the Region embedded in the key ARN does not configure Sigstore's AWS client.
 
 ```bash
 fulcio-server serve \
@@ -150,7 +150,7 @@ fulcio-server serve \
   --ct-log-public-key-path=/etc/fulcio/ct-log-public-key.pem
 ```
 
-Change only the provider URI for Google Cloud, Azure, or Vault. `--gcp-kms-retries` and `--gcp-kms-timeout` apply only to the Google KMS path in current Fulcio. Do not assume they configure other providers.
+After configuring the provider's identity and endpoint environment, change only `--kms-resource` for Google Cloud, Azure, or Vault. The Vault driver requires `VAULT_ADDR`; set `TRANSIT_SECRET_ENGINE_PATH` as well when Transit is not mounted at `transit`. `--gcp-kms-retries` and `--gcp-kms-timeout` apply only to the Google KMS path in current Fulcio. Do not assume they configure other providers.
 
 Fulcio's HTTP listener does not terminate TLS. Place it behind an authenticated, TLS-terminating proxy or ingress. Protect the gRPC listener separately if it is exposed.
 
@@ -164,13 +164,15 @@ Before admitting production traffic:
 - verify a signed test artifact with the complete private Sigstore trusted root;
 - revoke the workload's signing permission and confirm issuance fails closed;
 - test KMS throttling and network loss without silently changing backends; and
-- confirm provider audit logs identify the exact Fulcio workload and key version for every signature.
+- enable the provider's data-plane audit stream and confirm it identifies the exact Fulcio workload and key resource, plus the version where the provider exposes one, for every signature.
+
+Google Cloud `AsymmetricSign` is a `DATA_READ` Data Access event, so enable it explicitly because Data Access logs are disabled by default. A new Vault cluster likewise needs at least one audit device enabled.
 
 Alert on use by another principal, unexpected regions or networks, administrative key changes, scheduled deletion, disabled versions, and a signature rate that cannot be reconciled with Fulcio issuance.
 
 ## Rotate Without Breaking the Chain
 
-Do not rotate a provider key in place and hope Fulcio follows it. Create a new key/version, certify its public key, publish the new CA chain and verification trust through your authenticated distribution system, then roll Fulcio to a resource URI pinned to the new key and the matching chain.
+Do not rotate a provider key in place and hope Fulcio follows it. Create a new key or a version that the driver can pin; for Vault Transit, create a new named key because `hashivault://` cannot select a version. Certify its public key, publish the new CA chain and verification trust through your authenticated distribution system, then roll Fulcio to the new pinned resource URI and matching chain.
 
 During the overlap, verifiers must still trust signatures and certificates produced under the old CA material. Keep historical Fulcio, CT, Rekor, and timestamp verification material with correct validity intervals. Only disable or schedule deletion of the old KMS key after no server can use it and the incident/recovery policy permits it; retaining public verification material does not require retaining signing capability.
 
