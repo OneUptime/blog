@@ -8,23 +8,23 @@ Description: Diagnose default-certificate results and configure the SNI name, ce
 
 ---
 
-A TLS endpoint can serve many certificates from one IP address. The client sends Server Name Indication (SNI) in its `ClientHello`, and the load balancer or web server uses that name to select a virtual host and certificate. A monitor that connects only to the IP can receive the listener's default certificate even though browsers receive the correct one.
+A TLS endpoint can serve many certificates from one IP address. A client normally sends Server Name Indication (SNI) in its `ClientHello`, and the load balancer or web server can use that name to select a virtual host and certificate. A monitor that connects only to the IP can receive the listener's default certificate even though browsers receive the correct one.
 
 That result is usually accurate for the handshake the monitor made. The fix is to make the probe identify the intended service before certificate selection happens.
 
 ## Keep the Three Hostnames Straight
 
-An HTTPS probe can carry three related values:
+An HTTPS probe involves three related values:
 
 | Value | Used when | Purpose |
 | --- | --- | --- |
 | TCP destination | Before TLS | Selects the IP address and port to connect to |
-| TLS SNI and verification name | During TLS | Selects the certificate and verifies its SAN |
+| TLS SNI and verification name | During TLS | SNI can guide certificate selection; the verification name is matched against the certificate's SAN |
 | HTTP `Host` header | After TLS | Selects the HTTP virtual host and application route |
 
 For a normal request to `https://api.example.com/health`, all three derive from `api.example.com`, with DNS resolving the TCP destination. Problems appear when a monitor substitutes an IP address, a load-balancer hostname, or an origin hostname for the public service name.
 
-Setting only the HTTP `Host` header is not a general fix. The server has already selected a certificate before it can read an encrypted HTTP request. Configure SNI explicitly whenever the connect address and service identity differ.
+Setting only the HTTP `Host` header is not a general fix. The server has already selected a certificate before it can read an encrypted HTTP request. Ensure the intended SNI is sent whenever the configured target is an IP address or a different hostname from the service identity.
 
 ## Reproduce the Difference with OpenSSL
 
@@ -41,21 +41,25 @@ openssl x509 -noout -subject -issuer -serial -ext subjectAltName
 Now send the intended name and require both chain and hostname verification:
 
 ```bash
-openssl s_client \
-  -connect 203.0.113.10:443 \
-  -servername api.example.com \
-  -verify_hostname api.example.com \
-  -verify_return_error \
-  -showcerts </dev/null 2>/dev/null |
+certificates="$(
+  openssl s_client \
+    -connect 203.0.113.10:443 \
+    -servername api.example.com \
+    -verify_hostname api.example.com \
+    -verify_return_error \
+    -showcerts </dev/null
+)" &&
+printf '%s\n' "$certificates" |
 openssl x509 -noout -subject -issuer -serial -ext subjectAltName
 ```
 
-`-servername` controls SNI. `-verify_hostname` independently checks the certificate identity. Keep both; receiving the intended certificate does not prove that the certificate is valid for the name.
+`-servername` controls SNI. `-verify_hostname` independently checks the certificate identity, and `-verify_return_error` makes `s_client` exit nonzero on verification errors. The `&&` prevents the inspection pipeline from masking that failure. Keep both name options; receiving the intended certificate does not prove that the certificate is valid for the name.
 
 For HTTPS, curl's `--resolve` is a convenient end-to-end test because the URL retains the real host while the connection is pinned to one address:
 
 ```bash
 curl --fail --show-error --verbose \
+  --noproxy '*' \
   --resolve api.example.com:443:203.0.113.10 \
   https://api.example.com/health
 ```
@@ -98,7 +102,7 @@ modules:
         insecure_skip_verify: false
 ```
 
-Do not replace the target with the exporter's IP merely to avoid DNS. Doing so changes the service identity being tested and can also hide split-DNS or stale-DNS failures that users experience.
+Do not replace the hostname target with the endpoint's resolved IP address merely to avoid DNS. Doing so changes the service identity being tested and can also hide split-DNS or stale-DNS failures that users experience.
 
 ## Pin a Backend IP Without Losing SNI
 
@@ -136,7 +140,7 @@ A fixed `server_name` makes this module credential-like configuration for one id
 
 ## Diagnose Common False Leads
 
-- A certificate's Common Name is not a substitute for the required SAN identity. Current service-identity guidance uses `subjectAltName`.
+- A certificate's Common Name is not a substitute for the required SAN identity. Current service-identity guidance uses `subjectAltName`; OpenSSL's `-verify_hostname` can still fall back to Common Name when no DNS SAN is present, so inspect the displayed SAN as well.
 - An IP address is not a valid SNI `HostName`. If clients reach an IP but expect a DNS identity, send the DNS name as SNI.
 - `insecure_skip_verify: true` can make the probe complete, but it disables chain and hostname validation. It turns a certificate monitor into a TLS-connectivity check.
 - A CDN, ingress, origin, IPv4 listener, and IPv6 listener can legitimately terminate TLS independently. Test each intended termination point with its intended SNI name.

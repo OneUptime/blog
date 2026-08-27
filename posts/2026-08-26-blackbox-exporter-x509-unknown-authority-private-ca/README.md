@@ -14,7 +14,7 @@ The safe solution is to identify the intended trust domain and give that probe t
 
 ## Reproduce the Failure Outside Blackbox Exporter
 
-First test the exact name, port, and trust bundle from the same network as the exporter:
+First test the exact name and port from the same network as the exporter, using OpenSSL's configured default trust sources:
 
 ```bash
 openssl s_client \
@@ -33,7 +33,7 @@ openssl s_client \
   -servername api.internal.example \
   -verify_hostname api.internal.example \
   -verify_return_error \
-  -CAfile production-root-ca.pem \
+  -verifyCAfile production-root-ca.pem \
   -showcerts </dev/null
 ```
 
@@ -120,7 +120,7 @@ Go's X.509 verifier, which Blackbox Exporter uses through Prometheus's TLS confi
 
 ## Rotate Private Roots with an Overlap Window
 
-For a planned root or intermediate migration:
+For a planned root migration:
 
 1. Distribute a trust bundle containing the old and new roots.
 2. Confirm every exporter instance has loaded that bundle.
@@ -157,7 +157,7 @@ curl --silent --show-error --get \
   http://localhost:9115/probe
 ```
 
-Look for the resolved address, TLS handshake error, redirects, and final target. Do not publish this endpoint broadly: probe parameters can reach internal services, and debug output can reveal topology. Restrict access to the exporter and never place private keys or bearer credentials in target URLs.
+`debug=true` returns the per-probe log buffer at the exporter's configured `--log.prober` level. TLS errors and redirects appear at the default `info` level; resolved addresses and per-request URLs require temporarily running the exporter with `--log.prober=debug`. Inspect the last request URL to identify the final target. Do not publish this endpoint broadly: probe parameters can reach internal services, and debug output can reveal topology. Restrict access to the exporter and never place private keys or bearer credentials in target URLs.
 
 ## Official Documentation
 
