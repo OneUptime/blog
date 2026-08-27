@@ -68,7 +68,7 @@ kubectl get pvc "$PVC" -n "$NAMESPACE" \
 
 An empty or false `allowVolumeExpansion` is a platform limitation for that claim. Editing the StorageClass later does not guarantee that an existing in-tree or CSI volume becomes expandable; confirm support with the driver and cloud-storage documentation. Changing `storageClassName` on a bound PVC is not a resize and is generally immutable.
 
-Kubernetes supports growth, not ordinary shrink. Do not request a smaller value after a successful expansion. On Kubernetes 1.34 and later, a failed oversized request can sometimes be corrected to a smaller request that remains above the volume's actual capacity, but that recovery feature does not shrink storage.
+Kubernetes supports growth, not ordinary shrink. Do not request a smaller value after a successful expansion. `RecoverVolumeExpansionFailure` was beta and enabled by default in Kubernetes 1.32 and 1.33, and became GA in 1.34. With that feature, and a compatible external-resizer for CSI volumes, a failed oversized request can be corrected to a lower request that remains greater than `.status.capacity`; this recovery does not shrink storage.
 
 ## Check the Desired Size at Every Operator Layer
 
@@ -98,8 +98,9 @@ If your installation uses different labels, list all `CrdbNode` objects and filt
 - old size in `CrdbCluster`: the Helm/GitOps update never reached the custom resource;
 - new cluster size but old `CrdbNode` size: reconciliation is paused, blocked, stale, or using a non-mutable mode;
 - new `CrdbNode` size but old PVC request: investigate Operator logs, ownership conflicts, and installed Operator version;
-- new PVC request but old PVC capacity: investigate CSI events, quota, provider limits, and attachment state;
-- new PVC capacity but old filesystem size: investigate node-side filesystem expansion.
+- new PVC request but old bound-PV `.spec.capacity`, or `ControllerResizeInProgress`, `ControllerResizeFailed`, or `ControllerResizeError`: investigate the CSI external-resizer and controller, quota, provider limits, and attachment state;
+- new PV capacity but `NodeResizePending` or `FileSystemResizePending`, with old PVC capacity or filesystem size: investigate kubelet and CSI node-side expansion;
+- new PVC capacity but old mounted filesystem size: confirm the claim and mount path, then investigate inconsistent CSI driver or node reporting.
 
 ## Change the Declarative Source First
 
@@ -151,7 +152,7 @@ This snippet omits required cluster fields and must be merged into the existing 
 
 ## Let the GA Operator Reconcile Before Patching Claims
 
-Operator chart 1.0.0 includes a fix for an edge case where a PVC resize could block pod recovery and prevent expansion from completing. If an earlier release is installed, review its changelog and test an Operator upgrade before taking over individual PVCs.
+The PVC-resize fix first appeared in Operator chart 1.0.0-rc.4 and is included in 1.0.0. It addresses an edge case where a PVC resize could block pod recovery and prevent expansion from completing. If an earlier release is installed, review its changelog and test an Operator upgrade before taking over individual PVCs.
 
 Watch the controller and PVC events:
 
@@ -164,7 +165,7 @@ kubectl logs deployment/cockroach-operator \
 kubectl get pvc -n "$NAMESPACE" --watch
 kubectl get events -n "$NAMESPACE" \
   --field-selector involvedObject.kind=PersistentVolumeClaim \
-  --sort-by=.lastTimestamp
+  --sort-by=.metadata.creationTimestamp
 ```
 
 Use the actual operator namespace and Deployment name. A Server-Side Apply field-ownership conflict must be reconciled at the declarative source. Do not reach for Helm 4 `--force-conflicts` until you have inspected `metadata.managedFields` and intentionally chosen the owner.
@@ -188,13 +189,18 @@ Never edit `PersistentVolume.spec.capacity` to make the numbers match. Kubernete
 kubectl get pvc "$PVC" -n "$NAMESPACE" -w
 kubectl describe pvc "$PVC" -n "$NAMESPACE"
 
+export PV=$(kubectl get pvc "$PVC" -n "$NAMESPACE" \
+  -o jsonpath='{.spec.volumeName}')
+kubectl get pv "$PV" \
+  -o jsonpath='pv={.metadata.name}{" capacity="}{.spec.capacity.storage}{"\n"}'
+
 kubectl get pvc "$PVC" -n "$NAMESPACE" \
-  -o jsonpath='request={.spec.resources.requests.storage}{" allocated="}{.status.allocatedResources.storage}{" capacity="}{.status.capacity.storage}{" resizeStatus="}{.status.allocatedResourceStatuses.storage}{" conditions="}{.status.conditions}{"\n"}'
+  -o jsonpath='request={.spec.resources.requests.storage}{" target="}{.status.allocatedResources.storage}{" capacity="}{.status.capacity.storage}{" resizeStatus="}{.status.allocatedResourceStatuses.storage}{" conditions="}{.status.conditions}{"\n"}'
 ```
 
-Field availability varies by Kubernetes version. Events such as quota exhaustion, unsupported expansion, controller resize error, node resize error, or `FileSystemResizePending` identify the responsible layer.
+Field availability varies by Kubernetes version. `allocatedResources` is the controller's expansion target and quota-accounting value; it can exceed actual capacity while expansion is in progress, so it does not prove that the device grew. PVC conditions and Events such as `ControllerResizeError`, `NodeResizeError`, `FileSystemResizePending`, or messages reporting quota exhaustion and unsupported expansion identify the responsible layer.
 
-For filesystem-mode volumes, Kubernetes expands supported filesystems when a pod uses the claim in read-write mode. Some CSI drivers support online expansion; others finish at pod startup. Do not delete all CockroachDB pods to trigger it. If the driver explicitly requires a restart, let the Operator replace one node, wait for it to become healthy and re-replicated, then continue.
+For filesystem-mode volumes, Kubernetes expands supported filesystems when a pod uses the claim in read-write mode. Depending on the CSI driver and filesystem, node-side expansion can finish online while the pod is running or at pod startup. Do not delete all CockroachDB pods to trigger it. If the driver documentation explicitly requires a pod restart, use the chart or Operator's documented rolling-restart mechanism so the Operator restarts one pod at a time; never delete a `CrdbNode` to trigger filesystem expansion. Wait for the pod to become healthy and for `ranges_underreplicated` and `ranges_unavailable` to return to zero before continuing.
 
 Validate from the mounted path, not just the PVC object:
 
@@ -227,4 +233,4 @@ The command resolves `POD` from the live volume-to-claim mapping; compare it wit
 
 ## Conclusion
 
-A CockroachDB resize is complete only when the desired cluster template, generated node, PVC request, backing volume, mounted filesystem, and database health all agree. Update the declarative `v1beta1` source, verify `allowVolumeExpansion` and CSI support, and let the current GA Operator reconcile. Use a one-claim PVC patch only after locating an Operator-layer stall. Never delete claims or fabricate PV capacity to force progress.
+A CockroachDB resize is complete only when the desired cluster template, generated node, PVC request, backing volume, mounted filesystem, and database health all agree. Update the declarative `v1beta1` source, verify `allowVolumeExpansion` and CSI support, and let the current GA Operator reconcile. Use a one-claim PVC patch only after locating an Operator-layer stall. Never delete claims as a generic resize shortcut or fabricate PV capacity to force progress.
