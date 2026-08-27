@@ -38,7 +38,9 @@ spec:
     spec:
       containers:
         - name: catalog
-          image: example/catalog:1.0
+          image: quay.io/brancz/prometheus-example-app:v0.5.0
+          args:
+            - -bind=:9090
           ports:
             - name: metrics
               containerPort: 9090
@@ -94,14 +96,14 @@ Prometheus ultimately scrapes an endpoint address at the resolved target port. T
 
 ## Common Incorrect Forms
 
-This uses the Service's numeric `port`, not its name:
+This quotes the Service's numeric `port` where a name is required:
 
 ```yaml
 endpoints:
   - port: "8080"
 ```
 
-It does not select numeric Service port `8080`. Kubernetes Service port-name validation requires at least one lowercase letter, so an all-numeric name such as `8080` is invalid as well. Use a real name such as `metrics`.
+ServiceMonitor treats `8080` as a literal Service port name; it does not select the Service port whose numeric `port` is `8080`. In this example no such name exists, so it matches nothing. Kubernetes permits an all-numeric Service port name, but prefer a semantic name such as `metrics` to avoid confusing a name with a number.
 
 This uses the container port name while the Service port has a different name:
 
@@ -136,7 +138,7 @@ spec:
 
 If both are set, `port` takes precedence. `targetPort` is not a synonym for a Service port. It changes the selection contract from `Service.spec.ports[].name` to Pod container-port metadata.
 
-Prefer `port` for a ServiceMonitor because the resource is designed to monitor Services and the Service port is the public discovery contract. `targetPort` can be useful for a carefully understood legacy configuration, but it fails when Pods do not declare a matching container port even if the process really listens there. If the intention is to select Pods and their container ports directly, a `PodMonitor` is usually clearer.
+Prefer `port` for a ServiceMonitor because the resource is designed to monitor Services and the Service port is the public discovery contract. `targetPort` can be useful when a configuration intentionally selects a declared Pod container port, but it fails when Pods do not declare a matching container port even if the process really listens there. If the intention is to select Pods and their container ports directly, a `PodMonitor` is usually clearer.
 
 ## Debug the Live Port Chain
 
@@ -169,7 +171,7 @@ kubectl get pod -n catalog -l app=catalog \
   -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{range .spec.containers[*].ports[*]}  name={.name} containerPort={.containerPort}{"\n"}{end}{end}'
 ```
 
-The first mismatch explains the missing target. If all layers agree and an active target appears, move on to network reachability and the HTTP response.
+A mismatch in this chain can explain a missing target. If all layers agree and an active target appears, move on to network reachability and the HTTP response.
 
 ## Keep the Contract Stable During Renames
 
@@ -181,7 +183,7 @@ For chart authors, expose one value for the Service metrics-port name and use it
 
 - [Prometheus Operator Endpoint API](https://prometheus-operator.dev/docs/api-reference/api/#monitoring.coreos.com/v1.Endpoint)
 - [Prometheus Operator troubleshooting](https://prometheus-operator.dev/docs/platform/troubleshooting/)
-- [Kubernetes Service port definitions](https://kubernetes.io/docs/concepts/services-networking/service/#port-definitions)
+- [Kubernetes Service port definitions](https://kubernetes.io/docs/concepts/services-networking/service/#field-spec-ports)
 - [Kubernetes EndpointSlices](https://kubernetes.io/docs/concepts/services-networking/endpoint-slices/)
 
 ## Conclusion
