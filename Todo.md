@@ -114,7 +114,6 @@
 
 ## Google Cloud
 
-6. How to Fix `docker-credential-gcloud Not in System PATH` for Artifact Registry
 7. Why Artifact Registry Returns `uploadArtifacts` Denied After `gcloud auth configure-docker`
 8. How to Fix Google Cloud Storage Signed URL `SignatureDoesNotMatch` by Matching Signed Headers
 9. How to Fix BigQuery `Cannot Read and Write in Different Locations` for External Cloud Storage Tables
