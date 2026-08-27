@@ -33,16 +33,17 @@ command -v docker-credential-gcloud
 printf '%s\n' "${PATH}"
 ```
 
-All three commands should resolve to executable files. A helper visible in an interactive terminal can still be missing from a CI service, IDE, GUI application, remote build process, or non-login shell because those processes receive a different `PATH`.
+`docker` and `gcloud` should be runnable in that context. In particular, `docker-credential-gcloud` must resolve to an executable file on `PATH`; a shell alias or function is not sufficient because Docker launches the helper directly. A helper visible in an interactive terminal can still be missing from a CI service, IDE, GUI application, remote build process, or non-login shell because those processes receive a different `PATH`.
 
-Also identify the Docker configuration used by that user:
+Also identify the Docker configuration used by that user and verify that Docker is reachable:
 
 ```bash
-printf 'HOME=%s\n' "${HOME}"
+docker_config="${DOCKER_CONFIG:-${HOME}/.docker}/config.json"
+printf 'Docker config: %s\n' "${docker_config}"
 docker info >/dev/null
 ```
 
-The Docker CLI normally reads a per-user configuration. If one user configured the helper and another user runs Docker, they can use different configuration files and credential stores.
+The Docker CLI reads `${HOME}/.docker/config.json` by default. `DOCKER_CONFIG` selects another configuration directory, and an explicit `docker --config DIR ...` option overrides both for that invocation. If one user configured the helper and another user runs Docker, they can use different configuration files and credential stores.
 
 ## Put the Cloud SDK binaries on PATH
 
@@ -57,6 +58,8 @@ gcloud version
 ```
 
 If `gcloud` resolves but `docker-credential-gcloud` does not, inspect how that Cloud SDK package was installed. Update or reinstall it with the same supported package manager rather than copying a helper from another machine or creating an untracked executable with that name.
+
+If Docker itself was installed through Snap, changing `PATH` is not sufficient. The Docker snap does not provide an interface for credential helpers, so use a Docker installation that supports external credential helpers.
 
 For CI, add the Cloud SDK binary directory to the job's `PATH` explicitly before invoking Docker. Do not assume a profile such as `.zshrc` or `.bashrc` is loaded by a non-interactive runner.
 
@@ -93,7 +96,7 @@ Configuring `us-docker.pkg.dev` does not configure `us-west1-docker.pkg.dev`.
 On Linux, running `docker` with `sudo` changes both the effective user and often the `PATH`. Root normally reads `/root/.docker/config.json`, not the invoking user's Docker configuration. Google documents using the following when Docker is normally run with `sudo`:
 
 ```bash
-sudo gcloud auth configure-docker LOCATION-docker.pkg.dev
+sudo gcloud auth configure-docker us-west1-docker.pkg.dev
 ```
 
 The root execution context must also be able to find the helper and obtain the intended credentials. Avoid alternating unpredictably between root and non-root Docker commands.
@@ -106,7 +109,7 @@ Artifact Registry also supports the standalone Docker credential helper, `docker
 
 ```bash
 docker-credential-gcr configure-docker \
-  --registries=LOCATION-docker.pkg.dev
+  --registries=us-west1-docker.pkg.dev
 ```
 
 Do not merely change the Docker configuration value from `gcloud` to `gcr`. Docker constructs an executable name from the configured value, and the standalone helper must actually be installed and configured.
