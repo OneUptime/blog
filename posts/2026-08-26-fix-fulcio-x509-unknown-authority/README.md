@@ -22,6 +22,7 @@ curl --verbose https://fulcio.example.com/healthz
 openssl s_client \
   -connect fulcio.example.com:443 \
   -servername fulcio.example.com \
+  -verify_hostname fulcio.example.com \
   -showcerts \
   -verify_return_error \
   < /dev/null
@@ -31,16 +32,16 @@ Use this map:
 
 | Failure point | Trust it needs | Typical fix |
 | --- | --- | --- |
-| HTTPS before any Fulcio API response | OS/container TLS roots and a complete server chain | repair ingress chain or install the corporate TLS root in the workload image |
-| OIDC discovery/JWKS from the Fulcio server | Fulcio container's TLS roots, or issuer `ca-cert` | serve a complete IdP chain or configure the internal issuer CA |
+| HTTPS before any Fulcio API response | OS/container TLS roots and the server leaf plus required intermediates | repair the ingress's intermediate chain or install the corporate TLS root in the workload image |
+| OIDC discovery/JWKS from the Fulcio server | Fulcio container's TLS roots, or issuer `ca-cert` | serve the IdP leaf plus required intermediates or configure the internal issuer CA |
 | `cert verification failed: x509...` during Cosign verification | intended Fulcio CA in Sigstore trust material | initialize the correct TUF domain or pass the correct `--trusted-root` |
 | `openssl verify` of a leaf | root plus all required intermediates | supply signer-to-root chain in the right roles/order |
 
-Do not use `-k`, `--insecure-skip-verify`, or a catch-all corporate root bundle as a permanent fix. Those options remove the evidence needed to distinguish an attacker from a misconfiguration.
+Do not use `curl -k`, Cosign's `--allow-insecure-registry`, `--insecure-ignore-sct`, or `--insecure-ignore-tlog`, or a catch-all corporate root bundle as a permanent fix. Those workarounds bypass verification or blur trust domains, removing the evidence needed to distinguish an attacker from a misconfiguration.
 
 ## Identify the Certificate You Actually Have
 
-Extract the certificate and chain from the Sigstore bundle or signing response, then record:
+Extract the leaf from the Sigstore bundle or signing response. Obtain the CA chain from the signing response or authenticated `TrustedRoot`/TUF material, then record:
 
 ```bash
 openssl x509 -in leaf.pem -noout \
@@ -53,7 +54,7 @@ openssl x509 -in root.pem -noout \
   -subject -issuer -fingerprint -sha256
 ```
 
-The leaf's Issuer must equal the first CA certificate's Subject, and every subsequent Issuer/Subject pair must connect to the intended root. Compare fingerprints, not just friendly common names.
+The leaf's Issuer DN must match the first CA certificate's Subject DN under X.509 name-comparison rules, and every subsequent Issuer/Subject pair must match toward the intended root. Those name matches are necessary but not sufficient: use path validation to verify signatures and constraints. Compare fingerprints, not just friendly common names.
 
 Check the leaf's OIDC issuer extension and SAN too. A certificate chaining successfully to the wrong environment is not a valid release identity.
 
@@ -87,18 +88,18 @@ cosign initialize \
   --mirror https://tuf.example.com
 ```
 
-Current `cosign initialize` clears the selected TUF cache before rebuilding it. Reusing the default cache for all three environments means the last initialization wins. Dedicated `TUF_ROOT` directories eliminate that ambiguity and avoid concurrent jobs rewriting one another's trust state.
+Current `cosign initialize` clears the selected TUF cache before rebuilding it. Reusing the default cache for all three environments means the last initialization wins. Dedicated per-environment `TUF_ROOT` directories eliminate cross-domain ambiguity; use per-job caches or serialize initialization to prevent concurrent jobs from rewriting the same environment's trust state.
 
-To return a dedicated public cache to production, run `cosign initialize` in that cache; do not merely unset `--staging` while continuing to use a cache populated from another mirror.
+To return a dedicated public cache to production, run `cosign initialize` in that cache; do not merely stop passing `--staging` while continuing to use a cache populated from another mirror.
 
 ## Repair Public-Instance Trust
 
 For a genuine public Fulcio certificate:
 
-1. verify the endpoint and certificate fingerprints correspond to `fulcio.sigstore.dev`, not `fulcio.sigstage.dev` or a proxy;
+1. verify the configured URL is `https://fulcio.sigstore.dev`, not staging or an unintended proxy, and compare the signing CA fingerprints with TUF-authenticated production material;
 2. use a current, verified Cosign release;
 3. initialize/refresh the production TUF cache with `cosign initialize`;
-4. ensure the system clock is correct so TUF metadata and certificates are evaluated at the right time; and
+4. ensure the system clock is correct so live TLS connections and TUF metadata are evaluated at the right time; and
 5. remove test overrides such as `SIGSTORE_ROOT_FILE`, `SIGSTORE_CT_LOG_PUBLIC_KEY_FILE`, `SIGSTORE_REKOR_PUBLIC_KEY`, `TUF_MIRROR`, and `TUF_ROOT_JSON` unless deliberately required.
 
 Fulcio's public `/api/v2/trustBundle` can be inspected, but the Fulcio README explicitly says to verify that chain using Sigstore's TUF root. Do not overwrite trusted production roots with an unauthenticated download from the service being checked.
@@ -121,12 +122,13 @@ For an explicit Cosign v3 verification:
 
 ```bash
 cosign verify \
-  --bundle artifact.sigstore.json \
   --trusted-root /etc/sigstore/example-private/trusted_root.json \
   --certificate-identity='https://ci.example.com/workflows/release' \
   --certificate-oidc-issuer='https://id.example.com' \
   registry.example.com/widget@sha256:DIGEST
 ```
+
+`cosign verify` reads the image's OCI-attached verification material from the registry. For a detached blob bundle, use `cosign verify-blob --bundle artifact.sigstore.json` instead.
 
 `--trusted-root` is a Sigstore JSON document, not a PEM path. Legacy `SIGSTORE_ROOT_FILE` accepts Fulcio PEM roots for older flows, but current Cosign deprecates separate CA-root/intermediate flags in favor of the complete trusted-root document. Do not mix the interfaces accidentally.
 
@@ -134,7 +136,7 @@ If your private TUF mirror is signed by a private root, `--mirror` alone cannot 
 
 ## Fix an Incomplete or Reversed Fulcio Chain
 
-Fulcio's `kmsca` and `fileca` chain files must start with the active CA signer and finish with the root. A common mistake is a root-first file or a file containing only the intermediate.
+For `kmsca` and `fileca`, provide the CA chain signer-first and, when the signer chains to a root, root-last. A root-first file is invalid. Current Fulcio can accept an intermediate-only file by treating its last—and only—certificate as the trust anchor, but that truncates the published chain and changes the intended anchor; include the root when it is the intended trust anchor.
 
 Build and test explicitly:
 
@@ -142,15 +144,17 @@ Build and test explicitly:
 cat fulcio-intermediate.pem fulcio-root.pem > fulcio-ca-chain.pem
 
 openssl verify \
-  -CAfile fulcio-root.pem \
+  -trusted fulcio-root.pem \
   -untrusted fulcio-intermediate.pem \
   -purpose any \
   leaf.pem
 ```
 
-Do not place the intermediate in the root pool to make the command green. The root is the trust anchor; the intermediate is untrusted path-building material. Current Fulcio returns chains leaf-first and its trust-bundle API returns each CA chain intermediate-first/root-last.
+`openssl verify` uses the current system time by default. For an archived leaf, add `-attime "$VERIFIED_UNIX_SECONDS"`, using only a cryptographically authenticated Rekor integrated time or RFC 3161 timestamp; otherwise a valid short-lived Fulcio certificate will appear expired.
 
-If OpenSSL verifies but Fulcio refuses startup, inspect Code Signing EKU on the first intermediate, `CA:TRUE`, key match, key strength, and certificate validity. Fulcio performs checks beyond basic file parsing.
+Do not place the intermediate in the trusted pool just to make the command green. In this hierarchy, the root is the intended trust anchor and the intermediate is untrusted path-building material. With a complete configuration, current Fulcio returns chains leaf-first and its trust-bundle API returns each CA chain intermediate-first/root-last.
+
+If OpenSSL verifies but Fulcio refuses startup, inspect the active CA certificate: when it is an intermediate it must have the Code Signing EKU; it must be `CA:TRUE` and match the signing key. Also check the signing key's strength and the chain's validity. Fulcio performs checks beyond basic file parsing.
 
 ## Distinguish TLS Roots from Sigstore Roots
 
@@ -185,7 +189,7 @@ Do not respond by disabling the next check. Each failure identifies another requ
 - [Fulcio public trust-bundle guidance](https://github.com/sigstore/fulcio#public-instance)
 - [Fulcio v2 trust-bundle API](https://github.com/sigstore/fulcio/blob/main/fulcio.proto)
 - [Fulcio CA chain validation](https://github.com/sigstore/fulcio/blob/main/pkg/ca/common.go)
-- [Fulcio private OIDC CA configuration](https://github.com/sigstore/fulcio/blob/main/docs/oidc.md)
+- [Fulcio private OIDC CA configuration source](https://github.com/sigstore/fulcio/blob/main/pkg/config/config.go)
 
 ## Conclusion
 
