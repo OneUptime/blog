@@ -73,10 +73,16 @@ spec:
       path: /internal/metrics
       interval: 30s
       scrapeTimeout: 10s
+      relabelings:
+        - targetLabel: metrics_path
+          replacement: /internal/metrics
     - port: admin-metrics
       path: /runtime/metrics
       interval: 60s
       scrapeTimeout: 15s
+      relabelings:
+        - targetLabel: metrics_path
+          replacement: /runtime/metrics
 ```
 
 Each list item can independently set fields such as `port`, `path`, `scheme`, query `params`, `interval`, `scrapeTimeout`, authentication, TLS settings, relabelings, and metric relabelings. If `path` is omitted, Prometheus uses `/metrics`. If `interval` is omitted, it uses the Prometheus global scrape interval. A `scrapeTimeout` cannot be greater than its scrape interval; the operator rejects that resource instead of generating an invalid scrape configuration.
@@ -124,7 +130,7 @@ kubectl get secret prometheus-platform -n monitoring -o json \
 
 Finally, inspect Prometheus's Service Discovery and Targets pages. Expect a separate generated scrape configuration for each endpoint list entry. Check `up` and scrape errors for each path independently.
 
-Avoid exposing the same samples at multiple paths unless you intend to collect both. The Operator's default `endpoint` target label identifies the port, not the HTTP path. Two entries that use the same Service and named port can therefore produce the same final label set. If the paths expose overlapping metric names, their samples can collide as duplicate time series. Give each endpoint a distinct constant target label with `relabelings`, or ensure that the paths expose disjoint metric names.
+Avoid exposing the same samples at multiple paths unless you intend to collect both. The Operator's default `endpoint` target label identifies the port, not the HTTP path. Two entries that use the same Service and named port can therefore produce the same final label set unless you add a distinguishing label. This also affects Prometheus-generated target series such as `up` and `scrape_duration_seconds`, even if the endpoints otherwise expose disjoint metric names. The two same-port entries above add distinct constant `metrics_path` target labels with `relabelings` so their samples and scrape health remain separate.
 
 ## Official Documentation
 
