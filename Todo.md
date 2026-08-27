@@ -114,7 +114,6 @@
 
 ## Google Cloud
 
-8. How to Fix Google Cloud Storage Signed URL `SignatureDoesNotMatch` by Matching Signed Headers
 9. How to Fix BigQuery `Cannot Read and Write in Different Locations` for External Cloud Storage Tables
 10. Why BigQuery Says `Dataset Was Not Found in Location US` When the Dataset Exists
 11. How to Fix `iam.serviceAccounts.actAs` When Deploying Cloud Run with a Custom Service Account
