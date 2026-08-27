@@ -8,7 +8,7 @@ Description: Detect expected and unexpected TLS certificate changes after rotati
 
 ---
 
-An expiry check answers only one question: how long the certificate currently served by an endpoint remains valid. It does not tell you that a rotation happened, that every backend received the new certificate, or that the new certificate has the expected issuer and key.
+An expiry check answers only one question: how much time remains until the certificate currently served by an endpoint reaches its `notAfter` time. It does not tell you that a rotation happened, that every backend received the new certificate, or that the new certificate has the expected issuer and key.
 
 A reliable rotation check records several identities because each one answers a different question:
 
@@ -18,7 +18,7 @@ A reliable rotation check records several identities because each one answers a 
 | Issuer and serial number | The CA issued a different certificate | A serial number is unique only within an issuer's scope |
 | Issuer distinguished name | The issuing CA or intermediate changed | A legitimate CA chain change can alter it |
 | SPKI SHA-256 hash | The leaf public key changed | It stays the same if a renewal reuses the key |
-| Subject alternative names | The covered DNS names changed | Ordering and formatting should be normalized before comparison |
+| DNS subject alternative names | The covered DNS names changed | Ordering and formatting should be normalized before comparison |
 
 Treat a planned change as an auditable deployment event. Treat an unplanned change as a security or routing signal, not automatically as an outage.
 
@@ -29,16 +29,40 @@ Do not inspect only the certificate file on disk. Connect to the same host, port
 ```bash
 endpoint_host=api.example.com
 endpoint_port=443
+leaf_tmp=$(mktemp ./leaf.pem.tmp.XXXXXX)
+trap 'rm -f "$leaf_tmp"' EXIT
+set -o pipefail
 
-openssl s_client \
-  -connect "${endpoint_host}:${endpoint_port}" \
-  -servername "${endpoint_host}" \
-  -showcerts </dev/null 2>/dev/null \
+if ! openssl s_client \
+    -connect "${endpoint_host}:${endpoint_port}" \
+    -servername "${endpoint_host}" \
+    -showcerts </dev/null 2>/dev/null \
   | awk '
-      /-----BEGIN CERTIFICATE-----/ { capture = 1 }
+      /-----BEGIN CERTIFICATE-----/ && !seen {
+        capture = 1
+        seen = 1
+      }
       capture { print }
-      /-----END CERTIFICATE-----/ { exit }
-    ' > leaf.pem
+      /-----END CERTIFICATE-----/ && capture {
+        capture = 0
+        complete = 1
+      }
+      END { if (!complete) exit 1 }
+    ' > "$leaf_tmp"; then
+  echo "certificate collection failed" >&2
+  exit 1
+fi
+
+if ! openssl x509 -in "$leaf_tmp" -noout >/dev/null 2>&1; then
+  echo "certificate extraction failed" >&2
+  exit 1
+fi
+
+if ! mv "$leaf_tmp" leaf.pem; then
+  echo "certificate update failed" >&2
+  exit 1
+fi
+trap - EXIT
 ```
 
 The first PEM object is the leaf certificate selected by the server. Fail the collection job if the TLS command or PEM extraction fails; an empty fingerprint must never overwrite the last good observation.
@@ -55,6 +79,7 @@ openssl x509 -in leaf.pem -noout \
 Calculate an SPKI hash separately:
 
 ```bash
+set -o pipefail
 openssl x509 -in leaf.pem -pubkey -noout \
   | openssl pkey -pubin -outform DER \
   | openssl dgst -sha256
@@ -76,7 +101,7 @@ probe_ssl_last_chain_info{
 } 1
 ```
 
-The metric describes the leaf certificate from the final HTTPS response. Keep `insecure_skip_verify` false so a probe also detects trust and hostname failures.
+The metric describes the leaf certificate from the final response when that response uses TLS. The `subjectalternative` label is a comma-joined, unnormalized list of DNS SANs in certificate order; it does not include IP-address, email, URI, or other SAN types. Keep `insecure_skip_verify` false so a probe also detects trust and hostname failures.
 
 ```yaml
 modules:
@@ -98,21 +123,23 @@ The blackbox exporter does not currently put the SPKI hash in this info metric. 
 
 Each distinct certificate identity becomes a distinct Prometheus label set. `changes(probe_ssl_last_chain_info[...])` is therefore the wrong expression: the sample value remains `1`; the labels change.
 
-Count distinct label sets observed in a bounded window instead:
+Count distinct fingerprints observed for each probe stream in a bounded window instead. These examples use `(job, instance)` to identify a probe stream; include any other stable labels that distinguish regions, routes, or modules in every grouping clause.
 
 ```promql
-count by (instance) (
-  count_over_time(probe_ssl_last_chain_info[30m]) > 0
+count by (job, instance) (
+  count by (job, instance, fingerprint_sha256) (
+    count_over_time(probe_ssl_last_chain_info[30m]) > 0
+  )
 ) > 1
 ```
 
-With a scrape interval well below 30 minutes, this detects the overlap between the old and new identities after rotation. It is best used as an informational change event because it intentionally remains true for the window length.
+With a scrape interval well below 30 minutes, this detects the overlap between the old and new identities after rotation. It is best used as an informational change event because it remains true until the last sample for the old identity ages out of the window, roughly the window length.
 
 To focus on issuer changes while ignoring ordinary fingerprint and serial changes:
 
 ```promql
-count by (instance) (
-  count by (instance, issuer) (
+count by (job, instance) (
+  count by (job, instance, issuer) (
     count_over_time(probe_ssl_last_chain_info[30m]) > 0
   )
 ) > 1
@@ -126,17 +153,17 @@ probe_ssl_last_chain_info{
 } == 1
 ```
 
-Use the blackbox exporter's lowercase, colon-free fingerprint representation in that matcher. During a rollout, allow both old and new fingerprints, then remove the old value only after every route and backend is confirmed. Updating a permanent pin by hand after every automated renewal is brittle; use it only where change control actually requires it.
+Alert separately on `probe_success == 0`: a TLS handshake or verification failure can omit `probe_ssl_last_chain_info`, so the allowlist expression alone is not a complete TLS-validity or availability check. Use the blackbox exporter's lowercase, colon-free fingerprint representation in that matcher. During a rollout, allow both old and new fingerprints, then remove the old value only after every route and backend is confirmed. Updating a permanent pin by hand after every automated renewal is brittle; use it only where change control actually requires it.
 
 ## Decide What Is Expected During Rotation
 
 A rotation policy should state the intended transitions before deployment:
 
-- fingerprint and serial must change on reissuance;
+- fingerprint and the issuer-plus-serial identity must change on reissuance;
 - SPKI must change if key rotation is mandatory, or remain stable if key continuity is deliberate;
 - issuer may change only during an approved CA or chain migration;
-- SANs must equal the approved hostname set;
-- `notBefore` and `notAfter` must move forward;
+- DNS SANs must equal the approved hostname set;
+- `notBefore` and `notAfter` must match the approved validity window;
 - every IPv4 address, IPv6 address, region, load-balancer node, and origin path must converge.
 
 Fingerprint equality is not a universal availability requirement. A CDN may intentionally use different valid certificates at different edges, and some services serve RSA and ECDSA certificates according to client capabilities. In those designs, validate each observed certificate against an approved set and the required names, trust roots, algorithms, and validity—not against one global fingerprint.
