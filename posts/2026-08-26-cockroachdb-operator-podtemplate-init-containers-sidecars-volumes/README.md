@@ -24,6 +24,8 @@ cockroachdb:
       spec: {}
 ```
 
+These snippets are partial overrides and assume your base values already configure the cluster. For the single-namespace commands in this guide, set the active region's `cockroachdb.crdbCluster.regions[].namespace` to `crdb-prod`; Helm's `--namespace` sets the release and `CrdbCluster` namespace but does not rewrite region namespaces.
+
 The CockroachDB chart renders that value here in the custom resource:
 
 ```yaml
@@ -105,7 +107,7 @@ cockroachdb:
               sizeLimit: 16Mi
 ```
 
-Kubernetes runs regular init containers to completion before starting application containers. All ordinary containers in the pod, including the sidecar, then share the pod's network and volume namespace. An `emptyDir` survives individual container restarts but is deleted with the pod, so it is suitable for generated configuration or scratch state, not durable database data.
+Kubernetes runs regular init containers to completion before starting application containers. All ordinary containers in the pod, including the sidecar, then share the pod's network namespace and can exchange data through volumes mounted into each relevant container. An `emptyDir` survives individual container restarts but is deleted with the pod, so it is suitable for generated configuration or scratch state, not durable database data.
 
 The operator's API documents that list fields are generally merged by name. Give every added container and volume a stable, unique name. A name collision means “modify the operator's object,” not “add another object.” That can be useful when intentionally augmenting the `cockroachdb` container, but it can also overwrite a command, image, probe, or mount that the operator needs.
 
@@ -171,7 +173,8 @@ First render the complete custom resource and inspect the merged input:
 helm template orders-db cockroachdb-v2/cockroachdb-chart \
   --version "$CRDB_CHART_VERSION" \
   --namespace crdb-prod \
-  --values values.yaml > /dev/null
+  --values values.yaml \
+  --show-only templates/crdb.yaml
 ```
 
 Then upgrade with the same pinned chart version:
@@ -192,7 +195,7 @@ kubectl -n crdb-prod get pod <cockroachdb-pod> \
 kubectl -n crdb-prod describe pod <cockroachdb-pod>
 ```
 
-Test init-container completion, sidecar readiness, resource consumption, shutdown behavior, and failure recovery in a non-production cluster. A sidecar that never becomes ready can make the whole pod unready; an init container that never exits prevents CockroachDB from starting; and a missing ConfigMap or Secret prevents pod admission or volume setup.
+Test init-container completion, sidecar readiness, resource consumption, shutdown behavior, and failure recovery in a non-production cluster. A sidecar that never becomes ready can make the whole pod unready; a regular init container that never exits prevents CockroachDB from starting; and a missing non-optional ConfigMap or Secret prevents the pod from starting because volume setup fails.
 
 ## Official Documentation
 
