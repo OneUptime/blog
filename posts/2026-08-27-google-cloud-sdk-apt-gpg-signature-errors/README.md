@@ -26,24 +26,29 @@ Confirm that the failing URI is the Google packages repository:
 https://packages.cloud.google.com/apt cloud-sdk
 ```
 
-Then find every configured entry for it:
+Then find every source-file reference to it. This searches both one-line `.list` files and deb822 `.sources` files:
 
 ```bash
-grep -Rhsn 'packages\.cloud\.google\.com/apt.*cloud-sdk' \
-  /etc/apt/sources.list \
-  /etc/apt/sources.list.d/*.list 2>/dev/null
+grep -RHsnE \
+  --include='sources.list' \
+  --include='*.list' \
+  --include='*.sources' \
+  '^[[:space:]]*[^#[:space:]].*(packages\.cloud\.google\.com/apt|cloud-sdk)' \
+  /etc/apt 2>/dev/null
 ```
+
+For a `.sources` match, inspect the whole stanza: `URIs:` and `Suites: cloud-sdk` normally appear on separate lines, and `Enabled: no` disables the stanza.
 
 Google's documentation warns against duplicate `cloud-sdk` entries. Two entries can point at the same repository while using different `signed-by` options or keyrings, producing a confusing `Conflicting values set for option Signed-By` error before APT even verifies a signature.
 
-Also check basic host integrity:
+Also check the host clock and, if `curl` is already installed, the repository's TLS and HTTP response headers:
 
 ```bash
 date --iso-8601=seconds
 curl -I https://packages.cloud.google.com/apt/dists/cloud-sdk/InRelease
 ```
 
-An incorrect clock can make valid signatures appear not yet valid or expired. A TLS-inspecting proxy, captive portal, or repository mirror can return content other than Google's signed `InRelease` file. Fix that path instead of importing arbitrary keys from an error message.
+An incorrect clock can make valid signatures appear not yet valid or expired. `curl -I` checks reachability and response headers only; APT performs the signed-content verification. A TLS-inspecting proxy, captive portal, or repository mirror can return content other than Google's signed `InRelease` file. Fix that path instead of importing arbitrary keys from an error message.
 
 ## Install the Current Google Key into a Dedicated Keyring
 
@@ -90,15 +95,18 @@ Using `signed-by` scopes this trust key to that repository. It is preferable to 
 Check the final state:
 
 ```bash
-grep -Rhsn 'packages\.cloud\.google\.com/apt.*cloud-sdk' \
-  /etc/apt/sources.list \
-  /etc/apt/sources.list.d/*.list 2>/dev/null
+grep -RHsnE \
+  --include='sources.list' \
+  --include='*.list' \
+  --include='*.sources' \
+  '^[[:space:]]*[^#[:space:]].*(packages\.cloud\.google\.com/apt|cloud-sdk)' \
+  /etc/apt 2>/dev/null
 
 sudo apt-get update
 apt-cache policy google-cloud-cli
 ```
 
-The grep should show one active source definition. `apt-cache policy` should show a candidate from `packages.cloud.google.com` when the repository is healthy.
+After you inspect the matches, there should be one active `cloud-sdk` source definition; one deb822 definition can produce separate `URIs:` and `Suites:` matches. On a supported architecture, the `apt-cache policy` version table should include `packages.cloud.google.com`, and its version will normally be the candidate unless pinning or a newer installed version overrides it.
 
 ## Interpret Errors That Remain
 
