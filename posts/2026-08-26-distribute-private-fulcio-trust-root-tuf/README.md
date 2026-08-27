@@ -8,7 +8,7 @@ Description: Package private Fulcio, CT, Rekor, and timestamp verification mater
 
 ---
 
-The Update Framework (TUF) is the right place to distribute a private Fulcio root because it authenticates changes, detects rollback and freeze conditions through versioned expiring metadata, and separates the long-lived trust bootstrap from online target publication.
+The Update Framework (TUF) is the right place to distribute a private Fulcio root because it authenticates changes, detects rollback and potential freeze conditions through versioned expiring metadata, and separates the long-lived trust bootstrap from online target publication.
 
 Do not publish only `fulcio-root.pem`. Modern keyless Cosign verification needs a Sigstore `TrustedRoot` containing the Fulcio certificate authority plus the CT, Rekor, and/or timestamp authority verification material used by your signing design. Cosign v3 also consumes a separate `SigningConfig` that identifies the private service endpoints used while signing.
 
@@ -19,8 +19,8 @@ Keep these concepts distinct:
 | Object | Purpose | Secret? |
 | --- | --- | --- |
 | TUF `root.json` | bootstraps TUF role keys, thresholds, and consistent update rules | public, but must be delivered authentically |
-| `trusted_root.json` target | Fulcio CA chains, CT/Rekor public keys, TSA chains, URLs, origins, validity intervals | public and security-critical |
-| `signing_config.json` target | Fulcio, Rekor, TSA, and OIDC service endpoints plus selection thresholds | public configuration |
+| `trusted_root.json` target | Fulcio CA chains, CT/Rekor public keys, TSA chains, URLs, log identifiers, validity intervals | public and security-critical |
+| `signing_config.v0.2.json` target | Fulcio, Rekor, TSA, and OIDC service endpoints plus service-selection rules | public configuration |
 
 The TUF root does not contain the Fulcio root directly. It authorizes TUF metadata that authenticates the `trusted_root.json` target.
 
@@ -30,10 +30,10 @@ Sigstore's public-good instance uses the same pattern in the official `root-sign
 
 Collect reviewed public material from each component:
 
-- Fulcio signer-to-root chain, with the offline root last;
-- CT log public key, exact log URL/origin, and the time interval in which that key is trusted;
+- Fulcio issuing-CA chain, with any intermediates first and the offline root last;
+- CT log public key, exact base URL, signed checkpoint origin when applicable, and the time interval in which that key is trusted;
 - Rekor public key and service metadata for every log version in the signing design;
-- RFC 3161 timestamp-authority chain if used; and
+- RFC 3161 timestamp-authority leaf-to-root chain if used; and
 - planned service start and end times.
 
 Verify each fingerprint out of band against its component ceremony or deployment record. The live Fulcio `/api/v2/trustBundle` endpoint is useful for comparison but is not a safe bootstrap source by itself: trusting whatever the service currently returns would let a compromised endpoint nominate its own root.
@@ -49,12 +49,12 @@ cosign trusted-root create \
   --no-default-rekor \
   --no-default-tsa \
   --fulcio='url=https://fulcio.example.com,certificate-chain=fulcio-ca-chain.pem,start-time=2026-08-01T00:00:00Z' \
-  --ctfe='url=https://ct.example.com/acme-2026,public-key=ct-public-key.pem,start-time=2026-08-01T00:00:00Z,origin=acme-2026' \
-  --rekor='url=https://rekor.example.com,public-key=rekor-public-key.pem,start-time=2026-08-01T00:00:00Z,origin=rekor.example.com' \
+  --ctfe='url=https://ct.example.com/acme-2026,public-key=ct-public-key.pem,start-time=2026-08-01T00:00:00Z' \
+  --rekor='url=https://rekor.example.com,public-key=rekor-public-key.pem,start-time=2026-08-01T00:00:00Z' \
   --out trusted_root.json
 ```
 
-Use values from the deployed services, not the placeholders. Add a `--tsa` entry when the signing configuration relies on an RFC 3161 authority. Rekor v2 uses a separate timestamp authority for time evidence; do not assume its log integration time has Rekor v1 semantics.
+Use values from the deployed services, not the placeholders. For a checkpoint-based log, such as Rekor v2 or static CT, add `origin` and make it exactly match the signed checkpoint origin. Add a `--tsa` entry when the signing configuration relies on an RFC 3161 authority. Rekor v2 uses a separate timestamp authority for time evidence; do not assume its log integration time has Rekor v1 semantics.
 
 Validate the media type and structure:
 
@@ -80,7 +80,7 @@ cosign signing-config create \
   --fulcio='url=https://fulcio.example.com,api-version=1,start-time=2026-08-01T00:00:00Z,operator=example.com' \
   --rekor='url=https://rekor.example.com,api-version=1,start-time=2026-08-01T00:00:00Z,operator=example.com' \
   --rekor-config=ANY \
-  --out signing_config.json
+  --out signing_config.v0.2.json
 ```
 
 Add a private OIDC provider entry if Cosign should perform an interactive flow, and add TSA service entries plus `--tsa-config` when applicable. Workload signers that supply an identity token directly may not need an interactive provider in this file.
@@ -89,22 +89,25 @@ Add a private OIDC provider entry if Cosign should perform an interactive flow, 
 
 ## Build a Real TUF Repository
 
-Use a maintained TUF repository writer such as `go-tuf`, `python-tuf`, or Sigstore's `tuf-on-ci` workflow. The exact administration commands depend on that implementation, but the repository must publish at least:
+Use a maintained TUF repository writer such as `go-tuf/v2`, `python-tuf`, or the TUF project's `tuf-on-ci` workflow used by Sigstore. The exact administration commands depend on that implementation. With consistent snapshots enabled, point `--mirror` at the metadata base URL; the published mirror must include at least:
 
 ```text
-metadata/
-  N.root.json
-  targets.json
-  snapshot.json
-  timestamp.json
+1.root.json
+...
+N.root.json
+T.targets.json
+S.snapshot.json
+timestamp.json
 targets/
-  trusted_root.json
-  signing_config.json
+  HASH.trusted_root.json
+  HASH.signing_config.v0.2.json
 ```
 
-Use threshold/offline keys for the root role and a carefully scoped online key for timestamp metadata. Set expirations so timestamp and snapshot can be renewed operationally while a lost maintainer cannot freeze clients indefinitely. Enable consistent snapshots if supported, protect rollback state, publish atomically, and monitor metadata expiry.
+Here `N`, `T`, and `S` are integer version prefixes and `HASH` is the target's digest prefix; their logical names in `targets.json` remain `trusted_root.json` and `signing_config.v0.2.json`. Without consistent snapshots, targets and snapshot metadata and the physical target files use unprefixed names, while released root versions remain sequentially numbered.
 
-The target filenames matter to current Cosign. During `cosign initialize`, it first tries to cache `signing_config.json`, then creates a live trusted root from `trusted_root.json`; it falls back to older individual target names only when the consolidated trusted root is missing.
+Use threshold/offline keys for the root and targets roles, and keep the snapshot key offline or in protected automation according to your threat model; timestamp metadata requires a carefully scoped online key. Choose role expirations that are operationally renewable while ensuring stale metadata eventually fails closed. TUF detects a potential freeze but cannot prevent denial of service. Enable consistent snapshots if supported, protect rollback state, publish atomically, and monitor metadata expiry.
+
+The target filenames matter to current Cosign. During `cosign initialize`, it first tries to cache `signing_config.v0.2.json`, then creates a live trusted root from `trusted_root.json`; if loading the consolidated trusted root fails, it falls back to older individual targets.
 
 Sigstore's `root-signing` repository is a production operational reference, not a template whose keys can be reused. Sigstore `scaffolding` can create a test stack and TUF root, but its repository describes itself as integration/e2e scaffolding. Build a reviewed key ceremony and publication process for production.
 
@@ -122,7 +125,7 @@ cosign initialize \
 
 If `--root` is an HTTP(S) URL, current Cosign supports `--root-checksum`; deliver that checksum independently. Fetching both the root and checksum from the same unauthenticated location is not an out-of-band bootstrap.
 
-`cosign initialize` clears the selected cache path before recreating it. Never point `TUF_ROOT` at a directory containing unrelated files. Use a dedicated cache for each environment:
+`cosign initialize` clears the selected cache path before recreating it, including previously trusted metadata used for rollback comparisons. Never use it as a routine refresh command or point `TUF_ROOT` at a directory containing unrelated files. Use a dedicated cache for each environment:
 
 ```text
 /var/lib/sigstore/tuf/example-production
@@ -155,7 +158,7 @@ Test negative boundaries:
 - private production trust rejects public and staging certificates unless intentionally combined;
 - a wrong CT or Rekor key fails the corresponding proof;
 - expired TUF metadata fails updates;
-- rollback to an older snapshot is rejected; and
+- an initialized client that retained newer trusted metadata rejects rollback to an older snapshot; and
 - an unapproved SAN or issuer fails even when the cryptography is valid.
 
 Trust material answers “which infrastructure may attest”; identity policy still answers “which signer may release this artifact.”
@@ -189,4 +192,4 @@ TUF root-key rotation is different. Follow the TUF specification's sequential ro
 
 ## Conclusion
 
-Bootstrap a private TUF root out of band, publish consolidated `trusted_root.json` and `signing_config.json` targets, and keep environment caches separate. TUF then gives Cosign authenticated, rollback-resistant updates for the entire private Sigstore trust domain—not just one Fulcio PEM file.
+Bootstrap a private TUF root out of band, publish consolidated `trusted_root.json` and `signing_config.v0.2.json` targets, and keep environment caches separate. TUF then gives Cosign authenticated, rollback-resistant updates for the entire private Sigstore trust domain—not just one Fulcio PEM file.
