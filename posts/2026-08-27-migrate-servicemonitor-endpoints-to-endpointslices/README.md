@@ -38,7 +38,7 @@ For a normal Service with a selector, the Kubernetes control plane creates its E
 
 ## Grant Prometheus EndpointSlice Read Access
 
-The Prometheus service account needs `get`, `list`, and `watch` on `endpointslices` in every namespace from which ServiceMonitors discover Services. Add this rule to the existing namespaced Role or ClusterRole, following the deployment's current RBAC scope:
+The Prometheus service account needs `get`, `list`, and `watch` on `endpointslices` in every namespace where it discovers EndpointSlice-backed targets. This includes namespaces from which ServiceMonitors discover Services and, when using the global Prometheus setting below, namespaces containing Alertmanager endpoints configured under `spec.alerting.alertmanagers`. Add this rule to the existing namespaced Role or ClusterRole, following the deployment's current RBAC scope:
 
 ```yaml
 apiVersion: rbac.authorization.k8s.io/v1
@@ -88,7 +88,7 @@ spec:
 
 The `selector` still selects the Service by labels, and `endpoints[].port` still names a Service port. The role changes the Kubernetes discovery object that Prometheus watches; it does not turn ServiceMonitor into arbitrary target discovery. Continue to use Probe for black-box checks and ScrapeConfig for lower-level or external direct scrapes.
 
-After canaries pass, set the default for all inherited ServiceMonitors on the Prometheus resource:
+After canaries pass, verify EndpointSlice discovery, RBAC, and custom target relabelings for any Kubernetes Alertmanager endpoints configured under `spec.alerting.alertmanagers`. The Prometheus-level field also changes discovery for those endpoints, so a ServiceMonitor canary does not test that path. Then set the default for all inherited ServiceMonitors on the Prometheus resource:
 
 ```yaml
 apiVersion: monitoring.coreos.com/v1
@@ -106,10 +106,10 @@ Any ServiceMonitor with an explicit role continues to use its own value. Remove 
 
 Prometheus exposes different discovery meta-label families for the two roles. Legacy rules can use names beginning with `__meta_kubernetes_endpoint_`, while EndpointSlice discovery uses labels beginning with `__meta_kubernetes_endpointslice_`, such as the EndpointSlice port name and endpoint node name.
 
-The Operator generates its standard selection rules for the chosen role. It cannot infer the intent of custom `relabelings` copied into a ServiceMonitor. Search those fields before migration:
+The Operator generates its standard selection rules for the chosen role. It cannot infer the intent of custom `relabelings` copied into a ServiceMonitor or configured for Alertmanager endpoints. Search those fields before migration:
 
 ```bash
-kubectl get servicemonitor -A -o yaml \
+kubectl get servicemonitor,prometheus -A -o yaml \
   | grep -E '__meta_kubernetes_(endpoint|endpointslice)'
 ```
 
@@ -128,7 +128,7 @@ kubectl get events -n payments \
   --sort-by=.lastTimestamp
 ```
 
-In the Prometheus Service Discovery page, confirm the expected target count, named port, ready endpoints, node metadata used by relabeling, and final labels. In Targets, compare `up`, scrape duration, and sample counts before and after the role switch.
+In the Prometheus Service Discovery page, confirm the expected target count, named port, ready endpoints, node metadata used by relabeling, and final labels. On the Targets page, compare target health and last scrape duration. Query `up`, `scrape_duration_seconds`, and `scrape_samples_scraped` before and after the role switch.
 
 If targets disappear, set the canary back to `serviceDiscoveryRole: Endpoints` while correcting RBAC or relabeling. Keep legacy Endpoints available during the canary period. For the Operator-managed kubelet Service, follow the additional dual-publish sequence in the Prometheus Operator troubleshooting guide before disabling kubelet Endpoints generation.
 
