@@ -117,7 +117,6 @@
 
 ## ServiceMonitors
 
-6. ServiceMonitor vs PodMonitor: Which One Should Scrape Your Kubernetes Workload?
 7. How to Scrape an External VM or FQDN with Prometheus Operator: ServiceMonitor or ScrapeConfig?
 8. How to Configure Basic Authentication in a ServiceMonitor Without Secret Newline Failures
 9. How to Scrape an mTLS Metrics Endpoint with ServiceMonitor `tlsConfig`
