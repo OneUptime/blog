@@ -117,7 +117,6 @@
 
 ## ServiceMonitors
 
-11. `relabelings` vs `metricRelabelings` in ServiceMonitor: When Does Each Run?
 12. How to Copy Kubernetes Service and Pod Labels onto Prometheus Metrics with ServiceMonitor
 13. Why Do ServiceMonitor Label Conflicts Produce `exported_*`, and When Should You Set `honorLabels`?
 14. How to Limit Cardinality per ServiceMonitor with Sample, Target, and Label Limits
