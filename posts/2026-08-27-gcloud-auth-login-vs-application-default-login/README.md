@@ -62,13 +62,15 @@ else
 fi
 ```
 
-For Python, this small diagnostic identifies the ADC credential class and detected project without exposing a token:
+For Python, this small diagnostic identifies the ADC credential class by its fully qualified name and prints the detected project without exposing a token:
 
 ```python
 import google.auth
 
 credentials, project_id = google.auth.default()
-print("credential_type:", type(credentials).__name__)
+credential_class = type(credentials)
+credential_class_name = f"{credential_class.__module__}.{credential_class.__qualname__}"
+print("credential_type:", credential_class_name)
 print("project_id:", project_id)
 print("quota_project_id:", getattr(credentials, "quota_project_id", None))
 ```
@@ -93,8 +95,8 @@ gcloud auth application-default login
 Confirm that ADC can mint an access token without displaying the token in a shared terminal or log:
 
 ```bash
-gcloud auth application-default print-access-token >/dev/null
-echo 'ADC token creation succeeded'
+gcloud auth application-default print-access-token >/dev/null &&
+  echo 'ADC token creation succeeded'
 ```
 
 This test proves that ADC can obtain a token. It does not prove that the identity has permission to access a particular resource, that an API is enabled, or that the correct quota project is configured.
@@ -124,7 +126,7 @@ If local ADC needs a different quota project, use the supported command rather t
 gcloud auth application-default set-quota-project QUOTA_PROJECT_ID
 ```
 
-The ADC principal must have the `serviceusage.services.use` permission on that project. The predefined `roles/serviceusage.serviceUsageConsumer` role contains this permission. The relevant API must also be enabled in the quota project.
+The ADC principal must have the `serviceusage.services.use` permission on that project. The predefined `roles/serviceusage.serviceUsageConsumer` role contains this permission. For client-based APIs, the relevant API must also be enabled in the quota project.
 
 ## Production authentication is different
 
