@@ -50,7 +50,7 @@ kubectl get pod "$POD" -n "$NAMESPACE" \
   | jq '.spec.volumes[] | select(has("emptyDir")) | {name, emptyDir}'
 ```
 
-`capacityBytes` describes the underlying filesystem statistic and is not a reliable substitute for the configured disk-backed `emptyDir.sizeLimit`. Compare `usedBytes` with the limit from the Pod spec.
+`capacityBytes` describes the underlying filesystem statistic and is not a reliable substitute for a configured disk-backed `emptyDir.sizeLimit`. When the Pod specifies a positive `sizeLimit`, compare `usedBytes` with that value.
 
 ## Why the Standard Kubelet Volume Metric Does Not Work
 
@@ -76,7 +76,7 @@ platform_emptydir_used_bytes{namespace="payments",pod="payments-api-...",volume=
 platform_emptydir_size_limit_bytes{namespace="payments",pod="payments-api-...",volume="scratch"} 134217728
 ```
 
-These are example custom names, not Kubernetes built-in metrics. Publish the collector's contract and distinguish a missing limit from a zero-byte limit. A useful alert expression is:
+These are example custom names, not Kubernetes built-in metrics. Publish the collector's contract. Emit `platform_emptydir_size_limit_bytes` only for a positive configured `sizeLimit`; do not substitute zero when the field is absent or zero. A useful alert expression is:
 
 ```promql
 (

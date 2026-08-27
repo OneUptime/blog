@@ -8,7 +8,7 @@ Description: Provision Pod-scoped scratch as an automatically owned PVC with a r
 
 ---
 
-A disk-backed `emptyDir.sizeLimit` is enforced through kubelet usage measurement and Pod eviction. It does not create a dedicated filesystem whose capacity is reserved for the Pod. When an application needs a provisioned scratch volume with fixed capacity, use a generic ephemeral volume backed by a suitable StorageClass.
+On nodes with a supported local-storage layout, kubelet normally handles a disk-backed `emptyDir.sizeLimit` by measuring usage and evicting the Pod after it observes an overage. It is not a hard filesystem quota and does not create a dedicated filesystem whose capacity is reserved for the Pod. When an application needs a provisioned scratch volume with fixed capacity, use a generic ephemeral volume backed by a suitable StorageClass.
 
 Generic ephemeral volumes have been stable since Kubernetes 1.23. The Pod embeds a `volumeClaimTemplate`; Kubernetes creates a real PVC, binds or provisions storage, and makes the Pod the claim's owner.
 
@@ -92,14 +92,14 @@ kubectl get pvc batch-worker-scratch -n batch \
 
 The Pod cannot use the volume until normal claim binding and mount steps succeed. If it remains Pending, inspect the PVC Events, StorageClass, CSI provisioner, topology, access mode, namespace storage quota, and available backend capacity.
 
-Inside the running Pod, verify the filesystem and write behavior:
+Inside the running Pod, verify the filesystem capacity and inode availability:
 
 ```bash
 kubectl exec -n batch batch-worker -- df -h /scratch
 kubectl exec -n batch batch-worker -- df -i /scratch
 ```
 
-Unlike a default disk-backed `emptyDir`, this path is a provisioned volume. The driver and filesystem enforce its capacity rather than kubelet waiting to evict the Pod for crossing an `emptyDir` directory limit.
+Unlike a default disk-backed `emptyDir`, this path is a provisioned volume. With a suitable driver and backend, the volume enforces its provisioned capacity rather than relying on kubelet accounting and eviction after an observed `emptyDir` overage.
 
 ## Keep Volume Capacity and ephemeral-storage Separate
 
