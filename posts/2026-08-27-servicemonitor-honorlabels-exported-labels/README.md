@@ -13,7 +13,7 @@ Every scraped sample can have labels from two sources:
 1. the exporter includes labels in the metrics response;
 2. Prometheus attaches server-side target labels such as `job`, `instance`, and labels derived from discovery.
 
-When both sources use the same name with different values, Prometheus must choose. By default, `honor_labels` is false. Prometheus keeps its target label and renames the exporter's label to `exported_<original-name>`.
+When both sources use the same label name, Prometheus must resolve the collision. By default, `honor_labels` is false. Prometheus keeps its target label and prefixes the exporter's label name with `exported_`, repeating the prefix if necessary to avoid another collision.
 
 ## A Concrete Conflict
 
@@ -34,9 +34,10 @@ requests_total{job="worker",instance="logical-shard-4"} 42
 With the ServiceMonitor default:
 
 ```yaml
-endpoints:
-  - port: metrics
-    honorLabels: false
+spec:
+  endpoints:
+    - port: metrics
+      honorLabels: false
 ```
 
 the ingested series is conceptually:
@@ -51,7 +52,7 @@ requests_total{
 } 42
 ```
 
-The `exported_*` labels are not created by Kubernetes or Prometheus Operator. They are Prometheus's normal conflict-resolution behavior.
+The `exported_job` and `exported_instance` labels in this example are not created by Kubernetes or Prometheus Operator. They are created by Prometheus's normal conflict-resolution behavior.
 
 ## What `honorLabels: true` Changes
 
@@ -120,9 +121,11 @@ kubectl get prometheus platform -n monitoring \
   -o jsonpath='{.spec.overrideHonorLabels}{"\n"}'
 ```
 
+An empty result means the field is unset, which is equivalent to `false`.
+
 ## Diagnose Before Changing the Flag
 
-Find conflicts with a query:
+Look for series with a non-empty `exported_job`, a common sign—not proof—of a `job` label conflict:
 
 ```promql
 count by (job, exported_job) ({exported_job!=""})
@@ -136,7 +139,7 @@ count by (job, exported_job) (
 )
 ```
 
-Then inspect the raw exporter response from a trusted diagnostic environment and the target labels on **Status > Targets**. Identify which source owns the correct meaning.
+Then inspect the raw exporter response from a trusted diagnostic environment and the target labels on the `/targets` page. Identify which source owns the correct meaning.
 
 Choose among these fixes in order:
 
@@ -145,7 +148,7 @@ Choose among these fixes in order:
 3. use metric relabeling for a carefully reviewed transformation;
 4. enable `honorLabels` only when exporter labels must be authoritative.
 
-Changing `honorLabels` changes series identity. Existing and new series can overlap during retention, dashboards can split, and alerts can temporarily see both shapes. Treat it as a schema migration.
+When conflicts exist, changing `honorLabels` can change series identity. Existing and new series can overlap during retention, dashboards can split, and alerts can temporarily see both shapes. Treat it as a schema migration.
 
 ## Official Documentation
 
@@ -157,4 +160,4 @@ Changing `honorLabels` changes series identity. Existing and new series can over
 
 ## Conclusion
 
-`exported_*` means the exporter and Prometheus supplied the same label name while `honorLabels` was false. The default preserves Prometheus's target identity and keeps the exporter value under a new name. Enable `honorLabels` for trusted proxying cases such as federation, not as a generic way to hide conflicts, and check whether the Prometheus-level override forbids it.
+When Prometheus's `honor_labels` conflict resolution generates an `exported_*` label, it means the exporter and Prometheus supplied the same label name while `honorLabels` was false. The default preserves Prometheus's target identity and keeps the exporter value under a new name. Enable `honorLabels` for trusted proxying cases such as federation, not as a generic way to hide conflicts, and check whether the Prometheus-level override forbids it.
