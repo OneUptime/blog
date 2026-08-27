@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, emptyDir, Pods, Containers, Restart Policy, Ephemeral Storage
 
-Description: Identify exactly when emptyDir data survives and when Pod replacement, deletion, eviction, rescheduling, or node failure removes it.
+Description: Identify exactly when emptyDir data survives, why Pod replacement, deletion, or eviction removes it, and how node failure can lose it.
 
 ---
 
-Yes. An `emptyDir` survives a container crash and restart as long as Kubernetes is still running the same Pod on the same node. Kubernetes creates the volume for the Pod, not for one container instance.
+Yes. An `emptyDir` survives a routine container crash and the resulting kubelet-managed container restart while the same Pod remains assigned to the same node. Kubernetes creates the volume for the Pod, not for one container instance.
 
 The boundary is the Pod's lifecycle and placement. When the Pod is removed from the node, its `emptyDir` data is deleted permanently. A replacement Pod with the same Deployment name, StatefulSet ordinal, labels, or hostname gets a new `emptyDir`.
 
@@ -25,7 +25,7 @@ spec:
   restartPolicy: Always
   containers:
     - name: worker
-      image: registry.k8s.io/busybox:1.36.1
+      image: docker.io/library/busybox:1.36.1
       command: ["sh", "-c"]
       args:
         - |
@@ -47,7 +47,7 @@ Each restart reads the file written by the prior container instance. Verify that
 
 ```bash
 kubectl get pod restart-demo \
-  -o custom-columns=NAME:.metadata.name,UID:.metadata.uid,NODE:.spec.nodeName,RESTARTS:.status.containerStatuses[0].restartCount
+  -o 'custom-columns=NAME:.metadata.name,UID:.metadata.uid,NODE:.spec.nodeName,RESTARTS:.status.containerStatuses[0].restartCount'
 kubectl logs restart-demo --previous
 kubectl exec restart-demo -- cat /state/restarts
 ```
@@ -67,8 +67,8 @@ Expect the data to disappear when the current Pod is removed, including:
 - `kubectl delete pod`;
 - a Deployment rollout or `kubectl rollout restart`;
 - eviction for memory, local storage, inode, or other node pressure;
-- node drain;
-- rescheduling after node loss;
+- a successful node drain that evicts or deletes the Pod;
+- a replacement Pod scheduled after node loss;
 - Job or Pod completion followed by Pod deletion;
 - changes to a Pod template that cause a controller to replace Pods.
 
@@ -87,7 +87,7 @@ If the UID changed, treat every `emptyDir` as newly created.
 
 Use `emptyDir` for data the Pod can regenerate: unpacked assets, compiler intermediates, caches, sockets, temporary downloads, and handoff files between containers.
 
-Use a persistent PVC when data must survive Pod deletion or rescheduling. Use a generic ephemeral volume when scratch data should have PVC-backed capacity or storage-class behavior but should normally be garbage-collected with the Pod. Generic ephemeral still follows Pod deletion: the Pod owns its generated PVC, and garbage collection usually deletes it and the backing volume.
+Use a PVC backed by storage with the required durability and topology when data must survive Pod deletion or be used by a replacement Pod. Use a generic ephemeral volume when scratch data should have PVC-backed capacity or storage-class behavior but should normally be garbage-collected with the Pod. Generic ephemeral still follows Pod deletion: the Pod owns its generated PVC, and garbage collection usually deletes it and the backing volume.
 
 No ephemeral volume is a backup. If a cache significantly reduces recovery time, the application should still tolerate a cold start.
 
