@@ -153,13 +153,13 @@ kubectl get events -n monitoring \
   --sort-by=.lastTimestamp
 ```
 
-Then use Prometheus **Status > Targets** for the error seen by the real scraper.
+Then use Prometheus **Status > Target health** (`/targets`; **Status > Targets** in older releases) for the error seen by the real scraper.
 
 ## Rotate Without Mixing Certificate Generations
 
 A client certificate and private key are a pair. Update both keys atomically in one Secret update. If the server CA is rotating, publish a CA bundle that trusts old and new issuers during the overlap, replace server certificates, and remove the old CA only after all endpoints have moved.
 
-Monitor certificate expiry before rotation. After a Secret or ConfigMap update, verify that the Operator reconciles the generated configuration and that targets stay healthy. A Prometheus Pod restart is normally not the first step; it can hide a bad rotation sequence and create an avoidable gap.
+Monitor certificate expiry before rotation. After a Secret or ConfigMap update, verify that the Operator reconciles the generated TLS assets and that targets stay healthy. In this configuration, Prometheus releases 2.41 and newer detect changes to the CA, client certificate, and key files and rebuild the HTTP transport, so a Pod restart is normally not the first step; it can hide a bad rotation sequence and create an avoidable gap. With Prometheus 2.35 through 2.40, a new client identity is read on the next TLS handshake, but existing keep-alive connections are not closed automatically. Use a controlled restart if a timely client-identity cutover is required.
 
 ## Official Documentation
 
