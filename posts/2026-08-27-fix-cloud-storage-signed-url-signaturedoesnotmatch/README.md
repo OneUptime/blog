@@ -8,7 +8,7 @@ Description: Fix Cloud Storage V4 signed URL failures by sending the exact HTTP 
 
 ---
 
-A Cloud Storage V4 signed URL authorizes one precisely constructed HTTP request. The signature covers a canonical request containing the HTTP method, resource path, canonical query string, canonical headers, signed-header names, and a payload marker.
+A Cloud Storage V4 signed URL authorizes requests that match a precisely constructed canonical request. The signature covers a canonical request containing the HTTP method, resource path, canonical query string, canonical headers, signed-header names, and a payload marker.
 
 If a client changes a header that was included when the URL was signed, Cloud Storage calculates a different canonical request and returns `SignatureDoesNotMatch`.
 
@@ -62,7 +62,7 @@ When a signed request fails, compare these inputs with the signing operation.
 
 ### HTTP method
 
-A URL signed for `PUT` cannot be used for `POST`, `GET`, or `HEAD`. Some clients issue a preliminary request or follow a redirect with a changed method. Send the signed operation directly to the generated URL.
+A URL signed for `PUT` cannot be used for `POST`, `GET`, or `HEAD`. A client that probes the URL with `HEAD` or follows a redirect with a changed method sends a request that does not match the signed operation; a browser's separate CORS `OPTIONS` preflight is not the signed operation. Send the signed operation directly to the generated URL.
 
 ### Host, path, and query string
 
@@ -105,11 +105,11 @@ If the minimal request also fails, generate a new short-lived URL and compare th
 
 ## Verify signing permissions separately
 
-The service account used to sign must have the Cloud Storage permission needed for the eventual object operation. When service account impersonation or remote signing is used, the caller must also be allowed to sign blobs for that service account, commonly through a narrowly scoped role containing `iam.serviceAccounts.signBlob`.
+The service account used to sign must have the Cloud Storage permission needed for the eventual object operation. For the `--impersonate-service-account` command above, the IAM Service Account Credentials API must be enabled, and the caller must be allowed to sign blobs for that service account. Google recommends granting `roles/iam.serviceAccountTokenCreator` on the signing service account; this role contains `iam.serviceAccounts.signBlob`.
 
-Those authorization checks happen when generating or using the URL and are separate from a canonical-request mismatch. Do not respond to `SignatureDoesNotMatch` by making the bucket public or broadly granting Storage Admin.
+The `signBlob` authorization is checked when the URL is generated, while the Cloud Storage operation permission is enforced when the signed request is used. Both checks are separate from a canonical-request mismatch. Do not respond to `SignatureDoesNotMatch` by making the bucket public or broadly granting Storage Admin.
 
-Use short expirations, distribute signed URLs only to intended recipients, and never reuse a URL in test logs. Anyone possessing an unexpired URL can perform the operation it authorizes.
+Use short expirations, distribute signed URLs only to intended recipients, and never reuse a URL in test logs. Anyone possessing a signed URL can perform the operation it authorizes while the URL remains active.
 
 ## Official Documentation
 
@@ -121,4 +121,4 @@ Use short expirations, distribute signed URLs only to intended recipients, and n
 
 ## Conclusion
 
-Fix `SignatureDoesNotMatch` by treating the signed URL as a contract for one canonical request. Send the exact HTTP method and URL, and match every header named by `X-Goog-SignedHeaders`, including its value. A minimal `curl` reproduction helps reveal clients and proxies that silently change the signed request.
+Fix `SignatureDoesNotMatch` by treating the signed URL as a contract for a canonical request shape. Send the exact HTTP method and URL, and match every header named by `X-Goog-SignedHeaders`, including its value. A minimal `curl` reproduction helps reveal clients and proxies that silently change the signed request.
