@@ -41,6 +41,8 @@ The numbers are examples, not universal recommendations. Derive them from observ
 
 This protects against an exporter suddenly adding thousands of series. It does not directly cap retained historical cardinality because a target can expose a different set of label values on every scrape while remaining under the per-scrape count.
 
+The queries below assume the resulting target label is `job="checkout"`. By default, a ServiceMonitor uses the selected Service's name unless `jobLabel` selects another Service label; substitute the value shown for your targets.
+
 Useful self-metrics include:
 
 ```promql
@@ -53,11 +55,11 @@ and:
 max_over_time(scrape_samples_post_metric_relabeling{job="checkout"}[7d])
 ```
 
-The difference shows how many samples metric relabeling removes. Set the limit above normal post-relabel peaks and expected rollout growth.
+Compare the two values from the same scrape to see how many samples metric relabeling removes. The independent seven-day maxima can occur at different times, so do not subtract those maxima to calculate the removal count. Set the limit above normal post-relabel peaks and expected rollout growth.
 
 ### `targetLimit`
 
-`targetLimit` caps unique targets accepted for the generated scrape configuration after target relabeling. If discovery produces more targets, Prometheus marks targets as failed without scraping them. Upstream Prometheus documents target limiting as experimental behavior that can change.
+`targetLimit` caps unique targets accepted for the generated scrape configuration after target relabeling. If more targets remain after target relabeling, Prometheus marks every target in that scrape pool as failed without scraping any of them. Upstream Prometheus documents target limiting as experimental behavior that can change.
 
 `targetLimit` requires Prometheus 2.21 or newer. Confirm the Prometheus version that the Operator is generating configuration for before adding the field.
 
@@ -116,11 +118,11 @@ spec:
 
 Metric relabeling runs before `sampleLimit`, so this reduces the evaluated sample count. It does not reduce bytes downloaded or exporter work. Prefer disabling unneeded collector families at the exporter when possible.
 
-Use target relabeling or a narrower Service selector before relying on `targetLimit`. The limit should catch a regression, not define normal discovery by repeatedly failing excess targets.
+Use target relabeling or a narrower Service selector before relying on `targetLimit`. The limit should catch a regression, not define normal discovery by repeatedly failing the entire scrape pool.
 
 ## Set Administrator-Enforced Ceilings
 
-Prometheus CRs provide cluster-level fields including:
+`Prometheus` and `PrometheusAgent` CRs provide instance-wide fields including:
 
 - `enforcedSampleLimit`;
 - `enforcedTargetLimit`;
@@ -132,7 +134,7 @@ These let platform administrators cap ServiceMonitor, PodMonitor, and Probe valu
 
 The CommonPrometheusFields API also has global limit behavior whose generated value differs for Prometheus versions before and after 2.45. Always check the Operator API reference for the installed version and inspect the generated configuration when combining defaults, enforced fields, and per-monitor values.
 
-An enforced limit of zero means no limit for the corresponding upstream setting. Do not assume omission produces a safe default.
+An enforced limit of zero disables that enforced ceiling; positive per-monitor or Prometheus-level global limits can still apply. If all applicable limit fields are omitted or zero, Prometheus has no limit by default.
 
 ## Roll Out Limits Without Creating an Outage
 
