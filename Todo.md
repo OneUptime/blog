@@ -114,7 +114,6 @@
 
 ## Google Cloud
 
-9. How to Fix BigQuery `Cannot Read and Write in Different Locations` for External Cloud Storage Tables
 10. Why BigQuery Says `Dataset Was Not Found in Location US` When the Dataset Exists
 11. How to Fix `iam.serviceAccounts.actAs` When Deploying Cloud Run with a Custom Service Account
 12. How to Diagnose Cloud Run `The Request Was Aborted Because There Was No Available Instance`
