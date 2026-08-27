@@ -54,13 +54,13 @@ spec:
           key: token
 ```
 
-`type` is case-insensitive and defaults to `Bearer`; declaring it makes intent clear. `Basic` is not a supported value for `authorization`. Use the separate `basicAuth` field for HTTP Basic Authentication.
+`authorization` requires Prometheus 2.26 or newer. `type` is case-insensitive and defaults to `Bearer`; declaring it makes intent clear. `Basic` is not a supported value for `authorization`. Use the separate `basicAuth` field for HTTP Basic Authentication.
 
 The Secret must be in the ServiceMonitor's namespace and readable by the Operator. A static Bearer token does not refresh itself. Its issuer, expiration, rotation mechanism, and audience must fit a continuously running scraper.
 
 The older `bearerTokenSecret` field also selects a Secret key and avoids an arbitrary path, but the current API deprecates it in favor of `authorization`.
 
-## Use OAuth2 Client Credentials for Renewable Tokens
+## Use OAuth2 Client Credentials to Fetch Access Tokens
 
 Prometheus can obtain access tokens from an OAuth2 token endpoint using a client ID and client secret. OAuth2 endpoint support requires Prometheus 2.27 or newer.
 
@@ -107,7 +107,7 @@ spec:
 
 If the OAuth2 token endpoint itself requires custom TLS trust or client TLS, `oauth2.tlsConfig` is available with Prometheus 2.43 or newer. That version requirement is separate from the base OAuth2 requirement.
 
-OAuth2 support here implements Prometheus's non-interactive client credential flow. It cannot complete an interactive browser login or authorization-code consent flow.
+The configuration shown here uses Prometheus's non-interactive OAuth 2.0 client credentials grant. It cannot complete an interactive browser login or authorization-code consent flow.
 
 ## Choose Exactly One Authentication Method
 
@@ -145,7 +145,7 @@ Check the actual resource Event first:
 ```bash
 kubectl get events -n monitoring \
   --field-selector=involvedObject.kind=ServiceMonitor,involvedObject.name=oauth-api \
-  --sort-by=.lastTimestamp
+  --sort-by=.metadata.creationTimestamp
 ```
 
 Then inspect Prometheus logs and **Status > Targets**. Do not print access tokens in logs, shell traces, generated-configuration excerpts, or support tickets.
@@ -169,4 +169,4 @@ Do not reuse the Prometheus Kubernetes service-account token as an application s
 
 ## Conclusion
 
-Use `authorization.credentials` for a static Bearer token and `oauth2` for a renewable client-credentials flow. Both read explicitly selected Secret keys and work with `arbitraryFSAccessThroughSMs.deny: true`. Avoid `bearerTokenFile`, choose one HTTP authentication method per endpoint, and diagnose the token request separately from the metrics request.
+Use `authorization.credentials` for a static Bearer token and `oauth2` to fetch access tokens with the OAuth 2.0 client credentials grant. Both read explicitly selected Secret keys and work with `arbitraryFSAccessThroughSMs.deny: true`. Avoid `bearerTokenFile`, choose one HTTP authentication method per endpoint, and diagnose the token request separately from the metrics request.
