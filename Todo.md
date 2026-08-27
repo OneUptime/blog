@@ -117,7 +117,6 @@
 
 ## ServiceMonitors
 
-17. How to Migrate ServiceMonitor Discovery from Endpoints to EndpointSlices
 18. How to Fix `No Matches for Kind ServiceMonitor` During Helm or Argo CD Installation
 19. Why Did Prometheus Reject a ServiceMonitor and Keep Its Last Known Good Configuration?
 20. Nil vs Empty `{}` ServiceMonitor Selectors in kube-prometheus-stack: Why Your Targets Disappear
