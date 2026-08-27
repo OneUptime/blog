@@ -1,4 +1,4 @@
-# How to Migrate from the Public CockroachDB Operator Without Deleting StatefulSets or PVCs
+# How to Migrate from the Public CockroachDB Operator Without Prematurely Deleting StatefulSets or Deleting PVCs
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -13,9 +13,9 @@ The supported migration does not begin by deleting a StatefulSet. It lets the ne
 This distinction matters because two products share similar names:
 
 - the legacy Public Operator uses `crdb.cockroachlabs.com/v1alpha1`, manages a StatefulSet, and lives in `cockroachdb/cockroach-operator`;
-- the GA CockroachDB Operator uses `crdb.cockroachlabs.com/v1beta1` plus `CrdbNode` resources and is distributed through `cockroachdb-parent`.
+- the GA CockroachDB Operator uses `crdb.cockroachlabs.com/v1beta1` plus `CrdbNode` resources; its source chart is under `cockroachdb-parent/charts/operator`, and its production chart is published as `cockroachdb-v2/cockroachdb-operator-chart`.
 
-The commands below summarize the official **automatic controller migration**. Pin the chart and operator releases you tested, then follow the matching version of the official guide. Do not combine these steps with the separate manual-migration guide.
+The commands below summarize the official **automatic controller migration** and pin the GA CockroachDB Operator chart to `1.0.0`. This chart requires Kubernetes 1.30 or later and Helm 3.0 or later. The Public Operator must be v2.18.3 or later because v2.18.3 is the first release that honors `crdb.io/skip-reconcile`. Follow the matching version of the official guide, and do not combine these steps with the separate manual-migration guide.
 
 ## Establish a Recoverable Starting Point
 
@@ -88,10 +88,15 @@ kubectl patch mutatingwebhookconfiguration \
 
 The legacy configurations otherwise use Kubernetes' default `Equivalent` policy and can intercept a `v1beta1` request after API conversion. This live patch does not survive a redeploy of the Public Operator, so recheck it throughout coexistence.
 
-Install the GA Operator with migration enabled, a non-colliding application label, and the intended namespace scope:
+Install the published GA Operator with migration enabled, a non-colliding application label, and the intended namespace scope:
 
 ```bash
-helm upgrade --install crdb-operator ./cockroachdb-parent/charts/operator \
+helm repo add cockroachdb-v2 https://charts.cockroachdb.com/v2
+helm repo update
+
+helm upgrade --install crdb-operator \
+  cockroachdb-v2/cockroachdb-operator-chart \
+  --version 1.0.0 \
   --set migration.enabled=true \
   --set cloudRegion="$REGION" \
   --set appLabel=cockroachdb-operator \
@@ -158,8 +163,8 @@ kubectl get statefulset "$CRDBCLUSTER" -n "$NAMESPACE" \
 kubectl delete statefulset "$CRDBCLUSTER" -n "$NAMESPACE"
 
 kubectl get crdbcluster "$CRDBCLUSTER" -n "$NAMESPACE" \
-  -o jsonpath='{.spec.mode}{" "}{.status.migration.phase}{"\n"}'
-# Expected: MutableOnly Complete
+  -o jsonpath='{.spec.mode}{" "}{.status.migration.phase}{"\n"}' -w
+# Wait for: MutableOnly Complete, then stop the watch.
 ```
 
 There is no command here to delete PVCs. Deleting the StatefulSet earlier bypasses the controller's handoff and also crosses an important rollback boundary.
@@ -168,14 +173,14 @@ There is no command here to delete PVCs. Deleting the StatefulSet earlier bypass
 
 The official rollback table is more precise than “rollback is always available.” Automatic rollback is supported in `Init`, `CertMigration`, and `PodMigration`. It is conditional during `Finalization`: the original StatefulSet must still exist. Once that StatefulSet has been deleted and migration reaches `Complete`, automatic rollback is no longer available.
 
-Rollback before that boundary restores service selectors and StatefulSet ownership, deletes migration `CrdbNode` objects, and lets the Public Operator resume last. The rollback path can delete the `CrdbNode` PVCs and let the StatefulSet create fresh claims, with data re-replicated from the surviving cluster. That is different from the forward path's PVC reuse and is another reason to retain enough replication and capacity.
+Rollback before that boundary restores service selectors and the StatefulSet's original replica count, deletes migration `CrdbNode` objects, and lets the Public Operator resume last. The rollback path can delete the `CrdbNode` PVCs and let the StatefulSet create fresh claims, with data re-replicated from the surviving cluster. That is different from the forward path's PVC reuse and is another reason to retain enough replication and capacity.
 
-After completion, verify `metadata.generation` equals `status.observedGeneration`, all `CrdbNode` pods are Ready, under-replicated ranges are zero, and the certificate and log configuration survived conversion. Adopt the cluster into the CockroachDB Helm chart if desired. Only after **every** legacy cluster is migrated should you remove the Public Operator, clear coexistence labels, remove `v1alpha1` from the CRD's `storedVersions`, and disable migration mode in the order documented by Cockroach Labs.
+After completion, verify `metadata.generation` equals `status.observedGeneration`, all `CrdbNode` pods are Ready, under-replicated ranges are zero, and the certificate and log configuration survived conversion. Adopt the cluster into the CockroachDB Helm chart if desired. If the cluster used the Public Operator's self-signer, however, the migrated certificates are stored as `ExternalCertificates` with a one-year TTL and are not auto-rotated. Arrange rotation after migration, for example by adopting the cluster into Helm and enabling `cockroachdb.tls.selfSigner.enabled: true`. Only after **every** legacy cluster is migrated should you remove the Public Operator, clear coexistence labels, remove `v1alpha1` from the CRD's `storedVersions`, and disable migration mode in the order documented by Cockroach Labs.
 
 ## Official Documentation
 
 - [Automatic migration from the Public Operator to the CockroachDB Operator](https://github.com/cockroachdb/helm-charts/blob/master/docs/migration/operator/controller_migration.md)
-- [CockroachDB Helm charts and supported migration paths](https://github.com/cockroachdb/helm-charts)
+- [CockroachDB Helm chart distribution and versioning](https://github.com/cockroachdb/helm-charts/blob/master/cockroachdb-parent/docs/VERSIONING.md)
 - [GA CockroachDB Operator chart](https://github.com/cockroachdb/helm-charts/blob/master/cockroachdb-parent/charts/operator/README.md)
 - [Kubernetes StatefulSet storage behavior](https://kubernetes.io/docs/concepts/workloads/controllers/statefulset/)
 
