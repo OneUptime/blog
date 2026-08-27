@@ -102,7 +102,7 @@ spec:
                   name: http
 ```
 
-The annotations above are ingress-nginx-specific. Replace them with the documented settings for the installed controller. Confirm whether that controller validates the backend certificate and how it receives the CockroachDB CA; `backend-protocol: HTTPS` alone is not a universal trust-policy statement.
+The annotations above are ingress-nginx-specific. ingress-nginx was retired in March 2026 and no longer receives releases, bug fixes, or security patches. Do not adopt it for a new deployment; migrate existing installations to a maintained Ingress or Gateway implementation. For an existing installation during migration, confirm whether it validates the backend certificate and how it receives the CockroachDB CA; `backend-protocol: HTTPS` alone is not a universal trust-policy statement.
 
 The DB Console port also serves operational and debug endpoints. Restrict this hostname with network allowlists, identity-aware access, firewall rules, and CockroachDB authentication. Do not assume that an obscure DNS name is access control. Use a separate edge certificate such as `db-console-edge-tls`; it has a different trust boundary and lifecycle from CockroachDB's node and SQL client certificates.
 
@@ -148,7 +148,7 @@ Restrict `loadBalancerSourceRanges`, firewall rules, private-network scope, or e
 
 ## Alternative: Use an Ingress Controller's TCP Feature
 
-If the platform team operates ingress-nginx and accepts database traffic on it, configure its stream listener explicitly. The controller must start with `--tcp-services-configmap=ingress-nginx/tcp-services`, and its own Service must expose port 26257.
+If the platform team still operates ingress-nginx while migrating away from it and accepts database traffic on it, configure its stream listener explicitly. The controller must start with `--tcp-services-configmap=ingress-nginx/tcp-services`, and its own Service must expose port 26257.
 
 The mapping is:
 
@@ -189,7 +189,7 @@ Merge that port into the controller's actual Service rather than replacing its f
 
 Do not enable PROXY protocol in the ConfigMap merely because the option exists. CockroachDB must be configured to expect any proxy header; sending an unexpected preamble breaks the PostgreSQL handshake. Confirm support end to end first.
 
-Avoid SNI-based `TLSRoute` or ingress-nginx SSL-passthrough routing for SQL. PostgreSQL clients send an SSL negotiation request before the TLS handshake, so the gateway cannot rely on an ordinary initial TLS `ClientHello` with SNI to select the CockroachDB backend. A dedicated address or port avoids that ambiguity.
+Avoid SNI-based `TLSRoute` or ingress-nginx SSL-passthrough routing for SQL. CockroachDB 26.2 uses the traditional PostgreSQL TLS flow, in which the client sends an `SSLRequest` before the TLS handshake, so the gateway cannot rely on an ordinary initial TLS `ClientHello` with SNI to select the CockroachDB backend. A dedicated address or port avoids that ambiguity.
 
 ## Do Not Rely on the Chart's SQL Ingress as a Portability Contract
 
@@ -213,7 +213,7 @@ cockroach sql \
   --execute 'SELECT now(), version();'
 ```
 
-Use the correct client certificate for the SQL user. `openssl s_client` against port 26257 does not reproduce the PostgreSQL SSL negotiation and is not a sufficient end-to-end test.
+Use the correct client certificate for the SQL user. A plain `openssl s_client -connect sql.example.com:26257` does not reproduce the PostgreSQL SSL negotiation. `openssl s_client -starttls postgres -connect sql.example.com:26257` can test the negotiation and certificate presentation, but it is still not a sufficient end-to-end authentication and SQL test.
 
 Verify both DNS records, external addresses, Service endpoints, NetworkPolicies, and load-balancer health checks. Do not aim a generic HTTP health check at SQL port 26257. Use a supported TCP health check or a PostgreSQL-aware check, and choose idle timeouts appropriate for connection pools.
 
@@ -224,8 +224,11 @@ Verify both DNS records, external addresses, Service endpoints, NetworkPolicies,
 - [CockroachDB GA chart Ingress template](https://github.com/cockroachdb/helm-charts/blob/master/cockroachdb-parent/charts/cockroachdb/templates/ingress.yaml)
 - [CockroachDB warning about PostgreSQL TLS, SNI routing, and dedicated TCP load balancers](https://www.cockroachlabs.com/docs/stable/deploy-cockroachdb-with-kubernetes#network)
 - [CockroachDB certificate authentication](https://www.cockroachlabs.com/docs/stable/authentication)
+- [PostgreSQL TLS negotiation modes](https://www.postgresql.org/docs/current/libpq-connect.html#LIBPQ-CONNECT-SSLNEGOTIATION)
+- [OpenSSL `s_client` protocol-aware STARTTLS support](https://docs.openssl.org/3.6/man1/openssl-s_client/#options)
 - [Kubernetes Ingress protocol limits](https://kubernetes.io/docs/concepts/services-networking/ingress/)
 - [Kubernetes `LoadBalancer` Services](https://kubernetes.io/docs/concepts/services-networking/service/#loadbalancer)
+- [Kubernetes ingress-nginx retirement statement](https://kubernetes.io/blog/2026/01/29/ingress-nginx-statement/)
 - [ingress-nginx TCP and UDP service configuration](https://kubernetes.github.io/ingress-nginx/user-guide/exposing-tcp-udp-services/)
 
 ## Conclusion
