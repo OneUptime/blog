@@ -120,7 +120,6 @@
 
 ## Ephemeral Volumes
 
-2. Why emptyDir sizeLimit Does Not Change df -h—and How Kubernetes Enforces It
 3. How Kubernetes Accounts for Ephemeral Storage Across Logs, Writable Layers, and emptyDir
 4. How to Size a Memory-Backed emptyDir Without Triggering a Pod OOM
 5. Does emptyDir Survive a Container Restart? Understanding Pod and Container Lifecycles
