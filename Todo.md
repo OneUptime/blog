@@ -114,7 +114,6 @@
 
 ## Google Cloud
 
-19. How to Fix Google Cloud SDK `apt update` GPG Signature Errors After a Repository Key Rotation
 20. How to Diagnose an Unhealthy Google Cloud Load Balancer Backend When the Firewall Rule Looks Correct
 
 ## ServiceMonitors
