@@ -117,7 +117,6 @@
 
 ## ServiceMonitors
 
-9. How to Scrape an mTLS Metrics Endpoint with ServiceMonitor `tlsConfig`
 10. How to Send an OAuth2 or Bearer Token from a ServiceMonitor Without Using Forbidden File Paths
 11. `relabelings` vs `metricRelabelings` in ServiceMonitor: When Does Each Run?
 12. How to Copy Kubernetes Service and Pod Labels onto Prometheus Metrics with ServiceMonitor
