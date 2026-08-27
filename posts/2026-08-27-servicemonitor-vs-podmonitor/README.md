@@ -70,7 +70,7 @@ This makes Service labels and `ports[].name` the monitoring API. It is a strong 
 - a chart already owns a metrics Service;
 - target labels should be copied from the Service;
 - operators and application teams reason about endpoints through Services;
-- selectorless Services and manually managed EndpointSlices intentionally represent non-Pod targets.
+- selectorless Services and manually managed EndpointSlices intentionally represent non-Pod targets, with `spec.serviceDiscoveryRole` set to `EndpointSlice` on the ServiceMonitor or Prometheus resource.
 
 Do not create a Service only from habit. It becomes another selector and port mapping that must be maintained.
 
@@ -113,7 +113,7 @@ PodMonitor is usually clearer when:
 - every matching Pod should be scraped regardless of Service membership;
 - the Service selector intentionally represents only a subset that differs from the monitoring target set.
 
-PodMonitor does not mean "scrape any open Pod port." It still relies on declared Pod port metadata unless a supported numeric port field is used. The current API provides `port` and `portNumber`; the older PodMonitor `targetPort` field is deprecated in favor of those fields.
+PodMonitor does not mean "scrape any open Pod port." It relies on declared Pod port metadata whether the current API's named `port` field or numeric `portNumber` field is used. The older PodMonitor `targetPort` field is deprecated in favor of those fields.
 
 ## Compare the Failure Modes
 
@@ -152,7 +152,7 @@ spec:
 
 Enabling one does not enable the other. Namespace selectors are also independent.
 
-Prometheus needs Kubernetes discovery permissions for the chosen role and target namespaces. PodMonitor needs access to Pods. ServiceMonitor needs Services, Pods, and Endpoints or EndpointSlices. NetworkPolicy must allow the Prometheus Pods to connect to target Pod IPs in either design.
+Prometheus needs Kubernetes discovery permissions for the chosen role and target namespaces. PodMonitor needs access to Pods. ServiceMonitor needs Services, Pods, and Endpoints or EndpointSlices. When NetworkPolicy isolation applies, the applicable egress and ingress rules must allow the Prometheus Pods to connect to the discovered target addresses; for Pod-backed targets, these are Pod IPs in either design.
 
 Authentication and TLS are configured per endpoint for both resources, but references to Secrets and ConfigMaps must follow the API's namespace rules. Do not put credentials directly into labels or annotations.
 
@@ -163,7 +163,7 @@ If a ServiceMonitor and PodMonitor select the same Pods and ports, Prometheus ca
 Before migrating:
 
 1. compare the target sets on Prometheus **Status > Targets**;
-2. apply the new monitor with a distinguishing temporary label or job identity;
+2. apply the new monitor with a temporary target label through endpoint `relabelings`, or otherwise ensure a distinct `job` label;
 3. verify series labels and scrape health;
 4. remove the old monitor promptly.
 
