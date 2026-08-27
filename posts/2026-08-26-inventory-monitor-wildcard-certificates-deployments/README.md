@@ -60,6 +60,8 @@ The accepted fingerprint list should normally contain one value. During a contro
 List TLS Secrets without printing private keys:
 
 ```bash
+set -o pipefail
+
 kubectl get secrets --all-namespaces -o json |
 jq -r '
   .items[] |
@@ -77,6 +79,12 @@ while IFS=$'\t' read -r namespace secret uid encoded_certificate; do
     openssl base64 -d -A
   )
 
+  if ! printf '%s\n' "$certificate" | openssl x509 -noout >/dev/null 2>&1; then
+    printf '%s\t%s\t%s\tINVALID_CERTIFICATE\n' \
+      "$namespace" "$secret" "$uid" >&2
+    continue
+  fi
+
   subject=$(printf '%s\n' "$certificate" | openssl x509 -noout -subject)
   fingerprint=$(printf '%s\n' "$certificate" | openssl x509 -noout -fingerprint -sha256)
   expiry=$(printf '%s\n' "$certificate" | openssl x509 -noout -enddate)
@@ -87,20 +95,29 @@ while IFS=$'\t' read -r namespace secret uid encoded_certificate; do
 done
 ```
 
-The first PEM certificate in `tls.crt` should be the leaf. This process deliberately never reads `tls.key`, but `list` permission on Secrets can still reveal all data returned by the API. Scope the inventory service account by namespace and protect its output. Native Kubernetes RBAC does not filter Secret `list` access by label, so label-based isolation requires a separate trusted API or inventory controller rather than a Role rule.
+The first PEM certificate in `tls.crt` should be the leaf. Kubernetes checks that a TLS Secret contains `tls.crt` and `tls.key`, but it does not validate their values, so the loop explicitly reports an invalid certificate. This process never selects, decodes, or prints `tls.key`; however, the Secret list response still transfers all returned Secret data, including private keys, to `kubectl` and `jq`. The shown `--all-namespaces` query requires cluster-wide `list` access. For a namespace-scoped inventory service account, run the query once per approved namespace with `--namespace <name>`, and protect its output.
+
+Native Kubernetes RBAC does not filter Secret `list` access by label. Enforcing a label-scoped list requires clients to send the selector and an authorization layer beyond a Role, such as a selector-aware authorization webhook or a separate trusted API or inventory controller. The type filter above finds conventionally typed TLS Secrets; enumerate `Opaque` and controller-specific Secret layouts separately because they can also hold TLS material.
 
 Map Ingress references to those Secrets:
 
 ```bash
+set -o pipefail
+
 kubectl get ingress --all-namespaces -o json |
 jq -r '
   .items[] |
   .metadata.namespace as $namespace |
   .metadata.name as $ingress |
   .spec.tls[]? |
+  select((.secretName // "") != "") |
   .secretName as $secret |
-  .hosts[]? |
-  [$namespace, $ingress, $secret, .] | @tsv
+  (.hosts // []) as $hosts |
+  if ($hosts | length) == 0 then
+    [$namespace, $ingress, $secret, ""]
+  else
+    $hosts[] | [$namespace, $ingress, $secret, .]
+  end | @tsv
 '
 ```
 
@@ -119,24 +136,29 @@ Enumerate certificate stores through their authoritative APIs rather than only s
 
 Normalize issuer, serial, SAN set, `notBefore`, `notAfter`, SHA-256 certificate fingerprint, public-key identifier, and binding location. A managed service may not expose the private key, but it should expose enough certificate metadata and listener bindings to reconcile.
 
-Certificate Transparency is a valuable fourth feed for unexpected public issuance. RFC 9162 describes CT as an append-only record of certificates issued or observed. It does not prove current deployment and usually does not cover private-CA certificates, so never use CT as the deployment inventory.
+Certificate Transparency is a valuable fourth feed for unexpected public issuance activity or intent to issue. RFC 9162 defines each CT log as an append-only Merkle tree of submitted certificate and precertificate entries. It does not prove current deployment and usually does not cover private-CA certificates, so never use CT as the deployment inventory.
 
 ## Probe Pinned Deployment Locations
 
-For a normal public hostname, strict Blackbox Exporter targets provide reachability, hostname, chain, and expiry signals. To test a particular backend or regional address, pin the TCP destination while sending a concrete SNI name:
+For a normal public hostname, Blackbox Exporter HTTP modules with certificate validation enabled and redirects disabled provide reachability, hostname and chain validation, and expiry signals for that endpoint. To test a particular backend or regional address, pin the TCP destination while sending a concrete SNI name:
 
 ```bash
-openssl s_client \
-  -connect 203.0.113.40:443 \
-  -servername api.example.com \
-  -verify_hostname api.example.com \
-  -verify_return_error \
-  -showcerts </dev/null 2>/dev/null |
+server_output=$(
+  openssl s_client \
+    -connect 203.0.113.40:443 \
+    -servername api.example.com \
+    -verify_hostname api.example.com \
+    -verify_return_error \
+    -showcerts </dev/null
+) &&
+
+printf '%s\n' "$server_output" |
 openssl x509 -noout \
+  -checkhost api.example.com \
   -subject -issuer -serial -dates -fingerprint -sha256 -ext subjectAltName
 ```
 
-Compare the returned fingerprint with the inventory's accepted set and run `openssl x509 -checkhost api.example.com`. Use the correct private root file for private endpoints. Repeat for IPv4, IPv6, every load-balancer address, region, origin, and failover site.
+Compare the returned fingerprint with the inventory's accepted set. For an endpoint whose trust anchor is not in the default trust store, add the appropriate CA trust bundle with `-CAfile`. Repeat for IPv4, IPv6, every load-balancer address, region, origin, and failover site, and probe anycast services from representative network vantage points.
 
 One DNS probe per hostname is not enough when round-robin DNS or anycast can hide a lagging node. Conversely, scanning only IPs without SNI can inventory default certificates rather than the wildcard virtual host.
 
@@ -155,9 +177,9 @@ Run these independent comparisons:
 
 Alert when an expected location disappears from the scan, not only when a returned certificate is unhealthy. Every scanner needs a last-success timestamp, and inventory removals should require owner approval so deleting a target cannot silence its alert.
 
-During renewal, publish the new accepted fingerprint, deploy it, verify every live and stored location, remove the old fingerprint from the accepted set, and then revoke or destroy obsolete key material according to policy. Keep the overlap bounded; otherwise “rotation in progress” becomes permanent ambiguity.
+During renewal, publish the new accepted fingerprint, deploy it, verify every live and stored location, remove the old fingerprint from the accepted set, and then revoke obsolete certificates and destroy obsolete private-key material according to policy. Keep the overlap bounded; otherwise “rotation in progress” becomes permanent ambiguity.
 
-Avoid placing raw fingerprints or whole SAN lists on high-cardinality metric labels. Use stable deployment IDs for Prometheus series and keep detailed evidence in an inventory database or controlled scan report.
+Avoid placing raw fingerprints or whole SAN lists on high-cardinality metric labels. Current Blackbox Exporter releases emit `probe_ssl_last_chain_info` with fingerprint and SAN-derived labels, so drop that metric during ingestion if those details should remain only in controlled evidence storage. Use stable deployment IDs for Prometheus series and keep detailed evidence in an inventory database or controlled scan report.
 
 ## Official Documentation
 

@@ -35,9 +35,9 @@ openssl s_client \
 
 RFC 6960 says a response whose `nextUpdate` is earlier than local time should be considered unreliable. If `nextUpdate` is absent, impose a maximum status age rather than accepting an ancient response forever.
 
-## Use Enforced Staple Checking in OpenSSL 3.6+
+## Use Enforced Status Checking in OpenSSL 3.6+
 
-OpenSSL 3.6 added `s_client` options that require and validate certificate status:
+OpenSSL 3.6 added `s_client` options that require and validate certificate status. Use a current patched release: [OpenSSL 3.6.4 and 4.0.2](https://www.openssl-library.org/news/vulnerabilities-3.6/#CVE-2026-54876) fixed an OCSP-response-checking memory leak present in earlier releases of those series.
 
 ```bash
 openssl version
@@ -52,16 +52,18 @@ openssl s_client \
 
 `-ocsp_check_leaf` implies `-status`. It tries a provided staple first and, if no valid conclusive response is available, can use CRL checking when that is separately enabled; otherwise status checking fails. `-ocsp_check_all` extends the requirement to intermediate certificates excluding the trust anchor, but many deployments cannot provide useful intermediate status. Adopt it only as an intentional, tested policy.
 
+`s_client`'s built-in OCSP freshness check allows five minutes of clock skew, including after `nextUpdate`, and sets no maximum age when `nextUpdate` is absent. Use a structured checker when policy requires tighter skew or an absent-`nextUpdate` maximum age.
+
 On older OpenSSL releases, use a library or exporter that parses and verifies OCSP responses. Avoid declaring health from a text search for `OCSP Response Status: successful`; that describes the response envelope, not necessarily a fresh `good` status for the leaf.
 
 ## Query the CA's OCSP Responder Directly
 
-Stapling validates what the server provides. A direct query helps distinguish a broken server refresh from a CA responder problem. First extract the leaf, its issuer certificate, and the advertised responder URL:
+Stapling validates what the server provides. A direct query helps distinguish a broken server refresh from a CA responder problem. First save the presented leaf and its actual issuer as `leaf.pem` and `issuer.pem`, then inspect the leaf and select an advertised responder URL. The example takes the first URL, so override it if the CA publishes multiple URLs:
 
 ```bash
 openssl x509 -in leaf.pem -noout -issuer -serial -ocsp_uri
 
-ocsp_url=$(openssl x509 -in leaf.pem -noout -ocsp_uri)
+ocsp_url=$(openssl x509 -in leaf.pem -noout -ocsp_uri | sed -n '1p')
 test -n "$ocsp_url"
 ```
 
@@ -78,9 +80,9 @@ openssl ocsp \
   -resp_text
 ```
 
-`-validity_period` allows limited clock skew. `-status_age` imposes a maximum age when the response lacks `nextUpdate`. The command verifies the responder according to the issuer and configured trust unless unsafe verification-disabling flags are added.
+`-validity_period` allows limited clock skew. `-status_age` checks the maximum age of `thisUpdate`, which is especially important when the response lacks `nextUpdate`. The command verifies the responder according to the issuer and configured trust unless unsafe verification-disabling flags are added.
 
-For automation, parse a structured OCSP library result and require the status for the requested certificate to be `good`. Do not assume process exit alone distinguishes `good` from a cryptographically valid `revoked` response. Some public responders have specific nonce and HTTP requirements; follow the CA's documented profile rather than unconditionally adding `-no_nonce` or disabling verification.
+For automation, parse a structured OCSP library result and explicitly require a fresh `good` status for the requested certificate. Do not rely on process exit alone: a cryptographically valid `revoked` or `unknown` status, and invalid status times, do not necessarily produce a nonzero exit. Some public responders have specific nonce and HTTP requirements; follow the CA's documented profile rather than unconditionally adding `-no_nonce` or disabling verification.
 
 ## Add CRL Coverage Where the PKI Uses It
 
@@ -96,13 +98,15 @@ openssl verify \
   leaf.pem
 ```
 
+`-crl_download` is an uncached, HTTP-only diagnostic helper. Use a cached fetcher that supports the PKI's distribution-point URI schemes for production monitoring.
+
 `-crl_check` checks the leaf. `-crl_check_all` requires CRL validation throughout the chain and can fail when an issuer does not publish a usable CRL for every level. Monitor CRL signature, `thisUpdate`, `nextUpdate`, fetch success, and the target serial number.
 
 Do not treat OCSP and CRL availability as interchangeable without PKI policy. Private CAs often use one authoritative mechanism, while public clients may soft-fail on network errors. A monitor should still expose responder or CRL outages before clients encounter them.
 
 ## Define Stapling Policy Explicitly
 
-A missing staple is not universally a protocol failure. Ordinary certificates often permit clients to continue and check revocation another way. A certificate carrying the RFC 7633 TLS Feature for `status_request`, commonly called Must-Staple, changes that expectation: a compliant server is expected to supply the requested feature.
+A missing staple is not universally a protocol failure. Ordinary certificates often permit clients to continue and check revocation another way. A certificate carrying the RFC 7633 TLS Feature for `status_request`, commonly called Must-Staple, changes that expectation: a server presenting it is required to satisfy a client's request for the advertised feature.
 
 Classify endpoints:
 
@@ -110,7 +114,7 @@ Classify endpoints:
 | --- | --- | --- | --- |
 | Must-Staple | Critical | Critical | Critical |
 | Stapling required by internal policy | Critical | Critical | Critical |
-| Stapling preferred with direct fallback | Warning plus direct check | Critical or fallback | Critical |
+| Stapling preferred with direct fallback | Warning plus direct check | Critical; run direct check for diagnosis | Critical |
 | No OCSP/CRL published by private PKI | Not applicable, document alternative | Not applicable | Use CA inventory/denylist |
 
 Monitor the OCSP responder's reachability from both the checking network and the TLS server's network. The server needs to refresh staples before `nextUpdate`; a healthy responder visible only to the monitor does not prove that refresh can occur.
