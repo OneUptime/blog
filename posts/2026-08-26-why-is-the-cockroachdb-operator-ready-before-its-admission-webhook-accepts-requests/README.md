@@ -18,13 +18,13 @@ kubectl get crdbclusters -A \
 kubectl get deployment -A | grep -E 'cockroach.*operator'
 ```
 
-The deprecated Public Operator serves `v1alpha1` clusters and deploys `cockroach-operator-manager`. The GA CockroachDB Operator serves `v1beta1` and manages `CrdbNode` objects. Their Deployment probes, webhook names, Services, and certificate Secrets are different.
+The deprecated Public Operator serves `v1alpha1` clusters and deploys `cockroach-operator-manager`. The GA CockroachDB Operator normally serves `v1beta1` and manages `CrdbNode` objects; during migration it can temporarily add `v1alpha1` conversion support. Their Deployment probes, webhook names, Services, and certificate Secrets are different. During a dual-version migration, the `API` column is the representation returned by the API server, not proof of which operator reconciles the object; use the Deployments and their images and arguments to identify the installed generations.
 
 ## Why the Public Operator Has a Real Ready-Before-Serving Window
 
 The current Public Operator installation bundle has no container `readinessProbe`. Kubernetes therefore considers the container ready once it is running; it does not wait for TCP port `9443`, a TLS handshake, or an admission response.
 
-Meanwhile, the Public Operator process performs this startup sequence:
+Meanwhile, with the bundled default arguments, the Public Operator process performs this startup sequence:
 
 1. construct the controller-runtime manager and register `v1alpha1` webhook handlers;
 2. find or create Secret `cockroach-operator-webhook-ca`;
@@ -49,7 +49,7 @@ A GA pod can pass its local health handler while any of these remain broken:
 - `clientConfig.caBundle` does not trust the serving leaf;
 - the serving leaf lacks the exact `<service>.<namespace>.svc` name;
 - a stale cluster-scoped webhook configuration routes to an old operator release;
-- a conversion webhook fails even though the admission handler itself is healthy.
+- during a `v1alpha1` migration, the conversion webhook fails even though the admission handler itself is healthy.
 
 Readiness should gate Service endpoints, but it cannot test from the control plane's network namespace or validate every cluster-scoped registration.
 
@@ -68,10 +68,16 @@ kubectl get validatingwebhookconfiguration \
   cockroach-operator-validating-webhook-configuration -o yaml
 ```
 
-Confirm `clientConfig.service.name`, namespace, path, `caBundle`, rules, and `failurePolicy`. During coexistence migration, both legacy webhook entries must have `matchPolicy: Exact`; otherwise their default `Equivalent` matching can intercept converted `v1beta1` requests. For the GA Operator, first list configurations and follow the Service reference they actually contain instead of assuming legacy names:
+Confirm `clientConfig.service.name`, namespace, path, `caBundle`, rules, and `failurePolicy`. During coexistence migration, both legacy webhook entries must have `matchPolicy: Exact`; otherwise their default `Equivalent` matching can intercept converted `v1beta1` requests. If both operator generations run in the same namespace, also give the GA operator a distinct `appLabel` (the migration guide uses `cockroachdb-operator`) so their Services cannot select both pod sets. For the GA Operator, first list configurations and follow the Service reference they actually contain instead of assuming legacy names:
 
 ```bash
 kubectl get mutatingwebhookconfiguration,validatingwebhookconfiguration
+```
+
+During a `v1alpha1` migration, inspect the conversion webhook registration on the CRD as well:
+
+```bash
+kubectl get crd crdbclusters.crdb.cockroachlabs.com -o yaml
 ```
 
 ### 2. Inspect the Service and endpoints
@@ -84,10 +90,10 @@ kubectl get service cockroach-operator-webhook-service \
 kubectl get pods -n cockroach-operator-system \
   -l app=cockroach-operator --show-labels
 kubectl get endpointslice -n cockroach-operator-system \
-  -l kubernetes.io/service-name=cockroach-operator-webhook-service -o wide
+  -l kubernetes.io/service-name=cockroach-operator-webhook-service -o yaml
 ```
 
-The Service exposes port `443`, targets container port `9443`, and selects `app=cockroach-operator` in the bundled legacy manifest. No endpoints indicates a selector, namespace, or readiness problem. An endpoint with the wrong port indicates a Service/rendering mismatch.
+The Service exposes port `443`, targets container port `9443`, and selects `app=cockroach-operator` in the bundled legacy manifest. No endpoint address usually indicates a selector, namespace, or pod-IP problem; an address with `conditions.ready: false` indicates a readiness problem. An endpoint with the wrong port indicates a Service/rendering mismatch.
 
 ### 3. Inspect startup logs and certificate state
 
@@ -99,7 +105,7 @@ kubectl get secret cockroach-operator-webhook-ca \
   -o go-template='{{range $key,$value := .data}}{{$key}}{{"\n"}}{{end}}'
 ```
 
-The legacy startup logs should reach certificate generation, mutating `caBundle` patching, validating `caBundle` patching, and manager start. RBAC denial while updating a cluster-scoped webhook configuration is different from a Service timeout. A malformed CA Secret causes startup to exit before the server begins listening.
+The legacy startup logs should reach certificate generation, mutating `caBundle` patching, validating `caBundle` patching, and manager start. RBAC denial while updating a cluster-scoped webhook configuration is different from a Service timeout. An unparsable or key-mismatched CA Secret causes startup to exit before the server begins listening.
 
 Compare the legacy CA Secret to both `caBundle` fields without exposing private material:
 
@@ -109,11 +115,18 @@ kubectl get secret cockroach-operator-webhook-ca \
   -o jsonpath='{.data.tls\.crt}' | base64 -d \
   | openssl x509 -outform DER | openssl dgst -sha256
 
+kubectl get mutatingwebhookconfiguration \
+  cockroach-operator-mutating-webhook-configuration \
+  -o jsonpath='{.webhooks[0].clientConfig.caBundle}' | base64 -d \
+  | openssl x509 -outform DER | openssl dgst -sha256
+
 kubectl get validatingwebhookconfiguration \
   cockroach-operator-validating-webhook-configuration \
   -o jsonpath='{.webhooks[0].clientConfig.caBundle}' | base64 -d \
   | openssl x509 -outform DER | openssl dgst -sha256
 ```
+
+All three SHA-256 outputs should match.
 
 ### 4. Test backend TLS independently
 
@@ -137,7 +150,7 @@ openssl s_client -connect 127.0.0.1:9443 \
   -CAfile webhook-ca.crt -verify_return_error </dev/null
 ```
 
-This proves Service-to-pod TLS from your workstation tunnel. It does not prove control-plane routing, but it separates serving-certificate failures from network failures.
+This proves TLS to a backend Pod selected from the Service metadata. Port-forwarding does not traverse the Service ClusterIP or prove control-plane routing, but it separates serving-certificate failures from network failures.
 
 ### 5. Test a real admission request
 
@@ -163,7 +176,7 @@ On managed Kubernetes, the API server may run outside the worker-node network. A
 
 ## Choose a Health Fix, Not a Validation Bypass
 
-For the Public Operator, an operationally maintained manifest can add a TCP or HTTPS readiness probe for port `9443`, but a socket check still does not test the API server route or `caBundle`. The stronger external signal is a periodic server-side dry-run canary against the correct API generation.
+For the Public Operator, an operationally maintained manifest can add a TCP readiness probe for port `9443`, but a socket check still does not test the API server route or `caBundle`. The stronger external signal is a periodic server-side dry-run canary against the correct API generation.
 
 Do not permanently change `failurePolicy` to `Ignore` just to make writes succeed. That turns a webhook outage into unvalidated configuration changes. Repair the Service, endpoint, trust bundle, or network path, then verify admission before resuming production changes.
 
