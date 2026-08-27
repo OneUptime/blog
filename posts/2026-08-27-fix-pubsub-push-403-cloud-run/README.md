@@ -10,7 +10,7 @@ Description: Configure Pub/Sub OIDC push authentication, Cloud Run Invoker IAM, 
 
 An authenticated Pub/Sub push subscription sends a Google-signed OpenID Connect (OIDC) ID token in the request's `Authorization` header. Cloud Run validates the token and checks whether the service account named by the token can invoke the service.
 
-A `403` means one of those pieces, or an ingress control before the container, rejected the request. Making the Cloud Run service public can hide the configuration error and removes the intended protection. Fix the identity chain instead.
+Cloud Run reports distinct failures at different layers. A platform-generated `401` points to token validation, while a platform-generated `403` usually points to missing invocation permission. An ingress mismatch normally returns `404`; a `403` without a Cloud Run revision request log can indicate VPC Service Controls. Making the Cloud Run service public can hide the configuration error and removes the intended protection. Fix the identity chain instead.
 
 ## Understand the three principals
 
@@ -136,7 +136,7 @@ The handler must return a successful acknowledgement response only after it has 
 
 ## Use logs to locate the rejecting layer
 
-If Cloud Run request logs contain the `403`, verify the token identity, `aud` value, and the service-level Invoker binding. If no `cloud_run_revision` request log exists, the request might have been rejected before it reached the revision. Check the endpoint hostname, Cloud Run ingress settings, VPC Service Controls, and any network perimeter involved.
+If Cloud Run request logs contain the `403`, verify the token identity and the service-level Invoker binding. For a `401`, verify the token format, signature, and `aud` value. If a `403` has no `cloud_run_revision` request log, check VPC Service Controls policy-denial logs. If a `404` has no such request log, check the endpoint hostname, whether the default `run.app` URL is disabled, and Cloud Run ingress settings.
 
 Pub/Sub push is an HTTPS callback, not a connection to a private VPC IP. If the desired receiver is reachable only inside a VPC, use a supported design such as an Eventarc path documented for that private destination rather than exposing the service or bypassing authentication.
 
@@ -147,10 +147,10 @@ Also distinguish application-generated `403` responses from Cloud Run IAM respon
 - [Authenticate Pub/Sub push subscriptions](https://cloud.google.com/pubsub/docs/authenticate-push-subscriptions)
 - [Create Pub/Sub push subscriptions](https://cloud.google.com/pubsub/docs/create-push-subscription)
 - [Use Pub/Sub with Cloud Run](https://cloud.google.com/run/docs/tutorials/pubsub)
-- [Troubleshoot Cloud Run 403 responses](https://cloud.google.com/run/docs/troubleshooting#client-is-not-authorized)
+- [Troubleshoot Cloud Run 403 responses](https://cloud.google.com/run/docs/troubleshooting#unauthorized-client)
 - [Configure Cloud Run custom audiences](https://cloud.google.com/run/docs/configuring/custom-audiences)
 - [Pub/Sub push delivery behavior](https://cloud.google.com/pubsub/docs/push)
 
 ## Conclusion
 
-Keep the Cloud Run service authenticated. Grant its Invoker role to the push service account, let the Pub/Sub service agent mint an OIDC token, give the subscription administrator `actAs`, and match the token audience to the Cloud Run service URL. Logs then show whether any remaining `403` comes from Cloud Run ingress, IAM, or the application itself.
+Keep the Cloud Run service authenticated. Grant its Invoker role to the push service account, let the Pub/Sub service agent mint an OIDC token, give the subscription administrator `actAs`, and match the token audience to the Cloud Run service URL. Logs then show whether any remaining delivery failure comes from token validation, IAM, VPC Service Controls, ingress, or the application itself.

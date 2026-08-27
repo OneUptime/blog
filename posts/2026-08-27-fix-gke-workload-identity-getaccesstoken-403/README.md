@@ -10,7 +10,7 @@ Description: Repair a linked Kubernetes-to-IAM service account configuration by 
 
 Google's current name for the feature is Workload Identity Federation for GKE. It lets Pods use Google Cloud APIs without storing service account keys in Kubernetes Secrets.
 
-This error identifies the linked-service-account form of the feature:
+In the automatic GKE metadata-server flow, this error points to the linked-service-account form of the feature:
 
 ```text
 Permission 'iam.serviceAccounts.getAccessToken' denied on resource
@@ -51,7 +51,7 @@ example-cluster-project.svc.id.goog
 
 For a zonal cluster, use `--zone` instead of `--region`.
 
-Autopilot has Workload Identity Federation enabled. For Standard clusters, also verify that the affected Pod runs on a node pool using the GKE metadata server:
+Autopilot has Workload Identity Federation enabled. For Standard clusters, first identify the node pool where the affected Pod runs, then verify that the pool uses the GKE metadata server:
 
 ```bash
 NODE_POOL='application-pool'
@@ -97,7 +97,13 @@ metadata:
   name: processor
   namespace: payments
 spec:
+  selector:
+    matchLabels:
+      app: processor
   template:
+    metadata:
+      labels:
+        app: processor
     spec:
       serviceAccountName: processor
       containers:
@@ -120,7 +126,7 @@ gcloud iam service-accounts add-iam-policy-binding "${GSA}" \
   --role='roles/iam.workloadIdentityUser'
 ```
 
-`roles/iam.workloadIdentityUser` contains `iam.serviceAccounts.getAccessToken`. Grant it on the GSA resource to only the intended KSA. Do not replace it with Owner or broadly grant Service Account Token Creator to every workload.
+`roles/iam.workloadIdentityUser` contains `iam.serviceAccounts.getAccessToken`. Grant it on the GSA resource to the intended namespace/KSA identity in the cluster project's workload identity pool. IAM treats KSAs with the same namespace and name in clusters that share this pool as the same identity, so use separate cluster projects or distinct namespace/KSA names when those clusters must not share access. Do not replace it with Owner or broadly grant Service Account Token Creator to every workload.
 
 Inspect the resulting policy:
 
@@ -130,7 +136,7 @@ gcloud iam service-accounts get-iam-policy "${GSA}" \
   --format=yaml
 ```
 
-The annotation and binding are directional counterparts. The annotation says which GSA the KSA requests. The binding says that this exact KSA may impersonate that GSA.
+The annotation and binding are directional counterparts. The annotation says which GSA the KSA requests. The binding says that this namespace/KSA identity in the workload identity pool may impersonate that GSA.
 
 ## Enable the required API and allow propagation
 
@@ -174,7 +180,7 @@ Timeouts and metadata connection errors are also different from the explicit IAM
 ## Official Documentation
 
 - [Authenticate to Google Cloud APIs from GKE](https://cloud.google.com/kubernetes-engine/docs/how-to/workload-identity)
-- [Troubleshoot GKE authentication](https://cloud.google.com/kubernetes-engine/docs/troubleshooting/authentication#iam_service_account_access_denied)
+- [Troubleshoot GKE authentication](https://cloud.google.com/kubernetes-engine/docs/troubleshooting/authentication#iam-service-account-access-denied)
 - [About Workload Identity Federation for GKE](https://cloud.google.com/kubernetes-engine/docs/concepts/workload-identity)
 - [IAM Workload Identity User role](https://cloud.google.com/iam/docs/roles-permissions/iam#iam.workloadIdentityUser)
 - [IAM access change propagation](https://cloud.google.com/iam/docs/access-change-propagation)
