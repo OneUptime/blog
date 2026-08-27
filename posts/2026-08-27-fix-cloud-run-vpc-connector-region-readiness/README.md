@@ -20,10 +20,12 @@ Set explicit project and region values:
 RUN_PROJECT_ID='example-run-project'
 SERVICE='inventory-api'
 SERVICE_REGION='us-central1'
-CONNECTOR_PROJECT_ID='example-network-project'
+CONNECTOR_PROJECT_ID="${RUN_PROJECT_ID}"
 CONNECTOR='serverless-egress'
 CONNECTOR_REGION='us-east1'
 ```
+
+For a standalone VPC, the connector and Cloud Run service use the same project. Set a different connector project only when using the documented Shared VPC host-project topology.
 
 Export the Cloud Run configuration:
 
@@ -40,7 +42,7 @@ Describe the connector in the region where it actually exists:
 gcloud compute networks vpc-access connectors describe "${CONNECTOR}" \
   --project="${CONNECTOR_PROJECT_ID}" \
   --region="${CONNECTOR_REGION}" \
-  --format='yaml(name,network,ipCidrRange,state,minThroughput,maxThroughput)'
+  --format='yaml(name,network,ipCidrRange,subnet,state,machineType,minInstances,maxInstances)'
 ```
 
 The connector resource name includes its location:
@@ -59,7 +61,7 @@ For example, a database in `us-east1` does not justify attaching a `us-east1` co
 
 ## Create a replacement connector in the service region
 
-A connector cannot be moved to another region. Create a new connector in the Cloud Run region with an unused RFC 1918 `/28` range that does not overlap any existing route or reservation:
+A connector cannot be moved to another region. Create a new connector in the Cloud Run region with an unused RFC 1918 `/28` range that does not overlap an existing IP address reservation or in-use CIDR range and does not conflict with existing routes:
 
 ```bash
 NEW_CONNECTOR='run-egress-uc1'
@@ -73,7 +75,7 @@ gcloud compute networks vpc-access connectors create "${NEW_CONNECTOR}" \
   --range="${UNUSED_CIDR}"
 ```
 
-For Shared VPC, use the documented host-project or service-project connector procedure instead of substituting a short network name. Shared VPC connector creation requires additional service-agent, subnet, and firewall configuration.
+For Shared VPC, use the documented host-project or service-project connector procedure instead of assuming the standalone-VPC command applies. A connector created in a service project requires a pre-created `/28` subnet, service-agent IAM grants, and manual connector firewall rules. A host-project connector uses the host-project IAM flow, and Google Cloud creates its required connector firewall rules.
 
 Wait until the new connector reports `READY`:
 
@@ -119,11 +121,11 @@ Keep the old connector until every service and revision has been moved and the n
 
 Check these documented causes:
 
-- The connector's RFC 1918 `/28` overlaps another IP reservation or route.
+- The connector's RFC 1918 `/28` overlaps an existing IP address reservation or in-use CIDR range, or conflicts with an existing route.
 - The Serverless VPC Access service agent lost `roles/vpcaccess.serviceAgent`.
 - The Google APIs service agent lacks the permissions needed to provision connector infrastructure.
 - An organization policy blocks the `serverless-vpc-access-images` Compute Engine images or Cloud Deployment Manager.
-- Shared VPC service agents lack Network User on the host project or connector subnet.
+- Shared VPC IAM is incomplete: service-project connectors require Network User for the Serverless VPC Access and Google APIs service agents on the host project or connector subnet; host-project connectors require `roles/vpcaccess.user` for the Cloud Run service agent on the host project.
 - The Serverless VPC Access API is disabled in the connector project.
 - The connector is still provisioning or has entered `ERROR`.
 
