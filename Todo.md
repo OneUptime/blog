@@ -117,7 +117,6 @@
 
 ## ServiceMonitors
 
-19. Why Did Prometheus Reject a ServiceMonitor and Keep Its Last Known Good Configuration?
 20. Nil vs Empty `{}` ServiceMonitor Selectors in kube-prometheus-stack: Why Your Targets Disappear
 
 ## Ephemeral Volumes
