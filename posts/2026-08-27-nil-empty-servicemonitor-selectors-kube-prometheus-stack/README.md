@@ -27,20 +27,20 @@ Their null and empty semantics are:
 | `{}` | select all ServiceMonitor objects | search all namespaces |
 | non-empty selector | match those object labels | match those namespace labels |
 
-There is one additional edge case. If `serviceMonitorSelector`, `podMonitorSelector`, `probeSelector`, and `scrapeConfigSelector` are all null, the Prometheus configuration is unmanaged. The Operator creates the configuration Secret but expects the user to provide its content. This unmanaged behavior is deprecated, so do not use four omitted selectors as a way to mean "select everything."
+There is one additional edge case for a `Prometheus` resource. Unless the Operator disables its deprecated unmanaged-configuration support, if `serviceMonitorSelector`, `podMonitorSelector`, `probeSelector`, and `scrapeConfigSelector` are all null, the Prometheus configuration is unmanaged. The Operator creates the configuration Secret but expects the user to provide its content. This unmanaged behavior is deprecated, so do not use four omitted selectors as a way to mean "select everything."
 
 ## kube-prometheus-stack Can Render a Different Selector
 
 kube-prometheus-stack is a Helm chart that templates the Prometheus object. In chart templates that expose `serviceMonitorSelectorNilUsesHelmValues`, an empty or nil selector with that switch enabled is rendered as a selector for labels derived from the Helm release. A ServiceMonitor created by another chart often lacks that release label, so it is valid in Kubernetes but never selected.
 
-Chart behavior has changed across releases. The chart's 62-to-63 upgrade notes deprecate the `*SelectorNilUsesHelmValues` pattern and document `matchLabels: null` as a way to render an API-level empty selector. Pin the chart version and inspect its matching `values.yaml`, template, and upgrade notes rather than relying on advice for a different major version.
+Chart behavior has changed across releases. Chart 63.x temporarily deprecated the `*SelectorNilUsesHelmValues` pattern and documented `matchLabels: null` as a way to render an API-level empty selector. Chart 64.x reverted the 63.x release, and later releases again expose the `*SelectorNilUsesHelmValues` switches. Pin the chart version and inspect its matching `values.yaml`, template, and upgrade notes rather than relying on advice for a different major version.
 
-Render before installation:
+Set `PINNED_CHART_VERSION` to the chart version you deploy, then render before installation:
 
 ```bash
 helm template monitoring prometheus-community/kube-prometheus-stack \
   --namespace monitoring \
-  --version <pinned-chart-version> \
+  --version "${PINNED_CHART_VERSION:?set PINNED_CHART_VERSION}" \
   -f values.yaml \
   | sed -n '/^kind: Prometheus$/,/^---$/p'
 ```
@@ -78,7 +78,7 @@ spec:
   serviceMonitorNamespaceSelector: {}
 ```
 
-Express that through the values syntax documented for the pinned chart release, then verify that the rendered object contains exactly those fields. In chart releases following the documented selector migration, this value shape is used to force an API-empty resource selector through Helm's truthiness rules:
+Express that through the values syntax documented for the pinned chart release, then verify that the rendered object contains exactly those fields. In chart 63.x, the upgrade notes documented this value shape to render a non-null, API-empty resource selector:
 
 ```yaml
 prometheus:
@@ -88,11 +88,13 @@ prometheus:
     serviceMonitorNamespaceSelector: {}
 ```
 
+In releases that expose `serviceMonitorSelectorNilUsesHelmValues`, set it to `false` and set `serviceMonitorSelector: {}` instead.
+
 Do not broaden both selectors only to make a target appear. The Operator must be configured and authorized to watch the namespaces containing the ServiceMonitor objects. Cross-namespace target discovery separately requires the Prometheus service account to read Services and Pods in the target namespaces, plus Endpoints or EndpointSlices for the configured discovery role.
 
 ## Do Not Confuse the Three Selection Boundaries
 
-A ServiceMonitor scrape has three label boundaries:
+Before Kubernetes resolves each Service to backing endpoints, the Prometheus-to-ServiceMonitor-to-Service path has three label-selection boundaries:
 
 1. `Prometheus.spec.serviceMonitorNamespaceSelector` chooses namespaces containing ServiceMonitor objects.
 2. `Prometheus.spec.serviceMonitorSelector` chooses the ServiceMonitor objects in those namespaces.
@@ -107,8 +109,10 @@ Probe and ScrapeConfig are independent configuration resources. They use `probeS
 Print the actual selectors and candidate labels side by side:
 
 ```bash
-kubectl get prometheus -n monitoring -o jsonpath='{.items[*].spec.serviceMonitorSelector}'
-kubectl get prometheus -n monitoring -o jsonpath='{.items[*].spec.serviceMonitorNamespaceSelector}'
+kubectl get prometheus -n monitoring \
+  -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.spec.serviceMonitorSelector}{"\n"}{end}'
+kubectl get prometheus -n monitoring \
+  -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.spec.serviceMonitorNamespaceSelector}{"\n"}{end}'
 kubectl get servicemonitor -A --show-labels
 kubectl get namespace --show-labels
 ```
@@ -120,7 +124,7 @@ kubectl get prometheus platform -n monitoring \
   -o jsonpath='{.spec.serviceMonitorSelector}{"\n"}{.spec.serviceMonitorNamespaceSelector}{"\n"}'
 ```
 
-Finally, search the generated configuration Secret. If the ServiceMonitor name is absent, continue debugging object selection or an Operator rejection Event. If it is present, move to Service selection, EndpointSlice RBAC, named ports, and target health.
+Finally, decode and decompress `prometheus.yaml.gz` from the generated `prometheus-<Prometheus-name>` Secret before searching it. If the ServiceMonitor name is absent, continue debugging object selection or an Operator rejection Event. If it is present, move to Service selection, Endpoints or EndpointSlice RBAC for the effective discovery role, named ports, and target health.
 
 ## Official Documentation
 
