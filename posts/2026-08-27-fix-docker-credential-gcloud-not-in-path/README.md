@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Google Cloud, Artifact Registry, Docker, gcloud, Authentication
+Tags: Google Cloud, Artifact Registry, Docker, Gcloud, Authentication
 
 Description: Restore Artifact Registry Docker authentication by making the gcloud credential helper visible to the process that runs Docker.
 

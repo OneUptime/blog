@@ -1,8 +1,8 @@
-# `gcloud auth login` vs `gcloud auth application-default login`: Which Credentials Does Your Code Use?
+# `gcloud auth login` vs Application Default Credentials
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Google Cloud, gcloud, Application Default Credentials, Authentication, IAM
+Tags: Google Cloud, Gcloud, Application Default Credentials, Authentication, IAM
 
 Description: Learn why the gcloud CLI and local application code can use different identities, and how to inspect and select each credential source safely.
 

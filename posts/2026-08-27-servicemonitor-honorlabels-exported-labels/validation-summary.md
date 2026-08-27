@@ -1,4 +1,4 @@
-# Validation Summary: Why Do ServiceMonitor Label Conflicts Produce `exported_*`, and When Should You Set `honorLabels`?
+# Validation Summary: Understand ServiceMonitor `exported_*` Labels and `honorLabels`
 
 ## Status
 validated

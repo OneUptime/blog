@@ -1,4 +1,4 @@
-# `serviceMonitorSelector` vs `spec.selector`: Which Labels Must a ServiceMonitor Match?
+# `serviceMonitorSelector` vs `spec.selector` Labels
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

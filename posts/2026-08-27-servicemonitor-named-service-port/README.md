@@ -1,8 +1,8 @@
-# Why a ServiceMonitor Endpoint Must Reference the Named Service Port, Not the Container Port
+# Use the Named Service Port in ServiceMonitor Endpoints
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Prometheus, Prometheus Operator, ServiceMonitor, Kubernetes, Services, Ports
+Tags: Prometheus, Prometheus Operator, ServiceMonitor, Kubernetes, Service, Port
 
 Description: Map ServiceMonitor endpoint ports through a Kubernetes Service to Pod container ports and avoid the common numeric or container-port mismatch.
 

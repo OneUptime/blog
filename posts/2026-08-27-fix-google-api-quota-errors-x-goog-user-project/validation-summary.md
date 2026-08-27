@@ -1,4 +1,4 @@
-# Validation Summary: How to Fix Google API Quota Errors in Raw REST Calls with the `x-goog-user-project` Header
+# Validation Summary: Fix Google API REST Quota Errors with `x-goog-user-project`
 
 ## Status
 validated

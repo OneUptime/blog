@@ -192,4 +192,4 @@ TUF root-key rotation is different. Follow the TUF specification's sequential ro
 
 ## Conclusion
 
-Bootstrap a private TUF root out of band, publish consolidated `trusted_root.json` and `signing_config.v0.2.json` targets, and keep environment caches separate. TUF then gives Cosign authenticated, rollback-resistant updates for the entire private Sigstore trust domain—not just one Fulcio PEM file.
+Bootstrap a private TUF root out of band, publish consolidated `trusted_root.json` and `signing_config.v0.2.json` targets, and keep environment caches separate. TUF then gives Cosign authenticated, rollback-resistant updates for the entire private Sigstore trust domain-not just one Fulcio PEM file.

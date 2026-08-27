@@ -1,4 +1,4 @@
-# How to Scrape an External VM or FQDN with Prometheus Operator: ServiceMonitor or ScrapeConfig?
+# Scrape External Targets with ServiceMonitor or ScrapeConfig
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

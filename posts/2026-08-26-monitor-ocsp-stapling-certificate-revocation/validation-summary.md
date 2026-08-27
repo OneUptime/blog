@@ -1,4 +1,4 @@
-# Validation Summary: How to Monitor OCSP Stapling and Certificate Revocation Without Treating notAfter as Enough
+# Validation Summary: Monitor OCSP Stapling and Certificate Revocation Correctly
 
 ## Status
 

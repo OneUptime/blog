@@ -1,4 +1,4 @@
-# How to Monitor OCSP Stapling and Certificate Revocation Without Treating notAfter as Enough
+# Monitor OCSP Stapling and Certificate Revocation Correctly
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

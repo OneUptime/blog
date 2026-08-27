@@ -1,4 +1,4 @@
-# Why Do ServiceMonitor Label Conflicts Produce `exported_*`, and When Should You Set `honorLabels`?
+# Understand ServiceMonitor `exported_*` Labels and `honorLabels`
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -125,7 +125,7 @@ An empty result means the field is unset, which is equivalent to `false`.
 
 ## Diagnose Before Changing the Flag
 
-Look for series with a non-empty `exported_job`, a common sign—not proof—of a `job` label conflict:
+Look for series with a non-empty `exported_job`, a common sign-not proof-of a `job` label conflict:
 
 ```promql
 count by (job, exported_job) ({exported_job!=""})

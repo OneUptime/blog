@@ -1,4 +1,4 @@
-# Why Does `google.auth.default()` Find Credentials but Return No Google Cloud Project ID?
+# Why `google.auth.default()` Returns No Google Cloud Project ID
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

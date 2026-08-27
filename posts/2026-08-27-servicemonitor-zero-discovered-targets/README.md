@@ -1,4 +1,4 @@
-# How to Debug a ServiceMonitor with Zero Discovered Targets from Service to EndpointSlice
+# Debug ServiceMonitor Zero Targets from Service to EndpointSlice
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

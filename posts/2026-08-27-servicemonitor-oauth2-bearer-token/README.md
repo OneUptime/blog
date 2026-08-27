@@ -1,8 +1,8 @@
-# How to Send an OAuth2 or Bearer Token from a ServiceMonitor Without Using Forbidden File Paths
+# Send OAuth2 or Bearer Tokens from a ServiceMonitor
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Prometheus, Prometheus Operator, ServiceMonitor, OAuth2, Bearer Tokens, Kubernetes Secrets
+Tags: Prometheus, Prometheus Operator, ServiceMonitor, OAuth2, Bearer Token, Kubernetes Secrets
 
 Description: Use safe Secret selectors for static Bearer credentials or OAuth2 client credentials instead of deprecated and potentially forbidden token-file paths.
 

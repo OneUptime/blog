@@ -1,8 +1,8 @@
-# How to Fix ADC Quota Project Mismatch When Switching Between gcloud Configurations
+# Fix ADC Quota Project Mismatch Across gcloud Configurations
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Google Cloud, gcloud, Application Default Credentials, Quotas, Authentication
+Tags: Google Cloud, Gcloud, Application Default Credentials, Quota, Authentication
 
 Description: Fix local ADC quota errors after changing gcloud configurations by separating configuration state from the shared ADC quota project.
 

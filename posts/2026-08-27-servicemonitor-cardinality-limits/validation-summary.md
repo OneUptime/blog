@@ -1,4 +1,4 @@
-# Validation Summary: How to Limit Cardinality per ServiceMonitor with Sample, Target, and Label Limits
+# Validation Summary: Limit ServiceMonitor Cardinality with Sample, Target, and Label Limits
 
 ## Status
 

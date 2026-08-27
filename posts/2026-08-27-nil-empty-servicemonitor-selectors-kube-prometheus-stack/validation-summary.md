@@ -1,4 +1,4 @@
-# Validation Summary: Nil vs Empty `{}` ServiceMonitor Selectors in kube-prometheus-stack: Why Your Targets Disappear
+# Validation Summary: Nil vs Empty ServiceMonitor Selectors in kube-prometheus-stack
 
 ## Status
 validated

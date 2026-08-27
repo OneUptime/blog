@@ -1,4 +1,4 @@
-# Validation Summary: How to Discover Untracked Certificates Before They Expire: Network Scanning vs CA Inventory
+# Validation Summary: Discover Untracked Certificates: Network Scanning vs CA Inventory
 
 ## Status
 validated

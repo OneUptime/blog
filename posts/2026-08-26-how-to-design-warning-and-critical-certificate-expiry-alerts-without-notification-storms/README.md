@@ -1,4 +1,4 @@
-# How to Design Warning and Critical Certificate-Expiry Alerts Without Notification Storms
+# How to Design Certificate Expiry Alerts Without Notification Storms
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -85,7 +85,7 @@ groups:
 
 At exactly seven days, the warning remains active and the critical comparison is false; at the next value below seven days, warning stops and critical begins immediately. The critical rule deliberately has no `for`, avoiding a pending-state gap during escalation. If policy requires “seven days or less” to be critical, use `<=` for critical and `>` for the warning's lower bound.
 
-If the metric remains available after expiry—for example, in a separate probe that skips certificate verification—a negative seconds-remaining value keeps the critical alert active. With normal certificate validation, expiry can instead fail the TLS handshake and remove the metric, so `TLSProbeFailed` becomes the actionable state. The runbook should distinguish expired from near expiry in its first diagnostic step.
+If the metric remains available after expiry-for example, in a separate probe that skips certificate verification-a negative seconds-remaining value keeps the critical alert active. With normal certificate validation, expiry can instead fail the TLS handshake and remove the metric, so `TLSProbeFailed` becomes the actionable state. The runbook should distinguish expired from near expiry in its first diagnostic step.
 
 ## Use `for` for Data Stability, Not Procrastination
 

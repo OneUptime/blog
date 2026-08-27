@@ -1,4 +1,4 @@
-# Validation Summary: `gcloud auth login` vs `gcloud auth application-default login`: Which Credentials Does Your Code Use?
+# Validation Summary: `gcloud auth login` vs Application Default Credentials
 
 ## Status
 validated

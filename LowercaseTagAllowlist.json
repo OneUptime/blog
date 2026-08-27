@@ -1298,5 +1298,9 @@
   "pg_stat_activity",
   "pg_stat_io",
   "pg_stat_progress_vacuum",
-  "postgres_exporter"
+  "postgres_exporter",
+  "fsnotify",
+  "podTemplate",
+  "google-auth",
+  "emptyDir"
 ]

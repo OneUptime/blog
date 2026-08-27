@@ -1,4 +1,4 @@
-# How to Fix Google Cloud SDK `apt update` GPG Signature Errors After a Repository Key Rotation
+# Fix Google Cloud SDK APT GPG Errors After Key Rotation
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

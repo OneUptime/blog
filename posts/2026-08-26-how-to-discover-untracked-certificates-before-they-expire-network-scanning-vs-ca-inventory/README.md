@@ -1,4 +1,4 @@
-# How to Discover Untracked Certificates Before They Expire: Network Scanning vs CA Inventory
+# Discover Untracked Certificates: Network Scanning vs CA Inventory
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -134,7 +134,7 @@ Do not join sources by common name alone. Modern identity is in SANs, and severa
 - normalized DNS SAN set for coverage;
 - endpoint plus SNI for a deployment observation.
 
-Keep the last-seen timestamp and evidence source. A certificate disappearing from a scan might mean decommissioning, a firewall change, a scan failure, or a rotation—not proof that the asset no longer exists.
+Keep the last-seen timestamp and evidence source. A certificate disappearing from a scan might mean decommissioning, a firewall change, a scan failure, or a rotation-not proof that the asset no longer exists.
 
 ## Prioritize the Exceptions
 

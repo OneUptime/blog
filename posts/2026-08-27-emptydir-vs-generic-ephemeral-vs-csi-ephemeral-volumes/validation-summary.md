@@ -1,4 +1,4 @@
-# Validation Summary: emptyDir vs Generic Ephemeral vs CSI Ephemeral Volumes: How to Choose in Kubernetes
+# Validation Summary: Choose Between emptyDir, Generic Ephemeral, and CSI Ephemeral Volumes
 
 ## Status
 validated

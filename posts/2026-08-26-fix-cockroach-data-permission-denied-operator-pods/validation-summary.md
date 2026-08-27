@@ -1,4 +1,4 @@
-# Validation Summary: How to Fix `Permission Denied` on `/cockroach/cockroach-data` in Operator-Managed Pods
+# Validation Summary: Fix `/cockroach/cockroach-data` Permission Denied in Operator Pods
 
 ## Status
 

@@ -10,7 +10,7 @@ Description: Build Fulcio with PKCS#11 support, map its certificate ID and key l
 
 Fulcio includes a `pkcs11ca` backend that asks a PKCS#11 token to sign certificates without exporting the CA private key. The official documentation, however, says the implementation has only been validated with SoftHSM. Treat support for a specific hardware appliance, firmware, vendor module, high-availability topology, and session limit as something you must qualify against the exact Fulcio release you deploy.
 
-There is another important current limitation: `pkcs11ca` loads one CA certificate, not an arbitrary signer-to-root chain. Its normal path finds that certificate in the token by ID; the AWS-HSM compatibility path loads one certificate from disk. This makes the backend effectively a direct-root signer as implemented. If your production policy requires the safer offline-root/online-intermediate design, use Fulcio's `kmsca` backend or extend and review the PKCS#11 implementation rather than pretending a missing chain flag exists.
+There is another important current limitation: `pkcs11ca` loads one issuer certificate, not an arbitrary signer-to-root chain. Its normal path finds that certificate in the token by ID; the AWS-HSM compatibility path loads one certificate from disk. Upstream calls this certificate a root and `createca` creates a self-signed root, but the implementation does not require it to be self-signed. A matching intermediate can sign leaves if its root is distributed separately to clients and the CT log accepts that path; Fulcio returns only the leaf and that one issuer certificate. If your production policy requires Fulcio itself to load, return, and validate a complete offline-root/online-intermediate chain, use Fulcio's `kmsca` backend or extend and review the PKCS#11 implementation rather than pretending a missing chain flag exists.
 
 ## Pin a CGO-Enabled Build
 
@@ -28,6 +28,7 @@ cd fulcio
 git checkout v1.8.8
 
 CGO_ENABLED=1 go build -trimpath -o fulcio .
+./fulcio createca --help | grep -- '--pkcs11-config-path'
 ./fulcio serve --help | grep -E 'pkcs11|hsm'
 ```
 
@@ -69,10 +70,12 @@ Set `SOFTHSM2_CONF` if the SoftHSM token directory is not using the system defau
 
 ## Understand Fulcio's Two Object Selectors
 
-Current Fulcio uses two independent selectors:
+Current `fulcio serve` uses two independent selectors:
 
 - `--hsm-key-label`, defaulting to `PKCS11CA`, finds the private/public key pair by label.
 - `--hsm-caroot-id` finds the CA certificate by PKCS#11 certificate object ID.
+
+The `v1.8.8` `fulcio createca` helper does not expose `--hsm-key-label`; it always looks for a key pair labeled `PKCS11CA`.
 
 The key ID used during `pkcs11-tool --keypairgen` is not what Fulcio uses to find the key; its label is. Conversely, the CA certificate lookup normally uses the certificate ID, not its label. Confirm the actual objects rather than assuming the same text selects both:
 
@@ -100,7 +103,7 @@ The official lab flow uses the HSM key to create a self-signed certificate, impo
 
 Do not promote that convenience command's output without profile validation. In current source it sets an organization but does not set a Subject common name explicitly. The normative Fulcio root profile requires both organization and common name, as well as exact critical usages, identifiers, and a positive random 160-bit serial. Use audited CA ceremony tooling with the HSM signer to produce a compliant root, then import the certificate object in the form expected by the backend.
 
-If using the special `--aws-hsm-root-ca-path` option, Fulcio reads the single CA certificate from that PEM path instead of finding the certificate object in the token. Despite the flag name, the key is still found through the configured PKCS#11 module and key label. Protect the PEM's integrity and fingerprint; it is public but security-critical.
+If using the special `--aws-hsm-root-ca-path` option, Fulcio reads the single CA certificate from that PEM path instead of finding the certificate object in the token. Despite the flag name, the key is still found through the configured PKCS#11 module and key label. In `v1.8.8`, `--hsm-caroot-id` must still be nonempty even though this file-loading path does not use its value. Protect the PEM's integrity and fingerprint; it is public but security-critical.
 
 Before starting Fulcio, compare the certificate SPKI with the token's public key using vendor or OpenSC tooling. The current PKCS#11 backend does not call the same startup chain/key validation routine used by `kmsca` and `fileca`, so this preflight check is essential.
 
@@ -119,7 +122,7 @@ A current invocation is:
   --ct-log-public-key-path=/etc/fulcio/ct-public-key.pem
 ```
 
-Pin the flags to the deployed release. Current `main` embeds Fulcio's reusable `BaseCA` in the PKCS#11 implementation, so it implements the precertificate/final-certificate methods used for embedded SCTs when a CT client is configured. Older setup prose says only KMS and file backends support embedded SCTs. Resolve this version difference with an issuance test; there is no separate `--embedded-sct` flag.
+Pin the flags to the deployed release. Both `v1.8.8` and current `main` embed Fulcio's reusable `BaseCA` in the PKCS#11 implementation, so they implement the precertificate/final-certificate methods used for embedded SCTs when a CT client is configured. Older setup prose says only KMS and file backends support embedded SCTs. Resolve this documentation difference with an issuance test; there is no separate `--embedded-sct` flag.
 
 ## Test the Complete Signing Path
 
@@ -158,12 +161,12 @@ Monitor HSM authentication failures, object lookup failures, signature latency/e
 
 Use `kmsca` when you need:
 
-- a supported signer-first chain with an online intermediate beneath an offline root;
+- native loading and serving of a complete signer-first chain with an online intermediate beneath an offline root;
 - built-in startup verification that the chain matches the signer;
 - cloud-managed workload identity without a vendor PKCS#11 client; or
 - provider-qualified availability and audit integration.
 
-Choose `pkcs11ca` only after the current root-only object model, CGO/vendor dependency, PIN delivery, certificate validation gap, and device qualification are explicitly accepted or fixed in a reviewed fork.
+Choose `pkcs11ca` only after the current single-certificate object model, CGO/vendor dependency, PIN delivery, certificate validation gap, and device qualification are explicitly accepted or fixed in a reviewed fork.
 
 ## Official Documentation
 
@@ -178,4 +181,4 @@ Choose `pkcs11ca` only after the current root-only object model, CGO/vendor depe
 
 ## Conclusion
 
-Fulcio can send CA signatures through PKCS#11, but production safety is not created by selecting `--ca=pkcs11ca`. Pin a CGO build, prove every object selector and profile field, qualify the real device under embedded-SCT load, and account for the current single-certificate/root-only and restart-based rotation model.
+Fulcio can send CA signatures through PKCS#11, but production safety is not created by selecting `--ca=pkcs11ca`. Pin a CGO build, prove every object selector and profile field, qualify the real device under embedded-SCT load, and account for the current single-certificate/no-complete-chain and restart-based rotation model.

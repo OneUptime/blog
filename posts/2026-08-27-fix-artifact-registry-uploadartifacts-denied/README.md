@@ -1,8 +1,8 @@
-# Why Artifact Registry Returns `uploadArtifacts` Denied After `gcloud auth configure-docker`
+# Fix Artifact Registry `uploadArtifacts` Permission Denied
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Google Cloud, Artifact Registry, Docker, IAM, gcloud
+Tags: Google Cloud, Artifact Registry, Docker, IAM, Gcloud
 
 Description: Diagnose Artifact Registry push authorization by verifying the helper identity, repository path, and repository-scoped Writer role.
 

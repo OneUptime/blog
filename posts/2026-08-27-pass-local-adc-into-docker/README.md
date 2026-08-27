@@ -1,8 +1,8 @@
-# How to Pass Local Google Application Default Credentials into Docker Without Baking In a Key
+# Pass Local Application Default Credentials into Docker Safely
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Google Cloud, Docker, Application Default Credentials, Containers, Security
+Tags: Google Cloud, Docker, Application Default Credentials, Container, Security
 
 Description: Mount local Google ADC into a development container as a read-only file while keeping credentials out of images, layers, and source control.
 

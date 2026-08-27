@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: CockroachDB, Kubernetes, CockroachDB Operator, Admission Webhooks, TLS, Certificate Authority, OpenSSL
+Tags: CockroachDB, Kubernetes, CockroachDB Operator, Admission Webhook, TLS, Certificate Authority, OpenSSL
 
 Description: Replace the legacy v1alpha1 Public Operator webhook CA safely, understand its generated serving certificate and caBundle updates, and verify the Kubernetes API server trust path.
 

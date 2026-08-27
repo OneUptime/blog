@@ -1,4 +1,4 @@
-# Validation Summary: How to Copy Kubernetes Service and Pod Labels onto Prometheus Metrics with ServiceMonitor
+# Validation Summary: Copy Service and Pod Labels to Metrics with ServiceMonitor
 
 ## Status
 

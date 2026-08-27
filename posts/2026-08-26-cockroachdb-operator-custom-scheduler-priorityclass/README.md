@@ -14,9 +14,9 @@ Here, “Operator pods” means CockroachDB database pods created by the operato
 
 ## Know what each field does
 
-`schedulerName` selects the scheduler responsible for an unscheduled pod. If omitted, Kubernetes uses the default scheduler. A custom value must exactly match the `schedulerName` of a running scheduler profile. Kubernetes does not fall back to the default scheduler when no scheduler handles that name; the CockroachDB pods remain Pending.
+`schedulerName` selects the scheduler responsible for an unscheduled pod. If omitted, Kubernetes uses the default scheduler. A custom value must be a name handled by a running scheduler; for `kube-scheduler`, it must exactly match a configured profile's `schedulerName`. Kubernetes does not fall back to the default scheduler when no scheduler handles that name; the CockroachDB pods remain Pending.
 
-`priorityClassName` references a cluster-scoped `PriorityClass`. Kubernetes resolves that class to a numeric pod priority. Higher priority changes scheduling order and, depending on `preemptionPolicy`, can allow a pending pod to preempt lower-priority pods. It does not reserve CPU, bypass affinity, satisfy an unavailable persistent volume, or make an unsuitable node valid.
+`priorityClassName` references a cluster-scoped `PriorityClass`. Kubernetes resolves that class to a numeric pod priority. With the standard `kube-scheduler` `PrioritySort` and `DefaultPreemption` plugins, higher priority changes scheduling order and, depending on `preemptionPolicy`, can allow a pending pod to preempt lower-priority pods. A differently configured or independently implemented scheduler can handle priority differently. Priority does not reserve CPU, bypass affinity, satisfy an unavailable persistent volume, or bypass hard node-feasibility constraints; preemption helps only when removing lower-priority pods makes a node feasible.
 
 ## Create the PriorityClass first
 
@@ -44,16 +44,17 @@ User-created PriorityClass values must not exceed one billion, and names beginni
 
 ## Verify the custom scheduler before selecting it
 
-A custom scheduler is a separately deployed Kubernetes control-plane component. The CockroachDB Operator does not install one. In a multi-profile `kube-scheduler` configuration, the selected name comes from `profiles[].schedulerName`, for example:
+A named scheduler can be an additional profile in an existing `kube-scheduler` instance or a separately deployed scheduler. The CockroachDB Operator does not configure or install one. In a multi-profile `kube-scheduler` configuration, the selected name comes from `profiles[].schedulerName`, for example:
 
 ```yaml
 apiVersion: kubescheduler.config.k8s.io/v1
 kind: KubeSchedulerConfiguration
 profiles:
+  - schedulerName: default-scheduler
   - schedulerName: crdb-scheduler
 ```
 
-How you deploy and secure that scheduler depends on your Kubernetes distribution. Before changing database pods, verify that its Deployment or static pod is healthy, has leader-election and RBAC configuration appropriate to the cluster, and is watching the exact name `crdb-scheduler`. Test the scheduler with a disposable pod first.
+How you configure, deploy, and secure that scheduler depends on your Kubernetes distribution. Before changing database pods, verify that the scheduler instance is healthy, has leader-election and RBAC configuration appropriate to the cluster, and is configured to handle the exact name `crdb-scheduler`. Test the scheduler with a disposable pod first.
 
 ## Configure the GA operator-managed pods
 
@@ -131,7 +132,7 @@ helm upgrade --install orders-db cockroachdb-v2/cockroachdb-chart \
 
 Changing these fields changes the desired pod specification and normally causes the operator to roll CockroachDB pods. Maintain enough capacity for both the database topology and any transient scheduling constraints. A high priority cannot help if the custom scheduler rejects the pod or no node can attach its volume.
 
-## Prove which scheduler handled each pod
+## Verify the selected scheduler and scheduling result
 
 Inspect the desired and admitted values:
 
@@ -140,6 +141,8 @@ kubectl -n crdb-prod get pods \
   -l app.kubernetes.io/component=cockroachdb \
   -o custom-columns='NAME:.metadata.name,SCHEDULER:.spec.schedulerName,CLASS:.spec.priorityClassName,PRIORITY:.spec.priority,NODE:.spec.nodeName'
 ```
+
+These fields confirm what each pod requested, but they do not by themselves show that scheduling occurred through it. Inspect the pod's `Scheduled` event for that evidence; for `kube-scheduler` profiles, the event's reporting controller is the profile's `schedulerName`. Use scheduler logs if you need to identify an exact process instance.
 
 Watch rollout state and events:
 
@@ -154,9 +157,9 @@ Useful failure patterns include:
 - `schedulerName` is correct but pods remain Pending: inspect the custom scheduler's logs and Kubernetes events.
 - `priorityClassName` is rejected: the class does not exist, is misspelled, or admission policy blocks it.
 - the scheduler evaluates the pod but finds no feasible nodes: inspect persistent-volume topology, requests, taints, affinity, and topology-spread constraints.
-- pods run with an unexpected scheduler: inspect the live pod rather than assuming the values file reached the `CrdbCluster` and `CrdbNode` objects.
+- a pod has an unexpected `schedulerName`: inspect the live pod rather than assuming the values file reached the `CrdbCluster` and `CrdbNode` objects.
 
-If rollback is required, remove `schedulerName` to return to the default scheduler and retain or change `priorityClassName` according to policy. Apply that as a reviewed chart upgrade; do not manually edit generated pods because the operator will reconcile them back.
+If rollback is required, remove `schedulerName`; when the operator recreates the pods, Kubernetes defaults them to `default-scheduler`. Retain or change `priorityClassName` according to policy. Apply that as a reviewed chart upgrade; do not manually edit generated pods because the operator will reconcile them back.
 
 ## Separate database priority from operator priority
 

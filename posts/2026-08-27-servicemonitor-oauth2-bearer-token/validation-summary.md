@@ -1,4 +1,4 @@
-# Validation Summary: How to Send an OAuth2 or Bearer Token from a ServiceMonitor Without Using Forbidden File Paths
+# Validation Summary: Send OAuth2 or Bearer Tokens from a ServiceMonitor
 
 ## Status
 

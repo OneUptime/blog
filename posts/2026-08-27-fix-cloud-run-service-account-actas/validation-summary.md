@@ -1,4 +1,4 @@
-# Validation Summary: How to Fix `iam.serviceAccounts.actAs` When Deploying Cloud Run with a Custom Service Account
+# Validation Summary: Fix `iam.serviceAccounts.actAs` for Cloud Run Deployments
 
 ## Status
 

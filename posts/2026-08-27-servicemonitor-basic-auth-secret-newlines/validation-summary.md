@@ -1,4 +1,4 @@
-# Validation Summary: How to Configure Basic Authentication in a ServiceMonitor Without Secret Newline Failures
+# Validation Summary: Configure ServiceMonitor Basic Auth Without Secret Newline Errors
 
 ## Status
 

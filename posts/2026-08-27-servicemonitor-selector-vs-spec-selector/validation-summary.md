@@ -1,4 +1,4 @@
-# Validation Summary: `serviceMonitorSelector` vs `spec.selector`: Which Labels Must a ServiceMonitor Match?
+# Validation Summary: `serviceMonitorSelector` vs `spec.selector` Labels
 
 ## Status
 

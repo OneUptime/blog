@@ -1,4 +1,4 @@
-# Validation Summary: What Should an SSL Monitor Validate Besides Expiry? Hostname, Trust Chain, Revocation, and Key Strength
+# Validation Summary: What Should an SSL Monitor Validate Besides Expiry?
 
 ## Status
 

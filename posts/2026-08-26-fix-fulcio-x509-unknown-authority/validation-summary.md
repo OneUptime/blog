@@ -1,4 +1,4 @@
-# Validation Summary: How to Fix x509: Certificate Signed by Unknown Authority Across Public, Staging, and Private Fulcio
+# Validation Summary: Fix Fulcio `x509: Certificate Signed by Unknown Authority`
 
 ## Status
 

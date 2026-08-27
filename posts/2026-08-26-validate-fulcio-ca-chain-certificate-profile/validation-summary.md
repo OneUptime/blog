@@ -1,4 +1,4 @@
-# Validation Summary: How to Validate a Fulcio Root and Intermediate Chain Against Sigstore’s Certificate Profile
+# Validation Summary: Validate a Fulcio CA Chain Against Sigstore’s Certificate Profile
 
 ## Status
 

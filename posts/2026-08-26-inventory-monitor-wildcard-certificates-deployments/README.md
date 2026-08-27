@@ -1,4 +1,4 @@
-# How to Inventory and Monitor Wildcard Certificates Across Every Deployment Location
+# Inventory and Monitor Wildcard Certificates Across Deployments
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -193,4 +193,4 @@ Avoid placing raw fingerprints or whole SAN lists on high-cardinality metric lab
 
 ## Conclusion
 
-A wildcard SAN is an authority boundary, not a deployment map. Join issuance records, stored copies, listener bindings, and strict live probes under stable owner-reviewed deployment IDs. Reconcile every cluster, region, address family, origin, and failover site, and require full fingerprint convergence after rotation so a forgotten wildcard copy cannot age silently toward failure—or remain an unnecessary key-sprawl risk.
+A wildcard SAN is an authority boundary, not a deployment map. Join issuance records, stored copies, listener bindings, and strict live probes under stable owner-reviewed deployment IDs. Reconcile every cluster, region, address family, origin, and failover site, and require full fingerprint convergence after rotation so a forgotten wildcard copy cannot age silently toward failure-or remain an unnecessary key-sprawl risk.

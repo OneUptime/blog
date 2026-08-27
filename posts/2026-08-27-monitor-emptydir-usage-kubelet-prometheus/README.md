@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Kubelet, Prometheus, emptyDir, Metrics, Ephemeral Storage
+Tags: Kubernetes, Kubelet, Prometheus, emptyDir, Metric, Ephemeral Storage
 
 Description: Read named emptyDir usage from the kubelet Summary API and export deliberate per-Pod metrics without confusing them with PVC statistics.
 

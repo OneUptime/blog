@@ -1,4 +1,4 @@
-# Validation Summary: How Kubernetes Accounts for Ephemeral Storage Across Logs, Writable Layers, and emptyDir
+# Validation Summary: How Kubernetes Accounts for Logs, Layers, and emptyDir Storage
 
 ## Status
 

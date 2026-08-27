@@ -1,4 +1,4 @@
-# Validation Summary: How to Catch Certificate Changes in Serial Number, Fingerprint, Issuer, or Key After Rotation
+# Validation Summary: How to Detect Certificate Serial, Fingerprint, Issuer, or Key Changes
 
 ## Status
 

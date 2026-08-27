@@ -1,8 +1,8 @@
-# How to Copy Kubernetes Service and Pod Labels onto Prometheus Metrics with ServiceMonitor
+# Copy Service and Pod Labels to Metrics with ServiceMonitor
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Prometheus, Prometheus Operator, ServiceMonitor, Kubernetes Labels, Metrics, Observability
+Tags: Prometheus, Prometheus Operator, ServiceMonitor, Kubernetes Labels, Metric, Observability
 
 Description: Use ServiceMonitor `targetLabels`, `podTargetLabels`, and `jobLabel` to attach stable Kubernetes ownership metadata to scraped metrics.
 

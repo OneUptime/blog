@@ -1,4 +1,4 @@
-# Validation Summary: How to Fix Google Cloud Storage Signed URL `SignatureDoesNotMatch` by Matching Signed Headers
+# Validation Summary: Fix Cloud Storage Signed URL `SignatureDoesNotMatch` Errors
 
 ## Status
 validated

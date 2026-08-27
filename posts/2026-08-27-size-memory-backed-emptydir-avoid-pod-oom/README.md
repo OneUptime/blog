@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, emptyDir, Memory, tmpfs, OOMKilled, Resource Limits
+Tags: Kubernetes, emptyDir, Memory, tmpfs, OOMKilled, Resource Limit
 
 Description: Budget tmpfs emptyDir together with application memory, writer-specific charges, requests, limits, cleanup, and OOM failure modes.
 

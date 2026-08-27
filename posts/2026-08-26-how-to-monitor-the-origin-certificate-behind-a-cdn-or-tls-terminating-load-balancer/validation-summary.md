@@ -1,4 +1,4 @@
-# Validation Summary: How to Monitor the Origin Certificate Behind a CDN or TLS-Terminating Load Balancer
+# Validation Summary: How to Monitor Origin Certificates Behind a CDN or Load Balancer
 
 ## Status
 

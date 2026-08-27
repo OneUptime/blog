@@ -1,4 +1,4 @@
-# Validation Summary: How to Fix BigQuery `Cannot Read and Write in Different Locations` for External Cloud Storage Tables
+# Validation Summary: Fix BigQuery Cross-Location Reads and Writes for External Tables
 
 ## Status
 

@@ -1,4 +1,4 @@
-# How to Detect an Incomplete or Expiring Intermediate Certificate Chain Before Clients Fail
+# Detect Incomplete or Expiring Intermediate Certificate Chains
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -126,19 +126,19 @@ An extra, obsolete intermediate can also trigger this conservative check. Do not
 
 ## Use Blackbox Exporter for Continuous Detection
 
-With verification enabled, a Blackbox TLS probe fails when its Go verifier cannot build a trusted chain. It also exports:
+With certificate verification enabled, Blackbox HTTP and TLS-enabled TCP/Unix probes fail when their Go verifier cannot build a trusted chain. After a successful TLS connection, they export:
 
 ```promql
 probe_ssl_earliest_cert_expiry
 ```
 
-The implementation calculates the earliest `notAfter` among `PeerCertificates`, the list sent by the server. Alerting on:
+The implementation calculates the earliest `NotAfter` among `PeerCertificates`, the list sent by the server. Alerting on:
 
 ```promql
 probe_ssl_earliest_cert_expiry - time() < 30 * 24 * 60 * 60
 ```
 
-therefore covers the leaf and every sent intermediate. Pair it with:
+therefore covers the leaf and every sent intermediate on the TLS connection represented by the gauge. Pair it with:
 
 ```promql
 probe_success == 0
@@ -146,7 +146,9 @@ probe_success == 0
 
 because a missing, expired, or untrusted intermediate can abort validation and remove the expiry series.
 
-Current Blackbox Exporter also exposes `probe_ssl_last_chain_expiry_timestamp_seconds`, calculated from verified paths. The two gauges answer different questions: the peer-list metric is conservative about everything sent, while the verified-chain metric reflects paths the verifier built. Investigate rather than averaging them when they disagree.
+The HTTP and TLS-enabled TCP/Unix probers also expose `probe_ssl_last_chain_expiry_timestamp_seconds`. Its implementation takes each path's earliest `NotAfter` from `VerifiedChains`, including the trust anchor, then reports the latest of those values: when the last currently verified path expires. The two gauges answer different questions: the peer-list metric is conservative about everything sent, while the verified-chain metric reflects paths the verifier built. Investigate rather than averaging them when they disagree.
+
+For HTTP probes, both TLS gauges describe only the final response after redirects and are absent when that response is not TLS. Probe each HTTPS hop separately, or disable redirects to monitor the initial hop, and set `fail_if_not_ssl: true` when a plain-HTTP final response should fail the probe.
 
 ## Test Every TLS Termination Point
 

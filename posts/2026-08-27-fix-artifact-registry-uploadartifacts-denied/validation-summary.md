@@ -1,4 +1,4 @@
-# Validation Summary: Why Artifact Registry Returns `uploadArtifacts` Denied After `gcloud auth configure-docker`
+# Validation Summary: Fix Artifact Registry `uploadArtifacts` Permission Denied
 
 ## Status
 

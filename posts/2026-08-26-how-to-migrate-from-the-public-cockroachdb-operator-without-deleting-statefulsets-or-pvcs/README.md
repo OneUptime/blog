@@ -1,10 +1,10 @@
-# How to Migrate from the Public CockroachDB Operator Without Prematurely Deleting StatefulSets or Deleting PVCs
+# Migrate from the Public CockroachDB Operator Without Losing Data
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: CockroachDB, Kubernetes, CockroachDB Operator, Migration, StatefulSet, Persistent Volumes, Data Safety
+Tags: CockroachDB, Kubernetes, CockroachDB Operator, Migration, StatefulSet, Persistent Volume, Data Safety
 
-Description: Migrate a legacy v1alpha1 Public Operator cluster to the GA v1beta1 CockroachDB Operator with the supported controller, preserving PVCs and deleting the StatefulSet only at the documented handoff point.
+Description: Migrate a legacy v1alpha1 Public Operator cluster to the GA v1beta1 CockroachDB Operator with the supported controller, preserving PVCs through the documented StatefulSet handoff.
 
 ---
 

@@ -1,8 +1,8 @@
-# How to Fix `Permission Denied` on `/cockroach/cockroach-data` in Operator-Managed Pods
+# Fix `/cockroach/cockroach-data` Permission Denied in Operator Pods
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: CockroachDB, Kubernetes, CockroachDB Operator, Persistent Volumes, SecurityContext, Troubleshooting
+Tags: CockroachDB, Kubernetes, CockroachDB Operator, Persistent Volume, SecurityContext, Troubleshooting
 
 Description: Diagnose and repair data-volume ownership for GA v1beta1 CockroachDB Operator pods without deleting PVCs, using unsafe permissions, or mixing deprecated operator fields.
 

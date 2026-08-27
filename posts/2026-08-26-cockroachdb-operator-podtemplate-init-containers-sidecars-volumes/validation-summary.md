@@ -1,4 +1,4 @@
-# Validation Summary: How to Add Init Containers, Sidecars, and Volumes with the CockroachDB Operator `podTemplate`
+# Validation Summary: Add Init Containers, Sidecars, and Volumes with `podTemplate`
 
 ## Status
 

@@ -1,4 +1,4 @@
-# Validation Summary: How to Diagnose a CockroachDB Operator Scale-Down Stuck After Node Decommissioning
+# Validation Summary: How to Diagnose a Stuck CockroachDB Operator Scale-Down
 
 ## Status
 

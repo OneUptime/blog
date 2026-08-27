@@ -1,4 +1,4 @@
-# Validation Summary: How to Monitor TLS Certificates Inside Kubernetes Secrets Before They Reach an Ingress
+# Validation Summary: Monitor TLS Certificates in Kubernetes Secrets Before Ingress
 
 ## Status
 validated

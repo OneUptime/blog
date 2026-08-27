@@ -1,4 +1,4 @@
-# How to Fix x509: Certificate Signed by Unknown Authority Across Public, Staging, and Private Fulcio
+# Fix Fulcio `x509: Certificate Signed by Unknown Authority`
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -8,7 +8,7 @@ Description: Identify whether an unknown-authority error comes from TLS or Fulci
 
 ---
 
-`x509: certificate signed by unknown authority` means that one certificate path could not reach a trusted anchor. In a Sigstore workflow, there are several different certificate paths, so installing another CA at random often fixes the wrong one—or dangerously combines trust domains that should remain separate.
+`x509: certificate signed by unknown authority` means that one certificate path could not reach a trusted anchor. In a Sigstore workflow, there are several different certificate paths, so installing another CA at random often fixes the wrong one-or dangerously combines trust domains that should remain separate.
 
 First locate the failing path: HTTPS to Fulcio, Rekor, the CT log, OIDC provider, registry, or TUF mirror uses ordinary TLS trust. Verification of the short-lived signing certificate uses Sigstore's Fulcio trust from TUF or a supplied `TrustedRoot`. These are separate trust stores and require different fixes.
 
@@ -136,7 +136,7 @@ If your private TUF mirror is signed by a private root, `--mirror` alone cannot 
 
 ## Fix an Incomplete or Reversed Fulcio Chain
 
-For `kmsca` and `fileca`, provide the CA chain signer-first and, when the signer chains to a root, root-last. A root-first file is invalid. Current Fulcio can accept an intermediate-only file by treating its last—and only—certificate as the trust anchor, but that truncates the published chain and changes the intended anchor; include the root when it is the intended trust anchor.
+For `kmsca` and `fileca`, provide the CA chain signer-first and, when the signer chains to a root, root-last. A root-first file is invalid. Current Fulcio can accept an intermediate-only file by treating its last-and only-certificate as the trust anchor, but that truncates the published chain and changes the intended anchor; include the root when it is the intended trust anchor.
 
 Build and test explicitly:
 

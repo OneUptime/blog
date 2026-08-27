@@ -1,4 +1,4 @@
-# How to Catch Certificate Changes in Serial Number, Fingerprint, Issuer, or Key After Rotation
+# How to Detect Certificate Serial, Fingerprint, Issuer, or Key Changes
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -166,7 +166,7 @@ A rotation policy should state the intended transitions before deployment:
 - `notBefore` and `notAfter` must match the approved validity window;
 - every IPv4 address, IPv6 address, region, load-balancer node, and origin path must converge.
 
-Fingerprint equality is not a universal availability requirement. A CDN may intentionally use different valid certificates at different edges, and some services serve RSA and ECDSA certificates according to client capabilities. In those designs, validate each observed certificate against an approved set and the required names, trust roots, algorithms, and validity—not against one global fingerprint.
+Fingerprint equality is not a universal availability requirement. A CDN may intentionally use different valid certificates at different edges, and some services serve RSA and ECDSA certificates according to client capabilities. In those designs, validate each observed certificate against an approved set and the required names, trust roots, algorithms, and validity-not against one global fingerprint.
 
 ## Keep Evidence and Avoid Cardinality Surprises
 

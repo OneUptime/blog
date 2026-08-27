@@ -1,4 +1,4 @@
-# Validation Summary: How to Back a Production Fulcio CA with AWS KMS, Google Cloud KMS, Azure Key Vault, or Vault
+# Validation Summary: Back a Production Fulcio CA with KMS, Key Vault, or Vault
 
 ## Status
 

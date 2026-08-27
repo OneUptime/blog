@@ -1,8 +1,8 @@
-# How to Fix BigQuery `Cannot Read and Write in Different Locations` for External Cloud Storage Tables
+# Fix BigQuery Cross-Location Reads and Writes for External Tables
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Google Cloud, BigQuery, Cloud Storage, External Tables, Data Location
+Tags: Google Cloud, BigQuery, Cloud Storage, External Table, Data Location
 
 Description: Align a Cloud Storage bucket, BigQuery external-table dataset, query job, and destination dataset to resolve cross-location write failures.
 

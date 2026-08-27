@@ -1,4 +1,4 @@
-# How to Fix `No Matches for Kind ServiceMonitor` During Helm or Argo CD Installation
+# Fix Missing ServiceMonitor CRDs in Helm or Argo CD
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -14,7 +14,7 @@ The usual causes are a missing CRD, a CRD that has not reached `Established`, th
 
 ## Prove What the API Server Serves
 
-Start with the exact context used by Helm or Argo CD, not a convenient local context:
+For Helm, use the same kubeconfig and context as the release operation. For Argo CD, inspect the Application's `spec.destination` and run these checks against the same destination cluster; Argo CD uses its configured cluster credentials rather than your local context:
 
 ```bash
 kubectl config current-context
@@ -36,7 +36,7 @@ Do not confuse the cluster-scoped CRD with the namespaced controller Deployment.
 
 Prometheus Operator installation begins with its CRDs. Use one pinned Operator or kube-prometheus release as the source for the CRDs, controller, and examples. Mixing a current ServiceMonitor manifest with an old CRD can turn a discovery error into schema rejection or silent field pruning.
 
-Current Prometheus Operator releases from v0.84.0 onward use CEL in their CRDs and require Kubernetes 1.25 or newer, or Kubernetes 1.23 with the relevant validation-expression feature gate. Check the Operator compatibility page when the cluster is older.
+Current Prometheus Operator releases from v0.84.0 onward use CEL in their CRDs and require Kubernetes 1.25 or newer; Kubernetes 1.23–1.24 can be used with the `CustomResourceValidationExpressions` feature gate enabled. Check the Operator compatibility page when the cluster is older.
 
 After applying the CRD set, wait for API registration:
 
@@ -49,27 +49,27 @@ kubectl wait \
 kubectl api-resources --api-group=monitoring.coreos.com | grep ServiceMonitor
 ```
 
-When updating large Operator CRDs, client-side apply can exceed the Kubernetes annotation-size limit. The Prometheus Operator troubleshooting guide recommends server-side apply on supported Kubernetes releases:
+When updating large Operator CRDs, client-side apply can exceed the Kubernetes annotation-size limit. The Prometheus Operator troubleshooting guide recommends server-side apply on supported Kubernetes releases; this example assumes the pinned manifests are stored in `./prometheus-operator-crds/`:
 
 ```bash
-kubectl apply --server-side --force-conflicts -f <pinned-crd-manifests>
+kubectl apply --server-side --force-conflicts -f ./prometheus-operator-crds/
 ```
 
 Use `--force-conflicts` only for CRDs whose field ownership you have reviewed. Do not point an unattended production installation at an unpinned `latest` URL.
 
 ## Order Helm and Argo CD Reconciliation
 
-The durable ordering is:
+A safe full-stack ordering is:
 
 ```text
 CRDs -> wait for Established and discovery -> Operator/RBAC -> ServiceMonitor objects
 ```
 
-For Helm, determine whether the chosen chart release actually owns and installs the Prometheus Operator CRDs. If another release owns them, install or upgrade that dependency first. A chart that only creates an application's ServiceMonitor cannot register the kind itself.
+For Helm, determine whether the chosen chart ships the Prometheus Operator CRDs in its `crds/` directory or documents a separate CRD lifecycle. On initial install, Helm installs CRDs from `crds/` before chart templates. Helm skips CRDs that already exist and does not upgrade or delete CRDs from `crds/`, so follow the chart's CRD upgrade procedure or apply the pinned CRDs separately before upgrading dependent resources. A chart that only creates an application's ServiceMonitor cannot register the kind itself.
 
-For Argo CD, put CRD registration in an earlier synchronization phase or a separately reconciled application, then allow the application containing ServiceMonitor objects to sync after the CRD is established. The exact Argo CD organization is a repository decision; the Kubernetes invariant is that discovery must serve the resource before a custom object can be created.
+For Argo CD, a CRD and its custom resources can be part of the same sync: Argo CD automatically skips the missing-type dry run when the CRD manifest is present, applies the CRD, and can then create the custom resource. If the CRD is managed by another Application or created by another controller, reconcile and explicitly gate that source before syncing ServiceMonitor objects. Sync waves provide ordering and a short inter-wave delay; use an explicit health or wait check when you need to prove `Established` and discovery rather than relying on the delay alone.
 
-Some deployment clients build their REST mapping near the start of a run. If a single run creates both the CRD and its instances, the CRD can become established after the client has already failed to map the instances. Once the wait succeeds, rerun the failed reconciliation. Repeated retries do not fix an absent or incompatible CRD.
+Clients without CRD-aware sequencing can fail when one run submits a CRD and its instances before the new API endpoint is discoverable. Helm handles this for CRDs in `crds/`, and Argo CD handles CRDs included in the same sync. For other arrangements, once the wait succeeds, rerun the failed operation. Repeated retries do not fix an absent or incompatible CRD.
 
 ## Validate the Manifest Against the Live Schema
 
@@ -77,7 +77,9 @@ Once discovery works, use server-side dry run so the live CRD validates the obje
 
 ```bash
 kubectl apply --server-side --dry-run=server -f servicemonitor.yaml
-kubectl explain servicemonitor.spec --recursive
+kubectl explain servicemonitor.spec \
+  --api-version=monitoring.coreos.com/v1 \
+  --recursive
 ```
 
 The canonical identity is:
@@ -89,7 +91,7 @@ kind: ServiceMonitor
 
 Do not change the API group merely to make an error disappear. Query the installed CRD's `spec.versions` and use a version with `served: true`.
 
-After creation, a separate selection path begins. Prometheus must select the ServiceMonitor by object and namespace labels, and the ServiceMonitor must select a Kubernetes Service and its named port. Probe and ScrapeConfig are separate CRDs with separate Prometheus selectors; installing one does not make another kind available.
+After creation, a separate selection path begins. The Prometheus custom resource discovers ServiceMonitors through `serviceMonitorSelector` and `serviceMonitorNamespaceSelector`. A ServiceMonitor selects Endpoints or EndpointSlices, normally through labels on their backing Kubernetes Services; an endpoint can use `port` for a named Service port or `targetPort` for a selected Pod container port by name or number. Probe and ScrapeConfig are separate CRDs with separate Prometheus selectors; installing one does not make another kind available.
 
 ## A Focused Recovery Checklist
 

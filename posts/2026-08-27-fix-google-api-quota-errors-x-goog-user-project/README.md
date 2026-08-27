@@ -1,8 +1,8 @@
-# How to Fix Google API Quota Errors in Raw REST Calls with the `x-goog-user-project` Header
+# Fix Google API REST Quota Errors with `x-goog-user-project`
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Google Cloud, REST API, Quotas, Application Default Credentials, Authentication
+Tags: Google Cloud, REST API, Quota, Application Default Credentials, Authentication
 
 Description: Attribute raw Google API REST requests to the correct quota project with x-goog-user-project and verify the required Service Usage permission.
 

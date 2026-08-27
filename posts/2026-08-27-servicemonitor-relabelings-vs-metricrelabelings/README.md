@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Prometheus, Prometheus Operator, ServiceMonitor, Relabeling, Metrics, Kubernetes
+Tags: Prometheus, Prometheus Operator, ServiceMonitor, Relabeling, Metric, Kubernetes
 
 Description: Place ServiceMonitor relabel rules at the correct stage by separating target discovery metadata from samples returned by the metrics endpoint.
 

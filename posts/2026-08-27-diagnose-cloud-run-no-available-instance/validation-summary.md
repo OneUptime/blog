@@ -1,4 +1,4 @@
-# Validation Summary: How to Diagnose Cloud Run `The Request Was Aborted Because There Was No Available Instance`
+# Validation Summary: Diagnose Cloud Run `No Available Instance` Errors
 
 ## Status
 validated

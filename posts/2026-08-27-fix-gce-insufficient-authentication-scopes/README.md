@@ -1,8 +1,8 @@
-# How to Fix `Request Had Insufficient Authentication Scopes` on a GCE VM with Correct IAM Roles
+# Fix GCE `Insufficient Authentication Scopes` with IAM Roles
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Google Cloud, Compute Engine, IAM, OAuth, Service Accounts
+Tags: Google Cloud, Compute Engine, IAM, OAuth, Service Account
 
 Description: Fix OAuth scope denials on Compute Engine by using cloud-platform scope while keeping authorization least-privilege with IAM roles.
 
@@ -60,19 +60,24 @@ Service account emails and scope names are not bearer credentials, but still avo
 
 ## Confirm which credentials the application uses
 
-The VM's scopes matter when the request uses credentials from its attached service account. Application Default Credentials checks `GOOGLE_APPLICATION_CREDENTIALS` before the metadata server. A gcloud CLI installation can also have a separately logged-in user account.
+The VM's scopes matter when the request uses credentials from its attached service account. Application Default Credentials checks, in order, `GOOGLE_APPLICATION_CREDENTIALS`, the well-known local ADC file, and then the attached service account through the metadata server. The gcloud CLI does not use ADC; it has a separate credential store and can also have a separately logged-in user account.
 
-Check for overrides without printing credential content:
+Run the relevant checks as the same OS user and in the same runtime environment as the failing process, without printing credential content:
 
 ```bash
 if [ -n "${GOOGLE_APPLICATION_CREDENTIALS:-}" ]; then
   echo 'GOOGLE_APPLICATION_CREDENTIALS is set'
 fi
 
+ADC_FILE="${HOME}/.config/gcloud/application_default_credentials.json"
+if [ -f "${ADC_FILE}" ]; then
+  echo 'A local ADC file exists'
+fi
+
 gcloud auth list
 ```
 
-If the application uses a credential file or an interactive gcloud user, diagnose that credential source separately. Do not change VM scopes when the failing token did not come from the VM's metadata server.
+If the application uses an environment-provided credential configuration or a local ADC file, or if the failing gcloud command uses a separately logged-in account, diagnose that credential source separately. Do not change VM scopes when the failing token did not come from the VM's metadata server.
 
 ## Why the IAM role is not enough
 
@@ -90,7 +95,7 @@ Access scopes apply to default OAuth scopes for gcloud and client-library reques
 
 ## Change an existing VM safely
 
-Changing a VM's attached service account or access scopes requires stopping the VM. Plan a maintenance window and review the workload's shutdown, availability, storage, and restart behavior first.
+Changing a VM's attached service account or access scopes requires stopping the VM. Plan a maintenance window and review the workload's shutdown, availability, storage, and restart behavior first. VMs with attached Local SSD disks require an explicit `--discard-local-ssd` choice when stopping. CSEK is deprecated, but restarting an existing VM with CSEK-encrypted disks still requires `--csek-key-file` and `compute.instances.startWithEncryptionKey`; plan a migration to CMEK.
 
 Capture and verify the current service account before the stop:
 
@@ -102,9 +107,15 @@ VM_SERVICE_ACCOUNT="$(
     --format='value(serviceAccounts[0].email)'
 )"
 
-test -n "${VM_SERVICE_ACCOUNT}"
-printf '%s\n' "${VM_SERVICE_ACCOUNT}"
+if [ -z "${VM_SERVICE_ACCOUNT}" ]; then
+  printf '%s\n' 'No attached service account found; do not continue.' >&2
+  false
+else
+  printf '%s\n' "${VM_SERVICE_ACCOUNT}"
+fi
 ```
+
+Do not proceed to the stop step unless the guard prints the expected current service account email.
 
 Then stop, update, and restart the instance:
 
@@ -124,7 +135,7 @@ gcloud compute instances start "${VM}" \
   --zone="${ZONE}"
 ```
 
-The operator needs `compute.instances.stop`, `compute.instances.setServiceAccount`, and `compute.instances.start`. Attaching a service account also requires permission to act as that service account, commonly through `roles/iam.serviceAccountUser`. Use a change process that preserves the existing service account unless an identity change is explicitly intended.
+The VM describe and change commands shown require `compute.instances.get`, `compute.instances.stop`, `compute.instances.setServiceAccount`, and `compute.instances.start`. Attaching a service account also requires permission to act as that service account, commonly through `roles/iam.serviceAccountUser`. Use a change process that preserves the existing service account unless an identity change is explicitly intended.
 
 ## Keep IAM least-privilege
 
@@ -138,14 +149,14 @@ Do not create a service account key as a workaround. The metadata server already
 
 ## Update managed instance groups through the template
 
-If the VM belongs to a managed instance group, changing one instance creates configuration drift and a later repair or recreation can remove the fix. Update or replace the group's instance template with the intended user-managed service account and `cloud-platform` scope, then roll out replacement instances with the group's documented update controls.
+If the VM belongs to a managed instance group, changing one instance creates configuration drift and a later repair or recreation can remove the fix. Create a new instance template with the intended user-managed service account and `cloud-platform` scope, update the group to use it, then roll out replacement instances with the group's documented update controls.
 
 Test the new template on a controlled subset, respect surge and unavailable limits, and verify scopes on a replacement instance before completing the rollout.
 
 For new standalone VMs, specify both identity and scope at creation:
 
 ```bash
-gcloud compute instances create NEW_VM_NAME \
+gcloud compute instances create new-vm-name \
   --project="${PROJECT_ID}" \
   --zone="${ZONE}" \
   --service-account='workload@example-compute-project.iam.gserviceaccount.com' \
@@ -156,7 +167,7 @@ Grant the service account's IAM roles separately on the resources it must access
 
 ## Validate both authorization layers
 
-After restart, confirm the metadata scope list contains `cloud-platform`. Then repeat a low-risk form of the failing API operation and check its audit log identity.
+After restart, confirm the metadata scope list contains `cloud-platform`. Then repeat a low-risk form of the failing API operation and, when an audit log is available, check its caller identity. Most Data Access audit logs must be enabled explicitly.
 
 Interpret the next result carefully:
 
@@ -172,7 +183,7 @@ This staged validation avoids compensating for a scope error with an overly broa
 - [Change a VM service account and access scopes](https://cloud.google.com/compute/docs/instances/change-service-account)
 - [Create a VM with a user-managed service account](https://cloud.google.com/compute/docs/access/create-enable-service-accounts-for-instances)
 - [gcloud compute instances set-service-account](https://cloud.google.com/sdk/gcloud/reference/compute/instances/set-service-account)
-- [Troubleshoot insufficient scopes for GKE access](https://cloud.google.com/kubernetes-engine/docs/troubleshooting/kubectl#insufficient_authentication_scopes)
+- [Troubleshoot insufficient scopes for GKE access](https://cloud.google.com/kubernetes-engine/docs/troubleshooting/kubectl#insufficient-authentication)
 - [Roll out updates to managed instance groups](https://cloud.google.com/compute/docs/instance-groups/rolling-out-updates-to-managed-instance-groups)
 
 ## Conclusion

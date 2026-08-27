@@ -1,4 +1,4 @@
-# How to Configure Basic Authentication in a ServiceMonitor Without Secret Newline Failures
+# Configure ServiceMonitor Basic Auth Without Secret Newline Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

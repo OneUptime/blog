@@ -1,10 +1,10 @@
-# How to Rotate a File-Backed Fulcio Signing Key and Certificate Chain Without Restarting the Server
+# Rotate a File-Backed Fulcio Key and Chain Without Restarting
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Fulcio, Sigstore, File CA, Key Rotation, X.509, fsnotify, Private PKI
 
-Description: Rotate Fulcio's watched file-backed key and signer-first certificate chain in place, preserve the last valid pair during partial writes, verify the live trust bundle, and understand the feature's limits.
+Description: Rotate Fulcio's file-backed key and signer-first certificate chain in place, preserve the last valid pair during partial writes, verify the live trust bundle, and understand the feature's limits.
 
 ---
 

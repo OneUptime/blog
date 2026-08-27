@@ -1,8 +1,8 @@
-# How to Fix `iam.serviceAccounts.actAs` When Deploying Cloud Run with a Custom Service Account
+# Fix `iam.serviceAccounts.actAs` for Cloud Run Deployments
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Google Cloud, Cloud Run, IAM, Service Accounts, Security
+Tags: Google Cloud, Cloud Run, IAM, Service Account, Security
 
 Description: Grant a Cloud Run deployer the narrowly scoped Service Account User role required to attach a custom runtime service identity.
 

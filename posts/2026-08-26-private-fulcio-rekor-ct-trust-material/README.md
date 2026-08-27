@@ -1,4 +1,4 @@
-# Why Cosign Cannot Verify a Private Fulcio Certificate Without Rekor and CT Log Trust Material
+# Verify Private Fulcio Certificates with Rekor and CT Trust Material
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -8,9 +8,9 @@ Description: Understand each proof in private keyless verification, correct the 
 
 ---
 
-The title is intentionally broader than the underlying cryptography. An X.509 certificate path needs its Fulcio CA root and intermediates; X.509 itself does not need Rekor or a certificate-transparency key. Cosign's secure keyless verification performs additional Sigstore checks by default, and those checks need authenticated CT and artifact-transparency or timestamp material.
+The title is intentionally broader than the underlying cryptography. An X.509 certificate path needs its Fulcio CA root and intermediates; X.509 itself does not need Rekor or a certificate-transparency key. Cosign's secure keyless verification performs additional Sigstore checks by default, and those checks need authenticated CT evidence, artifact-transparency evidence, and trusted time from either a verified Rekor v1 signed entry timestamp or an accepted RFC 3161 TSA.
 
-That distinction matters. Adding the Fulcio root can fix `certificate signed by unknown authority`, but it cannot authenticate an embedded SCT, a Rekor signed entry timestamp, an inclusion promise/proof, or the time at which a short-lived certificate was used. Disabling all of those checks can make a laboratory command succeed, but it is no longer the normal Sigstore security model.
+That distinction matters. Adding the Fulcio root can fix `certificate signed by unknown authority`, but it cannot authenticate an embedded SCT, a Rekor v1 signed inclusion promise (SET), a Rekor inclusion proof against a signed checkpoint, or the time at which a short-lived certificate was used. Disabling the CT and artifact-log checks can make a laboratory command succeed, but it is no longer the normal Sigstore security model.
 
 ## Map Each Verification Layer
 
@@ -18,12 +18,12 @@ A private keyless signature normally involves these independent statements:
 
 | Evidence | What Cosign learns | Trusted material required |
 | --- | --- | --- |
-| artifact signature | the holder of the leaf private key signed this digest | public key in the leaf certificate |
+| artifact signature | the holder of the leaf private key signed a payload that binds this artifact digest | public key in the leaf certificate |
 | Fulcio path | an authorized CA bound that public key to an identity | Fulcio root and intermediates |
 | certificate identity | which SAN and OIDC issuer Fulcio certified | exact identity and issuer policy |
-| CT SCT | Fulcio committed the certificate/precertificate to its issuance log | CT log public key and issuing CA certificate |
-| Rekor evidence | the artifact signature was recorded by the selected transparency service | Rekor log public key, log ID/origin, and validity interval |
-| trusted time | the signature existed while the ten-minute certificate was valid | Rekor v1 integrated time or an accepted RFC 3161 TSA, depending on the design |
+| CT SCT | the CT log promised to include the certificate/precertificate submitted by Fulcio | CT log public key and issuing CA certificate |
+| Rekor evidence | the selected transparency service promised or proved inclusion of the artifact signature and digest | Rekor v1 log public key and SHA-256/SPKI log ID, or Rekor v2 checkpoint public key/ID and expected origin, plus the applicable validity interval |
+| trusted time | the signature existed while the ten-minute certificate was valid | Rekor v1 log key for a SET-authenticated integrated time, or an accepted RFC 3161 TSA certificate chain |
 
 The private Fulcio root authorizes certificate issuance. It does not authorize the CT or Rekor log to speak, and it cannot verify either log's signatures. Conversely, a valid Rekor proof does not make an untrusted Fulcio chain valid.
 
@@ -31,9 +31,9 @@ The private Fulcio root authorizes certificate issuance. It does not authorize t
 
 Fulcio certificates are valid for about ten minutes. Long-term verification asks whether the artifact signature was made while the certificate was valid, not whether the certificate is unexpired today.
 
-Rekor v1's signed log evidence supplies an integrated time that Cosign can compare with the leaf validity interval. In the newer Rekor v2 design, a separate RFC 3161 timestamp authority provides time evidence. A private deployment can use an approved timestamp design instead of Rekor for some workflows; therefore the categorical claim “Rekor is always required” is not universally true. The signing configuration, bundle, verification policy, and `TrustedRoot` must agree on the selected services.
+A Rekor v1 `integratedTime` is authenticated only when it is bound by a verified signed entry timestamp (SET/inclusion promise); Cosign can then compare it with the leaf validity interval. In the newer Rekor v2 design, a separate RFC 3161 timestamp authority provides time evidence. A private deployment can use an approved timestamp design instead of Rekor v1 as its time source, but current Cosign still requires an artifact-transparency entry by default. A Rekor-free workflow therefore needs an explicit policy that does not require artifact transparency. The signing configuration, bundle, verification policy, and `TrustedRoot` must agree on the selected services.
 
-An untrusted timestamp inside a JSON document is just attacker-controlled data. Cosign needs the corresponding Rekor public key or TSA certificate chain to authenticate it.
+An untrusted timestamp inside a JSON document is just attacker-controlled data. Cosign needs a verified Rekor v1 SET and its log public key, or an RFC 3161 token and TSA certificate chain, to authenticate it.
 
 ## Understand Why the Fulcio CT Log Is Separate
 
@@ -82,24 +82,25 @@ cosign trusted-root create \
   --no-default-rekor \
   --no-default-tsa \
   --fulcio='url=https://fulcio.example.com,certificate-chain=fulcio-ca-chain.pem,start-time=2026-08-01T00:00:00Z' \
-  --ctfe='url=https://ct.example.com/acme-2026,public-key=ct-public-key.pem,start-time=2026-08-01T00:00:00Z,origin=acme-2026' \
-  --rekor='url=https://rekor.example.com,public-key=rekor-public-key.pem,start-time=2026-08-01T00:00:00Z,origin=rekor.example.com' \
+  --ctfe='url=https://ct.example.com/acme-2026,public-key=ct-public-key.pem,start-time=2026-08-01T00:00:00Z' \
+  --rekor='url=https://rekor.example.com,public-key=rekor-public-key.pem,start-time=2026-08-01T00:00:00Z' \
   --out trusted_root.json
 ```
 
-If the design uses a timestamp authority, add its certificate chain with `--tsa`. If it has no Rekor service, do not invent one; create a matching `SigningConfig`, ensure the bundle contains accepted timestamp evidence, and test the exact Cosign release. Verification policy is versioned behavior.
+If the design uses a timestamp authority, add its certificate chain with `--tsa`; that PEM must contain the TSA signing leaf first, followed by intermediates and the trust anchor. The no-TSA example above assumes Rekor v1 and a conventional RFC 6962 CT log. Supply `origin` only for a compatible checkpoint-based static CT or Rekor v2 deployment, where it must match the exact checkpoint origin; Rekor v2 also requires accepted RFC 3161 evidence and TSA trust.
 
-The Fulcio `certificate-chain` input is the CA chain, not an issued ten-minute leaf. Use signer-first/root-last PEM order. Record fingerprints and correct start/end intervals for every authority. During rotation, retain old public material for bundles created inside its trusted interval.
+If the design has no Rekor service, do not invent one. Omit it from the `SigningConfig` and `TrustedRoot`, and ensure the bundle contains accepted RFC 3161 evidence. A `SigningConfig` does not waive Cosign's verification-time transparency-log threshold: current Cosign requires `--insecure-ignore-tlog --use-signed-timestamps` for this Rekor-free flow, or a different verifier/policy that explicitly accepts no artifact log. Verification policy is versioned behavior.
+
+The Fulcio `certificate-chain` input is the CA chain, not an issued ten-minute leaf. Put the issuing intermediates first and the trust anchor last. Record fingerprints and correct start/end intervals for every authority. During rotation, retain old public material for bundles created inside its trusted interval.
 
 Publish `trusted_root.json` through private TUF and bootstrap Cosign with that TUF repository's own initial root. A public Sigstore TUF cache cannot authenticate private keys simply because their service URLs are reachable.
 
 ## Use a Standardized Bundle
 
-Cosign v3's preferred flow records the certificate, artifact signature, transparency evidence, and timestamp material in a Sigstore bundle. Verify it with the complete trusted root and exact identity policy:
+Cosign v3's preferred flow records the certificate, artifact signature, transparency evidence, and timestamp material in a Sigstore bundle. For container images, `cosign verify` retrieves the OCI-attached bundle from the registry; the image command does not accept the `--bundle` flag. Verify it with the complete trusted root and exact identity policy:
 
 ```bash
 cosign verify \
-  --bundle artifact.sigstore.json \
   --trusted-root trusted_root.json \
   --certificate-identity='https://github.com/example/widget/.github/workflows/release.yml@refs/heads/main' \
   --certificate-oidc-issuer='https://token.actions.githubusercontent.com' \
@@ -108,7 +109,7 @@ cosign verify \
 
 The bundle carries evidence, not trust. An attacker can edit a bundle; the independently supplied `TrustedRoot` supplies the keys used to reject those edits.
 
-Do not rely on a live query as the only verification path. A complete bundle supports offline cryptographic verification of included promises/proofs and timestamps with pre-distributed public material. Availability of the private services should not be confused with authenticity of their historical output.
+Do not rely on a live query as the only verification path. A complete bundle supports offline cryptographic verification of included SETs, inclusion proofs against signed checkpoints, and RFC 3161 timestamps with pre-distributed public material. The container-image command above still reads its attached bundle from the registry unless you first save the image and verify the saved layout with `--local-image`. Availability of the private services should not be confused with authenticity of their historical output.
 
 ## Prove Which Checks Are Failing
 
@@ -119,7 +120,7 @@ openssl x509 -in leaf.pem -noout -text |
   grep -A 14 'CT Precertificate SCTs'
 ```
 
-Record the displayed Log ID and compare it with the SHA-256 identifier derived for the intended CT public key through a CT-aware tool. A key from another CT shard or environment will not verify the SCT even if it is a valid public key.
+Record the displayed Log ID and compare it with the SHA-256 identifier derived for the intended CT public key through a CT-aware tool. A key from another environment, or another CT shard that uses a different key, will not verify the SCT even if it is a valid public key.
 
 Then check the Fulcio path independently:
 
@@ -133,7 +134,7 @@ openssl verify \
 
 This isolates X.509 path building. It does not mean the artifact, identity policy, SCT, Rekor evidence, or trusted time passed.
 
-Finally, inspect the bundle with the pinned Sigstore tooling and identify whether it contains Rekor v1, Rekor v2, or RFC 3161 evidence. Match that to the exact service key and validity interval in `trusted_root.json`.
+Finally, inspect the bundle with the pinned Sigstore tooling and identify whether it contains Rekor v1 or Rekor v2 evidence, and whether it contains RFC 3161 evidence. Match each item to the exact service public key or certificate chain and validity interval in `trusted_root.json`.
 
 ## Use Bypass Flags Only to Demonstrate the Boundary
 
@@ -141,6 +142,7 @@ Current Cosign exposes:
 
 ```bash
 cosign verify \
+  --trusted-root trusted_root.json \
   --insecure-ignore-sct \
   --insecure-ignore-tlog \
   --certificate-identity='EXPECTED_IDENTITY' \
@@ -148,7 +150,7 @@ cosign verify \
   IMAGE_AT_DIGEST
 ```
 
-These flags prove the title's premise is not an X.509 impossibility: with a trusted Fulcio CA and valid artifact signature, Cosign can be told to skip CT and artifact-log verification. Cosign labels the flags insecure because they remove transparency and auditability checks on which the standard keyless threat model relies.
+These flags prove the title's premise is not an X.509 impossibility: with a trusted Fulcio CA, a currently valid leaf, and a valid artifact signature, Cosign can be told to skip CT and artifact-log verification. Without `--use-signed-timestamps` and accepted RFC 3161 evidence, current Cosign checks the certificate at the current time, so an expired leaf still fails. Cosign labels the flags insecure because they remove transparency and auditability checks on which the standard keyless threat model relies.
 
 Do not put these flags into a production verifier merely to silence missing private infrastructure. If an organization intentionally chooses a CA-only model, document that it is a different security design, provide another trustworthy time/revocation policy, and use tooling/policy that expresses that design explicitly.
 
@@ -178,4 +180,4 @@ Keep each environment's trusted root and TUF cache separate, and pin artifact ve
 
 ## Conclusion
 
-The private Fulcio root proves only the certificate path. Secure keyless verification also authenticates issuance transparency, artifact transparency or an approved timestamp, the artifact signature, and the exact identity. Supply all material in one independently trusted Sigstore `TrustedRoot`; use bypass flags only to demonstrate which security layer you removed.
+The private Fulcio root proves only the certificate path. Cosign's default secure keyless verification also authenticates issuance transparency, artifact transparency, trusted time, the artifact signature, and the exact identity. Supply all required trust material in one independently trusted Sigstore `TrustedRoot`; use bypass flags only to demonstrate which security layer you removed.

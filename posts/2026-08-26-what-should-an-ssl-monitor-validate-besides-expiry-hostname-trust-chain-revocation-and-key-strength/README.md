@@ -1,10 +1,10 @@
-# What Should an SSL Monitor Validate Besides Expiry? Hostname, Trust Chain, Revocation, and Key Strength
+# What Should an SSL Monitor Validate Besides Expiry?
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: SSL Monitoring, TLS, X.509, Certificate Validation, Revocation, PKI
 
-Description: Build an SSL monitoring policy that validates hostname, chain trust, revocation evidence, key strength, certificate purpose, and deployment identity—not only expiry.
+Description: Build an SSL monitoring policy that validates hostname, chain trust, revocation evidence, key strength, certificate purpose, and deployment identity-not only expiry.
 
 ---
 
@@ -172,9 +172,9 @@ Do not build these checks with regular expressions over `openssl x509 -text` whe
 
 Use three result classes:
 
-1. **connection validity** — DNS, route, handshake, hostname, time, and chain trust;
-2. **security policy** — key strength, signature algorithms, TLS versions, ciphers, revocation behavior, and CT requirements;
-3. **deployment identity** — approved fingerprint, issuer, SAN set, SPKI, origin/edge role, and rollout convergence.
+1. **connection validity** - DNS, route, handshake, hostname, time, and chain trust;
+2. **security policy** - key strength, signature algorithms, TLS versions, ciphers, revocation behavior, and CT requirements;
+3. **deployment identity** - approved fingerprint, issuer, SAN set, SPKI, origin/edge role, and rollout convergence.
 
 This separation makes alerts actionable. “Hostname mismatch” goes to deployment owners; “CRL unavailable” may go to PKI or network teams; “unexpected fingerprint” may be a change-control or incident-response event.
 
@@ -193,4 +193,4 @@ This separation makes alerts actionable. “Hostname mismatch” goes to deploym
 
 ## Conclusion
 
-An SSL monitor should answer whether the endpoint is the right identity, chains to the right trust anchor, is currently valid, meets key and algorithm policy, has acceptable revocation evidence, and serves the approved deployment. Expiry remains essential, but it belongs inside that full validation contract—not in place of it.
+An SSL monitor should answer whether the endpoint is the right identity, chains to the right trust anchor, is currently valid, meets key and algorithm policy, has acceptable revocation evidence, and serves the approved deployment. Expiry remains essential, but it belongs inside that full validation contract-not in place of it.

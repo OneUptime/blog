@@ -1,4 +1,4 @@
-# Validation Summary: How to Scrape an External VM or FQDN with Prometheus Operator: ServiceMonitor or ScrapeConfig?
+# Validation Summary: Scrape External Targets with ServiceMonitor or ScrapeConfig
 
 ## Status
 validated

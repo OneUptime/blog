@@ -1,4 +1,4 @@
-# Validation Summary: How to Debug a ServiceMonitor with Zero Discovered Targets from Service to EndpointSlice
+# Validation Summary: Debug ServiceMonitor Zero Targets from Service to EndpointSlice
 
 ## Status
 validated

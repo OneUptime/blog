@@ -1,4 +1,4 @@
-# Validation Summary: How to Monitor Certificates Stored in Windows Certificate Stores, Java Keystores, and PEM Files
+# Validation Summary: Monitor Certificates in Windows Stores, Java Keystores, and PEM Files
 
 ## Status
 

@@ -1,4 +1,4 @@
-# How to Back a Production Fulcio CA with AWS KMS, Google Cloud KMS, Azure Key Vault, or Vault
+# Back a Production Fulcio CA with KMS, Key Vault, or Vault
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# Validation Summary: How to Alert When Automated Let’s Encrypt Renewal Succeeds but the Service Still Serves the Old Certificate
+# Validation Summary: Alert When Let’s Encrypt Renews but a Service Uses the Old Certificate
 
 ## Status
 validated

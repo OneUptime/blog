@@ -1,4 +1,4 @@
-# How to Validate a Fulcio Root and Intermediate Chain Against Sigstore’s Certificate Profile
+# Validate a Fulcio CA Chain Against Sigstore’s Certificate Profile
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

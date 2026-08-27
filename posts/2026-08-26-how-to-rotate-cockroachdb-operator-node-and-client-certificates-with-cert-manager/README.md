@@ -1,8 +1,8 @@
-# How to Rotate CockroachDB Operator Node and Client Certificates with cert-manager
+# Rotate CockroachDB Operator Certificates with cert-manager
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: CockroachDB, Kubernetes, CockroachDB Operator, cert-manager, TLS, Certificate Rotation, PKI
+Tags: CockroachDB, Kubernetes, CockroachDB Operator, Cert-Manager, TLS, Certificate Rotation, PKI
 
 Description: Configure and exercise cert-manager leaf-certificate rotation for a GA v1beta1 CockroachDB Operator cluster, including CA distribution, renewal windows, live verification, and CA-rotation boundaries.
 

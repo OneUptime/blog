@@ -1,4 +1,4 @@
-# Validation Summary: How to Create SQL Users and Client Certificates in an Operator-Managed CockroachDB Cluster
+# Validation Summary: Create SQL Users and Client Certificates with the CockroachDB Operator
 
 ## Status
 

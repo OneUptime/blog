@@ -1,4 +1,4 @@
-# emptyDir vs Generic Ephemeral vs CSI Ephemeral Volumes: How to Choose in Kubernetes
+# Choose Between emptyDir, Generic Ephemeral, and CSI Ephemeral Volumes
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

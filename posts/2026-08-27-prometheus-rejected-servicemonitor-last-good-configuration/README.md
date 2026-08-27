@@ -1,4 +1,4 @@
-# Why Did Prometheus Reject a ServiceMonitor and Keep Its Last Known Good Configuration?
+# Why Prometheus Rejects a ServiceMonitor but Keeps Its Last Config
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -18,7 +18,7 @@ Prometheus keeps its current runtime configuration when a replacement configurat
 
 ## Boundary 1: API Server Schema Validation
 
-The API server rejects values that violate the ServiceMonitor CRD schema. The object is not persisted, so the Operator never sees the attempted revision.
+The API server rejects values that violate the ServiceMonitor CRD schema. The attempted revision is not persisted, so the Operator never sees it.
 
 Test the manifest against the cluster's live schema:
 
@@ -38,7 +38,7 @@ The Operator emits a Kubernetes Event for rejected configuration resources. Quer
 ```bash
 kubectl get events -n payments \
   --field-selector involvedObject.kind=ServiceMonitor,involvedObject.name=payments-api \
-  --sort-by=.lastTimestamp
+  --sort-by=.metadata.creationTimestamp
 
 kubectl logs -n monitoring deployment/prometheus-operator \
   --since=30m \
@@ -64,25 +64,27 @@ kubectl get secret prometheus-platform -n monitoring -o json \
   | gunzip > /tmp/prometheus-generated.yaml
 ```
 
-Run the `promtool` version shipped with the same Prometheus release when possible:
+Run the `promtool` version shipped with the same Prometheus release when possible. Use `--syntax-only` because referenced rule and credential files usually exist only inside the Prometheus Pod:
 
 ```bash
-promtool check config /tmp/prometheus-generated.yaml
+promtool check config --syntax-only /tmp/prometheus-generated.yaml
 ```
 
-Then compare it with Prometheus's live configuration in the Status page or HTTP status API. The generated Secret is desired configuration; the Prometheus status view is runtime configuration. A difference plus a reload error identifies the third boundary.
+Then compare the relevant job stanza with Prometheus's live configuration in the Status page or HTTP status API. The generated Secret is a desired configuration template; the Prometheus status view is runtime configuration. A missing or changed relevant stanza plus a contemporaneous reload error identifies the third boundary.
 
 ## Find Whether the Monitor Reached Generated Configuration
 
 The generated job name contains the ServiceMonitor namespace and name. Search it directly:
 
 ```bash
-gunzip -c <(kubectl get secret prometheus-platform -n monitoring \
-  -o jsonpath='{.data.prometheus\.yaml\.gz}' | base64 -d) \
+kubectl get secret prometheus-platform -n monitoring \
+  -o jsonpath='{.data.prometheus\.yaml\.gz}' \
+  | base64 -d \
+  | gunzip \
   | grep -A15 'serviceMonitor/payments/payments-api'
 ```
 
-If your shell does not support process substitution, decode to a temporary file as shown earlier. The result separates two cases:
+The result separates two cases:
 
 - Absent from generated configuration: check Prometheus object selectors, Operator rejection Events, namespace access, and referenced Secrets.
 - Present in generated configuration but absent from live configuration: check the reloader and Prometheus reload error.
@@ -93,7 +95,7 @@ If it is present in the live configuration but has no targets, the configuration
 
 Fix the first concrete error. Common corrections include reducing `scrapeTimeout`, choosing one authentication mechanism, creating the referenced Secret in the required namespace, or correcting a relabel expression. Apply with server-side dry run first, then watch the Event stream and generated configuration.
 
-Do not manually edit `prometheus-<name>` Secrets. The Operator owns them and will reconcile them again. Do not disable validation or force a reload to hide an error; an invalid configuration is safer when rejected than when partially assumed to be active.
+When the Operator manages the Prometheus configuration, do not manually edit `prometheus-<name>` Secrets. The Operator owns them and will reconcile them again. Do not disable validation or force a reload to hide an error; an invalid configuration is safer when rejected than when partially assumed to be active.
 
 ServiceMonitor only defines direct scrapes of Service-backed metrics endpoints. Probe and ScrapeConfig use their own selectors and also emit rejection Events. Confirm the resource kind before searching for its generated job.
 
@@ -107,4 +109,4 @@ ServiceMonitor only defines direct scrapes of Service-backed metrics endpoints. 
 
 ## Conclusion
 
-First identify the rejecting layer. API schema rejection means no object revision exists, Operator rejection means the resource is not reconciled into generated configuration, and a malformed full configuration makes Prometheus keep its current runtime configuration. Compare Events, the generated Secret, and the live Prometheus configuration to prove which case occurred.
+First identify the rejecting layer. API schema rejection means no new object revision exists, Operator rejection means the resource is not reconciled into generated configuration, and a malformed full configuration makes Prometheus keep its current runtime configuration. Compare Events, the generated Secret, and the live Prometheus configuration to prove which case occurred.

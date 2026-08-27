@@ -1,8 +1,8 @@
-# How to Share Build Artifacts Between Init Containers and App Containers with emptyDir
+# Share Build Artifacts Between Init and App Containers with emptyDir
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Init Containers, emptyDir, Volumes, Build Artifacts, Pods
+Tags: Kubernetes, Init Container, emptyDir, Volumes, Build Artifacts, Pod
 
 Description: Use one Pod-scoped emptyDir for ordered build, verification, atomic publication, read-only consumption, and bounded scratch usage.
 
@@ -25,7 +25,7 @@ spec:
   restartPolicy: Always
   initContainers:
     - name: build
-      image: registry.k8s.io/busybox:1.36.1
+      image: docker.io/library/busybox:1.36.1
       command: ["sh", "-c"]
       args:
         - |
@@ -46,7 +46,7 @@ spec:
         - name: artifacts
           mountPath: /workspace
     - name: verify
-      image: registry.k8s.io/busybox:1.36.1
+      image: docker.io/library/busybox:1.36.1
       command: ["sh", "-c"]
       args:
         - |
@@ -63,7 +63,7 @@ spec:
           mountPath: /workspace
   containers:
     - name: app
-      image: registry.k8s.io/busybox:1.36.1
+      image: docker.io/library/busybox:1.36.1
       command: ["sh", "-c"]
       args:
         - |
@@ -94,7 +94,7 @@ Write into a temporary directory and rename it only after the build is complete.
 
 The example removes both staging and prior release directories so a retried build init container is idempotent. A production build can instead validate a completed release by checksum and reuse it deliberately.
 
-Mounting the application's `subPath` read-only protects the artifact from accidental application writes. `subPath` must exist before the app container starts, which the init sequence guarantees here. If the application needs to update runtime state, mount a different volume or a different path for that state.
+Mounting the application's `subPath` read-only protects the artifact from accidental application writes. The init sequence ensures that the `release` directory and its files are populated before the app container starts. If the application needs to update runtime state, mount a different volume or a different path for that state.
 
 ## Plan Permissions Between Images
 
@@ -104,11 +104,11 @@ Avoid a blanket `chmod -R 777`. Give the builder write access and the consumer o
 
 ## Account for the Artifact as Local Ephemeral Storage
 
-A default disk-backed `emptyDir` is part of the Pod's local ephemeral-storage use. Build output competes with container writable layers and logs. `sizeLimit` is a volume cap checked by kubelet, while container `ephemeral-storage` requests influence scheduling and limits define the Pod's overall local storage ceiling.
+A default disk-backed `emptyDir` is part of the Pod's local ephemeral-storage use. Build output competes with container writable layers and logs. `sizeLimit` is a volume-level eviction threshold checked by kubelet, while container `ephemeral-storage` requests influence scheduling and limits define the Pod's aggregate local storage eviction threshold. These limit-based checks depend on kubelet being able to measure the relevant local filesystems.
 
-Regular init containers use different aggregate resource math from concurrently running application containers. For each resource, Kubernetes compares the largest init-container request or limit with the sum across application containers and uses the larger value as the Pod's effective request or limit. An omitted limit on any regular init container makes the effective init limit unbounded. The example therefore gives every container a limit: its effective local storage request is 320 MiB and its effective limit is 512 MiB, leaving room beyond the 256 MiB artifact volume for logs and writable layers.
+Regular init containers use different aggregate resource math from concurrently running application containers. For each resource, Kubernetes compares the largest init-container request or limit with the sum across application containers and uses the larger value as the Pod's effective request or limit. The example gives every container an explicit local storage limit: its effective local storage request is 320 MiB and its effective limit is 512 MiB, leaving room beyond the 256 MiB artifact volume for logs and writable layers.
 
-Set requests from typical artifact size plus expected logs and writable-layer growth. Set limits above controlled peaks, not below normal builds. A volume limit breach or aggregate local storage breach leads to Pod eviction rather than a clean build error at exactly the configured byte.
+Set requests from typical artifact size plus expected logs and writable-layer growth. Set limits above controlled peaks, not below normal builds. When measured usage exceeds either threshold, kubelet marks the Pod for eviction rather than returning a clean build error at exactly the configured byte.
 
 `medium: Memory` is possible for small latency-sensitive artifacts, but those files then count against the writing init container's memory usage and remain in memory for the Pod. Use memory requests and limits sized for the artifact plus the builder's process memory.
 

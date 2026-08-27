@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Prometheus, Prometheus Operator, Kubernetes, ServiceMonitor, Metrics, Monitoring
+Tags: Prometheus, Prometheus Operator, Kubernetes, ServiceMonitor, Metric, Monitoring
 
 Description: Configure one ServiceMonitor with independent endpoint entries for several named Service ports, paths, intervals, and timeouts.
 

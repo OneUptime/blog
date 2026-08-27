@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: CockroachDB, Kubernetes, CockroachDB Operator, Availability Zones, Topology Spread, High Availability
+Tags: CockroachDB, Kubernetes, CockroachDB Operator, Availability Zone, Topology Spread, High Availability
 
 Description: Configure GA v1beta1 CockroachDB pods with explicit zone and hostname spread, matching locality labels, and topology-aware storage while preserving schedulability and quorum.
 

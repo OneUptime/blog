@@ -1,8 +1,8 @@
-# How to Monitor TLS Certificates Inside Kubernetes Secrets Before They Reach an Ingress
+# Monitor TLS Certificates in Kubernetes Secrets Before Ingress
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, TLS, Secrets, Ingress, Certificate Monitoring, Prometheus, cert-manager
+Tags: Kubernetes, TLS, Secret, Ingress, Certificate Monitoring, Prometheus, Cert-Manager
 
 Description: Validate certificate expiry, SANs, key pairs, and Ingress references directly from Kubernetes TLS Secrets, then gate rollout and alert on stored state.
 
@@ -170,7 +170,7 @@ A periodic scanner cannot guarantee “before Ingress” if a controller immedia
 
 - validate the certificate and key in CI before creating the Secret;
 - write a renewal to a staging Secret such as `api-tls-next`, validate it, then update the Ingress reference;
-- use a validating admission webhook—or a policy engine with X.509 parsing support—that rejects invalid TLS Secret writes; or
+- use a validating admission webhook-or a policy engine with X.509 parsing support-that rejects invalid TLS Secret writes; or
 - have the certificate controller publish only after an explicit validation phase.
 
 After switching the reference, probe the live endpoint with correct SNI before deleting the old Secret. Stored-state validation proves what is in Kubernetes; it does not prove that every Ingress replica has reloaded it.

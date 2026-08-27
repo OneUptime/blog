@@ -1,4 +1,4 @@
-# Validation Summary: How to Stop CockroachDB Operator Scale-Down from Orphaning or Reusing the Wrong PVC
+# Validation Summary: How to Prevent Wrong PVC Reuse During CockroachDB Scale-Down
 
 ## Status
 validated

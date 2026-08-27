@@ -1,4 +1,4 @@
-# Why a ServiceMonitor Cannot Probe Multiple Arbitrary URLs - and When to Use the Probe CRD
+# Why ServiceMonitor Cannot Probe Arbitrary URLs
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

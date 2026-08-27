@@ -1,4 +1,4 @@
-# Validation Summary: How to Run the CockroachDB Operator Outside the Default Namespace Without Broken Service DNS
+# Validation Summary: Run the CockroachDB Operator Outside Its Default Namespace
 
 ## Status
 

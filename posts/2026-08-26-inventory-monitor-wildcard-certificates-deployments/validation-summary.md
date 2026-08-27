@@ -1,4 +1,4 @@
-# Validation Summary: How to Inventory and Monitor Wildcard Certificates Across Every Deployment Location
+# Validation Summary: Inventory and Monitor Wildcard Certificates Across Deployments
 
 ## Status
 

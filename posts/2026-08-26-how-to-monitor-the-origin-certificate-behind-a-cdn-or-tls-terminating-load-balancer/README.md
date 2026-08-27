@@ -1,4 +1,4 @@
-# How to Monitor the Origin Certificate Behind a CDN or TLS-Terminating Load Balancer
+# How to Monitor Origin Certificates Behind a CDN or Load Balancer
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

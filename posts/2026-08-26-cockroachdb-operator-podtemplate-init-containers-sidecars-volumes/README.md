@@ -1,8 +1,8 @@
-# How to Add Init Containers, Sidecars, and Volumes with the CockroachDB Operator `podTemplate`
+# Add Init Containers, Sidecars, and Volumes with `podTemplate`
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: CockroachDB, Kubernetes, CockroachDB Operator, podTemplate, Init Containers, Sidecars, Volumes
+Tags: CockroachDB, Kubernetes, CockroachDB Operator, podTemplate, Init Container, Sidecar, Volumes
 
 Description: Add init containers, sidecars, and shared volumes to CockroachDB pods through the GA operator's v1beta1 podTemplate without replacing operator-managed defaults.
 

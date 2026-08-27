@@ -1,4 +1,4 @@
-# Why Internal and External SSL Monitors Disagree: Split DNS, Firewalls, CDNs, and Load Balancers
+# Why Internal and External SSL Monitors Disagree
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -22,7 +22,7 @@ For every monitor result, retain at least:
 - resolver address and A/AAAA answers;
 - selected destination IP and IP family;
 - destination port;
-- SNI and HTTP `Host` values;
+- SNI and HTTP authority (`Host` or `:authority`) values;
 - whether an HTTP proxy was used;
 - leaf SHA-256 fingerprint, issuer, serial, SANs, and expiry;
 - negotiated TLS version and cipher;
@@ -50,15 +50,19 @@ If internal DNS returns `10.20.30.40` and public DNS returns CDN addresses, the 
 
 ## Pin the Address While Preserving the Hostname
 
-Use curl's `--resolve` option to connect to a chosen address while keeping the URL hostname for SNI, certificate verification, and the HTTP `Host` header:
+For a direct connection, use curl's `--resolve` option with `--noproxy '*'` to connect to a chosen address while keeping the URL hostname for SNI, certificate verification, and the HTTP authority (`Host` in HTTP/1.1 or `:authority` in HTTP/2 and HTTP/3):
 
 ```bash
-curl --verbose --resolve api.example.com:443:203.0.113.20 \
+curl --verbose --noproxy '*' \
+  --resolve api.example.com:443:203.0.113.20 \
   https://api.example.com/healthz
 
-curl --verbose --resolve api.example.com:443:[2001:db8::20] \
+curl --verbose --noproxy '*' \
+  --resolve 'api.example.com:443:[2001:db8::20]' \
   https://api.example.com/healthz
 ```
+
+`--resolve` controls curl's own origin lookup, not the upstream address selected by an HTTP or HTTPS proxy. Remove `--noproxy '*'` when deliberately reproducing the monitor's proxy path.
 
 For certificate-focused output, connect with OpenSSL:
 
@@ -92,11 +96,11 @@ A CDN normally terminates visitor TLS at its edge, so the public certificate is 
 
 An HTTPS listener can have a default certificate plus additional certificates selected with SNI. Omitting SNI often returns the default certificate, which may be perfectly valid for another hostname. Verify that every tool sends the same SNI value.
 
-If a pool has inconsistent nodes, repeated DNS-based tests may alternate results. Pin and test every advertised address, each address family, and—where the platform exposes them—each load-balancer node or backend. A single successful sample does not prove fleet convergence.
+If a pool has inconsistent nodes, repeated DNS-based tests may alternate results. Pin and test every advertised address, each address family, and-where the platform exposes them-each load-balancer node or backend. A single successful sample does not prove fleet convergence.
 
 ### Redirects
 
-The blackbox exporter reports TLS metrics from the final HTTPS response. Following a redirect from `login.example.com` to an identity provider can therefore make the observed certificate belong to the identity provider. Use `follow_redirects: false` for endpoint-certificate checks, or deliberately model each redirect hop.
+The blackbox exporter's HTTP prober reports TLS metrics from the TLS connection associated with the final response, and emits no TLS metrics if that response is plain HTTP. Following a redirect from `login.example.com` to an HTTPS identity provider can therefore make the observed certificate belong to the identity provider. Use `follow_redirects: false` for endpoint-certificate checks, or deliberately model each redirect hop.
 
 ### Trust stores and clocks
 
@@ -104,7 +108,17 @@ An internal monitor may trust a private CA that an external monitor does not. Co
 
 ## Configure Vantage Points as First-Class Labels
 
-Deploy separate blackbox exporters where the traffic originates and label the resulting series:
+Deploy separate blackbox exporters where the traffic originates. The `https_certificate` name below is a custom module, not a built-in module. Define it in each exporter's `blackbox.yml`:
+
+```yaml
+modules:
+  https_certificate:
+    prober: http
+    http:
+      follow_redirects: false
+```
+
+Then label the resulting series:
 
 ```yaml
 scrape_configs:

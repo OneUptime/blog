@@ -1,4 +1,4 @@
-# Validation Summary: How to Rotate a File-Backed Fulcio Signing Key and Certificate Chain Without Restarting the Server
+# Validation Summary: Rotate a File-Backed Fulcio Key and Chain Without Restarting
 
 ## Status
 validated

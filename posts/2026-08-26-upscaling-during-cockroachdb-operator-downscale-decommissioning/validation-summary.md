@@ -1,4 +1,4 @@
-# Validation Summary: Why Upscaling During a CockroachDB Operator Downscale Can Leave a Node in `DECOMMISSIONING`
+# Validation Summary: Why CockroachDB Upscaling Can Leave a Node `DECOMMISSIONING`
 
 ## Status
 

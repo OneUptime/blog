@@ -1,4 +1,4 @@
-# How to Diagnose a CockroachDB Operator Scale-Down Stuck After Node Decommissioning
+# How to Diagnose a Stuck CockroachDB Operator Scale-Down
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

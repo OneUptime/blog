@@ -83,7 +83,7 @@ openssl s_client \
 
 `-servername` selects the virtual host. `-verify_hostname` checks its identity. `-showcerts` keeps the server-presented leaf available to the downstream `x509` command even when verification fails. `-verify_return_error` makes chain or hostname verification errors terminate `s_client`, and `pipefail` preserves that failure status for the whole pipeline.
 
-Compare more than `notAfter`. Capture the SHA-256 fingerprint, issuer plus serial number, SANs, and—if key identity is part of policy—the SPKI hash. Different fingerprints are not automatically wrong: CDNs can deliberately serve several valid certificates. The failure is a certificate that is outside the approved set or violates hostname, trust, expiry, issuer, or key policy.
+Compare more than `notAfter`. Capture the SHA-256 fingerprint, issuer plus serial number, SANs, and-if key identity is part of policy-the SPKI hash. Different fingerprints are not automatically wrong: CDNs can deliberately serve several valid certificates. The failure is a certificate that is outside the approved set or violates hostname, trust, expiry, issuer, or key policy.
 
 ## Configure Independent Blackbox Exporter Modules
 

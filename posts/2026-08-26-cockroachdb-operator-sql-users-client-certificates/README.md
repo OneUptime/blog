@@ -1,8 +1,8 @@
-# How to Create SQL Users and Client Certificates in an Operator-Managed CockroachDB Cluster
+# Create SQL Users and Client Certificates with the CockroachDB Operator
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: CockroachDB, Kubernetes, CockroachDB Operator, TLS, Client Certificates, SQL Users, cert-manager
+Tags: CockroachDB, Kubernetes, CockroachDB Operator, TLS, Client Certificate, SQL Users, Cert-Manager
 
 Description: Bootstrap SQL users with the GA CockroachDB Operator and issue separately managed client certificates whose identities and trust chain match the secure cluster.
 

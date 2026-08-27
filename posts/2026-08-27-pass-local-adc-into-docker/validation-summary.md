@@ -1,4 +1,4 @@
-# Validation Summary: How to Pass Local Google Application Default Credentials into Docker Without Baking In a Key
+# Validation Summary: Pass Local Application Default Credentials into Docker Safely
 
 ## Status
 

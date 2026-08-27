@@ -1,4 +1,4 @@
-# Validation Summary: How to Design Warning and Critical Certificate-Expiry Alerts Without Notification Storms
+# Validation Summary: How to Design Certificate Expiry Alerts Without Notification Storms
 
 ## Status
 validated

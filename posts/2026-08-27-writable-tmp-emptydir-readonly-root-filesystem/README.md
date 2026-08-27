@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Security Context, readOnlyRootFilesystem, emptyDir, Containers, Pod Security
+Tags: Kubernetes, Security Context, ReadOnlyRootFilesystem, emptyDir, Container, Pod Security
 
 Description: Keep a container image filesystem read-only while mounting a bounded writable emptyDir only at /tmp and other required runtime paths.
 

@@ -1,4 +1,4 @@
-# Validation Summary: How to Configure Embedded SCTs for a Self-Hosted Fulcio Certificate Transparency Log
+# Validation Summary: Configure Embedded SCTs for a Self-Hosted Fulcio CT Log
 
 ## Status
 validated

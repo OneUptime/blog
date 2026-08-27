@@ -1,4 +1,4 @@
-# Validation Summary: How to Migrate from the Public CockroachDB Operator Without Deleting StatefulSets or PVCs
+# Validation Summary: Migrate from the Public CockroachDB Operator Without Losing Data
 
 ## Status
 

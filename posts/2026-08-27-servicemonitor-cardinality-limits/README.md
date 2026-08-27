@@ -1,8 +1,8 @@
-# How to Limit Cardinality per ServiceMonitor with Sample, Target, and Label Limits
+# Limit ServiceMonitor Cardinality with Sample, Target, and Label Limits
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Prometheus, Prometheus Operator, ServiceMonitor, Cardinality, Metrics, Reliability
+Tags: Prometheus, Prometheus Operator, ServiceMonitor, Cardinality, Metric, Reliability
 
 Description: Apply ServiceMonitor sample, target, and label guardrails with correct failure semantics, version requirements, and capacity-planning measurements.
 

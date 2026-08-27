@@ -1,4 +1,4 @@
-# How to Configure Embedded SCTs for a Self-Hosted Fulcio Certificate Transparency Log
+# Configure Embedded SCTs for a Self-Hosted Fulcio CT Log
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

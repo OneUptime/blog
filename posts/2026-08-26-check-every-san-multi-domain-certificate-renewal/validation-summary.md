@@ -1,4 +1,4 @@
-# Validation Summary: How to Check Every SAN on a Multi-Domain Certificate—and Detect Missing Hostnames After Renewal
+# Validation Summary: Check Every SAN After a Multi-Domain Certificate Renewal
 
 ## Status
 validated

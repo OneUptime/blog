@@ -1,8 +1,8 @@
-# Why Is the CockroachDB Operator Ready Before Its Admission Webhook Accepts Requests?
+# Why CockroachDB Operator Readiness Can Precede Its Webhook
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: CockroachDB, Kubernetes, CockroachDB Operator, Admission Webhooks, Readiness, TLS, Troubleshooting
+Tags: CockroachDB, Kubernetes, CockroachDB Operator, Admission Webhook, Readiness, TLS, Troubleshooting
 
 Description: Explain the legacy Public Operator readiness race, contrast GA v1beta1 health probes, and test every hop from Kubernetes API server through Service, TLS, and webhook handler.
 

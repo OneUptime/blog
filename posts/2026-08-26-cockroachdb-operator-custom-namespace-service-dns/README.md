@@ -1,8 +1,8 @@
-# How to Run the CockroachDB Operator Outside the Default Namespace Without Broken Service DNS
+# Run the CockroachDB Operator Outside Its Default Namespace
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: CockroachDB, Kubernetes, CockroachDB Operator, DNS, Namespaces, Helm, Webhooks
+Tags: CockroachDB, Kubernetes, CockroachDB Operator, DNS, Namespace, Helm, Webhook
 
 Description: Install the GA CockroachDB Operator in a dedicated namespace while keeping webhook, join, client-service, certificate, and watch-scope names consistent.
 

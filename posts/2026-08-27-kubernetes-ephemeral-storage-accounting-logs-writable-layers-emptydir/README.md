@@ -1,4 +1,4 @@
-# How Kubernetes Accounts for Ephemeral Storage Across Logs, Writable Layers, and emptyDir
+# How Kubernetes Accounts for Logs, Layers, and emptyDir Storage
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

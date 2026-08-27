@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: STARTTLS, SMTP, IMAP, LDAP, FTP, TLS, Blackbox Exporter, OpenSSL
+Tags: StartTLS, SMTP, IMAP, LDAP, FTP, TLS, Blackbox Exporter, OpenSSL
 
 Description: Negotiate each protocol's plaintext upgrade correctly, validate the resulting certificate, and expose expiry and failure signals without confusing STARTTLS with implicit TLS.
 
@@ -18,10 +18,10 @@ Common defaults are:
 
 | Service | STARTTLS port | Typical implicit-TLS port | Upgrade operation |
 | --- | ---: | ---: | --- |
-| SMTP relay/submission | 25 or 587 | 465 | `EHLO`, then `STARTTLS` |
+| SMTP relay/submission | 25 (relay) or 587 (submission) | none standardized (relay); 465 (submission) | `EHLO`, then `STARTTLS` |
 | IMAP | 143 | 993 | tagged `STARTTLS` command |
 | LDAP | 389 | 636 | LDAP StartTLS extended operation |
-| FTP control | 21 | deployment-specific | `AUTH TLS` |
+| FTP control | 21 | 990 | `AUTH TLS` |
 
 Do not use `-starttls` against an implicit-TLS port, and do not use direct TLS against a STARTTLS port. Monitor every mode your clients actually use because separate listeners can serve separate chains.
 
@@ -61,7 +61,7 @@ openssl s_client -connect ftp.example.com:21 \
 
 For SMTP, `-name` controls the hostname used in `EHLO`; it is distinct from `-servername`, which controls TLS SNI. Use a syntactically valid name owned by the monitoring environment.
 
-If a private CA signs the service certificate, add the authenticated root with `-CAfile`. Do not use `-verify_quiet` or suppress the command's exit status in automation.
+If a private CA signs the service certificate, add the trusted root with `-CAfile`. You may add `-verify_quiet` to limit verification output to errors, but do not suppress the command's exit status in automation.
 
 ## Configure SMTP in Blackbox Exporter
 
@@ -74,17 +74,18 @@ modules:
     timeout: 10s
     tcp:
       query_response:
-        - expect: '^220[ -]'
+        - expect: '^220( |$)'
         - send: "EHLO monitor.example.com\r"
-        - expect: '^250[ -]STARTTLS'
+        - expect: '(?i)^250-STARTTLS$'
+        - expect: '^250( |$)'
         - send: "STARTTLS\r"
-        - expect: '^220[ -]'
+        - expect: '^220( |$)'
         - starttls: true
       tls_config:
         insecure_skip_verify: false
 ```
 
-The exporter appends `\n` to `send`; the configured `\r` produces the SMTP-required CRLF. The regex scans response lines until it finds a match, which handles a multiline `250-...` capability response.
+The exporter appends `\n` to `send`; the configured `\r` produces the SMTP-required CRLF. Each `expect` scans response lines until it finds a match. This example assumes the server advertises `STARTTLS` on a `250-STARTTLS` continuation line; the following step consumes the final `250` line before sending `STARTTLS`. If the server advertises it on the final `250 STARTTLS` line instead, replace those two expectations with a single `(?i)^250 STARTTLS$` expectation.
 
 After the `starttls: true` step, the exporter performs the handshake and registers its TLS metrics, including `probe_ssl_earliest_cert_expiry`. If the target is `mail.example.com:25` and `tls_config.server_name` is unset, the TCP prober uses the target hostname for SNI and verification. Do not replace it with an IP unless a dedicated module sets `server_name`.
 
@@ -98,17 +99,18 @@ IMAP uses tagged commands and responses:
     timeout: 10s
     tcp:
       query_response:
-        - expect: '^\* OK'
+        - expect: '(?i)^\* OK( |$)'
         - send: "a001 CAPABILITY\r"
-        - expect: '^\* CAPABILITY .*STARTTLS'
+        - expect: '(?i)^\* CAPABILITY( [^ ]+)* STARTTLS( |$)'
+        - expect: '(?i)^a001 OK( |$)'
         - send: "a002 STARTTLS\r"
-        - expect: '^a002 OK'
+        - expect: '(?i)^a002 OK( |$)'
         - starttls: true
       tls_config:
         insecure_skip_verify: false
 ```
 
-Requiring `STARTTLS` in `CAPABILITY` detects a downgrade or configuration regression before attempting the upgrade. RFC 2595 requires a client to discard cached pre-TLS capabilities and query them again after TLS when it continues the authenticated session; a certificate-only monitor can stop after the successful handshake.
+Requiring `STARTTLS` in `CAPABILITY` detects a downgrade or configuration regression before attempting the upgrade. RFC 2595 requires a client to discard cached pre-TLS capabilities and recommends issuing `CAPABILITY` again after TLS when it continues the IMAP session; a certificate-only monitor can stop after the successful handshake.
 
 FTP uses `AUTH TLS` and success code `234`:
 
@@ -118,9 +120,9 @@ FTP uses `AUTH TLS` and success code `234`:
     timeout: 10s
     tcp:
       query_response:
-        - expect: '^220[ -]'
+        - expect: '^220( |$)'
         - send: "AUTH TLS\r"
-        - expect: '^234[ -]'
+        - expect: '^234( |$)'
         - starttls: true
       tls_config:
         insecure_skip_verify: false
@@ -167,7 +169,7 @@ probe_ssl_earliest_cert_expiry{job="blackbox-starttls"} - time()
   < 30 * 24 * 60 * 60
 ```
 
-A missing STARTTLS advertisement, rejected upgrade, TLS validation error, and post-upgrade timeout all need diagnostic labels and logs, not an expiry-only alert.
+A missing STARTTLS advertisement, rejected upgrade, TLS validation error, and TLS handshake timeout all need diagnostic labels and logs, not an expiry-only alert.
 
 For SMTP specifically, a successful hop does not prove end-to-end transport security for a message that may cross multiple relays. Monitor the policy mechanisms your mail domain relies on, such as MTA-STS or DANE, separately.
 

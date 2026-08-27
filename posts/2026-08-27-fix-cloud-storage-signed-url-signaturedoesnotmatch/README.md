@@ -1,4 +1,4 @@
-# How to Fix Google Cloud Storage Signed URL `SignatureDoesNotMatch` by Matching Signed Headers
+# Fix Cloud Storage Signed URL `SignatureDoesNotMatch` Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

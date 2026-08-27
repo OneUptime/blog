@@ -1,8 +1,8 @@
-# How to Monitor Certificates Stored in Windows Certificate Stores, Java Keystores, and PEM Files
+# Monitor Certificates in Windows Stores, Java Keystores, and PEM Files
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: SSL Monitoring, TLS, Windows, Java, Keystore, PEM
+Tags: SSL Monitoring, TLS, Window, Java, Keystore, PEM
 
 Description: Inventory and monitor certificate expiry and identity across Windows certificate stores, Java keystores, and PEM files while confirming what services actually serve.
 
@@ -12,8 +12,8 @@ Not every certificate is discoverable through a network probe. Services can be d
 
 The reverse is also true: a fresh file or keystore entry does not prove that a running process loaded it. A complete design always compares two views:
 
-1. **stored state** — the certificate in a Windows store, Java keystore, PEM file, secret manager, or deployment artifact;
-2. **served state** — the leaf and chain returned by a full handshake with the live TLS endpoint.
+1. **stored state** - the certificate in a Windows store, Java keystore, PEM file, secret manager, or deployment artifact;
+2. **served state** - the leaf and chain returned by a full handshake with the live TLS endpoint.
 
 Inventory both by fingerprint, issuer plus serial, SANs, key identity, validity, location, and owner.
 

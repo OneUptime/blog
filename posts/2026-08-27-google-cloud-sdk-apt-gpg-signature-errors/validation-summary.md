@@ -1,4 +1,4 @@
-# Validation Summary: How to Fix Google Cloud SDK `apt update` GPG Signature Errors After a Repository Key Rotation
+# Validation Summary: Fix Google Cloud SDK APT GPG Errors After Key Rotation
 
 ## Status
 validated

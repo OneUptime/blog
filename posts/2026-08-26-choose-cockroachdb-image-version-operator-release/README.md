@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: CockroachDB, Kubernetes, CockroachDB Operator, Helm, Version Compatibility, Upgrades
+Tags: CockroachDB, Kubernetes, CockroachDB Operator, Helm, Version Compatibility, Upgrade
 
 Description: Select a CockroachDB container image using the GA operator and database chart version contracts, verify the rendered v1beta1 field, and avoid unsupported upgrade paths.
 
@@ -35,8 +35,8 @@ Add the GA v2 repository and list every available release:
 helm repo add cockroachdb-v2 https://charts.cockroachdb.com/v2 --force-update
 helm repo update cockroachdb-v2
 
-helm search repo cockroachdb-v2/cockroachdb-operator-chart --versions
-helm search repo cockroachdb-v2/cockroachdb-chart --versions
+helm search repo cockroachdb-v2/cockroachdb-operator-chart --versions --devel
+helm search repo cockroachdb-v2/cockroachdb-chart --versions --devel
 ```
 
 Then inspect a candidate database chart:
@@ -57,7 +57,7 @@ That means the reviewed default image is CockroachDB `v26.2.5`, even though the 
 
 ```bash
 helm show values cockroachdb-v2/cockroachdb-chart --version 26.2.4 \
-  | sed -n '/^[[:space:]]*image:/,/^[[:space:]]*clusterSettings:/p'
+  | sed -n '/^    image:/,/^    clusterSettings:/p'
 ```
 
 Also read both changelogs. The operator changelog records operator behavior and fixes; the database chart changelog records its default CockroachDB image and feature-specific minimums. For a new CockroachDB series, the official versioning guide says to check compatibility notes for a required operator upgrade.
@@ -66,6 +66,8 @@ Also read both changelogs. The operator changelog records operator behavior and 
 
 Before proposing a change, capture the live operator image, Helm releases, desired database image, and observed database version:
 
+With Helm release `orders-db` and the chart's default naming, the `CrdbCluster` resource is `orders-db-cockroachdb`.
+
 ```bash
 helm -n database-operators list
 helm -n crdb-prod list
@@ -73,7 +75,7 @@ helm -n crdb-prod list
 kubectl -n database-operators get deployment cockroach-operator \
   -o jsonpath='{.spec.template.spec.containers[?(@.name=="cockroach-operator")].image}{"\n"}'
 
-kubectl -n crdb-prod get crdbcluster orders-db \
+kubectl -n crdb-prod get crdbcluster orders-db-cockroachdb \
   -o jsonpath='{.spec.template.spec.image}{"\n"}{.status.image}{"\n"}{.status.version}{"\n"}'
 ```
 
@@ -99,7 +101,6 @@ cockroachdb:
   crdbCluster:
     image:
       name: cockroachdb/cockroach:v26.2.5
-      pullPolicy: IfNotPresent
 ```
 
 The chart renders that to the GA custom resource as a string:
@@ -133,7 +134,7 @@ Preview the exact desired image:
 
 ```bash
 helm template orders-db cockroachdb-v2/cockroachdb-chart \
-  --version "$CRDB_CHART_VERSION" \
+  --version 26.2.4 \
   --namespace crdb-prod \
   --values values.yaml \
   --show-only templates/crdb.yaml \
@@ -145,11 +146,11 @@ If a newer operator is required, upgrade the operator chart first and wait for i
 During the database rollout, watch the operator actions and pod images:
 
 ```bash
-kubectl -n crdb-prod get crdbcluster orders-db \
+kubectl -n crdb-prod get crdbcluster orders-db-cockroachdb \
   -o jsonpath='{.status.actions}{"\n"}{.status.image}{"\n"}{.status.version}{"\n"}'
 
 kubectl -n crdb-prod get pods \
-  -l app.kubernetes.io/component=cockroachdb \
+  -l 'app.kubernetes.io/component=cockroachdb,app.kubernetes.io/instance=orders-db' \
   -o custom-columns='NAME:.metadata.name,IMAGE:.spec.containers[?(@.name=="cockroachdb")].image,READY:.status.containerStatuses[?(@.name=="cockroachdb")].ready'
 ```
 

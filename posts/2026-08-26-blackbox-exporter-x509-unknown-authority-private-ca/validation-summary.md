@@ -1,4 +1,4 @@
-# Validation Summary: Why Blackbox Exporter Reports x509: Certificate Signed by Unknown Authority: Monitoring Private CAs Safely
+# Validation Summary: Fix Blackbox Exporter `x509: Certificate Signed by Unknown Authority`
 
 ## Status
 

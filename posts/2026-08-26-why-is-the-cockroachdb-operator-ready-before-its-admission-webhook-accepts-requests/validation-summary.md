@@ -1,4 +1,4 @@
-# Validation Summary: Why Is the CockroachDB Operator Ready Before Its Admission Webhook Accepts Requests?
+# Validation Summary: Why CockroachDB Operator Readiness Can Precede Its Webhook
 
 ## Status
 

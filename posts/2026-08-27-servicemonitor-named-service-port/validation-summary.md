@@ -1,4 +1,4 @@
-# Validation Summary: Why a ServiceMonitor Endpoint Must Reference the Named Service Port, Not the Container Port
+# Validation Summary: Use the Named Service Port in ServiceMonitor Endpoints
 
 ## Status
 

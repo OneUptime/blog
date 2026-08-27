@@ -1,4 +1,4 @@
-# How to Check Every SAN on a Multi-Domain Certificate—and Detect Missing Hostnames After Renewal
+# Check Every SAN After a Multi-Domain Certificate Renewal
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

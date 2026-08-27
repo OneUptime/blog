@@ -1,4 +1,4 @@
-# Validation Summary: How to Fix ADC Quota Project Mismatch When Switching Between gcloud Configurations
+# Validation Summary: Fix ADC Quota Project Mismatch Across gcloud Configurations
 
 ## Status
 

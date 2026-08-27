@@ -1,10 +1,10 @@
-# Does emptyDir Survive a Container Restart? Understanding Pod and Container Lifecycles
+# Does emptyDir Survive Container Restarts and Pod Replacement?
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, emptyDir, Pods, Containers, Restart Policy, Ephemeral Storage
+Tags: Kubernetes, emptyDir, Pod, Container, Restart Policy, Ephemeral Storage
 
-Description: Identify exactly when emptyDir data survives, why Pod replacement, deletion, or eviction removes it, and how node failure can lose it.
+Description: Identify exactly when emptyDir data survives and when Pod replacement, deletion, eviction, rescheduling, or node failure removes it.
 
 ---
 

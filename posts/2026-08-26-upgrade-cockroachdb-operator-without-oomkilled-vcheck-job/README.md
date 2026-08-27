@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: CockroachDB, Kubernetes, CockroachDB Operator, Upgrade, OOMKilled, Kubernetes Job, Troubleshooting
+Tags: CockroachDB, Kubernetes, CockroachDB Operator, Upgrade, OOMKilled, Kubernetes jobs, Troubleshooting
 
 Description: Diagnose an OOMKilled version-check Job in the deprecated CockroachDB public operator and choose a supported-version or custom-image recovery without bypassing upgrade safety.
 

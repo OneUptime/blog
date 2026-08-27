@@ -1956,6 +1956,7 @@
 - Bash
 - Bash Scripting
 - Basic Auth
+- Basic Authentication
 - Basic Scaling
 - Basics
 - Bastion
@@ -2824,18 +2825,23 @@
 - Certificate Chain
 - Certificate Conversion
 - Certificate Debugging
+- Certificate Discovery
 - Certificate Expiration
 - Certificate Expiry
 - Certificate Inspection
+- Certificate Inventory
 - Certificate Management
 - Certificate Manager
 - Certificate Monitoring
 - Certificate Pinning
+- Certificate Profile
 - Certificate Renewal
 - Certificate Revocation
 - Certificate Rotation
 - Certificate Signing Request
 - Certificate Transparency
+- Certificate Troubleshooting
+- Certificate Validation
 - Certificate Verification
 - Certificate-Based Access
 - Certificate-chain
@@ -3483,6 +3489,7 @@
 - Cobra
 - Cockpit
 - CockroachDB
+- CockroachDB Operator
 - Codable
 - Code Architecture
 - Code Assistance
@@ -3799,6 +3806,7 @@
 - Configuration Management
 - Configuration Overrides
 - Configuration Patching
+- Configuration Reload
 - Configuration Rollback
 - Configuration Safety
 - Configuration Sets
@@ -4349,6 +4357,7 @@
 - Critical Section
 - Critical Services
 - CRIU
+- CRL
 - CRLF Injection
 - CRM
 - Cron
@@ -4813,6 +4822,7 @@
 - Data Loaders
 - Data Loading
 - Data Locality
+- Data Location
 - Data Loss
 - Data Loss Prevention
 - Data Management
@@ -5634,6 +5644,7 @@
 - Disk Usage
 - Diskless
 - DiskPrediction
+- DiskPressure
 - Dispatch
 - Dispatch Rules
 - Dispatcher Scripts
@@ -6350,6 +6361,7 @@
 - Empty Population
 - Empty Sets
 - Empty Values
+- emptyDir
 - EMQX
 - EMR
 - Emulator
@@ -6842,6 +6854,7 @@
 - External Storage
 - External Systems
 - External Table
+- External Targets
 - External Tools
 - External Traffic
 - External Traffic Policy
@@ -7051,6 +7064,7 @@
 - File
 - File Access
 - File API
+- File CA
 - File Contexts
 - File Conversion
 - File Creation
@@ -7148,6 +7162,7 @@
 - FIM
 - FIN_WAIT
 - FINAL
+- Finalization
 - Finalizer
 - Finance
 - Financial
@@ -7454,6 +7469,7 @@
 - Fsck
 - fscrypt
 - FSLogix
+- fsnotify
 - Fstab
 - Fstest
 - FSx
@@ -7613,6 +7629,7 @@
 - Generative AI
 - Generator
 - Generic Chart
+- Generic Ephemeral Volumes
 - Generic Receive Offload
 - GenericEphemeralVolume
 - Generics
@@ -7872,6 +7889,7 @@
 - Google Cloud APIs
 - Google Cloud Audit Logs
 - Google Cloud Build
+- Google Cloud CLI
 - Google Cloud Compliance
 - Google Cloud Console
 - Google Cloud Dataflow
@@ -7918,6 +7936,7 @@
 - Google Secret Manager
 - Google Wifi
 - Google Workspace
+- google-auth
 - Google-Cloud
 - Google-cloud-storage
 - Google-managed
@@ -8974,6 +8993,7 @@
 - Incident Management
 - Incident Metrics
 - Incident Prevention
+- Incident Recovery
 - Incident Remediation
 - Incident Response
 - Incident Timeline
@@ -9916,6 +9936,7 @@
 - Keyspace Notification
 - Keystone
 - KeystoneJS
+- Keystore
 - Keytab
 - KeyVault
 - Keyword
@@ -10032,6 +10053,7 @@
 - Kubernetes Infrastructure
 - Kubernetes Ingress
 - Kubernetes jobs
+- Kubernetes Labels
 - Kubernetes Management
 - Kubernetes manifests
 - Kubernetes Monitoring
@@ -12375,6 +12397,7 @@
 - Node Conditions
 - Node Configuration
 - Node Customization
+- Node Decommissioning
 - Node Deletion
 - Node Discovery
 - Node Drain
@@ -12708,6 +12731,7 @@
 - Offline Mode
 - Offline Operations
 - Offline Persistence
+- Offline Root
 - Offline Scanning
 - Offline Store
 - Offline Testing
@@ -12976,6 +13000,7 @@
 - Origin
 - Origin Authentication
 - Origin Groups
+- Origin Server
 - Origin Shield
 - Origin Shielding
 - Orleans
@@ -13681,7 +13706,9 @@
 - Pivot
 - Pivot Table
 - PKCE
+- PKCS#11
 - PKI
+- PKI Validation
 - PL/pgSQL
 - PL/SQL
 - Placement
@@ -13832,6 +13859,7 @@
 - PodMonitor
 - PodSecurity
 - PodSecurityPolicy
+- podTemplate
 - Poetry
 - Point
 - Point In Time
@@ -14363,6 +14391,7 @@
 - Promtail
 - Proof Of Concept
 - Proof of Delivery
+- Proof of Possession
 - Propagation
 - Propagators
 - Property Data
@@ -16202,6 +16231,7 @@
 - Scalable Storage
 - ScalaTest
 - Scale
+- Scale Down
 - Scale Set
 - Scale to Zero
 - Scale-Down Policies
@@ -16302,12 +16332,14 @@
 - SCRAM
 - Scrape Interval
 - Scrape Targets
+- ScrapeConfig
 - Scraper
 - Scraping
 - Scrapy
 - Scratch
 - Scratch Image
 - Scratch Space
+- Scratch Storage
 - Scrcpy
 - Screen
 - Screen Capture Protection
@@ -17233,6 +17265,7 @@
 - Soft Reconfiguration
 - Soft-Delete
 - SoftEther
+- SoftHSM
 - Software
 - Software Architecture
 - Software bill of materials
@@ -17521,6 +17554,7 @@
 - SQL Transformations
 - SQL Translation
 - SQL UDFs
+- SQL Users
 - SQL_BUFFER_RESULT
 - SQL_CALC_FOUND_ROWS
 - SQL_NO_CACHE
@@ -17831,11 +17865,13 @@
 - Storage Encryption
 - Storage Engine
 - Storage Events
+- Storage Expansion
 - Storage Explorer
 - Storage Firewall
 - Storage Gateway
 - Storage Lens
 - Storage Level
+- Storage Limits
 - Storage Management
 - Storage Migration
 - Storage Monitoring
@@ -19212,6 +19248,7 @@
 - Trust and Safety
 - Trust Center
 - Trust Command
+- Trust Distribution
 - Trust Domain
 - Trust Policies
 - Trust Policy
@@ -19225,6 +19262,7 @@
 - Trusted Advisor
 - Trusted Execution
 - Trusted Networks
+- TrustedRoot
 - Try
 - Try Function
 - Ts-node
@@ -19243,6 +19281,7 @@
 - TTL Index
 - Ttl Indexes
 - TTLStrategy
+- TUF
 - TUI
 - Tun
 - Tuna

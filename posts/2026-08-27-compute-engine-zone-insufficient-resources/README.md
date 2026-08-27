@@ -1,8 +1,8 @@
-# How to Recover from `The Zone Does Not Have Enough Resources Available` in Compute Engine
+# Recover from Compute Engine Zone Resource Shortages
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Google Cloud, Compute Engine, Virtual Machines, Capacity Planning, Reservations, Troubleshooting
+Tags: Google Cloud, Compute Engine, Virtual Machine, Capacity Planning, Reservation, Troubleshooting
 
 Description: Diagnose Compute Engine zonal resource exhaustion, recover with the least disruptive option, and reduce the chance that critical VM starts fail again.
 
@@ -19,7 +19,7 @@ This is a capacity error. It means that the requested combination of resources i
 
 ## First Identify the Failed Request
 
-Record the complete error, including any `reason` field and suggested zones. Newer Compute Engine errors can identify the constrained resource more precisely, such as CPU, a local SSD interface, or a particular accelerator.
+Record the complete error, including any `reason` field and suggested zones. Newer Compute Engine errors can identify the constrained resource more precisely, such as CPU, Local SSD capacity, or a GPU.
 
 For an instance that failed to start, inspect its configuration before changing it:
 
@@ -30,7 +30,7 @@ gcloud compute instances describe VM_NAME \
   --format='yaml(name,zone,machineType,scheduling,guestAccelerators,disks)'
 ```
 
-For a failed asynchronous operation, describe the operation named in the command output:
+For a failed zonal asynchronous operation, describe the operation named in the command output:
 
 ```bash
 gcloud compute operations describe OPERATION_NAME \
@@ -44,7 +44,7 @@ Also rule out a different class of error. Quota failures normally name a quota o
 
 ## Recover in Least-Disruptive Order
 
-Google documents the following general remedies in increasing order of disruption.
+Google documents the first four general remedies below in increasing order of disruption. For regional MIGs, it separately recommends considering a change to the distribution shape.
 
 ### 1. Retry later with backoff
 
@@ -91,7 +91,7 @@ Google also recommends trying a different provisioning model when a standard VM 
 
 This is a workload contract change, not a transparent retry. Flex-start is intended for supported workloads that can wait for allocation and accept a limited run duration. Spot VMs can be preempted and still have no availability guarantee. Check machine-series support, quota, maximum run duration, shutdown behavior, and fault tolerance before changing the model.
 
-### 5. Change a regional MIG distribution shape
+### Regional MIGs: Change the distribution shape
 
 A regional managed instance group can distribute creation attempts across zones. When a distribution policy is too restrictive for current capacity, Google recommends considering `BALANCED`, `ANY`, or `ANY_SINGLE_ZONE`, depending on the workload's availability and placement requirements.
 

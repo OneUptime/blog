@@ -1,8 +1,8 @@
-# How to Stop CockroachDB Operator Scale-Down from Orphaning or Reusing the Wrong PVC
+# How to Prevent Wrong PVC Reuse During CockroachDB Scale-Down
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: CockroachDB, Kubernetes, CockroachDB Operator, Persistent Volumes, StatefulSet, Scale Down, Data Safety
+Tags: CockroachDB, Kubernetes, CockroachDB Operator, Persistent Volume, StatefulSet, Scale Down, Data Safety
 
 Description: Prevent the deprecated CockroachDB public operator from reusing a decommissioned store by reconciling database membership, StatefulSet ordinals, PVCs, and PV reclaim policy.
 

@@ -1,8 +1,8 @@
-# Nil vs Empty `{}` ServiceMonitor Selectors in kube-prometheus-stack: Why Your Targets Disappear
+# Nil vs Empty ServiceMonitor Selectors in kube-prometheus-stack
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Prometheus, Prometheus Operator, Kubernetes, ServiceMonitor, kube-prometheus-stack, Helm
+Tags: Prometheus, Prometheus Operator, Kubernetes, ServiceMonitor, Kube-prometheus-stack, Helm
 
 Description: Understand API-level null and empty selector semantics, Helm rendering, namespace scope, and the three selectors in a ServiceMonitor path.
 

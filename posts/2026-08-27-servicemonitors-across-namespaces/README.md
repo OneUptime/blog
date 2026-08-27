@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Prometheus, Prometheus Operator, ServiceMonitor, Kubernetes, Namespaces, RBAC
+Tags: Prometheus, Prometheus Operator, ServiceMonitor, Kubernetes, Namespace, RBAC
 
 Description: Configure the two namespace-selection gates and discovery RBAC required for Prometheus to find ServiceMonitors and scrape Services in other namespaces.
 

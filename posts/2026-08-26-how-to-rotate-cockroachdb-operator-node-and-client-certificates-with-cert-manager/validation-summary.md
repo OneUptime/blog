@@ -1,4 +1,4 @@
-# Validation Summary: How to Rotate CockroachDB Operator Node and Client Certificates with cert-manager
+# Validation Summary: Rotate CockroachDB Operator Certificates with cert-manager
 
 ## Status
 validated

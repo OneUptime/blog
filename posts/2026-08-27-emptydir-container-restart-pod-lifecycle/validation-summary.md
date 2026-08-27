@@ -1,4 +1,4 @@
-# Validation Summary: Does emptyDir Survive a Container Restart? Understanding Pod and Container Lifecycles
+# Validation Summary: Does emptyDir Survive Container Restarts and Pod Replacement?
 
 ## Status
 

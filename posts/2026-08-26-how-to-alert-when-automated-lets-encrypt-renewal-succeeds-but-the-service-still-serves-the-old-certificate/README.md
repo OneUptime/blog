@@ -1,4 +1,4 @@
-# How to Alert When Automated Let’s Encrypt Renewal Succeeds but the Service Still Serves the Old Certificate
+# Alert When Let’s Encrypt Renews but a Service Uses the Old Certificate
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -110,7 +110,7 @@ Publish the expected disk fingerprint through a small collector after renewal:
 tls_expected_certificate_info{endpoint_id="app-origin",fingerprint_sha256="lowercase-hex"} 1
 ```
 
-`tls_expected_certificate_info` is a custom metric defined by this monitoring design, not a built-in exporter metric. Write textfile-collector output atomically—write a temporary file whose name does not end in `.prom` in the same directory, then rename it to the final `.prom` file—and restrict the input so domain names cannot inject arbitrary labels.
+`tls_expected_certificate_info` is a custom metric defined by this monitoring design, not a built-in exporter metric. Write textfile-collector output atomically-write a temporary file whose name does not end in `.prom` in the same directory, then rename it to the final `.prom` file-and restrict the input so domain names cannot inject arbitrary labels.
 
 Attach the same stable `endpoint_id` label to the blackbox target. The mismatch expression is:
 

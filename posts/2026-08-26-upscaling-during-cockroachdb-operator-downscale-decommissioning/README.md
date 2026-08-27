@@ -1,4 +1,4 @@
-# Why Upscaling During a CockroachDB Operator Downscale Can Leave a Node in `DECOMMISSIONING`
+# Why CockroachDB Upscaling Can Leave a Node `DECOMMISSIONING`
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
