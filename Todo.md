@@ -114,7 +114,6 @@
 
 ## Google Cloud
 
-16. Why a Cloud Run VPC Connector Fails with `Resource Readiness Deadline Exceeded` Across Regions
 17. How to Fix `Request Had Insufficient Authentication Scopes` on a GCE VM with Correct IAM Roles
 18. How to Recover from `The Zone Does Not Have Enough Resources Available` in Compute Engine
 19. How to Fix Google Cloud SDK `apt update` GPG Signature Errors After a Repository Key Rotation
