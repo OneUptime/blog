@@ -117,7 +117,7 @@ The EndpointSlice's `kubernetes.io/service-name` label links it to the Service. 
 
 Kubernetes restricts endpoint addresses. Do not use loopback, link-local addresses, or another Service's ClusterIP as a manual endpoint. For custom management, set an `endpointslice.kubernetes.io/managed-by` value that identifies the controller or administrator.
 
-This pattern also requires Prometheus discovery RBAC for Services and EndpointSlices in the namespace. EndpointSlice discovery requires Prometheus 2.21 or newer. The Prometheus Operator defaults ServiceMonitor discovery to the legacy `Endpoints` role when no role is configured, so opt into `EndpointSlice` as shown or verify the Prometheus-level `serviceDiscoveryRole`.
+This pattern also requires Prometheus discovery RBAC for Services, EndpointSlices, and Pods in the namespace. EndpointSlice discovery requires Prometheus 2.21 or newer. The Prometheus Operator defaults ServiceMonitor discovery to the legacy `Endpoints` role when no role is configured, so opt into `EndpointSlice` as shown or verify the Prometheus-level `serviceDiscoveryRole`.
 
 ## Why ExternalName Alone Is Not Enough
 
@@ -143,7 +143,7 @@ This creates a temporary diagnostic Pod and may not have the same NetworkPolicy 
 
 ## Do You Want a Scrape or a Probe?
 
-ScrapeConfig and ServiceMonitor collect Prometheus exposition-format metrics from the target. If the goal is to test an arbitrary HTTP, TCP, DNS, or ICMP endpoint through a blackbox exporter, use the Prometheus Operator `Probe` CRD. A Probe controls a prober and a set of URLs; it is not a substitute for an exporter that exposes metrics.
+ScrapeConfig and ServiceMonitor collect Prometheus exposition-format metrics from the target. If the goal is to test an arbitrary HTTP, TCP, DNS, or ICMP endpoint through a blackbox exporter, use the Prometheus Operator `Probe` CRD. A Probe references an existing prober and a set of static or Ingress-discovered targets; it is not a substitute for an exporter that exposes metrics.
 
 ## Decision Guide
 
