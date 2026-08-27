@@ -8,14 +8,14 @@ Description: Grant a Cloud Run deployer the narrowly scoped Service Account User
 
 ---
 
-A Cloud Run service account has two IAM roles in the deployment model:
+A Cloud Run service identity is a service account that is both a resource and a principal in the deployment model:
 
 - As a resource, it can be attached to a Cloud Run revision only by a deployer with `iam.serviceAccounts.actAs` on that service account.
 - As a principal, it receives the API permissions that the running container needs.
 
-An error mentioning `iam.serviceAccounts.actAs` concerns the first role. Granting more runtime API access to the service account does not let a deployer attach it.
+An error mentioning `iam.serviceAccounts.actAs` concerns the resource side of this model. Granting more runtime API access to the service account does not let a deployer attach it.
 
-## Identify all three principals
+## Identify the deployment scope and identities
 
 Set the deployment project, deployer, and runtime identity explicitly:
 
@@ -56,7 +56,7 @@ gcloud iam service-accounts add-iam-policy-binding "${RUNTIME_SA}" \
 
 This service-account-level grant is narrower than granting Service Account User across the project. An IAM administrator should apply it according to the organization's separation-of-duties policy.
 
-The deployer also needs permissions for the deployment operation. Google's documented roles for deploying an existing container include Cloud Run Developer on the Cloud Run resource, Artifact Registry Reader on the image repository, and Service Account User on the service identity. These are separate grants on separate resources.
+The deployer also needs permissions for the deployment operation. Google's documented roles for deploying an existing container include Cloud Run Developer on the Cloud Run service, Artifact Registry Reader on the image repository, and Service Account User on the service identity. When creating a new service, grant Cloud Run Developer at the project level because the service does not exist yet. These are separate grants on separate resources.
 
 ## Deploy with the intended identity
 
@@ -113,7 +113,7 @@ gcloud iam service-accounts add-iam-policy-binding "${RUNTIME_SA}" \
 
 Use the Cloud Run project's number, not the service account project's number, to construct the service-agent address.
 
-Second, the project containing the service account must not enforce the `iam.disableCrossProjectServiceAccountUsage` organization policy constraint. That constraint is enforced by default. Changing an organization policy has a broad security effect, so have the organization-policy administrator review and scope the exception rather than disabling it casually.
+Second, the project containing the service account must not enforce the `iam.disableCrossProjectServiceAccountUsage` organization policy constraint. That constraint is enforced by default and can be configured only at the project level, not at the folder, organization, or individual service-account level. Disabling enforcement removes this organization-policy block for every service account in `SA_PROJECT_ID`, so have the organization-policy administrator review the project-wide exception rather than disabling it casually.
 
 The Cloud Run service agent must also retain `roles/run.serviceAgent` in the Cloud Run project. Do not replace that service-agent role with a grant to the runtime identity.
 
@@ -131,9 +131,9 @@ Service account impersonation, attaching a service account to a resource, and ru
 ## Official Documentation
 
 - [Configure Cloud Run service identity](https://cloud.google.com/run/docs/configuring/services/service-identity)
-- [Cloud Run deployment permissions](https://cloud.google.com/run/docs/reference/iam/roles#deployment_permissions)
-- [Attach service accounts to resources](https://cloud.google.com/iam/docs/service-accounts-actas)
-- [Troubleshoot Cloud Run deployment permissions](https://cloud.google.com/run/docs/troubleshooting#service-account)
+- [Cloud Run deployment permissions](https://cloud.google.com/run/docs/reference/iam/roles#additional-configuration)
+- [Attach service accounts to resources](https://cloud.google.com/iam/docs/attach-service-accounts)
+- [Troubleshoot Cloud Run deployment permissions](https://cloud.google.com/run/docs/troubleshooting#sa-missing-permissions)
 - [Cloud Run service agent role](https://cloud.google.com/iam/docs/roles-permissions/run#run.serviceAgent)
 
 ## Conclusion
