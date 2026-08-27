@@ -32,7 +32,7 @@ print("detected_project_id:", project_id)
 print("quota_project_id:", getattr(credentials, "quota_project_id", None))
 ```
 
-If a credential class appears and no exception was raised, ADC found a usable credential source. A `None` project is a separate configuration issue.
+If a credential class appears and no exception was raised, ADC found and loaded a recognized credential source. This alone does not prove that the credential can refresh or authenticate an API request. A `None` project is a separate configuration issue.
 
 Do not log the credential object, its refresh token, or an access token. A successful token refresh also does not prove that the identity has permission to access the intended project.
 
@@ -115,7 +115,7 @@ if [ -n "${GOOGLE_APPLICATION_CREDENTIALS:-}" ]; then
 fi
 ```
 
-On Google Cloud, remove development-only credential path overrides so ADC can use the attached service account. For local development, remember that `gcloud auth application-default login` manages ADC separately from the account selected by `gcloud auth login`.
+On Google Cloud, remove development-only credential path overrides and do not deploy a local ADC file so ADC can use the attached service account. For local development, remember that `gcloud auth application-default login` manages ADC separately from the account selected by `gcloud auth login`.
 
 After setting the project, validate both dimensions independently:
 
