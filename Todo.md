@@ -117,7 +117,6 @@
 
 ## ServiceMonitors
 
-8. How to Configure Basic Authentication in a ServiceMonitor Without Secret Newline Failures
 9. How to Scrape an mTLS Metrics Endpoint with ServiceMonitor `tlsConfig`
 10. How to Send an OAuth2 or Bearer Token from a ServiceMonitor Without Using Forbidden File Paths
 11. `relabelings` vs `metricRelabelings` in ServiceMonitor: When Does Each Run?
