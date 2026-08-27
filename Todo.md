@@ -117,7 +117,6 @@
 
 ## ServiceMonitors
 
-15. How to Scrape Multiple Ports and Metrics Paths with One ServiceMonitor
 16. Why a ServiceMonitor Cannot Probe Multiple Arbitrary URLs—and When to Use the Probe CRD
 17. How to Migrate ServiceMonitor Discovery from Endpoints to EndpointSlices
 18. How to Fix `No Matches for Kind ServiceMonitor` During Helm or Argo CD Installation
