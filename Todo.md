@@ -117,7 +117,6 @@
 
 ## ServiceMonitors
 
-20. Nil vs Empty `{}` ServiceMonitor Selectors in kube-prometheus-stack: Why Your Targets Disappear
 
 ## Ephemeral Volumes
 
