@@ -10,7 +10,7 @@ Description: Test IPv4 and IPv6 independently, compare the certificates each pat
 
 A dual-stack hostname is two production paths. Its A records lead clients to IPv4 infrastructure, while its AAAA records lead clients to IPv6 infrastructure. Those paths can terminate on different load balancers, CDN edges, reverse proxies, or backend pools. Updating only one path can leave IPv6 clients with an expired certificate even though an ordinary check reports success over IPv4.
 
-The monitor must force each address family. “Prefer IPv6 with fallback” is an availability test, not proof that both families work.
+The monitor must force each address family. A single probe with protocol fallback enabled selects only one family, so it is not proof that both work.
 
 ## Enumerate Both DNS Views
 
@@ -41,7 +41,7 @@ curl --ipv4 --verbose https://api.example.com/healthz
 curl --ipv6 --verbose https://api.example.com/healthz
 ```
 
-They prove that one usable address in each family works. To test every advertised address, pin it with `--resolve`:
+Inspect the connected address in the verbose output. curl notes that on some systems, notably macOS, an IPv6-only lookup can still return IPv4-mapped IPv6 addresses. Once that is ruled out, the commands prove that one usable address in each family works. To test every advertised address, pin it with `--resolve`:
 
 ```bash
 curl --verbose \
@@ -49,7 +49,7 @@ curl --verbose \
   https://api.example.com/healthz
 
 curl --verbose \
-  --resolve api.example.com:443:[2001:db8::10] \
+  --resolve 'api.example.com:443:[2001:db8::10]' \
   https://api.example.com/healthz
 ```
 
@@ -60,28 +60,34 @@ Square brackets are required around the IPv6 address in the `--resolve` value. B
 OpenSSL makes the identity difference easy to see:
 
 ```bash
+set -o pipefail
+
 openssl s_client \
   -connect 192.0.2.10:443 \
+  -showcerts \
   -servername api.example.com \
   -verify_hostname api.example.com \
-  -verify_return_error </dev/null 2>/dev/null \
-  | openssl x509 -noout -fingerprint -sha256 -issuer -serial -dates
+  -verify_return_error \
+  -verify_quiet </dev/null \
+  | openssl x509 -noout -fingerprint -sha256 -issuer -serial -dates -ext subjectAltName
 
 openssl s_client \
   -connect '[2001:db8::10]:443' \
+  -showcerts \
   -servername api.example.com \
   -verify_hostname api.example.com \
-  -verify_return_error </dev/null 2>/dev/null \
-  | openssl x509 -noout -fingerprint -sha256 -issuer -serial -dates
+  -verify_return_error \
+  -verify_quiet </dev/null \
+  | openssl x509 -noout -fingerprint -sha256 -issuer -serial -dates -ext subjectAltName
 ```
 
-`-servername` selects the virtual host. `-verify_hostname` checks its identity. `-verify_return_error` makes chain or hostname verification errors terminate the check rather than merely appearing in diagnostic output.
+`-servername` selects the virtual host. `-verify_hostname` checks its identity. `-showcerts` keeps the server-presented leaf available to the downstream `x509` command even when verification fails. `-verify_return_error` makes chain or hostname verification errors terminate `s_client`, and `pipefail` preserves that failure status for the whole pipeline.
 
 Compare more than `notAfter`. Capture the SHA-256 fingerprint, issuer plus serial number, SANs, and—if key identity is part of policy—the SPKI hash. Different fingerprints are not automatically wrong: CDNs can deliberately serve several valid certificates. The failure is a certificate that is outside the approved set or violates hostname, trust, expiry, issuer, or key policy.
 
 ## Configure Independent Blackbox Exporter Modules
 
-Disable protocol fallback so a broken family cannot be hidden by the other one:
+Disable protocol fallback so a missing address family cannot be hidden by the other one:
 
 ```yaml
 modules:
@@ -145,7 +151,7 @@ scrape_configs:
         replacement: blackbox-exporter:9115
 ```
 
-`probe_ip_protocol` should be `4` in the first job and `6` in the second. `probe_ip_addr_hash` can reveal that the selected address changed, but it is a numeric hash, not a replacement for logging the resolved IP during diagnostics.
+After successful family-specific address selection, `probe_ip_protocol` should be `4` in the first job and `6` in the second; a resolution failure leaves it at `0`. `probe_ip_addr_hash` can reveal that the selected address changed, but it is a numeric hash, not a replacement for logging the resolved IP during diagnostics.
 
 The leaf certificate appears in `probe_ssl_last_chain_info`, whose current labels include `fingerprint_sha256`, `issuer`, `serialnumber`, `subject`, and `subjectalternative`.
 
@@ -186,17 +192,17 @@ count by (instance, ip_family) (
 ) > 1
 ```
 
-Use that as an informational rollout signal. To enforce cross-family equality, join against an approved fingerprint set rather than assuming every valid CDN deployment uses one certificate globally.
+Use that as an informational rollout signal. To require literal cross-family equality, compare the current `fingerprint_sha256` labels across the two families. When a CDN deliberately serves multiple valid certificates, enforce membership in an approved fingerprint set instead.
 
 ## Test Every Address When Convergence Matters
 
-Two family-specific DNS probes still choose only one address per probe. If the A or AAAA set contains several load-balancer nodes, build explicit targets from DNS or platform inventory and pin each address while preserving SNI. Reconcile that target list regularly with DNS so removed nodes disappear and new nodes are tested.
+Two family-specific hostname-based HTTPS probes still choose only one address per probe. If the A or AAAA set contains several load-balancer nodes, build explicit targets from DNS or platform inventory and pin each address while preserving the HTTP `Host` header and TLS SNI, for example with the exporter’s `hostname` probe parameter. Reconcile that target list regularly with DNS so removed nodes disappear and new nodes are tested.
 
 Probe from an IPv6-capable network. A monitor with no IPv6 route will correctly fail the IPv6 job, but that result describes the monitor path rather than the service. Run at least one external dual-stack vantage point, and add an internal one when split DNS or private origins are involved.
 
 ## Common False Conclusions
 
-- A successful default probe does not prove both families; fallback may have selected the working one.
+- A successful default probe does not prove both families; it selects one address, and fallback can use the non-preferred family when no preferred-family address is available.
 - An AAAA record does not prove the monitor has an IPv6 route.
 - Connecting to an IP without SNI can return a default certificate unrelated to the hostname.
 - Equal expiry dates do not prove equal certificates.
