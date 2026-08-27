@@ -29,6 +29,27 @@
 
 ## ESXi
 
+1. How to Move an ESXi Management VMkernel Adapter from a Distributed Switch to a Standard Switch
+2. How to Diagnose ESXi `No Space Left on Device` Errors in Ramdisks When VMFS Has Free Space
+3. How to Resolve ESXi `MissingComponentError` Without Removing Required OEM Drivers
+4. How to Verify ESXi `bootbank` and `altbootbank` Health Before an Upgrade
+5. How to Replace an ESXi Host Certificate with an External CA Certificate in vSphere 8.0 U3+
+6. How to Configure ESXi Remote Syslog over TLS and Verify Log Delivery
+7. How to Persist ESXi Logs and Scratch Data on Hosts That Boot from USB or SD Card
+8. How to Fix an ESXi `vm-support` Bundle That Contains an Empty `/var/run/logs` Directory
+9. How to Configure ESXi NTP and Diagnose Hosts That Refuse to Synchronize
+10. How to Restrict ESXi Management Services to Trusted Networks with Firewall Rulesets
+11. How to Configure iSCSI Port Binding and Round-Robin Multipathing on ESXi
+12. How to Route NFS 4.1 Traffic Through a Dedicated VMkernel Adapter on ESXi 8.0 U3+
+13. How to Remount a Disconnected NFS 4.1 Datastore Without Rebooting ESXi
+14. How to Trunk VLANs to an ESXi Guest Through a Standard-Switch Port Group with VLAN ID 4095
+15. How to Enable PCI Passthrough on ESXi and Diagnose Devices Stuck at `Needs Reboot`
+16. How to Diagnose an ESXi VM That Powers Off with `PCI Passthru Device Caused IOMMU Fault`
+17. How to Size 64-Bit MMIO Space for Multi-GPU PCI Passthrough on ESXi
+18. How to Register an Orphaned ESXi VM from Its `.vmx` File Without Changing Its Identity
+19. How to Clone a Thin-Provisioned VMDK with `vmkfstools` Without Inflating It
+20. How to Roll Back a Failed ESXi Patch by Recovering the Previous Image from `altbootbank`
+
 
 ## OTel
 
@@ -2944,6 +2965,26 @@
 18. Your CI Checks ECR Scan Findings Too Early: Wait for the Correct Basic or Enhanced Scan Completion Event
 19. ECR Basic Scanning Returns `UnsupportedImageTypeException` for a Multi-Architecture Index: Scan Each Platform Manifest Digest
 20. How to Use ECR as a BuildKit Registry Cache Without Lifecycle Rules Expiring the Cache Manifest
+21. How to Retag an Amazon ECR Image Without Pulling or Pushing Its Layers
+22. How to Resolve an Amazon ECR Tag to a Digest and Deploy the Immutable Reference
+23. How to Diagnose Amazon ECR API Throttling During Parallel Image Pushes Without Re-uploading Completed Layers
+24. How to Fix Anonymous Amazon ECR Public Pulls by Removing an Expired Docker Credential
+25. How to Call the Amazon ECR Docker Registry HTTP API with GetAuthorizationToken and curl
+26. How to Force AWS Lambda to Deploy a Newly Pushed Amazon ECR Image Behind an Existing Tag
+27. How to Migrate an Amazon ECR Registry Policy from V1 to V2 Without Broadening Repository Access
+28. How to Configure Same-Region Cross-Account ECR Policies for Lambda Function Creation and Image Retrieval
+29. How to Push Licensed Windows Base Layers to Amazon ECR for PrivateLink-Only Pulls
+30. How to Migrate an Amazon ECR Repository to a Different KMS Key When Encryption Cannot Be Changed
+31. How to Audit Amazon ECR Push, Pull, and Delete API Calls with CloudTrail
+32. How to Trigger an EventBridge Workflow When an Image Is Pushed to or Deleted from Amazon ECR
+33. How to Inventory Amazon ECR Digests Referenced by ECS, EKS, and Lambda Before Deleting Images
+34. How to Archive Amazon ECR Images with `sinceImagePulled` Without Scanner Pulls Resetting the Timestamp
+35. How to Push Images from GitLab CI to Amazon ECR with OIDC Federation and No Stored AWS Keys
+36. How to Enable and Verify Amazon ECR Managed Signing with AWS Signer and Notation
+37. How to Push and Pull Images Through Amazon ECR FIPS Endpoints over PrivateLink
+38. How to Publish a Discoverable Image in Amazon ECR Public with Catalog Metadata and Multi-Architecture Tags
+39. How to Diagnose Amazon ECR Manifest Media-Type Mismatches When Pulling by Digest
+40. How to Bulk-Migrate Images from an Unsupported Third-Party Registry into Amazon ECR Without Rebuilding Them
 
 ## Container Networking
 
@@ -5451,3 +5492,187 @@
 18. How to Enforce Maximum CIDR Sizes in API Validation to Block Overly Broad Allowlists
 19. How to Keep CIDR Allowlists Current When Cloud Provider IP Range Feeds Change
 20. How to Detect Public, Private, and Other Special-Use Address Ranges Inside a CIDR Using the IANA Registries
+
+## Columnar Storage
+
+1. How to Benchmark the Crossover Point Between Row-Store Index Lookups and Columnar Scans
+2. How to Size Parquet Row Groups for Scan Throughput, Parallelism, Memory, and Pruning
+3. How to Evaluate Parquet Content-Defined Chunking for Deduplication Without Creating Excessively Small Data Pages
+4. How to Sort Data Inside Parquet Row Groups So Min/Max Statistics Skip More Pages
+5. How to Confirm a Parquet Reader Is Applying Column Pruning, Row-Group Pruning, and Page Skipping
+6. How to Choose Parquet Dictionary Encoding Thresholds for Low- and High-Cardinality Columns
+7. How to Select Snappy, Zstandard, or Gzip Per Column Without Trading Away Query Latency
+8. How to Enable Parquet Page Indexes and Per-Column Bloom Filters at Write Time for Selective Reads
+9. How to Partition a Columnar Data Lake Without Creating High-Cardinality Directory Explosions
+10. How to Evolve Parquet Schemas Across Engines Without Breaking Renames, Field IDs, or Nullability
+11. How to Preserve List, Map, and Struct Semantics When Moving Nested Data Between Arrow and Parquet
+12. How to Represent Timestamps and Decimals in Parquet Without Cross-Engine Precision Drift
+13. How to Append and Compact Parquet Files Safely with Apache Iceberg Snapshot Metadata
+14. How to Apply Updates and Deletes to Immutable Columnar Files with Tombstones, Merge-on-Read, and Compaction
+15. How to Diagnose a Parquet Dataset That Is Larger Than Its Compressed CSV Source
+16. How to Handle NaNs and Signed Zero in Parquet Statistics with IEEE 754 Total Order and `nan_count`
+17. How to Tune Arrow Record Batch and Parquet Row-Group Sizes for Predictable Writer Memory Use
+18. How to Encrypt Sensitive Parquet Columns While Preserving Projection and Predicate Pushdown
+19. How to Detect Corrupt Parquet Pages and Truncated Footers with CRCs and Footer Validation
+20. How to Benchmark File Skipping, Page Skipping, and Decoding Separately in a Columnar Query
+
+## CloudEvents
+
+1. How to Choose Structured or Binary CloudEvents Mode for HTTP Without Misreading Content-Type
+2. How to Decode `data` and `data_base64` Correctly for JSON and Opaque Binary CloudEvent Payloads
+3. How to Receive CloudEvents in Express Without Body Parsers Corrupting Binary Payloads
+4. How to Validate Required CloudEvent Attributes Without Rejecting Legal URI-References or Extensions
+5. How to Design `source`, `type`, `subject`, and `id` Values That Stay Stable Across Producers
+6. How to Nest One CloudEvent Inside Another Without Confusing the Inner Envelope with the Outer Content Mode
+7. How to Version CloudEvent Payload Schemas with `dataschema` Without Coupling Consumers to One Registry
+8. How to Preserve Unknown CloudEvent Extension Attributes Through Proxies and SDK Round Trips
+9. How to Batch CloudEvents over HTTP Without Assuming Batch Order or Shared Semantics
+10. How to Translate HTTP CloudEvents to Kafka Without Losing Event Attributes or Payload Bytes
+11. How to Configure a CloudEvent Serde for Kafka Streams When Attributes Live in Record Headers
+12. How to Map the CloudEvents `partitionkey` Extension to Kafka Record Keys and Plan the Resulting Repartitioning
+13. How to Send a CloudEvent with No `data` to a Compacted Kafka Topic Without Producing a Tombstone
+14. How to Model CloudEvent `subject` Values So Brokers Can Route Events Without Parsing `data`
+15. How to Decide Whether a CloudEvents Intermediary Should Preserve or Replace `source` and `id`
+16. How to Preserve CloudEvent `time` and Ingestion Time Separately Without Inferring Delivery Order from Producer Clocks
+17. How to Build Cross-Language CloudEvents Interoperability Tests from the Core Specification and SDK Test Vectors
+18. How to Handle CloudEvent Content Types with Vendor `+json` and Non-JSON Payloads
+19. How to Carry Avro or Protobuf Data in CloudEvents Without Confusing Envelope and Payload Schemas
+20. How to Preserve CloudEvent Attribute Types When Translating Between HTTP Header Strings and Structured JSON
+
+## API Security
+
+1. How to Prevent BOLA by Scoping Every Object Query to the Authenticated Tenant and Principal
+2. How to Enforce Function-Level Authorization When Admin and User Routes Share the Same Handler
+3. How to Prevent OAuth Audience Confusion When Access Tokens Cross Multiple Internal APIs
+4. How to Detect API Key Enumeration Without Leaking Key Validity Through Timing or Error Messages
+5. How to Use Mobile App Attestation as an Abuse Signal Without Treating It as API Authorization
+6. How to Prevent Password-Reset Link Poisoning with a Fixed, Allowlisted Public Origin Instead of the Host Header
+7. How to Sender-Constrain OAuth Access Tokens with DPoP Without Mistaking It for Client Authentication or Full Request Signing
+8. How to Rotate JWT Signing Keys While Rejecting Unknown `kid` Values and Untrusted `jku` or `x5u` URLs
+9. How to Prevent JWT Algorithm-Confusion Attacks with Explicit Key-Type and Algorithm Binding
+10. How to Enforce API Resource Budgets Across CPU Time, Response Size, Uploads, and Paid Side Effects
+11. How to Charge GraphQL Query Cost to the Authenticated Principal Across Aliases and Batched Requests
+12. How to Sign Pagination Cursors So Clients Cannot Forge Tenant or Filter State
+13. How to Prevent HTTP Method-Override Headers from Bypassing Route-Level API Authorization
+14. How to Stop Duplicate JSON Keys and Parser Differences from Bypassing API Gateway Validation
+15. How to Prevent Race-Condition Double Spending with Atomic Authorization and State Transitions
+16. How to Detect Authorization Drift Between API Gateway Policies, Application Middleware, and Database Row Filters
+17. How to Reject Polymorphic Type Metadata in JSON APIs Before It Reaches an Unsafe Deserializer
+18. How to Separate mTLS Client Identity from Application Authorization in Service-to-Service APIs
+19. How to Rotate Refresh Tokens Without Letting Concurrent Requests Trigger False Reuse Detection
+20. How to Choose 401, 403, or 404 Without Breaking `WWW-Authenticate` Semantics or Treating 404 as an IDOR Defense
+
+## GitLab
+
+1. How to Clone a Private GitLab Repository over HTTPS with a Personal Access Token Without Storing It in the URL
+2. How to Choose Between GitLab Personal, Project, Group, Deploy, and CI Job Tokens for Automation
+3. How to Rotate Expiring GitLab Access Tokens Without Breaking Bots and Scheduled Integrations
+4. How to Paginate GitLab REST API Results with Link Headers and Endpoint-Specific Keyset Pagination
+5. How to Authenticate and Debug GitLab Webhooks with Secret Tokens, Delivery Logs, and Retries
+6. How to Mirror Only Protected Branches Between GitLab and GitHub Without Overwriting Divergent Refs
+7. How to Migrate a GitLab Project with Issues, Merge Requests, Wikis, and LFS Objects Using Export and Import
+8. How to Transfer a GitLab Project to Another Namespace Without Breaking Clone URL Redirects
+9. How to Resolve GitLab Merge Request Conflicts Locally with Rebase and `--force-with-lease`
+10. How to Require Code Owner Approval on GitLab Protected Branches Without Creating Permission Loopholes
+11. How to Use GitLab Merge Trains to Serialize Merge Requests That Pass Their Pipelines
+12. How to Accept a GitLab Merge Request from a Fork While Allowing Maintainers to Push Fixes Securely
+13. How to Revert a Merged GitLab Merge Request Without Accidentally Blocking a Later Reapply
+14. How to Back Up and Restore Self-Managed GitLab with Matching Versions, Secrets, and Object Storage
+15. How to Upgrade Self-Managed GitLab Through Required Stops and Verify Background Migrations
+16. How to Configure GitLab Behind Nginx with the Correct `external_url`, Forwarded Headers, and Clone URLs
+17. How to Move GitLab Repositories to a Separate Gitaly Storage Without Losing Project Assignments
+18. How to Reclaim Disk Space in Self-Managed GitLab by Cleaning Artifacts, Packages, Uploads, and Registry Data
+19. How to Reset a Lost GitLab Root Password from the Rails Console Without Disabling Authentication
+20. How to Configure SMTP in Self-Managed GitLab and Diagnose Failed Test Emails
+
+## Swift
+
+1. How to Fix Swift 6 “Sending … Risks Causing Data Races” Errors Without `@unchecked Sendable`
+2. How to Return to `@MainActor` When an Async Callback Arrives on a Background Thread
+3. How to Prevent Swift Actor Reentrancy from Interleaving an Async Critical Section
+4. How to Run Dynamic Child Tasks in Parallel with `withThrowingTaskGroup` and Cancel on First Failure
+5. How to Add a Cooperative Timeout to an Async Swift Operation with ContinuousClock and Task Cancellation
+6. How to Bridge a Single-Shot Completion Handler to async/await with `CheckedContinuation`
+7. How to Turn Delegate Callbacks into an `AsyncStream` Without Leaking the Continuation
+8. How to Debounce a Search Request with Swift Concurrency and Cancel the Previous Task
+9. How to Prevent Retain Cycles in Swift Combine Pipelines That Store Their Own Subscriptions
+10. How to Capture `self` Safely in Long-Lived Swift Tasks Without Silently Extending Object Lifetime
+11. How to Decode Heterogeneous JSON into Swift Enums with Associated Values
+12. How to Decode ISO 8601 Dates with Fractional Seconds Using Swift Codable
+13. How to Choose Between `any` and `some` for Swift Protocols with Associated Types
+14. How to Make Swift Enums with Associated Values Conform to Equatable and Hashable
+15. How to Load Bundled Resources from a Swift Package in Tests and Applications
+16. How to Wrap a Binary XCFramework in a Swift Package with Correct Architectures
+17. How to Test Async and Throwing Swift Code with Swift Testing
+18. How to Build a Thread-Safe Cache with a Swift Actor and Sendable Values
+19. How to Bridge a C Callback into Swift Without Dangling Context Pointers
+20. How to Preserve Value Semantics with Copy-on-Write in a Custom Swift Collection
+
+## Redis Cluster
+
+1. How to Make Redis Cluster Reachable Through Docker NAT with `cluster-announce-*`
+2. How to Rotate Redis Cluster Certificates Without Breaking Client, Replication, or Cluster-Bus TLS
+3. How to Require ACL Authentication on Every Redis Cluster Node During Redirects
+4. How to Stagger Redis 8.10 Online Backups Across Cluster Shards with `BACKUP START` and `BACKUP SEAL`
+5. How to Recover Redis Cluster After `nodes.conf` Is Lost or Corrupted
+6. How to Run a Redis Cluster Network-Partition Drill and Measure Acknowledged-Write Loss
+7. How to Diagnose Redis Cluster Failover Loops Caused by Asymmetric Bus Connectivity
+8. How to Refresh Redis Cluster Client Topology Before Stale Slot Maps Cause Timeouts
+9. How to Pipeline Redis Cluster Commands by Hash Slot Without Redirect Storms
+10. How to Execute Redis Functions in Cluster Mode Without Cross-Slot Key Access
+11. How to `SCAN` Every Redis Cluster Primary While Handling Duplicate Keys and Concurrent Resharding
+12. How to Place Redis Cluster Replicas Across Availability Zones Without Replica Migration Undoing the Layout
+13. How to Drain a Redis Cluster Node for Host Maintenance Without an Unplanned Failover
+14. How to Repair a Redis Cluster Replica Chained to Another Replica After Manual Failover
+15. How to Diagnose Redis Cluster `TRYAGAIN` Errors During Slot Migration
+16. How to Subscribe to Keyspace Notifications from Every Redis Cluster Primary
+17. How to Detect Hash-Tag Skew Before a Redis Cluster Slot Becomes a Hotspot
+18. How to Validate Redis Cluster Persistence After Restart Without Replaying Destructive Commands
+19. How to Diagnose Redis Cluster `NOMASTERLINK` Loops After Pod IP Changes Despite Hostname Announcements
+20. How to Distinguish Safe Redis Cluster Redirect Retries from Ambiguous Post-Write Disconnects
+
+## KRaft
+
+1. How to Verify and Revert Kafka 3.9.x ZooKeeper-to-KRaft Migration Before Finalization
+2. How to Diagnose KRaft `No readable meta.properties files found` Before Reformatting Kafka Storage
+3. How to Migrate Combined Broker-Controller Nodes to Dedicated Controllers with a Kafka 4.1+ Dynamic KRaft Quorum
+4. How to Configure Internal and External Kafka Listeners in a KRaft Docker Network
+5. How to Diagnose KRaft Controller TLS Failures Caused by Missing `clientAuth` EKUs
+6. How to Bootstrap KRaft SCRAM Credentials Before the First Broker Starts
+7. How to Enable `StandardAuthorizer` in KRaft Without Locking Brokers Out
+8. How to Rotate KRaft Controller Certificates with a Staged Listener Migration
+9. How to Place KRaft Controllers Across Availability Zones Without Triggering Metadata Election Storms
+10. How to Diagnose KRaft Controllers Stuck in `Unattached` or Repeated Elections
+11. How to Inspect KRaft `__cluster_metadata` Records with `kafka-dump-log` and Metadata Shell
+12. How to Recover a KRaft Controller from a Full Metadata Disk Before the Quorum Stalls
+13. How to Keep KRaft Controller Listeners Off Client-Facing Networks While Preserving Broker Connectivity
+14. How to Convert a Static KRaft Voter Set to a Dynamic Controller Quorum in Kafka 4.1+
+15. How to Change KRaft Controller Hostnames by Replacing Voters in a Kafka 4.1+ Dynamic Quorum
+16. How to Upgrade KRaft Brokers While Controlling `metadata.version`
+17. How to Diagnose KRaft Brokers That Register but Remain Fenced
+18. How to Fix `InconsistentClusterIdException` After Reusing a Kafka Data Volume
+19. How to Troubleshoot `controller.quorum.voters` Endpoint Mismatches in a Static KRaft Cluster
+20. How to Test KRaft Controller Failover Without Disrupting Partition Leadership
+
+## KubeEdge
+
+1. How to Join KubeEdge Nodes Behind NAT with a Reachable CloudCore Advertise Address
+2. How to Diagnose KubeEdge `x509` SAN Errors Before Re-Creating CloudCore with the Correct Advertise Address
+3. How to Connect an External MQTT Broker to KubeEdge EventBus with `externalMqttMode`
+4. How to Restore an EdgeCore Node That Reconnects but Remains `NotReady`
+5. How to Diagnose KubeEdge Pods Stuck `Pending` While EdgeHub Is Connected
+6. How to Test KubeEdge Offline Autonomy with a Repeatable Cloud-Network Partition
+7. How to Pre-Pull Images So KubeEdge Workloads Can Restart During a Cloud Outage
+8. How to Enable KubeEdge MetaServer for In-Cluster API Access from Edge Pods
+9. How to Configure Cilium on KubeEdge Nodes Without Running `kube-proxy` at the Edge
+10. How to Configure Calico BGP Peers for KubeEdge Nodes on Separate Routable LANs
+11. How to Expose KubeEdge CloudCore and EdgeCore Metrics for Prometheus Scraping
+12. How to Troubleshoot `kubectl logs` and `exec` Through KubeEdge CloudStream and EdgeStream
+13. How to Run Highly Available CloudCore Behind a Stable VIP Without Breaking Tunnels
+14. How to Canary EdgeCore Upgrades with a Patched `NodeUpgradeJob` in KubeEdge 1.21.2, 1.22.2, or 1.23.1
+15. How to Hold and Release Workload Upgrades at the Edge with KubeEdge 1.22+
+16. How to Restrict KubeEdge `NodeUpgradeJob` and `ConfigUpdateJob` RBAC After CVE-2026-62371 and CVE-2026-62182
+17. How to Build a KubeEdge Mapper with the Device Management Interface
+18. How to Debug KubeEdge Device Twin Values That Stop Synchronizing
+19. How to Access an HTTP Device Service Through KubeEdge ServiceBus
+20. How to Remove and Rejoin a KubeEdge Node Without Leaving Stale Leases or Device Bindings
