@@ -8,11 +8,11 @@ Description: Explain why raising a public-operator node count does not cancel Co
 
 ---
 
-Changing a Kubernetes replica target and changing CockroachDB membership are separate operations. During a scale-down, the deprecated CockroachDB public operator first runs `cockroach node decommission --wait=none`, waits for replicas to leave the target, performs the final decommission step, and only then reduces its StatefulSet. If you raise `spec.nodes` before that sequence finishes, the StatefulSet may once again match the requested size while the database node remains in `DECOMMISSIONING`.
+Changing a Kubernetes replica target and changing CockroachDB membership are separate operations. During a scale-down, the deprecated CockroachDB public operator first runs `cockroach node decommission --wait=none`, waits for replicas to leave the target, performs the final decommission step, and only then reduces its StatefulSet. Raising `spec.nodes` does not cancel that reconciliation if it is still running. If the reconciliation stalls, fails, times out, or is interrupted before final decommission and StatefulSet reduction, a later reconciliation may find that the StatefulSet already matches the restored requested size while the database node remains in `DECOMMISSIONING`.
 
-The upscale did not roll the scale-down back. It only removed the numerical reason for Kubernetes to delete a pod.
+The upscale did not roll the membership change back. It only removed the desired-count mismatch that a future operator reconciliation would use to start scaling.
 
-This behavior applies to the public `cockroach-operator` and its `crdb.cockroachlabs.com/v1alpha1` `CrdbCluster`. The current `v1beta1` CockroachDB Operator uses `CrdbNode` resources and a different reconciliation design. Establish the API generation before following this recovery path.
+This behavior applies to the public `cockroach-operator` and its `crdb.cockroachlabs.com/v1alpha1` `CrdbCluster`. The current `v1beta1` CockroachDB Operator uses `CrdbNode` resources and a different reconciliation design. During migration, CRD conversion can serve the same cluster object through either API version, so the version returned by `kubectl` is not conclusive by itself. Establish which controller manages the cluster and its migration state before following this recovery path.
 
 ## The Two State Machines Do Not Form a Transaction
 
@@ -27,7 +27,7 @@ CockroachDB node 5 replicas  moving toward 0
 
 The public operator deliberately retains pod ordinal 4 while its CockroachDB node is decommissioning. Its source starts decommissioning with `--wait=none`, polls `node status --decommission`, and changes the node's membership to `decommissioned` only after its replica count reaches zero. The StatefulSet is reduced afterward.
 
-Now suppose an operator changes `spec.nodes` back to five. On a later reconciliation, the controller can observe that the CockroachDB workload already has five replicas. There is nothing to scale up or down, but CockroachDB membership is still a separate fact:
+Now suppose the active decommission reconciliation stalls or exits before final decommission and StatefulSet reduction, and an operator changes `spec.nodes` back to five. On a later reconciliation, the controller can observe that the CockroachDB workload already has five replicas. There is nothing to scale up or down, but CockroachDB membership is still a separate fact:
 
 ```text
 CrdbCluster spec.nodes       5
@@ -35,7 +35,7 @@ StatefulSet replicas         5
 CockroachDB node 5           decommissioning
 ```
 
-The public operator's scale path contains a source-code note about recommissioning after a failed or timed-out decommission, but it does not implement that rollback. Setting the count back is therefore not a recommission command.
+The public operator's scale path contains a source-code note about recommissioning after a timed-out decommission, but it does not implement that rollback. Setting the count back is therefore not a recommission command.
 
 ## Freeze the Decision and Capture Evidence
 
@@ -44,12 +44,13 @@ Do not keep toggling the count. Record the custom resource, StatefulSet, pod ide
 ```bash
 export NAMESPACE=cockroach-operator-system
 export CLUSTER=cockroachdb
+export CRDB_RESOURCE=crdbclusters.v1alpha1.crdb.cockroachlabs.com
 
-kubectl get crdbcluster "$CLUSTER" -n "$NAMESPACE" -o yaml \
+kubectl get "$CRDB_RESOURCE" "$CLUSTER" -n "$NAMESPACE" -o yaml \
   > "${CLUSTER}-scaling-state.yaml"
 
-kubectl get crdbcluster "$CLUSTER" -n "$NAMESPACE" \
-  -o jsonpath='api={.apiVersion} requested={.spec.nodes}{"\n"}'
+kubectl get "$CRDB_RESOURCE" "$CLUSTER" -n "$NAMESPACE" \
+  -o jsonpath='api={.apiVersion} requested={.spec.nodes} sqlPort={.spec.sqlPort} grpcPort={.spec.grpcPort}{"\n"}'
 
 kubectl get statefulset "$CLUSTER" -n "$NAMESPACE" \
   -o jsonpath='replicas={.spec.replicas} ready={.status.readyReplicas}{"\n"}'
@@ -59,7 +60,9 @@ kubectl get deployment -n "$NAMESPACE" -o wide
 kubectl get events -n "$NAMESPACE" --sort-by=.lastTimestamp
 ```
 
-Check the controller image digest rather than relying only on a mutable tag:
+During migration, also inspect the cluster's migration or skip labels and the active operator Deployments. The returned `apiVersion` alone does not identify the managing controller.
+
+Record the configured controller image reference rather than relying only on a release name. This field shows a digest only when the Deployment itself uses one; it does not resolve a mutable tag to its runtime digest:
 
 ```bash
 kubectl get deployment cockroach-operator-manager -n "$NAMESPACE" \
@@ -70,14 +73,17 @@ Names differ by installation method and release. Substitute the actual Deploymen
 
 ## Identify the Database Node Behind the Highest Ordinal
 
-Public-operator scale-down works from the highest StatefulSet ordinal. Query membership from a healthy pod using the security mode and Service name actually configured for the cluster:
+Public-operator scale-down works from the highest StatefulSet ordinal. Query membership from a healthy pod using the security mode, Service name, and SQL port actually configured for the cluster:
 
 ```bash
 export HEALTHY_POD="${CLUSTER}-0"
+export SQL_PORT="$(kubectl get "$CRDB_RESOURCE" "$CLUSTER" -n "$NAMESPACE" -o jsonpath='{.spec.sqlPort}')"
+export GRPC_PORT="$(kubectl get "$CRDB_RESOURCE" "$CLUSTER" -n "$NAMESPACE" -o jsonpath='{.spec.grpcPort}')"
 
 kubectl exec -n "$NAMESPACE" "$HEALTHY_POD" -- \
   /cockroach/cockroach node status \
   --host="${CLUSTER}-public" \
+  --port="$SQL_PORT" \
   --certs-dir=/cockroach/cockroach-certs \
   --decommission
 ```
@@ -99,21 +105,21 @@ There are only two coherent outcomes:
 1. **Keep this exact CockroachDB node.** Stop the scale-down intent and recommission the node before it becomes fully decommissioned.
 2. **Complete removal.** Let decommission finish, remove the pod through the public operator, and treat any later upscale as creation of a new CockroachDB node with a fresh store.
 
-Trying to keep the pod while allowing its membership to become permanently decommissioned creates the dangerous middle state. The container can be Running and even pass a Kubernetes-level check while its store is no longer a valid active member.
+Trying to keep the pod while allowing its membership to become permanently decommissioned creates the dangerous middle state. The Pod can remain in the Kubernetes `Running` phase while its CockroachDB readiness probe fails; Pod phase or container status alone is not evidence that its store is an active member.
 
 ## Abort the Scale-Down by Recommissioning
 
-Use this path only while the target's membership is `decommissioning` and the operational decision is to retain it.
+Use this path only while the target's membership is `decommissioning` and the operational decision is to retain it. Confirm first that no public-operator scale-down reconciliation is still advancing the node toward final decommission. Changing `spec.nodes` does not cancel an `EnsureScale` operation already in progress. If one is still running, pause the controller using the procedure appropriate to that installation, recheck membership and replica count, and only then proceed.
 
 First, make the public-operator desired count equal the currently retained StatefulSet size so a later reconcile does not immediately start removing the same ordinal again:
 
 ```bash
-kubectl patch crdbcluster "$CLUSTER" -n "$NAMESPACE" \
+kubectl patch "$CRDB_RESOURCE" "$CLUSTER" -n "$NAMESPACE" \
   --type=merge \
   -p '{"spec":{"nodes":5}}'
 ```
 
-Replace `5` with the intended count. Wait until the custom resource and StatefulSet agree, and check that no controller log shows a new final decommission attempt. The previously issued database operation does not disappear merely because the spec changed.
+Replace `5` with the intended count. Confirm that the custom resource and StatefulSet agree, and check that no controller log shows an in-flight or new final decommission attempt. The previously issued database operation does not disappear merely because the spec changed.
 
 Then recommission the exact node ID:
 
@@ -121,6 +127,7 @@ Then recommission the exact node ID:
 kubectl exec -n "$NAMESPACE" "$HEALTHY_POD" -- \
   /cockroach/cockroach node recommission TARGET_NODE_ID \
   --host="${CLUSTER}-public" \
+  --port="$GRPC_PORT" \
   --certs-dir=/cockroach/cockroach-certs
 ```
 
@@ -131,8 +138,9 @@ Finally, verify:
 - all expected nodes are live and active;
 - ranges are not under-replicated or unavailable;
 - replica counts begin balancing back across the recommissioned node;
-- SQL and DB Console traffic no longer target a draining process; and
-- the operator reports a stable Running condition without another decommission attempt.
+- SQL and DB Console traffic no longer target a draining process;
+- operator logs show no new decommission attempt; and
+- any earlier failed `Decommission` action or condition is treated as potentially stale after this out-of-band recovery.
 
 If a final decommission completed between inspection and the recommission command, stop. Do not force the old store to rejoin.
 
@@ -149,7 +157,7 @@ The public operator disables automatic PVC pruning by default. Consequently, a P
 5. remove the stale claim through a reviewed storage change; and
 6. only then raise `spec.nodes`, allowing a fresh store to join with a new node ID.
 
-Never delete a PVC simply because its ordinal looks high. Confirm the pod, volume, store, and database node mapping from live evidence. StorageClass reclaim behavior determines whether deleting the claim also deletes the underlying volume.
+Never delete a PVC simply because its ordinal looks high. Confirm the pod, volume, store, and database node mapping from live evidence. The bound PersistentVolume's reclaim policy, usually inherited from the StorageClass, determines whether deleting the claim also deletes the backing storage asset.
 
 ## If Recommissioning Appears to Succeed but the Pod Is Unhealthy
 
