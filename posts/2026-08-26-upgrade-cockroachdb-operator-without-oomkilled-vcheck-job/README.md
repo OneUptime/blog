@@ -8,7 +8,7 @@ Description: Diagnose an OOMKilled version-check Job in the deprecated Cockroach
 
 ---
 
-The deprecated CockroachDB public operator validates a custom `spec.image.name` by creating a short-lived Kubernetes Job whose name contains `vcheck`. That Job runs the candidate image, prints its CockroachDB build tag, and gives the controller evidence for the rolling upgrade. If the container is OOMKilled, the `CrdbVersionChecked` condition never becomes true and the operator will not advance the StatefulSet update.
+The deprecated CockroachDB public operator version-checks a custom `spec.image.name` by creating a short-lived Kubernetes Job whose name contains `vcheck`. That Job runs the candidate image, prints its CockroachDB build tag, and gives the controller evidence for the rolling upgrade. If the container is OOMKilled, the `CrdbVersionChecked` condition never becomes true and the operator will not advance the StatefulSet update.
 
 Do not work around the block by editing the StatefulSet image. First prove why the Job died, then fix either the image-selection path or the capacity problem that caused it.
 
@@ -32,7 +32,7 @@ Those values are implementation details, not an API contract. Inspect the live J
 The public operator has two image-selection paths:
 
 1. `spec.cockroachDBVersion` selects a version from the operator Deployment's `RELATED_IMAGE_COCKROACH_*` environment variables. The controller validates the mapping directly and does not need to launch `vcheck`.
-2. `spec.image.name` permits an explicit image or digest. Because the operator cannot trust its tag, it creates `vcheck` and reads the version from inside that image.
+2. `spec.image.name` permits an explicit image or digest. Because the operator cannot infer the CockroachDB version from an arbitrary image reference, it creates `vcheck` and reads the version reported from inside that image.
 
 The admission webhook rejects a resource that supplies both fields.
 
@@ -46,17 +46,17 @@ export CLUSTER=cockroachdb
 
 kubectl get jobs -n "$NAMESPACE" --sort-by=.metadata.creationTimestamp
 kubectl get pods -n "$NAMESPACE" \
-  -l job-name \
+  -l batch.kubernetes.io/job-name \
   --sort-by=.metadata.creationTimestamp
 ```
 
-The selector form supported by a particular `kubectl` version may require a concrete value, so copy the exact Job name containing `-vcheck-` and resolve its pods:
+The first selector is an existence selector and returns pods from every Job. Copy the exact Job name containing `-vcheck-` and narrow the selector to resolve its pods. Kubernetes 1.27 and later use the canonical label shown here; on an older cluster, substitute the legacy `job-name` label:
 
 ```bash
 export VCHECK_JOB=cockroachdb-vcheck-REPLACE_WITH_SUFFIX
 
 kubectl get pods -n "$NAMESPACE" \
-  -l "job-name=${VCHECK_JOB}" \
+  -l "batch.kubernetes.io/job-name=${VCHECK_JOB}" \
   -o wide
 ```
 
@@ -64,7 +64,7 @@ Inspect every retry, not just the newest pod:
 
 ```bash
 kubectl get pods -n "$NAMESPACE" \
-  -l "job-name=${VCHECK_JOB}" \
+  -l "batch.kubernetes.io/job-name=${VCHECK_JOB}" \
   -o jsonpath='{range .items[*]}{.metadata.name}{" current="}{.status.containerStatuses[0].state.terminated.reason}{" previous="}{.status.containerStatuses[0].lastState.terminated.reason}{" exit="}{.status.containerStatuses[0].state.terminated.exitCode}{"\n"}{end}'
 
 kubectl describe job "$VCHECK_JOB" -n "$NAMESPACE"
@@ -90,18 +90,18 @@ Metrics Server is required for `kubectl top`; pod termination state and node eve
 
 The official Job overrides the image entrypoint with `command: ["/bin/bash"]`, then invokes `/cockroach/cockroach.sh version` through `bash -c`. A custom image can still make that exact path expensive if it replaces `/bin/bash` or `/cockroach/cockroach.sh`, uses costly `BASH_ENV` shell initialization, introduces unusual dynamic-linker overhead, or bundles a CockroachDB binary that is incompatible with the public operator's expected layout. Entrypoint-only initialization does not run in this Job.
 
-Inspect the exact digest from the failed Job:
+Inspect the runtime-reported image ID from the failed Job:
 
 ```bash
 kubectl get pod VCHECK_POD_NAME -n "$NAMESPACE" \
   -o jsonpath='{.status.containerStatuses[0].imageID}{"\n"}'
 ```
 
-Compare that digest with the approved artifact. Do not test `latest` and assume it matches. In an isolated environment, run the exact command under an equivalent memory limit and record peak use. If an otherwise idle official image cannot print its version below the live limit, check the public-operator release notes and supported-version matrix before changing resources.
+The `imageID` format is runtime-dependent and is not guaranteed to be the registry or manifest-list digest. Use registry or runtime tooling to establish the corresponding registry digest before comparing it with the approved artifact. Do not test `latest` and assume it matches. In an isolated environment, run the exact command under an equivalent memory limit and record peak use. If an otherwise idle official image cannot print its version below the live limit, check the public-operator release notes and supported-version matrix before changing resources.
 
 ## Preferred Path: Select an Operator-Supported Version
 
-If no custom image is required, use `spec.cockroachDBVersion`. First list the versions and immutable images actually embedded in the installed operator Deployment:
+If no custom image is required, use `spec.cockroachDBVersion`. First list the versions and image references configured in the installed operator Deployment:
 
 ```bash
 kubectl get deployment cockroach-operator-manager -n "$NAMESPACE" -o json |
@@ -128,7 +128,7 @@ kubectl patch crdbcluster "$CLUSTER" -n "$NAMESPACE" \
   ]"
 ```
 
-Use `replace` instead of `add` if `cockroachDBVersion` already exists, and do not run the patch until the current JSON shape has been reviewed. The operator can now resolve a vetted `RELATED_IMAGE` without launching the candidate image merely to discover its version.
+The JSON Patch `add` operation creates `cockroachDBVersion` if it is absent or replaces its value if it is present. Do not run the patch until the current JSON shape has been reviewed. The operator can now resolve a vetted `RELATED_IMAGE` without launching the candidate image merely to discover its version.
 
 This avoids `vcheck`; it does not waive normal CockroachDB upgrade sequencing, backups, compatibility review, or finalization controls.
 
@@ -146,7 +146,7 @@ Use one of these controlled fixes:
 
 A local operator fork is maintenance debt, especially now that the public operator is deprecated. Prefer migrating to the current CockroachDB Operator over carrying an indefinite patch.
 
-Do not disable the GA `CrdbVersionValidator` feature merely to advance an urgent upgrade. That removes the compatibility gate for every cluster managed by the Deployment and can turn a visible Job failure into an unsafe rollout.
+Do not disable the GA `CrdbVersionValidator` feature merely to advance an urgent upgrade. That disables the version-check prerequisite for every cluster managed by the Deployment and can bypass the partitioned upgrade's safety path.
 
 ## Fix Node Pressure Separately
 
@@ -171,17 +171,19 @@ kubectl delete job "$VCHECK_JOB" -n "$NAMESPACE"
 This removes only the disposable checker, not database pods or PVCs. Watch the replacement Job, operator log, and custom-resource condition:
 
 ```bash
-kubectl get jobs,pods -n "$NAMESPACE" --watch
+# Run these watches in separate terminals.
+kubectl get jobs -n "$NAMESPACE" --watch
+kubectl get pods -n "$NAMESPACE" --watch
 
 kubectl get crdbcluster "$CLUSTER" -n "$NAMESPACE" \
-  -o jsonpath='{range .status.conditions[*]}{.type}{"="}{.status}{" reason="}{.reason}{"\n"}{end}'
+  -o jsonpath='{range .status.conditions[*]}{.type}{"="}{.status}{" changed="}{.lastTransitionTime}{"\n"}{end}'
 
 kubectl logs -n "$NAMESPACE" \
   deployment/cockroach-operator-manager \
   --since=30m --all-containers=true
 ```
 
-Proceed only after the operator records the expected build tag and `CrdbVersionChecked` becomes true. Then monitor the one-node-at-a-time StatefulSet rollout and CockroachDB health. A successful `vcheck` proves image identity, not cluster upgrade readiness.
+Proceed only after the operator records the expected build tag and `CrdbVersionChecked` becomes true. Then monitor the one-node-at-a-time StatefulSet rollout and CockroachDB health. A successful `vcheck` records the build tag reported by the image; it does not authenticate that image or prove cluster upgrade readiness.
 
 ## Official Documentation
 
@@ -196,4 +198,4 @@ Proceed only after the operator records the expected build tag and `CrdbVersionC
 
 ## Conclusion
 
-An OOMKilled `vcheck` Job is a failed image-identification step, not a reason to bypass the public operator. Confirm the live Job's limit and termination state, distinguish container OOM from node pressure, and inspect what the candidate image runs for a version query. Use `cockroachDBVersion` for an operator-supported image, or fix and validate the custom-image path. Only retry after the underlying cause changes and the version condition can become true.
+An OOMKilled `vcheck` Job is a failed image-version-reporting step, not a reason to bypass the public operator. Confirm the live Job's limit and termination state, distinguish container OOM from node pressure, and inspect what the candidate image runs for a version query. Use `cockroachDBVersion` for an operator-supported image, or fix and validate the custom-image path. Only retry after the underlying cause changes and the version condition can become true.
