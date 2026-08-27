@@ -20,9 +20,9 @@ The word "ephemeral" describes lifecycle, not one common implementation or one c
 | Provisioning owner | kubelet | ephemeral volume controller plus normal PV provisioner | CSI driver on the selected node |
 | PVC created | No | Yes, automatically | No |
 | Storage source | node kubelet storage or RAM | any dynamic-provisioning driver that supports the claim | CSI driver that advertises ephemeral lifecycle support |
-| Capacity-aware scheduling | through container `ephemeral-storage` requests for local storage, not through `sizeLimit` | normal PVC binding and CSI storage capacity mechanisms can apply | not supported |
-| Pod storage-limit accounting | disk-backed use is local ephemeral storage; tmpfs use is memory | PVC capacity and storage quota, not Pod `ephemeral-storage` | not covered by Pod storage resource usage limits |
-| Fixed volume capacity | `sizeLimit` is monitored and can trigger eviction; it is not a dedicated filesystem quota | supported when the storage driver provides a fixed-size volume | driver-specific attributes; no standard capacity field |
+| Capacity-aware scheduling | through container `ephemeral-storage` requests for disk-backed storage or memory requests for `medium: Memory`, not through `sizeLimit` | normal PVC binding and CSI storage capacity mechanisms can apply | not supported |
+| Pod storage-limit accounting | disk-backed use is local ephemeral storage; tmpfs use is memory | driver-backed volume capacity; PVC count and requested storage are subject to namespace quota, not Pod `ephemeral-storage` | not covered by Pod storage resource usage limits |
+| Fixed volume capacity | `sizeLimit`; disk-backed overage is measured and can trigger eviction rather than using a dedicated filesystem quota, while `medium: Memory` uses a tmpfs capacity cap | supported when the storage driver provides a fixed-size volume | driver-specific attributes; no standard capacity field |
 
 ## Choose `emptyDir` for Simple Node-Local Scratch Space
 
@@ -39,7 +39,7 @@ Use it for temporary files, sharing files between containers in one Pod, caches 
 
 For disk-backed `emptyDir`, usage contributes to local ephemeral-storage accounting. Set realistic `ephemeral-storage` requests and limits on containers. The `emptyDir.sizeLimit` does not itself reserve that amount during scheduling, and kubelet enforcement is based on usage measurement and Pod eviction rather than a smaller dedicated disk mounted for the container.
 
-For memory-backed `emptyDir`, file pages count as memory use of the container that wrote them. Size both the memory limit and the volume cap.
+For memory-backed `emptyDir`, file pages count as memory use of the container that wrote them. Set realistic memory requests for scheduling, and size both the memory limit and the volume cap.
 
 ## Choose Generic Ephemeral for a PVC-Backed Scratch Volume
 
@@ -61,7 +61,7 @@ volumes:
               storage: 20Gi
 ```
 
-The ephemeral volume controller creates a real PVC in the Pod's namespace. Normal binding and dynamic provisioning then apply. Kubernetes recommends `WaitForFirstConsumer` for the StorageClass because it lets the scheduler choose a suitable node before topology-constrained provisioning.
+The ephemeral volume controller creates a real PVC in the Pod's namespace. Normal PVC binding and, when needed, dynamic provisioning then apply. Kubernetes recommends `WaitForFirstConsumer` for the StorageClass because it lets the scheduler choose a suitable node before topology-constrained provisioning.
 
 Choose this type when scratch space needs a driver-defined performance class, network attachment, snapshot or clone support, storage-capacity tracking, or a fixed capacity that the Pod cannot exceed. The exact capabilities still depend on the driver.
 
