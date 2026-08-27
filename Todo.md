@@ -120,7 +120,6 @@
 
 ## Ephemeral Volumes
 
-9. How to Diagnose DiskPressure and Inode Evictions Caused by Pod Ephemeral Storage
 10. How to Guarantee Fixed Scratch-Disk Capacity with a Generic Ephemeral Volume
 11. How to Schedule Generic Ephemeral Volumes with WaitForFirstConsumer and Storage Topology
 12. Why a Generic Ephemeral Volume PVC Stays Pending—and How to Debug Provisioning
