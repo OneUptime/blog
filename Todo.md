@@ -117,7 +117,6 @@
 
 ## ServiceMonitors
 
-2. How to Debug a ServiceMonitor with Zero Discovered Targets from Service to EndpointSlice
 3. `serviceMonitorSelector` vs `spec.selector`: Which Labels Must a ServiceMonitor Match?
 4. How to Discover ServiceMonitors and Scrape Services Across Different Namespaces
 5. Why a ServiceMonitor Endpoint Must Reference the Named Service Port, Not the Container Port
